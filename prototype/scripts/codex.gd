@@ -246,10 +246,20 @@ static func gear() -> Array:
 		out.append({"title": String(d["name"]), "tag": TranslationServer.translate(String(d["full"])) + "  ·  " + TranslationServer.translate(mode), "accent": d["color"],
 			"portrait": {"type": "item", "kind": k}, "stats": stats, "text": text[0], "tip": text[1],
 			"group": {"throw": "THROWN", "place": "PLACED", "use": "TOOLS"}[String(d["mode"])]})
+	out.append(flashlight_entry())
 	var grouped: Array = []                                      # sort_custom nie jest stabilny — grupy składamy po kolei, kolejność w grupie z Throwables.ORDER
 	for g in GEAR_GROUPS:
 		grouped.append_array(out.filter(func(x: Dictionary) -> bool: return x["group"] == g))
 	return grouped
+
+## Latarka i bateria 4,5 V (BATTERY_PLAN.md B2): karta w grupie TOOLS, portret — bateria. Liczby jak w player.gd (BATTERY_MAX,
+## BATTERY_RECHARGE, BATTERY_PICKUP, BATTERY_TAKE_BELOW, LIGHT_NOISE_EVERY) — przy zmianie strojenia poprawić też tu.
+static func flashlight_entry() -> Dictionary:
+	return {"title": "FLASHLIGHT", "tag": TranslationServer.translate("Always carried") + "  ·  " + TranslationServer.translate("Tool"),
+		"accent": Color(1.0, 0.92, 0.66), "portrait": {"type": "item", "kind": "battery"}, "group": "TOOLS",
+		"stats": [["Battery", "180 s"], ["Recharge", "0.25 s per second, light off"], ["4.5 V battery", "+90 s below 90%"], ["Noise", "+1 per 10 s"]],
+		"text": "{flashlight} toggles an 8 m cone of light. A full battery lasts 180 s; switched off, it slowly recharges. Light wakes the enemies it touches, draws the Stalker and moths, and adds noise. Below 20% the beam starts to stutter.",
+		"tip": "Flat 4.5 V batteries give +90 s: they lie around the maps, drop from enemies (Blind Ones most often) and always from a smashed moth nest or a patrol strongbox. Whoever is lowest picks it up — the AI companion leaves it for you."}
 
 ## Hałas przedmiotu w punktach miernika Uwagi (0–100); skaner hałasuje co sekundę, wybuchy mają własną głośność.
 static func noise_text(k: String) -> String:

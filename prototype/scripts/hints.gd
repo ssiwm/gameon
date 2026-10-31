@@ -29,6 +29,7 @@ const TIPS := [
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
 	["downed_solo", "You are down and no one can revive you. Bleed out and you wake up back at the start — fall again and the attempt is lost"],
 	["light", "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide"],
+	["battery_low", "The flashlight battery is running low. Flat 4.5 V batteries lie around the map, drop from enemies and from smashed moth nests — and the light slowly recharges while switched off"],
 	["moths", "Moths nest under the watchtower roof and swarm any light they can see — your flashlight, even muzzle flashes. Bullets and fire do not touch them: throw a flare ({flare}) away from you to draw the swarm off, or cut them down with your blade ({melee})"],
 	["moths_on", "Moths are smothering your flashlight: the beam dims, the battery drains and their fluttering is loud. Swing your blade ({melee}) through them or switch the light off ({flashlight}) to shake them — killed at your face, they raise dust that makes you cough"],
 	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
@@ -105,6 +106,7 @@ func _collect(p: Node) -> void:
 	var lvl_n = p.get_tree().get_first_node_in_group("level")
 	var below: bool = lvl_n != null and p.global_position.y > float(lvl_n.underground_y) and float(lvl_n.underground_y) > 0.0
 	_queue("light", _session > 45.0 or (below and not p.flashlight == true), true)
+	_queue("battery_low", p.get("bat_pct") != null and int(p.bat_pct) < 20, true)       # słaba bateria (BATTERY_PLAN.md B2): skąd wziąć nową
 	_queue("flare", _session > 150.0, true)
 	# krzyk (GDD §8.2): hak gry, którego dotąd nic nie uczyło — mikrofon jest opt-in w lobby, więc podpowiedź mówi, gdzie go włączyć
 	_queue("scream", _session > 210.0 and not Voice.enabled, true)

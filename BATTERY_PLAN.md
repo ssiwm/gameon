@@ -1,7 +1,7 @@
 # Baterie i ładowarki latarki — plan
 
-Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.450** (gałąź `feat/battery-pickup`). Decyzje D1–D4 (§4):
-przyjęte warianty zalecane (2026-10-31). Zostają B2, B3, B4.
+Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.450** (#547), **B2 w 1.7.451** (gałąź `feat/battery-readability`).
+Decyzje D1–D4 (§4): przyjęte warianty zalecane (2026-10-31). Zostają B3, B4.
 
 ## 1. Skąd to
 
@@ -80,6 +80,9 @@ idzie pierwszy, a liczby z §3 są startowe do strojenia.
 - Kodeks: wpis „Bateria 4,5 V” (a po B3 „Ładowarka”); przy latarce w kodeksie zdanie o źródłach baterii.
 - Raport po akcji (`result_screen.gd`): wiersz „baterie zebrane”, jeśli były.
 - `ui.csv`: nowe klucze PL/EN, `--uifittest`.
+- Wdrożone: `player.low_battery_dim` (poniżej `BATTERY_LOW` 0,2 dwa przygaśnięcia do 30% na początku każdych 3,5 s, przesunięte o
+  `display_id`), klik przy przejściu progu, `hints.gd` „battery_low”, `codex.flashlight_entry` (ikona `art/hud/battery.png` z
+  `bake_hud_icons.gd`), `mission.batteries` → `finds.batteries` → wiersz raportu. Kodeks ma liczby wpisane ręcznie (opis przy funkcji).
 
 ### B3 — ładowarka (klocek na mapę, w Strefie I jedna)
 - Nowy węzeł `charger.gd` na znaczniku **`Q`**, na wzór `generator.gd` (autorytet serwera, gracz zgłasza tylko „stoję / zszedłem”):

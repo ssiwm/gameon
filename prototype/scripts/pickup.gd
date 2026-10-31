@@ -322,6 +322,9 @@ func _try_battery() -> void:
 		return
 	best.deliver_battery(best.BATTERY_PICKUP)
 	SessionLog.note_battery("picked")
+	var mis := get_tree().get_first_node_in_group("mission")
+	if mis != null:
+		mis.batteries += 1
 	SessionLog.event("battery", {"who": "P%d" % int(best.display_id), "bot": bool(best.is_bot), "src": "pickup", "amount": int(best.BATTERY_PICKUP),
 		"before": roundi(best_lvl * 100.0)})
 	var lv := _level()

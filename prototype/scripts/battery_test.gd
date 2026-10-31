@@ -8,10 +8,14 @@ extends "res://scripts/stalker_test.gd"
 ## 3. Bot ustępuje człowiekowi, któremu brakuje baterii; gdy człowiek ma pełną — bot bierze.
 ## 4. Sejf patrolu zostawia baterię; Ćma nie ma losowego zrzutu (bateria tylko z rozbitego gniazda), Ślepiec ma.
 ## 5. Dziennik sesji: `bat` w próbce `pos`, zdarzenia `battery` i `battery_empty`, liczniki do `mission_end.battery`.
+## 6. Czytelność (B2): snop przygasa tylko poniżej 20%, karta LATARKA w kodeksie (portret baterii), podpowiedź „battery_low”,
+##    licznik baterii misji do raportu po akcji.
 ## Mapa 1.1, reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [BATTERY-TEST] i kod wyjścia.
 
 const SessionLog := preload("res://scripts/session_log.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
+const Hints := preload("res://scripts/hints.gd")
+const Codex := preload("res://scripts/codex.gd")
 const LOG_DIR := "user://test_battery_sessions"
 
 var bot: CharacterBody2D
@@ -61,6 +65,7 @@ func run(m: Node2D) -> void:
 	await _bot_yields()
 	await _sources()
 	await _empty_and_log()
+	_readability()
 	_cleanup_log()
 	_finish()
 
@@ -163,6 +168,26 @@ func _empty_and_log() -> void:
 	var empties := rows.filter(func(r: Dictionary) -> bool: return r.get("ev") == "battery_empty")
 	check("dziennik: pos z `bat` %d, battery %d, battery_empty %d" % [pos_bat.size(), picks.size(), empties.size()],
 		not pos_bat.is_empty() and picks.size() >= 3 and not empties.is_empty())
+
+# ---------------------------------------------------------------- 6. czytelność
+
+func _readability() -> void:
+	player.battery = player.BATTERY_MAX * 0.5
+	var dims_full := []
+	for i in 80:
+		dims_full.append(player.low_battery_dim(float(i) * 0.05))
+	player.battery = player.BATTERY_MAX * 0.1
+	var dims_low := []
+	for i in 80:
+		dims_low.append(player.low_battery_dim(float(i) * 0.05))
+	var dark := dims_low.filter(func(v: float) -> bool: return v < 1.0).size()
+	check("snop: 50%% bez przygasania, 10%% przygasa %d z 80 próbek (4 s)" % dark, dims_full.all(func(v: float) -> bool: return v == 1.0) and dark >= 2 and dark <= 16)
+	var card: Array = Codex.gear().filter(func(e: Dictionary) -> bool: return e["title"] == "FLASHLIGHT")
+	check("kodeks GEAR: karta LATARKA z portretem baterii i ikoną 3D", card.size() == 1 and String(card[0]["portrait"]["kind"]) == "battery"
+		and ResourceLoader.exists("res://art/hud/battery.png"))
+	check("podpowiedź battery_low w Hints.TIPS", Hints.TIPS.any(func(t: Array) -> bool: return t[0] == "battery_low"))
+	var mis := get_tree().get_first_node_in_group("mission")
+	check("licznik baterii misji do raportu: %d" % (int(mis.batteries) if mis != null else -1), mis != null and int(mis.batteries) >= 3)
 
 func _log_rows() -> Array:
 	var out: Array = []

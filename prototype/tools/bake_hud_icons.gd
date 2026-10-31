@@ -32,6 +32,7 @@ const JOBS := [
 	["flare", "res://art/items3d/flare.glb", Vector3(0.6, 0.5, 1.0), 0.0, 384],
 	["lure", "res://art/items3d/lure.glb", Vector3(0.22, 0.26, 1.0), 0.0, 384],
 	["flashlight", "res://art/items3d/flashlight.glb", Vector3(0.45, 0.38, 1.0), 38.0, 384],
+	["battery", "res://art/items3d/battery.glb", Vector3(0.5, 0.35, 1.0), 0.0, 384],       # bateria 4,5 V (BATTERY_PLAN.md B2: kodeks)
 ]
 var _vp: SubViewport
 var _cam: Camera3D

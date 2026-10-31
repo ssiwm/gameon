@@ -73,6 +73,7 @@ var extract_progress := 0.0
 var elapsed := 0.0
 var downs := 0
 var attempts := 1
+var batteries := 0                ## baterie 4,5 V zebrane w tej próbie (pickup.gd, serwer) — wiersz raportu po akcji (BATTERY_PLAN.md B2)
 ## Statystyki graczy do ekranu wyniku: peer id → {name, kills, downs, revived}. Liczy serwer, klienci dostają wynik raz na końcu
 ## misji (`_recv_stats`). Boty nie są liczone (nie dają XP).
 var player_stats := {}
@@ -458,7 +459,7 @@ func _success() -> void:
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
 	log_end("success")
-	var finds := {"parts": Scrap.found.keys(), "samples": Scrap.samples_loot + (Scrap.SAMPLE_SIDE if side_done() else 0), "trophy": false}
+	var finds := {"parts": Scrap.found.keys(), "samples": Scrap.samples_loot + (Scrap.SAMPLE_SIDE if side_done() else 0), "trophy": false, "batteries": batteries}
 	if kind != "hub" and Scrap.enabled():
 		var bonus := scrap_bonus()
 		var lv0 := get_tree().get_first_node_in_group("level")
@@ -913,6 +914,7 @@ func on_restart(new_run: bool) -> void:
 		attempts += 1
 	_was_dead.clear()
 	stalker_woke = false
+	batteries = 0
 	_checkpoint.clear()
 	_boss_wait = 0.0
 	_tags_taken = 0
