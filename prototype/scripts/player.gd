@@ -2092,6 +2092,12 @@ func apply_heal(amount: int) -> void:
 	if not is_bot:
 		Audio.play("revive", Audio.BUS_PLAYER, -6.0, 1.4)
 
+## Ładowarka (charger.gd, BATTERY_PLAN.md B3): doładowanie o `amount` s — tylko u właściciela postaci, jak całe liczenie baterii.
+func charge_battery(amount: float) -> void:
+	if NoiseMgr.has_network() and not is_multiplayer_authority():
+		return
+	battery = minf(BATTERY_MAX, battery + amount)
+
 ## Bateria z ziemi (pickup.gd „battery”): rozstrzyga serwer, dolicza właściciel postaci — jak leczenie.
 func deliver_battery(amount: float) -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():

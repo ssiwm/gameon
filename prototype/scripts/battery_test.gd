@@ -10,12 +10,15 @@ extends "res://scripts/stalker_test.gd"
 ## 5. Dziennik sesji: `bat` w próbce `pos`, zdarzenia `battery` i `battery_empty`, liczniki do `mission_end.battery`.
 ## 6. Czytelność (B2): snop przygasa tylko poniżej 20%, karta LATARKA w kodeksie (portret baterii), podpowiedź „battery_low”,
 ##    licznik baterii misji do raportu po akcji.
+## 7. Ładowarka (B3): ładuje tylko przy zgaszonej latarce i w zasięgu, CHARGE_PER_S, stan „pracuje” i buczenie (hałas „charger”)
+##    z serwera, bot też się ładuje, wpis w dzienniku, restart misji; znacznik `Q` na mapie B1.
 ## Mapa 1.1, reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [BATTERY-TEST] i kod wyjścia.
 
 const SessionLog := preload("res://scripts/session_log.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const Hints := preload("res://scripts/hints.gd")
 const Codex := preload("res://scripts/codex.gd")
+const CHARGER := preload("res://scripts/charger.gd")
 const LOG_DIR := "user://test_battery_sessions"
 
 var bot: CharacterBody2D
@@ -66,6 +69,7 @@ func run(m: Node2D) -> void:
 	await _sources()
 	await _empty_and_log()
 	_readability()
+	await _charger()
 	_cleanup_log()
 	_finish()
 
@@ -188,6 +192,50 @@ func _readability() -> void:
 	check("podpowiedź battery_low w Hints.TIPS", Hints.TIPS.any(func(t: Array) -> bool: return t[0] == "battery_low"))
 	var mis := get_tree().get_first_node_in_group("mission")
 	check("licznik baterii misji do raportu: %d" % (int(mis.batteries) if mis != null else -1), mis != null and int(mis.batteries) >= 3)
+
+# ---------------------------------------------------------------- 7. ładowarka
+
+func _charger() -> void:
+	var b1: Array = load("res://scripts/maps/z1_b1.gd").get_script_constant_map()["MAP"]
+	check("mapa B1 ma ładowarkę (znacznik Q)", b1.any(func(r: String) -> bool: return r.contains("Q")))
+	player.flashlight = false
+	player.battery = player.BATTERY_MAX
+	await _frames(0.2)
+	var spot: Vector2 = player.global_position
+	var ch: Node2D = CHARGER.new()
+	ch.name = "TestCharger"
+	ch.position = spot
+	level.add_child(ch)
+	await _frames(0.3)
+	check("pełna bateria: ładowarka nie pracuje", not ch.active)
+	player.battery = player.BATTERY_MAX * 0.2
+	var b0: float = player.battery
+	await _frames(2.0)
+	var gain: float = player.battery - b0
+	check("ładuje przy zgaszonej latarce: +%.1f s w 2 s (oczekiwane ok. %.1f)" % [gain, 2.0 * (ch.CHARGE_PER_S + player.BATTERY_RECHARGE)],
+		absf(gain - 2.0 * (ch.CHARGE_PER_S + player.BATTERY_RECHARGE)) < 1.0 and ch.active)
+	var noise_n := int((SessionLog._noise.get("charger", [0, 0.0]) as Array)[0]) if SessionLog._noise.has("charger") else 0
+	check("buczenie: hałas „charger” %d×, wpis w dzienniku %d" % [noise_n, int(SessionLog._battery.get("charger", 0))],
+		noise_n >= 1 and int(SessionLog._battery.get("charger", 0)) >= 1)
+	player.flashlight = true
+	b0 = player.battery
+	await _frames(1.0)
+	check("zapalona latarka: bez ładowania (%.1f → %.1f), ładowarka stoi" % [b0, player.battery], player.battery < b0 and not ch.active)
+	player.flashlight = false
+	_place_player(spot + Vector2(200.0, 0.0))
+	b0 = player.battery
+	await _frames(1.0)
+	check("poza zasięgiem: tylko wolne ładowanie (+%.2f s)" % (player.battery - b0), player.battery - b0 < 0.5)
+	bot.global_position = spot
+	bot.flashlight = false
+	bot.battery = bot.BATTERY_MAX * 0.1
+	var bb: float = bot.battery
+	await _frames(1.0)
+	check("bot przy ładowarce też się ładuje (+%.1f s)" % (bot.battery - bb), bot.battery - bb > ch.CHARGE_PER_S * 0.8)
+	bot.global_position = Vector2(-4000, -4000)
+	ch.reset_charger()
+	check("restart misji: ładowarka bez stanu", not ch.active)
+	ch.queue_free()
 
 func _log_rows() -> Array:
 	var out: Array = []

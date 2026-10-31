@@ -1,7 +1,7 @@
 # Baterie i ładowarki latarki — plan
 
-Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.450** (#547), **B2 w 1.7.451** (gałąź `feat/battery-readability`).
-Decyzje D1–D4 (§4): przyjęte warianty zalecane (2026-10-31). Zostają B3, B4.
+Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.450** (#547), **B2 w 1.7.451** (#548), **B3 w 1.7.452** (gałąź
+`feat/battery-charger`). Decyzje D1–D4 (§4): przyjęte warianty zalecane (2026-10-31). Zostaje B4 (po playteście).
 
 ## 1. Skąd to
 
@@ -94,6 +94,10 @@ idzie pierwszy, a liczby z §3 są startowe do strojenia.
   światło sceny (zielona przy ładowaniu).
 - Testy: `--batterytest` — ładuje tylko przy zgaszonej latarce, w zasięgu, hałas co `HUM_INTERVAL`, dwóch graczy ładuje się
   naraz.
+- Wdrożone: `charger.gd` (ładowanie liczy właściciel postaci — `player.charge_battery`, jak całe liczenie baterii; serwer rozstrzyga
+  „pracuje” → lampka zielona / pomarańczowa, pętla buczenia, hałas „charger”, `battery` src=charger w dzienniku, `mission_end.battery.charger`),
+  model `m_charger` (prostownik z miernikiem, ok. 0,75 × 0,65 m, `ITEM_Z` za graczem), znacznik `Q` na B1 w (20,30) — 120 px od wody, poza
+  `SHORE_REACH` Pijawki. Sieć: brak osobnego testu (stan przez RPC `_sync_active`, ładowanie u właściciela jak w B0–B1).
 
 ### B4 — strojenie po playteście
 Na danych z B0: wartość baterii, liczba znaczników, szanse zrzutu, tempo ładowania pasywnego (D3). Zmiany liczbowe, bez

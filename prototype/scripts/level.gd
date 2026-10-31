@@ -26,7 +26,7 @@ extends Node2D
 ##   L  Ślepiec (nie widzi, słyszy)   P  Podsłuchacz (stoi, krzyczy i ściąga hordę)
 ##   Y  Mimik (udaje kolegę z drużyny)   A  Kapłan (elita: leczy Trzoski, krzyczy falą ogłuszającą)   U  Rzeźnik (elita: ciężka szarża przez barykady)   V  Żerca (elita: porywa upadłych)
 ##   J  Skoczek (wisi pod sufitem i spada)   Z  Ćma (światłolubna, wisi pod sufitem)
-##   y  bateria 4,5 V do latarki (BATTERY_PLAN.md B1)
+##   y  bateria 4,5 V do latarki (BATTERY_PLAN.md B1)   Q  ładowarka latarki (B3: stojąc przy niej ze zgaszoną latarką, buczy)
 ##
 
 const TILE := 16
@@ -59,6 +59,7 @@ const PLACED := preload("res://scripts/placed.gd")
 const SMOKE_CLOUD := preload("res://scripts/smoke_cloud.gd")
 const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
+const CHARGER := preload("res://scripts/charger.gd")
 const STRONGBOX := preload("res://scripts/strongbox.gd")
 const HANDCAR := preload("res://scripts/handcar.gd")
 const RACK := preload("res://scripts/rack.gd")
@@ -612,7 +613,7 @@ func _exposure(c: int, r: int) -> int:
 ## na każdym peerze.
 func _spawn_entities() -> void:
 	_spawn_walls()
-	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": [], "c": [], "d": [], "y": []}
+	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": [], "c": [], "d": [], "y": [], "Q": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -625,7 +626,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z", "c", "d", "y": found[ch].append(p)
+				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z", "c", "d", "y", "Q": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -663,6 +664,11 @@ func _spawn_entities() -> void:
 		n.name = "Nest%d" % (i + 1)
 		n.position = found["N"][i]
 		add_child(n)
+	for i in found["Q"].size():
+		var chg: Node2D = CHARGER.new()
+		chg.name = "Charger%d" % (i + 1)
+		chg.position = found["Q"][i]
+		add_child(chg)
 	for i in found["G"].size():
 		var g: Node2D = GENERATOR.new()
 		g.name = "Generator%d" % (i + 1)

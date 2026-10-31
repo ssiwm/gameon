@@ -629,6 +629,27 @@ def m_battery(P):
     box((1.6, -0.15, 8.9), (1.0, 0.7, 0.14), P["brass"], 0.04)
 
 
+def m_charger(P):
+    """Ładowarka akumulatorków / prostownik z lat 80. (BATTERY_PLAN.md B3): oliwkowa skrzynka z miernikiem, pokrętłami, lampkami,
+    rączką i dwoma kablami z krokodylkami; ok. 0,75 × 0,55 m (jednostka = piksel świata, 0,082 m)."""
+    box((0, 0, 3.4), (9.0, 5.0, 6.4), P["olive"], 0.35)                        # obudowa
+    box((0, -2.52, 3.6), (8.2, 0.1, 5.4), P["olive_d"], 0.1)                   # płyta czołowa
+    cyl((-2.0, -2.6, 4.4), 1.55, 0.2, P["black"], axis="Y", seg=32)          # miernik
+    cyl((-2.0, -2.72, 4.4), 1.3, 0.1, P["white"], axis="Y", seg=32)
+    box((-2.0, -2.82, 4.75), (0.12, 0.05, 1.1), P["red"], 0.01, rot=(0, 25, 0))     # wskazówka
+    for x in (1.6, 3.2):                                                       # pokrętła
+        cyl((x, -2.75, 4.9), 0.55, 0.5, P["black"], axis="Y", seg=20)
+    sph((1.6, -2.65, 2.4), 0.38, P["green_e"], seg=16)                         # lampka „ładuje”
+    sph((3.2, -2.65, 2.4), 0.38, P["amber_e"], seg=16)                         # lampka „sieć”
+    stencil("12V / 4,5V", (-2.0, -2.62, 1.6), 0.7, P["white"])
+    tube([(-3.0, 0, 6.6), (-3.0, 0, 8.0), (3.0, 0, 8.0), (3.0, 0, 6.6)], 0.35, P["black"])        # rączka
+    for x, m in ((-4.6, P["red"]), (-4.9, P["black"])):                       # kable z boku, krokodylki na podłodze
+        tube([(x, -1.0, 2.0), (x - 1.2, -1.4, 1.2), (x - 2.0, -1.8, 0.4)], 0.22, m)
+        box((x - 2.6, -1.9, 0.3), (1.2, 0.5, 0.5), P["steel"], 0.1)
+    for x in (-3.8, 3.8):                                                      # nóżki
+        box((x, 0, 0.12), (1.0, 4.4, 0.25), P["rubber"], 0.06)
+
+
 def m_crate(P):
     for x in (-6.2, 6.2):
         box((x, 0, 7.0), (1.6, 1.8, 14.0), P["wood_d"], 0.2)
@@ -1082,7 +1103,7 @@ MODELS = {
     "frag": (m_frag, 32), "phos": (m_phos, 32), "smoke": (m_smoke, 32), "mine": (m_mine, 32), "charge": (m_charge, 32),
     "medkit": (m_medkit, 32), "defib": (m_defib, 32), "scanner": (m_scanner, 32),
     "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32), "stake": (m_stake, 48),
-    "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32), "battery": (m_battery, 32),
+    "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32), "battery": (m_battery, 32), "charger": (m_charger, 32),
     "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "generator": (m_generator, 28), "generator": (m_generator, 40), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
     "table": (m_table, 24), "chair": (m_chair, 32), "stool": (m_stool, 32), "shelf": (m_shelf, 20), "locker": (m_locker, 24), "cot": (m_cot, 24),
     "strongbox": (m_strongbox, 32), "strongbox_open": (lambda P: m_strongbox(P, True), 32),

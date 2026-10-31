@@ -254,6 +254,8 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 			e.reset_enemy()
 	for g in get_tree().get_nodes_in_group("generators"):
 		g.reset_generator()
+	for chg in get_tree().get_nodes_in_group("chargers"):
+		chg.reset_charger()
 	for sb in get_tree().get_nodes_in_group("strongboxes"):
 		sb.reset_strongbox()                 # sejfy znów zamknięte (łup próby przepada razem z resztą)
 	for car in get_tree().get_nodes_in_group("handcar"):

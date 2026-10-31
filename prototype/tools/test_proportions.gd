@@ -20,6 +20,7 @@ const LIMITS := {
 	"frag": ["max", 0.25], "smoke": ["max", 0.35], "phos": ["max", 0.35], "flare": ["max", 0.55], "mine": ["max", 0.55], "ammo": ["max", 0.55],
 	"medkit": ["max", 0.75], "charge": ["max", 0.5], "defib": ["max", 0.6], "scanner": ["max", 0.6], "tag": ["max", 0.45], "padlock": ["max", 0.25],
 	"battery": ["max", 0.22],          # płaska bateria 4,5 V: 6,7 cm z blaszkami ok. 9 cm
+	"charger": ["h", 0.75],            # ładowarka / prostownik z rączką (BATTERY_PLAN.md B3)
 }
 var _fail := 0
 

@@ -214,7 +214,7 @@ def group_report(attempts, n_sessions):
         for k, v in (a["end"].get("battery") or {}).items():
             bat[k] += int(v)
     r["battery"] = {"lamp_share": rate(lamp_on, samples), "below_20_share": rate(low, samples), "min_pct_median": med(mins) if mins else None,
-                    "empty_per_attempt": rate(bat["empty"], len(attempts)), "picked": bat["picked"], "dropped": bat["dropped"],
+                    "empty_per_attempt": rate(bat["empty"], len(attempts)), "picked": bat["picked"], "dropped": bat["dropped"], "charger": bat["charger"],
                     "attempts_with_data": sum(1 for a in attempts if "battery" in a["end"])}
     return r
 
@@ -253,8 +253,9 @@ def print_report(rep):
         print("   broń: największy udział %s;  skrzynie mocy %d %s" % (wp["top"], wp["power_pickups"], wp["power_by_weapon"] or ""))
         bt = r.get("battery") or {}
         if bt.get("attempts_with_data"):
-            print("   latarka: świeci %s czasu, poniżej 20%% %s;  najniższa bateria (mediana) %s%%;  puste na próbę %s;  baterie zebrane %d, wypadło %d (prób z danymi %d)"
-                  % (bt["lamp_share"], bt["below_20_share"], bt["min_pct_median"], bt["empty_per_attempt"], bt["picked"], bt["dropped"], bt["attempts_with_data"]))
+            print("   latarka: świeci %s czasu, poniżej 20%% %s;  najniższa bateria (mediana) %s%%;  puste na próbę %s;  baterie zebrane %d, wypadło %d;  ładowarka %d× (prób z danymi %d)"
+                  % (bt["lamp_share"], bt["below_20_share"], bt["min_pct_median"], bt["empty_per_attempt"], bt["picked"], bt["dropped"], bt["charger"],
+                     bt["attempts_with_data"]))
         print("   nagrody: cichy cel (dotrzymany/sukcesy) %s;  sejfy %d (%s na próbę);  gracze %s"
               % (rw["silent_kept"], rw["strongboxes"], rw["strongboxes_per_attempt"], rw["players"]))
 
