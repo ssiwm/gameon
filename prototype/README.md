@@ -46,7 +46,7 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
   operatorzy: aktywny, strój, oddział, ostatnia misja). Po prawej karta operatora (z fokusem: XP i złom, [Enter] → OPERATORZY) i ŁĄCZNOŚĆ
   DRUŻYNY: kropka Steama (○ / ●), przełącznik towarzysza AI, DOŁĄCZ → lobby na polu IP (LAN działa bez Steama). U dołu USTAWIENIA,
   WYJŚCIE (drugi klik w 3 s), wersja, ostatni komunikat (cytat pod kursorem / przy fokusie w pasku). Fokus: kursor nad elementem daje mu
-  fokus; strzałki / pad chodzą po siatce kart, prawej kolumny i paska. Trudność wybiera się w lobby. Zrzuty: `godot --path prototype
+  fokus; strzałki / pad chodzą po siatce kart, prawej kolumny i paska. Szuflada zmienia treść od razu z klawiatury i pada, pod kursorem po 0,12 s (przejazd myszą nie miga), nowa treść wjeżdża w 0,14 s; „Reduce effects” — bez opóźnienia i animacji (od 1.7.448). Dźwięki: ruch fokusu `ui_tick` (raz na element, bez dźwięku przy otwarciu), KAMPANIA / NOCNY DYŻUR / DOŁĄCZ `ui_confirm`, pierwsze WYJŚCIE `ui_deny`. Nowa kampania (nic nie ukończone): „START CAMPAIGN · 1.1 …”. Podpowiedzi klawiszy z rejestru akcji (`Actions.key`): ENTER / ESC, na padzie A / START. Najdłuższy kryptonim (16 znaków) na karcie operatora przechodzi na węższy krój. Trudność wybiera się w lobby. Zrzuty: `godot --path prototype
   --script tools/shot_ui.gd -- --screen=main [--hover=campaign|night|operators|player|ai|join|settings|quit] [--lang=en|pl] [--size=SZERxWYS]
   --out=PLIK.png`. Pomijany w headless i przy starcie z `--host` / `--join` / `--steam-*`. **Esc / Start** otwiera menu ustawień także
   przed grą; w sesji **LEAVE SESSION** wraca do ekranu startowego (`Main.leave_session`).

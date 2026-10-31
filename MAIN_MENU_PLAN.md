@@ -170,6 +170,12 @@ w `C:\deadair87\menu_design\p1`.
 3. `README.md` / `GDD.md` / `CHANGELOG.md` + bump `config/version` (zasady z `CLAUDE.md`).
 4. Zrzuty EN/PL do akceptacji i domknięcie PR-a.
 
+**Stan P2 + P3 (31.10.2026, gałąź `feat/main-menu-details`, 1.7.448):** szuflada z opóźnieniem 0,12 s tylko pod kursorem i wjazdem
+0,14 s (bez przy „Reduce effects”); schowania szuflady nie ma — zawsze pokazuje ostatnio wskazaną kartę (stałe miejsce). Dźwięk ruchu to
+`ui_tick` (gra nie ma `ui_move`). Stan nowego gracza: „START CAMPAIGN · 1.1 …” na karcie (przycisk zostaje OPEN LOBBY). Podpowiedzi pada
+z `Actions.key`. Tekst rysowany w `_draw` zapisuje przycięcia i rozmiar (`Painted`), a `--uifittest` sprawdza menu główne zamiast
+osobnego `--menutest`; test znalazł wychodzący poza kartę 16-znakowy kryptonim i 1 px nachodzenia tytułu na kartę kampanii.
+
 **Razem: 7–12 dni jednego dewelopera.** Dwa PR-y: P0 + P1, po akceptacji P2 + P3.
 
 ## 7. Kryteria akceptacji
