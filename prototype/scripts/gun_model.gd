@@ -71,6 +71,22 @@ static func warm(path: String) -> void:
 	if ResourceLoader.load_threaded_request(path) == OK:
 		_pending[path] = true
 
+## Czy model jest już w pamięci. Jeśli nie, zleca wczytanie w tle i odbiera je, gdy wątek skończy — widok 3D stawia broń leżącą na ziemi
+## dopiero wtedy (pierwsza broń LR-7 z ziemi to był przestój 170 ms, --hitchtest 2026-10-31). Nieudane zlecenie: true (scene() wczyta zwykłym load()).
+static func is_ready(path: String) -> bool:
+	if _scenes.has(path):
+		return true
+	warm(path)
+	if not _pending.has(path):
+		return true
+	var st := ResourceLoader.load_threaded_get_status(path)
+	if st == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		return false
+	_pending.erase(path)
+	if st == ResourceLoader.THREAD_LOAD_LOADED:
+		_scenes[path] = ResourceLoader.load_threaded_get(path) as PackedScene
+	return true
+
 ## Odbiera gotowe modele z wczytywania w tle; nieudane zlecenie znika (scene() wczyta model zwykłym load()).
 static func poll() -> void:
 	for path in _pending.keys():

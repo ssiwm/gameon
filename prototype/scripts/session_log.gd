@@ -63,6 +63,7 @@ static var _build := ""
 static var _ft := PackedFloat32Array()  ## ms klatek od ostatniej próbki `perf`
 static var _gpu := 0.0                 ## suma ms GPU obserwowanych viewportów od ostatniej próbki
 static var _perf_t := 0.0
+static var _load_t := 0.0                ## s pod planszą wczytywania od ostatniej próbki `perf` (klatki budowy mapy nie są przycięciami gry)
 static var _frame_us := 0              ## Time.get_ticks_usec() poprzedniej klatki (frame): czas klatki z zegara, nie z `delta`
 static var _gpu_vps: Array = []        ## viewporty widoku 3D z pomiarem czasu GPU (watch_viewports)
 
@@ -239,7 +240,9 @@ static func watch_viewports(vps: Array) -> void:
 		RenderingServer.viewport_set_measure_render_time((v as Viewport).get_viewport_rid(), true)
 
 ## Co klatkę obrazu (view3d._process): czas klatki do próbki `perf`, zapis co PERF_EVERY s. Pisze każdy peer do własnego pliku.
-static func frame(delta: float, map_id: String) -> void:
+## `loading`: klatka pod planszą wczytywania (budowa mapy po kroku na klatkę) — liczy się tylko do `load_s`. Do 1.7.448 te klatki
+## (do 1,4 s każda) wchodziły do `max` i `spikes`, więc każdy start misji wyglądał w dzienniku jak ok. 20 przycięć.
+static func frame(delta: float, map_id: String, loading := false) -> void:
 	if not enabled or _open_failed:
 		return
 	# `delta` silnik przycina do max_physics_steps_per_frame (8 kroków fizyki ≈ 133 ms przy 60 Hz), więc przestój 0,5 s zapisywał się jako
@@ -250,6 +253,10 @@ static func frame(delta: float, map_id: String) -> void:
 	if ms >= 120.0 and _frame_us != 0:
 		ms = maxf(ms, float(now - _frame_us) / 1000.0)
 	_frame_us = now
+	if loading:
+		_load_t += ms / 1000.0
+		_perf_t += ms / 1000.0
+		return
 	_ft.append(ms)
 	if ms > PERF_SPIKE_MS and OS.is_stdout_verbose():
 		print("[SPIKE-MARK] %.0f ms (%s)" % [ms, map_id])       # z --verbose: wiersze tuż nad znacznikiem mówią, co się wczytywało w tej klatce
@@ -268,9 +275,12 @@ static func frame(delta: float, map_id: String) -> void:
 		sum += t
 		if t > PERF_SPIKE_MS:
 			spikes += 1
-	var row := {"map": map_id, "fps": roundi(float(n) / _perf_t), "avg": snappedf(sum / float(n), 0.01), "p50": snappedf(s[n / 2], 0.01),
+	var row := {"map": map_id, "fps": roundi(float(n) / maxf(_perf_t - _load_t, 0.001)), "avg": snappedf(sum / float(n), 0.01), "p50": snappedf(s[n / 2], 0.01),
 		"p95": snappedf(s[mini(n - 1, int(float(n) * 0.95))], 0.01), "max": snappedf(s[n - 1], 0.1), "spikes": spikes,
 		"gpu": snappedf(_gpu / float(n), 0.01), "up": snappedf(float(Time.get_ticks_msec()) / 1000.0, 1.0)}
+	if _load_t > 0.0:
+		row["load_s"] = snappedf(_load_t, 0.1)
+	_load_t = 0.0
 	_ft.clear()
 	_gpu = 0.0
 	_perf_t = 0.0
