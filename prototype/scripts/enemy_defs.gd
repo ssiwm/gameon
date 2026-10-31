@@ -18,6 +18,7 @@ extends RefCounted
 ##   death_fx  efekty śmierci {shake, hitstop, gibs}; domyślnie ciężki wróg (3,0 / 0,09 / 11)
 ##   hit_r   promień celu [px] dla stożka ciosu i płomienia (Combat.in_cone); domyślnie 0,45 × większy bok ciała. Ćma: rój kłębi się tuż przy
 ##           szkle latarki (5–9 px od początku ciosu), więc ostrze musi zgarniać ją także na skraju łuku
+##   nest_scrap  złom za rozbite gniazdo (Ćma: ostatnia ćma gniazda zabita ciosem zostawia go na pewno — enemy_moth.gd: on_death)
 ##   melee_only  true = rani go tylko cios wręcz (maczeta, kilof): ciało poza warstwą celów (pociski, promienie i wybuchy przelatują),
 ##               `take_hit` odrzuca inne typy (ogień, flara, granat), `take_bullet` nic nie robi — Ćma od 1.7.444
 ##   lunge   szarża na głośny dźwięk (Ślepiec): {noise, range, wind, mult, time, cd} — patrz enemy_blind.gd: maybe_lunge; brak = bez szarży
@@ -38,13 +39,13 @@ const DEFS := {
 	# Nie gryzie: obsiada latarkę (krótszy, ciemniejszy snop, bateria, trzepot = hałas). Flara i ogień spalają cały rój — enemy_moth.gd.
 	# Od 1.7.443 naturalnej wielkości (ok. 14 cm rozpiętości — enemy3d.gd SPEC) i szybsza: ciało i strefa trafień to 2–3 px.
 	# Od 1.7.444 zabija ją tylko cios wręcz (`melee_only`): kula, śrut, wybuch i ogień przez nią przelatują, flara tylko wabi; 1 HP — cios
-	# maczetą albo kilofem zdejmuje każdą ćmę w łuku.
+	# maczetą albo kilofem zdejmuje każdą ćmę w łuku. Od 1.7.445 gniazdo to 12 ćm; złom nie z każdej ćmy, tylko `nest_scrap` za rozbite gniazdo.
 	"cma": {
-		"hp": 1.0, "speed": 95.0, "damage": 0, "windup": 0.35, "reach": 10.0, "swarm": 3,
+		"hp": 1.0, "speed": 95.0, "damage": 0, "windup": 0.35, "reach": 10.0, "swarm": 12,
 		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
 		"fly": true, "moth": true, "phototaxis": true, "behavior": "moth", "melee_only": true,
 		"color": Color(0.74, 0.7, 0.55), "size": Vector2(2, 2), "hurt_h": 3.0, "hurt_w": 3.0, "hit_r": 4.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
-		"xp": 1, "scrap": 2,
+		"xp": 1, "scrap": 0, "nest_scrap": 4,
 	},
 	# Skoczek (GDD §7.1): wisi pod sufitem nad przejściem i spada na tego, kto pod nim przejdzie (2 obrażenia).
 	"skoczek": {
