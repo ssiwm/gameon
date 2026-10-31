@@ -248,7 +248,15 @@ func _test_moth_swarm() -> void:
 	voices = nest_ms.filter(func(m) -> bool: return bool(m._beh._loop_on)).size()
 	check("ćma: głos gniazda przejmuje żywa ćma", voices == 1 and bool(nest_ms[2]._beh._loop_on))
 	nest_ms[2].take_hit({"amount": 5.0, "dir": Vector2.LEFT, "pos": nest_ms[2].global_position, "shooter": 0, "type": "melee"})
-	check("ćma: złom tylko za rozbite gniazdo (%d przed ostatnią, %d po)" % [mid_drop, level._pickup_serial - serial0], mid_drop == 0 and level._pickup_serial - serial0 == 1)
+	# rozbite gniazdo: złom i bateria 4,5 V (BATTERY_PLAN.md B1) — dwie znajdźki, żadnej przed ostatnią ćmą
+	var nest_kinds: Array = []
+	for i in range(serial0 + 1, int(level._pickup_serial) + 1):
+		var it: Node = level.get_node_or_null("Item%d" % i)
+		if it != null:
+			nest_kinds.append(String(it.kind))
+	nest_kinds.sort()
+	check("ćma: złom i bateria tylko za rozbite gniazdo (%d przed ostatnią, po: %s)" % [mid_drop, str(nest_kinds)],
+		mid_drop == 0 and nest_kinds == ["battery", "scrap"])
 	for nm in nest_ms:
 		nm.queue_free()
 
