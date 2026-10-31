@@ -1911,11 +1911,15 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if a.begins_with("--shotweapons="):
 				wi = int(a.substr("--shotweapons=".length()))
 		wpm.page_of(2).select(wi)
-	if "--shotgear" in OS.get_cmdline_user_args():
-		var gpm: Node = $UI.get_node("PauseMenu")           # --shotgear: karta GEAR kodeksu (mina)
+	if _has_arg_prefix("--shotgear"):
+		var gpm: Node = $UI.get_node("PauseMenu")           # --shotgear[=N]: karta GEAR kodeksu (domyślnie 3 — mina; ostatnia to LATARKA)
 		gpm.open()
 		gpm._show_tab(3)
-		gpm.page_of(3).select(3)
+		var gi := 3
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--shotgear="):
+				gi = int(a.substr("--shotgear=".length()))
+		gpm.page_of(3).select(gi)
 	if boss:
 		mission._start_boss()               # podgląd walki z bossem: budzi bossa i rzuca flarę nad jego cień
 		await get_tree().create_timer(0.6).timeout

@@ -495,6 +495,8 @@ static func build_model(ctx: Dictionary) -> Dictionary:
 			finds.append({"text": _tr("NEW PART: %s") % _tr(String(pd.get("name", pid))), "stamp": false, "color": UiTheme.TEXT})
 		if int(fi.get("samples", 0)) > 0:
 			finds.append({"text": _tr("+%d lab sample") % int(fi["samples"]), "stamp": false, "color": UiTheme.TEXT})
+		if int(fi.get("batteries", 0)) > 0:
+			finds.append({"text": _tr("4.5 V batteries picked up: %d") % int(fi["batteries"]), "stamp": false, "color": UiTheme.TEXT})
 		if bool(fi.get("trophy", false)):
 			finds.append({"text": _tr("TROPHY WEAPON UNLOCKED"), "stamp": false, "color": UiTheme.ACCENT})
 		var gains: Dictionary = ctx["gains"]

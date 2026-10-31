@@ -93,6 +93,10 @@ const BATTERY_RESPAWN := 0.5
 ## Bateria 4,5 V do znalezienia (BATTERY_PLAN.md B1, pickup.gd „battery”): tyle sekund świecenia; bierze ją tylko ktoś poniżej BATTERY_TAKE_BELOW.
 const BATTERY_PICKUP := 90.0
 const BATTERY_TAKE_BELOW := 0.9
+## Słaba bateria (BATTERY_PLAN.md B2): poniżej BATTERY_LOW snop co BATTERY_FLICKER_EVERY s przygasa na chwilę (dwa szarpnięcia), a przy
+## przejściu progu właściciel słyszy cichy klik — bez patrzenia na HUD wiadomo, że czas szukać baterii. Widzą to wszyscy (z `bat_pct`).
+const BATTERY_LOW := 0.2
+const BATTERY_FLICKER_EVERY := 3.5
 const LIGHT_NOISE_EVERY := 10.0   ## +1 Uwagi co tyle sekund świecenia
 ## Ćmy na szkle latarki (enemy_moth.gd, rój od 1.7.442): każda skraca i przyciemnia snop i szybciej drenuje baterię. Liczone na każdym peerze
 ## z replikowanych pozycji ćm i ich `_sp`, bez osobnego RPC — właściciel liczy z tego baterię, wszyscy widzą przygaszony snop.
@@ -682,7 +686,7 @@ func _update_lights() -> void:
 		# lekkie drżenie snopu — latarka w ręku, nie reflektor; ćmy na szkle przygaszają i skracają snop i rzucają drgające cienie
 		_update_moth_cover()
 		var flick := 0.04 * sin(Time.get_ticks_msec() * 0.023) + (0.07 * float(moth_cover) * sin(Time.get_ticks_msec() * 0.09) if moth_cover > 0 else 0.0)
-		_beam.energy = (0.85 + flick) * fl * beam_mult
+		_beam.energy = (0.85 + flick) * fl * beam_mult * low_battery_dim(float(Time.get_ticks_msec()) * 0.001)
 		_beam.range_px = Lights.FLASHLIGHT_M * Lights.PX_PER_M * beam_mult
 	elif moth_cover > 0:
 		moth_cover = 0
@@ -720,7 +724,20 @@ func _update_flashlight(delta: float) -> void:
 				Audio.play("dry_fire", Audio.BUS_UI, -10.0, 0.6)
 	else:
 		battery = minf(BATTERY_MAX, battery + delta * BATTERY_RECHARGE)
+	var was_low := bat_pct < roundi(BATTERY_LOW * 100.0)
 	bat_pct = battery_pct()
+	if flashlight and not was_low and bat_pct < roundi(BATTERY_LOW * 100.0) and not is_bot:
+		Audio.play("ui_click", Audio.BUS_UI, -14.0, 0.5)            # próg słabej baterii: niski, cichy klik
+
+## Mnożnik jasności snopu przy słabej baterii w chwili `t` [s]: 1 powyżej BATTERY_LOW, poniżej — dwa krótkie przygaśnięcia na początku
+## każdego okresu BATTERY_FLICKER_EVERY (przesuniętego o display_id, żeby latarki drużyny nie mrugały razem).
+func low_battery_dim(t: float) -> float:
+	if battery_level() >= BATTERY_LOW:
+		return 1.0
+	var ph := fmod(t + float(display_id) * 0.9, BATTERY_FLICKER_EVERY)
+	if ph < 0.12 or (ph > 0.22 and ph < 0.3):
+		return 0.3
+	return 1.0
 
 ## Procent baterii u właściciela (zaokrąglony w górę: 1 s świecenia to jeszcze nie 0%).
 func battery_pct() -> int:
