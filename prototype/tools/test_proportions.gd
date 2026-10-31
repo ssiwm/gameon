@@ -254,7 +254,9 @@ func _run() -> void:
 		var hurt := maxf(float(kd.get("hurt_h", 0.0)), (kd["size"] as Vector2).y)
 		_check(is_equal_approx(hurt, float(fit[1])), "%s: strefa trafień %.0f px = model %.0f px (%.2f m)" % [k, hurt, float(fit[1]), hurt * PX])
 	var cma: Dictionary = Enemy.KINDS["cma"]
-	_check(float(cma.get("hurt_h", 0.0)) >= 16.0, "cma: strefa trafień %.0f px obejmuje skrzydła (model ok. 16 px wysokości)" % float(cma.get("hurt_h", 0.0)))
+	var cma_span := float((Enemy3D.SPEC["cma"]["fit"] as Array)[1])
+	_check(cma_span * PX >= 0.08 and cma_span * PX <= 0.2, "cma: rozpiętość %.2f m — naturalna wielkość dużej ćmy (8–20 cm)" % (cma_span * PX))
+	_check(float(cma.get("hurt_w", 0.0)) >= cma_span and float(cma.get("hurt_h", 0.0)) >= cma_span, "cma: strefa trafień %.0f × %.0f px obejmuje skrzydła (%.1f px)" % [float(cma.get("hurt_w", 0.0)), float(cma.get("hurt_h", 0.0)), cma_span])
 	var sh := float(Stalker.get("HURT_H"))
 	_check(is_equal_approx(sh, float(Enemy3D.SPEC["stalker"]["fit"][1])), "stalker: strefa trafień %.0f px = model" % sh)
 	# (3) przedmioty

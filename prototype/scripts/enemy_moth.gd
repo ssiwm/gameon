@@ -4,6 +4,8 @@ extends "res://scripts/enemy_behavior.gd"
 ## (krótka zapowiedź: cofa się i trzepocze w miejscu) i ją obsiada: nie gryzie, ale przesłania szkło (snop krótszy i ciemniejszy, `player.gd: moth_cover`),
 ## drenuje baterię i trzepocze głośno (hałas przy latarce ściąga Ślepców). Zgaszona latarka strząsa rój po CLING_LINGER s; ćma zabita (nie spalona)
 ## tuż przy graczu wybucha pyłem, a kaszel to hałas. Bez światła wraca pod sufit i znów zasypia. Cały tik ćmy to `tick_special`.
+## Od 1.7.443 ćma ma naturalną wielkość (ok. 14 cm rozpiętości) i lata jak ćma: szarpanym lotem z dwóch częstotliwości wahań i nagłymi zrywami
+## w bok (JINK_*), z szybkim skrętem (STEER); w snopie latarki świeci (`view_extra` → `lit`, każdy peer).
 
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
@@ -11,16 +13,16 @@ const Vfx := preload("res://scripts/vfx.gd")
 
 const MOTH_SEEK_R := 420.0           ## z tej odległości ćma widzi światło
 const MOTH_BURN_DPS := 12.0          ## spalanie przy flarze i ogniu: 18 HP → 1,5 s, więc flara (25 s) zabiera cały rój
-const BURN_R := 14.0                 ## krąży przy płomieniu tak blisko
+const BURN_R := 8.0                  ## krąży przy płomieniu tak blisko
 const LOST_MEMORY := 2.0             ## s lotu ku ostatniemu światłu, gdy zgasło (błysk z lufy trwa 0,6 s)
 const RETURN_AFTER := 6.0            ## s bez światła, po których wraca pod sufit
-const DIVE_R := 40.0                 ## z tej odległości od lampy zawisa przed nurkowaniem
-const DIVE_WIND := 0.35              ## s zapowiedzi nurkowania (× trudność `enemy_windup`)
+const DIVE_R := 30.0                 ## z tej odległości od lampy zawisa przed nurkowaniem
+const DIVE_WIND := 0.25              ## s zapowiedzi nurkowania (× trudność `enemy_windup`)
 const DIVE_MULT := 2.4               ## mnożnik prędkości nurkowania
 const DIVE_TIME := 0.6               ## s nurkowania; nie doleciała → krąży i próbuje znowu
 const DIVE_CD := 1.2                 ## przerwa po chybionym nurkowaniu i po strząśnięciu (× trudność `enemy_cd`)
-const CLING_R := 10.0                ## z tej odległości od lampy siada na szkle
-const CLING_SPOT := 5.0              ## promień miejsc na szkle latarki
+const CLING_R := 6.0                 ## z tej odległości od lampy siada na szkle
+const CLING_SPOT := 2.0              ## promień miejsc na szkle latarki (szkło ok. 16 cm)
 const CLING_LINGER := 0.8            ## s, przez które trzyma się zgaszonej latarki, zanim odleci
 const FLUTTER_NOISE := 0.7           ## hałas trzepotu jednej ćmy na latarce [na s] (tag „moth”, poza budżetem hałasu wrogów)
 const DUST_R := 40.0                 ## ćma zabita (nie spalona) tak blisko gracza wybucha pyłem…
@@ -28,6 +30,13 @@ const DUST_NOISE := 6.0              ## …a kaszel słychać jak okrzyk bólu (
 const SP_DIVE := 1                   ## `_sp` (replikowany): zapowiedź i nurkowanie
 const PLATFORM_LAYER_BIT := 5         ## kładki jednokierunkowe (player.gd PLATFORM_LAYER_BIT)
 const SP_CLING := 3                  ## `_sp`: siedzi na latarce — `player.gd` liczy z tego `moth_cover` na każdym peerze
+const WAVE_A := 23.0                 ## rad/s: dwie częstotliwości wahań w bok (lot ćmy jest nieregularny, nie sinusoidą)
+const WAVE_B := 37.0
+const JINK_MIN := 0.12               ## s między zrywami (losowo JINK_MIN..JINK_MAX)…
+const JINK_MAX := 0.4
+const JINK_SPEED := 1.1              ## …zryw: nagły skok prędkości w losową stronę (× prędkość)
+const STEER := 0.32                  ## wygładzanie skrętu na klatkę (było 0.18 — ćma skręcała jak szybowiec)
+const LIT_EVERY := 0.1               ## s między sprawdzeniami, czy ćma jest w snopie (raycast, każdy peer)
 
 enum Mode { SEEK, WIND, DIVE, CLING }
 
@@ -41,6 +50,10 @@ var _slot := 0.0                     ## kąt miejsca na szkle
 var _burned := false
 var _last_pos := Vector2(INF, INF)   ## ostatnie widziane światło
 var _loop_on := false
+var _jink_t := 0.0                   ## s do następnego zrywu
+var _lit := 0.0                      ## 0..1 poświaty w snopie latarki (tylko widok)
+var _lit_want := 0.0
+var _lit_t := 0.0
 
 func on_ready() -> void:
 	e.add_to_group("moths")
@@ -161,7 +174,8 @@ func _moth_tick(delta: float) -> void:
 		var dist := to.length()
 		var dir := to / maxf(dist, 0.001)
 		var side := Vector2(-dir.y, dir.x)
-		want = dir * speed + side * sin(t_moth * 9.0 + float(e.get_instance_id() % 5)) * speed * 0.6
+		var k := float(e.get_instance_id() % 5)
+		want = dir * speed + side * (sin(t_moth * WAVE_A + k) * 0.55 + sin(t_moth * WAVE_B + k * 2.0) * 0.35) * speed
 		if lt["kind"] == "flare":
 			if mode != Mode.SEEK:
 				_set_mode(Mode.SEEK)
@@ -182,7 +196,7 @@ func _moth_tick(delta: float) -> void:
 						e._windup = e._windup_duration
 				Mode.WIND:
 					# zapowiedź: odsuwa się od lampy i trzepocze w miejscu
-					want = -dir * speed * 0.35 + side * sin(t_moth * 22.0) * speed * 0.3
+					want = -dir * speed * 0.35 + side * sin(t_moth * 40.0) * speed * 0.35
 					e._windup = maxf(0.0, e._windup_duration - _mode_t)
 					if not lit:
 						_set_mode(Mode.SEEK)
@@ -202,7 +216,7 @@ func _moth_tick(delta: float) -> void:
 		if mode != Mode.SEEK:
 			_set_mode(Mode.SEEK)
 		e._lose_t += delta
-		want = Vector2(sin(t_moth * 3.1), cos(t_moth * 2.3)) * speed * 0.35
+		want = Vector2(sin(t_moth * 7.3), cos(t_moth * 5.9)) * speed * 0.4
 		if e._lose_t < LOST_MEMORY and _last_pos.is_finite():
 			want += (_last_pos - e.global_position).limit_length(1.0) * speed * 0.8       # dolatuje tam, gdzie błysnęło
 		if e._lose_t > RETURN_AFTER:
@@ -215,7 +229,12 @@ func _moth_tick(delta: float) -> void:
 				e.global_position = e._home
 				e._lose_t = 0.0
 				_last_pos = Vector2(INF, INF)
-	e.velocity = e.velocity.lerp(want, 0.18 if mode != Mode.DIVE else 0.4)
+	if mode != Mode.DIVE:
+		_jink_t -= delta
+		if _jink_t <= 0.0:
+			_jink_t = randf_range(JINK_MIN, JINK_MAX)
+			e.velocity += Vector2.from_angle(randf() * TAU) * speed * JINK_SPEED      # zryw: ćma nagle odbija w bok
+	e.velocity = e.velocity.lerp(want, STEER if mode != Mode.DIVE else 0.4)
 	if e.is_on_wall() or e.is_on_ceiling():
 		e.velocity.y += 25.0 * (-1.0 if e.is_on_floor() else 1.0)
 	e.move_and_slide()
@@ -280,9 +299,24 @@ func fx(event: String) -> void:
 		Vfx.burst(e.get_parent(), e.global_position, Color(0.78, 0.74, 0.6, 0.55), 22, 8.0, 38.0, Vector2.UP, 180.0, 12.0, 1.4, Vector2(2.0, 4.0))
 		Audio.play_variant_at("moth_dust", 2, e.global_position, Audio.BUS_WORLD, -4.0, 1.0)
 
-## Trzepot skrzydeł (pętla pozycyjna na każdym peerze): cichy w locie, głośny przy nurkowaniu i na latarce.
-func present(_delta: float) -> void:
+## Poświata w widoku 3D (enemy3d.gd: `lit`).
+func view_extra(d: Dictionary) -> void:
+	d["lit"] = _lit
+
+## Trzepot skrzydeł (pętla pozycyjna na każdym peerze): cichy w locie, głośny przy nurkowaniu i na latarce. Do tego poświata: ćma na szkle
+## świeci w pełni, w snopie (Lights.flashlight_on — zasięg, kąt, ściana) słabiej; sprawdzane co LIT_EVERY s i wygładzane.
+func present(delta: float) -> void:
 	var on: bool = e.alive and e.active and e.is_inside_tree()
+	_lit_t -= delta
+	if _lit_t <= 0.0:
+		_lit_t = LIT_EVERY
+		_lit_want = 0.0
+		if on:
+			if int(e._sp) == SP_CLING:
+				_lit_want = 1.0
+			elif Lights.flashlight_on(e.global_position + Vector2(0, -1), e.get_tree(), e.get_world_2d().direct_space_state) != null:
+				_lit_want = 0.7
+	_lit = move_toward(_lit, _lit_want, delta * 6.0)
 	var id := "moth_%d" % e.get_instance_id()
 	if on != _loop_on:
 		_loop_on = on

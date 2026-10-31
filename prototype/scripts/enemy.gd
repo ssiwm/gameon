@@ -1117,7 +1117,7 @@ func head_y() -> float:
 	return global_position.y - _hurt_h() * (1.0 - frac)
 
 ## Wysokość strefy trafień (px): wysokość modelu 3D (`hurt_h` w KINDS = SPEC „fit" z enemy3d.gd), a bez niej — ciało ruchu.
-## Ćma (model dopasowany szerokością) wisi w środku ramki 20 px i rozpościera skrzydła na 18 × 16 px — `hurt_h` / `hurt_w` obejmują je całe.
+## Ćma (model dopasowany szerokością) wisi w środku ramki 2 px i rozpościera skrzydła na ok. 1,7 × 1,5 px — `hurt_h` / `hurt_w` (3 px) obejmują je całe.
 func _hurt_h() -> float:
 	return maxf(float(_def.get("hurt_h", 0.0)), (_def["size"] as Vector2).y)
 

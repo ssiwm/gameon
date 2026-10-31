@@ -32,11 +32,12 @@ const DEFS := {
 	},
 	# Ćma (1.7.5, rój od 1.7.442): światłolubna — wisi w gnieździe pod sufitem (`swarm` ćm na znacznik), budzi ją widoczne światło i leci na nie.
 	# Nie gryzie: obsiada latarkę (krótszy, ciemniejszy snop, bateria, trzepot = hałas). Flara i ogień spalają cały rój — enemy_moth.gd.
+	# Od 1.7.443 naturalnej wielkości (ok. 14 cm rozpiętości — enemy3d.gd SPEC) i szybsza: ciało i strefa trafień to 2–3 px.
 	"cma": {
-		"hp": 18.0, "speed": 74.0, "damage": 0, "windup": 0.35, "reach": 10.0, "swarm": 3,
+		"hp": 18.0, "speed": 95.0, "damage": 0, "windup": 0.35, "reach": 10.0, "swarm": 3,
 		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
 		"fly": true, "moth": true, "phototaxis": true, "behavior": "moth",
-		"color": Color(0.74, 0.7, 0.55), "size": Vector2(10, 8), "hurt_h": 18.0, "hurt_w": 16.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
+		"color": Color(0.74, 0.7, 0.55), "size": Vector2(2, 2), "hurt_h": 3.0, "hurt_w": 3.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
 		"xp": 1, "scrap": 2,
 	},
 	# Skoczek (GDD §7.1): wisi pod sufitem nad przejściem i spada na tego, kto pod nim przejdzie (2 obrażenia).

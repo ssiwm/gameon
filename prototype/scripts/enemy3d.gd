@@ -16,6 +16,9 @@ const Motion := preload("res://scripts/enemy_motion.gd")
 const DIR := "res://art/enemy3d/"
 const PRE := "mixamorig_"
 const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Level3D.PX)
+const WING_HZ := 14.0                      ## Ćma: machnięcia skrzydeł na sekundę w locie (duże ćmy 8–20 Hz)
+const WING_HZ_FAST := 21.0                 ## …przy zapowiedzi, nurkowaniu i na szkle latarki (`_sp` ≠ 0)
+const LIT_GLOW := 1.6                      ## Ćma: emisja ciała w snopie latarki (×`lit`) — 14 cm skrzydeł czytelne w świetle jak pył w promieniu
 
 ## fit: [„height" | „length", rozmiar w pikselach świata] — jak w wypieku; frame_h: wysokość ramki sprite'a (Skoczek wisi u jej góry);
 ## cycle: okres cyklu kroku (s); prof: profil pozy (jak PROF w wypieku); yaw: obrót modelu (stopnie), by przód patrzył w +X.
@@ -58,7 +61,8 @@ const SPEC := {
 	"mimik": {"model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
-	"cma": {"fit": ["width", 18.0], "frame_h": 20.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
+	# Ćma: naturalna rozpiętość ok. 14 cm (1,7 px; było 18 px = 1,5 m); skrzydła machają z własnego zegara (WING_HZ), nie w tempie klatek sprite'a
+	"cma": {"fit": ["width", 1.7], "frame_h": 2.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9},
 	"nest": {"fit": ["height", 30.0], "frame_h": 34.0, "deform": "nest", "clips": true, "death_dur": 0.6},
 	"vein": {"fit": ["height", 66.0], "frame_h": 80.0, "deform": "vein", "clips": true, "death_dur": 1.8},
 	"leech": {"fit": ["height", 66.0], "frame_h": 80.0, "deform": "leech", "death_dur": 1.4},
@@ -80,6 +84,7 @@ uniform vec4 mod = vec4(1.0);
 uniform float eye_glow = 1.4;
 uniform float sil = 0.06;              // słaba, chłodna sylwetka widoczna w całkowitej ciemności (jak warstwa `Silhouette` arkuszy HD w 2D)
 uniform float flare = 0.0;             // 0..1: ciepła obwódka ciała tuż przed ciosem (SPEC `flare`), czytelna także w ciemności
+uniform float lit = 0.0;               // ciało świeci własnym kolorem (Ćma w snopie latarki — pył na skrzydłach)
 //VERTEX
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -101,6 +106,7 @@ void fragment() {
 	ALBEDO = c * clamp(mod.rgb, 0.0, 1.0);
 	EMISSION = c * eye * eye_glow + max(mod.rgb - vec3(1.0), vec3(0.0)) * 0.28 + c * vec3(0.55, 0.70, 1.0) * sil;
 	EMISSION += vec3(1.0, 0.42, 0.12) * flare * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
+	EMISSION += c * lit;
 	//ALPHA
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).xyz;
@@ -248,6 +254,8 @@ var _foot_locks: Dictionary = {}
 var _last_position := Vector3.ZERO
 var _last_flip := false
 var ground_profile: Dictionary = {}
+var lit := 0.0                             ## 0..1: model w snopie latarki (enemy_moth.gd `view_extra` → view3d.gd); Ćma świeci wtedy własnym kolorem
+var _wing_ph := 0.0                        ## faza machania skrzydeł Ćmy [cykle]
 var _motion_name := ""
 var _motion_pending := ""
 var _motion_weight := 0.0
@@ -1051,7 +1059,7 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	if _spec.has("flare"):
 		_update_flare(anim)
 	if _spec.has("deform"):
-		_pose_deform(anim, fr, nfr, loop)
+		_pose_deform(delta, anim, fr, nfr, loop)
 	elif _spec.get("quad", false):
 		_pose_quad(anim, delta)
 	elif _spec.get("crawler", false):
@@ -1159,7 +1167,7 @@ func _tab(a: Array, f: float, loop: bool) -> float:
 	var i1 := posmod(i + 1, n) if loop else clampi(i + 1, 0, n - 1)
 	return lerpf(float(a[i0]), float(a[i1]), k)
 
-func _pose_deform(anim: String, fr: float, nfr: int, loop: bool) -> void:
+func _pose_deform(delta: float, anim: String, fr: float, nfr: int, loop: bool) -> void:
 	var d := String(_spec["deform"])
 	var n := maxi(nfr, 1)
 	var ph := fr / float(n)
@@ -1169,7 +1177,12 @@ func _pose_deform(anim: String, fr: float, nfr: int, loop: bool) -> void:
 	var prm := {}
 	match d:
 		"cma":
-			prm["wing"] = _tab([38.0, 8.0, -26.0, 8.0], fr, true) if anim == "idle" else 70.0
+			# machanie z własnego zegara (klatki sprite'a „idle” dawały kilka machnięć na sekundę — ćma wyglądała na ociężałą); szybki
+			# ruch w dół, wolniejszy powrót; śpiąca składa skrzydła
+			_wing_ph = fmod(_wing_ph + delta * (WING_HZ_FAST if _sp != 0 else WING_HZ), 1.0)
+			var stroke := sin(_wing_ph * TAU + 0.6 * sin(_wing_ph * TAU))
+			prm["wing"] = 6.0 + 34.0 * stroke if anim == "idle" else 70.0
+			prm["lit"] = lit * LIT_GLOW
 			# wisi do góry nogami pod górną krawędzią ramki (sleep) albo leci wyśrodkowana w pionie; przy budzeniu płynny obrót wokół osi ciała
 			var iw := smoothstep(0.0, 1.0, _inv_w)
 			_pivot.rotation = Vector3(PI * iw, 0.0, 0.0)
@@ -1237,6 +1250,7 @@ func _deform_overlay(d: String, prm: Dictionary, fh: float) -> void:
 	var off := Vector3.ZERO
 	var sc := Vector3.ONE
 	var roll := 0.0
+	var ms := float((_spec["fit"] as Array)[1]) / 18.0 if d == "cma" else 1.0     # przesunięcia Ćmy [m] strojone dla modelu 18 px — skala do obecnej wielkości
 	if not _dead:
 		_sink_y = 0.0
 	if _dead:
@@ -1266,7 +1280,7 @@ func _deform_overlay(d: String, prm: Dictionary, fh: float) -> void:
 		match d:
 			"cma":
 				prm["wing"] = float(prm.get("wing", 0.0)) + 50.0 * sin(_clip_t * 75.0) * k
-				off.x = -0.12 * k
+				off.x = -0.12 * ms * k
 				roll = deg_to_rad(18.0) * k
 			"nest":
 				prm["pulse"] = 0.9 * k
@@ -1278,13 +1292,13 @@ func _deform_overlay(d: String, prm: Dictionary, fh: float) -> void:
 		var u := _clip_t / clip_duration("attack")
 		var snap := smoothstep(0.0, 0.35, u) * (1.0 - smoothstep(0.55, 1.0, u))
 		roll = -deg_to_rad(40.0) * snap
-		off.x = 0.22 * snap
-		off.y = -0.14 * snap
+		off.x = 0.22 * ms * snap
+		off.y = -0.14 * ms * snap
 	if not _dead and d == "cma" and not _motion_values.is_empty():
 		roll = lerpf(roll, deg_to_rad(float(_motion_values.get("roll", 0.0))), _motion_weight)
-		off.x = lerpf(off.x, float(_motion_values.get("shift", 0.0)), _motion_weight)
-		off.y = lerpf(off.y, float(_motion_values.get("lift", 0.0)), _motion_weight)
-		prm["wing"] = lerpf(float(prm.get("wing", 0.0)), float(_motion_values.get("wing", 0.0)), _motion_weight)
+		off.x = lerpf(off.x, float(_motion_values.get("shift", 0.0)) * ms, _motion_weight)
+		off.y = lerpf(off.y, float(_motion_values.get("lift", 0.0)) * ms, _motion_weight)
+		prm["wing"] = lerpf(float(prm.get("wing", 0.0)), float(_motion_values.get("wing", 0.0)), _motion_weight * 0.5)     # trzepot nie zamiera przy nurkowaniu
 	_tilt.position = Vector3(off.x, off.y + _sink_y, off.z)
 	_pivot.scale = Vector3(_scale * sc.x, _scale * sc.y, _scale * sc.z)
 	if roll != 0.0 and _pivot.rotation.x == 0.0:                            # (Ćma śpiąca do góry nogami nie przechyla się)
