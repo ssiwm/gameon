@@ -760,6 +760,10 @@ func _rebuild_geometry(rows: Array, spread: bool) -> void:
 			_set_static_lists(keep)
 			_geo_alt_key = "%s:%d:%s" % [String(_level.get("map_id")), str(after).hash(), str(get_tree().get_first_node_in_group("handcar") != null)]
 	_spawn_burst_until = _life + 1.5                      # nowa mapa: wrogowie mapy powstają razem z nią (pod planszą, zaraz po świecie)
+	# po jednym niewidocznym obłoczku zwykłym i cieniowanym przy budowie mapy: wariant shadera cząstek powstaje przy pierwszym użyciu materiału
+	# (9–18 ms), a wspólny materiał (`_burst_material`) trzyma go do końca sesji — pierwszy pyłek przy ciosie w rój ćm nie zacina klatki
+	for sh in [false, true]:
+		spawn_burst(Vector2.ZERO, {"amount": 1, "life": 0.05, "color": Color(0.0, 0.0, 0.0, 0.0), "shaded": sh})
 	if spread:
 		_warm_stage = 0
 	_building = false
@@ -1443,15 +1447,24 @@ func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
 	p.emitting = true
 	get_tree().create_timer(life + 0.6).timeout.connect(p.queue_free)
 
+var _burst_mats := {}                       ## cieniowany? → wspólny materiał cząstek (`_burst_material`)
+
+## Materiał obłoczka cząstek — wspólny dla wszystkich obłoczków danego rodzaju (kolor idzie kolorem wierzchołka). Do 1.7.446 każdy obłoczek
+## miał własny materiał: silnik trzyma shader wariantu tylko póki żyje materiał, który go używa, więc pierwszy obłoczek po przerwie budował
+## shader od nowa (9–18 ms w środku walki — np. pyłek przy ciosie w rój ćm).
 func _burst_material(cfg: Dictionary) -> StandardMaterial3D:
+	var shaded := bool(cfg.get("shaded", false))
+	if _burst_mats.has(shaded):
+		return _burst_mats[shaded]
 	var m := StandardMaterial3D.new()
-	if not bool(cfg.get("shaded", false)):
+	if not shaded:
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.vertex_color_use_as_albedo = true
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	m.billboard_keep_scale = true
 	m.albedo_texture = Vfx.blob_texture()
+	_burst_mats[shaded] = m
 	return m
 
 # ---------------------------------------------------------------- dekoracje mapy (kamienie, kłody, płoty, kości)

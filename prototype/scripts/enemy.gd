@@ -175,6 +175,9 @@ func _ready() -> void:
 		var vo: Array = EnemyDefs.voice(kind, ev)
 		if not vo.is_empty():
 			Audio.warm_family(String(vo[0]), int(vo[1]))
+	var dsnd = (_def.get("death_fx", {}) as Dictionary).get("sound")
+	if dsnd is Array:
+		Audio.warm_family(String(dsnd[0]), int(dsnd[1]))                # własny dźwięk śmierci (Ćma: trzask skrzydełek)
 	_max_hp = _scaled_hp()
 	hp = _max_hp
 	Difficulty.changed.connect(_on_difficulty_changed)

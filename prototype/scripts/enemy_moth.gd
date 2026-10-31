@@ -73,6 +73,7 @@ func on_ready() -> void:
 	_slot = fmod(float(e.get_instance_id() % 997) * 2.39996, TAU)        # złoty kąt: kolejne ćmy rozkładają się równo wokół szkła
 	_slot_r = 0.45 + 0.55 * fmod(float(e.get_instance_id() % 991) * 0.618034, 1.0)
 	_lt_t = randf() * LIGHT_EVERY                 # rój nie szuka światła w tej samej klatce
+	Audio.warm_family("moth_dust", 2)             # pył z kaszlem przy pierwszym ciosie w rój nie czeka na wczytanie pliku
 	_sleep_sync = randf() * SLEEP_SYNC
 	# przelatuje przez szpary w kładkach (warstwa 16, level.gd LAYER_PLATFORM): widzi przez nie (`_sees` bada tylko teren), więc musi też przez nie
 	# dolecieć — inaczej rój z dachu strażnicy utykał na podeście nad graczem
