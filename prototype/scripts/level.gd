@@ -642,7 +642,7 @@ func _spawn_entities() -> void:
 	var moth_n := 0
 	for spot in moth_swarm_spots(found["Z"]):
 		moth_n += 1
-		_add_enemy("Cma%d" % moth_n, "cma", _hang_pos(spot, 8.0))
+		_add_enemy("Cma%d" % moth_n, "cma", _hang_pos(spot, 2.0))
 	for i in found["A"].size():
 		_add_enemy("Kaplan%d" % (i + 1), "kaplan", found["A"][i])
 	for i in found["U"].size():
@@ -909,7 +909,7 @@ func briefing(id: String) -> Dictionary:
 ## Gniazda ćm (enemy_moth.gd, rój od 1.7.442): znaczniki `Z` w jednym rzędzie bliżej niż SWARM_MERGE_PX tworzą jedno gniazdo; każde gniazdo
 ## ma co najmniej `swarm` ćm (enemy_defs.gd), rozstawionych co SWARM_GAP_PX wokół środka (bez wchodzenia w ścianę). Zwraca punkty znaczników.
 const SWARM_MERGE_PX := 96.0
-const SWARM_GAP_PX := 10.0
+const SWARM_GAP_PX := 4.0
 
 func moth_swarm_spots(marks: Array) -> Array:
 	var want := int(EnemyDefs.value("cma", "swarm"))
