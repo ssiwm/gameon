@@ -232,7 +232,20 @@ func _charger() -> void:
 	var bb: float = bot.battery
 	await _frames(1.0)
 	check("bot przy ładowarce też się ładuje (+%.1f s)" % (bot.battery - bb), bot.battery - bb > ch.CHARGE_PER_S * 0.8)
+	# dwóch naraz: człowiek i bot przy jednej ładowarce ładują się równocześnie, każdy pełnym tempem
+	_place_player(spot)
+	player.flashlight = false
+	player.battery = player.BATTERY_MAX * 0.1
+	bot.battery = bot.BATTERY_MAX * 0.1
+	var pb: float = player.battery
+	bb = bot.battery
+	await _frames(1.0)
+	check("dwóch naraz: człowiek +%.1f s, bot +%.1f s, ładowarka pracuje" % [player.battery - pb, bot.battery - bb],
+		player.battery - pb > ch.CHARGE_PER_S * 0.8 and bot.battery - bb > ch.CHARGE_PER_S * 0.8 and ch.active)
 	bot.global_position = Vector2(-4000, -4000)
+	var card: Array = Codex.gear().filter(func(e: Dictionary) -> bool: return e["title"] == "CHARGER")
+	check("kodeks GEAR: karta ŁADOWARKA z portretem i ikoną 3D", card.size() == 1 and String(card[0]["portrait"]["kind"]) == "charger"
+		and ResourceLoader.exists("res://art/hud/charger.png"))
 	ch.reset_charger()
 	check("restart misji: ładowarka bez stanu", not ch.active)
 	ch.queue_free()

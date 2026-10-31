@@ -247,6 +247,7 @@ static func gear() -> Array:
 			"portrait": {"type": "item", "kind": k}, "stats": stats, "text": text[0], "tip": text[1],
 			"group": {"throw": "THROWN", "place": "PLACED", "use": "TOOLS"}[String(d["mode"])]})
 	out.append(flashlight_entry())
+	out.append(charger_entry())
 	var grouped: Array = []                                      # sort_custom nie jest stabilny — grupy składamy po kolei, kolejność w grupie z Throwables.ORDER
 	for g in GEAR_GROUPS:
 		grouped.append_array(out.filter(func(x: Dictionary) -> bool: return x["group"] == g))
@@ -259,7 +260,15 @@ static func flashlight_entry() -> Dictionary:
 		"accent": Color(1.0, 0.92, 0.66), "portrait": {"type": "item", "kind": "battery"}, "group": "TOOLS",
 		"stats": [["Battery", "180 s"], ["Recharge", "0.25 s per second, light off"], ["4.5 V battery", "+90 s below 90%"], ["Noise", "+1 per 10 s"]],
 		"text": "{flashlight} toggles an 8 m cone of light. A full battery lasts 180 s; switched off, it slowly recharges. Light wakes the enemies it touches, draws the Stalker and moths, and adds noise. Below 20% the beam starts to stutter.",
-		"tip": "Flat 4.5 V batteries give +90 s: they lie around the maps, drop from enemies (Blind Ones most often) and always from a smashed moth nest or a patrol strongbox. Whoever is lowest picks it up — the AI companion leaves it for you."}
+		"tip": "Flat 4.5 V batteries give +90 s: they lie around the maps, drop from enemies (Blind Ones most often) and always from a smashed moth nest or a patrol strongbox. Whoever is lowest picks it up — the AI companion leaves it for you. A charger refills the light fast, but it hums."}
+
+## Ładowarka (BATTERY_PLAN.md B3): karta w grupie TOOLS za LATARKĄ. Liczby jak w charger.gd (CHARGE_PER_S, HUM_NOISE, HUM_INTERVAL).
+static func charger_entry() -> Dictionary:
+	return {"title": "CHARGER", "tag": TranslationServer.translate("Found on maps") + "  ·  " + TranslationServer.translate("Tool"),
+		"accent": Color(0.4, 1.0, 0.5), "portrait": {"type": "item", "kind": "charger"}, "group": "TOOLS",
+		"stats": [["Charging", "+6 s per second"], ["Empty to full", "30 s"], ["Noise", "+0.9 every 4.5 s"], ["Where", "B1, the shore by the start"]],
+		"text": "An old battery charger with its own mains. Stand next to it with the flashlight off and the battery fills up — empty to full in half a minute. The green lamp means it is charging; it hums the whole time.",
+		"tip": "The hum wakes sleepers and draws listeners, just like a running generator. Charge before you need the light, not in the middle of a fight — and on B1 it stands far enough from the water that the leech cannot reach you there."}
 
 ## Hałas przedmiotu w punktach miernika Uwagi (0–100); skaner hałasuje co sekundę, wybuchy mają własną głośność.
 static func noise_text(k: String) -> String:
