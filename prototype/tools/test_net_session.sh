@@ -6,6 +6,7 @@
 # 4. Bez AI towarzysza (NOBOT_PLAN.md): host z --nobot, klient dostaje ustawienie hosta, przy dwóch ludziach nie ma bota.
 # 5. Raport po akcji (RESULTS_PLAN.md): gotowość klienta dochodzi do hosta, poziomy z misji i rozbicie złomu do wszystkich.
 # 6. Bateria 4,5 V (BATTERY_PLAN.md): klient z 20% baterii bierze baterię z ziemi — rozstrzyga serwer, dolicza właściciel.
+# 7. Ładowarka (BATTERY_PLAN.md B3): klient przy ładowarce B1 ładuje się u siebie, serwer widzi, że ładowarka pracuje.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
@@ -114,6 +115,16 @@ godot --headless --path . -- --join=127.0.0.1 --port=8967 --batterynet=5 --autoq
 wait $HOST
 grep -a -q "\[BATTERY-NET\] host client_pct=\(6[89]\|7[0-9]\) taken=true" "$LOG/battery_host.log" && ok "host: klient z 20% wziął baterię, bat_pct po replikacji ok. 70%" || fail "host: $(grep -a "\[BATTERY-NET\]" "$LOG/battery_host.log")"
 grep -a -q "\[BATTERY-NET\] client battery=12[0-9] pct=\(6[89]\|7[0-9]\)" "$LOG/battery_client.log" && ok "klient: +90 s baterii od serwera" || fail "klient: $(grep -a "\[BATTERY-NET\]" "$LOG/battery_client.log")"
+
+echo "== ładowarka =="
+# BATTERY_PLAN.md B3: klient przy ładowarce B1 ładuje się u siebie (właściciel), stan „pracuje” rozstrzyga serwer i rozsyła RPC
+godot --headless --path . -- --host --mission=z1_b1 --port=8968 --chargernet=11 --autoquit=18 >"$LOG/charger_host.log" 2>&1 &
+HOST=$!
+sleep 3
+godot --headless --path . -- --join=127.0.0.1 --port=8968 --chargernet=5 --autoquit=12 >"$LOG/charger_client.log" 2>&1
+wait $HOST
+grep -a -q "\[CHARGER-NET\] host active=true client_pct=[2-9][0-9]" "$LOG/charger_host.log" && ok "host: ładowarka pracuje, klient ładowany (bat_pct z replikacji)" || fail "host: $(grep -a "\[CHARGER-NET\]" "$LOG/charger_host.log")"
+grep -a -q "\[CHARGER-NET\] client gain=\(1[5-9]\|2[0-2]\) active=true" "$LOG/charger_client.log" && ok "klient: ok. +6 s/s u właściciela, stan ładowarki z serwera" || fail "klient: $(grep -a "\[CHARGER-NET\]" "$LOG/charger_client.log")"
 
 # Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.
 for f in "$LOG"/*.log; do

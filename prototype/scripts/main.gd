@@ -632,6 +632,33 @@ func _battery_net_step() -> void:
 	var still: Node = level.get_node_or_null(item_name)
 	print("[BATTERY-NET] host client_pct=%d taken=%s" % [int(cl.bat_pct), str(still == null or still.is_queued_for_deletion())])
 
+## Test sieci ładowarki (--chargernet=N, tools/test_net_session.sh, BATTERY_PLAN.md B3; mapa z1_b1): klient po N s staje przy ładowarce
+## ze zgaszoną latarką i 20% baterii — ładuje się u siebie (właściciel), a stan „pracuje” rozstrzyga serwer. Po 3 s klient wypisuje
+## przyrost baterii i stan ładowarki z RPC; host po N + 2 s — stan ładowarki i `bat_pct` klienta.
+func _charger_net_step() -> void:
+	var chg: Node2D = get_tree().get_first_node_in_group("chargers")
+	if chg == null:
+		print("[CHARGER-NET] brak ładowarki na mapie %s" % level.map_id)
+		return
+	if not multiplayer.is_server():
+		var me: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
+		if me == null:
+			return
+		me.global_position = chg.global_position
+		me.velocity = Vector2.ZERO
+		me.flashlight = false
+		me.battery = me.BATTERY_MAX * 0.2
+		var b0: float = me.battery
+		await get_tree().create_timer(3.0).timeout
+		print("[CHARGER-NET] client gain=%d active=%s" % [roundi(me.battery - b0), str(chg.active)])
+		return
+	await get_tree().create_timer(2.0).timeout
+	var cl: Node2D = null
+	for c in _players.get_children():
+		if not c.is_bot and int(c.player_id) != 1:
+			cl = c
+	print("[CHARGER-NET] host active=%s client_pct=%d" % [str(chg.active), int(cl.bat_pct) if cl != null else -1])
+
 func _next_campaign_map() -> String:
 	var order: Array = level.CAMPAIGN
 	return order[(order.find(level.map_id) + 1) % order.size()]
@@ -647,6 +674,8 @@ func _handle_cmdline() -> void:
 			get_tree().create_timer(float(sa.substr("--printsquad=".length()))).timeout.connect(_print_squad)
 		if sa.begins_with("--resultnet="):                 # test sieci: raport po akcji — host kończy misję po N s, klient po N s zgłasza gotowość
 			get_tree().create_timer(float(sa.substr("--resultnet=".length()))).timeout.connect(_result_net_step)
+		if sa.begins_with("--chargernet="):                # test sieci: ładowarka — klient ładuje się u siebie, serwer widzi, że pracuje
+			get_tree().create_timer(float(sa.substr("--chargernet=".length()))).timeout.connect(_charger_net_step)
 		if sa.begins_with("--batterynet="):                # test sieci: bateria 4,5 V — klient słaby, serwer daje mu baterię z ziemi
 			get_tree().create_timer(float(sa.substr("--batterynet=".length()))).timeout.connect(_battery_net_step)
 	var autoquit := -1.0

@@ -1,7 +1,8 @@
 # Baterie i ładowarki latarki — plan
 
-Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.450** (#547), **B2 w 1.7.451** (#548), **B3 w 1.7.452** (gałąź
-`feat/battery-charger`). Decyzje D1–D4 (§4): przyjęte warianty zalecane (2026-10-31). Zostaje B4 (po playteście).
+Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.450** (#547), **B2 w 1.7.451** (#548), **B3 w 1.7.452** (#549), domknięcie B2–B3
+w 1.7.453 (karta ŁADOWARKA, test dwóch naraz, test sieci ładowarki). Decyzje D1–D4 (§4): przyjęte warianty zalecane (2026-10-31).
+Zostaje B4 (po playteście, na buildzie z B0–B3).
 
 ## 1. Skąd to
 
@@ -97,7 +98,9 @@ idzie pierwszy, a liczby z §3 są startowe do strojenia.
 - Wdrożone: `charger.gd` (ładowanie liczy właściciel postaci — `player.charge_battery`, jak całe liczenie baterii; serwer rozstrzyga
   „pracuje” → lampka zielona / pomarańczowa, pętla buczenia, hałas „charger”, `battery` src=charger w dzienniku, `mission_end.battery.charger`),
   model `m_charger` (prostownik z miernikiem, ok. 0,75 × 0,65 m, `ITEM_Z` za graczem), znacznik `Q` na B1 w (20,30) — 120 px od wody, poza
-  `SHORE_REACH` Pijawki. Sieć: brak osobnego testu (stan przez RPC `_sync_active`, ładowanie u właściciela jak w B0–B1).
+  `SHORE_REACH` Pijawki. Sieć: krok `--chargernet` w `test_net_session.sh` (od 1.7.453) — klient ładuje się u siebie, host widzi stan
+„pracuje” i `bat_pct` klienta, klient dostaje stan z RPC `_sync_active`. Kodeks: karta ŁADOWARKA (`codex.charger_entry`, ikona
+`art/hud/charger.png`), karta LATARKA wspomina ładowarkę.
 
 ### B4 — strojenie po playteście
 Na danych z B0: wartość baterii, liczba znaczników, szanse zrzutu, tempo ładowania pasywnego (D3). Zmiany liczbowe, bez
