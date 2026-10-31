@@ -234,7 +234,7 @@ class PlayerCard extends Focusable:
 			px = 14
 		_str(cf, Vector2(70, 12 + tf.get_ascent(24)), callsign, HORIZONTAL_ALIGNMENT_LEFT, size.x - 84.0, px,
 			Color("f1ecdc") if on else UT.TEXT)
-		_str(mf, Vector2(70, 56), "LV %d" % lv, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.BONE_DIM)
+		_str(mf, Vector2(70, 56), tr("LV %d") % lv, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.BONE_DIM)
 		var bw := size.x - 90.0
 		draw_rect(Rect2(70, 66, bw, 3), UT.LINE2)
 		draw_rect(Rect2(70, 66, bw * clampf(float(xp) / float(maxi(1, xp_need)), 0.0, 1.0), 3), UT.TEXT)
