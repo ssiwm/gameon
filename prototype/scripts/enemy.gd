@@ -188,6 +188,8 @@ func _ready() -> void:
 	shape.size = size
 	cs.shape = shape
 	cs.position = Vector2(0, -size.y * 0.5)
+	if bool(_def.get("melee_only", false)):
+		set_collision_layer_value(3, false)          # warstwa celów (4): pociski i promienie (Combat.LAYER_TARGET) przelatują — dosięga go tylko cios (grupa „enemies”)
 	Hurtbox.add(self, float(_def.get("hurt_w", size.x)), _hurt_h())   # strefa trafień na wysokość modelu (ciało ruchu zostaje niższe)
 	# oczy i pasek HP świecą w ciemności — śpiącego wroga widać jako
 	# przygaszone oczy, a nie wcale (skradanie musi mieć informację)
@@ -1126,7 +1128,7 @@ func body_center() -> Vector2:
 
 func hit_radius() -> float:
 	var sz: Vector2 = _def["size"]
-	return maxf(sz.x, sz.y) * 0.45
+	return float(_def.get("hit_r", maxf(sz.x, sz.y) * 0.45))
 
 ## Cios w plecy: wróg patrzy w tę samą stronę, w którą zadajemy cios (atakujący stoi za nim).
 func _is_behind(dir: Vector2) -> bool:
@@ -1137,6 +1139,8 @@ func _is_behind(dir: Vector2) -> bool:
 func take_hit(info: Dictionary) -> Dictionary:
 	if not NoiseMgr.is_server() or not alive:
 		return {}
+	if bool(_def.get("melee_only", false)) and info.get("type", "bullet") != "melee":
+		return {}                        # Ćma: ogień, wybuch, płomień i pocisk nie robią nic (bez trafienia, bez budzenia)
 	var dmg: float = info["amount"]
 	var silent: bool = info.get("silent", false)
 	_alert = 0.0                                                       # trafiony nie stoi i nie patrzy — walczy (i nie dostaje reakcji przy budzeniu od tego trafienia)
@@ -1216,7 +1220,7 @@ func _ignite_fx(seconds: float) -> void:
 ## Trafienie pociskiem (tylko serwer). Odrzut i krótkie ogłuszenie dają
 ## „mięso" strzałowi (GDD §23).
 func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
-	if not NoiseMgr.is_server() or not alive:
+	if not NoiseMgr.is_server() or not alive or bool(_def.get("melee_only", false)):
 		return
 	hp -= dmg * _beh.damage_mult()
 	_alert = 0.0

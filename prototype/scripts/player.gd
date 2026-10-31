@@ -1595,6 +1595,9 @@ func _bot_brain(delta: float) -> void:
 	crouching = stealth and is_on_floor()
 	# latarka jak u dowódcy — bot nie świeci sam (światło = hałas, §8.3)
 	flashlight = leader != null and leader.flashlight and not crouching and battery > 1.0
+	# ćmy na latarce (od 1.7.444 zabija je tylko cios wręcz): bot tnie maczetą przed sobą, w szkło — rój siedzi na wylocie broni
+	if moth_cover > 0 and weapons.state != WeaponController.State.MELEE:
+		weapons.try_melee()
 
 	# Ruch po ścieżce A*; bez grafu — po staremu (prosto do celu + skok przy ścianie).
 	# Na pokładzie drezyny: stoi w swoim slocie (albo przy leżącym koledze z pokładu) — bez A*, bez uników
@@ -1910,7 +1913,7 @@ func _winding_near(max_dist: float) -> Node2D:
 	var best_d := max_dist
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var ee := e as Node2D
-		if ee == null or ee.get("winding") != true:
+		if ee == null or ee.get("winding") != true or ee.is_in_group("moths"):       # nurkująca ćma nie rani — nie ma przed czym odskakiwać
 			continue
 		var d := global_position.distance_to(ee.global_position)
 		if d < best_d:

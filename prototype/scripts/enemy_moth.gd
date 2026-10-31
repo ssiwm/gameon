@@ -1,19 +1,20 @@
 extends "res://scripts/enemy_behavior.gd"
 ## Ćma (GDD §7.1; rój od 1.7.442): wisi pod sufitem w gnieździe (śpi), dopóki nie zobaczy światła (flara, ogień, latarka, błysk z lufy, wiązka LR-7) — bez
-## ściany po drodze. Wtedy leci na nie falistym lotem. Flara i ogień mają pierwszeństwo przed graczem i spalają cały rój. Na latarkę ćma nurkuje
+## ściany po drodze. Wtedy leci na nie falistym lotem. Flara i ogień mają pierwszeństwo przed graczem i ściągają cały rój. Na latarkę ćma nurkuje
 ## (krótka zapowiedź: cofa się i trzepocze w miejscu) i ją obsiada: nie gryzie, ale przesłania szkło (snop krótszy i ciemniejszy, `player.gd: moth_cover`),
-## drenuje baterię i trzepocze głośno (hałas przy latarce ściąga Ślepców). Zgaszona latarka strząsa rój po CLING_LINGER s; ćma zabita (nie spalona)
+## drenuje baterię i trzepocze głośno (hałas przy latarce ściąga Ślepców). Zgaszona latarka strząsa rój po CLING_LINGER s; ćma zabita
 ## tuż przy graczu wybucha pyłem, a kaszel to hałas. Bez światła wraca pod sufit i znów zasypia. Cały tik ćmy to `tick_special`.
 ## Od 1.7.443 ćma ma naturalną wielkość (ok. 14 cm rozpiętości) i lata jak ćma: szarpanym lotem z dwóch częstotliwości wahań i nagłymi zrywami
 ## w bok (JINK_*), z szybkim skrętem (STEER); w snopie latarki świeci (`view_extra` → `lit`, każdy peer).
+## Od 1.7.444 zabija ją tylko cios wręcz (`enemy_defs.gd: melee_only`) — maczeta albo kilof, jednym ciosem każdą w łuku. Flara i ogień już nie
+## spalają: rój krąży przy płomieniu, dopóki ten płonie, a potem wraca do latarki.
 
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 
 const MOTH_SEEK_R := 420.0           ## z tej odległości ćma widzi światło
-const MOTH_BURN_DPS := 12.0          ## spalanie przy flarze i ogniu: 18 HP → 1,5 s, więc flara (25 s) zabiera cały rój
-const BURN_R := 8.0                  ## krąży przy płomieniu tak blisko
+const BURN_R := 8.0                  ## krąży przy płomieniu (flara, ogień) tak blisko — bez obrażeń, zabija tylko cios wręcz
 const LOST_MEMORY := 2.0             ## s lotu ku ostatniemu światłu, gdy zgasło (błysk z lufy trwa 0,6 s)
 const RETURN_AFTER := 6.0            ## s bez światła, po których wraca pod sufit
 const DIVE_R := 30.0                 ## z tej odległości od lampy zawisa przed nurkowaniem
@@ -25,8 +26,9 @@ const CLING_R := 6.0                 ## z tej odległości od lampy siada na szk
 const CLING_SPOT := 2.0              ## promień miejsc na szkle latarki (szkło ok. 16 cm)
 const CLING_LINGER := 0.8            ## s, przez które trzyma się zgaszonej latarki, zanim odleci
 const FLUTTER_NOISE := 0.7           ## hałas trzepotu jednej ćmy na latarce [na s] (tag „moth”, poza budżetem hałasu wrogów)
-const DUST_R := 40.0                 ## ćma zabita (nie spalona) tak blisko gracza wybucha pyłem…
+const DUST_R := 40.0                 ## ćma zabita tak blisko gracza wybucha pyłem…
 const DUST_NOISE := 6.0              ## …a kaszel słychać jak okrzyk bólu (NoiseMgr.N_HURT)
+const DUST_ONCE_MS := 400            ## jeden pył na cios, choć cios zabija kilka ćm
 const SP_DIVE := 1                   ## `_sp` (replikowany): zapowiedź i nurkowanie
 const PLATFORM_LAYER_BIT := 5         ## kładki jednokierunkowe (player.gd PLATFORM_LAYER_BIT)
 const SP_CLING := 3                  ## `_sp`: siedzi na latarce — `player.gd` liczy z tego `moth_cover` na każdym peerze
@@ -47,9 +49,9 @@ var _mode_t := 0.0
 var _dark_t := 0.0                   ## s od zgaszenia latarki gospodarza
 var _noise_acc := 0.0
 var _slot := 0.0                     ## kąt miejsca na szkle
-var _burned := false
 var _last_pos := Vector2(INF, INF)   ## ostatnie widziane światło
 var _loop_on := false
+static var _dust_ms := -100000       ## czas ostatniego pyłu (serwer, wspólny dla wszystkich ćm)
 var _jink_t := 0.0                   ## s do następnego zrywu
 var _lit := 0.0                      ## 0..1 poświaty w snopie latarki (tylko widok)
 var _lit_want := 0.0
@@ -65,7 +67,6 @@ func on_ready() -> void:
 func reset() -> void:
 	_set_mode(Mode.SEEK)
 	host = null
-	_burned = false
 	_last_pos = Vector2(INF, INF)
 	_noise_acc = 0.0
 
@@ -74,6 +75,10 @@ func derive_pre() -> int:
 
 func anim(a: String, _moving: bool) -> String:
 	return "idle" if e.active else a          # trzepocze skrzydłami w locie
+
+## Ćma nie jest celem broni (zabija ją tylko cios wręcz): boty jej nie ostrzeliwują, naprowadzanie jej nie wybiera, skaner jej nie podświetla.
+func threat_ok() -> bool:
+	return false
 
 ## Rój budzi się razem, ale tylko ćmy: obudzona ćma nie budzi Trzosków pod gniazdem, a wataha — ćm.
 func sibling_wake_ok(other) -> bool:
@@ -108,7 +113,7 @@ func nearest_light(max_r: float) -> Dictionary:
 		var df: float = e.global_position.distance_to(fp.global_position)
 		if df < best_d and _sees(fp.global_position + Vector2(0, -4)):
 			best_d = df
-			best = {"pos": fp.global_position + Vector2(0, -4), "kind": "flare", "node": fp}       # ogień na podłodze spala ćmę jak flara
+			best = {"pos": fp.global_position + Vector2(0, -4), "kind": "flare", "node": fp}       # ogień na podłodze wabi ćmę jak flara
 	if not best.is_empty():
 		return best
 	for f in Lights.active_flashes():
@@ -180,12 +185,7 @@ func _moth_tick(delta: float) -> void:
 			if mode != Mode.SEEK:
 				_set_mode(Mode.SEEK)
 			if dist < BURN_R:
-				e.hp -= MOTH_BURN_DPS * delta                 # krąży przy płomieniu i się spala
-				want = side * speed * 0.7
-				if e.hp <= 0.0:
-					_burned = true
-					e._die()
-					return
+				want = side * speed * 0.7                     # krąży przy płomieniu
 		else:
 			var lit: bool = lamp_lit(lt["node"])
 			match mode:
@@ -280,15 +280,17 @@ func _cling_tick(delta: float, lt: Dictionary) -> void:
 	e.global_position = lamp_pos(p) + Vector2.from_angle(_slot + wob) * CLING_SPOT
 	e.velocity = Vector2.ZERO
 
-## Zabita ćma (nie spalona) tuż przy graczu wybucha pyłem: kaszel to hałas, chmurę widać u wszystkich.
+## Zabita ćma tuż przy graczu wybucha pyłem: kaszel to hałas, chmurę widać u wszystkich. Cios zdejmuje kilka ćm naraz — pył (i kaszel) najwyżej
+## raz na DUST_ONCE_MS.
 func on_death() -> void:
 	host = null
 	_set_mode(Mode.SEEK)
-	if _burned or float(e._burn) > 0.0 or not NoiseMgr.is_server():
+	if not NoiseMgr.is_server() or Time.get_ticks_msec() - _dust_ms < DUST_ONCE_MS:
 		return
 	for p in e.get_tree().get_nodes_in_group("players"):
 		if not bool(p.dead) and (p as Node2D).global_position.distance_to(e.global_position) < DUST_R + 16.0 \
 				and lamp_pos(p).distance_to(e.global_position) < DUST_R:
+			_dust_ms = Time.get_ticks_msec()
 			NoiseMgr.add_noise(DUST_NOISE, e.global_position, "moth_dust")
 			e.behavior_fx("dust")
 			return

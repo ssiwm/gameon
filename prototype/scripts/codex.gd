@@ -43,7 +43,7 @@ const ENEMIES := [
 		"Tells: no hearts above its head, no footsteps or breathing, glowing eyes in the dark, a strange number on the label. A flashlight or a shot exposes it."],
 	["cma", "cma", "idle", "MOTH", "Light moth",
 		"Nests in swarms under the ceiling until it sees light, then flies at the source. It does not bite: it smothers your flashlight — a shorter, dimmer beam, a draining battery and loud fluttering that carries.",
-		"A flare or fire pulls the whole swarm off you and burns it. Switching the flashlight off shakes them loose. Fragile, but kill one at your face and its dust makes you cough."],
+		"Only a machete or a pickaxe kills them — bullets, blasts and fire pass straight through. A flare or fire pulls the whole swarm off you for as long as it burns; switching the flashlight off shakes them loose. Kill them at your face and their dust makes you cough."],
 	["kaplan", "", "idle", "THE PRIEST", "Elite — support",
 		"Never strikes. Keeps behind the pack, heals wounded Cutpurses in sight and wails when you get close: everyone caught in the wave is stunned — no shooting, jumping or melee — and every enemy nearby hears it.",
 		"Back out of the ring while the wind-up shows, or kill him before the wail ends. Without him the pack loses its nerve. Armored — heavy hits and the head work best.",

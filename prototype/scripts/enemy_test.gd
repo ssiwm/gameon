@@ -10,6 +10,8 @@ const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const Enemy := preload("res://scripts/enemy.gd")
 const Player := preload("res://scripts/player.gd")
 const Lights := preload("res://scripts/lights.gd")
+const Weapons := preload("res://scripts/weapons.gd")
+const Combat := preload("res://scripts/combat.gd")
 const Bruiser := preload("res://scripts/enemy_bruiser.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Blind := preload("res://scripts/enemy_blind.gd")
@@ -159,7 +161,7 @@ func _test_moth_swarm() -> void:
 	await get_tree().create_timer(MothB.CLING_LINGER + 0.4).timeout
 	check("ćma: zgaszona latarka strząsa rój", swarm.all(func(m) -> bool: return int(m._sp) != MothB.SP_CLING) and int(player.moth_cover) == 0)
 
-	# flara ściąga rój z latarki i go spala
+	# flara ściąga rój z latarki i trzyma go przy sobie — od 1.7.444 nie spala (zabija tylko cios wręcz)
 	player.flashlight = true
 	t = 0.0
 	while t < 8.0 and int(player.moth_cover) < 1:
@@ -169,21 +171,52 @@ func _test_moth_swarm() -> void:
 	flare.add_to_group("flares")
 	level.add_child(flare)
 	flare.global_position = player.global_position + Vector2(-160.0, 0.0)
-	noises.erase("moth_dust")
 	t = 0.0
-	while t < 8.0 and swarm.any(func(m) -> bool: return m.alive):
+	while t < 8.0 and not swarm.all(func(m) -> bool: return m.global_position.distance_to(flare.global_position) < 40.0):
 		await get_tree().physics_frame
 		t += 1.0 / 60.0
-	check("ćma: flara ściąga rój z latarki i spala cały (%.1f s)" % t, swarm.all(func(m) -> bool: return not m.alive and m._beh._burned))
-	check("ćma: spalone nie sypią pyłem", not noises.has("moth_dust"))
+	check("ćma: flara ściąga cały rój z latarki (%.1f s)" % t, int(player.moth_cover) == 0 and swarm.all(func(m) -> bool: return m.global_position.distance_to(flare.global_position) < 40.0))
+	await get_tree().create_timer(1.5).timeout
+	check("ćma: flara nie spala — rój żyje i krąży przy płomieniu", swarm.all(func(m) -> bool: return m.alive and m.global_position.distance_to(flare.global_position) < 40.0))
 	flare.queue_free()
 
-	# zabita tuż przy latarce sypie pyłem (hałas „moth_dust”)
-	var near := _spawn("cma", MothB.lamp_pos(player) + Vector2(6.0, 0.0))
+	# odporność: kula, śrut, ogień, wybuch, płomień, promień — nic; ciało poza warstwą celów (pociski przelatują), nie jest celem botów
+	var m0 = swarm[0]
+	var hp0: float = m0.hp
+	var res_all := []
+	for ty in ["bullet", "fire", "explosion", "flame", "beam", "rail"]:
+		res_all.append(m0.take_hit({"amount": 9999.0, "dir": Vector2.RIGHT, "pos": m0.global_position, "shooter": 0, "type": ty, "ignite": 3.0}))
+	m0.take_bullet(m0.global_position + Vector2(-10.0, 0.0), 9999.0)
+	check("ćma: kula, ogień, wybuch, płomień i promień jej nie ranią", m0.alive and is_equal_approx(m0.hp, hp0) and float(m0._burn) == 0.0
+		and res_all.all(func(r) -> bool: return not bool((r as Dictionary).get("hit", false))), "hp %.1f burn %.1f" % [m0.hp, float(m0._burn)])
+	var c0: Vector2 = Combat.center_of(m0)
+	var rq := PhysicsRayQueryParameters2D.create(c0 + Vector2(-30.0, 0.0), c0 + Vector2(30.0, 0.0), Combat.LAYER_TARGET)
+	rq.collide_with_areas = true
+	var rh: Dictionary = m0.get_world_2d().direct_space_state.intersect_ray(rq)
+	var hit_moth: bool = not rh.is_empty() and (rh["collider"] == m0 or (rh["collider"] as Node).get_parent() == m0)
+	check("ćma: pocisk przez nią przelatuje (poza warstwą celów, także strefa trafień)", (int(m0.collision_layer) & Combat.LAYER_TARGET) == 0 and not hit_moth)
+	check("ćma: nie jest celem broni (is_threat — boty, naprowadzanie)", not m0.is_threat())
+
+	# cios wręcz przy latarce: maczeta zdejmuje kilka ćm naraz, pył najwyżej raz na cios
+	t = 0.0
+	while t < 10.0 and int(player.moth_cover) < 2:
+		await get_tree().physics_frame
+		t += 1.0 / 60.0
+		player.aim_dir = Vector2.LEFT
+	var on_lamp := swarm.filter(func(m) -> bool: return m.alive and int(m._sp) == MothB.SP_CLING).size()
+	await get_tree().create_timer(0.5).timeout
+	noises.erase("moth_dust")
+	var org: Vector2 = player.global_position + Vector2(0, -9)
+	var dbg := swarm.map(func(m) -> String: return "sp%d d%.1f a%.0f vis%s" % [int(m._sp), (Combat.center_of(m) - org).length(), rad_to_deg(player.aim_dir.angle_to(Combat.center_of(m) - org)), m.visible])
+	player.weapons._server_melee(player.global_position + Vector2(0, -9), player.aim_dir, Weapons.MACZETA, player.player_id)
+	var killed := swarm.filter(func(m) -> bool: return not m.alive).size()
+	check("ćma: maczeta zdejmuje rój z latarki jednym ciosem (%d z %d na szkle)" % [killed, on_lamp], on_lamp >= 2 and killed >= on_lamp, str(dbg))
+	check("ćma: zabite przy twarzy sypią pyłem raz na cios (hałas)", int(noises.get("moth_dust", 0)) == 1, str(noises.get("moth_dust", 0)))
+	var near := _spawn("cma", MothB.lamp_pos(player) + Vector2(-3.0, 0.0))
 	near.active = true
 	await get_tree().physics_frame
-	near.take_hit({"amount": 9999.0, "dir": Vector2.RIGHT, "pos": near.global_position, "shooter": 0, "type": "bullet"})
-	check("ćma: zabita przy twarzy sypie pyłem (hałas)", int(noises.get("moth_dust", 0)) == 1)
+	player.weapons._server_melee(player.global_position + Vector2(0, -9), player.aim_dir, Weapons.KILOF, player.player_id)
+	check("ćma: kilof też ją zabija", not near.alive)
 
 	# gniazda z mapy: znaczniki blisko siebie łączą się, każde gniazdo ma co najmniej `swarm` ćm
 	var spots: Array = level.moth_swarm_spots([Vector2(-5000.0, 200.0), Vector2(-4936.0, 200.0), Vector2(-4000.0, 200.0)])

@@ -1304,7 +1304,7 @@ func _t_phase3() -> void:
 	check("HKM-9: ciągły płomień zostawia ogień na podłodze (plam: %d)" % dropped, dropped >= 1)
 	free_dummies()
 	await frames(2)
-	# --- ćma: ogień spala, błysk z lufy budzi
+	# --- ćma: ogień wabi (od 1.7.444 nie spala), błysk z lufy budzi
 	var moth := await dummy(120.0, 100000.0, "cma")
 	Lights.flashes.clear()
 	player.flashlight = false

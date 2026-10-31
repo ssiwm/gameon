@@ -16,7 +16,7 @@ extends RefCounted
 ## w promieniu 90 px, kucanie tylko 45 — trzeba się skradać) →
 ## strażnica przed rampą kopalni (kol. 197–240, MAPS_PLAN.md §1.4 W2; nieśmiertelnik 4): wieża z zygzakiem podestów co 2 kafle i włazem w piętrze,
 ## pod dachem 3 Ćmy i Skoczek, nieśmiertelnik na wschodnim końcu górnego piętra. Lekcja flary: ćmy lecą do każdego światła (latarka, błysk
-## strzału), flara rzucona w bok je spala; skrzynka z flarami przy podejściu, porada „moths” w HINT_ZONES; zejście zeskokiem ze wschodniej krawędzi →
+## strzału), flara rzucona w bok je odciąga, zabija je tylko cios wręcz; skrzynka z flarami przy podejściu, porada „moths” w HINT_ZONES; zejście zeskokiem ze wschodniej krawędzi →
 ## kopalnia: rampa w dół i sala (nieśmiertelnik 5, Wołek i Trzoski
 ## w ciemności: latarka pomaga, ale budzi; pod sufitem Skoczki i Ćmy; M1c: drugi Wołek tuż pod rampą i Skoczek nad wejściem do sali). Pod salą druga kondygnacja — dolna galeria (szyb serwisowy z podestami, Trzoski na dojściu z szybu do nieśmiertelnika 6, Ćmy i Skoczki; we wschodnim ślepym końcu tylko złom — wrogowie stamtąd przeszli na trasę w M1c). Ostatni nieśmiertelnik zawala rampę — wyjście to szyb po wschodniej stronie sali. Faza B: samouczek ciszy i latarki. Mapa jest generowana programem pomocniczym —
 ## po zmianach uruchom `--maptest`.
