@@ -94,6 +94,13 @@ static func mip_texture(path: String) -> Texture2D:
 static func is_hd(sheet: String) -> bool:
 	return bool(manifest().get("sheets", {}).get(sheet, {}).get("hd", false))
 
+## Czy broń ma arkusz HD — bez wczytywania. Znajdźka broni w 3D ma model, a nie arkusz: `gun_hd` dekodował i kompresował dwa arkusze
+## w wątku gry (ok. 25 ms przy każdej nowej broni na ziemi, --hitchtest 2026-10-31).
+static func has_gun_hd(key: String) -> bool:
+	if not newgun:
+		return false
+	return _gunhd[key] != null if _gunhd.has(key) else ResourceLoader.exists(DIR + "gunhd_%s.png" % key)
+
 ## Tekstura HD broni (diffuse + normal) albo null. Ramka 576×224 px, dłoń w (104, 112), 16 px na piksel świata.
 static func gun_hd(key: String) -> CanvasTexture:
 	if not newgun:

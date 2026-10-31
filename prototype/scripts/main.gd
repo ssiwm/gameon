@@ -26,6 +26,7 @@ const WORKSHOP_TEST := preload("res://scripts/workshop_test.gd")
 const CABINET_TEST := preload("res://scripts/cabinet_test.gd")
 const STALKER_TEST := preload("res://scripts/stalker_test.gd")
 const BOT_TEST := preload("res://scripts/bot_test.gd")
+const HITCH_TEST := preload("res://scripts/hitch_test.gd")
 const NOBOT_TEST := preload("res://scripts/nobot_test.gd")
 const FUN_TEST := preload("res://scripts/fun_test.gd")
 const RESULT_TEST := preload("res://scripts/result_test.gd")
@@ -231,6 +232,12 @@ func _announce_wipe(seconds: float) -> void:
 ## nowa misja po udanej ekstrakcji. Łup misji przepadłby tutaj — postęp
 ## fabularny nie (GDD §4).
 func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
+	if map_id != "" and map_id != level.map_id:
+		if _curtain_wait:
+			return                               # zmiana mapy już czeka na planszę (np. drugie [Enter] w tej samej klatce)
+		if await _curtain_first(map_id):
+			if map_id == level.map_id:
+				return
 	print("[MISSION] restart (%s)%s" % ["nowa misja" if new_run else "wipe", (" -> " + map_id) if map_id != "" else ""])
 	_solo_falls = 0
 	_solo_was_dead = false
@@ -523,6 +530,32 @@ func _continue_without_hub() -> void:
 	after_hub = ""
 	mission.start_via = "direct"                  # dziennik: mission_start.via (tools/fun_report.py)
 	_restart_mission(true, _next_campaign_map(), true)
+
+## Zmiana mapy w oknie (serwer): najpierw plansza wczytywania u wszystkich peerów, a dopiero CURTAIN_LEAD klatek później przebudowa
+## poziomu. `level.load_map` i pierwsza klatka nowej mapy szły od razu po [Enter] / odliczaniu, więc ostatni obraz poprzedniej mapy stał
+## zamrożony przed planszą: wyjście z kryjówki ok. 1,15 s (dwie klatki po ok. 0,58 s), powrót do kryjówki ok. 0,37 s (--hitchtest,
+## i9 + RTX 3080, 4K, 2026-10-31). Zwraca, czy czekało (bez widoku 3D, w zrzutach i pomiarach — nie czeka).
+const CURTAIN_LEAD := 2
+var _curtain_wait := false
+
+func _curtain_first(id: String) -> bool:
+	if get_node_or_null("View3D") == null or not VIEW3D.curtain_enabled or not level.MAPS.has(id):
+		return false
+	_curtain_wait = true
+	if NoiseMgr.has_network():
+		_pre_curtain_rpc.rpc()
+	else:
+		_pre_curtain_rpc()
+	for i in CURTAIN_LEAD:
+		await get_tree().process_frame
+	_curtain_wait = false
+	return true
+
+@rpc("authority", "call_local", "reliable")
+func _pre_curtain_rpc() -> void:
+	var v3d := get_node_or_null("View3D")
+	if v3d != null:
+		v3d.pre_curtain()
 
 ## Serwer: przełącza poziom na `id` u wszystkich peerów (przebudowa mapy, nowy punkt startu, nowy cel).
 func _set_map(id: String) -> void:
@@ -851,6 +884,11 @@ func _handle_cmdline() -> void:
 		st.name = "StalkerTest"
 		add_child(st)
 		st.run(self)
+	if args.has("--hitchtest"):
+		var ht := HITCH_TEST.new()
+		ht.name = "HitchTest"
+		add_child(ht)
+		ht.run(self)
 	if bottest:
 		var bt := BOT_TEST.new()
 		bt.name = "BotTest"
@@ -3834,6 +3872,7 @@ func _begin_hosting(where: String) -> void:
 				Scrap.add_cleared(String(m))
 	var first_map: String = _start_map if _start_map != "" else ("z1_hub" if _lobby.start_in_hub else (_shift_map() if NightShift.selected else campaign_start_map()))
 	if first_map != level.map_id:
+		await _curtain_first(first_map)          # pierwsza misja z lobby: plansza zanim zbuduje się poziom (ok. 0,5 s zamrożonego menu)
 		_set_map(first_map)
 	if first_map == "z1_hub" and after_hub == "":
 		after_hub = campaign_start_map()             # start w kryjówce z lobby: odprawa i „Depart" muszą znać pierwszą misję
