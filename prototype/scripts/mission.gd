@@ -581,7 +581,8 @@ func _log_positions() -> void:
 		if p.is_queued_for_deletion():
 			continue
 		rows.append({"who": "P%d" % int(p.display_id), "bot": bool(p.is_bot), "pos": SessionLog.xy(p.global_position),
-			"hp": int(p.hp), "crouch": bool(p.crouching), "dead": bool(p.dead), "lamp": bool(p.flashlight), "moths": int(p.moth_cover)})      # latarka i ćmy na niej (strojenie roju)
+			"hp": int(p.hp), "crouch": bool(p.crouching), "dead": bool(p.dead), "lamp": bool(p.flashlight), "moths": int(p.moth_cover),       # latarka i ćmy na niej (strojenie roju)
+			"bat": int(p.bat_pct)})                                        # procent baterii (BATTERY_PLAN.md B0)
 	if not rows.is_empty():
 		SessionLog.event("pos", {"phase": SessionLog.PHASES[phase], "noise": roundi(NoiseMgr.level), "p": rows})
 

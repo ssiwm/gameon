@@ -1,7 +1,7 @@
 # Baterie i ładowarki latarki — plan
 
-Status: **plan z 2026-10-31 (main 1.7.448, cc6064d)**, nic nie wdrożone. Gałąź `docs/battery-plan`. Decyzje D1–D4 (§4) czekają na
-wybór — do wdrożenia przyjmujemy warianty oznaczone „zalecane”.
+Status: **plan z 2026-10-31 (main 1.7.448, cc6064d); B0 + B1 wdrożone w 1.7.449** (gałąź `feat/battery-pickup`). Decyzje D1–D4 (§4):
+przyjęte warianty zalecane (2026-10-31). Zostają B2, B3, B4.
 
 ## 1. Skąd to
 
@@ -39,11 +39,13 @@ idzie pierwszy, a liczby z §3 są startowe do strojenia.
 ## 3. Plan
 
 ### B0 — telemetria (mała, pierwsza)
-- `pos`: pole `bat` (procent) obok `lamp`; zdarzenia `battery_empty` (who, phase, pos, map) i `battery` (who, src = pickup /
-  charger / reset, amount, before).
-- `tools/session_progress.py` / raport fun: kolumny „% czasu z latarką”, „% czasu < 20%”, „puste baterie na misję”, „baterie
-  zebrane / leżące”.
-- Test: `--funtest` sprawdza, że pole i zdarzenia się piszą.
+- `pos`: pole `bat` (procent) obok `lamp`; zdarzenia `battery_empty` (who, bot, phase, pos) i `battery` (who, bot, src = pickup,
+  w B3 także charger; amount, before). Reset baterii nie ma osobnego zdarzenia — wynika z wipe'a / punktu kontrolnego w dzienniku.
+- `mission_end.battery`: {dropped, picked, empty}. Właściciel zgłasza pustą latarkę serwerowi RPC (`player._report_battery_empty`),
+  a poziom baterii innych peerów serwer zna z replikowanego `player.bat_pct`.
+- `tools/fun_report.py`: wiersz „latarka” — % czasu z latarką, % czasu < 20%, mediana najniższej baterii, puste na próbę, baterie
+  zebrane / wypadłe.
+- Test: `--batterytest` sprawdza, że pole i zdarzenia się piszą.
 
 ### B1 — znajdźka „Bateria 4,5 V” (rdzeń)
 - Nowy `kind = "battery"` w `pickup.gd`: płaska bateria 3R12 4,5 V (typowa w PRL-u, pasuje do '87). **+90 s (50%)**, bez
@@ -62,10 +64,15 @@ idzie pierwszy, a liczby z §3 są startowe do strojenia.
     za ryzyko);
   - **sejf** (`strongbox.gd`): +1 bateria obok złomu.
 - Wygląd: model 3D baterii (dwie mosiężne blaszki, papierowa etykieta) — prosty skrypt Blendera w potoku `tools/build_items.sh`
-  albo Meshy (~30–40 kredytów); `ITEM_SCALE` w `view3d.gd` jak apteczka; poświata ciepła biel (`GLOW["battery"]`); ikona na
-  mini-mapie jak flary.
-- Testy: nowy `--batterytest` (podnosi tylko < 90%, +90 s z obcięciem, bot ustępuje człowiekowi, gniazdo i sejf dają baterię,
-  zrzut nie z przywołanych) + przypadek w `test_net_session.sh` (klient dostaje baterię przez RPC).
+  albo Meshy (~30–40 kredytów); `ITEM_SCALE` w `view3d.gd` jak apteczka; poświata ciepła biel (`GLOW["battery"]`). Wdrożone:
+  `m_battery` w `tools/concept/items_proc_bake.py` → `art/items/battery.png` i `art/items3d/battery.glb` (`prep_items3d.py --only=battery`),
+  ok. 25 cm w świecie. Mini-mapa nie pokazuje znajdziek (flar też nie) — bez ikony.
+- Testy: nowy `--batterytest` (podnosi tylko < 90%, +90 s z obcięciem, bot ustępuje człowiekowi, sejf daje baterię, Ćma bez
+  losowego zrzutu) + krok `--batterynet` w `test_net_session.sh` (klient dostaje baterię przez RPC). Gniazdo ćm — tylko przegląd kodu
+  (`enemy_moth._nest_cleared`), bez osobnego testu.
+- Wdrożone wartości: Trzosek 0,04, Skoczek 0,08, Podsłuchacz 0,1, Wołek 0,12, Mimik 0,15, Ślepiec 0,2, elity 0,3; znaczniki: 1.1 (126,17)
+  i (258,42); 1.2 (238,21), (152,39), (125,50); 1.3 (177,25) tuż przed Żyłą, (62,39), (108,39); B1 (38,26), (64,26), (90,26) — kładki
+  nad basenem Pijawki, przy skrzynkach z flarami.
 
 ### B2 — czytelność
 - Poniżej 20%: snop migocze co kilka sekund, a przy przejściu progu krótki klik i podpowiedź raz na profil („Bateria się

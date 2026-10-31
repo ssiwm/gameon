@@ -18,7 +18,10 @@ extends RefCounted
 ##   power          who, weapon, rounds — gracz wziął skrzynię mocy (FUN_PLAN.md P1.3, od 1.7.402)
 ##   peak           hold, to — Uwaga za długo na 100 opadła i zaczął się oddech (FUN_PLAN.md P1.2, od 1.7.402)
 ##   overcharge     pos, noise, stale, charges, awake (Stalker obudzony), locked (s przytrzymania na wabiku, 0 przy zwietrzałym — FUN_PLAN.md P0.2)
-##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead, lamp, moths}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1)
+##   pos            phase, noise, p: lista graczy [{who, bot, pos, hp, crouch, dead, lamp, moths, bat}] — próbka co POS_EVERY s (mapy cieplne tras, MAPS_PLAN.md P1);
+##                  `bat` (od 1.7.449) — procent baterii latarki (BATTERY_PLAN.md B0)
+##   battery        who, bot, src (pickup), amount (s świecenia), before (% przed) — gracz wziął baterię 4,5 V (BATTERY_PLAN.md B1, od 1.7.449)
+##   battery_empty  who, bot, phase, pos — latarka zgasła, bo bateria spadła do zera (B0, od 1.7.449)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
 ##   xp             who, mission (XP za wynik misji), rows (etykiety bonusów), xp (łącznie w profilu po misji), level — po udanej misji,
@@ -39,6 +42,8 @@ extends RefCounted
 ## próba wybrana na karcie wyniku jako „od razu następna misja”, bez kryjówki (P0.4). Raport przed / po: `tools/fun_report.py`.
 ## `scrap` (od 1.7.347, strojenie ekonomii warsztatu): {dropped — złom, który wypadł z wrogów i bossa w tej próbie, loot — zebrany łup,
 ## bonus — premia za misję (0 przy wipe)}; do banku trafia loot + bonus, tylko przy sukcesie.
+## `battery` (od 1.7.449, BATTERY_PLAN.md B0): {dropped — baterie, które wypadły z wrogów, gniazd ćm i sejfów (bez leżących na mapie), picked — zebrane,
+## empty — ile razy komuś zgasła pusta latarka}.
 
 const DIR := "user://sessions"
 const PHASES := ["OBJECTIVE", "BOSS", "EXTRACT", "SUCCESS", "FAILED"]
@@ -57,6 +62,7 @@ static var _noise := {}                ## źródło → [liczba zdarzeń, suma U
 static var _weapons := {}              ## klucz broni → {shots, noise, dmg, kills}
 static var _dmg_by := {}               ## id gracza → {klucz broni → obrażenia}
 static var _scrap_drop := 0            ## złom wyrzucony przez wrogów i bossa w tej próbie (podniesiony czy nie)
+static var _battery := {}              ## baterie w tej próbie: dropped / picked / empty (mission_end.battery)
 static var _kills_by := {}             ## id gracza → {rodzaj wroga → zabójstwa} (tylko zabójstwa dające XP: ludzie)
 static var _xp_by := {}                ## id gracza → XP za zabójstwa w tej próbie
 static var _build := ""
@@ -134,6 +140,7 @@ static func mission_start(data: Dictionary) -> void:
 	_weapons = {}
 	_dmg_by = {}
 	_scrap_drop = 0
+	_battery = {"dropped": 0, "picked": 0, "empty": 0}
 	_kills_by = {}
 	_xp_by = {}
 	row.merge(data)
@@ -166,6 +173,7 @@ static func mission_end(data: Dictionary) -> void:
 	var scrap: Dictionary = row.get("scrap", {})
 	scrap["dropped"] = _scrap_drop
 	row["scrap"] = scrap
+	row["battery"] = _battery.duplicate()
 	_write("mission_end", row)
 	_in_mission = false
 
@@ -229,6 +237,12 @@ static func note_scrap_drop(n: int) -> void:
 	if not active() or not _in_mission or n <= 0:
 		return
 	_scrap_drop += n
+
+## Licznik baterii do mission_end.battery: "dropped" (wypadła), "picked" (zebrana), "empty" (zgasła pusta latarka); serwer.
+static func note_battery(what: String) -> void:
+	if not active() or not _in_mission:
+		return
+	_battery[what] = int(_battery.get(what, 0)) + 1
 
 # ---------------------------------------------------------------- wydajność (host i klient)
 

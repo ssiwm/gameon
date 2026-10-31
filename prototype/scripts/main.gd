@@ -28,6 +28,7 @@ const STALKER_TEST := preload("res://scripts/stalker_test.gd")
 const BOT_TEST := preload("res://scripts/bot_test.gd")
 const NOBOT_TEST := preload("res://scripts/nobot_test.gd")
 const FUN_TEST := preload("res://scripts/fun_test.gd")
+const BATTERY_TEST := preload("res://scripts/battery_test.gd")
 const RESULT_TEST := preload("res://scripts/result_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
@@ -567,6 +568,35 @@ func _result_net_step() -> void:
 	print("[RESULT-NET] %s ready=%s levels=%d gain=%s report=%s" % ["host" if multiplayer.is_server() else "client", str(mission.result_ready.keys()),
 		mission.result_levels.size(), str(mission.result_info.get("gain", "-")), str(rs != null and rs.visible)])
 
+## Test sieci baterii 4,5 V (--batterynet=N, tools/test_net_session.sh, BATTERY_PLAN.md B1): klient po N s ma 20% baterii; host po N + 1 s
+## kładzie baterię przy postaci klienta (rozstrzyga serwer po replikowanym `bat_pct`, dolicza właściciel przez RPC). Po chwili obie strony
+## wypisują, co widzą: host — `bat_pct` klienta i czy bateria zniknęła; klient — własną baterię.
+func _battery_net_step() -> void:
+	var me: Node = _players.get_node_or_null(str(multiplayer.get_unique_id()))
+	if not multiplayer.is_server():
+		if me != null:
+			me.battery = me.BATTERY_MAX * 0.2
+		await get_tree().create_timer(4.0).timeout
+		print("[BATTERY-NET] client battery=%d pct=%d" % [roundi(me.battery) if me != null else -1, int(me.bat_pct) if me != null else -1])
+		return
+	await get_tree().create_timer(1.0).timeout
+	var cl: Node2D = null
+	for c in _players.get_children():
+		if not c.is_bot and int(c.player_id) != 1:
+			cl = c
+	if cl == null:
+		print("[BATTERY-NET] host: brak klienta")
+		return
+	level.spawn_item("battery", 0, cl.global_position + Vector2(0, -14))
+	var item_name := "Item%d" % int(level._pickup_serial)             # nazwa nadana przez spawn_item (bateria może zniknąć jeszcze w podskoku)
+	await get_tree().create_timer(0.8).timeout                      # lądowanie po podskoku
+	var it: Node2D = level.get_node_or_null(item_name)
+	if it != null:
+		it.global_position = cl.global_position + Vector2(0, -2)   # podskok mógł odbić ją od postaci
+	await get_tree().create_timer(1.5).timeout
+	var still: Node = level.get_node_or_null(item_name)
+	print("[BATTERY-NET] host client_pct=%d taken=%s" % [int(cl.bat_pct), str(still == null or still.is_queued_for_deletion())])
+
 func _next_campaign_map() -> String:
 	var order: Array = level.CAMPAIGN
 	return order[(order.find(level.map_id) + 1) % order.size()]
@@ -582,6 +612,8 @@ func _handle_cmdline() -> void:
 			get_tree().create_timer(float(sa.substr("--printsquad=".length()))).timeout.connect(_print_squad)
 		if sa.begins_with("--resultnet="):                 # test sieci: raport po akcji — host kończy misję po N s, klient po N s zgłasza gotowość
 			get_tree().create_timer(float(sa.substr("--resultnet=".length()))).timeout.connect(_result_net_step)
+		if sa.begins_with("--batterynet="):                # test sieci: bateria 4,5 V — klient słaby, serwer daje mu baterię z ziemi
+			get_tree().create_timer(float(sa.substr("--batterynet=".length()))).timeout.connect(_battery_net_step)
 	var autoquit := -1.0
 	var stealthtest := -1.0
 	var wipetest := -1.0
@@ -590,6 +622,7 @@ func _handle_cmdline() -> void:
 	var bottest := false
 	var nobottest := false
 	var funtest := false
+	var batterytest := false
 	var resulttest := false
 	var rangetest := false
 	var range3d := false
@@ -713,6 +746,8 @@ func _handle_cmdline() -> void:
 			nobottest = true
 		elif a == "--funtest":
 			funtest = true
+		elif a == "--batterytest":
+			batterytest = true
 		elif a == "--resulttest":
 			resulttest = true
 		elif a == "--rangetest":
@@ -871,6 +906,11 @@ func _handle_cmdline() -> void:
 		ft.name = "FunTest"
 		add_child(ft)
 		ft.run(self)
+	if batterytest:
+		var bat := BATTERY_TEST.new()
+		bat.name = "BatteryTest"
+		add_child(bat)
+		bat.run(self)
 	if enemytest:
 		var et := ENEMY_TEST.new()
 		et.name = "EnemyTest"
@@ -2046,7 +2086,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 	if "--shotitems" in OS.get_cmdline_user_args():
 		var ip: Node2D = _players.get_node_or_null("1")      # --shotitems: rząd przedmiotów na ziemi przed graczem (apteczka, amunicja, złom, skrzynie, flary, skrytka, nieśmiertelnik) + granat, mina, ładunek, flara
 		if ip != null:
-			var items := [["scrap", 0, 8], ["scrap", 0, 3], ["stash", 0, 20], ["tag", 0, 0], ["cache", 0, 0]] if "--shotitems2" in OS.get_cmdline_user_args() else [["health", 0, 0], ["ammo", Weapons.M83, 30], ["ammo", Weapons.SPREAD12, 8], ["scrap", 0, 3], ["scrap", 0, 8], ["cache", 0, 0], ["flares", 0, 2],
+			var items := [["scrap", 0, 8], ["scrap", 0, 3], ["stash", 0, 20], ["tag", 0, 0], ["cache", 0, 0], ["battery", 0, 0]] if "--shotitems2" in OS.get_cmdline_user_args() else [["health", 0, 0], ["ammo", Weapons.M83, 30], ["ammo", Weapons.SPREAD12, 8], ["scrap", 0, 3], ["scrap", 0, 8], ["cache", 0, 0], ["flares", 0, 2],
 				["supply", 0, 0], ["supply", 3, 0], ["supply", 5, 0], ["stash", 0, 20], ["tag", 0, 0]]
 			for i in items.size():
 				level.spawn_item(items[i][0], items[i][1], ip.global_position + Vector2(-60.0 + 24.0 * float(i), -8.0), items[i][2])

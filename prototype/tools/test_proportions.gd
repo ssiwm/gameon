@@ -19,6 +19,7 @@ const LIMITS := {
 	"shelf": ["h", 2.0], "radio_set": ["h", 1.25], "lamp": ["h", 0.55], "strongbox": ["h", 0.6], "strongbox_open": ["h", 1.1],
 	"frag": ["max", 0.25], "smoke": ["max", 0.35], "phos": ["max", 0.35], "flare": ["max", 0.55], "mine": ["max", 0.55], "ammo": ["max", 0.55],
 	"medkit": ["max", 0.75], "charge": ["max", 0.5], "defib": ["max", 0.6], "scanner": ["max", 0.6], "tag": ["max", 0.45], "padlock": ["max", 0.25],
+	"battery": ["max", 0.22],          # płaska bateria 4,5 V: 6,7 cm z blaszkami ok. 9 cm
 }
 var _fail := 0
 

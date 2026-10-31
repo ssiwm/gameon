@@ -26,6 +26,7 @@ extends Node2D
 ##   L  Ślepiec (nie widzi, słyszy)   P  Podsłuchacz (stoi, krzyczy i ściąga hordę)
 ##   Y  Mimik (udaje kolegę z drużyny)   A  Kapłan (elita: leczy Trzoski, krzyczy falą ogłuszającą)   U  Rzeźnik (elita: ciężka szarża przez barykady)   V  Żerca (elita: porywa upadłych)
 ##   J  Skoczek (wisi pod sufitem i spada)   Z  Ćma (światłolubna, wisi pod sufitem)
+##   y  bateria 4,5 V do latarki (BATTERY_PLAN.md B1)
 ##
 
 const TILE := 16
@@ -611,7 +612,7 @@ func _exposure(c: int, r: int) -> int:
 ## na każdym peerze.
 func _spawn_entities() -> void:
 	_spawn_walls()
-	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": [], "c": [], "d": []}
+	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": [], "c": [], "d": [], "y": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -624,7 +625,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z", "c", "d": found[ch].append(p)
+				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z", "c", "d", "y": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -833,7 +834,7 @@ func _spawn_entities() -> void:
 			# fizyka uznawała za „w środku" i skrzynia przelatywała piętro niżej
 			pr.position = found[k[0]][i] + Vector2(0, -1)
 			add_child(pr)
-	_map_items = {"a": found["a"], "g": guns_at, "u": found["u"], "F": found["F"], "H": found["H"], "f": found["f"]}
+	_map_items = {"a": found["a"], "g": guns_at, "u": found["u"], "F": found["F"], "H": found["H"], "f": found["f"], "y": found["y"]}
 	_spawn_map_items()
 	if stalker_home != Vector2.ZERO:         # kryjówka (bez znacznika X) nie ma Stalkera
 		var s := STALKER_SCENE.instantiate()
@@ -1002,6 +1003,9 @@ func _spawn_map_items() -> void:
 	var flare_boxes: Array = _map_items.get("f", [])
 	for i in flare_boxes.size():
 		_add_map_item("MapFlares%d" % i, "flares", 0, flare_boxes[i], 2)
+	var batteries: Array = _map_items.get("y", [])
+	for i in batteries.size():
+		_add_map_item("MapBattery%d" % i, "battery", 0, batteries[i])
 	var tags: Array = _map_items.get("F", [])
 	for i in tags.size():
 		_add_map_item("MapTag%d" % i, "tag", 0, tags[i])
@@ -1387,6 +1391,8 @@ func spawn_item(kind: String, arg: int, pos: Vector2, rounds := -1) -> void:
 	rounds = int(Weapons.def(arg).pickup_rounds) if kind == "weapon" and rounds < 0 else maxi(rounds, 0)
 	if kind == "scrap":
 		SessionLog.note_scrap_drop(rounds)              # złom z trupów i bossa (dziennik: ile wypadło, ile drużyna zebrała)
+	elif kind == "battery":
+		SessionLog.note_battery("dropped")              # bateria z wroga, gniazda ćm albo sejfu (leżące na mapie się nie liczą)
 	_pickup_serial += 1
 	var n := "Item%d" % _pickup_serial
 	if NoiseMgr.has_network():

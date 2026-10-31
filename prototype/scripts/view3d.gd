@@ -5273,7 +5273,7 @@ const ITEM3D_DIR := "res://art/items3d/"
 const ITEM_SCALE := {
 	"table": 0.78, "chair": 0.73, "stool": 0.76, "cot": 0.76, "workshop": 0.9, "locker": 0.73, "shelf": 0.8, "radio_set": 0.5, "lamp": 0.5,
 	"frag": 0.37, "smoke": 0.5, "phos": 0.35, "flare": 0.6, "mine": 0.6, "ammo": 0.7, "medkit": 0.6, "charge": 0.65, "defib": 0.6,
-	"scanner": 0.45, "tag": 0.6, "padlock": 0.4,
+	"scanner": 0.45, "tag": 0.6, "padlock": 0.4, "battery": 0.28,
 }
 const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board", "results_board", "workshop", "tools_wall", "rack"]
 ## Głębia (z, m) przedmiotów stojących między płaszczyzną gry a meblami: sejf (skrzynia patrolu) stoi tuż za graczem, poza ślizgowym

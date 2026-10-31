@@ -15,6 +15,8 @@ extends Node2D
 ##           sam przedmiot (granat, mina, skaner…) z poświatą w jego kolorze
 ##   power   skrzynia mocy z mapy (FUN_PLAN.md P1.3, arg = broń, rounds = naboje): dotknięcie przez żywego człowieka bez broni mocy daje mu
 ##           ją poza slotami (weapon_controller.server_grant_power); w kadrze leży model broni z mocną, pulsującą poświatą
+##   battery płaska bateria 4,5 V (BATTERY_PLAN.md B1): +player.BATTERY_PICKUP s latarki temu, kto ma jej najmniej (poniżej BATTERY_TAKE_BELOW);
+##           bot ustępuje człowiekowi, który jej potrzebuje — nic się nie marnuje
 ##   weapon  nie podnosi się samo: gracz naciska E (wymiana broni to decyzja, a nie
 ##           wypadek); serwer sprawdza odległość i przyznaje (level.gd)
 
@@ -46,6 +48,7 @@ const GLOW := {
 	"mag": Color(1.0, 0.78, 0.3),
 	"part": Color(0.5, 0.85, 1.0),
 	"power": Color(1.0, 0.42, 0.18),
+	"battery": Color(1.0, 0.92, 0.66),      # ciepła biel żarówki latarki
 }
 const MAG_EMPTY_LIFE := 30.0      ## s — pusty magazynek (nic do podniesienia) potem znika
 
@@ -185,6 +188,7 @@ func _hd_name() -> String:
 		"scrap": return "scrap_pile"
 		"cache": return "cache"
 		"ammo": return "ammo"
+		"battery": return "battery"
 	return ""
 
 ## Skala sprite'a względem modelu (rozmiar w świecie dobrany tak, by przedmiot był czytelny, ale nie większy od gracza).
@@ -197,6 +201,7 @@ func _hd_scale() -> float:
 		"cache": return 0.8
 		"ammo": return 0.9
 		"scrap": return 0.8 if rounds >= 6 else 0.55
+		"battery": return 1.2                  # ok. 25 cm w świecie: jak granat ze zrzutu, czytelna przy postaci
 	return 1.0
 
 func _setup_hd() -> void:
@@ -284,6 +289,8 @@ func _try_pickup() -> void:
 			_try_supply()
 		"power":
 			_try_power()
+		"battery":
+			_try_battery()
 
 ## Skrzynia mocy: pierwszy żywy człowiek, który jej dotknie i nie ma już broni mocy, dostaje ją poza slotami (boty nie biorą).
 func _try_power() -> void:
@@ -296,6 +303,32 @@ func _try_power() -> void:
 			if lvl != null:
 				lvl.take_item(String(name))
 			return
+
+## Bateria: z graczy w zasięgu bierze ten z najmniejszą baterią (poniżej BATTERY_TAKE_BELOW); bot nie bierze, gdy w promieniu
+## HURT_RESERVE_R jest człowiek, który jej potrzebuje. Poziom baterii innych peerów serwer zna z replikowanego `bat_pct`.
+func _try_battery() -> void:
+	var human_needs := false
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and not p.dead and p.battery_level() < p.BATTERY_TAKE_BELOW and p.global_position.distance_to(global_position) < HURT_RESERVE_R:
+			human_needs = true
+	var best: Node2D = null
+	var best_lvl := INF
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or not _near(p) or (p.is_bot and human_needs):
+			continue
+		var lvl: float = p.battery_level()
+		if lvl < p.BATTERY_TAKE_BELOW and lvl < best_lvl:
+			best = p
+			best_lvl = lvl
+	if best == null:
+		return
+	best.deliver_battery(best.BATTERY_PICKUP)
+	SessionLog.note_battery("picked")
+	SessionLog.event("battery", {"who": "P%d" % int(best.display_id), "bot": bool(best.is_bot), "src": "pickup", "amount": int(best.BATTERY_PICKUP),
+		"before": roundi(best_lvl * 100.0)})
+	var lv := _level()
+	if lv != null:
+		lv.take_item(String(name))
 
 ## Złom zbiera każdy żywy gracz (też bot) — wspólny łup drużyny.
 func _try_scrap() -> void:
