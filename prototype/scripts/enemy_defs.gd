@@ -15,7 +15,9 @@ extends RefCounted
 ##   stun_resist / throws / breaks_barricades  Rzeźnik (F4c): brak chwiania od trafień i ogłuszeń / (false) bez rzutów skrzynią i głazem / szarża rozbija zamurowane przejścia
 ##   charge    parametry szarży bruisera {min, max, windup, time, mult, cd, crash_stun, damage}; brak = stałe Wołka (enemy_bruiser.gd)
 ##   elite     true = elita (GDD §7.2): pasek HP nad głową od początku spotkania, Dyrektor wypuszcza najwyżej jedną naraz (F4)
-##   death_fx  efekty śmierci {shake, hitstop, gibs}; domyślnie ciężki wróg (3,0 / 0,09 / 11)
+##   death_fx  efekty śmierci {shake, hitstop, gibs, sound, pollen}; domyślnie ciężki wróg (3,0 / 0,09 / 11, „impact_flesh”, 0).
+##             sound = [rodzina, warianty, dB, wysokość]; pollen = ile cząstek pyłku (Vfx.pollen) zamiast szczątków
+##   hit_mat  „dust” = trafienie bez krwi, z pyłkiem (Arsenal.Mat.DUST; nie liczy się do wprawy w broni); brak = ciało (FLESH)
 ##   hit_r   promień celu [px] dla stożka ciosu i płomienia (Combat.in_cone); domyślnie 0,45 × większy bok ciała. Ćma: rój kłębi się tuż przy
 ##           szkle latarki (5–9 px od początku ciosu), więc ostrze musi zgarniać ją także na skraju łuku
 ##   nest_scrap  złom za rozbite gniazdo (Ćma: ostatnia ćma gniazda zabita ciosem zostawia go na pewno — enemy_moth.gd: on_death)
@@ -45,7 +47,9 @@ const DEFS := {
 		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
 		"fly": true, "moth": true, "phototaxis": true, "behavior": "moth", "melee_only": true,
 		"color": Color(0.74, 0.7, 0.55), "size": Vector2(2, 2), "hurt_h": 3.0, "hurt_w": 3.0, "hit_r": 4.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,
-		"xp": 1, "scrap": 0, "nest_scrap": 4,
+		"xp": 1, "scrap": 0, "nest_scrap": 4, "hit_mat": "dust",
+		# śmierć (1.7.446): bez mięsa, krwi, wstrząsu i pauzy trafienia (cios zdejmuje kilkanaście ćm naraz) — suchy trzask skrzydełek i pyłek
+		"death_fx": {"shake": 0.0, "hitstop": 0.0, "gibs": 0, "sound": ["moth_crack", 3, -6.0, 1.0], "pollen": 6},
 	},
 	# Skoczek (GDD §7.1): wisi pod sufitem nad przejściem i spada na tego, kto pod nim przejdzie (2 obrażenia).
 	"skoczek": {

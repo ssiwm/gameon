@@ -410,6 +410,20 @@ def build_enemies() -> None:
             cough[a0:a0 + m] += v[: max(0, min(m, n - a0))]
         x = d.mix([(puff, .9), (d.lp(cough, 2600.0), .8)], n)
         finalize("moth_dust_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15, keep_len=True), lufs=-15.0, fade_out_ms=120)
+
+    # Ćma zabita (1.7.446): suchy, papierowy trzask skrzydełek zamiast mlaśnięcia mięsa — kilka coraz słabszych trzasków szumu 3–7,5 kHz
+    # i ledwie słyszalne „puk" ciałka (160 Hz)
+    for i in range(3):
+        r = Rng(0xF300 + i * 2711)
+        n = ms(220)
+        x = np.zeros(n)
+        for at, a in [(.004, 1.0), (.03 + .01 * i, .7), (.065 + .012 * i, .5), (.11 + .01 * i, .3)]:
+            m = ms(14)
+            c = d.filt(d.filt(d.white(m, r), "hp", 3000.0, .7), "lp", 7500.0, .7) * d.env_pts(m, [(0, 0), (.0008, 1), (m / SR, 0)])
+            a0 = int(at * SR)
+            x[a0:a0 + m] += a * c[: max(0, min(m, n - a0))]
+        thud = d.filt(d.colored(n, r, 1.0), "bp", 160.0, .9) * d.env_pts(n, [(0, 0), (.003, 1), (.04, 0), (n / SR, 0)])
+        finalize("moth_crack_%d" % (i + 1), d.mix([(x, 1.0), (thud, .35)], n), lufs=-22.0, fade_out_ms=40)
     bake_hybrid.enemies()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 

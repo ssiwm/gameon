@@ -270,6 +270,13 @@ static func hit(parent: Node, pos: Vector2, dir: Vector2, mat: int, crit: bool, 
 			burst(parent, pos, Color(0.55, 0.38, 0.2), 7, 30.0, 90.0, -dir, 70.0, 420.0, 0.35, Vector2(1.0, 2.0))
 			if snd:
 				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -14.0, 0.62)
+		Arsenal.Mat.DUST:
+			pollen(parent, pos, 2)                                  # Ćma: bez krwi — dźwięk i główny obłok daje śmierć (enemy.gd: _death_fx)
+
+## Pyłek ze skrzydeł Ćmy: blady, ochrowy obłoczek, który wolno opada i mieni się tylko w świetle (cząstki cieniowane — w snopie latarki
+## jak kurz w promieniu, w ciemności niewidoczne).
+static func pollen(parent: Node, pos: Vector2, amount: int) -> void:
+	burst(parent, pos, Color(0.86, 0.8, 0.62, 0.75), amount, 4.0, 18.0, Vector2.UP, 180.0, 16.0, 1.6, Vector2(0.5, 1.1), false, true)
 
 ## Pocisk w ścianę: efekt wg powierzchni (kafel mapy), z krótkim progiem na dźwięk.
 static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String, heavy := false) -> void:

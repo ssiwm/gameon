@@ -218,6 +218,15 @@ func _test_moth_swarm() -> void:
 	await get_tree().physics_frame
 	player.weapons._server_melee(player.global_position + Vector2(0, -9), player.aim_dir, Weapons.KILOF, player.player_id)
 	check("ćma: kilof też ją zabija", not near.alive)
+	var dusty := _spawn("cma", MothB.lamp_pos(player) + Vector2(-3.0, -30.0))
+	dusty.active = true
+	await get_tree().physics_frame
+	var dres: Dictionary = dusty.take_hit({"amount": 5.0, "dir": Vector2.LEFT, "pos": dusty.global_position, "shooter": 0, "type": "melee"})
+	var dfx: Dictionary = EnemyDefs.DEFS["cma"]["death_fx"]
+	check("ćma: trafienie bez krwi (pyłek, Mat.DUST — bez wprawy), śmierć bez mięsa, wstrząsu i pauzy",
+		int(dres.get("mat", -1)) == Arsenal.Mat.DUST and int(dfx.get("gibs", 11)) == 0 and float(dfx.get("shake", 3.0)) == 0.0 and float(dfx.get("hitstop", 1.0)) == 0.0
+		and int(dfx.get("pollen", 0)) > 0 and String((dfx.get("sound", [""]) as Array)[0]) == "moth_crack", str(dres))
+	dusty.queue_free()
 
 	# gniazdo: jeden trzepot na gniazdo, złom dopiero za ostatnią ćmę
 	var nest_ms: Array = []
