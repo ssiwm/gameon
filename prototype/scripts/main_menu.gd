@@ -22,7 +22,9 @@ const Level := preload("res://scripts/level.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Look := preload("res://scripts/look.gd")
 const Ops := preload("res://scripts/operators_screen.gd")
+const Actions := preload("res://scripts/actions.gd")
 const QUIT_CONFIRM_S := 3.0
+const DRAWER_DELAY := 0.12            ## s: kursor musi chwilę zostać na karcie, zanim szuflada zmieni treść (pad i klawiatura — od razu)
 
 const MX := 61.0                     ## margines boczny
 const COL_W := 480.0                 ## lista destynacji i szuflada
@@ -59,17 +61,42 @@ var _hints: Control
 var _quit_t := 0.0
 var _t := 0.0
 var _steam_on := false
+var _pending: Card                    ## karta czekająca na DRAWER_DELAY (mysz)
+var _pending_t := 0.0
+var _focus_last: Control              ## ostatni element z fokusem — dźwięk ruchu raz na element
+var _quiet := false                   ## fokus ustawiany z kodu (otwarcie menu) — bez dźwięku
+var _hints_pad := false
+
+## Rysowanie tekstu z zapisem: co narysowano, najmniejszy rozmiar i napisy szersze niż dostępne miejsce (`avail`, domyślnie `max_w`)
+## — sprawdza je --uifittest (tools/test_ui_fit.gd), bo tekst rysowany w _draw nie ma własnego prostokąta.
+class Painted extends Control:
+	var drawn := PackedStringArray()
+	var clipped := PackedStringArray()
+	var min_px := 99
+	func _begin() -> void:
+		drawn.clear()
+		clipped.clear()
+		min_px = 99
+	func _str(f: Font, pos: Vector2, s: String, al: HorizontalAlignment, max_w: float, px: int, col: Color, avail := -1.0) -> void:
+		draw_string(f, pos, s, al, max_w, px, col)
+		drawn.append(s)
+		min_px = mini(min_px, px)
+		var room := avail if avail > 0.0 else max_w
+		if room > 0.0 and f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > room + 0.5:
+			clipped.append(s)
 
 ## Element z fokusem: kursor nad nim daje mu fokus, klik / [Enter] / A — `pressed`.
-class Focusable extends Control:
+class Focusable extends Painted:
 	signal pressed
+	var via_mouse := false            ## fokus dał kursor (szuflada czeka DRAWER_DELAY), nie klawiatura / pad
 	func _init() -> void:
 		focus_mode = Control.FOCUS_ALL
 		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	func _notification(what: int) -> void:
 		if what == NOTIFICATION_FOCUS_ENTER or what == NOTIFICATION_FOCUS_EXIT:
 			queue_redraw()
-		elif what == NOTIFICATION_MOUSE_ENTER and is_visible_in_tree():
+		elif what == NOTIFICATION_MOUSE_ENTER and is_visible_in_tree() and not has_focus():
+			via_mouse = true
 			grab_focus()
 	func _gui_input(e: InputEvent) -> void:
 		if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or e.is_action_pressed("ui_accept"):
@@ -89,6 +116,7 @@ class Card extends Focusable:
 	var details: Array = []          ## [[etykieta, wartość], …] do szuflady
 
 	func _draw() -> void:
+		_begin()
 		var UT := preload("res://scripts/ui_theme.gd")
 		var on := has_focus()
 		var big := button != ""
@@ -105,15 +133,17 @@ class Card extends Focusable:
 			draw_rect(Rect2(0, 0, 2, size.y), UT.DANGER)
 			var cy := top + tf.get_height(ts) * 0.5
 			draw_colored_polygon(PackedVector2Array([Vector2(8, cy - 5), Vector2(15, cy), Vector2(8, cy + 5)]), UT.DANGER)
-		draw_string(mf, Vector2(22, base), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UT.DANGER if on else UT.MUTED)
-		draw_string(tf, Vector2(46, base), tr(title), HORIZONTAL_ALIGNMENT_LEFT, -1, ts, Color("f1ecdc") if on else UT.TEXT)
+		_str(mf, Vector2(22, base), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UT.DANGER if on else UT.MUTED)
+		var tl := tr(title)
+		var tw := tf.get_string_size(tl, HORIZONTAL_ALIGNMENT_LEFT, -1, ts).x
+		_str(tf, Vector2(46, base), tl, HORIZONTAL_ALIGNMENT_LEFT, -1, ts, Color("f1ecdc") if on else UT.TEXT, size.x - 46.0 - 20.0)
 		if right != "":
-			draw_string(mf, Vector2(0, size.y * 0.5 + 5.0), right, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 20.0, 13,
-				UT.TEXT if on else UT.BONE_DIM)
+			_str(mf, Vector2(0, size.y * 0.5 + 5.0), right, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 20.0, 13,
+				UT.TEXT if on else UT.BONE_DIM, size.x - 20.0 - 46.0 - tw - 16.0)
 		if not big:
 			return
 		var wf := UT.whisper_font()
-		draw_string(wf, Vector2(46, base + 10.0 + wf.get_ascent(17)), mission, HORIZONTAL_ALIGNMENT_LEFT, size.x - 70.0, 17, UT.TEXT)
+		_str(wf, Vector2(46, base + 10.0 + wf.get_ascent(17)), mission, HORIZONTAL_ALIGNMENT_LEFT, size.x - 70.0, 17, UT.TEXT)
 		for i in total:
 			draw_rect(Rect2(46.0 + 31.0 * i, size.y - 26.0, 26, 3), UT.ACCENT if i < cleared else UT.LINE2)
 		var br := Rect2(size.x - 20.0 - 150.0, size.y - 16.0 - 36.0, 150, 36)
@@ -121,37 +151,51 @@ class Card extends Focusable:
 		var bf := UT.display_font(900, 2)
 		var bl := tr(button)
 		var bw := bf.get_string_size(bl, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
-		draw_string(bf, Vector2(br.position.x + (br.size.x - bw - 18.0) * 0.5, br.position.y + (br.size.y - bf.get_height(20)) * 0.5 + bf.get_ascent(20)),
-			bl, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UT.DECK_BG)
+		_str(bf, Vector2(br.position.x + (br.size.x - bw - 18.0) * 0.5, br.position.y + (br.size.y - bf.get_height(20)) * 0.5 + bf.get_ascent(20)),
+			bl, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UT.DECK_BG, br.size.x - 30.0)
 		draw_string(mf, Vector2(br.end.x - 22.0, br.position.y + 23.0), "→", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.DECK_BG)
 
-## Szuflada pod listą: nagłówek wskazanej destynacji i do 4 par etykieta–wartość (2 × 2). Miejsce zarezerwowane, myszy nie łapie.
-class Drawer extends Control:
+## Szuflada pod listą: nagłówek wskazanej destynacji i do 4 par etykieta–wartość (2 × 2). Miejsce zarezerwowane (tło stoi),
+## myszy nie łapie; nowa treść wjeżdża w FADE_S z 6 px niżej (bez animacji przy „Reduce effects”).
+class Drawer extends Painted:
+	const FADE_S := 0.14
 	var num := ""
 	var title := ""
 	var pairs: Array = []
+	var fade := 1.0
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-	func show_card(c: Card) -> void:
+		set_process(false)
+	func show_card(c: Card, animate := false) -> void:
 		num = c.num
 		title = c.title
 		pairs = c.details
+		fade = 0.0 if animate else 1.0
+		set_process(animate)
 		queue_redraw()
+	func _process(delta: float) -> void:
+		fade = minf(1.0, fade + delta / FADE_S)
+		queue_redraw()
+		if fade >= 1.0:
+			set_process(false)
 	func _draw() -> void:
+		_begin()
 		var UT := preload("res://scripts/ui_theme.gd")
 		var mf := UT.mono_font()
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.03, 0.035, 0.03, 0.82))
 		draw_rect(Rect2(0, 0, size.x, 1), UT.LINE2)
 		draw_rect(Rect2(0, 0, 2, size.y), UT.DANGER)
-		draw_string(mf, Vector2(16, 30), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UT.DANGER)
-		draw_string(mf, Vector2(16, 50), tr(title), HORIZONTAL_ALIGNMENT_LEFT, 82.0, 12, UT.TEXT)
+		var a := fade
+		var dy := 6.0 * (1.0 - fade)
+		_str(mf, Vector2(16, 30 + dy), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(UT.DANGER, a))
+		_str(mf, Vector2(16, 50 + dy), tr(title), HORIZONTAL_ALIGNMENT_LEFT, 82.0, 12, Color(UT.TEXT, a))
 		draw_rect(Rect2(102, 14, 1, size.y - 28.0), UT.LINE)
 		var cw := (size.x - 114.0 - 10.0) * 0.5
 		for i in mini(pairs.size(), 4):
-			var o := Vector2(114.0 + cw * (i % 2), 13.0 + 38.0 * float(i >> 1))
+			var o := Vector2(114.0 + cw * (i % 2), 13.0 + 38.0 * float(i >> 1) + dy)
 			var p: Array = pairs[i]
-			draw_string(mf, o + Vector2(0, 12), tr(String(p[0])), HORIZONTAL_ALIGNMENT_LEFT, cw - 8.0, 12, UT.MUTED)
-			draw_string(mf, o + Vector2(0, 31), String(p[1]), HORIZONTAL_ALIGNMENT_LEFT, cw - 6.0, 13, UT.TEXT)
+			_str(mf, o + Vector2(0, 12), tr(String(p[0])), HORIZONTAL_ALIGNMENT_LEFT, cw - 8.0, 12, Color(UT.MUTED, a))
+			_str(mf, o + Vector2(0, 31), String(p[1]), HORIZONTAL_ALIGNMENT_LEFT, cw - 6.0, 13, Color(UT.TEXT, a))
 
 ## Karta operatora: portret, kryptonim, poziom i pasek XP; z fokusem dopisuje XP i złom (rośnie w dół, pod nią jest pusto).
 class PlayerCard extends Focusable:
@@ -170,6 +214,7 @@ class PlayerCard extends Focusable:
 		portrait.size = Vector2(45, 63)
 		add_child(portrait)
 	func _draw() -> void:
+		_begin()
 		var UT := preload("res://scripts/ui_theme.gd")
 		var on := has_focus()
 		var r := Rect2(0, 0, size.x, H_OPEN if on else H)
@@ -180,14 +225,21 @@ class PlayerCard extends Focusable:
 		draw_rect(r, UT.LINE2 if on else UT.LINE, false, 1.0)
 		var tf := UT.display_font(900, 1)
 		var mf := UT.mono_font()
-		draw_string(tf, Vector2(70, 12 + tf.get_ascent(24)), callsign, HORIZONTAL_ALIGNMENT_LEFT, size.x - 84.0, 24,
+		var px := 24                  # długi kryptonim: mniejszy stencil, a najszerszy (16 × „W”) — węższy krój mono
+		var cf: Font = tf
+		while px > 16 and tf.get_string_size(callsign, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > size.x - 84.0:
+			px -= 2
+		if tf.get_string_size(callsign, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > size.x - 84.0:
+			cf = mf
+			px = 14
+		_str(cf, Vector2(70, 12 + tf.get_ascent(24)), callsign, HORIZONTAL_ALIGNMENT_LEFT, size.x - 84.0, px,
 			Color("f1ecdc") if on else UT.TEXT)
-		draw_string(mf, Vector2(70, 56), "LV %d" % lv, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.BONE_DIM)
+		_str(mf, Vector2(70, 56), tr("LV %d") % lv, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.BONE_DIM)
 		var bw := size.x - 90.0
 		draw_rect(Rect2(70, 66, bw, 3), UT.LINE2)
 		draw_rect(Rect2(70, 66, bw * clampf(float(xp) / float(maxi(1, xp_need)), 0.0, 1.0), 3), UT.TEXT)
 		if on:
-			draw_string(mf, Vector2(16, 96), "XP %d / %d  ·  %s %d" % [xp, xp_need, tr("SCRAP"), scrap], HORIZONTAL_ALIGNMENT_LEFT,
+			_str(mf, Vector2(16, 96), "XP %d / %d  ·  %s %d" % [xp, xp_need, tr("SCRAP"), scrap], HORIZONTAL_ALIGNMENT_LEFT,
 				size.x - 30.0, 12, UT.TEXT)
 
 ## Wiersz panelu drużyny: przełącznik (towarzysz AI) albo przycisk w ramce z podpisem i strzałką (dołączenie).
@@ -196,6 +248,7 @@ class Row extends Focusable:
 	var sub := ""
 	var toggle := -1                 ## −1 bez przełącznika; 0 / 1 — stan
 	func _draw() -> void:
+		_begin()
 		var UT := preload("res://scripts/ui_theme.gd")
 		var on := has_focus()
 		var mf := UT.mono_font()
@@ -205,20 +258,23 @@ class Row extends Focusable:
 		if toggle < 0:
 			draw_rect(Rect2(Vector2.ZERO, size), UT.TEXT if on else UT.LINE2, false, 1.0)
 			var tf := UT.display_font(700, 1)
-			draw_string(tf, Vector2(14, (size.y - tf.get_height(20)) * 0.5 + tf.get_ascent(20)), tr(label), HORIZONTAL_ALIGNMENT_LEFT,
-				-1, 20, Color("f1ecdc") if on else UT.TEXT)
-			draw_string(mf, Vector2(0, size.y * 0.5 + 4.5), tr(sub), HORIZONTAL_ALIGNMENT_RIGHT, size.x - 34.0, 12, UT.MUTED)
-			draw_string(mf, Vector2(size.x - 24.0, size.y * 0.5 + 5.0), "→", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.DANGER)
+			var sub_w := mf.get_string_size(tr(sub), HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			_str(tf, Vector2(14, (size.y - tf.get_height(20)) * 0.5 + tf.get_ascent(20)), tr(label), HORIZONTAL_ALIGNMENT_LEFT,
+				-1, 20, Color("f1ecdc") if on else UT.TEXT, size.x - 34.0 - sub_w - 28.0)
+			_str(mf, Vector2(0, size.y * 0.5 + 4.5), tr(sub), HORIZONTAL_ALIGNMENT_RIGHT, size.x - 34.0, 12, UT.MUTED)
+			_str(mf, Vector2(size.x - 24.0, size.y * 0.5 + 5.0), "→", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.DANGER)
 			return
-		draw_string(mf, Vector2(12, size.y * 0.5 + 4.5), tr(label), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.TEXT if on else UT.BONE_DIM)
 		var sw := Rect2(size.x - 12.0 - 38.0, size.y * 0.5 - 10.0, 38, 20)
+		var word := tr("ON" if toggle == 1 else "OFF")
+		var ww := mf.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 10.0 if on else 0.0
+		_str(mf, Vector2(12, size.y * 0.5 + 4.5), tr(label), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.TEXT if on else UT.BONE_DIM,
+			sw.position.x - 12.0 - ww - 8.0)
 		draw_rect(sw, Color("1c1c18") if toggle == 1 else Color("0d0e0c"))
 		draw_rect(sw, UT.TEXT if toggle == 1 else UT.LINE2, false, 1.0)
 		draw_rect(Rect2(sw.position + Vector2(sw.size.x - 17.0 if toggle == 1 else 3.0, 3.0), Vector2(14, 14)),
 			UT.TEXT if toggle == 1 else Color("7d7a6d"))
 		if on:
-			draw_string(mf, Vector2(0, size.y * 0.5 + 4.5), tr("ON" if toggle == 1 else "OFF"), HORIZONTAL_ALIGNMENT_RIGHT,
-				sw.position.x - 10.0, 12, UT.TEXT)
+			_str(mf, Vector2(0, size.y * 0.5 + 4.5), word, HORIZONTAL_ALIGNMENT_RIGHT, sw.position.x - 10.0, 12, UT.TEXT)
 
 ## Odnośnik w pasku dolnym (USTAWIENIA, WYJŚCIE): mono 13, z fokusem jaśnieje i dostaje czerwone podkreślenie.
 class Link extends Focusable:
@@ -229,21 +285,23 @@ class Link extends Focusable:
 			custom_minimum_size = Vector2(f.get_string_size(tr(v), HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 4.0, 24)
 			queue_redraw()
 	func _draw() -> void:
+		_begin()
 		var UT := preload("res://scripts/ui_theme.gd")
 		var on := has_focus()
-		draw_string(UT.mono_font(), Vector2(2, 16), tr(label), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.TEXT if on else UT.BONE_DIM)
+		_str(UT.mono_font(), Vector2(2, 16), tr(label), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UT.TEXT if on else UT.BONE_DIM)
 		if on:
 			draw_rect(Rect2(2, 21, size.x - 4.0, 1), UT.DANGER)
 
 ## OSTATNI KOMUNIKAT: dioda, etykieta i wykres fali; cytat audycji pokazuje się obok po najechaniu (main_menu._show_quote).
-class Ticker extends Control:
+class Ticker extends Painted:
 	func _init() -> void:
 		custom_minimum_size = Vector2(180, 24)
 		mouse_filter = Control.MOUSE_FILTER_PASS
 	func _draw() -> void:
+		_begin()
 		var UT := preload("res://scripts/ui_theme.gd")
 		draw_circle(Vector2(4, 12), 3.0, UT.DANGER)
-		draw_string(UT.mono_font(), Vector2(14, 16), tr("LAST BROADCAST"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UT.BONE_DIM)
+		_str(UT.mono_font(), Vector2(14, 16), tr("LAST BROADCAST"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UT.BONE_DIM)
 		var x := UT.mono_font().get_string_size(tr("LAST BROADCAST"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 24.0
 		for i in 6:
 			var h: float = [4.0, 9.0, 6.0, 11.0, 5.0, 8.0][i]
@@ -271,10 +329,12 @@ func _ready() -> void:
 	visibility_changed.connect(func() -> void:
 		if visible and is_inside_tree():
 			_refresh()
-			_cards[0].grab_focus())
+			_focus_quiet(_cards[0]))
+	for n in focusables():
+		n.focus_entered.connect(_on_focus.bind(n))
 	_fit()
 	_refresh()
-	_cards[0].call_deferred("grab_focus")
+	_focus_quiet.call_deferred(_cards[0])
 
 func _fit() -> void:
 	var vp := get_viewport_rect().size
@@ -289,7 +349,7 @@ func _layout() -> void:
 	var w := _root.size.x
 	var h := _root.size.y
 	var side_x := w - MX - SIDE_W
-	_title_box.position = Vector2(MX, 26.0)
+	_title_box.position = Vector2(MX, 23.0)
 	_player.position = Vector2(side_x, 43.0)
 	_squad.position = Vector2(side_x, CARD_Y + CARD_H[0] + CARD_H[1] + CARD_H[2] + GAP * 2.0 - SQUAD_H)
 	_foot.position = Vector2(0, h - FOOT_H)
@@ -343,8 +403,9 @@ func _build_cards() -> void:
 		c.position = Vector2(MX, y)
 		c.size = Vector2(COL_W, CARD_H[i])
 		var action: Callable = defs[i][2]
+		var snd := "ui_click" if i == 2 else "ui_confirm"
 		c.pressed.connect(func() -> void:
-			Audio.play("ui_click", Audio.BUS_UI, -10.0)
+			Audio.play(snd, Audio.BUS_UI, -8.0)
 			action.call())
 		c.focus_entered.connect(_on_card_focus.bind(c))
 		_root.add_child(c)
@@ -395,7 +456,7 @@ func _build_side() -> void:
 	_join.position = Vector2(12, 41 + 37 + 6)
 	_join.size = Vector2(SIDE_W - 24.0, 37)
 	_join.pressed.connect(func() -> void:
-		Audio.play("ui_click", Audio.BUS_UI, -10.0)
+		Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
 		_play("join"))
 	_squad.add_child(_join)
 
@@ -439,12 +500,20 @@ func _build_footer() -> void:
 	hints.add_theme_constant_override("separation", 18)
 	_foot.add_child(hints)
 	_hints = hints
-	for pair in [["↑↓", "SELECT"], ["ENTER", "CONFIRM"], ["ESC", "SETTINGS"]]:
+	_build_hints()
+
+## Podpowiedzi klawiszy z rejestru akcji (Actions.key): klawiatura ENTER / ESC, pad A / START — przełączane z Actions.pad_mode.
+func _build_hints() -> void:
+	_hints_pad = Actions.pad_mode
+	for ch in _hints.get_children():
+		_hints.remove_child(ch)
+		ch.queue_free()
+	for pair in [["↑↓←→", "SELECT"], [Actions.key("menu_accept"), "CONFIRM"], [Actions.key("pause"), "SETTINGS"]]:
 		var h := HBoxContainer.new()
 		h.add_theme_constant_override("separation", 6)
 		h.add_child(W.keycap(pair[0], 12))
 		h.add_child(W.mono(pair[1], 12, UiTheme.MUTED))
-		hints.add_child(h)
+		_hints.add_child(h)
 
 ## Siatka fokusu z MAIN_MENU_PLAN.md §5. „W lewo” z prawej kolumny wraca do ostatniej wskazanej destynacji (_on_card_focus).
 func _wire_focus() -> void:
@@ -468,11 +537,38 @@ func _nb(n: Control, up: Control, down: Control, left: Control, right: Control) 
 	n.focus_next = n.get_path_to(down)
 	n.focus_previous = n.get_path_to(up)
 
+## Wskazana destynacja: szuflada pokazuje jej szczegóły — od razu z klawiatury i pada, po DRAWER_DELAY pod kursorem
+## (przejazd myszą przez listę nie miga treścią); „Reduce effects” — bez opóźnienia i bez animacji.
 func _on_card_focus(c: Card) -> void:
 	_last_card = c
-	_drawer.show_card(c)
 	for n in [_player, _ai, _join]:
 		n.focus_neighbor_left = n.get_path_to(c)
+	var fx := Settings.fx_mult() > 0.0
+	if c.via_mouse and fx:
+		_pending = c
+		_pending_t = DRAWER_DELAY
+	else:
+		_pending = null
+		_drawer.show_card(c, fx and not _quiet)
+
+## Wszystkie elementy z fokusem (siatka z MAIN_MENU_PLAN.md §5) — także dla testu i zrzutów.
+func focusables() -> Array:
+	return [_cards[0], _cards[1], _cards[2], _player, _ai, _join, _settings, _quit]
+
+## Fokus ustawiony z kodu (otwarcie menu): bez dźwięku ruchu.
+func _focus_quiet(n: Control) -> void:
+	_quiet = true
+	n.grab_focus()
+	_focus_last = n
+	_quiet = false
+
+## Dźwięk ruchu raz na element (powrót na ten sam element i fokus z kodu — cicho).
+func _on_focus(n: Control) -> void:
+	(n as Focusable).via_mouse = false
+	if _quiet or n == _focus_last:
+		return
+	_focus_last = n
+	Audio.play("ui_tick", Audio.BUS_UI, -16.0)
 
 func _show_quote(on: bool) -> void:
 	_quote.modulate.a = 1.0 if on or _settings.has_focus() or _quit.has_focus() else 0.0
@@ -482,10 +578,10 @@ func _play(which: String) -> void:
 	play_requested.emit()
 
 func _on_quit() -> void:
-	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 	if _quit_t > 0.0:
 		Audio.quit_game()
 		return
+	Audio.play("ui_deny", Audio.BUS_UI, -10.0)
 	_quit_t = QUIT_CONFIRM_S
 	_quit.label = "CLICK AGAIN TO QUIT"
 	_layout()
@@ -513,7 +609,7 @@ func _refresh() -> void:
 	var nxt := far + 1 if far + 1 < Level.CAMPAIGN.size() else 0
 	var next_title := _map_title(String(Level.CAMPAIGN[nxt]))
 	var c0 := _cards[0]
-	c0.mission = "%s · %s" % [tr("NEXT UP"), next_title]
+	c0.mission = "%s · %s" % [tr("START CAMPAIGN") if far < 0 else tr("NEXT UP"), next_title]     # nowy gracz / reset: od 1.1
 	c0.cleared = done
 	c0.total = Level.CAMPAIGN.size()
 	c0.details = [["NEXT MISSION", next_title], ["PROGRESS", "%d / %d" % [done, Level.CAMPAIGN.size()]],
@@ -531,7 +627,8 @@ func _refresh() -> void:
 		["ROSTER", "%d / %d" % [Characters.count(), Characters.MAX]], ["LAST MISSION", _map_title(last) if last != "" else "—"]]
 	for c in _cards:
 		c.queue_redraw()
-	_drawer.show_card(_last_card)
+	if _pending == null:
+		_drawer.show_card(_last_card)
 	var prog: Array = Profile.level_progress()
 	_player.callsign = name
 	_player.lv = Profile.level()
@@ -561,13 +658,22 @@ const _NOTES := [
 ]
 
 func focus_first() -> void:
-	_cards[0].grab_focus()
+	_focus_quiet(_cards[0])
 
 func _process(delta: float) -> void:
 	if visible and NoiseMgr.has_network():
 		visible = false                  # sesja ruszyła inną drogą niż PLAY (zaproszenie Steam, dołączenie) — menu nie może zostać na wierzchu
 	if not visible:
 		return
+	if _pending != null:
+		_pending_t -= delta
+		if _pending_t <= 0.0:
+			if _pending.has_focus():
+				_drawer.show_card(_pending, Settings.fx_mult() > 0.0)
+			_pending = null
+	if Actions.pad_mode != _hints_pad:
+		_build_hints()
+		_layout()
 	if _quit_t > 0.0:
 		_quit_t -= delta
 		if _quit_t <= 0.0:

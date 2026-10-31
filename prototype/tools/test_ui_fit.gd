@@ -8,6 +8,11 @@ extends RefCounted
 const PauseMenu := preload("res://scripts/pause_menu.gd")
 const OperatorsScreen := preload("res://scripts/operators_screen.gd")
 const Codex := preload("res://scripts/codex.gd")
+const MainMenu := preload("res://scripts/main_menu.gd")
+const Actions := preload("res://scripts/actions.gd")
+const MENU_SIZES := [Vector2i(1280, 720), Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(1280, 800)]
+const MENU_WORDS := 70                 ## MAIN_MENU_PLAN.md §7: tekst w spoczynku
+const MENU_MIN_PX := 12
 
 const LOCALES := ["en", "pl"]
 const TAB_NAMES := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "CONTROLS"]
@@ -83,6 +88,7 @@ func run(host: Node) -> int:
 		pm.queue_free()
 		await tree.process_frame
 	await _operators_checks(host)
+	await _main_menu_checks(host)
 	TranslationServer.set_locale(keep)
 	_bestiary_checks()
 	_new_marks_checks()
@@ -246,6 +252,215 @@ func _operators_checks(host: Node) -> void:
 		print("[UI-FIT] PASS  OPERATORZY: przełączenie postaci wczytuje jej profil (XP %d) i kryptonim „%s”" % [got_xp, got_name])
 	_rm_tree(ROOT)
 	Characters.use_root(Characters.ROOT)
+
+## Menu główne (MAIN_MENU_PLAN.md §7) po angielsku i po polsku w 1280×720, 1920×1080, 2560×1440 i 1280×800 (SubViewport w tym
+## rozmiarze): tekst rysowany w kartach mieści się (Painted.clipped) przy fokusie na każdym elemencie, nic nie wychodzi poza ekran,
+## strefy na siebie nie wchodzą, tekst ≥ 12 px, w spoczynku ≤ 70 słów. Raz: siatka fokusu dochodzi do 8 elementów, akcje wysyłają
+## swoje sygnały (bez drugiego kliknięcia WYJŚCIA i bez przełącznika AI — ten zapisuje ustawienia), DOŁĄCZ bez Steama, szuflada
+## (od razu z klawiatury, po opóźnieniu pod kursorem, „Reduce effects”), podpowiedzi pada. Najdłuższy kryptonim (16 × „W”).
+func _main_menu_checks(host: Node) -> void:
+	var tree := host.get_tree()
+	var keep_name: String = Characters._override_name
+	Characters._override_name = "WWWWWWWWWWWWWWWW"
+	var before := _fails
+	for loc in LOCALES:
+		TranslationServer.set_locale(loc)
+		for sz in MENU_SIZES:
+			var svp := SubViewport.new()
+			svp.size = sz
+			host.add_child(svp)
+			var m: Control = MainMenu.new()
+			svp.add_child(m)
+			for _f in 3:
+				await tree.process_frame
+			var tag := "%s %dx%d" % [loc, sz.x, sz.y]
+			for n in m.focusables():
+				(n as Control).grab_focus()
+				await tree.process_frame
+				_menu_clipped(m, "%s, fokus %s" % [tag, _menu_name(n)])
+			_menu_bounds(m, tag, Rect2(Vector2.ZERO, Vector2(sz)))
+			if sz == MENU_SIZES[0]:
+				m.focus_first()
+				await tree.process_frame
+				await tree.process_frame
+				var words := _menu_words(m)
+				if words > MENU_WORDS:
+					_fail("%s menu główne: w spoczynku %d słów (limit %d)" % [tag, words, MENU_WORDS])
+				else:
+					print("[UI-FIT] PASS  %s menu główne: w spoczynku %d słów (≤ %d)" % [tag, words, MENU_WORDS])
+				if loc == "en":
+					await _menu_behaviour(m, tree)
+			svp.queue_free()
+			await tree.process_frame
+	Characters._override_name = keep_name
+	if _fails == before:
+		print("[UI-FIT] PASS  menu główne: EN/PL × 1280×720, 1920×1080, 2560×1440, 1280×800 — tekst w kartach, ekran, strefy, ≥ %d px" % MENU_MIN_PX)
+
+
+func _menu_name(n: Control) -> String:
+	for p in ["title", "label"]:
+		var v: Variant = n.get(p)
+		if v != null and String(v) != "":
+			return String(v)
+	return n.get_class()
+
+
+## Napisy rysowane w _draw, które nie mieszczą się w swoim miejscu, i rozmiar poniżej MENU_MIN_PX (także w etykietach).
+func _menu_clipped(m: Control, tag: String) -> void:
+	for n in m.find_children("*", "Control", true, false):
+		var c := n as Control
+		if not c.is_visible_in_tree():
+			continue
+		if c.get("clipped") != null:
+			for t in (c.get("clipped") as PackedStringArray):
+				var key := "menu|%s|%s" % [tag.get_slice(",", 0), t]
+				if not _seen.has(key):
+					_seen[key] = true
+					_fail("%s: „%s” nie mieści się" % [tag, t])
+			if (c.get("drawn") as PackedStringArray).size() > 0 and int(c.get("min_px")) < MENU_MIN_PX:
+				_fail("%s: tekst %d px w %s" % [tag, int(c.get("min_px")), c.get_class()])
+		elif c is Label and c.get_theme_font_size("font_size") < MENU_MIN_PX:
+			var key := "menu|px|%s" % (c as Label).text
+			if not _seen.has(key):
+				_seen[key] = true
+				_fail("%s: etykieta %s ma %d px" % [tag, _desc(c), c.get_theme_font_size("font_size")])
+
+
+## Strefy na ekranie i bez nakładania: tytuł nad listą, lista z lewej od prawej kolumny, cytat przed podpowiedziami.
+func _menu_bounds(m: Control, tag: String, vp: Rect2) -> void:
+	var k: float = (m._root as Control).scale.x
+	var player: Control = m._player
+	var pr := Rect2(player.get_global_rect().position, Vector2(player.size.x, player.H_OPEN) * k)
+	var zones := {"tytuł": (m._title_box as Control).get_global_rect(), "karta operatora": pr,
+		"łączność drużyny": (m._squad as Control).get_global_rect(), "szuflada": (m._drawer as Control).get_global_rect(),
+		"podpowiedzi": (m._hints as Control).get_global_rect()}
+	for c in m._cards:
+		zones["karta " + String(c.title)] = (c as Control).get_global_rect()
+	for z in zones:
+		if not vp.encloses((zones[z] as Rect2).grow(-SLACK)):
+			_fail("%s menu główne: %s %s poza ekranem %s" % [tag, z, zones[z], vp])
+	var first: Rect2 = (m._cards[0] as Control).get_global_rect()
+	if zones["tytuł"].end.y > first.position.y + SLACK:
+		_fail("%s menu główne: tytuł (do y %.0f) wchodzi na kartę kampanii (y %.0f)" % [tag, zones["tytuł"].end.y, first.position.y])
+	var left_end: float = (m._drawer as Control).get_global_rect().end.x
+	for z in ["karta operatora", "łączność drużyny"]:
+		if zones[z].position.x < left_end + 8.0 * k:
+			_fail("%s menu główne: %s (x %.0f) za blisko listy (do x %.0f)" % [tag, z, zones[z].position.x, left_end])
+	var q: Rect2 = (m._quote as Control).get_global_rect()
+	if q.end.x > zones["podpowiedzi"].position.x + SLACK:
+		_fail("%s menu główne: cytat (do x %.0f) wchodzi na podpowiedzi (x %.0f)" % [tag, q.end.x, zones["podpowiedzi"].position.x])
+
+
+## Słowa widoczne w spoczynku: napisy rysowane i etykiety (bez ukrytego cytatu), liczone jako ciągi z literą albo cyfrą.
+func _menu_words(m: Control) -> int:
+	var words := 0
+	var re := RegEx.create_from_string("[\\p{L}\\p{N}]")
+	for n in m.find_children("*", "Control", true, false):
+		var c := n as Control
+		if not c.is_visible_in_tree() or c.modulate.a < 0.01:
+			continue
+		var texts: Array = []
+		if c.get("drawn") != null:
+			texts = Array(c.get("drawn") as PackedStringArray)
+		elif c is Label:
+			texts = [(c as Label).text]
+		for t in texts:
+			for w in String(t).split(" ", false):
+				if re.search(w) != null:
+					words += 1
+	return words
+
+
+## Siatka fokusu, akcje, DOŁĄCZ bez Steama, szuflada (klawiatura / mysz / „Reduce effects”), podpowiedzi pada.
+func _menu_behaviour(m: Control, tree: SceneTree) -> void:
+	var nodes: Array = m.focusables()
+	var seen := {nodes[0]: true}
+	var queue: Array = [nodes[0]]
+	while not queue.is_empty():
+		var n: Control = queue.pop_front()
+		for p in [n.focus_neighbor_top, n.focus_neighbor_bottom, n.focus_neighbor_left, n.focus_neighbor_right]:
+			var t := n.get_node_or_null(p)
+			if t != null and not seen.has(t):
+				seen[t] = true
+				queue.append(t)
+	var c: Array = m._cards
+	var expect := [[c[0], "focus_neighbor_bottom", c[1]], [c[0], "focus_neighbor_right", m._player],
+		[c[1], "focus_neighbor_right", m._ai], [c[2], "focus_neighbor_right", m._join], [c[2], "focus_neighbor_bottom", m._settings],
+		[m._join, "focus_neighbor_bottom", m._quit], [m._settings, "focus_neighbor_right", m._quit], [m._quit, "focus_neighbor_top", m._join]]
+	var grid_ok := seen.size() == nodes.size()
+	if not grid_ok:
+		_fail("menu główne: siatka fokusu dochodzi do %d z %d elementów" % [seen.size(), nodes.size()])
+	for e in expect:
+		if (e[0] as Control).get_node_or_null((e[0] as Control).get(e[1])) != e[2]:
+			grid_ok = false
+			_fail("menu główne: %s.%s nie prowadzi do oczekiwanego elementu" % [_menu_name(e[0]), e[1]])
+	c[1].grab_focus()
+	await tree.process_frame
+	var back: bool = (m._ai as Control).get_node_or_null(m._ai.focus_neighbor_left) == c[1]
+	if grid_ok and back:
+		print("[UI-FIT] PASS  menu główne: siatka fokusu dochodzi do %d elementów, „w lewo” wraca do ostatniej karty" % nodes.size())
+	elif not back:
+		_fail("menu główne: „w lewo” z prawej kolumny nie wraca do ostatniej karty")
+	# akcje
+	var got := []
+	m.play_requested.connect(func() -> void: got.append("play:" + String(m.entry)))
+	m.operators_requested.connect(func() -> void: got.append("operators"))
+	m.settings_requested.connect(func() -> void: got.append("settings"))
+	for n in [c[0], c[1], m._join, c[2], m._player, m._settings, m._quit]:
+		(n as Control).emit_signal("pressed")
+	var want := ["play:host", "play:night", "play:join", "operators", "operators", "settings"]
+	if got != want or m._quit.label != "CLICK AGAIN TO QUIT":
+		_fail("menu główne: akcje %s (oczekiwano %s), WYJŚCIE „%s”" % [got, want, m._quit.label])
+	else:
+		print("[UI-FIT] PASS  menu główne: kampania, Nocny Dyżur, dołączanie, operatorzy (karta i portret), ustawienia, potwierdzenie wyjścia")
+	if m._ai.toggle != (1 if Settings.ai_companion else 0):
+		_fail("menu główne: przełącznik AI nie pokazuje Settings.ai_companion")
+	m.set_steam_available(false)
+	var lan_ok: bool = m._join.sub == "LAN / IP" and (m._join as Control).focus_mode == Control.FOCUS_ALL
+	m.set_steam_available(true)
+	lan_ok = lan_ok and m._join.sub == "LAN / STEAM"
+	m.set_steam_available(false)
+	if lan_ok:
+		print("[UI-FIT] PASS  menu główne: DOŁĄCZ aktywne bez Steama (LAN / IP), ze Steamem LAN / STEAM")
+	else:
+		_fail("menu główne: DOŁĄCZ bez Steama — podpis „%s”, fokus %d" % [m._join.sub, (m._join as Control).focus_mode])
+	# szuflada: klawiatura od razu, mysz po opóźnieniu, „Reduce effects” — od razu i bez animacji
+	c[1].grab_focus()
+	await tree.process_frame
+	var key_ok: bool = m._drawer.title == "NIGHT SHIFT" and m._drawer.pairs.size() == 4
+	c[2].via_mouse = true
+	c[2].grab_focus()
+	var early: bool = m._drawer.title == "NIGHT SHIFT"
+	await tree.create_timer(m.DRAWER_DELAY + 0.1).timeout
+	var mouse_ok: bool = early and m._drawer.title == "OPERATORS"
+	Settings.reduce_fx = true
+	c[0].via_mouse = true
+	c[0].grab_focus()
+	var still_ok: bool = m._drawer.title == "CAMPAIGN" and is_equal_approx(float(m._drawer.fade), 1.0)
+	var stage: Control = m._scene
+	stage._process(5.0)
+	still_ok = still_ok and is_equal_approx(float(stage._pan.scale.x), float(stage._cover))
+	Settings.reduce_fx = false
+	if key_ok and mouse_ok and still_ok:
+		print("[UI-FIT] PASS  menu główne: szuflada od razu z klawiatury, pod kursorem po %.2f s, „Reduce effects” bez opóźnienia, animacji i najazdu" % m.DRAWER_DELAY)
+	else:
+		_fail("menu główne: szuflada — klawiatura %s, mysz %s, Reduce effects %s" % [str(key_ok), str(mouse_ok), str(still_ok)])
+	# podpowiedzi pada
+	var keep_pad := Actions.pad_mode
+	Actions.pad_mode = true
+	await tree.process_frame
+	await tree.process_frame
+	var caps := []
+	for h in (m._hints as Control).get_children():
+		if not h.is_queued_for_deletion():
+			caps.append(((h.get_child(0) as Control).get_child(0) as Label).text)
+	Actions.pad_mode = keep_pad
+	if caps.size() == 3 and String(caps[1]) == Actions.text("menu_accept", true, Actions.DEV_PAD).to_upper() \
+			and String(caps[2]) == Actions.text("pause", true, Actions.DEV_PAD).to_upper():
+		print("[UI-FIT] PASS  menu główne: podpowiedzi pada %s" % [caps])
+	else:
+		_fail("menu główne: podpowiedzi pada %s" % [caps])
+
 
 func _rm_tree(path: String) -> void:
 	var d := DirAccess.open(path)

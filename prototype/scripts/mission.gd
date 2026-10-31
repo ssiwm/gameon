@@ -1078,7 +1078,7 @@ func objective_hint() -> String:
 			if kind == "boss":
 				return String(_boss.get("boss_hint")) if _boss != null else ""
 			if kind == "tags":
-				return tr("Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)") % [stash_total, stashes_found, stash_total] if stash_total > 0 else "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"
+				return tr_n("Walk over a dog tag to take it  ·  side goal: %d hidden stash (%d / %d)", "Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)", stash_total) % [stash_total, stashes_found, stash_total] if stash_total > 0 else "Walk over a dog tag to take it  ·  shooting is loud — sneak (SHIFT) to stay quiet"      # formy mnogie: translations/plural.csv
 			if kind == "generators":
 				if not stealth_ok():
 					return Actions.fmt(tr("Hold {interact} at a generator  ·  a running one keeps humming  ·  stealth bonus lost"))
