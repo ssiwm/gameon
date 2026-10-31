@@ -22,7 +22,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const MASK_AUTH := Combat.LAYER_WORLD | Combat.LAYER_PLAYER | Combat.LAYER_TARGET
 const MASK_COSMETIC := Combat.LAYER_WORLD | Combat.LAYER_TARGET
 const HOMING_DELAY := 0.12          ## s lotu prosto, zanim rakieta zacznie skręcać
-const EVASIVE_KINDS := ["cma", "skoczek", "podsluchacz"]    ## cele „trudne do trafienia" — naprowadzanie (FALCON-6) wybiera je w pierwszej kolejności
+const EVASIVE_KINDS := ["skoczek", "podsluchacz"]    ## cele „trudne do trafienia" — naprowadzanie (FALCON-6) wybiera je w pierwszej kolejności (Ćma od 1.7.444 nie jest celem pocisków)
 const EVASIVE_BONUS := 40.0
 const CLUSTER_RADIUS := 0.6         ## bomba kasetowa: ułamek promienia głównego wybuchu…
 const CLUSTER_DAMAGE := 0.5         ## …i jego obrażeń
@@ -510,7 +510,7 @@ func _acquire_target() -> Node2D:
 			continue
 		var score := ang * 2.0 + dist * 0.1
 		if n.get("kind") in EVASIVE_KINDS:
-			score -= EVASIVE_BONUS           # naprowadzanie woli cele trudne do trafienia z ręki: ćmę, skoczka, podsłuchacza
+			score -= EVASIVE_BONUS           # naprowadzanie woli cele trudne do trafienia z ręki: skoczka, podsłuchacza
 		if score < best_score:
 			best_score = score
 			best = n
