@@ -41,7 +41,7 @@ const DEFS := {
 	# Od 1.7.444 zabija ją tylko cios wręcz (`melee_only`): kula, śrut, wybuch i ogień przez nią przelatują, flara tylko wabi; 1 HP — cios
 	# maczetą albo kilofem zdejmuje każdą ćmę w łuku. Od 1.7.445 gniazdo to 12 ćm; złom nie z każdej ćmy, tylko `nest_scrap` za rozbite gniazdo.
 	"cma": {
-		"hp": 1.0, "speed": 95.0, "damage": 0, "windup": 0.35, "reach": 10.0, "swarm": 12,
+		"hp": 1.0, "speed": 86.0, "damage": 0, "windup": 0.35, "reach": 10.0, "swarm": 12,
 		"cooldown": 1.2, "leap": false, "hear": 0.0, "wake_near": 0.0, "sight": 0.0,
 		"fly": true, "moth": true, "phototaxis": true, "behavior": "moth", "melee_only": true,
 		"color": Color(0.74, 0.7, 0.55), "size": Vector2(2, 2), "hurt_h": 3.0, "hurt_w": 3.0, "hit_r": 4.0, "knock": 40.0, "knock_mult": 1.0, "head": 0.0,

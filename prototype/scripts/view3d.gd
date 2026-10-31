@@ -5871,7 +5871,9 @@ func _sync_lights() -> void:
 			l3.position = src
 			l3.basis = Basis.looking_at(d + Vector3(0.0, 0.0, -0.04), Vector3.UP)
 			l3.light_energy = li.energy * 13.0
-			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX * 1.35, 8.0, 30.0)
+			# dolna granica 8 m skaluje się z ćmami na szkle (`beam_mult`): inaczej rój przyciemniał snop, ale go nie skracał (przy 12 ćmach 8 m zamiast ok. 1,5)
+			var min_r := 8.0 * (float(owner_p.get("beam_mult")) if owner_p != null and owner_p.get("beam_mult") != null else 1.0)
+			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX * 1.35, min_r, 30.0)
 		else:
 			l3.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, lz)
 			l3.light_energy = li.energy * (AURA_WORLD if pair[3] else 4.0)

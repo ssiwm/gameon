@@ -21,7 +21,7 @@ const BURN_R := 8.0                  ## krąży przy płomieniu (flara, ogień) 
 const LOST_MEMORY := 2.0             ## s lotu ku ostatniemu światłu, gdy zgasło (błysk z lufy trwa 0,6 s)
 const RETURN_AFTER := 6.0            ## s bez światła, po których wraca pod sufit
 const DIVE_R := 30.0                 ## z tej odległości od lampy zawisa przed nurkowaniem
-const DIVE_WIND := 0.25              ## s zapowiedzi nurkowania (× trudność `enemy_windup`)
+const DIVE_WIND := 0.28              ## s zapowiedzi nurkowania (× trudność `enemy_windup`)
 const DIVE_MULT := 2.4               ## mnożnik prędkości nurkowania
 const DIVE_TIME := 0.6               ## s nurkowania; nie doleciała → krąży i próbuje znowu
 const DIVE_CD := 1.2                 ## przerwa po chybionym nurkowaniu i po strząśnięciu (× trudność `enemy_cd`)
@@ -36,12 +36,12 @@ const DUST_ONCE_MS := 400            ## jeden pył na cios, choć cios zabija ki
 const SP_DIVE := 1                   ## `_sp` (replikowany): zapowiedź i nurkowanie
 const PLATFORM_LAYER_BIT := 5         ## kładki jednokierunkowe (player.gd PLATFORM_LAYER_BIT)
 const SP_CLING := 3                  ## `_sp`: siedzi na latarce — `player.gd` liczy z tego `moth_cover` na każdym peerze
-const WAVE_A := 23.0                 ## rad/s: dwie częstotliwości wahań w bok (lot ćmy jest nieregularny, nie sinusoidą)
-const WAVE_B := 37.0
-const JINK_MIN := 0.12               ## s między zrywami (losowo JINK_MIN..JINK_MAX)…
-const JINK_MAX := 0.4
+const WAVE_A := 20.7                 ## rad/s: dwie częstotliwości wahań w bok (lot ćmy jest nieregularny, nie sinusoidą)
+const WAVE_B := 33.3
+const JINK_MIN := 0.13               ## s między zrywami (losowo JINK_MIN..JINK_MAX)…
+const JINK_MAX := 0.44
 const JINK_SPEED := 1.1              ## …zryw: nagły skok prędkości w losową stronę (× prędkość)
-const STEER := 0.32                  ## wygładzanie skrętu na klatkę (było 0.18 — ćma skręcała jak szybowiec)
+const STEER := 0.29                  ## wygładzanie skrętu na klatkę (było 0.18 — ćma skręcała jak szybowiec; 1.7.446: 0.32 → 0.29, tempo −10%)
 const LIT_EVERY := 0.1               ## s między sprawdzeniami, czy ćma jest w snopie (raycast, każdy peer)
 const LIGHT_EVERY := 0.1             ## s między pełnymi poszukiwaniami światła (raycasty) obudzonej ćmy; pomiędzy — to samo źródło, pozycja na bieżąco
 const SLEEP_SYNC := 1.0              ## s między wysyłkami stanu śpiącej ćmy (wisi bez ruchu; budzi się — od razu zwykłe 20 Hz)
@@ -236,7 +236,7 @@ func _moth_tick(delta: float) -> void:
 						e._windup = e._windup_duration
 				Mode.WIND:
 					# zapowiedź: odsuwa się od lampy i trzepocze w miejscu
-					want = -dir * speed * 0.35 + side * sin(t_moth * 40.0) * speed * 0.35
+					want = -dir * speed * 0.35 + side * sin(t_moth * 36.0) * speed * 0.35
 					e._windup = maxf(0.0, e._windup_duration - _mode_t)
 					if not lit:
 						_set_mode(Mode.SEEK)
@@ -256,7 +256,7 @@ func _moth_tick(delta: float) -> void:
 		if mode != Mode.SEEK:
 			_set_mode(Mode.SEEK)
 		e._lose_t += delta
-		want = Vector2(sin(t_moth * 7.3), cos(t_moth * 5.9)) * speed * 0.4
+		want = Vector2(sin(t_moth * 6.6), cos(t_moth * 5.3)) * speed * 0.4
 		if e._lose_t < LOST_MEMORY and _last_pos.is_finite():
 			want += (_last_pos - e.global_position).limit_length(1.0) * speed * 0.8       # dolatuje tam, gdzie błysnęło
 		if e._lose_t > RETURN_AFTER:

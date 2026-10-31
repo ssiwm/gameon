@@ -16,8 +16,8 @@ const Motion := preload("res://scripts/enemy_motion.gd")
 const DIR := "res://art/enemy3d/"
 const PRE := "mixamorig_"
 const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Level3D.PX)
-const WING_HZ := 14.0                      ## Ćma: machnięcia skrzydeł na sekundę w locie (duże ćmy 8–20 Hz)
-const WING_HZ_FAST := 21.0                 ## …przy zapowiedzi, nurkowaniu i na szkle latarki (`_sp` ≠ 0)
+const WING_HZ := 12.6                      ## Ćma: machnięcia skrzydeł na sekundę w locie (duże ćmy 8–20 Hz; 1.7.446: 14 → 12,6, tempo −10%)
+const WING_HZ_FAST := 18.9                 ## …przy zapowiedzi, nurkowaniu i na szkle latarki (`_sp` ≠ 0)
 const LIT_GLOW := 1.6                      ## Ćma: emisja ciała w snopie latarki (×`lit`) — 14 cm skrzydeł czytelne w świetle jak pył w promieniu
 
 ## fit: [„height" | „length", rozmiar w pikselach świata] — jak w wypieku; frame_h: wysokość ramki sprite'a (Skoczek wisi u jej góry);
