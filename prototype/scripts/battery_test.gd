@@ -185,6 +185,12 @@ func _empty_and_log() -> void:
 	var item_of := func(what: String) -> Array:
 		return item_rows.filter(func(r: Dictionary) -> bool: return r.get("what") == what and r.get("who") == "P%d" % int(player.display_id) and r.has("pos") and r.has("noise"))
 	check("dziennik: flara, granat dymny i skaner mają wiersz `item` z graczem", not item_of.call("flare").is_empty() and not item_of.call("smoke").is_empty() and not item_of.call("scanner").is_empty())
+	# pokazana podpowiedź (1.7.468): zdarzenie `hint` z identyfikatorem
+	var tips := Hints.new()
+	Settings.seen_tips.erase("flare")
+	tips._queued["flare"] = true
+	tips._start_next()
+	check("dziennik: pokazana podpowiedź ma wiersz `hint`", tips._id == "flare" and _log_rows().any(func(r: Dictionary) -> bool: return r.get("ev") == "hint" and r.get("id") == "flare"))
 	check("dziennik: licznik przedmiotów %s" % str(SessionLog._items), int(SessionLog._items.get("flare", 0)) == int(items_before.get("flare", 0)) + 1
 		and int(SessionLog._items.get("smoke", 0)) == int(items_before.get("smoke", 0)) + 1 and int(SessionLog._items.get("scanner", 0)) == int(items_before.get("scanner", 0)) + 1)
 

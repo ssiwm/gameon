@@ -1327,7 +1327,7 @@ func set_revive_progress(v: float) -> void:
 
 @rpc("any_peer", "call_remote", "reliable")
 func _revive_progress_rpc(v: float) -> void:
-	revive_progress = v
+	revive_progress = clampf(v, 0.0, 1.0) if is_finite(v) else 0.0
 
 ## Podpowiedź dla HUD (tylko lokalny człowiek).
 func revive_hint() -> String:

@@ -4125,9 +4125,11 @@ const TIDE_Z0 := -1.6                    ## woda przypływu: od ściany w głęb
 const TIDE_Z1 := 0.95                    ## …do krawędzi przed graczami [m]
 
 ## Okrąg leżący na wodzie (pierścień w płaszczyźnie XZ, spłaszczony w głąb) dopisany do siatki `im`.
+const LEECH_SPIT_GLOW := 0.3            ## B1 jest prawie czarna, więc pełna poświata znacznika robiła z niej jaskrawy prostokąt wokół gracza
+
 ## Znacznik lądowania plwociny (Żyła, Pijawka): plama na podłodze, pionowa poświata nad nią i krąg zasięgu trafienia. `sm` w pikselach świata, INF = brak.
 ## Kamera patrzy prawie poziomo, więc sam krąg na podłodze był kreską.
-func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float) -> void:
+func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float, glow := 1.0) -> void:
 	mark.clear_surfaces()
 	if sm == Vector2.INF:
 		return
@@ -4152,7 +4154,7 @@ func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: flo
 		var u := float(i) / 8.0
 		var x := (u * 2.0 - 1.0) * rr
 		var edge := 1.0 - absf(u * 2.0 - 1.0)
-		mark.surface_set_color(Color(acid, (0.25 + 0.35 * mp2) * edge))
+		mark.surface_set_color(Color(acid, (0.25 + 0.35 * mp2) * edge * glow))
 		mark.surface_add_vertex(c + Vector3(x, 0.0, 0.45))
 		mark.surface_set_color(Color(acid, 0.0))
 		mark.surface_add_vertex(c + Vector3(x, hh, 0.45))
@@ -4255,7 +4257,7 @@ func _sync_leech_fx() -> void:
 		var fs: Array = b.call("fx_state")
 		var base := Level3D.px_to_m((b as Node2D).global_position)
 		root.position = base
-		_draw_spit_mark((root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh, b.spit_mark, base, float(b.SPIT_HIT_R) * PX, b.spit_flying(), t)
+		_draw_spit_mark((root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh, b.spit_mark, base, float(b.SPIT_HIT_R) * PX, b.spit_flying(), t, LEECH_SPIT_GLOW)
 		root.visible = (b as Node2D).is_visible_in_tree()
 		var rings := (root.get_node("Rings") as MeshInstance3D).mesh as ImmediateMesh
 		rings.clear_surfaces()

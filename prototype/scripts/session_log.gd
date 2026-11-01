@@ -24,6 +24,7 @@ extends RefCounted
 ##   battery_empty  who, bot, phase, pos — latarka zgasła, bo bateria spadła do zera (B0, od 1.7.450)
 ##   item           what (flare, frag, phos, smoke, mine, charge, medkit, defib, scanner, cleankit — `Throwables.KINDS`), who, bot, pos, noise — zużyty przedmiot, rozstrzyga serwer (od 1.7.467);
 ##                  krzyk i Q mają własne wpisy: `noise.scream`, `overcharge`
+##   hint           id (`Hints.TIPS`) — podpowiedź pokazana graczowi na hoście, raz na profil (od 1.7.468)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   elite          what (spawn — tylko w trakcie próby / wake / kill / scream: stunned / summon: n, alive, wave / summon_break: dmg), kind, src (map / director / finale / dev), pos, hp, max_hp; wake: noise;
 ##                  kill: by (player_id, 0 = nikt), weapon (ostatnie źródło obrażeń), after (s od przebudzenia), dmg (źródło → obrażenia; od 1.7.466, ELITE_PLACEMENT_PLAN.md E0)

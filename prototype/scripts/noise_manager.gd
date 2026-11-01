@@ -261,7 +261,7 @@ func add_scream(amount: float, pos: Vector2) -> void:
 @rpc("any_peer", "call_remote", "reliable")
 func _report_scream(amount: float, pos: Vector2) -> void:
 	if multiplayer.is_server():
-		_apply_scream(amount, pos)
+		_apply_scream(sane_amount(amount), sane_pos(pos))
 
 func _apply_scream(amount: float, pos: Vector2) -> void:
 	_apply(clampf(amount, 0.0, 30.0), pos, true, "scream")

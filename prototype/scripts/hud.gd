@@ -1032,6 +1032,8 @@ func _build_objective_card() -> void:
 	_obj_hint = UiTheme.whisper(UiTheme.label("", UiTheme.T_BODY - 1, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_obj_hint.add_theme_constant_override("outline_size", 3)     # na jasnej ścianie kryjówki przygaszony tekst bez obrysu ginął
+	_obj_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_toast_box.add_child(_obj_hint)
 	# kryjówka: kwadraciki gotowości (jeden na człowieka) — widać, na kogo czeka drużyna
 	_ready_pips = Pips.new()

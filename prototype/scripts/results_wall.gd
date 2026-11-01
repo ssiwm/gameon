@@ -56,12 +56,12 @@ func _draw_content(ci: CanvasItem) -> void:
 	if font == null:
 		return
 	var es: Array = RunLog.entries
-	ci.draw_string(font, Vector2(-50, -54), "RESULTS", HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK, a))
+	ci.draw_string(font, Vector2(-50, -54), tr("RESULTS"), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT, Color(CHALK, a))
 	ci.draw_string(font, Vector2(50 - 30, -54), "%d" % es.size(), HORIZONTAL_ALIGNMENT_RIGHT, 30, FONT, Color(CHALK, 0.6 * a))
 	ci.draw_line(Vector2(-50, -50), Vector2(50, -50), Color(CHALK, 0.4 * a), 1.0)
 	if es.is_empty():
-		ci.draw_string(font, Vector2(-50, -34), "NO MISSIONS YET", HORIZONTAL_ALIGNMENT_CENTER, 100, FONT, Color(CHALK, 0.35 * a))
-		ci.draw_string(font, Vector2(-50, -24), "FINISH ONE", HORIZONTAL_ALIGNMENT_CENTER, 100, FONT, Color(CHALK, 0.25 * a))
+		ci.draw_string(font, Vector2(-50, -34), tr("NO MISSIONS YET"), HORIZONTAL_ALIGNMENT_CENTER, 100, FONT, Color(CHALK, 0.7 * a))
+		ci.draw_string(font, Vector2(-50, -24), tr("FINISH ONE"), HORIZONTAL_ALIGNMENT_CENTER, 100, FONT, Color(CHALK, 0.55 * a))
 	else:
 		var shown := 0
 		for i in range(es.size() - 1, -1, -1):
