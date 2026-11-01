@@ -476,7 +476,7 @@ func _present_summary() -> void:
 		var kind := int(row[3])
 		var caption := String(row[0])
 		if String(row[1]) != String(row[2]) and kind != 0:
-			caption += " · " + (tr("Gain") if kind > 0 else tr("Trade-off"))
+			caption += " · " + (tr("Gain") if kind > 0 else tr("Cost"))
 		var changed := String(row[1]) != String(row[2])
 		var value := UiTheme.num_text(String(row[1]))
 		if changed:

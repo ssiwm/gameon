@@ -81,6 +81,19 @@ func _build_lab_lathe(left: VBoxContainer, body: HBoxContainer) -> void:
 	gv.add_child(ui._sparks)
 	ui._grinder.visible = false
 	left.add_child(ui._grinder)
+	ui._lab_board = PanelContainer.new()                     # tablica PROJEKTY pod kaflami (od 1.7.460 — dawniej puste pół karty)
+	ui._lab_board.add_theme_stylebox_override("panel", UiTheme.panel_box())
+	var lb = VBoxContainer.new()
+	lb.add_theme_constant_override("separation", 4)
+	ui._lab_board.add_child(lb)
+	ui._lab_board_cap = UiTheme.mono(UiTheme.label("", 8, UiTheme.MUTED))
+	lb.add_child(ui._lab_board_cap)
+	ui._lab_board_rows = VBoxContainer.new()
+	ui._lab_board_rows.add_theme_constant_override("separation", 3)
+	lb.add_child(ui._lab_board_rows)
+	ui._lab_board.custom_minimum_size.x = ui.COLS * ui.TILE_W
+	ui._lab_board.visible = false
+	left.add_child(ui._lab_board)
 
 ## Pracownia i tokarka: akta z zaczernieniami i korek (pracownia), rysunek, zlecenie, rulony schematów i szlifierka (tokarka), wydruk
 ## odczytu w prawej kolumnie. Wołane z `_refresh_detail` po wypełnieniu karty.
@@ -91,6 +104,9 @@ func _dress_lab_lathe(w: int, o: Dictionary) -> void:
 	var key = String(base.key)
 	var part = not o.is_empty() and String(o.get("slot", "")) != "service" and String(o.get("id", "")) != ""
 	ui._arms_side.visible = lab or lathe
+	ui._lab_board.visible = lab
+	if lab:
+		_fill_lab_board()
 	for c in ui._arms_side.get_children():
 		c.visible = (lab and c.has_meta("lab")) or (lathe and c.has_meta("lathe") and part)
 	ui._cork.visible = lab and part
@@ -129,6 +145,62 @@ func _dress_lab_lathe(w: int, o: Dictionary) -> void:
 		_recolor_printout(ui._printout)
 	if lathe:
 		_dress_lathe(w, o, key, part)
+
+## Tablica PROJEKTY (pracownia): miejsca badań (LAB_SLOTS) z badaną częścią albo wolne, schematy czekające na tokarkę i dla każdej
+## kupionej broni specjalnej, ile części zostało do zbadania i za ile próbek — plan na kilka misji bez przeglądania każdej broni.
+func _fill_lab_board() -> void:
+	ui._lab_board_cap.text = tr("PROJECTS  ·  %d / %d") % [Scrap.research.size(), Scrap.LAB_SLOTS]
+	ui._clear_children(ui._lab_board_rows)
+	for i in Scrap.LAB_SLOTS:
+		var row: Label
+		if i < Scrap.research.size():
+			var id = String(Scrap.research[i])
+			var pd = Parts.get_part(id)
+			var wd = Weapons.base_def(Weapons.index_of(String(pd.get("weapon", ""))))
+			row = UiTheme.label(tr("%d. %s (%s) — after the mission") % [i + 1, tr(String(pd.get("name", id))), String(wd.name)], 9, UiTheme.TEXT)
+		else:
+			row = UiTheme.label(tr("%d. free bench") % (i + 1), 9, UiTheme.MUTED)
+		_wrap(row)
+		ui._lab_board_rows.add_child(row)
+	var waiting: Array = []
+	for id in Scrap.schematics:
+		if not Scrap.lathe.has(id):
+			waiting.append(tr(String(Parts.get_part(String(id)).get("name", id))))
+	if not waiting.is_empty():
+		var sl = UiTheme.label(tr("Schematics for the lathe: %s") % ", ".join(waiting), 9, UiTheme.TEXT)
+		_wrap(sl)
+		ui._lab_board_rows.add_child(sl)
+	var any = false
+	for k in Scrap.LAB_WEAPONS:
+		var w = Weapons.index_of(String(k))
+		if w < 0 or not Scrap.is_unlocked(w):
+			continue
+		any = true
+		var left_n = 0
+		var need = 0
+		for p in Parts.of(String(k)):
+			var id = String(p["id"])
+			if Scrap.has_part(id) or Scrap.schematics.has(id) or Scrap.research.has(id) or Scrap.lathe.has(id) or Scrap.found.has(id):
+				continue
+			left_n += 1
+			need += Scrap.research_cost(id).x
+		var name = String(Weapons.base_def(w).name)
+		var wl: Label
+		if left_n == 0:
+			wl = UiTheme.label(tr("%s: everything researched") % name, 9, UiTheme.MUTED)
+		else:
+			wl = UiTheme.label(tr_n("%s: %d part to research · %s", "%s: %d parts to research · %s", left_n) % [name, left_n, ui._samples_text(need)], 9,
+				UiTheme.TEXT if Scrap.samples >= need else UiTheme.MUTED)
+		_wrap(wl)
+		ui._lab_board_rows.add_child(wl)
+	if not any:
+		var nl = UiTheme.label(tr("Buy a special weapon at the workshop bench first — the lab researches only its parts."), 9, UiTheme.MUTED)
+		_wrap(nl)
+		ui._lab_board_rows.add_child(nl)
+
+func _wrap(l: Label) -> void:
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = ui.COLS * ui.TILE_W - 24.0
 
 ## Tokarka: rysunek części (szablon wg gniazda), zlecenie odręczne z pieczątką PRZYJĘTO, gdy część jest na tokarce, szlifierka.
 func _dress_lathe(w: int, o: Dictionary, key: String, part: bool) -> void:

@@ -27,3 +27,9 @@ keys,?plural,pl,_comment
 "The lathe is busy  ·  %d job per mission","The lathe is busy  ·  %d jobs per mission","Tokarka zajęta  ·  %d zlecenie na misję",Tokarka: przycisk
 ,,"Tokarka zajęta  ·  %d zlecenia na misję",
 ,,"Tokarka zajęta  ·  %d zleceń na misję",
+"%d sample","%d samples","%d próbka",Pracownia: koszt badania
+,,"%d próbki",
+,,"%d próbek",
+"%s: %d part to research · %s","%s: %d parts to research · %s","%s: %d część do zbadania · %s",Pracownia: tablica PROJEKTY
+,,"%s: %d części do zbadania · %s",
+,,"%s: %d części do zbadania · %s",

@@ -456,7 +456,7 @@ func _fill_ammo_cmp(k: String) -> void:
 			grid.add_child(UiTheme.ink(("▲ " if kind > 0 else ("▼ " if kind < 0 else "")) + UiTheme.num_text(String(r[1])), 9, col))
 			continue
 		grid.add_child(UiTheme.ink(UiTheme.num_text(String(r[1])), 9, col))
-		grid.add_child(UiTheme.ink((tr("Gain") if kind > 0 else (tr("Trade-off") if kind < 0 else "")).to_lower(), 7, col))
+		grid.add_child(UiTheme.ink((tr("Gain") if kind > 0 else (tr("Cost") if kind < 0 else "")).to_lower(), 7, col))
 
 ## Wiersze porównania naboju `k` z nabojem zwykłym: [etykieta, zmiana, ocena −1 / 0 / 1]. Granaty 40 mm to inny ładunek, nie wariant — bez porównania.
 func _ammo_rows(k: String) -> Array:

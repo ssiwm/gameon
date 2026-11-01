@@ -52,9 +52,13 @@ class CorkChain extends Control:
 			draw_circle(c, 4.0, Color("b3261e"))
 			draw_circle(c + Vector2(-1, -1), 1.4, Color(1, 1, 1, 0.4))
 
-## Słoje z próbkami: `count` pełnych z `slots`. Ciemny kształt w słoju obraca się w stronę dźwięku (`hear(dir)` — −1 lewo, 1 prawo)
-## i wraca powoli do środka. Ruch tylko przy zdarzeniu; „Reduce effects” — bez ruchu.
+## Słoje z próbkami: `count` pełnych z `slots`. Preparat w formalinie (zarodek, macka, narząd, oko — wg numeru słoja) obraca się
+## w stronę dźwięku (`hear(dir)` — −1 lewo, 1 prawo) i wraca powoli do środka; oko patrzy źrenicą. Ruch tylko przy zdarzeniu;
+## „Reduce effects” — bez ruchu. Od 1.7.460 preparaty zamiast ciemnych owali (słoje nie wyglądały na pełne).
 class Jars extends Control:
+	const LIQUID := Color("4a5530")            ## formalina: zgaszona żółtawa zieleń
+	const FLESH := Color("b9a98a")             ## preparat w płynie: blady, ziemisty
+	const SHADE := Color("6f6450")
 	var count := 0
 	var slots := 6
 	var _look := 0.0
@@ -63,7 +67,7 @@ class Jars extends Control:
 	var _t := 0.0
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(150, 118)
+		custom_minimum_size = Vector2(150, 150)
 	## Dźwięk z kierunku `dir` (−1 lewo, 1 prawo): kształty w słojach zwracają się ku niemu.
 	func hear(dir: float) -> void:
 		if Settings.fx_mult() <= 0.0:
@@ -86,18 +90,51 @@ class Jars extends Control:
 		for i in slots:
 			var r := Rect2(4.0 + (i % cols) * w + 3.0, 4.0 + (i / cols) * h + 3.0, w - 6.0, h - 6.0)
 			var full := i < count
-			draw_rect(Rect2(r.position, Vector2(r.size.x, 6.0)), Color("2a2a26"))             # zakrętka
+			draw_rect(Rect2(r.position + Vector2(2.0, 0.0), Vector2(r.size.x - 4.0, 6.0)), Color("2a2a26"))      # zakrętka
 			var glass := Rect2(r.position + Vector2(0, 6.0), r.size - Vector2(0, 6.0))
-			draw_rect(glass, Color("1f3324") if full else Color("141613"))
-			draw_rect(glass, Color(1, 1, 1, 0.08), false, 1.0)
+			draw_rect(glass, Color("141613"))
 			if full:
-				var c := glass.get_center() + Vector2(_look * glass.size.x * 0.12, 0.0)
+				var liquid := Rect2(glass.position + Vector2(1.0, glass.size.y * 0.14), Vector2(glass.size.x - 2.0, glass.size.y * 0.86 - 1.0))
+				draw_rect(liquid, LIQUID)
+				draw_rect(Rect2(liquid.position, Vector2(liquid.size.x, 2.0)), LIQUID.lightened(0.25))      # menisk
+				draw_rect(Rect2(liquid.position + Vector2(0, liquid.size.y * 0.7), Vector2(liquid.size.x, liquid.size.y * 0.3)), Color(0, 0, 0, 0.18))   # osad
+				var c := liquid.position + Vector2(liquid.size.x * 0.5 + _look * glass.size.x * 0.12, liquid.size.y * 0.4)
 				var sway := sin(_t * 0.7 + i) * 0.04 if Settings.fx_mult() > 0.0 else 0.0
-				draw_set_transform(c, _look * 0.5 + sway, Vector2(1.0, 1.15))
-				draw_circle(Vector2.ZERO, glass.size.x * 0.27, Color(0.04, 0.05, 0.04, 0.9))
-				draw_circle(Vector2(glass.size.x * 0.1 * (1.0 if _look >= 0.0 else -1.0) * absf(_look), -2.0), glass.size.x * 0.05, Color(0.6, 0.15, 0.1, 0.5 * absf(_look)))
+				draw_set_transform(c, _look * 0.5 + sway, Vector2.ONE)
+				_specimen(i % 4, minf(liquid.size.x, liquid.size.y * 0.8) * 0.36)
 				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-				draw_rect(Rect2(glass.position + Vector2(3, 3), Vector2(3, glass.size.y - 8)), Color(1, 1, 1, 0.06))
+				draw_rect(liquid, Color(LIQUID.r, LIQUID.g, LIQUID.b, 0.25))      # płyn przed preparatem: zmętnienie
+				var tag := Rect2(glass.position + Vector2(glass.size.x * 0.24, glass.size.y * 0.8), Vector2(glass.size.x * 0.52, glass.size.y * 0.13))
+				draw_rect(tag, Color("cfc4a4"))                                 # etykieta na szkle
+				draw_line(tag.position + Vector2(3, tag.size.y * 0.4), tag.position + Vector2(tag.size.x * 0.7, tag.size.y * 0.4), Color("5a5040"), 1.0)
+				draw_line(tag.position + Vector2(3, tag.size.y * 0.72), tag.position + Vector2(tag.size.x * 0.45, tag.size.y * 0.72), Color("5a5040"), 1.0)
+			draw_rect(glass, Color(1, 1, 1, 0.08), false, 1.0)
+			draw_rect(Rect2(glass.position + Vector2(3, 3), Vector2(3, glass.size.y - 8)), Color(1, 1, 1, 0.07 if full else 0.04))   # odblask
+	## Preparat `kind` o promieniu `rad` w bieżącej transformacji (środek słoja): 0 zarodek, 1 macka, 2 narząd, 3 oko (źrenica za dźwiękiem).
+	func _specimen(kind: int, rad: float) -> void:
+		match kind:
+			0:
+				draw_arc(Vector2(0, 2), rad * 0.62, PI * 0.15, PI * 1.6, 14, FLESH, rad * 0.42)
+				draw_circle(Vector2(rad * 0.38, -rad * 0.42), rad * 0.36, FLESH)
+				draw_circle(Vector2(rad * 0.48, -rad * 0.46), rad * 0.07, SHADE)
+			1:
+				var pts := PackedVector2Array()
+				for k in 9:
+					var u := float(k) / 8.0
+					pts.append(Vector2(sin(u * 5.0 + _t * 0.3 * Settings.fx_mult()) * rad * 0.35, (u - 0.5) * rad * 2.0))
+				draw_polyline(pts, FLESH, rad * 0.3)
+				for k in range(1, 8, 2):
+					draw_circle(pts[k] + Vector2(rad * 0.12, 0), rad * 0.06, SHADE)      # przyssawki
+			2:
+				draw_circle(Vector2(-rad * 0.22, 0), rad * 0.55, FLESH)
+				draw_circle(Vector2(rad * 0.3, rad * 0.12), rad * 0.45, FLESH.darkened(0.08))
+				draw_line(Vector2(-rad * 0.1, -rad * 0.5), Vector2(-rad * 0.3, -rad * 1.0), SHADE, rad * 0.14)   # naczynie
+			_:
+				draw_circle(Vector2.ZERO, rad * 0.62, Color("d8d0bc"))
+				draw_line(Vector2(0, rad * 0.55), Vector2(-rad * 0.2, rad * 1.1), Color("8a4a3a"), rad * 0.12)   # nerw
+				var eye := Vector2(_look * rad * 0.28, 0.0)
+				draw_circle(eye, rad * 0.3, Color("4f5a3a"))
+				draw_circle(eye, rad * 0.14, Color("0d0f0c"))
 
 ## Linia akt z zaczernieniami: tekst, w którym „█” oznacza zaczernione słowo (prostokąt tuszu zamiast liter).
 class Redacted extends Control:

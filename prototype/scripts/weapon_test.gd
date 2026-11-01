@@ -3058,6 +3058,19 @@ func _t_research() -> void:
 		wui.close()
 		ui_info = "LR-7 %s, M-83 %d, tytuł %s" % [str(lr), m83.size(), title]
 		ui_ok = lr.size() == Parts.of("lr7").size() and not lr.has("") and m83.is_empty() and title == tr("LAB")
+		# tablica PROJEKTY (od 1.7.460): miejsca badań z badaną częścią, wolne miejsce, wiersz LR-7 z liczbą części i próbek
+		var res_b: Array = Scrap.research.duplicate()
+		Scrap.research = ["lr7_lens"]
+		wui.open("lab")
+		var rows: Array = wui._lab_board_rows.get_children().map(func(n: Node) -> String: return String((n as Label).text))
+		var board_ok: bool = wui._lab_board.visible and wui._lab_board_cap.text == tr("PROJECTS  ·  %d / %d") % [1, Scrap.LAB_SLOTS] 			and rows.size() >= Scrap.LAB_SLOTS + 1 and String(rows[0]).contains(tr("Focusing lens")) and rows.any(func(t: String) -> bool: return t.begins_with("LR-7"))
+		var loc0 := TranslationServer.get_locale()
+		TranslationServer.set_locale("pl")                       # odmiana: 1 próbka / 2 próbki / 5 próbek (dawniej „5 próbki”)
+		var plural_ok: bool = wui._samples_text(1) == "1 próbka" and wui._samples_text(2) == "2 próbki" and wui._samples_text(5) == "5 próbek"
+		TranslationServer.set_locale(loc0)
+		wui.close()
+		Scrap.research = res_b
+		check("pracownia: tablica PROJEKTY (%s), liczba próbek w tekście" % str(rows), board_ok and plural_ok)
 	check("pracownia: panel (%s)" % ui_info, ui_ok)
 	Scrap.bank = bank0
 	Scrap.loot = loot0
