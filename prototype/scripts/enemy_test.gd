@@ -69,6 +69,7 @@ func run(m: Node2D) -> void:
 	await _test_elite_foundation()
 	await _test_priest()
 	await _test_priest_stance()
+	await _test_priest_summon()
 	await _test_butcher()
 	await _test_elite_placement()
 	await _test_elite_log()
@@ -982,6 +983,91 @@ func _test_priest_stance() -> void:
 		n.queue_free()
 	await get_tree().physics_frame
 
+## Wzywanie Trzosków (ELITE_PLACEMENT_PLAN.md K3): gest, punkt poza kadrem, odstęp, limit, przerwanie, bez XP i łupu, śmierć i restart.
+func _test_priest_summon() -> void:
+	var y := -15000.0
+	var x0 := FAR_X + 29300.0
+	var keep_dead: bool = player.dead
+	var keep_pos: Vector2 = player.global_position
+	player.dead = false
+	player.global_position = player._spawn_point            # prawdziwa mapa: punkt wezwania z grafu nawigacji
+	var strip := _floor(FAR_X + 28000.0, FAR_X + 30600.0, y)
+	var k := _spawn("kaplan", Vector2(x0, y))
+	k.set_physics_process(false)
+	await get_tree().physics_frame
+	k.active = true
+	var b = k._beh
+	b.scream_cd = 99.0
+	b.heal_t = 99.0
+	var lvl0: int = Difficulty.level
+	var caps := []
+	for lv in [Difficulty.Level.EASY, Difficulty.Level.NORMAL, Difficulty.Level.HARD]:
+		Difficulty.level = lv
+		caps.append(b.summon_cap())
+	Difficulty.level = lvl0
+	check("Kapłan/wzywanie: limit żywych wezwanych EASY 3, NORMAL 4, HARD 6", caps == [3, 4, 6], str(caps))
+	k._target = null
+	k._has_lead = false
+	b.summon_t = 0.0
+	b.tick_phase(0.016, null)
+	check("Kapłan/wzywanie: bez celu i śladu nie wzywa", k._sp == 0 and b.summon_t > 0.0)
+	k._target = player
+	b.summon_t = 0.0
+	b.tick_phase(0.016, player)
+	var info: Dictionary = k.view_info()
+	check("Kapłan/wzywanie: gest przejmuje ruch, gra klip `summon`, bez pierścienia krzyku", k._sp == b.SP_SUMMON and k.winding and info.get("motion_action") == "summon" and float(info["tele"]) == 0.0 and b.tick_phase(0.016, player))
+	b.tele_t = 0.0
+	b.tick_phase(0.016, player)
+	for i in 12:                                                        # `_pick_spot` losuje punkty: w grze następna próba idzie po `summon.retry` s
+		if not b.alive_minions().is_empty():
+			break
+		b.waves = 0
+		b._finish_summon()
+	var first: Array = b.alive_minions().duplicate()
+	var spots_ok := first.size() == 2
+	for m in first:
+		var dist: float = (m as Node2D).global_position.distance_to(player.global_position)
+		spots_ok = spots_ok and dist >= 300.0 and dist <= 720.0
+	check("Kapłan/wzywanie: po geście 2 Trzoski poza kadrem, kontakt `summon`, odstęp 14 s", spots_ok and k.visual_attack_action == "summon" and b.waves == 1 and k._sp == 0 and not k.winding and is_equal_approx(b.summon_t, 14.0), "%d t=%.1f" % [first.size(), b.summon_t])
+	var flags := not first.is_empty()
+	for m in first:
+		flags = flags and m.summoned and m.omniscient and m.kind == "trzosek" and m.active
+	check("Kapłan/wzywanie: wezwani jak Trzoski bossa (bez XP i łupu, wiedzą, gdzie są gracze, obudzeni)", flags)
+	b.waves = 3
+	b.spawn_wave(Vector2(x0 + 300.0, y))
+	check("Kapłan/wzywanie: od trzeciego wezwania 3 Trzoski, przycięte do limitu 4", b.alive_minions().size() == 4, str(b.alive_minions().size()))
+	b.summon_t = 0.0
+	b.tick_phase(0.016, player)
+	check("Kapłan/wzywanie: przy limicie nie zaczyna gestu i czeka", k._sp == 0 and b.summon_t > 0.0)
+	b.alive_minions()[0].take_bullet(k.global_position, 9999.0)
+	b.summon_t = 0.0
+	k.hp = 300.0
+	b.tick_phase(0.016, player)
+	k.hp -= 30.0
+	b.tick_phase(0.016, player)
+	check("Kapłan/wzywanie: 30 obrażeń w trakcie gestu go nie przerywa", k._sp == b.SP_SUMMON)
+	k.hp -= 30.0
+	var waves0: int = b.waves
+	b.tick_phase(0.016, player)
+	check("Kapłan/wzywanie: 60 obrażeń przerywa gest, następne po 6 s", k._sp == 0 and not k.winding and b.waves == waves0 and is_equal_approx(b.summon_t, 6.0), "sp=%d t=%.1f" % [k._sp, b.summon_t])
+	var left: Array = b.alive_minions().duplicate()
+	b.on_death()
+	var all_dead := not left.is_empty()
+	for m in left:
+		all_dead = all_dead and not m.alive
+	check("Kapłan/wzywanie: śmierć Kapłana zabija wezwanych", all_dead and b.alive_minions().is_empty())
+	b.waves = 0
+	b.spawn_wave(Vector2(x0 + 300.0, y))
+	var prefix: String = b._minion_prefix()
+	k.reset_enemy()
+	await get_tree().physics_frame
+	check("Kapłan/wzywanie: restart usuwa wezwanych i zeruje liczniki", b.minions.is_empty() and b.waves == 0 and is_equal_approx(b.summon_t, 6.0) and level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with(prefix)).is_empty())
+	player.dead = keep_dead
+	player.global_position = keep_pos
+	for n in [k, strip]:
+		n.queue_free()
+	await get_tree().physics_frame
+
 # ---------------------------------------------------------------- F4c: Rzeźnik (miniboss: sparametryzowany Wołek, szarża przez barykady)
 
 func _test_butcher() -> void:
@@ -1398,6 +1484,8 @@ func _test_elite_log() -> void:
 	var u := _spawn("rzeznik", pos + Vector2(400.0, 0.0))
 	await get_tree().process_frame
 	k.wake()
+	k._beh._scream()
+	k._beh.spawn_wave(pos + Vector2(200.0, 0.0))
 	k.take_hit({"amount": 10.0, "dir": Vector2.RIGHT, "shooter": 7, "w": Weapons.M83, "type": "bullet", "pos": k.global_position})
 	k.take_bullet(k.global_position + Vector2(-10.0, 0.0), 20.0)
 	k.take_hit({"amount": 9999.0, "dir": Vector2.RIGHT, "shooter": 7, "w": Weapons.M83, "type": "bullet", "pos": k.global_position})
@@ -1416,6 +1504,7 @@ func _test_elite_log() -> void:
 		return {}
 	check("dziennik elit: spawn Kapłana i Rzeźnika w trakcie próby", not of.call("spawn", "kaplan").is_empty() and not of.call("spawn", "rzeznik").is_empty(), str(elite.size()))
 	check("dziennik elit: przebudzenie Kapłana z hałasem", of.call("wake", "kaplan").has("noise"))
+	check("dziennik elit: krzyk z liczbą ogłuszonych i wezwanie z liczbą Trzosków", of.call("scream", "kaplan").has("stunned") and int(of.call("summon", "kaplan").get("n", 0)) == 2)
 	var kill: Dictionary = of.call("kill", "kaplan")
 	check("dziennik elit: zabicie — kto, czym, po ilu sekundach, rozbicie obrażeń", not kill.is_empty() and int(kill.get("by", 0)) == 7 and kill.get("weapon") == "m83" and kill.has("after") and (kill.get("dmg", {}) as Dictionary).has("m83") and (kill.get("dmg", {}) as Dictionary).has("blast"), str(kill))
 	var end: Dictionary = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mission_end").back()

@@ -23,7 +23,7 @@ extends RefCounted
 ##   battery        who, bot, src (pickup), amount (s świecenia), before (% przed) — gracz wziął baterię 4,5 V (BATTERY_PLAN.md B1, od 1.7.450)
 ##   battery_empty  who, bot, phase, pos — latarka zgasła, bo bateria spadła do zera (B0, od 1.7.450)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
-##   elite          what (spawn — tylko w trakcie próby / wake / kill), kind, src (map / director / finale / dev), pos, hp, max_hp; wake: noise;
+##   elite          what (spawn — tylko w trakcie próby / wake / kill / scream: stunned / summon: n, alive, wave / summon_break: dmg), kind, src (map / director / finale / dev), pos, hp, max_hp; wake: noise;
 ##                  kill: by (player_id, 0 = nikt), weapon (ostatnie źródło obrażeń), after (s od przebudzenia), dmg (źródło → obrażenia; od 1.7.466, ELITE_PLACEMENT_PLAN.md E0)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
 ##   xp             who, mission (XP za wynik misji), rows (etykiety bonusów), xp (łącznie w profilu po misji), level — po udanej misji,

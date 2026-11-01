@@ -709,6 +709,16 @@ func _hear_alarm(lead: Vector2) -> void:
 	_lead_at(lead)
 	wake()
 
+## Wezwany Kapłana na każdym peerze (RPC musi żyć w węźle wroga); listę wezwanych prowadzi zachowanie na serwerze.
+@rpc("authority", "call_local", "reliable")
+func _priest_spawn(n: String, pos: Vector2) -> void:
+	_beh.spawn_minion(n, pos)
+
+## Restart misji: wezwani Kapłana znikają na każdym peerze.
+@rpc("authority", "call_local", "reliable")
+func _priest_clear() -> void:
+	_beh.clear_minions()
+
 ## Krzyk na każdym peerze: dźwięk, fala, lekki wstrząs kamery.
 @rpc("authority", "call_local", "reliable")
 func _scream_fx() -> void:
