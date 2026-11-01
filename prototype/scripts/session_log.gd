@@ -31,6 +31,8 @@ extends RefCounted
 ##   system         gpu, gpu_vendor, cpu, threads, ram_gb, os, screen, window, fullscreen, quality, render_scale, vsync, fps_cap — raz na plik, przy jego otwarciu
 ##   perf           map („menu” poza sesją, od 1.7.461; wcześniej domyślna mapa spod menu), fps, avg, p50, p95, p99 (od 1.7.461), max (ms klatki),
 ##                  spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry); raport: tools/session_perf.py
+##                  Od 1.7.462 także główny wątek: v3d (ms skryptu widoku 3D), rcpu (ms CPU renderu), proc i phys (ms, średnie z sekundowych szczytów
+##                  silnika — Performance.TIME_*), steps (kroki fizyki na klatkę; powyżej 1 gra nadrabia), mouse (zdarzenia ruchu myszy na sekundę)
 ##                  — próbka co PERF_EVERY s, także w kryjówce i u klienta (od 1.7.367): klient pisze własny plik z samymi wierszami system i perf,
 ##                  bo wydajność jest jego sprzętu, a reszta dziennika to symulacja hosta
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
@@ -73,6 +75,12 @@ static var _perf_t := 0.0
 static var _load_t := 0.0                ## s pod planszą wczytywania od ostatniej próbki `perf` (klatki budowy mapy nie są przycięciami gry)
 static var _frame_us := 0              ## Time.get_ticks_usec() poprzedniej klatki (frame): czas klatki z zegara, nie z `delta`
 static var _gpu_vps: Array = []        ## viewporty widoku 3D z pomiarem czasu GPU (watch_viewports)
+static var _rcpu := 0.0                ## suma ms CPU renderu od ostatniej próbki
+static var _proc := 0.0                ## suma Performance.TIME_PROCESS (s) po klatkach od ostatniej próbki
+static var _phys := 0.0                ## suma Performance.TIME_PHYSICS_PROCESS (s) po klatkach od ostatniej próbki
+static var _phys_frame0 := -1          ## Engine.get_physics_frames() przy poprzedniej próbce
+static var v3d_us := 0                 ## µs skryptu widoku 3D od ostatniej próbki (dopisuje view3d._process)
+static var mouse_events := 0           ## zdarzenia ruchu myszy od ostatniej próbki (dopisuje input_setup._input)
 
 static func active() -> bool:
 	return enabled and not _open_failed and NoiseMgr.is_server()
@@ -271,13 +279,22 @@ static func frame(delta: float, map_id: String, loading := false) -> void:
 	if loading:
 		_load_t += ms / 1000.0
 		_perf_t += ms / 1000.0
+		v3d_us = 0
+		mouse_events = 0
+		_phys_frame0 = Engine.get_physics_frames()
 		return
+	if _phys_frame0 < 0:
+		_phys_frame0 = Engine.get_physics_frames()
 	_ft.append(ms)
 	if ms > PERF_SPIKE_MS and OS.is_stdout_verbose():
 		print("[SPIKE-MARK] %.0f ms (%s)" % [ms, map_id])       # z --verbose: wiersze tuż nad znacznikiem mówią, co się wczytywało w tej klatce
 	for v in _gpu_vps:
 		if is_instance_valid(v):
 			_gpu += RenderingServer.viewport_get_measured_render_time_gpu((v as Viewport).get_viewport_rid())
+			_rcpu += RenderingServer.viewport_get_measured_render_time_cpu((v as Viewport).get_viewport_rid())
+	_rcpu += RenderingServer.get_frame_setup_time_cpu()
+	_proc += Performance.get_monitor(Performance.TIME_PROCESS)
+	_phys += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
 	_perf_t += ms / 1000.0
 	if _perf_t < PERF_EVERY:
 		return
@@ -294,11 +311,22 @@ static func frame(delta: float, map_id: String, loading := false) -> void:
 		"p95": snappedf(s[mini(n - 1, int(float(n) * 0.95))], 0.01), "p99": snappedf(s[mini(n - 1, int(float(n) * 0.99))], 0.01),
 		"max": snappedf(s[n - 1], 0.1), "spikes": spikes,
 		"gpu": snappedf(_gpu / float(n), 0.01), "up": snappedf(float(Time.get_ticks_msec()) / 1000.0, 1.0)}
+	var phys_frame := Engine.get_physics_frames()
+	var steps := phys_frame - _phys_frame0
+	row.merge({"v3d": snappedf(float(v3d_us) / 1000.0 / float(n), 0.01), "rcpu": snappedf(_rcpu / float(n), 0.01),
+		"proc": snappedf(_proc * 1000.0 / float(n), 0.01), "phys": snappedf(_phys * 1000.0 / float(n), 0.01),
+		"steps": snappedf(float(steps) / float(n), 0.01), "mouse": roundi(float(mouse_events) / maxf(_perf_t - _load_t, 0.001))})
 	if _load_t > 0.0:
 		row["load_s"] = snappedf(_load_t, 0.1)
 	_load_t = 0.0
 	_ft.clear()
 	_gpu = 0.0
+	_rcpu = 0.0
+	_proc = 0.0
+	_phys = 0.0
+	_phys_frame0 = phys_frame
+	v3d_us = 0
+	mouse_events = 0
 	_perf_t = 0.0
 	_write("perf", row)
 

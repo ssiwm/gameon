@@ -6,6 +6,7 @@ extends Node
 signal device_changed(pad: bool)
 
 const Actions := preload("res://scripts/actions.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 const STICK_ON := 0.5                ## odchylenie drążka / spustu uznawane za „gracz używa pada"
 const MOUSE_MOVE := 4.0              ## ruch myszy (piksele na zdarzenie) uznawany za „gracz używa myszy"
 
@@ -32,6 +33,8 @@ func _joy_connection_changed(device: int, connected: bool) -> void:
 		device_changed.emit(false)
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		SessionLog.mouse_events += 1
 	var previous_device := Actions.pad_device
 	var pad := Actions.pad_mode
 	if event is InputEventJoypadButton and event.pressed:
