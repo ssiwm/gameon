@@ -102,6 +102,7 @@ class GameLight extends Node2D:
 	var range_px := 96.0                  ## zasięg [px świata]
 	var is_cone := false                  ## stożek (latarka) zamiast kuli
 	var shadow_enabled := false           ## życzenie właściciela; o cieniach w scenie decyduje widok 3D (najbliższe światła)
+	var no_shadow := false                ## nigdy bez cienia w widoku 3D: światło tuż przy własnym modelu rzucałoby jego powiększony cień na ścianę
 	func _enter_tree() -> void:
 		add_to_group("game_lights")
 

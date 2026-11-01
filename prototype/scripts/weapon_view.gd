@@ -109,9 +109,11 @@ func setup(p: CharacterBody2D, c: Node) -> void:
 	add_child(_fx)
 	_flash_light = Lights.make_light(Lights.radial(), 4.0, Color(1.0, 0.8, 0.45), 1.4, false)
 	_flash_light.enabled = false
+	_flash_light.no_shadow = true                         # lufa tuż przy modelu (np. latarnia drezyny) rzucała jego wielki cień na całą ścianę
 	add_child(_flash_light)
 	_beam_light = Lights.make_light(Lights.radial(), 2.2, Color(0.55, 0.9, 1.0), 0.9, false)
 	_beam_light.enabled = false
+	_beam_light.no_shadow = true
 	add_child(_beam_light)
 	ctrl.shot.connect(_on_shot)
 	ctrl.melee_swung.connect(_on_swing)
