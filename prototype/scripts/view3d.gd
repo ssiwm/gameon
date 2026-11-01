@@ -5900,7 +5900,7 @@ func _scan_lights() -> void:
 				# światło omni jest rozdzielone na dwie warstwy: świat (z cieniami dla kilku najbliższych) i gracze (bez cieni, osobne światło) —
 				# cień światła omni w tej samej warstwie co modele graczy gubił je w warstwie z maską kamery (Compatibility)
 				l3.light_cull_mask = LAYER_WORLD
-				l3.shadow_enabled = n <= SHADOW_LIGHTS and not is_aura
+				l3.shadow_enabled = n <= SHADOW_LIGHTS and not is_aura and not li.no_shadow
 				l3a = OmniLight3D.new()
 				l3a.light_color = li.color
 				l3a.light_cull_mask = LAYER_ACTORS
