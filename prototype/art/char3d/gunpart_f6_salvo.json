@@ -1,0 +1,8 @@
+{
+ "weapon": "sokol6",
+ "mount": "muzzle",
+ "hides": [
+  "muzzle"
+ ],
+ "muzzle_add": 0.032
+}

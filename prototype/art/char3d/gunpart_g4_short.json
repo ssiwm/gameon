@@ -1,0 +1,13 @@
+{
+ "weapon": "gniew4",
+ "mount": "frame",
+ "hides": [
+  "front"
+ ],
+ "muzzle_add": 0.0,
+ "muzzle": [
+  0.3058,
+  0.0,
+  0.1819
+ ]
+}
