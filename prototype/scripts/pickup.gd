@@ -385,9 +385,9 @@ func _try_stash() -> void:
 		if pl.dead or not _near(pl):
 			continue
 		Scrap.add_loot(rounds)
-		var pid := Scrap.pick_find()
+		var pid := Scrap.pick_stash_find()
 		if pid != "":
-			Scrap.find_part(pid)                              # skrytka patrolu: w środku część (odblokowanie po ekstrakcji, §7.1)
+			Scrap.find_part(pid)                              # skrytka patrolu: czasem w środku część (odblokowanie po ekstrakcji, §7.1)
 		var mis := get_tree().get_first_node_in_group("mission")
 		if mis != null:
 			mis.on_stash_found(pl, global_position)

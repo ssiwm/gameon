@@ -4,8 +4,9 @@ extends RefCounted
 ## Każda broń ma kilka gniazd (zasilanie, lufa, wylot, mechanizm, kolba…), w każdym fabryczny element i 1–3 części do wyboru.
 ## Część ma zysk i KOSZT (zasada pilnowana testem: co najmniej jeden modyfikator na minus) — wybór części to decyzja, nie formalność.
 ## Odblokowanie (zakup za złom w warsztacie) jest wspólne dla drużyny (Scrap.parts, zapis u hosta), a MONTAŻ prywatny: każdy gracz
-## składa własną broń (Profile.fits, replikowane jako player.fits). Gniazdo, w którym gracz niczego nie wybrał, dostaje pierwszą
-## odblokowaną część z listy — dzięki temu dawne poziomy ulepszeń (migracja w Scrap.load_progress) działają od razu.
+## składa własną broń (Profile.fits, replikowane jako player.fits). Gniazdo, w którym gracz niczego nie wybrał, ma element fabryczny
+## (od 1.7.367; Profile.migrate_fits jednorazowo utrwalił dawny automatyczny montaż pierwszej odblokowanej części). Kupiona część
+## montuje się od razu u kupującego (Scrap._part_done), znaleziona — dopiero ręcznie na ławie.
 ##
 ## Konfiguracja broni to liczba `fit`: dla każdego gniazda broni (kolejność SLOT_ORDER) 2 bity = indeks części (0 = fabryczny, 1..3).
 ## Razem z typem naboju tworzy kod `build` = ammo | fit << 4 (Weapons.def_build), który płynie przez sieć ze strzałem.
@@ -36,11 +37,11 @@ const PARTS := {
 			"desc": "Cut-down barrel: draws 30% faster, but spread +30%, range −15%, a louder, brighter muzzle blast and it heats up 25% faster",
 			"mods": [["draw_time", "mul", 0.7], ["jitter_deg", "mul", 1.3], ["range_px", "mul", 0.85], ["n_min", "mul", 1.15], ["n_max", "mul", 1.15], ["flash_size", "mul", 1.4], ["barrel_heat", "mul", 1.25], ["mass", "add", -0.3]]},
 		{"id": "m83_pbs1", "slot": "muzzle", "tier": 3, "cost": 220, "name": "PBS-1 suppressor",
-			"desc": "Much quieter: noise −40% / −30%, flash almost gone; with subsonic US rounds the shot barely carries. Longer and heavier (+0.05 s draw)",
-			"mods": [["n_min", "mul", 0.6], ["n_max", "mul", 0.7], ["suppressor", "add", 1.0], ["flash_size", "mul", 0.3], ["flash_light", "mul", 0.3], ["draw_time", "add", 0.05], ["mass", "add", 0.45]]},
-		{"id": "m83_hider", "slot": "muzzle", "cost": 70, "name": "Flash hider",
-			"desc": "The muzzle flash shrinks to a third (less light to give you away); the slant brake is gone, so the camera kicks harder (+15%)",
-			"mods": [["flash_size", "mul", 0.35], ["flash_light", "mul", 0.35], ["cam_kick", "mul", 1.15], ["mass", "add", -0.05]]},
+			"desc": "Much quieter: noise −40% / −30%, flash mostly gone; with subsonic US rounds the shot barely carries. Gas blows back into the action, so the gun fouls 50% faster, and a hot can gets louder. Longer and heavier (+0.05 s draw)",
+			"mods": [["n_min", "mul", 0.6], ["n_max", "mul", 0.7], ["suppressor", "add", 1.0], ["flash_size", "mul", 0.3], ["flash_light", "mul", 0.3], ["wear", "mul", 1.5], ["draw_time", "add", 0.05], ["mass", "add", 0.45]]},
+		{"id": "m83_hider", "slot": "muzzle", "cost": 50, "name": "Flash hider",
+			"desc": "A slotted flash hider: the least flash of any muzzle device (a quarter of the factory flash), no fouling and no extra length — but the shot is as loud as ever and, without the slant brake, the camera kicks harder (+15%)",
+			"mods": [["flash_size", "mul", 0.25], ["flash_light", "mul", 0.25], ["cam_kick", "mul", 1.15], ["mass", "add", -0.05]]},
 		{"id": "m83_akms", "slot": "stock", "cost": 60, "name": "AKMS folding stock",
 			"desc": "Folding stock: draws 20% faster, but the gun climbs more (bloom per shot +15%, camera kick +25%)",
 			"mods": [["draw_time", "mul", 0.8], ["bloom_per_shot", "mul", 1.15], ["cam_kick", "mul", 1.25], ["mass", "add", -0.2]]},
@@ -53,8 +54,8 @@ const PARTS := {
 			"desc": "Tighter grouping: spread −40%, bloom per shot −25%; a tight fit that needs a firmer rack (+0.1 s reload)",
 			"mods": [["jitter_deg", "mul", 0.6], ["bloom_per_shot", "mul", 0.75], ["reload_time", "add", 0.1]]},
 		{"id": "p64_supp", "slot": "muzzle", "tier": 3, "cost": 175, "name": "Suppressor",
-			"desc": "Quieter: noise −30% (the 9×18 round is subsonic, so it works well), flash almost gone. Longer pistol (+0.05 s draw)",
-			"mods": [["n_min", "mul", 0.7], ["n_max", "mul", 0.7], ["suppressor", "add", 1.0], ["flash_size", "mul", 0.3], ["flash_light", "mul", 0.3], ["draw_time", "add", 0.05], ["mass", "add", 0.2]]},
+			"desc": "Quieter: noise −30% (the 9×18 round is subsonic, so it works well), flash almost gone. The pistol fouls 50% faster and a hot can gets louder. Longer pistol (+0.05 s draw)",
+			"mods": [["n_min", "mul", 0.7], ["n_max", "mul", 0.7], ["suppressor", "add", 1.0], ["flash_size", "mul", 0.3], ["flash_light", "mul", 0.3], ["wear", "mul", 1.5], ["draw_time", "add", 0.05], ["mass", "add", 0.2]]},
 		{"id": "p64_long", "slot": "barrel", "cost": 85, "name": "Long barrel",
 			"desc": "A longer barrel: the 9×18 keeps its punch 25% farther out and flies 20% farther; it no longer fits the holster (+0.15 s draw)",
 			"mods": [["falloff_start", "add", 40.0], ["range_px", "mul", 1.2], ["draw_time", "add", 0.15], ["mass", "add", 0.15]]},
@@ -329,7 +330,7 @@ static func from_level(key: String, level: int) -> Array:
 
 ## Czy modyfikator pogarsza broń (koszt części). Kierunek „lepiej” zależy od pola.
 const LOWER_IS_BETTER := ["draw_time", "reload_time", "cooldown", "jitter_deg", "bloom_per_shot", "bloom_max", "cam_kick", "shake", "patch_every", "mass",
-	"n_min", "n_max", "heat_gain", "charge_time", "arm_dist", "flash_size", "flash_light", "spread_deg", "barrel_heat"]
+	"n_min", "n_max", "heat_gain", "charge_time", "arm_dist", "flash_size", "flash_light", "spread_deg", "barrel_heat", "wear"]
 static func is_cost(m: Array, base: RefCounted) -> bool:
 	var f := String(m[0])
 	var cur := float(base.get(f))
@@ -346,7 +347,46 @@ static func is_cost(m: Array, base: RefCounted) -> bool:
 	var lower_better := f in LOWER_IS_BETTER
 	return (out > cur) == lower_better
 
-## Sprawdza katalog: znane bronie i pola, unikalne id, najwyżej MAX_PER_SLOT części w gnieździe, każda część ma koszt
+## Pola bez kierunku „lepiej”: inna wartość to inny sposób użycia (ogień ciągły z s8_slam), nie zysk ani koszt.
+const NEUTRAL_FIELDS := ["auto"]
+
+## Wartość pola `f` broni `base` po modyfikatorach części `p` (bez nich — wartość fabryczna).
+static func _value_with(p: Dictionary, f: String, base: RefCounted) -> float:
+	var out := float(base.get(f))
+	for m in p.get("mods", []):
+		if String(m[0]) != f:
+			continue
+		match String(m[1]):
+			"mul":
+				out *= float(m[2])
+			"set":
+				out = float(m[2])
+			_:
+				out += float(m[2])
+	return out
+
+## Czy część `a` jest zdominowana przez `b` z tego samego gniazda: `b` w żadnym polu nie jest gorsza, w jakimś lepsza.
+## Taka część to wybór pozorny — nikt jej nie zamontuje, gdy ma `b` (do 1.7.453 tłumik płomienia M-83 przy PBS-1 był blisko tego stanu).
+static func dominated_by(a: Dictionary, b: Dictionary, base: RefCounted) -> bool:
+	var fields := {}
+	for m in a.get("mods", []) + b.get("mods", []):
+		fields[String(m[0])] = true
+	var better := false
+	for f in fields:
+		var va := _value_with(a, f, base)
+		var vb := _value_with(b, f, base)
+		if is_equal_approx(va, vb):
+			continue
+		if f in NEUTRAL_FIELDS:
+			return false
+		var b_better: bool = (vb < va) == (f in LOWER_IS_BETTER)
+		if not b_better:
+			return false
+		better = true
+	return better
+
+## Sprawdza katalog: znane bronie i pola, unikalne id, najwyżej MAX_PER_SLOT części w gnieździe, żadna część nie jest zdominowana
+## przez inną z tego samego gniazda, każda część ma koszt
 ## (modyfikator na minus) poza wyjątkami zapisanymi w tabeli jako zamierzone (dławik: węższy stożek z bliska nie jest polem). Wołane przez --weapontest.
 static func validate(defs: Array) -> Array:
 	var errs: Array = []
@@ -359,8 +399,13 @@ static func validate(defs: Array) -> Array:
 			errs.append("części: nieznana broń '%s'" % k)
 			continue
 		for s in slots_of(String(k)):
-			if in_slot(String(k), String(s)).size() > MAX_PER_SLOT:
+			var ps := in_slot(String(k), String(s))
+			if ps.size() > MAX_PER_SLOT:
 				errs.append("części: %s / %s ma więcej niż %d części" % [k, s, MAX_PER_SLOT])
+			for a in ps:
+				for b in ps:
+					if a != b and dominated_by(a, b, keys[k]):
+						errs.append("części: %s jest zdominowana przez %s (gniazdo %s)" % [a["id"], b["id"], s])
 		for p in PARTS[k]:
 			var id := String(p["id"])
 			if seen.has(id):

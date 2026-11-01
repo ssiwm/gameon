@@ -55,7 +55,7 @@ const PART_METRICS := {
 	"patch_life": ["Fire patch duration", "%.2f s", 1.0], "pull": ["Pull speed", "%.2f m/s", 1.0 / 16.0],
 	"shake": ["Camera shake", "%.2f", 1.0], "speed": ["Projectile speed", "%.2f m/s", 1.0 / 16.0],
 	"stun": ["Stun duration", "%.2f s", 1.0], "suppressor": ["Suppressor fitted", "bool", 1.0],
-	"wall_pierce": ["Wall penetration", "%.2f m", 1.0 / 16.0],
+	"wall_pierce": ["Wall penetration", "%.2f m", 1.0 / 16.0], "wear": ["Gun wear", "×%.2f", 1.0],
 }
 ## Karta prasy: modyfikatory naboju (ammo.gd) jako porównanie z nabojem zwykłym — [etykieta, kierunek (1: więcej = lepiej), zapis dodawania].
 const AMMO_FIELDS := {
@@ -2524,7 +2524,7 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 	elif unlocked and String(selected.get("slot", "")) != "preset":
 		if id != "" and not Scrap.has_part(id):
 			if Scrap.found.has(id):
-				_action.text = tr("Found · extract to unlock")
+				_action.text = tr("Found · schematic after extraction") if Scrap.is_lab_part(id) else tr("Found · extract to unlock")
 				_action.disabled = true
 			elif Scrap.is_lab_part(id):
 				_action.text = tr("Research and make it at the lab / lathe")

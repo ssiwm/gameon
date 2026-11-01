@@ -257,7 +257,21 @@ func _t_data() -> void:
 	var errs := Weapons.validate()
 	check("tabele broni spójne (validate)", errs.is_empty(), "; ".join(errs))
 	var perrs := Parts.validate(Weapons.defs())
-	check("katalog części spójny: %d broni, każda część ma koszt (minus), pola istnieją" % Parts.PARTS.size(), perrs.is_empty() and Parts.PARTS.size() == Weapons.COUNT, "; ".join(perrs))
+	check("katalog części spójny: %d broni, każda część ma koszt (minus), żadna nie jest zdominowana, pola istnieją" % Parts.PARTS.size(), perrs.is_empty() and Parts.PARTS.size() == Weapons.COUNT, "; ".join(perrs))
+	# dawny tłumik płomienia przy PBS-1 (sprzed 1.7.454 bez masy i dobycia): większy błysk i mocniejsze kopnięcie — zdominowany
+	var m83 := Weapons.def(Weapons.M83)
+	var old_hider := {"mods": [["flash_size", "mul", 0.35], ["cam_kick", "mul", 1.15]]}
+	var can := {"mods": [["flash_size", "mul", 0.3], ["n_max", "mul", 0.7]]}
+	var slam := {"mods": [["auto", "set", 0.0], ["flash_size", "mul", 0.3]]}
+	check("dominacja w gnieździe: wykryta (%s), odwrotnie nie (%s), pole bez kierunku nie dominuje (%s)" % [str(Parts.dominated_by(old_hider, can, m83)),
+		str(Parts.dominated_by(can, old_hider, m83)), str(Parts.dominated_by(old_hider, slam, m83))],
+		Parts.dominated_by(old_hider, can, m83) and not Parts.dominated_by(can, old_hider, m83) and not Parts.dominated_by(old_hider, slam, m83))
+	var hider := Parts.get_part("m83_hider")
+	var pbs := Parts.get_part("m83_pbs1")
+	check("tłumik płomienia M-83: najmniejszy błysk, bez brudzenia (błysk %.2f < %.2f, zużycie ×%.1f przy PBS-1)" % [Parts._value_with(hider, "flash_size", m83) / m83.flash_size,
+		Parts._value_with(pbs, "flash_size", m83) / m83.flash_size, Parts._value_with(pbs, "wear", m83) / m83.wear],
+		Parts._value_with(hider, "flash_size", m83) < Parts._value_with(pbs, "flash_size", m83) and Parts._value_with(pbs, "wear", m83) > m83.wear
+		and is_equal_approx(Parts._value_with(hider, "wear", m83), m83.wear))
 	check("ceny części jak dawnych poziomów (M-83 60/120/220, tłumik P-83 %d, szyny SPECTER-1 %d)" % [Parts.cost("p64_supp"), Parts.cost("w1_rails")],
 		Parts.cost("m83_rpk40") == 60 and Parts.cost("m83_rpkbar") == 120 and Parts.cost("m83_pbs1") == 220 and Parts.cost("p64_supp") < 220 and Parts.cost("w1_rails") > 220)
 	print("[WTEST] %-9s %5s %6s %5s %7s %9s %9s %8s" % ["broń", "rpm", "dps", "mag", "reload", "szum/s@12s", "TTK trz.", "TTK wołek"])
@@ -2198,8 +2212,8 @@ func _t_condition_jams() -> void:
 	var before: float = Profile.condition("m83")
 	wc._fire_shot(sup)
 	var hot_sup: float = before - Profile.condition("m83")
-	check("zużycie: gorąca lufa ×%.0f i tłumik ×%.1f (%.4f %% na strzał)" % [Controller.WEAR_HOT, Controller.WEAR_CAN, hot_sup],
-		absf(hot_sup - Controller.WEAR_SHOT * md.wear * Controller.WEAR_HOT * Controller.WEAR_CAN) < 0.0001)
+	check("zużycie: gorąca lufa ×%.0f i tłumik ×%.1f z części (%.4f %% na strzał)" % [Controller.WEAR_HOT, sup.wear / md.wear, hot_sup],
+		sup.wear > md.wear and absf(hot_sup - Controller.WEAR_SHOT * sup.wear * Controller.WEAR_HOT) < 0.0001)
 	Settings.reliability_idx = 0
 	before = Profile.condition("m83")
 	wc._fire_shot(md)
@@ -2594,13 +2608,30 @@ func _t_part_finds() -> void:
 	check("znaleziska: część czeka do ekstrakcji (%s), drugi raz nie (%s), wipe ją zabiera (%s), ekstrakcja odblokowuje (%s)" % [str(waiting), str(not again), str(wiped), str(Scrap.has_part(pid))],
 		waiting and not again and wiped and Scrap.has_part(pid) and Scrap.found.is_empty())
 	Scrap.parts = {}
-	# skrytka: złom i część
+	# znaleziona część broni specjalnej: po ekstrakcji schemat dla tokarki, nie gotowa część (od 1.7.454)
+	var lab_id := "lr7_lens"
+	var schem0: Dictionary = Scrap.schematics.duplicate()
+	var unl0: Dictionary = Scrap.unlocked.duplicate()
+	Scrap.unlocked[Weapons.LR7] = true
+	Scrap.find_part(lab_id)
+	Scrap.bank_loot(0)
+	check("znaleziska: część pracowni po ekstrakcji to schemat (%s), nie część (%s)" % [str(Scrap.schematics.has(lab_id)), str(Scrap.has_part(lab_id))],
+		Scrap.schematics.has(lab_id) and not Scrap.has_part(lab_id) and Scrap.found.is_empty())
+	Scrap.schematics = schem0
+	Scrap.unlocked = unl0
+	Scrap.parts = {}
+	# skrytka: złom zawsze, część tylko z szansą STASH_PART_CHANCE (wymuszony wynik losowania)
+	Scrap.stash_part_roll = 0.99
+	var no_part := Scrap.pick_stash_find()
+	Scrap.stash_part_roll = 0.0
 	_drop_still("stash", 0, player.global_position + Vector2(0.0, -4.0), Scrap.STASH_VALUE)
 	var waited := 0.0
 	while Scrap.found.is_empty() and waited < 4.0:             # czeka na podniesienie, nie stały czas
 		await wait(0.1)
 		waited += 0.1
-	check("znaleziska: skrytka daje część (%s)" % str(Scrap.found.keys()), Scrap.found.size() == 1)
+	Scrap.stash_part_roll = -1.0
+	check("znaleziska: skrytka daje część z szansą %.0f %% — los poniżej (%s), powyżej nic (%s)" % [Scrap.STASH_PART_CHANCE * 100.0, str(Scrap.found.keys()), no_part],
+		Scrap.found.size() == 1 and no_part == "" and Scrap.STASH_PART_CHANCE < 1.0)
 	Scrap.found = {}
 	# część na ziemi (łup elity): podchodzisz — znaleziona
 	var drop_id := "m83_pbs1"
