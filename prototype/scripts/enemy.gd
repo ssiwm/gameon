@@ -331,11 +331,30 @@ static func _path_slot() -> bool:
 ## Liczniki do pomiarów (main.gd `_perf_run`): czas całego `_physics_process` wrogów, w tym `move_and_slide`.
 static var stat_usec := 0
 static var stat_slide_usec := 0
+static var stat_proc_usec := 0           ## dev (--perf): łączny czas `_process` wrogów w µs
+static var stat_by_kind_on := false      ## dev (--perf): czas tików wg rodzaju i stanu
+static var stat_by_kind := {}
+const SessionLog := preload("res://scripts/session_log.gd")
+const ASLEEP_LOD_EVERY := 4              ## śpiący daleko od graczy: pełny tik co tyle kroków fizyki i klatek
+const ASLEEP_LOD_R := 480.0              ## px: dalej niż tyle od każdego gracza wróg liczy się jako daleki; bliskość budzi najwyżej ze 100 px
+static var _player_pos: Array[Vector2] = []
+static var _player_pos_frame := -1
+var _asleep_far := false
+var _lod_dt := 0.0
+var _present_dt := 0.0
+var _lod_slot := randi() % ASLEEP_LOD_EVERY
 
 func _physics_process(delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	_phys_tick(delta)
-	stat_usec += Time.get_ticks_usec() - t0
+	var us := Time.get_ticks_usec() - t0
+	stat_usec += us
+	if stat_by_kind_on:
+		var kind_key := "%s/%s" % [String(_def.get("id", _kind_name())), "obudzony" if active else ("daleko" if _asleep_far else "spi")]
+		stat_by_kind[kind_key] = int(stat_by_kind.get(kind_key, 0)) + us
+
+func _kind_name() -> String:
+	return (get_script() as Script).resource_path.get_file() if _beh == null else (_beh.get_script() as Script).resource_path.get_file().get_basename()
 
 func _slide() -> void:
 	var t0 := Time.get_ticks_usec()
@@ -350,9 +369,37 @@ func _phys_tick(delta: float) -> void:
 		return
 	if not alive:
 		return
-	_tick_server(delta)
+	if active:
+		SessionLog.awake_ticks += 1
+	_asleep_far = _asleep_far_ok()
+	if _asleep_far and (Engine.get_physics_frames() + _lod_slot) % ASLEEP_LOD_EVERY != 0:
+		_lod_dt += delta
+		_ai_t += delta
+		return
+	_tick_server(delta + _lod_dt)
+	_lod_dt = 0.0
 	_ai_t += delta
 	_set_ai_state(_derive_ai_state())
+
+## Śpiący wróg daleko od graczy: stoi, nic go nie rusza, więc wystarczy tik co ASLEEP_LOD_EVERY kroków fizyki (z zebraną deltą). Nowy hałas wymusza
+## pełny tik od razu, bo `_check_wake` zna tylko ostatni hałas. Na z1_m2 większość ze 100 wrogów śpi, a tik każdego to osobne `move_and_slide`.
+func _asleep_far_ok() -> bool:
+	if active or _sp != 0 or _burn > 0.0 or _drop_t > 0.0 or NoiseMgr.noise_serial != _seen_serial or not _beh.asleep_lod():
+		return false
+	if _ai_t < 1.0:
+		return false                                 # świeży stan (nowy wróg, właśnie zasnął) najpierw się ustala
+	if not _hanging and not _beh.asleep_free() and (not is_on_floor() or velocity.length_squared() > 1.0):
+		return false
+	var frame := Engine.get_physics_frames()
+	if frame != _player_pos_frame:
+		_player_pos_frame = frame
+		_player_pos.clear()
+		for p in get_tree().get_nodes_in_group("players"):
+			_player_pos.append((p as Node2D).global_position)
+	for at in _player_pos:
+		if global_position.distance_squared_to(at) < ASLEEP_LOD_R * ASLEEP_LOD_R:
+			return false
+	return true
 
 ## Stan AI z flag symulacji — w kolejności, w jakiej gałęzie `_tick_server` przejmują ruch (pierwsza prawdziwa wygrywa).
 func _derive_ai_state() -> int:
@@ -1389,6 +1436,14 @@ func _voice(event: String) -> void:
 		Audio.play_variant_at(String(v[0]), int(v[1]), global_position, Audio.BUS_WORLD, float(v[2]), float(v[3]))
 
 func _process(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_present_dt += delta
+	if not _asleep_far or (Engine.get_process_frames() + _lod_slot) % ASLEEP_LOD_EVERY == 0:      # śpi daleko od graczy: wygląd też rzadziej
+		_present_tick(_present_dt)
+		_present_dt = 0.0
+	stat_proc_usec += Time.get_ticks_usec() - t0
+
+func _present_tick(delta: float) -> void:
 	_beh.present(delta)
 	if winding != _voiced_winding:
 		_voiced_winding = winding

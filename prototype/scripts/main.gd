@@ -1468,11 +1468,19 @@ func _perf_run(secs: float, col: int) -> void:
 	var calls := 0.0
 	var prims := 0.0
 	# liczniki skryptów od startu pomiaru (dotąd zawierały też rozgrzewkę i wczytywanie mapy)
+	var perf_pass: Node = load("res://scripts/perf_pass.gd").new()
+	perf_pass.name = "PerfPass"
+	add_child(perf_pass)
+	ENEMY.stat_proc_usec = 0
+	ENEMY.stat_by_kind_on = true
+	ENEMY.stat_by_kind.clear()
 	ENEMY.stat_usec = 0
 	ENEMY.stat_slide_usec = 0
 	NavGraph.stat_calls = 0
 	NavGraph.stat_usec = 0
 	VIEW3D.stat_usec = 0
+	VIEW3D.stat_near = 0
+	VIEW3D.stat_screen = 0
 	VIEW3D.stat_parts.clear()
 	var t_end := Time.get_ticks_msec() + int(secs * 1000.0)
 	var last := Time.get_ticks_usec()
@@ -1551,6 +1559,14 @@ func _perf_run(secs: float, col: int) -> void:
 	var pk := parts.keys()
 	pk.sort_custom(func(a, b) -> bool: return int(parts[a]) > int(parts[b]))
 	print("[PERF-V3D] ", "  ".join(pk.slice(0, 24).map(func(k) -> String: return "%s=%.2f" % [k, float(parts[k]) / 1000.0 / float(maxi(n, 1))])))
+	print("[PERF-PASS] ", perf_pass.call("report"), "  enemy._process %.2f ms" % (float(ENEMY.stat_proc_usec) / 1000.0 / float(maxi(n, 1))), "  wrogowie: blisko %.1f, w kadrze %.1f na klatkę, węzłów enemies %d" % [float(VIEW3D.stat_near) / float(maxi(n, 1)), float(VIEW3D.stat_screen) / float(maxi(n, 1)), get_tree().get_nodes_in_group("enemies").size()])
+	var by_kind: Dictionary = ENEMY.stat_by_kind
+	var kinds := by_kind.keys()
+	kinds.sort_custom(func(a, b) -> bool: return int(by_kind[a]) > int(by_kind[b]))
+	print("[PERF-KIND] ", "  ".join(kinds.slice(0, 16).map(func(k) -> String: return "%s=%.2f" % [k, float(by_kind[k]) / 1000.0 / float(maxi(n, 1))])))
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--perfprocs="):
+			await _perf_procs(a.substr("--perfprocs=".length()).split(","), perf_pass)
 	if "--perfreport" in OS.get_cmdline_user_args():
 		await _perf_report(vps, v3d)
 	Audio.quit_game()
@@ -1753,6 +1769,65 @@ func _perf_report(vps: Array[RID], v3d: Node) -> void:
 	rows.sort_custom(func(a, b) -> bool: return a[0] > b[0])
 	for r in rows.slice(0, 15):
 		print("[PERF-PHYS]   %6.2f ms  ×%-4d %-24s (szum przed/po %.2f ms)" % [r[0], r[2], r[1], r[3]])
+	# to samo dla _process, ale miarą jest czas przebiegu `_process` (perf_pass.gd), a nie klatki: w oknie klatkę wyznacza vsync, a w --headless limit klatek
+	var perf_pass := get_node_or_null("PerfPass")
+	if perf_pass == null:
+		return
+	var by_proc := {}
+	for nd in get_tree().root.find_children("*", "", true, false):
+		if nd.is_processing() and nd.get_script() != null and nd != self and nd != perf_pass and nd.get_parent() != perf_pass:
+			var sp := String((nd.get_script() as Script).resource_path).get_file()
+			if not by_proc.has(sp):
+				by_proc[sp] = []
+			by_proc[sp].append(nd)
+	rows = []
+	var pass_avg := func(secs: float) -> float:
+		await get_tree().process_frame
+		perf_pass.call("reset")
+		await get_tree().create_timer(secs).timeout
+		return float(perf_pass.get("proc_usec")) / 1000.0 / float(maxi(int(perf_pass.get("frames")), 1))
+	print("[PERF-PROC] przebieg _process %.2f ms; grupy: %d" % [await pass_avg.call(1.0), by_proc.size()])
+	for sp in by_proc:
+		var nodes: Array = by_proc[sp]
+		var before: float = await pass_avg.call(0.35)
+		for nd in nodes:
+			if is_instance_valid(nd):
+				(nd as Node).set_process(false)
+		var t: float = await pass_avg.call(0.35)
+		for nd in nodes:
+			if is_instance_valid(nd):
+				(nd as Node).set_process(true)
+		var after: float = await pass_avg.call(0.35)
+		rows.append([(before + after) * 0.5 - t, sp, nodes.size(), absf(before - after)])
+	rows.sort_custom(func(a, b) -> bool: return a[0] > b[0])
+	for r in rows.slice(0, 20):
+		print("[PERF-PROC]   %6.2f ms  ×%-4d %-28s (szum przed/po %.2f ms)" % [r[0], r[2], r[1], r[3]])
+
+## Dev (--perfprocs=a.gd,b.gd): koszt `_process` wskazanych skryptów, po 3 razy wyłączanych na dłużej niż w --perfreport, żeby szum nie zasłaniał wyniku.
+func _perf_procs(names: PackedStringArray, perf_pass: Node) -> void:
+	var pass_avg := func(secs: float) -> float:
+		await get_tree().process_frame
+		perf_pass.call("reset")
+		await get_tree().create_timer(secs).timeout
+		return float(perf_pass.get("proc_usec")) / 1000.0 / float(maxi(int(perf_pass.get("frames")), 1))
+	for script_name in names:
+		var nodes: Array = []
+		for nd in get_tree().root.find_children("*", "", true, false):
+			if nd.is_processing() and nd.get_script() != null and String((nd.get_script() as Script).resource_path).get_file() == script_name:
+				nodes.append(nd)
+		var gains: Array = []
+		for i in 3:
+			var before: float = await pass_avg.call(1.0)
+			for nd in nodes:
+				if is_instance_valid(nd):
+					(nd as Node).set_process(false)
+			var off: float = await pass_avg.call(1.0)
+			for nd in nodes:
+				if is_instance_valid(nd):
+					(nd as Node).set_process(true)
+			gains.append(before - off)
+		gains.sort()
+		print("[PERF-PROCS] %-24s ×%-3d %.2f ms (rozrzut %.2f…%.2f)" % [script_name, nodes.size(), gains[1], gains[0], gains[2]])
 
 ## Średni łączny czas GPU (ms) viewportów z N kolejnych klatek.
 func _perf_gpu_avg(vp_nodes: Array, n: int) -> float:

@@ -34,6 +34,7 @@ const WorldBars := preload("res://scripts/world_bars.gd")
 const PX := Level3D.PX
 const FOV := 40.0
 const ENEMY_MODELS_PER_FRAME := 1        ## nowe modele wrogów na klatkę poza budową mapy (`_sync_enemies`)
+const OFFSCREEN_ENEMY_EVERY := 4          ## wróg poza kadrem: pełna synchronizacja co tyle klatek (rozłożona po wrogach), z zebraną deltą
 const ENEMY_CULL_R := 3.5                ## m: promień sfery wroga przy teście kadru (`_sync_enemies`); bossowie ×3
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
@@ -384,6 +385,8 @@ func release() -> void:
 ## Dev (--perf): łączny czas `_process` widoku 3D w µs — synchronizacja świata 3D z symulacją 2D to praca wątku głównego, której nie ma
 ## w trybie headless (main.gd zeruje i dzieli przez liczbę klatek w wierszu [PERF]).
 static var stat_usec := 0
+static var stat_near := 0                ## dev (--perf): wrogowie w promieniu kamery, zliczani co klatkę
+static var stat_screen := 0              ## dev (--perf): z nich w kadrze
 
 func _process(delta: float) -> void:
 	if _building:
@@ -1018,7 +1021,10 @@ func _sync_enemies(delta: float) -> void:
 			_enemies[id] = [n, e]
 	var cam_x := _cam_a.global_position.x
 	var planes := _cam_a.get_frustum()
+	var frame_no := Engine.get_process_frames()
+	var enemy_i := 0
 	for id in _enemies.keys():
+		enemy_i += 1
 		var pair: Array = _enemies[id]
 		var src_v = pair[0]
 		var e_v = pair[1]
@@ -1030,12 +1036,20 @@ func _sync_enemies(delta: float) -> void:
 			continue
 		if e_v == null:
 			continue
+		# poza kadrem nie widać ani pozy, ani pozycji modelu: reszta tej pętli (view_info, klipy, zegary) wystarczy co kilka klatek, po kolei. Wejście w kadr
+		# spóźnia się najwyżej o 3 klatki, a promień testu kadru (ENEMY_CULL_R) ma zapas większy niż droga wroga w tym czasie.
+		var st_skip: Dictionary = _estate.get(id, {})
+		if bool(st_skip.get("off", false)) and (frame_no + enemy_i) % OFFSCREEN_ENEMY_EVERY != 0:
+			st_skip["off_dt"] = float(st_skip.get("off_dt", 0.0)) + delta
+			continue
+		var enemy_dt: float = delta + float(st_skip.get("off_dt", 0.0))
 		var e: Node3D = e_v
 		var src: Node2D = src_v
 		var body := src.get_node_or_null("Body") as AnimatedSprite2D
 		var pos := Level3D.px_to_m(body.global_position if body != null else src.global_position)
 		# zdarzenia z symulacji 2D → klipy modelu: śmierć (alive = false; węzeł jest tylko chowany), trafienie (błysk), atak (koniec zapowiedzi)
 		var st: Dictionary = _estate.get(id, {"alive": true, "flash": false, "wind": false, "py": NAN, "vy": 0.0})
+		st["off_dt"] = 0.0
 		var info: Dictionary = src.call("view_info")                          # kontrakt widoku (enemy.gd: view_info) — wszystkie rodzaje z modelem go mają
 		var alive: bool = bool(info["alive"])
 		var winding: bool = bool(info["winding"])
@@ -1062,6 +1076,7 @@ func _sync_enemies(delta: float) -> void:
 			e.set("finished", true)
 		if not (show and near and not (not alive and bool(e.get("finished")))):
 			e.visible = false
+			st["off"] = not dying and not src.is_in_group("boss") and String(info["kind"]) != "stalker"
 			continue
 		# poza kadrem kamery świata model jest ukryty, a szkielet nie jest liczony (klipy, IK, podparcie stóp: ok. 0,3 ms na wroga) —
 		# biegną tylko zegary klipów i prędkości, więc po wejściu w kadr poza toczy się dalej. W walce na z1_m2 pozowano 46 wrogów
@@ -1069,6 +1084,10 @@ func _sync_enemies(delta: float) -> void:
 		var on_screen := _in_frustum(pos + Vector3(0.0, 1.2, 0.0), ENEMY_CULL_R * (3.0 if src.is_in_group("boss") else 1.0), planes)
 		e.visible = on_screen
 		e.set("skip_skeleton", not on_screen)
+		st["off"] = not on_screen and not dying and not src.is_in_group("boss") and String(info["kind"]) != "stalker"
+		stat_near += 1
+		stat_screen += 1 if on_screen else 0
+		SessionLog.screen_enemies += 1 if on_screen else 0
 		var sp_v2 = float(st.get("vx", 0.0))
 		var wades: bool = not ["cma", "nest", "vein", "leech"].has(String(e.get("kind")))
 		st["wade"] = _wade_step(float(st.get("wade", 0.0)), src.global_position) if wades else 0.0
@@ -1094,13 +1113,13 @@ func _sync_enemies(delta: float) -> void:
 		# prędkość pionowa z przesunięcia (u klientów węzeł wroga ma tylko pozycję): skok / spadanie → poza lotu w modelu 3D
 		var ypx := body.global_position.y if body != null else src.global_position.y
 		var vy_now := 0.0
-		if not is_nan(float(st["py"])) and delta > 0.0 and delta < 0.1:
-			vy_now = (ypx - float(st["py"])) / delta
+		if not is_nan(float(st["py"])) and enemy_dt > 0.0 and enemy_dt < 0.1:
+			vy_now = (ypx - float(st["py"])) / enemy_dt
 		st["py"] = ypx
 		var xpx := body.global_position.x if body != null else src.global_position.x
 		var vx_now := 0.0
-		if not is_nan(float(st.get("px", NAN))) and delta > 0.0 and delta < 0.1:
-			vx_now = absf(xpx - float(st["px"])) / delta
+		if not is_nan(float(st.get("px", NAN))) and enemy_dt > 0.0 and enemy_dt < 0.1:
+			vx_now = absf(xpx - float(st["px"])) / enemy_dt
 		st["px"] = xpx
 		st["vx"] = lerpf(float(st.get("vx", 0.0)), vx_now, 0.5)
 		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
@@ -1120,7 +1139,7 @@ func _sync_enemies(delta: float) -> void:
 						ground[side] = {"height": height, "normal": Vector3(normal.x, -normal.y, 0.0)}
 		e.set("ground_profile", ground)
 		e.set("lit", float(info.get("lit", 0.0)))                        # Ćma w snopie latarki świeci (enemy_moth.gd: view_extra)
-		e.call("pose", delta, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)), vx_now)      # tempo kroków z przebytej drogi, także u obserwatora sieciowego
+		e.call("pose", enemy_dt, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)), vx_now)      # tempo kroków z przebytej drogi, także u obserwatora sieciowego
 
 ## Sfera (środek, promień w m) choć częściowo w bryle widzenia (`Camera3D.get_frustum`: normalne płaszczyzn na zewnątrz).
 func _in_frustum(c: Vector3, r: float, planes: Array[Plane]) -> bool:
@@ -4641,6 +4660,9 @@ func _sync_enemy_rings() -> void:
 	for n in get_tree().get_nodes_in_group("enemies"):
 		if not (n is Node2D) or not n.has_method("view_info") or not (n as Node2D).is_visible_in_tree():
 			continue
+		var beh = n.get("_beh")
+		if beh == null or not bool(beh.call("shield_up")):
+			continue                                               # view_info co klatkę dla stu wrogów to koszt bez korzyści: tarczę ma tylko krzyczący Podsłuchacz
 		var info: Dictionary = n.view_info()
 		var dfn = n.get("_def")
 		if dfn == null:

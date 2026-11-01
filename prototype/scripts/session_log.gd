@@ -32,7 +32,8 @@ extends RefCounted
 ##   perf           map („menu” poza sesją, od 1.7.461; wcześniej domyślna mapa spod menu), fps, avg, p50, p95, p99 (od 1.7.461), max (ms klatki),
 ##                  spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry); raport: tools/session_perf.py
 ##                  Od 1.7.462 także główny wątek: v3d (ms skryptu widoku 3D), rcpu (ms CPU renderu), proc i phys (ms, średnie z sekundowych szczytów
-##                  silnika — Performance.TIME_*), steps (kroki fizyki na klatkę; powyżej 1 gra nadrabia), mouse (zdarzenia ruchu myszy na sekundę)
+##                  silnika — Performance.TIME_*), steps (kroki fizyki na klatkę; powyżej 1 gra nadrabia), mouse (zdarzenia ruchu myszy na sekundę);
+##                  od 1.7.464 awake (średnio obudzonych wrogów, tylko host) i onscreen (średnio wrogów w kadrze)
 ##                  — próbka co PERF_EVERY s, także w kryjówce i u klienta (od 1.7.367): klient pisze własny plik z samymi wierszami system i perf,
 ##                  bo wydajność jest jego sprzętu, a reszta dziennika to symulacja hosta
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
@@ -81,6 +82,8 @@ static var _phys := 0.0                ## suma Performance.TIME_PHYSICS_PROCESS 
 static var _phys_frame0 := -1          ## Engine.get_physics_frames() przy poprzedniej próbce
 static var v3d_us := 0                 ## µs skryptu widoku 3D od ostatniej próbki (dopisuje view3d._process)
 static var mouse_events := 0           ## zdarzenia ruchu myszy od ostatniej próbki (dopisuje input_setup._input)
+static var awake_ticks := 0            ## suma obudzonych wrogów po krokach fizyki od ostatniej próbki (dopisuje enemy.gd)
+static var screen_enemies := 0         ## suma wrogów w kadrze po klatkach od ostatniej próbki (dopisuje view3d._sync_enemies)
 
 static func active() -> bool:
 	return enabled and not _open_failed and NoiseMgr.is_server()
@@ -281,6 +284,8 @@ static func frame(delta: float, map_id: String, loading := false) -> void:
 		_perf_t += ms / 1000.0
 		v3d_us = 0
 		mouse_events = 0
+		awake_ticks = 0
+		screen_enemies = 0
 		_phys_frame0 = Engine.get_physics_frames()
 		return
 	if _phys_frame0 < 0:
@@ -315,7 +320,8 @@ static func frame(delta: float, map_id: String, loading := false) -> void:
 	var steps := phys_frame - _phys_frame0
 	row.merge({"v3d": snappedf(float(v3d_us) / 1000.0 / float(n), 0.01), "rcpu": snappedf(_rcpu / float(n), 0.01),
 		"proc": snappedf(_proc * 1000.0 / float(n), 0.01), "phys": snappedf(_phys * 1000.0 / float(n), 0.01),
-		"steps": snappedf(float(steps) / float(n), 0.01), "mouse": roundi(float(mouse_events) / maxf(_perf_t - _load_t, 0.001))})
+		"steps": snappedf(float(steps) / float(n), 0.01), "mouse": roundi(float(mouse_events) / maxf(_perf_t - _load_t, 0.001)),
+		"awake": snappedf(float(awake_ticks) / float(maxi(steps, 1)), 0.1), "onscreen": snappedf(float(screen_enemies) / float(n), 0.1)})
 	if _load_t > 0.0:
 		row["load_s"] = snappedf(_load_t, 0.1)
 	_load_t = 0.0
@@ -327,6 +333,8 @@ static func frame(delta: float, map_id: String, loading := false) -> void:
 	_phys_frame0 = phys_frame
 	v3d_us = 0
 	mouse_events = 0
+	awake_ticks = 0
+	screen_enemies = 0
 	_perf_t = 0.0
 	_write("perf", row)
 
