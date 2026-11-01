@@ -2361,8 +2361,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		Scrap.persist = false
 		Scrap.bank = 480
 		Scrap.unlocked[Weapons.LR7] = true
-		for pid in ["m83_rpk40", "m83_rpkbar", "lr7_cell"]:
-			Scrap.parts[pid] = true                  # podgląd: kilka odblokowanych części
+		if not "--shotwsfirst" in OS.get_cmdline_user_args():      # --shotwsfirst: ława nowej drużyny, bez części, z polecanym zakupem
+			for pid in ["m83_rpk40", "m83_rpkbar", "lr7_cell"]:
+				Scrap.parts[pid] = true              # podgląd: kilka odblokowanych części
 		Scrap.changed.emit()                         # montaż gracza (player.fits) jak po zakupie w grze
 		var wp: Node2D = _players.get_node_or_null("1")
 		var bench := get_tree().get_first_node_in_group("workshop") as Node2D
@@ -3595,6 +3596,8 @@ func _gen_test() -> void:
 	# stół konserwacji (W2): znacznik „j" obok ławy, zasięgi stołu i ławy się nie nakładają
 	var svc_nodes := get_tree().get_nodes_in_group("service_bench")
 	var svc_ok := false
+	var svc_rel := Settings.reliability_idx
+	Settings.reliability_idx = 1                             # przy wyłączonym zużyciu stół nie reaguje (osobny test: --workshoptest)
 	if svc_nodes.size() == 1:
 		var lk_pos := p.global_position
 		p.global_position = (svc_nodes[0] as Node2D).global_position + Vector2(0, -2)
@@ -3606,6 +3609,7 @@ func _gen_test() -> void:
 		svc_ok = svc_ok and not bool(svc_nodes[0].local_in_range) and bool(wk_node.local_in_range)
 		p.global_position = lk_pos
 		await get_tree().create_timer(0.5).timeout
+	Settings.reliability_idx = svc_rel
 	check.call("stół konserwacji: %d w kryjówce, zasięg osobno od ławy (%s)" % [svc_nodes.size(), str(svc_ok)], svc_nodes.size() == 1 and svc_ok)
 	var smodels: Array = svc_nodes[0].get("station_props") if svc_nodes.size() == 1 else []
 	check.call("stół konserwacji: modele 3D stanowiska %s (art/items3d)" % str(smodels.map(func(e: Array) -> String: return String(e[0]))),

@@ -507,6 +507,23 @@ func _fuse_server(kind: String, idx: int, peer_id: int) -> void:
 	_push()
 
 ## Czy część `id` należy do broni specjalnej (badanie w pracowni zamiast zakupu na ławie).
+## Pracownia działa od pierwszej próbki: wcześniej nie ma w niej co robić (WORKSHOP_PLAN.md §6). Raz rozpoczęty łańcuch zostawia ją otwartą.
+func lab_open() -> bool:
+	return samples > 0 or not research.is_empty() or lathe_open_jobs() or _owns_lab_part()
+
+## Tokarka działa od pierwszego schematu, a przy włączonym zużyciu także jako szlifierka broni białej.
+func lathe_open() -> bool:
+	return Settings.reliability_mult() > 0.0 or lathe_open_jobs() or _owns_lab_part()
+
+func lathe_open_jobs() -> bool:
+	return not schematics.is_empty() or not lathe.is_empty()
+
+func _owns_lab_part() -> bool:
+	for id in parts:
+		if is_lab_part(String(id)):
+			return true
+	return false
+
 func is_lab_part(id: String) -> bool:
 	return String(Parts.get_part(id).get("weapon", "")) in LAB_WEAPONS
 

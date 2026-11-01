@@ -43,7 +43,7 @@ func _physics_process(_delta: float) -> void:
 		if not p.is_bot and p.is_multiplayer_authority() and not p.dead and not p.is_queued_for_deletion():
 			me = p
 			break
-	if me == null:
+	if me == null or not Scrap.lathe_open():
 		return
 	local_in_range = absf(me.global_position.x - global_position.x) <= REACH_X and absf(me.global_position.y - global_position.y) <= REACH_Y
 	if local_in_range and Input.is_action_just_pressed("interact"):
