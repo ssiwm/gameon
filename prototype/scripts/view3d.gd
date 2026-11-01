@@ -413,7 +413,8 @@ func _tp(part: String, t0: int) -> int:
 func _tick(delta: float) -> void:
 	if _level == null or not is_instance_valid(_level):
 		return
-	SessionLog.frame(delta, String(_level.get("map_id")), _curtain != null and _curtain.visible)
+	# bez sesji sieciowej widać menu główne albo lobby, a `_level` to tylko domyślna mapa pod spodem
+	SessionLog.frame(delta, String(_level.get("map_id")) if NoiseMgr.has_network() else "menu", _curtain != null and _curtain.visible)
 	_gun_warm_t -= delta
 	if _gun_warm_t <= 0.0:
 		_gun_warm_t = 1.0

@@ -179,6 +179,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_messages.gd 2>&1 | tee messages.log
           grep -a "^PASS" messages.log
+      - name: Licznik FPS i próbki płynności w dzienniku (test_fps.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_fps.gd 2>&1 | tee fps.log
+          grep -a "^PASS" fps.log
       - name: Postacie — magazyn i migracja zapisu (test_characters.gd)
         run: |
           godot --headless --path prototype -s tools/test_characters.gd 2>&1 | tee characters.log

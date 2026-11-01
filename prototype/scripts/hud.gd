@@ -554,6 +554,10 @@ func _ready() -> void:
 func _scale_now() -> float:
 	return UI_SCALE * Settings.ui_mult()
 
+## Góra karty RUN: pod licznikiem FPS, gdy jest włączony (licznik liczony w jednostkach viewportu, HUD ma własną skalę).
+func _run_top() -> float:
+	return 2.0 * MARGIN + FpsOverlay.band() / _scale_now()
+
 func _apply_scale() -> void:
 	scale = Vector2(_scale_now(), _scale_now())
 	_fit()
@@ -568,7 +572,7 @@ func _fit() -> void:
 	_scrim_b.size = Vector2(w, h * 0.26)
 	_scrim_b.position = Vector2(0.0, h - _scrim_b.size.y)
 	_run_card.reset_size()
-	_run_card.position = Vector2(w - 2.0 * MARGIN - _run_card.size.x, 2.0 * MARGIN)
+	_run_card.position = Vector2(w - 2.0 * MARGIN - _run_card.size.x, _run_top())
 	_msgs.scale = Vector2.ONE * MSG_SCALE
 	_msgs.position = Vector2.ZERO
 	_msgs.size = size / MSG_SCALE
@@ -1480,7 +1484,7 @@ func _drive_status() -> void:
 	_xp_show_t = maxf(0.0, _xp_show_t - get_process_delta_time())
 	_xp_row.visible = _xp_show_t > 0.0
 	_run_card.reset_size()
-	_run_card.position = Vector2(size.x - 2.0 * MARGIN - _run_card.size.x, 2.0 * MARGIN)
+	_run_card.position = Vector2(size.x - 2.0 * MARGIN - _run_card.size.x, _run_top())
 	_gear_card.visible = _player != null and not _cabinet_view()          # oględziny gabloty: karta broni zasłaniała dolną półkę (1.7.432)
 	_equip_card.visible = _player != null
 	if _player == null:

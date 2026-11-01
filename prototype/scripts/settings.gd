@@ -80,6 +80,7 @@ var quality_idx := 2                   ## LOW / MEDIUM / HIGH — cząsteczki, a
 var render_scale_idx := 0              ## indeks RENDER_SCALE_LIST (0 = 100%)
 var mono_audio := false                ## bez panoramy w dźwięku pozycyjnym (osoby z jednostronnym słuchem)
 var captions := false                  ## napisy dla dźwięków (HUD, captions.gd)
+var show_fps := true                   ## licznik FPS w prawym górnym rogu (fps_overlay.gd)
 var reduce_fx := false                 ## „Reduce Effects": bez wstrząsów, aberracji, pulsu zdrowia, błysku burzy i migotania
 var crouch_toggle := false             ## skradanie przełączane klawiszem zamiast trzymania
 ## Niezawodność broni (GUNSMITH_PLAN §6): OFF — bez zużycia i zacięć, STANDARD, VETERAN — zużycie i szansa zacięcia ×2.
@@ -248,6 +249,10 @@ func render_scale() -> float:
 
 func toggle_mono_audio() -> void:
 	mono_audio = not mono_audio
+	_commit()
+
+func toggle_show_fps() -> void:
+	show_fps = not show_fps
 	_commit()
 
 func toggle_captions() -> void:
@@ -484,6 +489,7 @@ func _load_global() -> void:
 					render_scale_idx = i
 	reduce_fx = bool(cf.get_value("game", "reduce_fx", false))
 	captions = bool(cf.get_value("game", "captions", false))
+	show_fps = bool(cf.get_value("game", "show_fps", true))
 	mono_audio = bool(cf.get_value("game", "mono_audio", false))
 	crouch_toggle = bool(cf.get_value("game", "crouch_toggle", false))
 	realistic_handling = bool(cf.get_value("game", "realistic_handling", REALISTIC_DEFAULT))
@@ -518,6 +524,7 @@ func _save() -> void:
 	cf.set_value("game", "render_scale", render_scale_idx)
 	cf.set_value("game", "reduce_fx", reduce_fx)
 	cf.set_value("game", "captions", captions)
+	cf.set_value("game", "show_fps", show_fps)
 	cf.set_value("game", "mono_audio", mono_audio)
 	cf.set_value("game", "crouch_toggle", crouch_toggle)
 	cf.set_value("game", "realistic_handling", realistic_handling)
