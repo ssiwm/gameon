@@ -2044,6 +2044,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				var sp1: Node2D = _players.get_node_or_null("1")       # --shotspit: Żyła pluje w gracza 1 po 0,3 s, gdy --shotat już go przeniósł (--shotdelay=1.0 zapowiedź, =1.6 plwocina w locie)
 				get_tree().create_timer(0.3).timeout.connect(func() -> void:
 					bs.call("_begin", 2, 0.9, (sp1.global_position if sp1 != null else bs.global_position) + Vector2(0, -8)))
+			if "--shotspit" in OS.get_cmdline_user_args() and bs.has_method("_begin_spit"):
+				var sp2: Node2D = _players.get_node_or_null("1")       # --shotspit: Pijawka zapowiada plucie w gracza 1 po 0,3 s (znacznik lądowania; --shotdelay=1.0)
+				get_tree().create_timer(0.3).timeout.connect(func() -> void:
+					if sp2 != null:
+						bs.call("_begin_spit", sp2, 2.0))
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
 	for sa in OS.get_cmdline_user_args():
@@ -2897,14 +2902,44 @@ func _leech_test() -> void:
 	p.velocity = Vector2.ZERO
 	var saw_acid := false
 	var saw_spit_wind := false
+	var mark_at := Vector2.INF
 	for i in 70:
 		await get_tree().create_timer(0.1).timeout
 		saw_acid = saw_acid or get_tree().get_nodes_in_group("acid").size() > 0
-		saw_spit_wind = saw_spit_wind or (lc.mode == lc.Mode.WIND and lc._spit_pending)
+		if lc.mode == lc.Mode.WIND and lc._spit_pending:
+			saw_spit_wind = true
+			mark_at = lc.spit_mark
 		if p.hp < 3:
 			break
 	check.call("plucie kwasem: gracz na wysokiej kładce w fazie %d — zapowiedź=%s, pocisk=%s, trafiony (HP %d)" % [lc.phase, str(saw_spit_wind), str(saw_acid), p.hp], saw_spit_wind and saw_acid and p.hp < 3)
+	check.call("znacznik plucia: zapowiedź ma znacznik pod graczem na kładce (%s, gracz %s)" % [str(mark_at), str(p.global_position)],
+		mark_at != Vector2.INF and absf(mark_at.x - p.global_position.x) < 2.0 and absf(mark_at.y - (p.global_position.y + 1.0)) < 2.0)
 	await get_tree().create_timer(1.5).timeout
+	check.call("znacznik plucia: gaśnie po rozbryzgu", lc.spit_mark == Vector2.INF)
+	# kto zejdzie ze znacznika, ten unika: cel ustalony na początku zapowiedzi, bez wyprzedzania
+	p.dead = false
+	p.hp = 3
+	p._invuln = 0.0
+	lc.mode = lc.Mode.SUB
+	lc._cd = 0.0
+	lc._begin_spit(p, 0.3)
+	var dodge_mark: Vector2 = lc.spit_mark
+	p.global_position += Vector2(48.0, 0.0)
+	p.velocity = Vector2.ZERO
+	var dodge_danger: float = p._spit_danger_x()
+	await get_tree().create_timer(2.0).timeout
+	check.call("znacznik plucia: zejście 48 px ze znacznika ratuje przed kwasem (HP %d)" % p.hp, p.hp == 3 and dodge_mark != Vector2.INF and dodge_danger == INF)
+	p.global_position -= Vector2(48.0, 0.0)
+	lc.mode = lc.Mode.SUB
+	lc._begin_spit(p, 5.0)
+	check.call("znacznik plucia: bot widzi zagrożenie na znaczniku Pijawki", p._spit_danger_x() == lc.spit_mark.x)
+	var sent: Vector2 = lc.spit_mark
+	lc._sync(lc.state, lc.hp, lc.max_hp, lc.mode, lc.revealed, lc.phase, lc.global_position.x, -1, 0.0, 0.0, -1.0, Vector2(12.0, 34.0))
+	check.call("znacznik plucia: stan przychodzi do klienta w _sync", lc.spit_mark == Vector2(12.0, 34.0))
+	lc.spit_mark = sent
+	lc._spit_pending = false
+	lc._clear_spit_mark()
+	lc.mode = lc.Mode.SUB
 	# furia: faza 3 poniżej 15% HP
 	lc.hp = lc.max_hp * 0.10
 	lc.mode = lc.Mode.SUB

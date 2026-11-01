@@ -41,6 +41,7 @@ const SPIT_WINDUP := [0.0, 0.9, 0.7]      ## zapowiedź plucia (s) w fazach 1–
 const SPIT_CD := [0.0, 5.0, 3.5]          ## przerwa po pluciu
 const SPIT_UP := 1.1                      ## ile s jest wynurzona i odsłonięta po plunięciu
 const SPIT_SPEED := 250.0
+const SPIT_HIT_R := 12.0                  ## promień znacznika lądowania = zasięg trafienia kwasu (acid_spit.gd: HIT_R + 3)
 const REGEN_FRAC := 0.005                 ## zanurzona i nieoświetlona leczy się tyle maks. HP na sekundę (nigdy ponad próg bieżącej fazy)
 const FURY_HP_FRAC := 0.15                ## faza 3 poniżej tego HP: furia
 const FURY_SPEED := 1.4
@@ -109,7 +110,9 @@ var _cd := 0.0
 var _spit_pending := false                ## zapowiedź (WIND) kończy się pluciem zamiast ugryzieniem
 var _fury_on := false
 var _spat := false                        ## ostatnie wynurzenie było pluciem (inna przerwa po nim)
-var _spit_ref: Node2D = null
+var spit_mark := Vector2.INF              ## gdzie spadnie kwas: od zapowiedzi do rozbryzgu, też u klientów (view3d.gd, bot: player.gd `_spit_danger_x`); INF = brak
+var _spit_aim := Vector2.ZERO             ## serwer: cel kwasu ustalony na początku zapowiedzi — kto zejdzie ze znacznika, ten unika
+var _spit_mark_t := 0.0                   ## serwer: s do zgaszenia znacznika po wypluciu (lot + chwila na rozbryzg)
 var surge_state := "idle"                  ## idle / warn / on / fall — serwer liczy, klienci dostają zdarzenia (surge_*)
 var _surge_t := 0.0
 var _surge_cd := 0.0
@@ -226,6 +229,7 @@ func reset_enemy() -> void:
 		else:
 			_clear_minions()
 	_spit_pending = false
+	_clear_spit_mark()
 	_spat = false
 	_shore_ambush = false
 	_shore_rest = 0.0
@@ -406,6 +410,10 @@ func _tick_reveal(delta: float) -> void:
 
 func _tick_mode(delta: float) -> void:
 	_cd = maxf(0.0, _cd - delta)
+	if _spit_mark_t > 0.0:
+		_spit_mark_t -= delta
+		if _spit_mark_t <= 0.0:
+			_clear_spit_mark()
 	_shore_rest = maxf(0.0, _shore_rest - delta)
 	var ph := clampi(phase - 1, 0, 2)
 	match mode:
@@ -441,12 +449,7 @@ func _tick_mode(delta: float) -> void:
 				_shore_ambush = tgt.global_position.x < pool_x0 or tgt.global_position.x > pool_x1
 				_event.rpc("windup")
 			elif tgt == null and spitter != null and _cd <= 0.0 and absf(spitter.global_position.x - global_position.x) <= SPIT_RANGE * 0.9:
-				_spit_pending = true
-				_spit_ref = spitter
-				mode = Mode.WIND
-				_t_mode = float(SPIT_WINDUP[ph]) * timing * _dmul()
-				second_x = -1.0
-				_event.rpc("windup")
+				_begin_spit(spitter, float(SPIT_WINDUP[ph]) * timing * _dmul())
 		Mode.WIND:
 			_t_mode -= delta
 			if _t_mode <= 0.0:
@@ -560,7 +563,41 @@ func _surface() -> void:
 	if victim != null and not victim.dead:
 		_begin_grab(victim)
 
-## Plucie (faza 2+): wynurza się na SPIT_UP s (odsłonięta — można ją bić), pluje łukiem w gracza spoza zasięgu zasadzki.
+## Zapowiedź plucia: cel i znacznik lądowania ustalone teraz, jak u Żyły. Przegląd 2026-11-01: kwas to 15 z 19 upadków na B1, a leciał z wyprzedzeniem bez żadnego znaku, gdzie spadnie.
+func _begin_spit(st: Node2D, windup: float) -> void:
+	_spit_pending = true
+	_spit_aim = st.global_position + Vector2(0.0, -9.0)
+	spit_mark = _floor_under(st.global_position)
+	_spit_mark_t = 0.0
+	mode = Mode.WIND
+	_t_mode = windup
+	second_x = -1.0
+	_event.rpc("windup")
+	_send_state(true)
+
+func _clear_spit_mark() -> void:
+	_spit_mark_t = 0.0
+	if spit_mark != Vector2.INF:
+		spit_mark = Vector2.INF
+		_send_state(true)
+
+## Podłoga albo kładka pod punktem (znacznik leży tam, gdzie stoi gracz, także na kładce nad wodą).
+func _floor_under(p: Vector2) -> Vector2:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null:
+		return p
+	var c := int(floor(p.x / 16.0))
+	var r := int(floor((p.y - 1.0) / 16.0))
+	for i in 16:
+		if lvl._is_solid(c, r + i) or lvl._is_platform_cell(c, r + i):
+			return Vector2(p.x, float(r + i) * 16.0)
+	return p
+
+## Widok 3D: true, gdy kwas już leci (znacznik pulsuje szybciej).
+func spit_flying() -> bool:
+	return mode != Mode.WIND
+
+## Plucie (faza 2+): wynurza się na SPIT_UP s (odsłonięta — można ją bić), pluje łukiem w miejsce znacznika z zapowiedzi.
 func _spit() -> void:
 	_spit_pending = false
 	_spat = true
@@ -568,25 +605,24 @@ func _spit() -> void:
 	_t_mode = SPIT_UP
 	_set_hitbox(true)
 	NoiseMgr.add_noise(N_AMBUSH * 0.6, global_position, "boss")
-	var st := _spit_ref if (_spit_ref != null and is_instance_valid(_spit_ref) and not _spit_ref.dead) else _spit_target()
-	_spit_ref = null
 	_event.rpc("spit")
-	if st == null:
-		return
 	var hd := not _spr.is_empty() and _has_anim("spit")
 	if hd:
 		await get_tree().create_timer(SPIT_RELEASE).timeout          # kwas wylatuje z paszczy dopiero na klatce wyrzutu animacji
-		if not is_inside_tree() or state != State.AWAKE or not is_instance_valid(st) or st.dead:
+		if not is_inside_tree() or state != State.AWAKE:
+			_clear_spit_mark()
 			return
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl == null:
+		_clear_spit_mark()
 		return
 	var from := global_position + (Vector2((-24.0 if _face_left else 24.0), -40.0) if hd else Vector2(0.0, -34.0))
-	var aim: Vector2 = st.global_position + Vector2(0.0, -9.0) + st.velocity * 0.35         # z wyprzedzeniem
+	var aim := _spit_aim
 	var dist := from.distance_to(aim)
 	var flight := clampf(dist / SPIT_SPEED, 0.35, 1.2)
 	var v := Vector2((aim.x - from.x) / flight, (aim.y - from.y - 0.5 * 520.0 * flight * flight) / flight)
 	lvl.spawn_acid(from, v)
+	_spit_mark_t = flight + 0.15
 
 ## Chwyt: ofiara przypięta przy pysku, Pijawka odsłonięta na GRAB_TIME; drużyna musi zadać GRAB_FRAC maks. HP, żeby ją puściła.
 func _begin_grab(victim: Node2D) -> void:
@@ -678,6 +714,7 @@ func _die() -> void:
 	state = State.DEAD
 	mode = Mode.UP
 	second_x = -1.0
+	_clear_spit_mark()
 	_kill_summoned(_minions)
 	_minions.clear()
 	hp = 0.0
@@ -696,11 +733,12 @@ func _send_state(now: bool) -> void:
 	if not now and _net_t > 0.0:
 		return
 	_net_t = 0.066
-	_sync.rpc(state, hp, max_hp, mode, revealed, phase, global_position.x, grab_victim_id, grab_progress, grab_time_left, second_x)
+	_sync.rpc(state, hp, max_hp, mode, revealed, phase, global_position.x, grab_victim_id, grab_progress, grab_time_left, second_x, spit_mark)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(s: int, h: float, mh: float, m: int, rev: bool, ph: int, x: float, gv: int, gp: float, gt: float, sx: float) -> void:
+func _sync(s: int, h: float, mh: float, m: int, rev: bool, ph: int, x: float, gv: int, gp: float, gt: float, sx: float, sm: Vector2) -> void:
 	second_x = sx
+	spit_mark = sm
 	grab_victim_id = gv
 	grab_progress = gp
 	grab_time_left = gt

@@ -662,7 +662,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	take_bullet(info["pos"], 0.0)
 	return {"hit": true, "dealt": 0.0, "killed": false, "mat": Arsenal.Mat.FLESH}
 
-@rpc("any_peer", "call_local", "unreliable")
+## Serwer (combat.gd): spowalnia i zatrzymuje na chwilę. Bez RPC: wcześniej każdy klient mógł tak trzymać Stalkera bez strzału.
 func take_bullet(_from_pos: Vector2, _dmg: float = 0.0) -> void:
 	if not NoiseMgr.is_server():
 		return

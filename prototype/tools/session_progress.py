@@ -50,7 +50,7 @@ def load(args):
         if args.since and name[:10] < args.since:
             continue
         cur = None
-        attempts, buys = [], []
+        attempts, buys, hints = [], [], []
         last_success = None
         for line in open(path, encoding="utf-8", errors="replace"):
             try:
@@ -69,9 +69,11 @@ def load(args):
                 last_success["xp"].append(e)          # raport XP przychodzi po mission_end udanej próby
             elif ev == "hub_buy":
                 buys.append(e)
+            elif ev == "hint":
+                hints.append(e.get("id"))
         attempts = [a for a in attempts if keep(a, args)]
         if attempts or buys:
-            sessions.append({"file": name, "attempts": attempts, "buys": buys})
+            sessions.append({"file": name, "attempts": attempts, "buys": buys, "hints": hints})
     return sessions
 
 
@@ -185,6 +187,16 @@ def report(sessions):
                       "bought": [b.get("id") for b in ok if b.get("kind") == "weapon"]}
 
     rep["night_shift"] = {"attempts": sum(1 for a in attempts if a["start"].get("mode") == "night_shift")}
+    # przedmioty (od 1.7.467): mission_end.items; próby bez tego pola (starsze buildy) nie liczą się do średniej
+    with_items = [a for a in attempts if "items" in a["end"]]
+    items = Counter()
+    for a in with_items:
+        items.update(a["end"]["items"])
+    rep["items"] = {"attempts_with_data": len(with_items), "total": dict(items.most_common())}
+    hints = Counter()
+    for s in sessions:
+        hints.update(s.get("hints", []))
+    rep["hints"] = dict(hints.most_common())
     rep["warnings"] = warnings(rep)
     return rep
 
@@ -260,6 +272,8 @@ def print_report(rep):
     w = rep["weapons"]
     print("== Broń: zabójstwa %s;  największy udział %s;  kupione bronie %s" % (w["kills"], w["top_share"], w["bought"]))
     print("== Nocny Dyżur: %d prób" % rep["night_shift"]["attempts"])
+    print("== Przedmioty: %s (prób z danymi: %d)" % (rep["items"]["total"], rep["items"]["attempts_with_data"]))
+    print("== Podpowiedzi pokazane: %s" % rep["hints"])
     print("\n== Sygnały (PROGRESSION_PLAN.md §4)")
     for line in rep["warnings"] or ["brak"]:
         print("   - " + line)

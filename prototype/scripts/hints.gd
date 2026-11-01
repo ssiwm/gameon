@@ -7,6 +7,7 @@ extends RefCounted
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Actions := preload("res://scripts/actions.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const SHOW_S := 7.0                  ## ile sekund wisi podpowiedź
 const GAP_S := 2.5                   ## przerwa między podpowiedziami
@@ -89,6 +90,7 @@ func _start_next() -> void:
 		var id: String = tip[0]
 		if _queued.has(id) and not Settings.tip_seen(id):
 			_id = id
+			SessionLog.event("hint", {"id": id})          # playtest: czy gracz użył mechaniki przed podpowiedzią, czy dopiero po niej
 			current = Actions.fmt(tr(tip[1]))
 			_t = 0.0
 			alpha = 0.0
