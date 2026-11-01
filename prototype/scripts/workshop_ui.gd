@@ -475,6 +475,10 @@ var _dossier_head: Label              ## pracownia: nagłówek akt Obiektu 86
 var _redacted: Control                ## pracownia: linia akt z zaczernieniami
 var _jars: Control                    ## pracownia: słoje z próbkami (D2a)
 var _jars_cap: Label
+var _lab_board: PanelContainer        ## pracownia: tablica PROJEKTY pod kaflami (miejsca badań, schematy, co zostało na każdą broń)
+var _lab_board_cap: Label
+var _lab_board_rows: VBoxContainer
+var _lab_tall := 0.0                  ## pracownia: największa wysokość treści od otwarcia panelu (karta nie skacze przy zmianie broni)
 var _printout: PanelContainer         ## pracownia: odczyt części na wydruku (PRINTOUT)
 var _printout_head: Label
 var _blueprint: Control               ## tokarka: rysunek części z drukarki
@@ -1024,7 +1028,7 @@ func _build_detail() -> Control:
 	_d_panel.add_theme_constant_override("separation", 3)
 	v.add_child(_d_panel)
 	_d_stats = GridContainer.new()
-	_d_stats.columns = 4                                  # parametr | teraz | → po zmianie | korzyść / kompromis
+	_d_stats.columns = 4                                  # parametr | teraz | → po zmianie | korzyść / koszt
 	_d_stats.add_theme_constant_override("h_separation", 10)
 	_d_stats.add_theme_constant_override("v_separation", 1)
 	v.add_child(_d_stats)
@@ -1057,6 +1061,7 @@ func open(mode := "bench") -> void:
 	visible = true
 	_mode = mode if MODE_PAGES.has(mode) else "bench"
 	_session += 1
+	_lab_tall = 0.0
 	_bench_slot = ""
 	_title.text = {"locker": tr("LOCKER"), "service": tr("MAINTENANCE"), "press": tr("RELOADING PRESS"), "pyro": tr("PYROTECHNICS"), "lab": tr("LAB"), "lathe": tr("LATHE")}.get(_mode, tr("WORKSHOP"))
 	_plate.set_station(_mode)
@@ -1114,7 +1119,11 @@ func _process(delta: float) -> void:
 	var immersive := _mode == "bench" and _page == 0
 	var card_scale := 1.4 if immersive else clampf((size.x - 48.0) / maxf(1.0, _card.get_combined_minimum_size().x), 1.0, 1.4)
 	for body in [_arms_body, _sup_body, _perk_body, _look_body]:
-		(body.get_parent() as ScrollContainer).custom_minimum_size.y = clampf(size.y / card_scale - 156.0, 150.0, 400.0)      # 156: nagłówek z tabliczką, dźwignia, komunikat, taśma, odstępy
+		var tall := clampf(size.y / card_scale - 156.0, 150.0, 400.0)      # 156: nagłówek z tabliczką, dźwignia, komunikat, taśma, odstępy
+		if _mode == "lab" and body == _arms_body:
+			_lab_tall = maxf(_lab_tall, body.get_combined_minimum_size().y)
+			tall = minf(tall, maxf(150.0, _lab_tall))     # pracownia: karta na wysokość treści (dawniej ~1/4 pustego pasa nad przyciskiem)
+		(body.get_parent() as ScrollContainer).custom_minimum_size.y = tall
 	var overhead := maxf(118.0, _card.size.y - _workbench.size.y)
 	_workbench.custom_minimum_size = Vector2(clampf(size.x / card_scale - 34.0, 606.0, 1050.0), clampf(size.y / card_scale - overhead - 14.0, 190.0, 620.0))
 	_card.scale = Vector2.ONE * card_scale
@@ -1793,7 +1802,7 @@ func _save_preset() -> void:
 
 ## „1 próbka” / „3 próbki” (badania kosztują 1–2 próbki).
 func _samples_text(n: int) -> String:
-	return tr("1 sample") if n == 1 else tr("%d samples") % n
+	return tr_n("%d sample", "%d samples", n) % n                # plural.csv: 1 próbka / 2–4 próbki / 5 próbek
 
 ## Kontroler broni lokalnego gracza (masa ekwipunku w nagłówku ławy) albo null.
 func _local_wc() -> Node:
@@ -2214,7 +2223,7 @@ func _refresh_detail(w: int) -> void:
 			continue
 		_d_stats.add_child(UiTheme.ink(String(r[0]), 9, UiTheme.INK_MUTED))
 		_d_stats.add_child(UiTheme.ink(UiTheme.num_text(String(r[1])), 9))
-		# zmiana: nowa wartość i słowna ocena („korzyść” / „kompromis”) — kolor tylko ją wzmacnia. Strzałka „→” nie ocenia: więcej
+		# zmiana: nowa wartość i słowna ocena („korzyść” / „koszt” — od 1.7.460; kompromisem jest cała część, nie jeden parametr) — kolor tylko ją wzmacnia. Strzałka „→” nie ocenia: więcej
 		# nie zawsze znaczy lepiej (masa, grzanie), więc ↑ / ↓ myliłyby kierunek liczby z oceną.
 		var nv := ""
 		var verdict := ""
@@ -2222,7 +2231,7 @@ func _refresh_detail(w: int) -> void:
 		if i < next_rows.size() and String(next_rows[i][1]) != String(r[1]):
 			kind = _change_kind(String(r[0]), cur, preview) if preview != null else 0
 			nv = "→ %s" % String(next_rows[i][1])
-			verdict = tr("Gain") if kind > 0 else (tr("Trade-off") if kind < 0 else "")
+			verdict = tr("Gain") if kind > 0 else (tr("Cost") if kind < 0 else "")
 		var col := UiTheme.INK_GAIN if kind > 0 else (UiTheme.INK_COST if kind < 0 else UiTheme.INK)
 		_d_stats.add_child(UiTheme.ink(UiTheme.num_text(nv), 9, col))
 		_d_stats.add_child(UiTheme.ink(verdict.to_lower(), 7, col))
