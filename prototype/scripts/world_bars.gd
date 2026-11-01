@@ -73,6 +73,8 @@ func _process(delta: float) -> void:
 			continue
 		var id: int = (src as Node).get_instance_id()
 		live[id] = true
+		if pair[1] != null and is_instance_valid(pair[1]) and not (pair[1] as Node3D).visible:
+			continue                                  # poza kadrem paska i tak nie widać: trafienie stamtąd pokaże się po wejściu w kadr (stan `frac` jest starszy)
 		_enemy(src, pair[1], id, delta, cx, zoom)
 	for id in _st.keys():
 		if not live.has(id):

@@ -63,6 +63,8 @@ def summarize(rows):
         "phys": field("phys"),
         "steps": field("steps"),
         "mouse": field("mouse"),
+        "awake": field("awake"),
+        "onscreen": field("onscreen"),
         "min": minutes,
         "fps": fps,
         "p95": p95,
@@ -91,8 +93,8 @@ def main():
     if args.last > 0:
         files = files[-args.last:]
 
-    print("%-16s %-18s %-13s %5s %5s %6s %6s %7s %7s %5s %5s %5s %6s %6s %5s %5s  %s" % (
-        "sesja", "build", "mapa", "min", "FPS", "p95", "1%low", "max ms", "prz/min", "GPU", "v3d", "rcpu", "proc^", "phys^", "kroki", "mysz", "ocena"))
+    print("%-16s %-18s %-13s %5s %5s %6s %6s %7s %7s %5s %5s %5s %6s %6s %5s %5s %5s %5s  %s" % (
+        "sesja", "build", "mapa", "min", "FPS", "p95", "1%low", "max ms", "prz/min", "GPU", "v3d", "rcpu", "proc^", "phys^", "kroki", "mysz", "obudz", "kadr", "ocena"))
     num = lambda v, fmt: fmt % v if v is not None else "-"
     shown = 0
     for path in files:
@@ -108,9 +110,9 @@ def main():
                 if not items:
                     continue
                 s = summarize(items)
-                print("%-16s %-18s %-13s %5.1f %5.1f %6.1f %6s %7.0f %7.1f %5.1f %5s %5s %6s %6s %5s %5s  %s" % (
+                print("%-16s %-18s %-13s %5.1f %5.1f %6.1f %6s %7.0f %7.1f %5.1f %5s %5s %6s %6s %5s %5s %5s %5s  %s" % (
                     os.path.basename(path)[:16], build, label, s["min"], s["fps"], s["p95"], num(s["low1"], "%.0f"), s["max"], s["spikes"], s["gpu"],
-                    num(s["v3d"], "%.1f"), num(s["rcpu"], "%.1f"), num(s["proc"], "%.1f"), num(s["phys"], "%.1f"), num(s["steps"], "%.2f"), num(s["mouse"], "%.0f"), s["verdict"]))
+                    num(s["v3d"], "%.1f"), num(s["rcpu"], "%.1f"), num(s["proc"], "%.1f"), num(s["phys"], "%.1f"), num(s["steps"], "%.2f"), num(s["mouse"], "%.0f"), num(s["awake"], "%.1f"), num(s["onscreen"], "%.1f"), s["verdict"]))
                 shown += 1
     if shown == 0:
         print("brak próbek perf w %s" % args.dir)

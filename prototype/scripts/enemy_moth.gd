@@ -99,6 +99,10 @@ func threat_ok() -> bool:
 func sibling_wake_ok(other) -> bool:
 	return String(other.get("kind")) == "cma"
 
+## Śpiąca ćma tylko wypatruje światła, a pobudka spóźni się najwyżej o 3 kroki fizyki. Wisi w powietrzu, więc bez warunku „stoi na podłodze”.
+func asleep_free() -> bool:
+	return true
+
 func tick_special(delta: float) -> bool:
 	_moth_tick(delta)
 	return true

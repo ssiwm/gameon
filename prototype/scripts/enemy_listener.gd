@@ -60,6 +60,12 @@ func anim(a: String, _moving: bool) -> String:
 func server_facing() -> bool:
 	return true
 
+func shield_up() -> bool:
+	return e._ai == e.Ai.SCREAM
+
+func asleep_lod() -> bool:
+	return false
+
 func tick_special(delta: float) -> bool:
 	e.active = true
 	scream_cd = maxf(0.0, scream_cd - delta)

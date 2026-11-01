@@ -39,6 +39,9 @@ func may_attack() -> bool:
 	return e._sp != 2
 
 ## Ukryty Żerca: cały tik jest tutaj — węszy leżących, skrada się do nich i porywa; żywych ludzi ignoruje (bez percepcji, głosów i reakcji „zauważył").
+func asleep_lod() -> bool:
+	return false
+
 func tick_special(delta: float) -> bool:
 	if e._sp != 2:
 		return false

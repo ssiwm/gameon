@@ -44,6 +44,9 @@ func disguise_label() -> String:
 
 ## Zamaskowany Mimik woła o pomoc głosem gracza (próbka bólu), gdy ktoś jest w zasięgu słuchu, ale jeszcze
 ## nie przy nim — wabi do zasadzki. Kto podejdzie, poświeci albo strzeli, ten go demaskuje (e.wake()).
+func asleep_lod() -> bool:
+	return false
+
 func tick_asleep(delta: float) -> void:
 	lure_t -= delta
 	if lure_t > 0.0:

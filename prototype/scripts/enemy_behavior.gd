@@ -48,6 +48,14 @@ func derive_mid() -> int:
 	return -1
 
 ## Pełne przejęcie tiku po wspólnym wstępie (Podsłuchacz, Ćma); true = rdzeń kończy tik.
+## Czy śpiącemu wrogowi daleko od graczy wystarczy rzadszy tik (enemy.gd: `_asleep_far_ok`). Rodzaje z własnym życiem we śnie mówią „nie”.
+func asleep_lod() -> bool:
+	return true
+
+## Śpi w powietrzu (nie musi stać na podłodze, żeby liczyć się rzadziej).
+func asleep_free() -> bool:
+	return false
+
 func tick_special(_delta: float) -> bool:
 	return false
 
@@ -116,6 +124,10 @@ func disguised() -> bool:
 	return false
 
 ## Etykieta nad głową, gdy wróg udaje gracza (Mimik); pusta = brak. Rysuje ją warstwa ekranu (world_bars.gd) jak imię gracza.
+## Tarcza nad wrogiem w tej chwili (widok 3D rysuje ją bez pytania wszystkich o `view_info`).
+func shield_up() -> bool:
+	return false
+
 func disguise_label() -> String:
 	return ""
 
