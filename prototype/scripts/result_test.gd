@@ -6,7 +6,8 @@ extends Node
 ## 1. Model (czyste `build_model`): misja 1.1 ze wszystkimi premiami — 4 pieczątki, suma wierszy złomu = zysk, suma XP = zdobyte;
 ##    utracony cichy cel; warianty 1.2 / 1.3 / B1 / Nocny Dyżur (misja, koniec, porażka); awans o dwa poziomy (dwie pieczątki,
 ##    odblokowania z obu); drużyna (wyróżnienia przy właściwym graczu, gotowość, solo).
-## 2. Na żywo: mission._success() z przebiegiem → result_info od serwera (zysk, premie, znaleziska, taśma), raport otwarty, HUD rozgrywki gaśnie.
+## 2. Na żywo: mission._success() z przebiegiem → result_info od serwera (zysk, premie, znaleziska, taśma), raport otwarty, HUD rozgrywki gaśnie;
+##    próbka za cel poboczny w banku, w znaleziskach raportu i w dzienniku (`mission_end.scrap.samples`).
 ## 3. Sekwencja: przy t = 0,5 widać tytuł, nie pieczątki; przy końcu wszystko; skip() → liczniki na wartościach końcowych;
 ##    „Ogranicz efekty” → stan końcowy od razu.
 ## 4. Spóźnione XP: etap czeka do DATA_WAIT s i rusza, gdy dane dojdą; bez danych idzie dalej po limicie.
@@ -17,6 +18,8 @@ extends Node
 
 const Mission := preload("res://scripts/mission.gd")
 const ResultScreen := preload("res://scripts/result_screen.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
+const LOG_DIR := "user://test_result_sessions"
 
 var main: Node
 var total := 0
@@ -193,7 +196,18 @@ func _live_checks() -> void:
 		2: {"name": "P2", "call": "Kos", "kills": 9, "downs": 0, "revived": 1, "revives": 0, "escapes": 0, "lures": 0, "noise": 31.0}}
 	mission.downs = 0
 	Scrap.loot = 120
+	mission.stash_total = 2                                 # cel poboczny 1.1 (komplet skrytek): próbka za cel w banku i w dzienniku
+	mission.stashes_found = 2
+	var samples0 := Scrap.samples
+	SessionLog.enabled = true                                # dziennik w headless: osobny katalog testu, kasowany niżej
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": "z1_m1", "test": "result"})
 	mission._success()
+	var ends := _log_rows().filter(func(r: Dictionary) -> bool: return String(r.get("ev", "")) == "mission_end")
+	var logged := int((ends[-1] as Dictionary).get("scrap", {}).get("samples", -1)) if not ends.is_empty() else -1
+	_cleanup_log()
+	check("cel poboczny: próbka w banku (+%d) i w dzienniku (mission_end.scrap.samples %d)" % [Scrap.samples - samples0, logged],
+		Scrap.samples - samples0 == Scrap.SAMPLE_SIDE and logged == Scrap.SAMPLE_SIDE and int(mission.result_info.get("finds", {}).get("samples", -1)) == Scrap.SAMPLE_SIDE)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var info: Dictionary = mission.result_info
@@ -211,6 +225,27 @@ func _live_checks() -> void:
 	check("HUD rozgrywki gaśnie pod raportem (karta drużyny alfa %.2f)" % float(hud._squad_card.modulate.a), float(hud._squad_card.modulate.a) < 0.05)
 	check("wyróżnienia mają peer id", (Mission.awards(mission.player_stats, true)[0] as Array).size() == 4)
 	check("XP od serwera doszło (rows=%d)" % (rs.model["xp"]["rows"] as Array).size(), bool(rs.model["xp"]["ready"]))
+
+func _log_rows() -> Array:
+	var out: Array = []
+	if SessionLog.path == "" or not FileAccess.file_exists(SessionLog.path):
+		return out
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("
+", false):
+		var v: Variant = JSON.parse_string(line)
+		if v is Dictionary:
+			out.append(v)
+	return out
+
+func _cleanup_log() -> void:
+	SessionLog.reset_for_test()                      # zwalnia plik (inaczej Windows nie da go skasować)
+	SessionLog.enabled = false
+	var d := DirAccess.open(LOG_DIR)
+	if d == null:
+		return
+	for f in d.get_files():
+		d.remove(f)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(LOG_DIR))
 
 # ---------------------------------------------------------------- 3. sekwencja
 
