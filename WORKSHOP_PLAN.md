@@ -67,6 +67,16 @@ Meble `hub_decor.gd` same rozsuwają się przy nowych znacznikach. Zlecenia w cz
 | W5 | Masa jako koszt (U1), A/B | ✅ 1.7.356 — masa ekwipunku zmienia hałas i tempo biegu (tylko REALISTIC); masa trzymanej broni (dobycie, podrzut) nadal przez pola części |
 | W6 | Elektronika i próbki (5), tokarka (6) | W6a ✅ 1.7.357 pracownia: próbki z elit, bossów i celów pobocznych, badania części broni specjalnych; W6b ✅ 1.7.358 tokarka (schematy → części) i szlifierka (ostrze broni białej); ogniwa NiCd — do decyzji |
 
+## 6. Pierwsze kroki nowego gracza (1.7.469, przed playtestem)
+
+Po pierwszym powrocie z misji gracz widział siedem stanowisk na trzech poziomach. Zmiany chowają to, co dla niego jeszcze nie działa, bez usuwania systemów:
+
+- **Stół konserwacji:** przy wyłączonym zużyciu („Weapon reliability” OFF, domyślnie) nie reaguje, bo nie ma nic do zrobienia. Ława nie sprzedaje wtedy zestawu do czyszczenia, a wybór przedmiotu go pomija.
+- **Pracownia:** działa od pierwszej próbki (`Scrap.lab_open`), **tokarka:** od pierwszego schematu albo przy włączonym zużyciu, bo jest też szlifierką (`Scrap.lathe_open`). Modele stoją na miejscu. Rozpoczęty łańcuch albo gotowa część zostawiają stanowiska otwarte.
+- **Pierwszy zakup:** dopóki drużyna nie ma żadnej części, ława otwiera się na M-83 z bębnem RPK (`FIRST_PICK`, 160 złomu) i oznacza go jako polecany. Dev: `--shotws --shotwsfirst`.
+
+Prasa i pirotechnika zostają dostępne: playtest ma pokazać, czy gracze ich szukają. Do decyzji po playteście: skrócenie łańcucha części specjalnych (badanie daje część od razu, tokarka tylko szlifuje) i jedno miejsce zakupów.
+
 ## 5. Decyzje (przyjęte 2026-10-22)
 
 1. Zlecenia w czasie: **tak**, jedna misja na zlecenie, bez zegara.

@@ -391,6 +391,7 @@ var _mode := "bench"                  ## „bench" — ława (ARMS, SUPPLIES), �
 ## „pyro" — stół pirotechniczny (od 1.7.355, W4b): granaty, miny, ładunki i naboje 40 mm, klawisze 1 / 2 zmieniają zapalnik (ustawienie drużyny)
 ## „lab" — pracownia elektroniki i próbek (od 1.7.357, W6a): zakładka ARMS z samymi częściami broni specjalnych do zbadania (Scrap.request_research)
 ## „lathe" — tokarka i szlifierka (od 1.7.358, W6b): części broni specjalnych ze schematów (Scrap.request_machining) i ostrzenie broni białej
+const FIRST_PICK := "m83_drum75"        ## pierwszy zakup na ławie: po udanej 1.1 stać na niego, a M-83 ma każdy nowy gracz
 const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press": [1], "pyro": [1], "lab": [0], "lathe": [0]}
 const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench", "pyro": "pyro_bench", "lab": "lab_bench",
 	"lathe": "lathe_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
@@ -799,6 +800,8 @@ func _sup_list() -> Array:
 
 ## Czy rodzaj `k` należy do stanowiska: prasa — amunicja specjalna bez 40 mm, pirotechnika — granaty, miny, ładunki i 40 mm, ława — narzędzia.
 func _sup_in_mode(k: String) -> bool:
+	if k == "cleankit" and Settings.reliability_mult() <= 0.0:
+		return false                                       # bez zużycia zestaw nic nie robi (player.gd: _tick_cleankit)
 	var m := String(Throwables.KINDS[k]["mode"])
 	var forty := Throwables.is_ammo(k) and String(Ammo.from_kind(k).get("cal", "")) == "40mm"
 	match _mode:
@@ -1082,6 +1085,8 @@ func open(mode := "bench") -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE            # w grze celownik zastępuje kursor; panel potrzebuje myszy
 	Audio.play("ui_click", Audio.BUS_UI, -10.0)
 	_refresh()
+	if _first_pick() != "" and _opt >= 0:
+		_say(tr("Good first upgrade: 45 more rounds before you have to reload."), UiTheme.OK)
 
 func close() -> void:
 	if not _open:
@@ -1494,6 +1499,8 @@ func _initial_selection() -> int:
 	var choices := _arms_list()
 	if choices.is_empty():
 		return 0
+	if _first_pick() != "" and choices.has(LIST.find(Weapons.M83)):
+		return LIST.find(Weapons.M83)
 	var jobs: Array = Scrap.lathe if _mode == "lathe" else (Scrap.research if _mode == "lab" else [])
 	if _mode == "lathe" and jobs.is_empty():
 		jobs = Scrap.schematics.keys()
@@ -1654,8 +1661,17 @@ func _service_skin(on: bool) -> void:
 func _fill_lab_chain(key: String, slot: String, id: String) -> void:
 	_v_lab._fill_lab_chain(key, slot, id)
 
+## Część polecana na pierwszy zakup: dopóki drużyna nie ma żadnej, ława pokazuje jedną konkretną rzecz zamiast całego katalogu (WORKSHOP_PLAN.md §6). "" = nic nie polecamy.
+func _first_pick() -> String:
+	return FIRST_PICK if _mode == "bench" and Scrap.parts.is_empty() and Scrap.is_unlocked(Weapons.M83) else ""
+
 func _first_part_opt() -> int:
 	if _mode == "bench":
+		if _first_pick() != "" and int(LIST[_sel]) == Weapons.M83:
+			var pick_ops := _options(Weapons.M83)
+			for i in pick_ops.size():
+				if String(pick_ops[i]["id"]) == FIRST_PICK:
+					return i
 		return -1
 	var ops := _options(int(LIST[_sel]))
 	if _mode == "service":                                # stół konserwacji: kursor od razu na tym, co zalecane
@@ -2502,6 +2518,8 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 				status = tr("found — extract")
 			elif Scrap.is_lab_part(id):
 				status = tr("on the lathe") if Scrap.lathe.has(id) else (tr("schematic") if Scrap.schematics.has(id) else (tr("researching") if Scrap.research.has(id) else tr("lab")))
+		if id != "" and id == _first_pick():
+			status = tr("RECOMMENDED · %d") % Scrap.part_cost(id)           # krótko: karta części jest wąska, pełna cena stoi na przycisku
 		var delta := _part_delta(w, cur, String(op["slot"]), id) if String(op["slot"]) != "preset" and not fitted else []
 		records.append({"index": i, "name": name, "status": status, "fitted": fitted,
 			"new": id != "" and String(op["slot"]) != "preset" and Profile.is_new("part:" + id), "delta": delta})

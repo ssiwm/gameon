@@ -234,7 +234,8 @@ func cycle_throwable() -> void:
 	var next := (throw_sel + 1) % n
 	for i in n:
 		var cand := (throw_sel + 1 + i) % n
-		if get_throwable(String(Throwables.ORDER[cand])) > 0:
+		var cand_kind := String(Throwables.ORDER[cand])
+		if get_throwable(cand_kind) > 0 and (cand_kind != "cleankit" or Settings.reliability_mult() > 0.0):      # bez zużycia zestawu nie da się użyć
 			next = cand
 			break
 	throw_sel = next

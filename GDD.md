@@ -596,7 +596,7 @@ powstały pełne rusznikarstwo, Kryjówka-hub ze stanowiskami i strzelnica FPP �
   strzelnica FPP. Szpital, wyzwania tygodniowe i osiągnięcia na ścianie pamięci zostają poza EA.
 - **Głębia obsługi broni jest opcjonalna:** zużycie i zacięcia wyłącza ustawienie „Weapon reliability” (OFF / STANDARD / VETERAN), podrzut,
   oparcie, gorącą lufę, dwa przeładowania i masę ekwipunku — „Weapon handling” = CLASSIC. Nowy gracz ma grać rdzeń (Uwaga, Stalker, co-op)
-  bez nauki warsztatu.
+  bez nauki warsztatu. Od 1.7.469 stół konserwacji i zestaw do czyszczenia działają tylko przy włączonym zużyciu, pracownia od pierwszej próbki, tokarka od pierwszego schematu albo przy włączonym zużyciu (`WORKSHOP_PLAN.md` §6).
 
 Zasady na czas do Gate 0 (§16.5):
 1. Systemy warsztatu weryfikuje playtest (§23.3): jeśli gracze z zewnątrz ich nie używają albo gubią się w Kryjówce, upraszczamy i chowamy,

@@ -52,6 +52,7 @@ func run(m: Node) -> void:
 	Scrap.bank = 4000
 	Scrap.samples = 20
 	Settings.reliability_idx = 1
+	await _first_steps()
 	await _authorization()
 	await _magazines()
 	await _delivery_wipe()
@@ -298,6 +299,83 @@ func _jobs_deliveries() -> void:
 	var stock: Dictionary = Arsenal.stock.duplicate()
 	Scrap._sync(Scrap.bank, Scrap.loot, Scrap.last_gain, Scrap.unlocked.keys(), Scrap.parts.keys(), Scrap.trophies.keys(), [], [], {}, Scrap.samples, 0, [], Scrap.schematics.keys(), [], {"ammo_slug": 5})
 	check("snapshot dla ponownie dołączającego zawiera dostawy", int(Scrap.deliveries.get("ammo_slug", 0)) == 5 and Arsenal.stock == stock)
+
+## Pierwsze kroki nowego gracza (WORKSHOP_PLAN.md §6): stół konserwacji przy wyłączonym zużyciu, odsłanianie pracowni i tokarki, polecany zakup.
+func _first_steps() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	var saved := {"parts": Scrap.parts.duplicate(), "samples": Scrap.samples, "research": Scrap.research.duplicate(), "schem": Scrap.schematics.duplicate(), "lathe": Scrap.lathe.duplicate(), "rel": Settings.reliability_idx}
+	var in_range := func(group: String) -> bool:
+		station(group)
+		await frames(3)
+		return bool(get_tree().get_first_node_in_group(group).local_in_range)
+	Scrap.parts = {}
+	Scrap.samples = 0
+	Scrap.research = []
+	Scrap.schematics = {}
+	Scrap.lathe = []
+	# zużycie wyłączone, jak u nowego gracza
+	Settings.reliability_idx = 0
+	check("zużycie OFF: stół konserwacji nie reaguje", not await in_range.call("service_bench"))
+	check("zużycie OFF: pracownia zamknięta bez próbek", not await in_range.call("lab_bench"))
+	check("zużycie OFF: tokarka zamknięta bez schematu", not await in_range.call("lathe_bench"))
+	check("zużycie OFF: ława, prasa i pirotechnika działają", await in_range.call("workshop") and await in_range.call("press_bench") and await in_range.call("pyro_bench"))
+	station("workshop")
+	ui.open("bench")
+	var kinds: Array = ui._supply_kinds()
+	check("zużycie OFF: ława nie sprzedaje zestawu do czyszczenia", not ui._sup_list().has(kinds.find("cleankit")) and ui._sup_list().has(kinds.find("medkit")))
+	check("nowa drużyna: ława pokazuje M-83 z polecaną częścią pod kursorem", int(ui.LIST[ui._sel]) == Weapons.M83 and ui._opt >= 0 and String(ui._options(Weapons.M83)[ui._opt]["id"]) == ui.FIRST_PICK and ui._bench_slot == "feed")
+	var pick_part: Dictionary = Parts.get_part(ui.FIRST_PICK)
+	check("nowa drużyna: stać ją na polecaną część po udanej 1.1 (koszt %d)" % int(pick_part["cost"]), int(pick_part["cost"]) <= 180 and String(pick_part["weapon"]) == "m83")
+	check("nowa drużyna: komunikat o pierwszym zakupie", ui._msg.text != "")
+	ui.close()
+	Arsenal.stock["cleankit"] = 1
+	Arsenal.stock["frag"] = 0
+	Arsenal.stock["phos"] = 0
+	Arsenal.stock["smoke"] = 0
+	Arsenal.stock["mine"] = 0
+	Arsenal.stock["charge"] = 0
+	Arsenal.stock["medkit"] = 1
+	Arsenal.stock["defib"] = 0
+	Arsenal.stock["scanner"] = 0
+	var sel0: int = Arsenal.throw_sel
+	Arsenal.throw_sel = Throwables.ORDER.find("medkit")
+	Arsenal.cycle_throwable()
+	check("zużycie OFF: wybór przedmiotu pomija zestaw do czyszczenia", Arsenal.selected_throwable() == "medkit")
+	# odsłanianie wg postępu
+	Scrap.samples = 1
+	check("pierwsza próbka otwiera pracownię", await in_range.call("lab_bench"))
+	check("sama próbka nie otwiera tokarki", not await in_range.call("lathe_bench"))
+	Scrap.samples = 0
+	Scrap.schematics["lr7_coil"] = true
+	check("schemat otwiera tokarkę i zostawia pracownię otwartą", await in_range.call("lathe_bench") and await in_range.call("lab_bench"))
+	Scrap.schematics = {}
+	Scrap.parts = {"lr7_coil": true}
+	check("gotowa część z pracowni zostawia oba stanowiska otwarte", await in_range.call("lathe_bench") and await in_range.call("lab_bench"))
+	# po pierwszej części ława wraca do zwykłego widoku
+	Scrap.parts = {"m83_rpk40": true}
+	station("workshop")
+	ui.open("bench")
+	check("po pierwszej części ława nic nie poleca", ui._first_pick() == "" and ui._opt == -1)
+	ui.close()
+	# zużycie włączone
+	Settings.reliability_idx = 1
+	Scrap.parts = {}
+	check("zużycie ON: stół konserwacji i szlifierka działają", await in_range.call("service_bench") and await in_range.call("lathe_bench"))
+	station("workshop")
+	ui.open("bench")
+	kinds = ui._supply_kinds()
+	check("zużycie ON: ława sprzedaje zestaw do czyszczenia", ui._sup_list().has(kinds.find("cleankit")))
+	ui.close()
+	Arsenal.throw_sel = Throwables.ORDER.find("medkit")
+	Arsenal.cycle_throwable()
+	check("zużycie ON: wybór przedmiotu obejmuje zestaw do czyszczenia", Arsenal.selected_throwable() == "cleankit")
+	Arsenal.throw_sel = sel0
+	Scrap.parts = saved["parts"]
+	Scrap.samples = int(saved["samples"])
+	Scrap.research = saved["research"]
+	Scrap.schematics = saved["schem"]
+	Scrap.lathe = saved["lathe"]
+	Settings.reliability_idx = int(saved["rel"])
 
 func _ui() -> void:
 	var ui := get_tree().get_first_node_in_group("workshop_ui")
