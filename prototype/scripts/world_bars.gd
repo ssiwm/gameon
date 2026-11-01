@@ -68,7 +68,8 @@ func _process(delta: float) -> void:
 	var live := {}
 	for pair in view.call("bar_targets"):
 		var src = pair[0]
-		if not is_instance_valid(src) or not (src as Node).has_method("bar_state"):
+		# przy zmianie mapy wróg jest już poza drzewem, ale widok jeszcze go trzyma, a Mimik pyta drzewo o graczy (błąd skryptu przy wejściu do kryjówki)
+		if not is_instance_valid(src) or not (src as Node).is_inside_tree() or not (src as Node).has_method("bar_state"):
 			continue
 		var id: int = (src as Node).get_instance_id()
 		live[id] = true
