@@ -259,6 +259,14 @@ func authored(e: Node3D, kind: String) -> void:
 				e.pose(dt, "idle", false, Color.WHITE)
 				if frame % 10 == 0: geometry(e, kind)
 			check(kind + " recovery clears", e.motion_phase() == "idle")
+		# Seria trafień w trakcie zapowiedzi nie zasłania klipu, a kontakt zostaje przy czasie z symulacji.
+		e.motion_context({"winding": true, "windup_remaining": 0.4, "windup_duration": 0.8, "grounded": true})
+		for frame in 12:
+			if frame % 4 == 0: e.trigger("hit")
+			e.pose(dt, "windup", false, Color.WHITE)
+		check(kind + " hit keeps anticipation", e.motion_phase() == "anticipation" and float(e.get("_motion_weight")) > 0.9)
+		e.motion_context({"winding": false, "grounded": true})
+		for frame in 40: e.pose(dt, "idle", false, Color.WHITE)
 		# Przerwanie w połowie zapowiedzi wraca do bazowej pozy bez ciosu.
 		e.motion_context({"winding": true, "windup_remaining": 0.2, "windup_duration": 0.4, "grounded": true})
 		for frame in 10: e.pose(dt, "windup", false, Color.WHITE)

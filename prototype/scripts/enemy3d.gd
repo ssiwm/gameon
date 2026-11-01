@@ -307,7 +307,7 @@ func motion_phase() -> String:
 
 func _advance_motion(delta: float, anim: String) -> void:
 	var active := false
-	if anim == "windup" and not _dead and _clip not in ["hit", "attack"]:
+	if anim == "windup" and not _dead and _clip != "attack":             # klip trafienia leży na wierzchu: przy serii trafień zapowiedź nadal musi być widoczna
 		_motion_wind_clock += delta
 		_motion_name = _motion_pending if _motion_pending != "" else Motion.action(kind)
 		var contact := Motion.contact(_motion_name)

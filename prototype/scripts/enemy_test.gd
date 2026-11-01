@@ -68,6 +68,7 @@ func run(m: Node2D) -> void:
 	await _test_behaviors()
 	await _test_elite_foundation()
 	await _test_priest()
+	await _test_priest_facing()
 	await _test_butcher()
 	await _test_elite_placement()
 	await _test_elite_log()
@@ -914,6 +915,54 @@ func _test_priest() -> void:
 	player.stun_t = 0.0
 	player._stun_immune = 0.0
 	for n in [k, hurt, whole, far_t, blind, strip]:
+		n.queue_free()
+	await get_tree().physics_frame
+
+## Kapłan po wycofaniu i w zapowiedzi patrzy na gracza; tyłem jest tylko w trakcie cofania, a śpiący się nie obraca.
+func _test_priest_facing() -> void:
+	var y := -15000.0
+	var x0 := FAR_X + 29300.0
+	var strip := _floor(FAR_X + 28000.0, FAR_X + 30600.0, y)
+	var keep_pos: Vector2 = player.global_position
+	var keep_dead: bool = player.dead
+	player.dead = false
+	var k := _spawn("kaplan", Vector2(x0, y))
+	await get_tree().physics_frame
+	k._beh.heal_t = 99.0
+	k._beh.scream_cd = 99.0
+	k._facing = 1.0
+	player.global_position = Vector2(x0 - 300.0, y)
+	for i in 10:
+		player.velocity = Vector2.ZERO
+		await get_tree().physics_frame
+	check("Kapłan/kierunek: śpiący nie obraca się do gracza", k._facing == 1.0 and not k.active)
+	k.wake()
+	k._alert = 0.0
+	var px: float = x0
+	var backed := false
+	for i in 40:                                                           # gracz dociska z lewej: Kapłan cofa się w prawo
+		px = float(k.global_position.x) - 90.0
+		player.global_position = Vector2(px, y)
+		player.velocity = Vector2.ZERO
+		await get_tree().physics_frame
+		backed = backed or (k.velocity.x > 1.0 and k._facing > 0.0)
+	check("Kapłan/kierunek: cofając się, patrzy tam, dokąd idzie", backed, "vx=%.0f facing=%.0f" % [k.velocity.x, k._facing])
+	for i in 150:                                                          # gracz stoi: Kapłan zatrzymuje się w pasie dystansu
+		player.global_position = Vector2(px, y)
+		player.velocity = Vector2.ZERO
+		await get_tree().physics_frame
+	var d: float = k.global_position.x - px
+	check("Kapłan/kierunek: po zatrzymaniu patrzy na gracza i nie ma go za plecami", absf(k.velocity.x) < 1.0 and k._facing < 0.0 and not k._is_behind(Vector2(1.0, 0.0)), "d=%.0f vx=%.0f facing=%.0f" % [d, k.velocity.x, k._facing])
+	check("Kapłan/kierunek: widok bierze kierunek z serwera", k._beh.server_facing())
+	k._beh.tele_t = 5.0
+	k._sp = 1
+	k._beh.retreat_t = 1.0
+	k.velocity.x = 30.0
+	var look: Vector2 = k._beh.look_at_point()
+	check("Kapłan/kierunek: w zapowiedzi krzyku patrzy na gracza, nawet tuż po cofaniu", is_finite(look.x) and look.x < k.global_position.x, str(look))
+	player.global_position = keep_pos
+	player.dead = keep_dead
+	for n in [k, strip]:
 		n.queue_free()
 	await get_tree().physics_frame
 

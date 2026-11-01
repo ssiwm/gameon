@@ -4,11 +4,14 @@ extends "res://scripts/enemy_behavior.gd"
 ## (bez ściany na linii) dostają ogłuszenie `stun` s (`Player.deliver_stun`; strzał, skok i bicie zablokowane, chodzić można). Kontra: cofnąć się z pierścienia albo
 ## zabić go, zanim krzyk się skończy. Zabity — przestaje leczyć, a Trzoski w pobliżu tracą morale. Dane w `enemy_defs.gd`: `priest`.
 
+const RETREAT_HOLD := 0.25   ## s po ostatnim kroku w tył, zanim znów odwróci się do gracza
+
 var scream_cd := 3.0         ## s do następnego krzyku (pierwszy zaraz po wejściu w walkę, ale nie od razu)
 var heal_t := 0.0            ## s do następnego tiku leczenia
 var tele_t := 0.0            ## s do końca zapowiedzi krzyku (stan `_sp` = 1)
 
 var tele_duration := 0.0
+var retreat_t := 0.0         ## s, przez które jeszcze liczy się cofanie (kierunek modelu nie drga przy krótkich krokach w tył)
 
 func cfg() -> Dictionary:
 	return e._def.get("priest", {}) as Dictionary
@@ -18,6 +21,7 @@ func reset() -> void:
 	scream_cd = 3.0
 	heal_t = 0.0
 	tele_t = 0.0
+	retreat_t = 0.0
 
 ## Wsparcie, nie bijatyka.
 func may_attack() -> bool:
@@ -29,6 +33,7 @@ func scream_pitch() -> float:
 ## Zapowiedź krzyku i leczenie w tiku aktywnego Kapłana; true = zapowiedź przejęła ruch (stoi w miejscu).
 func tick_phase(delta: float, _target: Node2D) -> bool:
 	scream_cd = maxf(0.0, scream_cd - delta)
+	retreat_t = maxf(0.0, retreat_t - delta)
 	if e._sp == 1:
 		e.velocity.x = move_toward(e.velocity.x, 0.0, 800.0 * delta)
 		tele_t -= delta
@@ -49,12 +54,30 @@ func chase_hold(_target: Node2D, d: Vector2, speed: float) -> bool:
 	var ax := absf(d.x)
 	if ax < float(keep[0]):
 		var away: float = -signf(d.x) if absf(d.x) > 1.0 else -e._facing
+		retreat_t = RETREAT_HOLD
 		e.velocity.x = away * speed * 0.8 if (not e.is_on_wall() and _floor_ahead(away)) else 0.0
 		return true
 	if ax <= float(keep[1]):
 		e.velocity.x = 0.0
 		return true
 	return false
+
+## Stoi albo szykuje krzyk: patrzy na cel, ślad lub najbliższego gracza. W marszu i przy cofaniu patrzy tam, dokąd idzie, więc cios w plecy działa tylko, gdy ucieka.
+func look_at_point() -> Vector2:
+	if not e.active:
+		return Vector2(INF, INF)
+	if e._sp != 1 and (retreat_t > 0.0 or (e._stagger <= 0.0 and absf(e.velocity.x) > float(e._def["speed"]) * 0.5)):
+		return Vector2(INF, INF)
+	if e._target != null and is_instance_valid(e._target) and not e._target.dead:
+		return e._target.global_position
+	if e._has_lead:
+		return e._last_known
+	var p = e._nearest_player()
+	return p.global_position if p != null else Vector2(INF, INF)
+
+## Kierunek modelu liczy serwer (`_update_facing`): w ruchu z przesunięcia, a stojąc z `look_at_point`.
+func server_facing() -> bool:
+	return true
 
 func view_extra(d: Dictionary) -> void:
 	if e._sp == 1:
