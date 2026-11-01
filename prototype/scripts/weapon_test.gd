@@ -2975,11 +2975,11 @@ func _t_research() -> void:
 	var in_loot: int = Scrap.samples_loot
 	Scrap.reset_loot()                                             # wipe: próbki z misji przepadają
 	var after_wipe: int = Scrap.samples_loot
-	Scrap.add_samples(3)
+	Scrap.add_samples(2)                                           # tyle, ile soczewka (od 1.7.459 część do 250 złomu za 1, droższa za 2)
 	Scrap.bank_loot(0)
 	await frames(2)
 	check("pracownia: ława odmawia części LR-7 (%s); próbka w łupie %d, po wipe %d, po udanej misji w banku %d" % [str(pres), in_loot, after_wipe, Scrap.samples],
-		pres == ["lab"] and in_loot == 1 and after_wipe == 0 and Scrap.samples == 3 and Scrap.samples_loot == 0)
+		pres == ["lab"] and in_loot == 1 and after_wipe == 0 and Scrap.samples == 2 and Scrap.samples_loot == 0)
 	var rres: Array = []
 	var rcb := func(id: String, ok: bool, reason: String) -> void: rres.append(reason)
 	Scrap.research_result.connect(rcb)
@@ -2998,7 +2998,17 @@ func _t_research() -> void:
 	check("pracownia: badanie soczewki LR-7 za %d próbki i %d złomu (%s), czeka do misji (%s), po udanej misji schemat (%s), część jeszcze nie (%s); bank %d → %d, próbki %d" % [
 		lc.x, lc.y, str(rres), str(queued), str(Scrap.schematics.has("lr7_lens")), str(Scrap.has_part("lr7_lens")), bank1, Scrap.bank, Scrap.samples],
 		rres == ["ok", "samples", "invalid", "locked", "samples"] and queued and Scrap.schematics.has("lr7_lens") and not Scrap.has_part("lr7_lens") and Scrap.research.is_empty()
-		and Scrap.samples == 3 - lc.x and Scrap.bank == bank1 - lc.y and lc.x == 3)
+		and Scrap.samples == 2 - lc.x and Scrap.bank == bank1 - lc.y and lc.x == 2)
+	# koszt próbek (od 1.7.459): część do SAMPLE_CHEAP_MAX złomu za 1, droższa za 2 — strefa 1 (LR-7, HKM-9, WRATH-4, SPECTER-1) razem 20
+	var z1_samples := 0
+	var max_samples := 0
+	for id in Parts.all_ids():
+		if Scrap.is_lab_part(String(id)):
+			var sx: int = Scrap.research_cost(String(id)).x
+			max_samples = maxi(max_samples, sx)
+			if String(Parts.get_part(String(id)).get("weapon", "")) in ["lr7", "hkm9", "gniew4", "widmo1"]:
+				z1_samples += sx
+	check("pracownia: badania strefy 1 za %d próbek, najdroższe za %d" % [z1_samples, max_samples], z1_samples == 20 and max_samples == 2)
 	# zajęta pracownia: LAB_SLOTS badań naraz (do 1.7.454 jedno)
 	var busy_res: Array = []
 	var bcb := func(id: String, ok: bool, reason: String) -> void: busy_res.append(reason)
