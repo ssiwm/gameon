@@ -405,7 +405,13 @@ dysza z lufą i osłoną (`front`, wylot +120 mm); WRATH-4: szybkoładowacz z dw
 obiektyw i reflektor IR (`optic`); SPECTER-1: większe kondensatory (`mag`), żeberka chłodzące na cewkach; SINEW-6: zapasowy harpun na boku belki,
 trzecia para gum, grot z dwoma zadziorami i obejmą linki (`tip`); maczeta: długi chwyt (`grip`), cięższa i szersza głownia (`blade`); kilof:
 ciężka głowa i głowa sejsmiczna z obuchem (`head`); SPREAD-12 (od 1.7.387): obrzynek (lufa ucięta za blokiem gazowym, muszka na bloku) i lufa
-z dławikiem (+60 mm) zastępują przód z lufą (`front`). Bez modelu zostają części bez widocznej zmiany (mechanizm, mieszanka, głowice granatów, szlif). Test `--weapontest` sprawdza, że każdy zastępowany podzespół istnieje w modelu bazowym.
+z dławikiem (+60 mm) zastępują przód z lufą (`front`). Od 1.7.456 jeszcze 9 widocznych części: P-83 — przedłużka magazynka z nasadką z tworzywa (`mag`),
+długa lufa wystająca 40 mm przed zamek (wylot dalej, tłumik nakręca się na jej koniec), drewniana kabura-kolba z klapą i okuciem; PELLET-8 — gruba
+stopka amortyzująca z wentylacjami (część „Slick pump, recoil pad”), przedłużka lufy +80 mm z kulką (mocowanie na wylocie); LR-7 — wysoka oprawa
+ze szczelinową soczewką rozpraszającą (`muzzle`); HKM-9 — płaska dysza „kaczy dziób” na fabrycznym przodzie (`front`, wylot +32 mm); SPECTER-1 —
+ciemne szyny wolframowe po bokach rury z obejmami; maczeta — krótka rękojeść z dwoma nitami (`grip`). Bez modelu zostają części bez widocznej zmiany
+(mechanizm, mieszanka, głowice granatów, szlif) oraz krótki tubus WRATH-4 i potrójna salwa FALCON-6 (broń bazowa nie ma jeszcze podzespołu, który
+by zastąpiły). Test `--weapontest` sprawdza, że każdy zastępowany podzespół istnieje w modelu bazowym.
 
 ## 19. Ława rusznikarska w 3D, etap 2c (1.7.323)
 

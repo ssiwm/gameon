@@ -1,0 +1,8 @@
+{
+ "weapon": "lr7",
+ "mount": "muzzle",
+ "hides": [
+  "muzzle"
+ ],
+ "muzzle_add": 0.0
+}
