@@ -27,6 +27,9 @@ const MACHINE_PRICE := 0.25           ## materiał na tokarce: ćwierć ceny cz�
 const SAMPLE_ELITE := 1               ## próbek z elity (enemy.gd) …
 const SAMPLE_BOSS := 2                ## … z bossa (boss_base.gd) …
 const SAMPLE_SIDE := 1                ## … i za cel poboczny udanej misji (mission.gd; GDD §10.1)
+## Badanie: 1 próbka za część do tej ceny, 2 za droższą. Do 1.7.458 progi 150 / 250 → 1 / 2 / 3: strefa 1 to 27 próbek przy ~0,8 na udaną
+## misję (dziennik), ok. 34 misje — 2,5× dłużej niż zebranie złomu na te same części; teraz 20.
+const SAMPLE_CHEAP_MAX := 250
 signal order_result(kind: String, ok: bool, reason: String)        ## zamówienie w prasie: ok / poor / busy / full / invalid / off
 signal orders_delivered(kinds: Array)                              ## partie z prasy gotowe po misji (u wszystkich)
 ## Prasa elaboracyjna (WORKSHOP_PLAN.md W4, od 1.7.354): amunicję specjalną się zamawia, a nie kupuje od ręki — partia (pudełko) jest
@@ -507,10 +510,10 @@ func _fuse_server(kind: String, idx: int, peer_id: int) -> void:
 func is_lab_part(id: String) -> bool:
 	return String(Parts.get_part(id).get("weapon", "")) in LAB_WEAPONS
 
-## Koszt badania części `id` dla `peer_id`: x — próbki (1 / 2 / 3 wg ceny części), y — złom (połowa ceny części × perk Smith, zaokrąglona do 5).
+## Koszt badania części `id` dla `peer_id`: x — próbki (1 / 2 wg ceny części, SAMPLE_CHEAP_MAX), y — złom (połowa ceny części × perk Smith, zaokrąglona do 5).
 func research_cost(id: String, peer_id := -1) -> Vector2i:
 	var c := int(Parts.get_part(id).get("cost", 0))
-	return Vector2i(1 if c <= 150 else (2 if c <= 250 else 3), int(roundf(float(c) * 0.5 * smith_mult(peer_id) / 5.0)) * 5)
+	return Vector2i(1 if c <= SAMPLE_CHEAP_MAX else 2,int(roundf(float(c) * 0.5 * smith_mult(peer_id) / 5.0)) * 5)
 
 ## Serwer: próbki z elity / bossa trafiają do łupu misji (bank dopiero po udanej misji).
 func add_samples(n: int) -> void:

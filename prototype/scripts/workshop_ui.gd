@@ -1791,7 +1791,7 @@ func _save_preset() -> void:
 	_say(tr("Current fit saved as set %d.") % (int(o["id"]) + 1), UiTheme.OK)
 	_refresh()
 
-## „1 próbka” / „3 próbki” (badania kosztują 1–3 próbki).
+## „1 próbka” / „3 próbki” (badania kosztują 1–2 próbki).
 func _samples_text(n: int) -> String:
 	return tr("1 sample") if n == 1 else tr("%d samples") % n
 
