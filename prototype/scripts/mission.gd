@@ -253,6 +253,11 @@ func side_done() -> bool:
 		return stealth_ok()
 	return false
 
+## Próbki za cel poboczny przy udanej misji (W6a) — ta sama liczba trafia do banku (`_success`), dziennika (`mission_end.scrap.samples`)
+## i raportu po akcji. Do 1.7.457 dziennik zapisywał próbki przed jej dodaniem i zaniżał dochód pracowni.
+func side_samples() -> int:
+	return Scrap.SAMPLE_SIDE if kind != "hub" and Scrap.enabled() and side_done() else 0
+
 ## Nieśmiertelnik podniesiony (pickup.gd, serwer) — misja 1.1. Po ostatnim otwiera się ekstrakcja (bez bossa).
 func on_tag_taken(by: Node2D = null, at := Vector2.ZERO) -> void:
 	if not NoiseMgr.is_server() or kind != "tags" or phase != Phase.OBJECTIVE:
@@ -459,13 +464,12 @@ func _success() -> void:
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
 	log_end("success")
-	var finds := {"parts": Scrap.found.keys(), "samples": Scrap.samples_loot + (Scrap.SAMPLE_SIDE if side_done() else 0), "trophy": false, "batteries": batteries}
+	var finds := {"parts": Scrap.found.keys(), "samples": Scrap.samples_loot + side_samples(), "trophy": false, "batteries": batteries}
 	if kind != "hub" and Scrap.enabled():
 		var bonus := scrap_bonus()
 		var lv0 := get_tree().get_first_node_in_group("level")
 		finds["trophy"] = kind == "boss" and lv0 != null and not Scrap.trophies.has(String(lv0.map_id))
-		if side_done():
-			Scrap.add_samples(Scrap.SAMPLE_SIDE)                  # cel poboczny: próbka do pracowni (W6a)
+		Scrap.add_samples(side_samples())                         # cel poboczny: próbka do pracowni (W6a); 0 — nic
 		var gain := Scrap.bank_loot(bonus)
 		print("[SCRAP] mission banked +%d (bonus %d), wallet %d" % [gain, bonus, Scrap.bank])
 		var cl := get_tree().get_first_node_in_group("level")
@@ -647,7 +651,7 @@ func log_end(result: String, how := "") -> void:
 	for id in player_stats:
 		players[id] = (player_stats[id] as Dictionary).duplicate()
 		(players[id] as Dictionary).erase("call")          # dziennik zostaje anonimowy: „P<n>” bez kryptonimu (PROFILES_PLAN.md D2)
-	var scrap := {"loot": Scrap.loot, "samples": Scrap.samples_loot, "bonus": scrap_bonus() if result == "success" and kind != "hub" and Scrap.enabled() else 0}
+	var scrap := {"loot": Scrap.loot, "samples": Scrap.samples_loot + (side_samples() if result == "success" else 0), "bonus": scrap_bonus() if result == "success" and kind != "hub" and Scrap.enabled() else 0}
 	var row := {"result": result, "time": snappedf(elapsed, 0.1), "downs": downs, "attempts": attempts,
 		"peak_noise": roundi(_peak_all), "peak_noise_objective": roundi(peak_noise), "side": side_done(), "silent": silent_ok(), "players": players, "scrap": scrap}
 	if how != "":
