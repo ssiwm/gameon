@@ -17,6 +17,7 @@ const Bruiser := preload("res://scripts/enemy_bruiser.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Blind := preload("res://scripts/enemy_blind.gd")
 const Nav := preload("res://scripts/nav.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 const FAR_X := 30000.0                ## px: obszar testów fizycznych poza mapą
 
 var main: Node2D
@@ -68,6 +69,8 @@ func run(m: Node2D) -> void:
 	await _test_elite_foundation()
 	await _test_priest()
 	await _test_butcher()
+	await _test_elite_placement()
+	await _test_elite_log()
 	await _test_devourer()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
@@ -919,8 +922,8 @@ func _test_priest() -> void:
 func _test_butcher() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["rzeznik"]
-	check("Rzeźnik/dane: 600 HP, elita, pancerz 4, szarża 1,0 s zapowiedzi / 1,4 s / ×3,2 / przerwa 9 s, bez rzutów, łamie barykady, odporny na ogłuszenie",
-		float(cfg["hp"]) == 600.0 and bool(cfg["elite"]) and float(cfg["armor"]) == 4.0 and cfg["behavior"] == "bruiser" and not bool(cfg["throws"]) and bool(cfg["breaks_barricades"]) and bool(cfg["stun_resist"])
+	check("Rzeźnik/dane: 400 HP, elita, pancerz 4, szarża 1,0 s zapowiedzi / 1,4 s / ×3,2 / przerwa 9 s, bez rzutów, łamie barykady, odporny na ogłuszenie",
+		float(cfg["hp"]) == 400.0 and bool(cfg["elite"]) and float(cfg["armor"]) == 4.0 and cfg["behavior"] == "bruiser" and not bool(cfg["throws"]) and bool(cfg["breaks_barricades"]) and bool(cfg["stun_resist"])
 		and is_equal_approx(float(cfg["charge"]["windup"]), 1.0) and is_equal_approx(float(cfg["charge"]["time"]), 1.4) and is_equal_approx(float(cfg["charge"]["mult"]), 3.2) and is_equal_approx(float(cfg["charge"]["cd"]), 9.0) and Defs.elite_kinds().has("rzeznik"))
 	var y := -16000.0
 	var strip := _floor(FAR_X + 30000.0, FAR_X + 30900.0, y)
@@ -1250,6 +1253,119 @@ func _spawn(kind: String, pos: Vector2) -> CharacterBody2D:
 	e._phys_x = pos.x
 	e._last_x = pos.x
 	return e
+
+## Znaczniki elit w kampanii (ELITE_PLACEMENT_PLAN.md E1–E2): miejsca, leczenie Kapłana, zapas amunicji na Rzeźnika, beczki, cicha droga przez obóz.
+func _test_elite_placement() -> void:
+	var m1: Array = load("res://scripts/maps/z1_m1.gd").MAP
+	var m2: Array = load("res://scripts/maps/z1_m2.gd").MAP
+	var marks := func(rows: Array, ch: String) -> Array:
+		var out: Array = []
+		for r in rows.size():
+			for c in (rows[r] as String).length():
+				if (rows[r] as String)[c] == ch:
+					out.append([c, r])
+		return out
+	check("elity/mapy: Kapłan tylko w obozie 1.1, Rzeźnik tylko w pompowni 1.2", marks.call(m1, "A") == [[112, 22]] and marks.call(m2, "U") == [[228, 25]] and marks.call(m1, "U").is_empty() and marks.call(m2, "A").is_empty())
+	for id in ["z1_m3", "z1_b1"]:
+		var rows: Array = load("res://scripts/maps/%s.gd" % id).MAP
+		check("elity/mapy: %s bez znaczników elit" % id, marks.call(rows, "A").is_empty() and marks.call(rows, "U").is_empty() and marks.call(rows, "V").is_empty())
+	var heal_r: float = float(EnemyDefs.DEFS["kaplan"]["priest"]["heal_r"])
+	var healed := 0
+	for t in marks.call(m1, "T"):
+		if int(t[1]) == 22 and absf(float(int(t[0]) - 112)) * 16.0 <= heal_r:
+			healed += 1
+	check("elity/mapy: Kapłan sięga leczeniem co najmniej 3 Trzosków watahy", healed >= 3, "w zasięgu: %d" % healed)
+	var butcher_hp: float = float(EnemyDefs.DEFS["rzeznik"]["hp"]) * float(load("res://scripts/maps/z1_m2.gd").ENEMY_HP)
+	var m83: Dictionary = {"dmg": 8.0, "ammo": 180.0}
+	check("elity/mapy: Rzeźnika na 1.2 NORMAL da się zabić zapasem startowym M-83", butcher_hp / (float(m83["dmg"]) - float(EnemyDefs.DEFS["rzeznik"]["armor"])) <= float(m83["ammo"]), "HP %.0f" % butcher_hp)
+	check("elity/mapy: na parterze pompowni są beczki przy Rzeźniku", (m2[25] as String)[224] == "o" and (m2[25] as String)[233] == "o")
+	check("elity/mapy: wybór Rzeźnika nie zmienia liczby wrogów na parterze (bez Wołka w pompowni)", marks.call(m2, "W").filter(func(p: Array) -> bool: return int(p[1]) == 25 and int(p[0]) >= 217 and int(p[0]) <= 246).is_empty())
+	# cicha droga przez obóz (MAPS_PLAN.md M1a): na kucaka wróg budzi się z połowy `wake_near`, a skok i spadek liczą się jak marsz wyprostowany
+	var solid := func(c: int, r: int) -> bool:
+		if r < 0 or r >= m1.size() or c < 0 or c >= (m1[0] as String).length():
+			return true
+		return "#CM~misO".contains((m1[r] as String)[c])
+	var plat := func(c: int, r: int) -> bool:
+		if r < 0 or r >= m1.size() or c < 0 or c >= (m1[0] as String).length():
+			return false
+		return "=-".contains((m1[r] as String)[c])
+	var nav := Nav.new()
+	nav.build((m1[0] as String).length(), m1.size(), solid, plat)
+	var foes: Array = []
+	for r in m1.size():
+		for c in range(77, 141):
+			var ch := (m1[r] as String)[c]
+			if ch == "T" or ch == "A":
+				foes.append([Vector2(c * 16 + 8, (r + 1) * 16), float(EnemyDefs.DEFS["trzosek" if ch == "T" else "kaplan"]["wake_near"])])
+	var safe := func(p: Vector2, walking: bool) -> bool:
+		for f in foes:
+			if (f[0] as Vector2).distance_to(p) < float(f[1]) * (0.5 if walking else 1.0):
+				return false
+		return true
+	var from: int = nav.nearest_id(Vector2(77 * 16 + 8, 23 * 16))
+	var goal: int = nav.nearest_id(Vector2(140 * 16 + 8, 23 * 16))
+	var seen := {from: true}
+	var queue: Array = [from]
+	while not queue.is_empty():
+		var a: int = queue.pop_front()
+		for b in nav.get_point_connections(a):
+			if seen.has(b):
+				continue
+			var walking: bool = nav.edge_kind(a, b) == nav.Edge.WALK
+			if safe.call(nav.get_point_position(a), walking) and safe.call(nav.get_point_position(b), walking):
+				seen[b] = true
+				queue.append(b)
+	check("elity/mapy: przez obóz nadal prowadzi cicha droga z Kapłanem na miejscu", seen.has(goal))
+
+## Dziennik elit i Dyrektora (ELITE_PLACEMENT_PLAN.md E0): spawn, przebudzenie, zabicie z rozbiciem obrażeń, stan przy końcu misji, blokady Dyrektora.
+func _test_elite_log() -> void:
+	const LOG_DIR := "user://test_elite_log"
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "elite"})
+	Director.reset()
+	Director.note_blocks(2.0, true, true, false, false)
+	Director.note_blocks(3.0, false, false, false, false)
+	var stats: Dictionary = Director.block_stats()
+	check("dziennik elit: blokady Dyrektora liczone osobno, `open` tylko bez blokad", int(stats["relax"]) == 2 and int(stats["breath"]) == 2 and int(stats["stress"]) == 0 and int(stats["open"]) == 3)
+	var pos := Vector2(FAR_X + 31000.0, 0.0)
+	var k := _spawn("kaplan", pos)
+	var u := _spawn("rzeznik", pos + Vector2(400.0, 0.0))
+	await get_tree().process_frame
+	k.wake()
+	k.take_hit({"amount": 10.0, "dir": Vector2.RIGHT, "shooter": 7, "w": Weapons.M83, "type": "bullet", "pos": k.global_position})
+	k.take_bullet(k.global_position + Vector2(-10.0, 0.0), 20.0)
+	k.take_hit({"amount": 9999.0, "dir": Vector2.RIGHT, "shooter": 7, "w": Weapons.M83, "type": "bullet", "pos": k.global_position})
+	await get_tree().process_frame
+	check("dziennik elit: zwykły wróg nie ma wiersza stanu elity", _spawn("trzosek", pos + Vector2(800.0, 0.0)).elite_row().is_empty())
+	main.mission.log_end("quit")
+	var rows: Array = []
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("\n"):
+		if line != "":
+			rows.append(JSON.parse_string(line))
+	var elite: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "elite")
+	var of := func(what: String, kind: String) -> Dictionary:
+		for r in elite:
+			if r["what"] == what and r["kind"] == kind:
+				return r
+		return {}
+	check("dziennik elit: spawn Kapłana i Rzeźnika w trakcie próby", not of.call("spawn", "kaplan").is_empty() and not of.call("spawn", "rzeznik").is_empty(), str(elite.size()))
+	check("dziennik elit: przebudzenie Kapłana z hałasem", of.call("wake", "kaplan").has("noise"))
+	var kill: Dictionary = of.call("kill", "kaplan")
+	check("dziennik elit: zabicie — kto, czym, po ilu sekundach, rozbicie obrażeń", not kill.is_empty() and int(kill.get("by", 0)) == 7 and kill.get("weapon") == "m83" and kill.has("after") and (kill.get("dmg", {}) as Dictionary).has("m83") and (kill.get("dmg", {}) as Dictionary).has("blast"), str(kill))
+	var end: Dictionary = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mission_end").back()
+	var alive: Array = (end.get("elites", []) as Array).filter(func(r: Dictionary) -> bool: return r["kind"] == "rzeznik")
+	check("dziennik elit: `mission_end` ma przeżyłą elitę z HP i blokady Dyrektora", not alive.is_empty() and int(alive[0]["hp"]) > 0 and (end.get("director", {}) as Dictionary).has("breath"), str(end.get("elites")))
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	SessionLog.dir = SessionLog.DIR
+	for f in DirAccess.get_files_at(LOG_DIR):
+		DirAccess.remove_absolute("%s/%s" % [LOG_DIR, f])
+	DirAccess.remove_absolute(LOG_DIR)
+	for e in [k, u]:
+		if is_instance_valid(e):
+			e.queue_free()
+	await get_tree().process_frame
 
 ## Wołek rozpędza się tylko tam, gdzie ma podłogę pod całym rozbiegiem (i ścianę sprawdzoną na pełnym dystansie).
 func _test_run_clear() -> void:

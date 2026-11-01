@@ -116,7 +116,7 @@ const DEFS := {
 	# Rzeźnik (GDD §7.2, F4c): miniboss — ten sam kod co Wołek (zachowanie bruiser) z innymi danymi: cięższa szarża (`charge`: min/max px, windup, time, mult, cd, crash_stun, damage)
 	# przebija zamurowane przejścia (`breaks_barricades`), nie rzuca (`throws: false`), nie chwieje się od trafień i ogłuszeń (`stun_resist`), ledwo odrzucany.
 	"rzeznik": {
-		"hp": 600.0, "speed": 60.0, "damage": 2, "windup": 0.8, "reach": 18.0,
+		"hp": 400.0, "speed": 60.0, "damage": 2, "windup": 0.8, "reach": 18.0,
 		"cooldown": 1.8, "leap": false, "hear": 180.0, "wake_near": 70.0, "sight": 240.0,
 		"behavior": "bruiser", "elite": true, "armor": 4.0, "stun_resist": true, "throws": false, "breaks_barricades": true, "sheet": "wolek",
 		"charge": {"min": 100.0, "max": 320.0, "windup": 1.0, "time": 1.4, "mult": 3.2, "cd": 9.0, "crash_stun": 1.6, "damage": 2},

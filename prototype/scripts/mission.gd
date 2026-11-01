@@ -639,6 +639,7 @@ func log_start(checkpoint := "") -> void:
 	if _hub_at >= 0:
 		row["hub_seconds"] = snappedf(float(Time.get_ticks_msec() - _hub_at) / 1000.0, 0.1)
 		_hub_at = -1
+	row["elites"] = elite_rows()
 	SessionLog.mission_start(row)
 
 ## Koniec próby: "success", "failed" (Nocny Dyżur), "wipe" (kampania: zaraz po nim nowa próba tej samej misji) albo "quit" — drużyna
@@ -660,7 +661,19 @@ func log_end(result: String, how := "") -> void:
 	var boss := boss_state()
 	if not boss.is_empty():
 		row["boss"] = boss
+	row["elites"] = elite_rows()
+	row["director"] = Director.block_stats()
 	SessionLog.mission_end(row)
+
+## Elity na mapie do dziennika: `mission_start.elites` (co czeka) i `mission_end.elites` (z HP, także przeżyłe) — ELITE_PLACEMENT_PLAN.md E0.
+func elite_rows() -> Array:
+	var out: Array = []
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and e.has_method("elite_row"):
+			var r: Dictionary = e.elite_row()
+			if not r.is_empty():
+				out.append(r)
+	return out
 
 ## Stan obudzonego bossa do dziennika (`mission_end.boss`): ile HP zostało przy wipe'ie albo wyjściu — strojenie B1 i 1.3 po playteście.
 ## Pusty słownik, gdy w misji nie ma bossa albo jeszcze śpi.

@@ -7,7 +7,7 @@ extends RefCounted
 ## Układ (od zachodu): skraj lasu ze startem → dziedziniec z watahą i Wołkiem → chata radiowa (generator 1, dwa Ślepce,
 ## antresola z kuszą, rusztowanie na dach) → bagno z szopą (Skoczki, Ćma, Mimik na rozstaju) → wieża widokowa nad
 ## podziemną halą (generator 2, Wołek, Ślepiec, dom Stalkera, dwa szyby) → pompownia o dwóch kondygnacjach
-## (generator 3 na piętrze, Wołek na parterze) → maszt z pomostem (generator 4). Po nadawaniu: szyb przy maszcie →
+## (generator 3 na piętrze, Rzeźnik i dwie beczki na parterze — ELITE_PLACEMENT_PLAN.md E2) → maszt z pomostem (generator 4). Po nadawaniu: szyb przy maszcie →
 ## głęboki tunel (wiersze 44-51) → DREZYNA (znacznik D) jedzie torem na zachód do wyjścia E (pompuj [E] na pokładzie).
 ## Mapa jest generowana programem pomocniczym — po zmianach uruchom `--maptest`.
 
@@ -61,7 +61,7 @@ const MAP := [
 	"##........w...w.......................w...............w.w...----...bbb=====================bbbbbbbbb....w.......w...................w.........w...w.w...........----w..........w..w......................................bbbbbbCCCCCCCCCCCCCCCCCCCCCCC........----........ww............w.....##",
 	"##........w...w.......................w...............w.w..........bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb....w.......w...................w.........w...w.w...............w..........w..w......................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb....................ww............w.....##",
 	"##........w...w.......####............w...............w.w.----.....b====bbbbbbbbbbbbbbbbbbbbbbbbbbbb....w.......w...................w.........w...w.w.........----..w..........w..w......................................b----bbbbbbbbbbbbbbbbbbbbbbbb......----..........ww............w.....##",
-	"##...S..S.w...w.....########......g.kkw.a...T.T.T.T..kwow.W........bbbbbbbbbLbbbbbbLbbbbbbbbkbGbbPab.u..w...T..Tw.T...J..ok.Z...J...w.........Y...W.w...........g...w..........w..w................k.....................bbbbbbbbbbbWbbbbbbbTbbbTbbbkb................T...Twa.T.........W.P...##",
+	"##...S..S.w...w.....########......g.kkw.a...T.T.T.T..kwow.W........bbbbbbbbbLbbbbbbLbbbbbbbbkbGbbPab.u..w...T..Tw.T...J..ok.Z...J...w.........Y...W.w...........g...w..........w..w................k.....................bbbbbbbobbbUbbbbobbTbbbTbbbkb................T...Twa.T.........W.P...##",
 	"##################################################################CCCCCCCCCCCCCCCCCCOOOOCCCCCCCCCCCCC#####mmmmmmmmmmmmm#######~~~~~~~~~~~~~#############bbbbbb#################################################bbbbbb###CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#########################bbbbbb##########",
 	"##############################################################################################################################~~~~~~~~~~~~~#############bbbbbb#################################################bbbbbb###########################################################bbbbbb##########",
 	"########################################################################################################################################################======#################################################======###########################################################======##########",
