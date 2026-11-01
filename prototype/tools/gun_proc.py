@@ -2048,14 +2048,28 @@ def part_p64_long(spec):
 
 
 def part_p64_stock(spec):
-    """Kabura-kolba (jak przy APS): drewniana kabura z klapą dopięta zaczepem do grzbietu chwytu, stalowe okucie stopki."""
-    wd = M(wood, "p64_holster", tone=((0.022, 0.011, 0.005), (0.1, 0.05, 0.02)))
+    """Kabura-kolba (jak przy APS): wąska szyjka przy chwycie, płaski korpus rozszerzony ku trzewikowi, stalowe okucie z zaczepem w grzbiecie chwytu,
+    klapa kabury na zawiasie i stalowy trzewik ze strzemiączkiem. Linia grzbietu prawie równoległa do lufy, ok. 1,3 długości pistoletu."""
+    wd = M(wood, "p64_holster", tone=((0.016, 0.008, 0.004), (0.075, 0.036, 0.015)))
     small = mat("p83_small")
-    box("holster_clip", -16.0, -7.0, 10.0, 58.0, 6.0, small, bv=0.6, r=2.0)
-    prism("holster", fillet([(-15.0, 62.0, 4.0), (-48.0, 66.0, 10.0), (-262.0, 34.0, 14.0), (-290.0, 26.0, 10.0), (-292.0, -34.0, 10.0),
-                             (-262.0, -42.0, 14.0), (-58.0, 4.0, 10.0), (-15.0, 8.0, 4.0)]), -16.0, 16.0, wd, bv=2.0, seg=2)
-    prism("holster_lid", fillet([(-150.0, 52.0, 4.0), (-262.0, 37.0, 10.0), (-262.0, 25.0, 4.0), (-150.0, 40.0, 4.0)]), -17.0, 17.0, wd, bv=1.2, seg=2)
-    prism("butt_cap", fillet([(-288.0, 28.0, 6.0), (-298.0, 26.0, 4.0), (-300.0, -36.0, 4.0), (-290.0, -36.0, 6.0)]), -15.0, 15.0, small, bv=0.8, seg=1)
+    x0, x1 = -222.0, -30.0
+    top = lambda x: 62.0 + (x + 30.0) * 0.045
+    bot = lambda x: 30.0 - 56.0 * (max(0.0, -30.0 - x) / 192.0) ** 0.75
+    wid = lambda x: 8.5 + 4.5 * (max(0.0, -30.0 - x) / 192.0)
+    oval_loft("holster", x0, x1, top, bot, wid, wd, n=20, bv=1.2)
+    # okucie szyjki i zaczep: pierścień na drewnie, dwa policzki obejmujące grzbiet chwytu
+    oval_loft("holster_ferrule", -38.0, -22.0, lambda x: top(x) + 1.2, lambda x: bot(x) - 1.2, lambda x: wid(x) + 1.2, small, n=4, bv=0.6)
+    box("holster_lug", -24.0, -6.0, 34.0, 58.0, 5.0, small, bv=0.5, r=1.5)
+    for sy in (-1.0, 1.0):
+        box("holster_cheek", -24.0, -3.0, 40.0, 54.0, 1.4, small, bv=0.3, seg=1, y=sy * 7.4)
+    # klapa kabury: zawias w poprzek korpusu i zatrzask na boku
+    xh = -146.0
+    oval_loft("holster_hinge", xh - 3.0, xh + 3.0, lambda x: top(x) + 0.8, lambda x: bot(x) - 0.8, lambda x: wid(x) + 0.8, small, n=3, bv=0.4)
+    for sy in (-1.0, 1.0):
+        revolve("holster_rivet", [(sy * wid(-90.0), 0.0), (sy * wid(-90.0), 2.6), (sy * (wid(-90.0) + 1.3), 2.2), (sy * (wid(-90.0) + 1.3), 0.0)], (-90.0, 36.0), small, axis="Y", seg=12, bv=0.2)
+    # trzewik i strzemiączko pasa
+    oval_loft("butt_cap", x0 - 7.0, x0 + 3.0, lambda x: top(x0) + 1.5, lambda x: bot(x0) - 1.5, lambda x: wid(x0) + 1.2, small, n=4, bv=0.8)
+    swivel(-198.0, bot(-198.0) - 4.5, small, r=6.0)            # górny łuk wchodzi w drewno: kółko wisi na korpusie, nie w powietrzu
     return {"mount": "frame", "hides": []}
 
 
