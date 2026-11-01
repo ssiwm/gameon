@@ -121,7 +121,7 @@ const DEFS := {
 	"rzeznik": {
 		"hp": 400.0, "speed": 60.0, "damage": 2, "windup": 0.8, "reach": 18.0,
 		"cooldown": 1.8, "leap": false, "hear": 180.0, "wake_near": 70.0, "sight": 240.0,
-		"behavior": "bruiser", "elite": true, "armor": 4.0, "stun_resist": true, "throws": false, "breaks_barricades": true, "sheet": "wolek",
+		"behavior": "bruiser", "elite": true, "armor": 4.0, "stun_resist": true, "throws": false, "breaks_barricades": true, "climbs_out": true, "sheet": "wolek",
 		"charge": {"min": 100.0, "max": 320.0, "windup": 1.0, "time": 1.4, "mult": 3.2, "cd": 9.0, "crash_stun": 1.6, "damage": 2},
 		"color": Color(0.5, 0.35, 0.33), "size": Vector2(26, 36), "hurt_h": 44.0, "knock": 8.0, "knock_mult": 0.05, "head": 0.2,
 		"xp": 40, "scrap": 25, "supply": 0.6, "battery": 0.3, "ammo": 0.7, "health": 1.0, "hear_error": 96.0, "voice": {"attack": ["rzeznik_roar", 2, -2.0, 1.0], "death": ["wolek_death", 2, -1.0, 0.75]},

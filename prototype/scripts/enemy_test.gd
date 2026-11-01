@@ -71,6 +71,7 @@ func run(m: Node2D) -> void:
 	await _test_priest_stance()
 	await _test_priest_summon()
 	await _test_butcher()
+	await _test_butcher_pit()
 	await _test_elite_placement()
 	await _test_elite_log()
 	await _test_devourer()
@@ -1420,6 +1421,32 @@ func _spawn(kind: String, pos: Vector2) -> CharacterBody2D:
 	e._phys_x = pos.x
 	e._last_x = pos.x
 	return e
+
+## Rzeźnik w szybie przy pompowni 1.2: stąd nie dojdzie pieszo do domu i może wyskoczyć; z podłogi pompowni dojdzie, więc półka dalej chroni gracza. Wołek zostaje przy głazach.
+func _test_butcher_pit() -> void:
+	var m2: Array = load("res://scripts/maps/z1_m2.gd").MAP
+	var solid := func(c: int, r: int) -> bool:
+		if r < 0 or r >= m2.size() or c < 0 or c >= (m2[0] as String).length():
+			return true
+		return "#CM~misO".contains((m2[r] as String)[c])
+	var plat := func(c: int, r: int) -> bool:
+		if r < 0 or r >= m2.size() or c < 0 or c >= (m2[0] as String).length():
+			return false
+		return "=-".contains((m2[r] as String)[c])
+	var nav := Nav.new()
+	nav.build((m2[0] as String).length(), m2.size(), solid, plat)
+	var home := Vector2(3656.0, 416.0)
+	var u := _spawn("rzeznik", Vector2(FAR_X + 31500.0, -15000.0))
+	var w := _spawn("wolek", Vector2(FAR_X + 31800.0, -15000.0))
+	u.set_physics_process(false)
+	w.set_physics_process(false)
+	await get_tree().physics_frame
+	check("Rzeźnik/szyb: z kratownicy w szybie (kol. 208) nie dojdzie pieszo do domu", not u._beh.walk_ok(nav, Vector2(3336.0, 448.0), home))
+	check("Rzeźnik/szyb: z parteru pompowni dojdzie pieszo do domu, więc nie wyskakuje na półkę", u._beh.walk_ok(nav, Vector2(3480.0, 416.0), home))
+	check("Rzeźnik/szyb: wyskok ma tylko Rzeźnik, Wołek zostaje przy głazach", bool(EnemyDefs.DEFS["rzeznik"]["climbs_out"]) and not w._beh._tick_climb(0.016, null))
+	for n in [u, w]:
+		n.queue_free()
+	await get_tree().physics_frame
 
 ## Znaczniki elit w kampanii (ELITE_PLACEMENT_PLAN.md E1–E2): miejsca, leczenie Kapłana, zapas amunicji na Rzeźnika, beczki, cicha droga przez obóz.
 func _test_elite_placement() -> void:

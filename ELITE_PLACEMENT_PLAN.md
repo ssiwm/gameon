@@ -57,6 +57,8 @@ Playtest autora: Kapłan wlókł nogi, był bierny, uciekał i ginął bez trudu
 
 Po drugim playteście: fala krzyku ma zasięg progu zapowiedzi (110 px, wcześniej 96 px i tylko 1 z 5 krzyków ogłuszył), a wezwanie bez żywego gracza nie zaczyna gestu i nie podbija licznika fal.
 
+Rzeźnik: w trzech grach ginął w tym samym punkcie, na kratownicy w szybie na zachód od pompowni (kol. 207–212), bo nie skacze i nie rzuca. Teraz po 0,4 s wyskakuje, gdy z miejsca, w którym stoi, nie dojdzie pieszo do domu; HP oceniamy dopiero po tej zmianie.
+
 Do sprawdzenia w playteście: czy 1.1 nie jest teraz za trudna (najpierw zwiększyć odstęp, potem zmniejszyć limit).
 
 ## Progresja
