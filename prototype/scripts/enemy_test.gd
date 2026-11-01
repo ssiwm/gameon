@@ -17,6 +17,7 @@ const Bruiser := preload("res://scripts/enemy_bruiser.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Blind := preload("res://scripts/enemy_blind.gd")
 const Nav := preload("res://scripts/nav.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 const FAR_X := 30000.0                ## px: obszar testów fizycznych poza mapą
 
 var main: Node2D
@@ -67,7 +68,12 @@ func run(m: Node2D) -> void:
 	await _test_behaviors()
 	await _test_elite_foundation()
 	await _test_priest()
+	await _test_priest_stance()
+	await _test_priest_summon()
 	await _test_butcher()
+	await _test_butcher_pit()
+	await _test_elite_placement()
+	await _test_elite_log()
 	await _test_devourer()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
@@ -806,8 +812,8 @@ func _test_elite_foundation() -> void:
 func _test_priest() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["kaplan"]
-	check("Kapłan/dane: 250 HP, elita, zachowanie priest, fala 6 m (96 px), stun 0,8 s, brak ciosu w zwarciu (damage 0)",
-		float(cfg["hp"]) == 250.0 and bool(cfg["elite"]) and cfg["behavior"] == "priest" and is_equal_approx(float(cfg["priest"]["radius"]), 96.0) and is_equal_approx(float(cfg["priest"]["stun"]), 0.8) and int(cfg["damage"]) == 0 and Defs.elite_kinds().has("kaplan"))
+	check("Kapłan/dane: 350 HP, elita, zachowanie priest, fala 7 m (110 px, tyle co próg zapowiedzi), stun 0,8 s, cios w zwarciu za 1",
+		float(cfg["hp"]) == 350.0 and bool(cfg["elite"]) and cfg["behavior"] == "priest" and is_equal_approx(float(cfg["priest"]["radius"]), 110.0) and is_equal_approx(float(cfg["priest"]["stun"]), 0.8) and int(cfg["damage"]) == 1 and Defs.elite_kinds().has("kaplan"))
 	var y := -15000.0
 	var strip := _floor(FAR_X + 29000.0, FAR_X + 29600.0, y)
 	var x0 := FAR_X + 29300.0
@@ -823,13 +829,14 @@ func _test_priest() -> void:
 	player._stun_immune = 0.0
 	k._beh.scream_cd = 0.0
 	k._beh.heal_t = 99.0
-	player.global_position = Vector2(x0 + 104.0, y)                          # w polu zapowiedzi (110 px), ale poza falą (96 px)
+	player.global_position = Vector2(x0 + 104.0, y)                          # w polu zapowiedzi (110 px)
 	check("Kapłan/zapowiedź: gracz bliżej niż 110 px → zapowiedź krzyku (stan special, oczy, pierścień o promieniu fali)",
-		not k._beh.tick_phase(0.016, player) and k._sp == 1 and k.winding and is_equal_approx(float(k.view_info()["tele"]), 96.0) and bool(k.view_info()["alert"]), "sp=%d tele=%s" % [k._sp, str(k.view_info()["tele"])])
+		not k._beh.tick_phase(0.016, player) and k._sp == 1 and k.winding and is_equal_approx(float(k.view_info()["tele"]), 110.0) and bool(k.view_info()["alert"]), "sp=%d tele=%s" % [k._sp, str(k.view_info()["tele"])])
 	check("Kapłan/zapowiedź: w trakcie stoi w miejscu, tick przejmuje ruch (true)", k._beh.tick_phase(0.016, player))
+	player.global_position = Vector2(x0 + 140.0, y)                          # wyszedł z pierścienia w trakcie zapowiedzi
 	k._beh.tele_t = 0.0
 	k._beh.tick_phase(0.016, player)
-	check("Kapłan/krzyk: gracz poza falą (104 px > 96 px) nie jest ogłuszony, krzyk kończy zapowiedź i wchodzi w przerwę 8 s",
+	check("Kapłan/krzyk: gracz, który wyszedł z pierścienia (140 px > 110 px), nie jest ogłuszony, krzyk kończy zapowiedź i wchodzi w przerwę 8 s",
 		not player.is_stunned() and k._sp == 0 and not k.winding and k._beh.scream_cd > 7.0 and float(k.view_info()["tele"]) == 0.0, "stun=%s sp=%d cd=%.1f" % [player.is_stunned(), k._sp, k._beh.scream_cd])
 	k._beh.scream_cd = 0.0
 	player.global_position = Vector2(x0 + 60.0, y)
@@ -842,19 +849,26 @@ func _test_priest() -> void:
 	k._beh.scream_cd = 5.0
 	player.global_position = Vector2(x0 + 40.0, y)
 	check("Kapłan/przerwa: w czasie przerwy krzyku nie zaczyna zapowiedzi", not k._beh.tick_phase(0.016, player) and k._sp == 0)
-	check("Kapłan/zwarcie: nie bije (może_atakować = false, brak zapowiedzi ciosu przy graczu w zasięgu ręki)", not k._beh.may_attack() and (func():
+	player.global_position = Vector2(x0 + 10.0, y)
+	check("Kapłan/zwarcie: gdy krzyk jest w przerwie, bije łapą; zapowiedź gra klip `claw`", k._beh.may_attack() and (func():
 		k._cd = 0.0
 		k._try_begin_attack(player)
-		return k._windup == 0.0 and not k.winding).call())
-	# dystans: za blisko → cofa się, w pasie stoi, dalej zostawia pościg
-	k.velocity = Vector2.ZERO
+		return k._windup > 0.0 and k.winding and k.view_info().get("motion_action") == "claw" and k._beh.attack_action() == "claw").call())
+	k._windup = 0.0
+	k._windup_target = null
+	k.winding = false
+	k._beh.scream_cd = 0.0
+	check("Kapłan/zwarcie: gdy krzyk jest gotowy, nie bije", not k._beh.may_attack())
+	k._beh.scream_cd = 5.0
+	# dystans: nie cofa się, do `hold` stoi, dalej zostawia pościg
+	k.velocity = Vector2(5.0, 0.0)
 	var near_hold: bool = k._beh.chase_hold(player, Vector2(60.0, 0.0), 42.0)
-	var back_v: float = k.velocity.x
+	var near_v: float = k.velocity.x
 	k.velocity = Vector2(5.0, 0.0)
 	var mid_hold: bool = k._beh.chase_hold(player, Vector2(150.0, 0.0), 42.0)
 	var mid_v: float = k.velocity.x
 	var far_hold: bool = k._beh.chase_hold(player, Vector2(260.0, 0.0), 42.0)
-	check("Kapłan/dystans: gracz 60 px → cofa się (w lewo), 150 px → stoi, 260 px → pościg rdzenia", near_hold and back_v < 0.0 and mid_hold and mid_v == 0.0 and not far_hold, "%s %.0f / %s %.0f / %s" % [near_hold, back_v, mid_hold, mid_v, far_hold])
+	check("Kapłan/dystans: gracz 60 i 150 px → stoi, nie cofa się, 260 px → pościg rdzenia", near_hold and near_v == 0.0 and mid_hold and mid_v == 0.0 and not far_hold, "%s %.0f / %s %.0f / %s" % [near_hold, near_v, mid_hold, mid_v, far_hold])
 
 	# leczenie Trzosków: tylko ranni, tylko Trzoski (pack), tylko w zasięgu, nie ponad maks.
 	player.global_position = Vector2(x0 + 400.0, y)
@@ -870,10 +884,13 @@ func _test_priest() -> void:
 	far_t.hp = 10.0
 	blind.hp = 20.0
 	k._beh.heal_t = 0.0
+	k._beh.scream_cd = 5.0
+	k._beh.summon_t = 5.0
 	k._beh._tick_heal(0.016)
 	var max_hp: float = hurt._max_hp
 	check("Kapłan/leczenie: ranny Trzosek w zasięgu +10% maks. HP, cały bez zmian, daleki i Ślepiec nie leczeni",
 		absf(hurt.hp - (10.0 + max_hp * 0.10)) < 0.01 and whole.hp == whole._max_hp and far_t.hp == 10.0 and blind.hp == 20.0, "hurt=%.2f/%.1f far=%.1f" % [hurt.hp, max_hp, far_t.hp])
+	check("Kapłan/leczenie: gest `bless` przy leczeniu, a następny dopiero po przerwie", k.visual_attack_action == "bless" and k._beh.bless_t > 2.0, "%s %.1f" % [k.visual_attack_action, k._beh.bless_t])
 	check("Kapłan/leczenie: wiązka do leczonego widoczna w view_info (beams, 0,6 s)", (k.view_info()["beams"] as PackedVector2Array).size() == 1 and k._heal_fx_t > 0.5)
 	hurt.hp = hurt._max_hp - 0.5
 	k._beh.heal_t = 0.0
@@ -914,13 +931,167 @@ func _test_priest() -> void:
 		n.queue_free()
 	await get_tree().physics_frame
 
+## Kapłan stoi przodem do gracza, nie ucieka, a seria trafień nie zagłusza krzyku (ELITE_PLACEMENT_PLAN.md K2).
+func _test_priest_stance() -> void:
+	var y := -15000.0
+	var x0 := FAR_X + 29300.0
+	var strip := _floor(FAR_X + 28000.0, FAR_X + 30600.0, y)
+	var keep_pos: Vector2 = player.global_position
+	var keep_dead: bool = player.dead
+	player.dead = false
+	var k := _spawn("kaplan", Vector2(x0, y))
+	await get_tree().physics_frame
+	k._beh.heal_t = 99.0
+	k._beh.scream_cd = 99.0
+	k._facing = 1.0
+	player.global_position = Vector2(x0 - 300.0, y)
+	for i in 10:
+		player.velocity = Vector2.ZERO
+		await get_tree().physics_frame
+	check("Kapłan/postawa: śpiący nie obraca się do gracza", k._facing == 1.0 and not k.active)
+	k.wake()
+	k._alert = 0.0
+	var walked := false
+	for i in 60:                                                           # gracz daleko z lewej: Kapłan idzie ku niemu i patrzy, dokąd idzie
+		player.global_position = Vector2(x0 - 300.0, y)
+		player.velocity = Vector2.ZERO
+		await get_tree().physics_frame
+		walked = walked or (k.velocity.x < -1.0 and k._facing < 0.0)
+	check("Kapłan/postawa: idzie ku graczowi przodem", walked, "vx=%.0f facing=%.0f" % [k.velocity.x, k._facing])
+	var start_x: float = k.global_position.x
+	var px: float = start_x - 90.0
+	for i in 120:                                                          # gracz 90 px obok: Kapłan zostaje na miejscu, przodem
+		player.global_position = Vector2(px, y)
+		player.velocity = Vector2.ZERO
+		await get_tree().physics_frame
+	check("Kapłan/postawa: gracz na 90 px — nie cofa się i patrzy na niego", absf(k.global_position.x - start_x) < 3.0 and k._facing < 0.0 and not k._is_behind(Vector2(1.0, 0.0)), "dx=%.1f facing=%.0f" % [k.global_position.x - start_x, k._facing])
+	check("Kapłan/postawa: widok bierze kierunek z serwera", k._beh.server_facing())
+	k.hp = 100000.0
+	k._max_hp = 100000.0
+	k._beh.scream_cd = 0.0
+	var began := false
+	for i in 30:                                                           # seria: co 6 fizycznych klatek ok. 0,1 s, jak M-83
+		player.global_position = Vector2(px, y)
+		player.velocity = Vector2.ZERO
+		if i % 6 == 0:
+			k.take_hit({"amount": 8.0, "dir": Vector2(1, 0), "shooter": 1, "w": Weapons.M83, "type": "bullet", "pos": k.global_position})
+		await get_tree().physics_frame
+		began = began or k._sp == 1
+	check("Kapłan/postawa: seria trafień nie chwieje go i nie blokuje zapowiedzi krzyku", began and k._stagger <= 0.0, "sp=%d stagger=%.2f" % [k._sp, k._stagger])
+	k._sp = 0
+	k.winding = false
+	player.global_position = keep_pos
+	player.dead = keep_dead
+	player.stun_t = 0.0
+	player._stun_immune = 0.0
+	for n in [k, strip]:
+		n.queue_free()
+	await get_tree().physics_frame
+
+## Wzywanie Trzosków (ELITE_PLACEMENT_PLAN.md K3): gest, punkt poza kadrem, odstęp, limit, przerwanie, bez XP i łupu, śmierć i restart.
+func _test_priest_summon() -> void:
+	var y := -15000.0
+	var x0 := FAR_X + 29300.0
+	var keep_dead: bool = player.dead
+	var keep_pos: Vector2 = player.global_position
+	player.dead = false
+	player.global_position = player._spawn_point            # prawdziwa mapa: punkt wezwania z grafu nawigacji
+	var strip := _floor(FAR_X + 28000.0, FAR_X + 30600.0, y)
+	var k := _spawn("kaplan", Vector2(x0, y))
+	k.set_physics_process(false)
+	await get_tree().physics_frame
+	k.active = true
+	var b = k._beh
+	b.scream_cd = 99.0
+	b.heal_t = 99.0
+	var lvl0: int = Difficulty.level
+	var caps := []
+	for lv in [Difficulty.Level.EASY, Difficulty.Level.NORMAL, Difficulty.Level.HARD]:
+		Difficulty.level = lv
+		caps.append(b.summon_cap())
+	Difficulty.level = lvl0
+	check("Kapłan/wzywanie: limit żywych wezwanych EASY 3, NORMAL 4, HARD 6", caps == [3, 4, 6], str(caps))
+	k._target = null
+	k._has_lead = false
+	b.summon_t = 0.0
+	b.tick_phase(0.016, null)
+	check("Kapłan/wzywanie: bez celu i śladu nie wzywa", k._sp == 0 and b.summon_t > 0.0)
+	k._target = player
+	player.dead = true
+	b.summon_t = 0.0
+	b.tick_phase(0.016, null)
+	check("Kapłan/wzywanie: gdy wszyscy leżą, nie zaczyna gestu", k._sp == 0 and b.summon_t > 0.0 and b.waves == 0)
+	player.dead = false
+	b.summon_t = 0.0
+	b.tick_phase(0.016, null)
+	player.dead = true
+	b.tele_t = 0.0
+	b.tick_phase(0.016, null)
+	check("Kapłan/wzywanie: upadek w trakcie gestu — bez fali, licznik stoi, ponowna próba po 3 s", k._sp == 0 and b.waves == 0 and b.alive_minions().is_empty() and is_equal_approx(b.summon_t, 3.0), "fale=%d t=%.1f" % [b.waves, b.summon_t])
+	player.dead = false
+	k._target = player
+	b.summon_t = 0.0
+	b.tick_phase(0.016, player)
+	var info: Dictionary = k.view_info()
+	check("Kapłan/wzywanie: gest przejmuje ruch, gra klip `summon`, bez pierścienia krzyku", k._sp == b.SP_SUMMON and k.winding and info.get("motion_action") == "summon" and float(info["tele"]) == 0.0 and b.tick_phase(0.016, player))
+	b.tele_t = 0.0
+	b.tick_phase(0.016, player)
+	for i in 12:                                                        # `_pick_spot` losuje punkty: w grze następna próba idzie po `summon.retry` s
+		if not b.alive_minions().is_empty():
+			break
+		b._finish_summon()
+	var first: Array = b.alive_minions().duplicate()
+	var spots_ok := first.size() == 2
+	for m in first:
+		var dist: float = (m as Node2D).global_position.distance_to(player.global_position)
+		spots_ok = spots_ok and dist >= 300.0 and dist <= 720.0
+	check("Kapłan/wzywanie: po geście 2 Trzoski poza kadrem, kontakt `summon`, odstęp 14 s", spots_ok and k.visual_attack_action == "summon" and b.waves == 1 and k._sp == 0 and not k.winding and is_equal_approx(b.summon_t, 14.0), "%d t=%.1f" % [first.size(), b.summon_t])
+	var flags := not first.is_empty()
+	for m in first:
+		flags = flags and m.summoned and m.omniscient and m.kind == "trzosek" and m.active
+	check("Kapłan/wzywanie: wezwani jak Trzoski bossa (bez XP i łupu, wiedzą, gdzie są gracze, obudzeni)", flags)
+	b.waves = 3
+	b.spawn_wave(Vector2(x0 + 300.0, y))
+	check("Kapłan/wzywanie: od trzeciego wezwania 3 Trzoski, przycięte do limitu 4", b.alive_minions().size() == 4, str(b.alive_minions().size()))
+	b.summon_t = 0.0
+	b.tick_phase(0.016, player)
+	check("Kapłan/wzywanie: przy limicie nie zaczyna gestu i czeka", k._sp == 0 and b.summon_t > 0.0)
+	b.alive_minions()[0].take_bullet(k.global_position, 9999.0)
+	b.summon_t = 0.0
+	k.hp = 300.0
+	b.tick_phase(0.016, player)
+	k.hp -= 30.0
+	b.tick_phase(0.016, player)
+	check("Kapłan/wzywanie: 30 obrażeń w trakcie gestu go nie przerywa", k._sp == b.SP_SUMMON)
+	k.hp -= 30.0
+	var waves0: int = b.waves
+	b.tick_phase(0.016, player)
+	check("Kapłan/wzywanie: 60 obrażeń przerywa gest, następne po 6 s", k._sp == 0 and not k.winding and b.waves == waves0 and is_equal_approx(b.summon_t, 6.0), "sp=%d t=%.1f" % [k._sp, b.summon_t])
+	var left: Array = b.alive_minions().duplicate()
+	b.on_death()
+	var all_dead := not left.is_empty()
+	for m in left:
+		all_dead = all_dead and not m.alive
+	check("Kapłan/wzywanie: śmierć Kapłana zabija wezwanych", all_dead and b.alive_minions().is_empty())
+	b.waves = 0
+	b.spawn_wave(Vector2(x0 + 300.0, y))
+	var prefix: String = b._minion_prefix()
+	k.reset_enemy()
+	await get_tree().physics_frame
+	check("Kapłan/wzywanie: restart usuwa wezwanych i zeruje liczniki", b.minions.is_empty() and b.waves == 0 and is_equal_approx(b.summon_t, 6.0) and level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with(prefix)).is_empty())
+	player.dead = keep_dead
+	player.global_position = keep_pos
+	for n in [k, strip]:
+		n.queue_free()
+	await get_tree().physics_frame
+
 # ---------------------------------------------------------------- F4c: Rzeźnik (miniboss: sparametryzowany Wołek, szarża przez barykady)
 
 func _test_butcher() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["rzeznik"]
-	check("Rzeźnik/dane: 600 HP, elita, pancerz 4, szarża 1,0 s zapowiedzi / 1,4 s / ×3,2 / przerwa 9 s, bez rzutów, łamie barykady, odporny na ogłuszenie",
-		float(cfg["hp"]) == 600.0 and bool(cfg["elite"]) and float(cfg["armor"]) == 4.0 and cfg["behavior"] == "bruiser" and not bool(cfg["throws"]) and bool(cfg["breaks_barricades"]) and bool(cfg["stun_resist"])
+	check("Rzeźnik/dane: 400 HP, elita, pancerz 4, szarża 1,0 s zapowiedzi / 1,4 s / ×3,2 / przerwa 9 s, bez rzutów, łamie barykady, odporny na ogłuszenie",
+		float(cfg["hp"]) == 400.0 and bool(cfg["elite"]) and float(cfg["armor"]) == 4.0 and cfg["behavior"] == "bruiser" and not bool(cfg["throws"]) and bool(cfg["breaks_barricades"]) and bool(cfg["stun_resist"])
 		and is_equal_approx(float(cfg["charge"]["windup"]), 1.0) and is_equal_approx(float(cfg["charge"]["time"]), 1.4) and is_equal_approx(float(cfg["charge"]["mult"]), 3.2) and is_equal_approx(float(cfg["charge"]["cd"]), 9.0) and Defs.elite_kinds().has("rzeznik"))
 	var y := -16000.0
 	var strip := _floor(FAR_X + 30000.0, FAR_X + 30900.0, y)
@@ -1251,6 +1422,148 @@ func _spawn(kind: String, pos: Vector2) -> CharacterBody2D:
 	e._last_x = pos.x
 	return e
 
+## Rzeźnik w szybie przy pompowni 1.2: stąd nie dojdzie pieszo do domu i może wyskoczyć; z podłogi pompowni dojdzie, więc półka dalej chroni gracza. Wołek zostaje przy głazach.
+func _test_butcher_pit() -> void:
+	var m2: Array = load("res://scripts/maps/z1_m2.gd").MAP
+	var solid := func(c: int, r: int) -> bool:
+		if r < 0 or r >= m2.size() or c < 0 or c >= (m2[0] as String).length():
+			return true
+		return "#CM~misO".contains((m2[r] as String)[c])
+	var plat := func(c: int, r: int) -> bool:
+		if r < 0 or r >= m2.size() or c < 0 or c >= (m2[0] as String).length():
+			return false
+		return "=-".contains((m2[r] as String)[c])
+	var nav := Nav.new()
+	nav.build((m2[0] as String).length(), m2.size(), solid, plat)
+	var home := Vector2(3656.0, 416.0)
+	var u := _spawn("rzeznik", Vector2(FAR_X + 31500.0, -15000.0))
+	var w := _spawn("wolek", Vector2(FAR_X + 31800.0, -15000.0))
+	u.set_physics_process(false)
+	w.set_physics_process(false)
+	await get_tree().physics_frame
+	check("Rzeźnik/szyb: z kratownicy w szybie (kol. 208) nie dojdzie pieszo do domu", not u._beh.walk_ok(nav, Vector2(3336.0, 448.0), home))
+	check("Rzeźnik/szyb: z parteru pompowni dojdzie pieszo do domu, więc nie wyskakuje na półkę", u._beh.walk_ok(nav, Vector2(3480.0, 416.0), home))
+	check("Rzeźnik/szyb: wyskok ma tylko Rzeźnik, Wołek zostaje przy głazach", bool(EnemyDefs.DEFS["rzeznik"]["climbs_out"]) and not w._beh._tick_climb(0.016, null))
+	for n in [u, w]:
+		n.queue_free()
+	await get_tree().physics_frame
+
+## Znaczniki elit w kampanii (ELITE_PLACEMENT_PLAN.md E1–E2): miejsca, leczenie Kapłana, zapas amunicji na Rzeźnika, beczki, cicha droga przez obóz.
+func _test_elite_placement() -> void:
+	var m1: Array = load("res://scripts/maps/z1_m1.gd").MAP
+	var m2: Array = load("res://scripts/maps/z1_m2.gd").MAP
+	var marks := func(rows: Array, ch: String) -> Array:
+		var out: Array = []
+		for r in rows.size():
+			for c in (rows[r] as String).length():
+				if (rows[r] as String)[c] == ch:
+					out.append([c, r])
+		return out
+	check("elity/mapy: Kapłan tylko w obozie 1.1, Rzeźnik tylko w pompowni 1.2", marks.call(m1, "A") == [[112, 22]] and marks.call(m2, "U") == [[228, 25]] and marks.call(m1, "U").is_empty() and marks.call(m2, "A").is_empty())
+	for id in ["z1_m3", "z1_b1"]:
+		var rows: Array = load("res://scripts/maps/%s.gd" % id).MAP
+		check("elity/mapy: %s bez znaczników elit" % id, marks.call(rows, "A").is_empty() and marks.call(rows, "U").is_empty() and marks.call(rows, "V").is_empty())
+	var heal_r: float = float(EnemyDefs.DEFS["kaplan"]["priest"]["heal_r"])
+	var healed := 0
+	for t in marks.call(m1, "T"):
+		if int(t[1]) == 22 and absf(float(int(t[0]) - 112)) * 16.0 <= heal_r:
+			healed += 1
+	check("elity/mapy: Kapłan sięga leczeniem co najmniej 3 Trzosków watahy", healed >= 3, "w zasięgu: %d" % healed)
+	var butcher_hp: float = float(EnemyDefs.DEFS["rzeznik"]["hp"]) * float(load("res://scripts/maps/z1_m2.gd").ENEMY_HP)
+	var m83: Dictionary = {"dmg": 8.0, "ammo": 180.0}
+	check("elity/mapy: Rzeźnika na 1.2 NORMAL da się zabić zapasem startowym M-83", butcher_hp / (float(m83["dmg"]) - float(EnemyDefs.DEFS["rzeznik"]["armor"])) <= float(m83["ammo"]), "HP %.0f" % butcher_hp)
+	check("elity/mapy: na parterze pompowni są beczki przy Rzeźniku", (m2[25] as String)[224] == "o" and (m2[25] as String)[233] == "o")
+	check("elity/mapy: wybór Rzeźnika nie zmienia liczby wrogów na parterze (bez Wołka w pompowni)", marks.call(m2, "W").filter(func(p: Array) -> bool: return int(p[1]) == 25 and int(p[0]) >= 217 and int(p[0]) <= 246).is_empty())
+	# cicha droga przez obóz (MAPS_PLAN.md M1a): na kucaka wróg budzi się z połowy `wake_near`, a skok i spadek liczą się jak marsz wyprostowany
+	var solid := func(c: int, r: int) -> bool:
+		if r < 0 or r >= m1.size() or c < 0 or c >= (m1[0] as String).length():
+			return true
+		return "#CM~misO".contains((m1[r] as String)[c])
+	var plat := func(c: int, r: int) -> bool:
+		if r < 0 or r >= m1.size() or c < 0 or c >= (m1[0] as String).length():
+			return false
+		return "=-".contains((m1[r] as String)[c])
+	var nav := Nav.new()
+	nav.build((m1[0] as String).length(), m1.size(), solid, plat)
+	var foes: Array = []
+	for r in m1.size():
+		for c in range(77, 141):
+			var ch := (m1[r] as String)[c]
+			if ch == "T" or ch == "A":
+				foes.append([Vector2(c * 16 + 8, (r + 1) * 16), float(EnemyDefs.DEFS["trzosek" if ch == "T" else "kaplan"]["wake_near"])])
+	var safe := func(p: Vector2, walking: bool) -> bool:
+		for f in foes:
+			if (f[0] as Vector2).distance_to(p) < float(f[1]) * (0.5 if walking else 1.0):
+				return false
+		return true
+	var from: int = nav.nearest_id(Vector2(77 * 16 + 8, 23 * 16))
+	var goal: int = nav.nearest_id(Vector2(140 * 16 + 8, 23 * 16))
+	var seen := {from: true}
+	var queue: Array = [from]
+	while not queue.is_empty():
+		var a: int = queue.pop_front()
+		for b in nav.get_point_connections(a):
+			if seen.has(b):
+				continue
+			var walking: bool = nav.edge_kind(a, b) == nav.Edge.WALK
+			if safe.call(nav.get_point_position(a), walking) and safe.call(nav.get_point_position(b), walking):
+				seen[b] = true
+				queue.append(b)
+	check("elity/mapy: przez obóz nadal prowadzi cicha droga z Kapłanem na miejscu", seen.has(goal))
+
+## Dziennik elit i Dyrektora (ELITE_PLACEMENT_PLAN.md E0): spawn, przebudzenie, zabicie z rozbiciem obrażeń, stan przy końcu misji, blokady Dyrektora.
+func _test_elite_log() -> void:
+	const LOG_DIR := "user://test_elite_log"
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "elite"})
+	Director.reset()
+	Director.note_blocks(2.0, true, true, false, false)
+	Director.note_blocks(3.0, false, false, false, false)
+	var stats: Dictionary = Director.block_stats()
+	check("dziennik elit: blokady Dyrektora liczone osobno, `open` tylko bez blokad", int(stats["relax"]) == 2 and int(stats["breath"]) == 2 and int(stats["stress"]) == 0 and int(stats["open"]) == 3)
+	var pos := Vector2(FAR_X + 31000.0, 0.0)
+	var k := _spawn("kaplan", pos)
+	var u := _spawn("rzeznik", pos + Vector2(400.0, 0.0))
+	await get_tree().process_frame
+	k.wake()
+	k._beh._scream()
+	k._beh.spawn_wave(pos + Vector2(200.0, 0.0))
+	k.take_hit({"amount": 10.0, "dir": Vector2.RIGHT, "shooter": 7, "w": Weapons.M83, "type": "bullet", "pos": k.global_position})
+	k.take_bullet(k.global_position + Vector2(-10.0, 0.0), 20.0)
+	k.take_hit({"amount": 9999.0, "dir": Vector2.RIGHT, "shooter": 7, "w": Weapons.M83, "type": "bullet", "pos": k.global_position})
+	await get_tree().process_frame
+	check("dziennik elit: zwykły wróg nie ma wiersza stanu elity", _spawn("trzosek", pos + Vector2(800.0, 0.0)).elite_row().is_empty())
+	main.mission.log_end("quit")
+	var rows: Array = []
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("\n"):
+		if line != "":
+			rows.append(JSON.parse_string(line))
+	var elite: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "elite")
+	var of := func(what: String, kind: String) -> Dictionary:
+		for r in elite:
+			if r["what"] == what and r["kind"] == kind:
+				return r
+		return {}
+	check("dziennik elit: spawn Kapłana i Rzeźnika w trakcie próby", not of.call("spawn", "kaplan").is_empty() and not of.call("spawn", "rzeznik").is_empty(), str(elite.size()))
+	check("dziennik elit: przebudzenie Kapłana z hałasem", of.call("wake", "kaplan").has("noise"))
+	check("dziennik elit: krzyk z liczbą ogłuszonych i wezwanie z liczbą Trzosków", of.call("scream", "kaplan").has("stunned") and int(of.call("summon", "kaplan").get("n", 0)) == 2)
+	var kill: Dictionary = of.call("kill", "kaplan")
+	check("dziennik elit: zabicie — kto, czym, po ilu sekundach, rozbicie obrażeń", not kill.is_empty() and int(kill.get("by", 0)) == 7 and kill.get("weapon") == "m83" and kill.has("after") and (kill.get("dmg", {}) as Dictionary).has("m83") and (kill.get("dmg", {}) as Dictionary).has("blast"), str(kill))
+	var end: Dictionary = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mission_end").back()
+	var alive: Array = (end.get("elites", []) as Array).filter(func(r: Dictionary) -> bool: return r["kind"] == "rzeznik")
+	check("dziennik elit: `mission_end` ma przeżyłą elitę z HP i blokady Dyrektora", not alive.is_empty() and int(alive[0]["hp"]) > 0 and (end.get("director", {}) as Dictionary).has("breath"), str(end.get("elites")))
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	SessionLog.dir = SessionLog.DIR
+	for f in DirAccess.get_files_at(LOG_DIR):
+		DirAccess.remove_absolute("%s/%s" % [LOG_DIR, f])
+	DirAccess.remove_absolute(LOG_DIR)
+	for e in [k, u]:
+		if is_instance_valid(e):
+			e.queue_free()
+	await get_tree().process_frame
+
 ## Wołek rozpędza się tylko tam, gdzie ma podłogę pod całym rozbiegiem (i ścianę sprawdzoną na pełnym dystansie).
 func _test_run_clear() -> void:
 	var y := -3000.0
@@ -1405,7 +1718,7 @@ const GOLDEN := {
 	"slepiec": {"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.0]},
 	"podsluchacz": {"xp": 4, "scrap": 4, "supply": 0.15, "ammo": 0.15, "health": 0.0, "voice": []},
 	"wolek": {"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "voice": ["wolek_attack", 2, -3.0, 1.0]},
-	"kaplan": {"xp": 25, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "voice": ["slepiec_attack", 2, -3.0, 0.8]},
+	"kaplan": {"xp": 40, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "voice": ["slepiec_attack", 2, -3.0, 0.8]},
 	"rzeznik": {"xp": 40, "scrap": 25, "supply": 0.6, "ammo": 0.7, "health": 1.0, "voice": ["rzeznik_roar", 2, -2.0, 1.0]},
 	"zerca": {"xp": 30, "scrap": 20, "supply": 0.3, "ammo": 0.3, "health": 0.5, "voice": ["trzosek_attack", 3, -4.0, 0.7]},
 }

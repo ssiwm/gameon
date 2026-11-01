@@ -23,6 +23,8 @@ extends RefCounted
 ##   battery        who, bot, src (pickup), amount (s świecenia), before (% przed) — gracz wziął baterię 4,5 V (BATTERY_PLAN.md B1, od 1.7.450)
 ##   battery_empty  who, bot, phase, pos — latarka zgasła, bo bateria spadła do zera (B0, od 1.7.450)
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
+##   elite          what (spawn — tylko w trakcie próby / wake / kill / scream: stunned / summon: n, alive, wave / summon_break: dmg), kind, src (map / director / finale / dev), pos, hp, max_hp; wake: noise;
+##                  kill: by (player_id, 0 = nikt), weapon (ostatnie źródło obrażeń), after (s od przebudzenia), dmg (źródło → obrażenia; od 1.7.466, ELITE_PLACEMENT_PLAN.md E0)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
 ##   xp             who, mission (XP za wynik misji), rows (etykiety bonusów), xp (łącznie w profilu po misji), level — po udanej misji,
 ##                  raport właściciela profilu (u klienta przez RPC do hosta); pisany po mission_end (PROGRESSION_PLAN.md P0.1)
@@ -42,6 +44,8 @@ extends RefCounted
 ## `mission_end.silent` (od 1.7.403): cichy cel dotrzymany — Uwaga < 60 przez cały cel główny (FUN_PLAN.md P2.1).
 ## `players[id]` (od 1.7.391): oprócz name, kills, downs, revived, dmg także `kinds` (rodzaj wroga → zabójstwa) i `xp_kills` (XP za te zabójstwa) — P0.1, P0.3;
 ## od 1.7.401 (FUN_PLAN.md P0.5) `revives` (podniesienia kolegów), `escapes` (ucieczki o włos), `lures` (udane Q), `noise` (własny hałas gracza).
+## `mission_start.elites` i `mission_end.elites` (od 1.7.466): [{kind, src, pos, hp, max_hp, woke}] — elity na mapie, także przeżyłe.
+## `mission_end.director` (od 1.7.466): run (s fazy celu), relax, breath, stress, groups (s blokady odliczania, mogą się nakładać), open (s odliczania), spawns, no_spot.
 ## `mission_start.checkpoint` = "boss": próba od punktu kontrolnego walki z bossem (FUN_PLAN.md P0.3); `mission_start.via` = "direct" (od 1.7.404):
 ## próba wybrana na karcie wyniku jako „od razu następna misja”, bez kryjówki (P0.4). Raport przed / po: `tools/fun_report.py`.
 ## `scrap` (od 1.7.347, strojenie ekonomii warsztatu): {dropped — złom, który wypadł z wrogów i bossa w tej próbie, loot — zebrany łup,

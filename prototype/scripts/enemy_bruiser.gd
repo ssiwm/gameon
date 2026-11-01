@@ -14,6 +14,10 @@ const CRASH_STUN := 1.3
 const RUN_CHECK_MAX := 280.0         ## px: tyle rozbiegu sprawdzamy przed szarżą (ściana i podłoga)
 const RUN_FLOOR_STEP := 16.0         ## px: co tyle sprawdzamy, czy pod rozbiegiem jest podłoga (kafel)
 const RUN_FLOOR_DEPTH := 28.0        ## px w dół od poziomu stóp: głębiej to już przepaść, nie stopień
+const CLIMB_WAIT := 0.4              ## s przed wyskokiem z pułapki: stoi i widać, że się zbiera
+const CLIMB_CHECK := 0.5             ## s między sprawdzeniami trasy do domu (trasa to koszt, a wyskok jest rzadki)
+const CLIMB_REACH := 120.0           ## px: tak daleko na swoim poziomie może być początek wyskoku
+const Nav := preload("res://scripts/nav.gd")
 
 var sp_t := 0.0
 var sp_duration := 0.0
@@ -24,6 +28,12 @@ var boulder_cd := 2.0        ## przerwa między głazami (wg trudności, `enemy_
 var charge_cd := 3.0
 var throw_cd := 2.0
 var charge_hit := false
+var climb_t := 0.0           ## s zbierania się do wyskoku
+var climb_check_t := 0.0     ## s do następnego sprawdzenia trasy do domu
+var climb_plan := false      ## idzie do początku wyskoku albo się zbiera (`_tick_climb`)
+var climb_air := false       ## jest w powietrzu po wyskoku
+var climb_from := Vector2.ZERO
+var climb_dir := 1.0
 
 ## Parametr szarży z danych rodzaju (`charge`: min, max, windup, time, mult, cd, crash_stun, damage); brak wpisu = stałe Wołka. Dzięki temu Rzeźnik to ten sam kod z innymi liczbami.
 func _c(key: String, base: float) -> float:
@@ -42,6 +52,9 @@ func reset() -> void:
 	boulder_cd = 2.0
 	charge_cd = 3.0
 	throw_cd = 2.0
+	climb_plan = false
+	climb_air = false
+	climb_check_t = 0.0
 
 ## Zwraca true, gdy faza specjalna przejęła ruch w tej klatce.
 func tick_phase(delta: float, target: Node2D) -> bool:
@@ -50,6 +63,8 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 	boulder_cd = maxf(0.0, boulder_cd - delta)
 	match e._sp:
 		0:
+			if e._windup <= 0.0 and e._panic <= 0.0 and _tick_climb(delta, target):
+				return true
 			if target == null or e._windup > 0.0 or e._stagger > 0.0 or e._panic > 0.0:
 				return false
 			var d: Vector2 = target.global_position - e.global_position
@@ -118,6 +133,72 @@ func tick_phase(delta: float, target: Node2D) -> bool:
 				e.winding = false
 			return true
 	return false
+
+## Rzeźnik (`climbs_out`) nie rzuca, więc w szybie 2 kafle pod gruntem był bezbronny i bezgroźny: gracz na krawędzi strzelał do niego w dół (playtesty 1.7.466: trzy zabicia w tym samym punkcie,
+## bez utraty HP). Wyskakuje tylko, gdy z tego miejsca nie dojdzie pieszo do domu, więc półka nad podłogą w pompowni dalej chroni gracza. Własna faza, a nie krawędź JUMP w `_steer_to`:
+## w szybie zwykle traci cel z oczu, a `_investigate` przy `_blocked` przestaje sterować. Zwraca true, gdy przejęła ruch.
+func _tick_climb(delta: float, target: Node2D) -> bool:
+	if not bool(e._def.get("climbs_out", false)):
+		return false
+	if climb_air:
+		if e.is_on_floor() and e.velocity.y >= 0.0:
+			climb_air = false
+			climb_plan = false
+			return false
+		e.velocity.x = climb_dir * float(e._def["speed"]) * Difficulty.m("enemy_speed")
+		return true
+	if not climb_plan:
+		climb_check_t -= delta
+		if climb_check_t > 0.0 or not e.is_on_floor():
+			return false
+		climb_check_t = CLIMB_CHECK
+		_plan_climb(target)
+		if not climb_plan:
+			return false
+		climb_t = 0.0
+	if absf(climb_from.x - e.global_position.x) > 4.0 and not e.is_on_wall():
+		e.velocity.x = signf(climb_from.x - e.global_position.x) * float(e._def["speed"]) * Difficulty.m("enemy_speed")
+		return true
+	e.velocity.x = 0.0
+	climb_t += delta
+	if climb_t < CLIMB_WAIT:
+		return true
+	climb_air = true
+	e.velocity.y = e.JUMP_V
+	e.velocity.x = climb_dir * float(e._def["speed"]) * Difficulty.m("enemy_speed")
+	if NoiseMgr.has_network():
+		e._cue_fx.rpc("attack")
+	else:
+		e._cue_fx("attack")
+	return true
+
+## Plan wyskoku: uwięziony (pieszo nie dojdzie do domu) i na trasie do celu, śladu albo domu najbliższa krawędź JUMP zaczyna się na jego poziomie, w zasięgu `CLIMB_REACH` px.
+func _plan_climb(target: Node2D) -> void:
+	var lvl: Node = e.get_tree().get_first_node_in_group("level")
+	var nav = lvl.get("nav") if lvl != null else null
+	if nav == null or walk_ok(nav, e.global_position, e._home):
+		return
+	var goal: Vector2 = target.global_position if target != null else (e._last_known if e._has_lead else e._home)
+	var path: Array = nav.find_path(e.global_position, goal, true)
+	for i in range(1, path.size()):
+		if int(path[i].kind) != Nav.Edge.JUMP or e._is_step(path[i - 1].pos, path[i].pos):
+			continue
+		var from: Vector2 = path[i - 1].pos
+		if absf(from.x - e.global_position.x) <= CLIMB_REACH and absf(from.y - e.global_position.y) <= 20.0:
+			climb_plan = true
+			climb_from = from
+			climb_dir = signf(path[i].pos.x - from.x) if absf(path[i].pos.x - from.x) > 1.0 else signf(from.x - e.global_position.x)
+		return
+
+## Czy z `from` do `to` prowadzi trasa bez skoków (zwykłe stopnie się liczą, kładki i spadki też).
+func walk_ok(nav, from: Vector2, to: Vector2) -> bool:
+	var path: Array = nav.find_path(from, to, false)
+	if path.is_empty():
+		return false
+	for i in range(1, path.size()):
+		if int(path[i].kind) == Nav.Edge.JUMP and not e._is_step(path[i - 1].pos, path[i].pos):
+			return false
+	return true
 
 ## Czy przed Wołkiem jest wolna droga na rozbieg: bez ściany na całym dystansie szarży i z podłogą pod każdym kaflem (nie rozpędza się w przepaść).
 func _run_clear(dir: float, dist: float) -> bool:

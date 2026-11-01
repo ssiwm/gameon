@@ -40,6 +40,7 @@ var _serial := 0
 var _roamers: Array[String] = []
 var _groups: Array = []                ## grupy wędrowców: tablice nazw (patrz `live_groups`)
 var _idle: Dictionary = {}            ## nazwa wędrowca → s uśpienia poza polem widzenia (patrz `_cleanup`)
+var _blocks := {}                     ## s fazy celu, w których warunek blokował odliczanie do wędrowców, i liczniki (`block_stats`, ELITE_PLACEMENT_PLAN.md E0)
 var _run_t := 0.0                     ## s w fazie OBJECTIVE poza kryjówką — „czas od startu" dla składu grup (F3.10); nie liczy kryjówki ani bossa
 
 func _process(delta: float) -> void:
@@ -59,7 +60,12 @@ func _process(delta: float) -> void:
 		return
 	_run_t += delta
 	_relax_t = maxf(0.0, _relax_t - delta)
-	if _relax_t > 0.0 or _since_enc < BREATH_MIN or stress > 0.3 or live_groups() >= MAX_GROUPS:
+	var relax := _relax_t > 0.0
+	var breath := _since_enc < BREATH_MIN
+	var hot := stress > 0.3
+	var full := live_groups() >= MAX_GROUPS
+	note_blocks(delta, relax, breath, hot, full)
+	if relax or breath or hot or full:
 		return
 	_spawn_t -= delta * Difficulty.m("dread")
 	if _spawn_t <= 0.0:
@@ -69,6 +75,19 @@ func _process(delta: float) -> void:
 @rpc("authority", "call_remote", "unreliable")
 func _tension_rpc(t: float) -> void:
 	tension = t
+
+## Dziennik (`mission_end.director`): ile sekund fazy celu każdy warunek blokował odliczanie; warunki mogą się nakładać, `open` = odliczanie szło.
+func note_blocks(delta: float, relax: bool, breath: bool, hot: bool, full: bool) -> void:
+	for k in [["relax", relax], ["breath", breath], ["stress", hot], ["groups", full], ["open", not (relax or breath or hot or full)]]:
+		if k[1]:
+			_blocks[k[0]] = float(_blocks.get(k[0], 0.0)) + delta
+
+## Sekundy blokad i liczniki do `mission_end.director`.
+func block_stats() -> Dictionary:
+	var out := {"run": roundi(_run_t), "spawns": int(_blocks.get("spawns", 0)), "no_spot": int(_blocks.get("no_spot", 0))}
+	for k in ["relax", "breath", "stress", "groups", "open"]:
+		out[k] = roundi(float(_blocks.get(k, 0.0)))
+	return out
 
 ## Nowa misja / wipe: wędrowcy znikają, liczniki od zera.
 func reset() -> void:
@@ -85,6 +104,7 @@ func reset() -> void:
 	_since_enc = 0.0
 	_relax_t = 0.0
 	_run_t = 0.0
+	_blocks = {}
 	_spawn_t = randf_range(SPAWN_MIN, SPAWN_MAX)
 
 # ---------------------------------------------------------------- model napięcia
@@ -141,7 +161,9 @@ func _spawn_group(humans: Array) -> void:
 	var anchor: Node2D = humans[randi() % humans.size()]
 	var pos := _pick_spot(lvl, anchor.global_position, humans)
 	if pos == Vector2.ZERO:
+		_blocks["no_spot"] = int(_blocks.get("no_spot", 0)) + 1
 		return
+	_blocks["spawns"] = int(_blocks.get("spawns", 0)) + 1
 	var map_id := String(lvl.get("map_id"))
 	var ctx := build_ctx()
 	var table := groups_for(map_id)
@@ -185,7 +207,7 @@ const GROUPS := [
 	[6.0, ["zerca"], {"time": [360.0, INF], "downs": [1, INF]}],                                                 # elita: Żerca wyczuwa krew — dopiero po pierwszym upadku w misji
 ]
 const GROUPS_BY_MAP := {
-	# 1.1 Missing Patrol (samouczek: 17 T, 3 W, bez Ślepców — pierwszy raz w 1.2): same Trzoski, Wołek dopiero po 8 min
+	# 1.1 Missing Patrol (samouczek: 17 T, 3 W, Kapłan w obozie, bez Ślepców — pierwszy raz w 1.2): same Trzoski, Wołek dopiero po 8 min
 	"z1_m1": [
 		[60.0, ["trzosek", "trzosek"]],
 		[25.0, ["trzosek", "trzosek", "trzosek"], {"time": [150.0, INF]}],

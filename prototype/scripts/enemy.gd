@@ -153,6 +153,9 @@ var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sy
 var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich nic nie obudzi
 var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
 var _last_attacker := 0               ## player_id ostatniego trafiającego (XP za zabójstwo, profile.gd)
+var _wake_ms := 0                     ## elita: zegar pierwszego przebudzenia w tej próbie (dziennik, `elite`), 0 = jeszcze śpi
+var _elite_dmg := {}                  ## elita: źródło → obrażenia w tej próbie (dziennik, `elite`)
+var _elite_last := ""                  ## elita: źródło ostatnich obrażeń (dziennik, `elite`)
 var _ring := 0.0              ## efekt fali krzyku (każdy peer)
 var _heal_pts := PackedVector2Array()   ## punkty leczonych Trzosków (wiązki Kapłana, każdy peer; patrz `_heal_fx`)
 var _heal_fx_t := 0.0
@@ -206,6 +209,7 @@ func _ready() -> void:
 	if _def.get("fly", false):
 		motion_mode = CharacterBody2D.MOTION_MODE_FLOATING     # ćma lata — bez „podłogi" i grawitacji
 	_beh.on_ready()
+	_log_elite("spawn")
 
 ## Aktywny, żywy wróg = realne zagrożenie (boty strzelają tylko do takich).
 func is_threat() -> bool:
@@ -215,6 +219,9 @@ func wake() -> void:
 	if not NoiseMgr.is_server() or not alive or active:
 		return
 	active = true
+	if _wake_ms == 0:
+		_wake_ms = Time.get_ticks_msec()
+	_log_elite("wake", {"noise": roundi(NoiseMgr.level)})
 	_beh.on_wake()
 	if not _has_lead:
 		var p := _nearest_player()
@@ -225,6 +232,46 @@ func wake() -> void:
 	for e in _near(global_position, SIBLING_WAKE_RADIUS):
 		if is_instance_valid(e) and e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS 				and _beh.sibling_wake_ok(e) and (e.get("_beh") == null or e._beh.sibling_wake_ok(self)):
 			e.wake()
+
+## Skąd ta elita się wzięła (dziennik, ELITE_PLACEMENT_PLAN.md E0).
+func elite_source() -> String:
+	var n := String(name)
+	if n == "DevElite" or n.begins_with("Shot"):
+		return "dev"
+	if n.begins_with("Roamer"):
+		return "director"
+	if n.begins_with("Finale"):
+		return "finale"
+	return "map"
+
+## Stan elity do `mission_start.elites` i `mission_end.elites`; pusty słownik dla zwykłego wroga.
+func elite_row() -> Dictionary:
+	if not bool(_def.get("elite", false)):
+		return {}
+	return {"kind": kind, "src": elite_source(), "pos": SessionLog.xy(global_position), "hp": roundi(maxf(hp, 0.0)), "max_hp": roundi(_max_hp), "woke": _wake_ms != 0}
+
+## Zdarzenie `elite` w dzienniku sesji: spawn / wake / kill; zwykłych wrogów nie dotyczy.
+func _log_elite(what: String, extra := {}) -> void:
+	if not bool(_def.get("elite", false)) or not SessionLog.recording():
+		return
+	var row := {"what": what, "kind": kind, "src": elite_source(), "pos": SessionLog.xy(global_position), "hp": roundi(maxf(hp, 0.0)), "max_hp": roundi(_max_hp)}
+	row.merge(extra)
+	SessionLog.event("elite", row)
+
+## Obrażenia elity ze źródła `key` (klucz broni, „burn”, „blast”…) do zdarzenia `kill`.
+func _note_elite_dmg(dmg: float, key: String) -> void:
+	if bool(_def.get("elite", false)):
+		_elite_dmg[key] = float(_elite_dmg.get(key, 0.0)) + dmg
+		_elite_last = key
+
+## Zabicie elity w dzienniku: kto, czym, po ilu sekundach od przebudzenia i z jakich źródeł szły obrażenia.
+func _log_elite_kill() -> void:
+	if not bool(_def.get("elite", false)):
+		return
+	var dmg := {}
+	for k in _elite_dmg:
+		dmg[k] = roundi(float(_elite_dmg[k]))
+	_log_elite("kill", {"by": _last_attacker, "weapon": _elite_last, "after": snappedf(float(Time.get_ticks_msec() - _wake_ms) / 1000.0, 0.1) if _wake_ms != 0 else 0.0, "dmg": dmg})
 
 ## HP z uwzględnieniem poziomu trudności (difficulty.gd).
 func _scaled_hp() -> float:
@@ -242,6 +289,9 @@ func _on_difficulty_changed(_lvl: int) -> void:
 func reset_enemy() -> void:
 	_max_hp = _scaled_hp()
 	hp = _max_hp
+	_wake_ms = 0
+	_elite_dmg = {}
+	_elite_last = ""
 	active = false
 	winding = false
 	_windup = 0.0
@@ -658,6 +708,16 @@ func _hear_alarm(lead: Vector2) -> void:
 		return
 	_lead_at(lead)
 	wake()
+
+## Wezwany Kapłana na każdym peerze (RPC musi żyć w węźle wroga); listę wezwanych prowadzi zachowanie na serwerze.
+@rpc("authority", "call_local", "reliable")
+func _priest_spawn(n: String, pos: Vector2) -> void:
+	_beh.spawn_minion(n, pos)
+
+## Restart misji: wezwani Kapłana znikają na każdym peerze.
+@rpc("authority", "call_local", "reliable")
+func _priest_clear() -> void:
+	_beh.clear_minions()
 
 ## Krzyk na każdym peerze: dźwięk, fala, lekki wstrząs kamery.
 @rpc("authority", "call_local", "reliable")
@@ -1148,7 +1208,7 @@ func _try_begin_attack(target: Node2D) -> void:
 
 func _resolve_attack() -> void:
 	winding = false
-	visual_attack()
+	visual_attack(_beh.attack_action())
 	var pp := _windup_target
 	_windup_target = null
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
@@ -1220,6 +1280,9 @@ func take_hit(info: Dictionary) -> Dictionary:
 		dmg *= shield_mult
 		mat = 1                          # pole ochronne: iskry i szary hitmarker jak przy pancerzu
 	hp -= dmg
+	if bool(_def.get("elite", false)):
+		var w_hit := int(info.get("w", -1))
+		_note_elite_dmg(dmg, String(Weapons.base_def(w_hit).key) if Weapons.is_valid(w_hit) else String(info.get("type", "other")))
 	_flash = 0.1
 	if not bool(_def.get("stun_resist", false)):                       # elita (Rzeźnik) nie chwieje się od trafień i nie traci zapowiedzi od ogłuszenia
 		_stagger = maxf(_stagger, 0.12 + float(info.get("stun", 0.0)))
@@ -1259,6 +1322,7 @@ func _tick_burn(delta: float) -> void:
 	_burn = maxf(0.0, _burn - delta)
 	# 8 HP/s przez czas płonięcia; wynik liczony ciągle, bez tykania co 0,1 s
 	hp -= BURN_DPS * delta * _beh.damage_mult()
+	_note_elite_dmg(BURN_DPS * delta * _beh.damage_mult(), "burn")
 	if hp <= 0.0 and alive:
 		_die()
 
@@ -1273,6 +1337,7 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not NoiseMgr.is_server() or not alive or bool(_def.get("melee_only", false)):
 		return
 	hp -= dmg * _beh.damage_mult()
+	_note_elite_dmg(dmg * _beh.damage_mult(), "blast")       # bez strzelca i pancerza: wybuch beczki (prop.gd) i inne obrażenia otoczenia
 	_alert = 0.0
 	_alert_cd = ALERT_COOLDOWN
 	_beh.on_damaged()
@@ -1290,6 +1355,7 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 		_beh.on_hit(false)
 
 func _die() -> void:
+	_log_elite_kill()
 	if NoiseMgr.is_server() and _last_attacker != 0 and not summoned and not String(name).begins_with("LeechSpawn") and not is_in_group("roamers"):
 		Profile.server_award_kill(_last_attacker, kind)         # XP profilu strzelca (boty, Trzoski bossa i wędrowcy Dyrektora nie liczą się)
 	if NoiseMgr.is_server() and randf() < minf(1.0, EnemyDefs.value(kind, "health") * Difficulty.m("drops")):

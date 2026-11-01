@@ -83,6 +83,10 @@ func view_extra(_d: Dictionary) -> void:
 func anim(a: String, _moving: bool) -> String:
 	return a
 
+## Klip kontaktu zwykłego ciosu (`enemy_motion.gd`); pusty = klip rodzaju z `EnemyMotion.KIND`.
+func attack_action() -> String:
+	return ""
+
 ## Czy kierunek patrzenia modelu 3D pochodzi z serwera (stoi i patrzy na cel), a nie z przesunięcia pozycji.
 func server_facing() -> bool:
 	return false

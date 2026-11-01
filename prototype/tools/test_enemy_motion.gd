@@ -29,6 +29,39 @@ func charge_motion(kind: String) -> void:
 		check(kind + " charge stride follows root at " + str(fps), absf(distance - reference * Enemy.PX) / distance < 0.05)
 		e.free()
 
+## Kapłan: obie stopy odrywają się od ziemi, a stojąca nie sunie (klip `zombie` wlókł prawą o 1,27 m na cykl).
+func priest_gait() -> void:
+	var e := Enemy.new()
+	root.add_child(e)
+	e.setup("kaplan")
+	var speed: float = Defs.DEFS["kaplan"].speed
+	var dt := 1.0 / 60.0
+	var sk: Skeleton3D = e.get("_sk")
+	var rows: Array = []
+	for frame in 240:
+		e.position.x += speed * Enemy.PX * dt
+		e.pose(dt, "walk", false, Color.WHITE, 0.0, 1, true, 0.0, 0, false, speed)
+		if frame >= 120:
+			rows.append([(sk.global_transform * sk.get_bone_global_pose(int(e.get("_b")["LeftFoot"]))).origin, (sk.global_transform * sk.get_bone_global_pose(int(e.get("_b")["RightFoot"]))).origin])
+	for side in [0, 1]:
+		var low := INF
+		var high := -INF
+		for r in rows:
+			low = minf(low, (r[side] as Vector3).y)
+			high = maxf(high, (r[side] as Vector3).y)
+		var slide := 0.0
+		var worst := 0.0
+		for k in range(1, rows.size()):
+			if (rows[k][side] as Vector3).y <= low + 0.03 and (rows[k - 1][side] as Vector3).y <= low + 0.03:
+				slide += absf((rows[k][side] as Vector3).x - (rows[k - 1][side] as Vector3).x)
+			else:
+				worst = maxf(worst, slide)
+				slide = 0.0
+		worst = maxf(worst, slide)
+		check("kaplan foot lifts " + str(side), high - low > 0.2)
+		check("kaplan foot does not slide " + str(side), worst < 0.05)
+	e.free()
+
 func stride_calibration(kind: String) -> void:
 	if kind not in ["wolek", "rzeznik"]: return
 	if Enemy.SPEC[kind].get("gait", "") == "heavy":
@@ -259,6 +292,14 @@ func authored(e: Node3D, kind: String) -> void:
 				e.pose(dt, "idle", false, Color.WHITE)
 				if frame % 10 == 0: geometry(e, kind)
 			check(kind + " recovery clears", e.motion_phase() == "idle")
+		# Seria trafień w trakcie zapowiedzi nie zasłania klipu, a kontakt zostaje przy czasie z symulacji.
+		e.motion_context({"winding": true, "windup_remaining": 0.4, "windup_duration": 0.8, "grounded": true})
+		for frame in 12:
+			if frame % 4 == 0: e.trigger("hit")
+			e.pose(dt, "windup", false, Color.WHITE)
+		check(kind + " hit keeps anticipation", e.motion_phase() == "anticipation" and float(e.get("_motion_weight")) > 0.9)
+		e.motion_context({"winding": false, "grounded": true})
+		for frame in 40: e.pose(dt, "idle", false, Color.WHITE)
 		# Przerwanie w połowie zapowiedzi wraca do bazowej pozy bez ciosu.
 		e.motion_context({"winding": true, "windup_remaining": 0.2, "windup_duration": 0.4, "grounded": true})
 		for frame in 10: e.pose(dt, "windup", false, Color.WHITE)
@@ -387,6 +428,7 @@ func _process(_dt: float) -> bool:
 	if ran: return false
 	ran = true
 	library_check()
+	priest_gait()
 	stalker_facing()
 	for kind in Enemy.SPEC:
 		var e: Node3D = Enemy.new()

@@ -14,6 +14,11 @@ var saw_contact := false
 var previous_seq := 0
 var previous_grab := 0
 var saw_grab := false
+var priest: Node
+var priest_model: Node3D
+var priest_sent := false
+var saw_summon := false
+var priest_seq := 0
 var peer := ENetMultiplayerPeer.new()
 
 func _initialize() -> void:
@@ -39,6 +44,12 @@ func _start() -> void:
 	root.add_child(stalker)
 	stalker.set_physics_process(false)
 	stalker.set_process(false)
+	priest = (load("res://scenes/enemy.tscn") as PackedScene).instantiate()
+	priest.name = "MotionPriest"
+	priest.kind = "kaplan"
+	root.add_child(priest)
+	priest.set_physics_process(false)
+	priest.set_process(false)
 	if not server:
 		model = Enemy3D.new()
 		root.add_child(model)
@@ -46,11 +57,14 @@ func _start() -> void:
 		stalker_model = Enemy3D.new()
 		root.add_child(stalker_model)
 		stalker_model.setup("stalker")
+		priest_model = Enemy3D.new()
+		root.add_child(priest_model)
+		priest_model.setup("kaplan")
 
 func finish(ok: bool, label: String) -> void:
 	print(("PASS" if ok else "FAIL") + " enemy motion network: " + label)
 	peer.close()
-	for node in [model, stalker_model, actor, stalker]:
+	for node in [model, stalker_model, priest_model, actor, stalker, priest]:
 		if is_instance_valid(node): node.free()
 	quit(0 if ok else 1)
 
@@ -75,7 +89,11 @@ func _process(dt: float) -> bool:
 			actor.visual_attack("charge")
 			actor.visual_attack("throw")
 			stalker._visual_attack.rpc(3, -14.3, -1.0)
-		if age > 5.0: finish(true, "server: windup + 3 resolved attacks")
+		if not priest_sent and age >= 1.5:
+			priest_sent = true
+			priest.visual_attack("summon")
+			priest._priest_spawn.rpc("PriestSpawn_MotionPriest_1", Vector2(40.0, 0.0))
+		if age > 5.0: finish(true, "server: windup + 3 resolved attacks + summon")
 	else:
 		var info: Dictionary = actor.view_info()
 		var grab: Dictionary = stalker.view_info()
@@ -90,6 +108,12 @@ func _process(dt: float) -> bool:
 			saw_grab = true
 		else:
 			stalker_model.pose(dt, "windup" if grab["winding"] else "idle", false, Color.WHITE)
+		var pi: Dictionary = priest.view_info()
+		if int(pi["attack_seq"]) > priest_seq:
+			priest_seq = int(pi["attack_seq"])
+			priest_model.trigger("attack", String(pi["attack_action"]))
+			priest_model.pose(dt, "idle", false, Color.WHITE)
+			saw_summon = priest_model.motion_phase() == "contact" and priest_model.get("_motion_name") == "summon"
 		model.motion_context(info)
 		var sequence := int(info["attack_seq"])
 		if sequence > previous_seq:
@@ -110,5 +134,5 @@ func _process(dt: float) -> bool:
 		if sequence == 3 and previous_grab == 3:
 			stalker._visual_attack(1, -100.0, 1.0)
 			stalker._sync(Vector2.ZERO, true, false, 0.0, 0.0, -100.0)
-			finish(saw_wind and saw_contact and saw_grab and stalker._facing == -1.0 and is_equal_approx(float(stalker.view_info()["target_y"]), -14.3), "client: snapshot, contact, action, 3 attacks, Stalker target/facing")
+			finish(saw_summon and root.has_node("PriestSpawn_MotionPriest_1") and saw_wind and saw_contact and saw_grab and stalker._facing == -1.0 and is_equal_approx(float(stalker.view_info()["target_y"]), -14.3), "client: snapshot, contact, action, 3 attacks, Stalker target/facing")
 	return false
