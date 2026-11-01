@@ -261,6 +261,14 @@ func _jobs_deliveries() -> void:
 	# od 1.7.454 znaleziona część broni specjalnej daje schemat (tokarka nadal potrzebna), a nie gotową część
 	check("odzysk znalezionej części daje schemat, anuluje zbędne badanie i zwraca koszt", not Scrap.has_part("lr7_cell") and Scrap.schematics.has("lr7_cell") and Scrap.research.is_empty() and Scrap.bank == bank + cost.y and Scrap.samples == samples + cost.x)
 	Scrap.schematics.erase("lr7_cell")
+	# zwrot = zapłacony złom (perk Smith daje taniej, więc zwrot ceny bez perku byłby zarobkiem), wpis zapłaty znika
+	Scrap.research = ["lr7_cell"]
+	Scrap.job_paid["research:lr7_cell"] = 40
+	Scrap.found["lr7_cell"] = true
+	bank = Scrap.bank
+	Scrap.bank_loot(0)
+	check("zwrot badania = zapłacony złom (%d), wpis zapłaty znika" % (Scrap.bank - bank), Scrap.bank == bank + 40 and not Scrap.job_paid.has("research:lr7_cell"))
+	Scrap.schematics.erase("lr7_cell")
 	var maxn := int(Throwables.KINDS["ammo_slug"]["max"])
 	Arsenal.stock["ammo_slug"] = maxn - 3
 	Scrap.orders = ["ammo_slug"]

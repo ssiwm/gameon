@@ -478,14 +478,14 @@ fabularna (np. wiedza o rodzajach wrogów) zostaje celem 1.0; w EA XP to tylko p
 | Druga szansa | Raz na misję wstajesz sam z down po 8 s (na 1 sercu; przy krótkim wykrwawianiu — po 80% jego czasu) |
 | Krwioobieg | Szybsze dźwiganie rannego (4 s → 2,5 s) |
 | Zimna krew | Twój krzyk do mikrofonu = tylko +10 Uwagi |
-| Kowal | −20% kosztu ulepszeń broni |
+| Kowal | −20% złomu za ulepszenia broni: części na ławie, badania i tokarka (od 1.7.455; próbki bez zmian) |
 | Skaut | Skaner pokazuje Stalkera (także uśpionego) w promieniu 10 m |
 | Weteran | +1 serce (i +1 do sufitu kumulacji apteczek) |
 
 ### 10.3 Kryjówka (hub)
 - **Warsztat** — bronie i części broni (zakup dla drużyny, montaż we własnej broni), trzy zapisane zestawy części na broń (każdy gracz osobno) i narzędzia (apteczka, skaner, zestaw do czyszczenia; granaty i miny — na stole pirotechnicznym, amunicja — w prasie); wybrana broń leży na ławie 3D z częścią spod kursora.
-- **Pracownia elektroniki i próbek** (góra, pod radiostacją, od 1.7.357) — części broni specjalnych (LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6) bada się za próbki z elit (1), bossów (2) i celów pobocznych (1) oraz połowę ceny w złomie; jedno badanie na misję, po udanej misji gotowy schemat.
-- **Tokarka i szlifierka** (maszynownia na dole, od 1.7.358) — ze schematu część za ćwierć ceny, jedno zlecenie na misję, gotowa po udanej misji; szlifierka ostrzy maczetę i kilof (każdy zamach tępi o 1 %, tępe ostrze rani do 70 %).
+- **Pracownia elektroniki i próbek** (góra, pod radiostacją, od 1.7.357) — części broni specjalnych (LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6) bada się za próbki z elit (1), bossów (2) i celów pobocznych (1) oraz połowę ceny w złomie; dwa badania na misję (od 1.7.455, wcześniej jedno), po udanej misji gotowy schemat.
+- **Tokarka i szlifierka** (maszynownia na dole, od 1.7.358) — ze schematu część za ćwierć ceny, dwa zlecenia na misję (od 1.7.455), gotowa po udanej misji; szlifierka ostrzy maczetę i kilof (każdy zamach tępi o 1 %, tępe ostrze rani do 70 %).
 - **Stół pirotechniczny** (magazyn na dole, od 1.7.355) — granaty, miny, ładunki i naboje 40 mm; wybór długości zapalnika dla drużyny (odłamkowy 1,0–3,0 s, fosforowy 0,8–2,5 s, ładunek 4–15 s).
 - **Masa ekwipunku** (od 1.7.356, obsługa REALISTIC) — każda broń i część ma masę; ekwipunek cięższy niż startowy (10,3 kg) biegnie głośniej (+5 % na kg) i wolniej (−1,2 % na kg), lżejszy — ciszej i szybciej. Ława pokazuje masę broni i całego ekwipunku.
 - **Prasa elaboracyjna** (magazyn na dole, od 1.7.354) — amunicję specjalną się zamawia (taniej niż dawny sklep, najwyżej 3 partie), partia jest gotowa po następnej udanej misji; tylko tu powstają ładunki gorące (7.62 HOT, 12/70 MAG: mocniej, ale broń zużywa się dwa razy szybciej).

@@ -15,3 +15,15 @@ keys,?plural,pl,_comment
 "Walk over a dog tag to take it  ·  side goal: %d hidden stash (%d / %d)","Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)","Podejdź do nieśmiertelnika, by go zabrać  ·  cel poboczny: %d skrytka (%d / %d)",Misja 1.1: cel w HUD
 ,,"Podejdź do nieśmiertelnika, by go zabrać  ·  cel poboczny: %d skrytki (%d / %d)",
 ,,"Podejdź do nieśmiertelnika, by go zabrać  ·  cel poboczny: %d skrytek (%d / %d)",
+"The lab is busy — %d project per mission.","The lab is busy — %d projects per mission.","Pracownia zajęta — %d badanie na misję.",Pracownia: komunikat
+,,"Pracownia zajęta — %d badania na misję.",
+,,"Pracownia zajęta — %d badań na misję.",
+"The lab is busy  ·  %d project per mission","The lab is busy  ·  %d projects per mission","Pracownia zajęta  ·  %d badanie na misję",Pracownia: przycisk
+,,"Pracownia zajęta  ·  %d badania na misję",
+,,"Pracownia zajęta  ·  %d badań na misję",
+"The lathe is busy — %d job per mission.","The lathe is busy — %d jobs per mission.","Tokarka zajęta — %d zlecenie na misję.",Tokarka: komunikat
+,,"Tokarka zajęta — %d zlecenia na misję.",
+,,"Tokarka zajęta — %d zleceń na misję.",
+"The lathe is busy  ·  %d job per mission","The lathe is busy  ·  %d jobs per mission","Tokarka zajęta  ·  %d zlecenie na misję",Tokarka: przycisk
+,,"Tokarka zajęta  ·  %d zlecenia na misję",
+,,"Tokarka zajęta  ·  %d zleceń na misję",

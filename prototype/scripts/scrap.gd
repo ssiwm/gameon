@@ -20,9 +20,9 @@ signal research_result(id: String, ok: bool, reason: String)       ## badanie w 
 ## bada się je za próbki (z elit i bossów, do banku po udanej misji) i połowę ceny w złomie. Od 1.7.358 (W6b) badanie daje SCHEMAT
 ## (`schematics`), a część wykonuje tokarka (`request_machining`, MACHINE_PRICE ceny części) — każde po jednej udanej misji.
 const LAB_WEAPONS := ["lr7", "hkm9", "gniew4", "widmo1", "sokol6", "ciegno6"]
-const LAB_SLOTS := 1                  ## badań naraz (jedno na misję)
+const LAB_SLOTS := 2                  ## badań naraz; do 1.7.454 jedno — 22 części broni specjalnych to było ponad 20 udanych misji, a próbki leżały
 signal machining_result(id: String, ok: bool, reason: String)     ## zlecenie na tokarce: ok / poor / busy / owned / noschem / invalid / off
-const LATHE_SLOTS := 1                ## zleceń na tokarce naraz
+const LATHE_SLOTS := 2                ## zleceń na tokarce naraz (do 1.7.454 jedno)
 const MACHINE_PRICE := 0.25           ## materiał na tokarce: ćwierć ceny części (zaokrąglone do 5)
 const SAMPLE_ELITE := 1               ## próbek z elity (enemy.gd) …
 const SAMPLE_BOSS := 2                ## … z bossa (boss_base.gd) …
@@ -80,6 +80,7 @@ var schematics: Dictionary = {}      ## id części → true: schemat z pracowni
 var lathe: Array = []                 ## tokarka: wykonywane części (id), gotowe po udanej misji (zapis u hosta)
 var research: Array = []              ## pracownia: badane części (id z parts.gd), gotowe po udanej misji (zapis u hosta)
 var deliveries: Dictionary = {}           ## opłacone naboje oczekujące na miejsce we wspólnym zapasie
+var job_paid: Dictionary = {}             ## "research:<id>" / "lathe:<id>" → zapłacony złom (z perkiem Smith mniej); zwrot anulowanego etapu oddaje tyle (serwer, zapis)
 var _action_at: Dictionary = {}      ## ograniczenie powtórzeń płatnych żądań tego samego peera
 var _serviced: Dictionary = {}       ## jedna wymiana danego elementu na pobyt w kryjówce
 var orders: Array = []                ## prasa: zamówione partie (wpisy `ammo_*` z throwables.gd), dostawa po udanej misji (zapis u hosta)
@@ -188,12 +189,14 @@ func bank_loot(bonus: int) -> int:
 	var learned: Array = research.duplicate()
 	for id in learned:
 		schematics[String(id)] = true                                 # badanie skończone: schemat dla tokarki (W6b)
+		job_paid.erase("research:" + String(id))
 	research.clear()
 	learned.append_array(found_schem)
 	var machined: Array = lathe.duplicate()
 	for id in machined:
 		parts[String(id)] = true                                      # tokarka: część gotowa, odblokowana dla drużyny
 		schematics.erase(String(id))
+		job_paid.erase("lathe:" + String(id))
 	lathe.clear()
 	var done: Array = orders.duplicate()
 	for k in done:
@@ -504,10 +507,10 @@ func _fuse_server(kind: String, idx: int, peer_id: int) -> void:
 func is_lab_part(id: String) -> bool:
 	return String(Parts.get_part(id).get("weapon", "")) in LAB_WEAPONS
 
-## Koszt badania części `id`: x — próbki (1 / 2 / 3 wg ceny części), y — złom (połowa ceny części, zaokrąglona do 5).
-func research_cost(id: String) -> Vector2i:
+## Koszt badania części `id` dla `peer_id`: x — próbki (1 / 2 / 3 wg ceny części), y — złom (połowa ceny części × perk Smith, zaokrąglona do 5).
+func research_cost(id: String, peer_id := -1) -> Vector2i:
 	var c := int(Parts.get_part(id).get("cost", 0))
-	return Vector2i(1 if c <= 150 else (2 if c <= 250 else 3), int(roundf(float(c) * 0.5 / 5.0)) * 5)
+	return Vector2i(1 if c <= 150 else (2 if c <= 250 else 3), int(roundf(float(c) * 0.5 * smith_mult(peer_id) / 5.0)) * 5)
 
 ## Serwer: próbki z elity / bossa trafiają do łupu misji (bank dopiero po udanej misji).
 func add_samples(n: int) -> void:
@@ -546,9 +549,9 @@ func _machined_rpc(ids: Array) -> void:
 		Msg.post("machined.%s" % id, Msg.Ch.TOAST, tr("%s machined — unlocked for the squad") % tr(String(Parts.get_part(String(id)).get("name", id))),
 			{"style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
 
-## Cena materiału na tokarce dla części `id`.
-func machine_price(id: String) -> int:
-	return int(roundf(float(Parts.get_part(id).get("cost", 0)) * MACHINE_PRICE / 5.0)) * 5
+## Cena materiału na tokarce dla części `id` i `peer_id` (perk Smith).
+func machine_price(id: String, peer_id := -1) -> int:
+	return int(roundf(float(Parts.get_part(id).get("cost", 0)) * MACHINE_PRICE * smith_mult(peer_id) / 5.0)) * 5
 
 ## Zlecenie na tokarce: część `id` ze schematu (złom drużyny, serwer).
 func request_machining(id: String) -> void:
@@ -578,15 +581,16 @@ func _machining_server(id: String, peer_id: int) -> void:
 		reason = "noschem"
 	elif lathe.size() >= LATHE_SLOTS:
 		reason = "busy"
-	elif bank >= machine_price(id) and not _permit_action(peer_id, "machine:" + id):
+	elif bank >= machine_price(id, peer_id) and not _permit_action(peer_id, "machine:" + id):
 		reason = "repeat"
-	elif not spend(machine_price(id)):
+	elif not spend(machine_price(id, peer_id)):
 		reason = "poor"
 	else:
 		lathe.append(id)
+		job_paid["lathe:" + id] = machine_price(id, peer_id)
 		save_progress()
 		_push()
-	_log_buy("machining", id, machine_price(id), reason, peer_id)
+	_log_buy("machining", id, machine_price(id, peer_id), reason, peer_id)
 	if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
 		machining_result.emit(id, reason == "ok", reason)
 	else:
@@ -611,7 +615,7 @@ func _research_rpc(id: String) -> void:
 func _research_server(id: String, peer_id: int) -> void:
 	var reason := station_reason(peer_id, "lab_bench")
 	var w := Weapons.index_of(String(Parts.get_part(id).get("weapon", "")))
-	var cost := research_cost(id)
+	var cost := research_cost(id, peer_id)
 	if reason != "ok":
 		pass
 	elif Parts.get_part(id).is_empty() or w < 0 or not is_lab_part(id):
@@ -633,6 +637,7 @@ func _research_server(id: String, peer_id: int) -> void:
 	else:
 		samples -= cost.x
 		research.append(id)
+		job_paid["research:" + id] = cost.y
 		save_progress()
 		_push()
 	_log_buy("research", id, cost.y, reason, peer_id, {"samples": cost.x})
@@ -767,10 +772,14 @@ func _part_rpc(id: String) -> void:
 
 ## Cena części `id` dla `peer_id` (domyślnie lokalnego gracza) — z perkiem „Smith”; pokazują ją warsztat i kodeks.
 func part_cost(id: String, peer_id := -1) -> int:
-	var mult := 1.0
+	return Parts.cost(id, smith_mult(peer_id))
+
+## Mnożnik złomu za ulepszenia broni dla `peer_id` (domyślnie lokalnego gracza): perk „Smith” obniża ławę, pracownię i tokarkę
+## (od 1.7.455; wcześniej tylko ławę, choć opis mówił o wszystkich ulepszeniach). Próbek perk nie zmienia.
+func smith_mult(peer_id := -1) -> float:
 	if _perks_of(NoiseMgr.local_id() if peer_id < 0 else peer_id).has("smith"):
-		mult = Perks.param("smith", "upgrade_cost_mult", 1.0)
-	return Parts.cost(id, mult)
+		return Perks.param("smith", "upgrade_cost_mult", 1.0)
+	return 1.0
 
 func has_part(id: String) -> bool:
 	return parts.has(id)
@@ -866,7 +875,7 @@ func _reconcile_jobs() -> void:
 		if not Parts.is_valid(id) or not is_lab_part(id):
 			continue
 		if parts.has(id) or keep.has(id):
-			bank += machine_price(id)
+			bank += _paid("lathe:" + id, machine_price(id, 0))            # peer 0 = nikt: cena bez perku (zapis sprzed job_paid)
 		else:
 			keep.append(id)
 	lathe = keep
@@ -879,12 +888,18 @@ func _reconcile_jobs() -> void:
 		if not Parts.is_valid(id) or not is_lab_part(id):
 			continue
 		if parts.has(id) or schematics.has(id) or lathe.has(id) or keep.has(id):
-			var cost := research_cost(id)
-			bank += cost.y
+			var cost := research_cost(id, 0)
+			bank += _paid("research:" + id, cost.y)
 			samples += cost.x
 		else:
 			keep.append(id)
 	research = keep
+
+## Zapłacony złom za etap `key` (i zapomina go); brak wpisu (zapis sprzed 1.7.455) — `fallback`, cena bez perku.
+func _paid(key: String, fallback: int) -> int:
+	var v := int(job_paid.get(key, fallback))
+	job_paid.erase(key)
+	return v
 
 ## Zwraca liczbę przyjętych nabojów; nieprzyjęta reszta nadal należy do drużyny.
 func _deliver_ready(kind: String) -> int:
@@ -963,6 +978,7 @@ func load_progress(path := "") -> void:
 	research.clear()
 	schematics.clear()
 	lathe.clear()
+	job_paid.clear()
 	samples = 0
 	samples_loot = 0
 	if ok:
@@ -976,6 +992,9 @@ func load_progress(path := "") -> void:
 		for id in Array(cfg.get_value("workshop", "research", [])):
 			if Parts.is_valid(String(id)):
 				research.append(String(id))
+		var paid_in := cfg.get_value("workshop", "job_paid", {}) as Dictionary
+		for k in paid_in:
+			job_paid[String(k)] = maxi(0, int(paid_in[k]))
 		var fz_in := cfg.get_value("workshop", "fuses", {}) as Dictionary
 		for k in fz_in:
 			if Throwables.FUSES.has(String(k)):
@@ -1036,6 +1055,7 @@ func save_progress(path := "") -> void:
 	cfg.set_value("workshop", "research", research)
 	cfg.set_value("workshop", "schematics", schematics.keys())
 	cfg.set_value("workshop", "lathe", lathe)
+	cfg.set_value("workshop", "job_paid", job_paid)
 	if cfg.has_section_key("workshop", "levels"):
 		cfg.erase_section_key("workshop", "levels")             # przeniesione do części (migracja w load_progress)
 	cfg.save(path)

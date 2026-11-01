@@ -1881,7 +1881,7 @@ func _on_machining_result(id: String, ok: bool, reason: String) -> void:
 			_drum.broke()
 			_say(tr("Not enough scrap (%d needed).") % Scrap.machine_price(id), UiTheme.DANGER)
 		"busy":
-			_say(tr("The lathe is busy — %d job per mission.") % Scrap.LATHE_SLOTS, UiTheme.MUTED)
+			_say(tr_n("The lathe is busy — %d job per mission.", "The lathe is busy — %d jobs per mission.", Scrap.LATHE_SLOTS) % Scrap.LATHE_SLOTS, UiTheme.MUTED)
 		"noschem":
 			_say(tr("No schematic — research it at the lab first."), UiTheme.MUTED)
 		"owned":
@@ -1936,7 +1936,7 @@ func _on_research_result(id: String, ok: bool, reason: String) -> void:
 			_drum.broke()
 			_say(tr("Not enough scrap (%d needed).") % cost.y, UiTheme.DANGER)
 		"busy":
-			_say(tr("The lab is busy — %d project per mission.") % Scrap.LAB_SLOTS, UiTheme.MUTED)
+			_say(tr_n("The lab is busy — %d project per mission.", "The lab is busy — %d projects per mission.", Scrap.LAB_SLOTS) % Scrap.LAB_SLOTS, UiTheme.MUTED)
 		"locked":
 			_say(tr("Buy the gun at the workshop bench first."), UiTheme.MUTED)
 		"owned":
@@ -2368,7 +2368,7 @@ func _refresh_detail(w: int) -> void:
 				_action.text = tr("No schematic  ·  research it at the lab")
 				_act_state(_action, "wait", 0)
 			elif Scrap.lathe.size() >= Scrap.LATHE_SLOTS:
-				_action.text = tr("The lathe is busy  ·  1 job per mission")
+				_action.text = tr_n("The lathe is busy  ·  %d job per mission", "The lathe is busy  ·  %d jobs per mission", Scrap.LATHE_SLOTS) % Scrap.LATHE_SLOTS
 				_act_state(_action, "busy", 0)
 			else:
 				_action.text = tr("Machine  ·  %d scrap  ·  ready after the mission") % Scrap.machine_price(id2)
@@ -2385,7 +2385,7 @@ func _refresh_detail(w: int) -> void:
 				_action.text = tr("Researching  ·  ready after the mission")
 				_act_state(_action, "busy", 0)
 			elif Scrap.research.size() >= Scrap.LAB_SLOTS:
-				_action.text = tr("The lab is busy  ·  1 project per mission")
+				_action.text = tr_n("The lab is busy  ·  %d project per mission", "The lab is busy  ·  %d projects per mission", Scrap.LAB_SLOTS) % Scrap.LAB_SLOTS
 				_act_state(_action, "busy", 0)
 			else:
 				_action.text = tr("Research  ·  %s  ·  %d scrap") % [_samples_text(rc2.x), rc2.y]
