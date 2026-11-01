@@ -49,3 +49,4 @@ Lista klawiszy jest na dole ekranu w grze oraz pod klawiszem pomocy. Gra obsług
   3. Czy wiesz, do czego służą próbki?
   4. Czy chciałeś zacząć od innej misji niż ta, którą dała gra?
   5. Czy powtórka misji była nudna, a jeśli tak — która i za którym razem?
+  6. Czy brakowało ci światła? Czy znalazłeś baterie 4,5 V albo ładowarkę (B1) i czy wiedziałeś, skąd je brać?
