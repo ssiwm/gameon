@@ -2023,6 +2023,94 @@ def part_kf_seismic(spec):
     return {"mount": "frame", "hides": ["head"]}
 
 
+def part_p64_ext(spec):
+    """Przedłużka magazynka P-83 (+2 naboje): dłuższy korpus i nasadka z czarnego tworzywa wystająca spod chwytu, stopka na jej dole."""
+    blued, grip_m = mat("p83_blued"), mat("p83_grip")
+    prism("mag_body", fillet([(-4.0, -14.0, 1.0), (36.5, -14.0, 1.0), (49.0, 60.0, 2.0), (8.0, 60.0, 2.0)]), -5.6, 5.6, blued, bv=0.4, seg=1)
+    prism("ext_sleeve", fillet([(-8.5, -15.0, 2.0), (42.0, -15.0, 2.0), (42.0, 3.8), (-8.8, 3.8)]), -10.8, 10.8, grip_m, bv=0.8, seg=2)
+    prism("mag_plate", fillet([(-8.5, -19.0, 1.2), (42.0, -19.0, 1.2), (42.0, -15.2), (-8.8, -15.2, 1.0)]), -10.8, 10.8, blued, bv=0.4, seg=1)
+    return {"mount": "frame", "hides": ["mag"]}
+
+
+def part_p64_long(spec):
+    """Długa lufa P-83: wystaje 40 mm przed zamek, z pierścieniem prowadzącym przy czole zamka (tłumik nakręca się na jej koniec)."""
+    cyl("long_collar", 160.0, 172.0, 7.4, (0.0, 101.0), mat("p83_small"), seg=24, bv=0.4)
+    barrel("long_barrel", 160.0, 206.0, 6.5, 4.6, (0.0, 101.0), mat("p83_blued"), mat("p83_bore"), depth=22.0, seg=24)
+    return {"mount": "frame", "hides": [], "muzzle": Vector((206.0, 0.0, 101.0))}
+
+
+def part_p64_stock(spec):
+    """Kabura-kolba (jak przy APS): drewniana kabura z klapą dopięta zaczepem do grzbietu chwytu, stalowe okucie stopki."""
+    wd = M(wood, "p64_holster", tone=((0.022, 0.011, 0.005), (0.1, 0.05, 0.02)))
+    small = mat("p83_small")
+    box("holster_clip", -16.0, -7.0, 10.0, 58.0, 6.0, small, bv=0.6, r=2.0)
+    prism("holster", fillet([(-15.0, 62.0, 4.0), (-48.0, 66.0, 10.0), (-262.0, 34.0, 14.0), (-290.0, 26.0, 10.0), (-292.0, -34.0, 10.0),
+                             (-262.0, -42.0, 14.0), (-58.0, 4.0, 10.0), (-15.0, 8.0, 4.0)]), -16.0, 16.0, wd, bv=2.0, seg=2)
+    prism("holster_lid", fillet([(-150.0, 52.0, 4.0), (-262.0, 37.0, 10.0), (-262.0, 25.0, 4.0), (-150.0, 40.0, 4.0)]), -17.0, 17.0, wd, bv=1.2, seg=2)
+    prism("butt_cap", fillet([(-288.0, 28.0, 6.0), (-298.0, 26.0, 4.0), (-300.0, -36.0, 4.0), (-290.0, -36.0, 6.0)]), -15.0, 15.0, small, bv=0.8, seg=1)
+    return {"mount": "frame", "hides": []}
+
+
+def part_s8_pump(spec):
+    """Stopka amortyzująca PELLET-8 (do gładkiego czółenka): gruba gumowa poduszka z poziomymi wentylacjami przed fabryczną stopką."""
+    rubber = mat("p8_rubber")
+    zc, h = 0.5 * (-50.0 + -178.0), 0.5 * (-50.0 + 178.0)
+    pad = lambda k: oval_sec(21.0 * k, zc, h * k)
+    bevel(loft("recoil_pad", [(-22.0, pad(0.94)), (-18.0, pad(1.05)), (2.0, pad(1.05))], rubber), 1.8, 2)
+    for zz in (-80.0, -100.0, -120.0, -140.0):
+        box("pad_vent", -16.0, -2.0, zz - 3.0, zz + 3.0, 22.4, mat("p8_small"), bv=0.6, seg=1, r=1.5)
+    return {"mount": "frame", "hides": []}
+
+
+def part_s8_long(spec):
+    """Przedłużka lufy PELLET-8: 80 mm lufy wkręcone w tuleję hamulca, obejma na złączu i mosiężna kulka na nowym końcu."""
+    cyl("long_collar", 1094.0, 1108.0, 13.4, (0.0, 0.0), mat("p8_small"), seg=24, bv=0.5)
+    barrel("long_barrel", 1098.0, 1180.0, 11.4, 9.25, (0.0, 0.0), mat("p8_blued"), mat("p8_bore"), depth=35.0, seg=24)
+    revolve("long_bead", [(-1.6, 0.0), (-1.6, 2.0), (1.6, 2.0), (1.6, 0.0)], (1171.0, 11.6), mat("p8_brass"), axis="Y", seg=12, bv=0.4, bseg=1)
+    return {"mount": "muzzle", "hides": [], "muzzle_add": 80.0}
+
+
+def part_lr7_diffuser(spec):
+    """Soczewka rozpraszająca LR-7: wysoka oprawa ze szczelinową soczewką cylindryczną — wiązka rozchodzi się wachlarzem w płaszczyźnie strzału."""
+    small, glass = mat("lr7_small"), mat("lr7_glass")
+    box("diffuser", 846.0, 894.0, -30.0, 42.0, 22.0, small, bv=1.2, r=6.0)
+    box("diffuser_slit", 892.0, 900.0, -24.0, 36.0, 6.0, glass, bv=0.6, r=3.0)
+    for zz in (-27.0, 39.0):
+        box("diffuser_screw", 880.0, 888.0, zz - 2.0, zz + 2.0, 23.0, mat("lr7_steel"), bv=0.4, seg=1)
+    return {"mount": "muzzle", "hides": ["muzzle"], "muzzle_add": 0.0}
+
+
+def part_hkm_gel(spec):
+    """Dysza żelowa HKM-9: fabryczny przód z płaską dyszą „kaczy dziób” rozlewającą zagęszczoną mieszankę szerokim pasem."""
+    hkm_front(1000.0, mat("hkm_steel"), mat("hkm_jacket"), mat("hkm_heat"), mat("hkm_bore"), mat("hkm_small"), mat("hkm_red"), mat("hkm_brass"), mat("hkm_pilot"))
+    cyl("gel_collar", 990.0, 1004.0, 15.0, (0.0, 0.0), mat("hkm_small"), seg=18, bv=0.5)
+    prism("gel_bill", fillet([(1000.0, -12.0, 2.0), (1032.0, -5.0, 1.5), (1032.0, 5.0, 1.5), (1000.0, 12.0, 2.0)]), -18.0, 18.0, mat("hkm_heat"), bv=0.8, seg=2)
+    box("gel_slot", 1030.0, 1033.0, -2.0, 2.0, 15.0, mat("hkm_bore"), bv=0.0, seg=1)
+    return {"mount": "frame", "hides": ["front"], "muzzle": Vector((1032.0, 0.0, 0.0))}
+
+
+def part_w1_rails(spec):
+    """Utwardzone szyny SPECTER-1: ciemne listwy ze stopu wolframu po bokach rury między uzwojeniami, spięte obejmami przy zamku i tarczy wylotowej."""
+    rails = M(steel, "sp_rails", blue=((0.16, 0.16, 0.17), (0.26, 0.26, 0.27)), r0=0.3, wear_k=0.5)
+    small = mat("sp_small")
+    for sy in (-1.0, 1.0):
+        box("rail", 592.0, 1090.0, -4.5, 4.5, 2.2, rails, bv=0.4, seg=1, y=sy * 14.4)
+    for cx in (600.0, 1080.0):
+        cyl("rail_clamp", cx - 6.0, cx + 6.0, 17.5, (0.0, 0.0), small, seg=20, bv=0.5)
+    return {"mount": "frame", "hides": []}
+
+
+def part_mc_short(spec):
+    """Krótka rękojeść maczety: okładziny ucięte o 40 mm, dwa nity zamiast trzech."""
+    wd, brass = mat("mc_wood"), mat("mc_brass")
+    x0 = 40.0
+    oval_loft("handle", x0, 142.0, curve_fn([(x0, 19.0), (x0 + 16.0, 17.0), (80.0, 15.5), (120.0, 16.5), (142.0, 17.0)]),
+              curve_fn([(x0, -24.0), (x0 + 14.0, -20.0), (80.0, -16.0), (120.0, -17.0), (142.0, -17.0)]), curve_fn([(x0, 11.5), (80.0, 10.5), (142.0, 10.5)]),
+              wd, n=12)
+    pins("rivet", ((62.0, 0.0), (114.0, 0.5)), 10.8, brass, 3.2)
+    return {"mount": "frame", "hides": ["grip"]}
+
+
 PART_BUILDERS = {
     "m83_rpk40": part_m83_rpk40, "m83_drum75": part_m83_drum75, "m83_rpkbar": part_m83_rpkbar, "m83_short": part_m83_short,
     "m83_pbs1": part_m83_pbs1, "m83_hider": part_m83_hider, "m83_akms": part_m83_akms,
@@ -2033,6 +2121,8 @@ PART_BUILDERS = {
     "hkm_tank": part_hkm_tank, "hkm_nozzle": part_hkm_nozzle, "g4_loader": part_g4_loader, "f6_belt": part_f6_belt, "f6_seeker": part_f6_seeker,
     "w1_cap": part_w1_cap, "w1_fast": part_w1_fast, "c6_twin": part_c6_twin, "c6_bands": part_c6_bands, "c6_tether": part_c6_tether,
     "mc_long": part_mc_long, "mc_exec": part_mc_exec, "kf_heavy": part_kf_heavy, "kf_seismic": part_kf_seismic,
+    "p64_ext": part_p64_ext, "p64_long": part_p64_long, "p64_stock": part_p64_stock, "s8_pump": part_s8_pump, "s8_long": part_s8_long,
+    "lr7_diffuser": part_lr7_diffuser, "hkm_gel": part_hkm_gel, "w1_rails": part_w1_rails, "mc_short": part_mc_short,
 }
 
 
