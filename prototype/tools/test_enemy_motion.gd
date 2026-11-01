@@ -29,6 +29,39 @@ func charge_motion(kind: String) -> void:
 		check(kind + " charge stride follows root at " + str(fps), absf(distance - reference * Enemy.PX) / distance < 0.05)
 		e.free()
 
+## Kapłan: obie stopy odrywają się od ziemi, a stojąca nie sunie (klip `zombie` wlókł prawą o 1,27 m na cykl).
+func priest_gait() -> void:
+	var e := Enemy.new()
+	root.add_child(e)
+	e.setup("kaplan")
+	var speed: float = Defs.DEFS["kaplan"].speed
+	var dt := 1.0 / 60.0
+	var sk: Skeleton3D = e.get("_sk")
+	var rows: Array = []
+	for frame in 240:
+		e.position.x += speed * Enemy.PX * dt
+		e.pose(dt, "walk", false, Color.WHITE, 0.0, 1, true, 0.0, 0, false, speed)
+		if frame >= 120:
+			rows.append([(sk.global_transform * sk.get_bone_global_pose(int(e.get("_b")["LeftFoot"]))).origin, (sk.global_transform * sk.get_bone_global_pose(int(e.get("_b")["RightFoot"]))).origin])
+	for side in [0, 1]:
+		var low := INF
+		var high := -INF
+		for r in rows:
+			low = minf(low, (r[side] as Vector3).y)
+			high = maxf(high, (r[side] as Vector3).y)
+		var slide := 0.0
+		var worst := 0.0
+		for k in range(1, rows.size()):
+			if (rows[k][side] as Vector3).y <= low + 0.03 and (rows[k - 1][side] as Vector3).y <= low + 0.03:
+				slide += absf((rows[k][side] as Vector3).x - (rows[k - 1][side] as Vector3).x)
+			else:
+				worst = maxf(worst, slide)
+				slide = 0.0
+		worst = maxf(worst, slide)
+		check("kaplan foot lifts " + str(side), high - low > 0.2)
+		check("kaplan foot does not slide " + str(side), worst < 0.05)
+	e.free()
+
 func stride_calibration(kind: String) -> void:
 	if kind not in ["wolek", "rzeznik"]: return
 	if Enemy.SPEC[kind].get("gait", "") == "heavy":
@@ -395,6 +428,7 @@ func _process(_dt: float) -> bool:
 	if ran: return false
 	ran = true
 	library_check()
+	priest_gait()
 	stalker_facing()
 	for kind in Enemy.SPEC:
 		var e: Node3D = Enemy.new()
