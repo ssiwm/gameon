@@ -58,6 +58,8 @@ func _run() -> void:
 	SessionLog.reset_for_test()
 	for i in 10:
 		SessionLog.frame(0.040, "menu")
+	SessionLog.v3d_us = 1200000
+	SessionLog.mouse_events = 300
 	for i in 590:
 		SessionLog.frame(0.01667, "menu")
 	var row := {}
@@ -76,6 +78,10 @@ func _run() -> void:
 	_check("p95 pomija 1,7%% przeskoków: %s" % str(row.get("p95")), is_equal_approx(float(row.get("p95", 0.0)), 16.67))
 	_check("p99 je łapie: %s" % str(row.get("p99")), is_equal_approx(float(row.get("p99", 0.0)), 40.0))
 	_check("FPS: %s" % str(row.get("fps")), absi(int(row.get("fps", 0)) - 58) <= 1)
+	_check("v3d: średnia na klatkę %s ms" % str(row.get("v3d")), absf(float(row.get("v3d", 0.0)) - 2.08) < 0.1)
+	_check("mysz: zdarzeń na sekundę %s" % str(row.get("mouse")), absi(int(row.get("mouse", 0)) - 30) <= 2)
+	_check("główny wątek: pola rcpu, proc, phys, steps", row.has("rcpu") and row.has("proc") and row.has("phys") and row.has("steps"))
+	_check("liczniki wyzerowane po próbce", SessionLog.v3d_us == 0 and SessionLog.mouse_events == 0)
 
 	print("%s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	quit(0 if _fails == 0 else 1)

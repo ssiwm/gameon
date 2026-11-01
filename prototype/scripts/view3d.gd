@@ -393,6 +393,7 @@ func _process(delta: float) -> void:
 	_tick(delta)
 	var us := Time.get_ticks_usec() - t0
 	stat_usec += us
+	SessionLog.v3d_us += us
 	if us > 20000 and OS.is_stdout_verbose():
 		# dev (--verbose): wolna klatka widoku 3D z najdroższymi częściami — obok [SPIKE-MARK] z dziennika sesji
 		var d := {}
