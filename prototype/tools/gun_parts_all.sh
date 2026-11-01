@@ -15,7 +15,8 @@ while [ $# -gt 0 ]; do
 done
 [ ${#ids[@]} -gt 0 ] || ids=(m83_rpk40 m83_drum75 m83_rpkbar m83_short m83_pbs1 m83_hider m83_akms p64_supp sp12_drum30 sp12_box8 sp12_ported sp12_sawn sp12_choke
   s8_tube s8_carrier lr7_cell lr7_lens hkm_tank hkm_nozzle g4_loader f6_belt f6_seeker w1_cap w1_fast c6_twin c6_bands c6_tether
-  mc_long mc_exec kf_heavy kf_seismic p64_ext p64_long p64_stock s8_pump s8_long lr7_diffuser hkm_gel w1_rails mc_short)
+  mc_long mc_exec kf_heavy kf_seismic p64_ext p64_long p64_stock s8_pump s8_long lr7_diffuser hkm_gel w1_rails mc_short
+  g4_short f6_salvo)
 for id in "${ids[@]}"; do
   case "$id" in
     m83_*) key=m83 ;;

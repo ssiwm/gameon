@@ -410,8 +410,9 @@ długa lufa wystająca 40 mm przed zamek (wylot dalej, tłumik nakręca się na 
 stopka amortyzująca z wentylacjami (część „Slick pump, recoil pad”), przedłużka lufy +80 mm z kulką (mocowanie na wylocie); LR-7 — wysoka oprawa
 ze szczelinową soczewką rozpraszającą (`muzzle`); HKM-9 — płaska dysza „kaczy dziób” na fabrycznym przodzie (`front`, wylot +32 mm); SPECTER-1 —
 ciemne szyny wolframowe po bokach rury z obejmami; maczeta — krótka rękojeść z dwoma nitami (`grip`). Bez modelu zostają części bez widocznej zmiany
-(mechanizm, mieszanka, głowice granatów, szlif) oraz krótki tubus WRATH-4 i potrójna salwa FALCON-6 (broń bazowa nie ma jeszcze podzespołu, który
-by zastąpiły). Test `--weapontest` sprawdza, że każdy zastępowany podzespół istnieje w modelu bazowym.
+(mechanizm, mieszanka, głowice granatów, szlif). Od 1.7.457 WRATH-4 ma podzespół `front` (lufa, pas, obejma z chwytem przednim, muszka), a FALCON-6
+`muzzle` (nasadka wylotowa); krótki tubus WRATH-4 skraca przód o 130 mm (wylot 640 mm), a potrójna salwa FALCON-6 to trzy prowadnice w obejmie
+zamiast nasadki (wylot +32 mm). Test `--weapontest` sprawdza, że każdy zastępowany podzespół istnieje w modelu bazowym.
 
 ## 19. Ława rusznikarska w 3D, etap 2c (1.7.323)
 

@@ -1444,6 +1444,18 @@ def build_hkm9():
 
 # ---------------------------------------------------------------- WRATH-4
 
+def g4_front(e, tube, small, yellow, bore, lam):
+    """Przód WRATH-4: lufa z żebrowaną nasadą, pierścień wylotowy, żółty pas, obejma z chwytem przednim, strzemiączko, muszka; `e` = wylot
+    (fabrycznie 770 mm). Podzespół „front”."""
+    barrel("barrel", 458.0, e, 26.5, 20.3, (0.0, 0.0), tube, bore, depth=70.0, seg=24)
+    cyl("muzzle_ring", e - 16.0, e + 0.5, 28.5, (0.0, 0.0), small, seg=24, bv=0.8)
+    cyl("he_band", e - 64.0, e - 50.0, 26.9, (0.0, 0.0), yellow, seg=24, bv=0.0)
+    cyl("fg_clamp", 556.0, 586.0, 29.0, (0.0, 0.0), small, seg=24, bv=0.8)
+    prism("foregrip", fillet([(556.0, -24.0, 3.2), (586.0, -24.0, 3.2), (582.0, -128.0, 7.0), (556.0, -128.0, 7.0)]), -13.0, 13.0, lam, bv=2.5, seg=2)
+    swivel(min(640.0, e - 40.0), -44.0, small, 7.0)
+    prism("front_sight", fillet([(e - 32.0, 24.0), (e - 18.0, 24.0), (e - 21.0, 44.0, 1.5), (e - 29.0, 44.0, 1.5)]), -2.5, 2.5, small, bv=0.5, seg=1)
+
+
 def build_gniew4():
     """WRATH-4: rewolwerowy granatnik 40 mm w układzie Milkor MGL (1983): szkielet z bębnem pod lufą, wysuwana kolba na prętach, kolimator, chwyt
     przedni, żółty pas amunicji odłamkowej. Oś lufy na z = 0 (bęben na z = −27), wylot na x = 770 mm."""
@@ -1474,19 +1486,14 @@ def build_gniew4():
     box("cheek", 120.0, 250.0, 2.0, 20.0, 22.0, lam, bv=3.0, r=7.0)
     pgrip("grip", 356.0, -92.0, grip_m)
     trig("trigger", 358.0, 418.0, -92.0, frame, small)
-    # lufa z żebrowaną nasadą, żółtym pasem i opaską, chwyt przedni na obejmie
-    barrel("barrel", 458.0, 770.0, 26.5, 20.3, (0.0, 0.0), tube, bore, depth=70.0, seg=24)
-    cyl("muzzle_ring", 754.0, 770.5, 28.5, (0.0, 0.0), small, seg=24, bv=0.8)
-    cyl("he_band", 706.0, 720.0, 26.9, (0.0, 0.0), yellow, seg=24, bv=0.0)
-    cyl("fg_clamp", 556.0, 586.0, 29.0, (0.0, 0.0), small, seg=24, bv=0.8)
-    prism("foregrip", fillet([(556.0, -24.0, 3.2), (586.0, -24.0, 3.2), (582.0, -128.0, 7.0), (556.0, -128.0, 7.0)]), -13.0, 13.0, lam, bv=2.5, seg=2)
-    swivel(640.0, -44.0, small, 7.0)
+    # lufa z żebrowaną nasadą, żółtym pasem i opaską, chwyt przedni na obejmie, muszka (od 1.7.457 podzespół „front” — krótki tubus go zastępuje)
+    with comp("front"):
+        g4_front(770.0, tube, small, yellow, bore, lam)
     # kolimator na wsporniku z pokrętłem odległości, muszka
     box("sight_mount", 346.0, 410.0, 40.0, 54.0, 7.0, frame, bv=0.8, r=2.0)
     cyl("sight_tube", 326.0, 424.0, 13.5, (0.0, 66.0), small, seg=16, bv=0.8)
     barrel("sight_lens", 416.0, 432.0, 14.5, 12.0, (0.0, 66.0), small, glass, depth=5.0, seg=16)
     revolve("sight_knob", [(-22.0, 0.0), (-22.0, 7.0), (-9.0, 7.0), (-9.0, 0.0)], (378.0, 50.0), small, axis="Y", seg=12, bv=0.6)
-    prism("front_sight", fillet([(738.0, 24.0), (752.0, 24.0), (749.0, 44.0, 1.5), (741.0, 44.0, 1.5)]), -2.5, 2.5, small, bv=0.5, seg=1)
     return {"rear": Vector((334.0, 0.0, -182.0)), "fore": Vector((571.0, 0.0, -176.0)), "muzzle": Vector((770.0, 0.0, 0.0)), "hands": 2, "length": 0.77,
             "grip": Vector((326.0, 0.0, -137.0)), "hold": Vector((571.0, 0.0, -80.0)), "hold_v": True}
 
@@ -1554,7 +1561,8 @@ def build_sokol6():
     cyl("shroud_cap", 822.0, 834.0, 18.6, (0.0, 0.0), st, seg=20, bv=0.8)
     box("fs_base", 852.0, 874.0, -11.0, 11.0, 10.5, st, bv=1.0, r=3.0)
     prism("fs_tower", fillet([(855.0, 8.0), (871.0, 8.0), (868.0, 40.0, 1.5), (858.0, 40.0, 1.5)]), -3.0, 3.0, st, bv=0.6, seg=1)
-    barrel("booster", 902.0, 950.0, 15.0, 10.6, (0.0, 0.0), small, bore, depth=36.0, seg=18)
+    with comp("muzzle"):                                    # nasadka wylotowa (od 1.7.457 podzespół — potrójna salwa ją zastępuje)
+        barrel("booster", 902.0, 950.0, 15.0, 10.6, (0.0, 0.0), small, bore, depth=36.0, seg=18)
     # dwójnóg złożony pod osłoną
     box("bipod_hub", 836.0, 850.0, -25.0, -8.0, 9.5, small, bv=0.6)
     for sy in (-1.0, 1.0):
@@ -2111,6 +2119,23 @@ def part_mc_short(spec):
     return {"mount": "frame", "hides": ["grip"]}
 
 
+def part_g4_short(spec):
+    """Krótki tubus WRATH-4: lufa ucięta o 130 mm (pas i muszka przesunięte do tyłu), chwyt przedni zostaje."""
+    g4_front(640.0, mat("wr_tube"), mat("wr_small"), mat("wr_yellow"), mat("wr_bore"), mat("wr_lam"))
+    return {"mount": "frame", "hides": ["front"], "muzzle": Vector((640.0, 0.0, 0.0))}
+
+
+def part_f6_salvo(spec):
+    """Potrójna salwa FALCON-6: trzy krótkie prowadnice w trójkącie spięte obejmą zamiast nasadki wylotowej — trzy rakiety na jedno ściągnięcie spustu."""
+    small, bore = mat("fa_small"), mat("fa_bore")
+    cyl("salvo_clamp", 900.0, 914.0, 19.5, (0.0, 0.0), small, seg=22, bv=0.8)
+    for a in (90.0, 210.0, 330.0):
+        c = (11.0 * math.cos(math.radians(a)), 11.0 * math.sin(math.radians(a)))
+        barrel("salvo_tube", 904.0, 982.0, 7.0, 4.8, c, small, bore, depth=30.0, seg=14)
+    cyl("salvo_ring", 936.0, 944.0, 19.5, (0.0, 0.0), mat("fa_navy"), seg=22, bv=0.6)
+    return {"mount": "muzzle", "hides": ["muzzle"], "muzzle_add": 32.0}
+
+
 PART_BUILDERS = {
     "m83_rpk40": part_m83_rpk40, "m83_drum75": part_m83_drum75, "m83_rpkbar": part_m83_rpkbar, "m83_short": part_m83_short,
     "m83_pbs1": part_m83_pbs1, "m83_hider": part_m83_hider, "m83_akms": part_m83_akms,
@@ -2123,6 +2148,7 @@ PART_BUILDERS = {
     "mc_long": part_mc_long, "mc_exec": part_mc_exec, "kf_heavy": part_kf_heavy, "kf_seismic": part_kf_seismic,
     "p64_ext": part_p64_ext, "p64_long": part_p64_long, "p64_stock": part_p64_stock, "s8_pump": part_s8_pump, "s8_long": part_s8_long,
     "lr7_diffuser": part_lr7_diffuser, "hkm_gel": part_hkm_gel, "w1_rails": part_w1_rails, "mc_short": part_mc_short,
+    "g4_short": part_g4_short, "f6_salvo": part_f6_salvo,
 }
 
 
