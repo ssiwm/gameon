@@ -323,6 +323,7 @@ func _build_settings(scroll: ScrollContainer) -> void:
 			var ev := Settings.brightness_ev()
 			return "0 EV" if is_zero_approx(ev) else "%+.2f EV" % ev,
 		open_brightness)
+	_toggle(right, tr("Show FPS"), func() -> bool: return Settings.show_fps, Settings.toggle_show_fps)
 	right.add_child(_gap())
 	right.add_child(W.section(tr("ACCESSIBILITY")))
 	_toggle(right, tr("Reduce effects"), func() -> bool: return Settings.reduce_fx, Settings.toggle_reduce_fx)

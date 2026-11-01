@@ -29,7 +29,8 @@ extends RefCounted
 ##   hub_buy        clock, who, kind (weapon / part / supply / order / research / machining / service), id, cost, ok, reason, bank (po operacji)
 ##                  — rozstrzygnięta operacja warsztatu na serwerze, także w kryjówce, poza misją (P0.4); bez odmów „station” i „repeat”
 ##   system         gpu, gpu_vendor, cpu, threads, ram_gb, os, screen, window, fullscreen, quality, render_scale, vsync, fps_cap — raz na plik, przy jego otwarciu
-##   perf           map, fps, avg, p50, p95, max (ms klatki), spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry)
+##   perf           map („menu” poza sesją, od 1.7.461; wcześniej domyślna mapa spod menu), fps, avg, p50, p95, p99 (od 1.7.461), max (ms klatki),
+##                  spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry); raport: tools/session_perf.py
 ##                  — próbka co PERF_EVERY s, także w kryjówce i u klienta (od 1.7.367): klient pisze własny plik z samymi wierszami system i perf,
 ##                  bo wydajność jest jego sprzętu, a reszta dziennika to symulacja hosta
 ## Wipe w kampanii kończy próbę wierszem mission_end, po którym idzie mission_start z kolejnym numerem próby.
@@ -290,7 +291,8 @@ static func frame(delta: float, map_id: String, loading := false) -> void:
 		if t > PERF_SPIKE_MS:
 			spikes += 1
 	var row := {"map": map_id, "fps": roundi(float(n) / maxf(_perf_t - _load_t, 0.001)), "avg": snappedf(sum / float(n), 0.01), "p50": snappedf(s[n / 2], 0.01),
-		"p95": snappedf(s[mini(n - 1, int(float(n) * 0.95))], 0.01), "max": snappedf(s[n - 1], 0.1), "spikes": spikes,
+		"p95": snappedf(s[mini(n - 1, int(float(n) * 0.95))], 0.01), "p99": snappedf(s[mini(n - 1, int(float(n) * 0.99))], 0.01),
+		"max": snappedf(s[n - 1], 0.1), "spikes": spikes,
 		"gpu": snappedf(_gpu / float(n), 0.01), "up": snappedf(float(Time.get_ticks_msec()) / 1000.0, 1.0)}
 	if _load_t > 0.0:
 		row["load_s"] = snappedf(_load_t, 0.1)
