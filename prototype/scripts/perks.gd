@@ -20,7 +20,7 @@ const PERKS := {
 	},
 	"smith": {
 		"color": Color(0.95, 0.7, 0.3), "name": "Smith", "level": 2, "params": {"upgrade_cost_mult": 0.8},
-		"desc": "Weapon upgrades you buy cost 20% less.",
+		"desc": "Weapon parts at the bench, lab research and lathe work cost you 20% less scrap (samples stay the same).",
 	},
 	"cold_blood": {
 		"color": Color(0.6, 0.85, 1.0), "name": "Cold blood", "level": 4, "params": {"scream_cap": 10.0},

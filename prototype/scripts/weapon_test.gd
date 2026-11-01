@@ -477,6 +477,11 @@ func _t_profile() -> void:
 	var smithed: int = Scrap.part_cost("m83_rpkbar")
 	check("Kowal: lufa RPK %d → %d scrap (−20%%, zaokrąglone do 5), bez perka %d" % [plain, smithed, Scrap.part_cost("m83_rpkbar", 99)],
 		smithed == Parts.cost("m83_rpkbar", 0.8) and smithed < plain and Scrap.part_cost("m83_rpkbar", 99) == plain)
+	# od 1.7.455 Kowal obniża też złom za badanie i tokarkę; próbek nie
+	var rc_s: Vector2i = Scrap.research_cost("lr7_lens")
+	var rc_p: Vector2i = Scrap.research_cost("lr7_lens", 99)
+	check("Kowal: badanie soczewki %d → %d złomu (próbki %d = %d), tokarka %d → %d" % [rc_p.y, rc_s.y, rc_p.x, rc_s.x, Scrap.machine_price("lr7_lens", 99), Scrap.machine_price("lr7_lens")],
+		rc_s.y < rc_p.y and rc_s.x == rc_p.x and Scrap.machine_price("lr7_lens") < Scrap.machine_price("lr7_lens", 99))
 	var bf_before: float = player._revive_time()
 	player.perks = Perks.to_indexes(["blood_flow", "veteran"])
 	check("Krwiobieg: podnoszenie %.1f s zamiast %.1f s" % [player._revive_time(), bf_before], is_equal_approx(player._revive_time(), 2.5 * Difficulty.m("revive")) and player._revive_time() < bf_before)
@@ -2982,7 +2987,7 @@ func _t_research() -> void:
 	var bank1: int = Scrap.bank
 	_station_move("lab_bench")
 	Scrap.request_research("lr7_lens")
-	Scrap.request_research("lr7_cell")                             # pracownia zajęta (jedno badanie na misję)
+	Scrap.request_research("lr7_cell")                             # miejsce jest (LAB_SLOTS 2), ale próbki poszły na soczewkę
 	Scrap.request_research("m83_pbs1")                             # nie broń specjalna
 	Scrap.request_research("hkm_tank")                             # broń niekupiona
 	var queued: bool = Scrap.research.has("lr7_lens") and not Scrap.has_part("lr7_lens")
@@ -2992,9 +2997,22 @@ func _t_research() -> void:
 	Scrap.research_result.disconnect(rcb)
 	check("pracownia: badanie soczewki LR-7 za %d próbki i %d złomu (%s), czeka do misji (%s), po udanej misji schemat (%s), część jeszcze nie (%s); bank %d → %d, próbki %d" % [
 		lc.x, lc.y, str(rres), str(queued), str(Scrap.schematics.has("lr7_lens")), str(Scrap.has_part("lr7_lens")), bank1, Scrap.bank, Scrap.samples],
-		rres == ["ok", "busy", "invalid", "locked", "samples"] and queued and Scrap.schematics.has("lr7_lens") and not Scrap.has_part("lr7_lens") and Scrap.research.is_empty()
+		rres == ["ok", "samples", "invalid", "locked", "samples"] and queued and Scrap.schematics.has("lr7_lens") and not Scrap.has_part("lr7_lens") and Scrap.research.is_empty()
 		and Scrap.samples == 3 - lc.x and Scrap.bank == bank1 - lc.y and lc.x == 3)
-	# tokarka (W6b, 1.7.358): schemat → część po udanej misji; bez schematu odmowa, jedno zlecenie naraz
+	# zajęta pracownia: LAB_SLOTS badań naraz (do 1.7.454 jedno)
+	var busy_res: Array = []
+	var bcb := func(id: String, ok: bool, reason: String) -> void: busy_res.append(reason)
+	Scrap.research_result.connect(bcb)
+	var smp_busy: int = Scrap.samples
+	Scrap.samples = 10
+	Scrap.research = ["lr7_coil", "lr7_cell"]
+	_station_move("lab_bench")
+	Scrap.request_research("lr7_diffuser")
+	Scrap.research_result.disconnect(bcb)
+	check("pracownia: %d badania naraz, trzecie czeka (%s)" % [Scrap.LAB_SLOTS, str(busy_res)], Scrap.LAB_SLOTS == 2 and busy_res == ["busy"])
+	Scrap.research = []
+	Scrap.samples = smp_busy
+	# tokarka (W6b, 1.7.358): schemat → część po udanej misji; bez schematu odmowa, LATHE_SLOTS zleceń naraz (od 1.7.455 dwa)
 	var mres: Array = []
 	var mcb := func(id: String, ok: bool, reason: String) -> void: mres.append(reason)
 	Scrap.machining_result.connect(mcb)
@@ -3003,16 +3021,20 @@ func _t_research() -> void:
 	_station_move("lathe_bench")
 	Scrap.request_machining("lr7_coil")                            # brak schematu
 	Scrap.request_machining("lr7_lens")
-	Scrap.request_machining("lr7_cell")                            # tokarka zajęta
-	var on_lathe: bool = Scrap.lathe.has("lr7_lens") and not Scrap.has_part("lr7_lens")
+	Scrap.request_machining("lr7_cell")                            # drugie miejsce na tokarce
+	Scrap.schematics["lr7_coil"] = true
+	Scrap.request_machining("lr7_coil")                            # tokarka zajęta
+	var on_lathe: bool = Scrap.lathe == ["lr7_lens", "lr7_cell"] and not Scrap.has_part("lr7_lens")
+	var paid_lathe: int = Scrap.machine_price("lr7_lens") + Scrap.machine_price("lr7_cell")
 	Scrap.bank_loot(0)
 	await frames(2)
 	Scrap.request_machining("lr7_lens")                            # już zrobiona
 	Scrap.machining_result.disconnect(mcb)
 	check("tokarka: soczewka ze schematu za %d złomu (%s), na tokarce do misji (%s), po misji odblokowana i schemat zużyty (%s, %s)" % [
 		Scrap.machine_price("lr7_lens"), str(mres), str(on_lathe), str(Scrap.has_part("lr7_lens")), str(not Scrap.schematics.has("lr7_lens"))],
-		mres == ["noschem", "ok", "busy", "owned"] and on_lathe and Scrap.has_part("lr7_lens") and not Scrap.schematics.has("lr7_lens") and Scrap.lathe.is_empty()
-		and Scrap.bank == bank2 - Scrap.machine_price("lr7_lens") and Scrap.schematics.has("lr7_cell"))
+		mres == ["noschem", "ok", "ok", "busy", "owned"] and on_lathe and Scrap.has_part("lr7_lens") and Scrap.has_part("lr7_cell") and not Scrap.schematics.has("lr7_lens")
+		and Scrap.lathe.is_empty() and Scrap.bank == bank2 - paid_lathe and Scrap.schematics.has("lr7_coil") and Scrap.job_paid.is_empty())
+	Scrap.parts.erase("lr7_cell")
 	Scrap.schematics.clear()
 	# panel pracowni: same części broni specjalnej, M-83 bez badań
 	var wui := get_tree().get_first_node_in_group("workshop_ui")
@@ -3858,7 +3880,7 @@ func run_net_host(m: Node2D) -> void:
 	Scrap.deliveries["ammo_slug"] = 5
 	Arsenal.stock["ammo_slug"] = 0
 	Scrap._push()
-	var cost := Scrap.part_cost("m83_rpk40", cid) + Scrap.press_price("ammo_slug") + int(Scrap.SERVICE_COST["barrel"]) + Scrap.research_cost("lr7_lens").y
+	var cost := Scrap.part_cost("m83_rpk40", cid) + Scrap.press_price("ammo_slug") + int(Scrap.SERVICE_COST["barrel"]) + Scrap.research_cost("lr7_lens", cid).y          # cena klienta: host może mieć Kowala
 	var host_fit := Profile.fit_code(Weapons.M83)
 	_net_shop_phase.rpc_id(cid)
 	var shop_wait := 0.0

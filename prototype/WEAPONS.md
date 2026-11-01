@@ -681,7 +681,7 @@ broni specjalnych).
 |---|---|---|
 | **Próbki** | nowa waluta (GDD §10.1): elita +1, boss +2, cel poboczny udanej misji +1. Trafiają do łupu misji (`samples_loot`), do banku po udanej misji, wipe je zabiera; komunikat „Próbka pobrana” u wszystkich. Dziennik sesji zapisuje `samples` w `mission_end.scrap` | `scrap.gd` (`add_samples`), `enemy.gd`, `boss_base.gd`, `mission.gd` |
 | **Części broni specjalnych** | LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6 (`Scrap.LAB_WEAPONS`): ława ich nie sprzedaje (serwer: `"lab"`), znaleziska nadal odblokowują | `scrap.gd` (`is_lab_part`, `_part_server`) |
-| **Badanie** | koszt: 1 / 2 / 3 próbki (część do 150 / 250 / droższa) i połowa ceny części w złomie (`research_cost`); jedno badanie naraz (`LAB_SLOTS`), broń musi być kupiona; gotowe po następnej udanej misji (`bank_loot`), komunikat „Badanie skończone” | `scrap.gd` (`request_research`, `research`) |
+| **Badanie** | koszt: 1 / 2 / 3 próbki (część do 150 / 250 / droższa) i połowa ceny części w złomie (`research_cost`); dwa badania naraz (`LAB_SLOTS`, od 1.7.455; wcześniej jedno), broń musi być kupiona; perk Kowal obniża złom (nie próbki), a zwrot anulowanego badania oddaje to, co zapłacono (`job_paid`); gotowe po następnej udanej misji (`bank_loot`), komunikat „Badanie skończone” | `scrap.gd` (`request_research`, `research`) |
 
 Zapis u hosta (`samples`, `research`) i synchronizacja w `_sync`. Test `_t_research`, `--gentest` (pracownia w kryjówce). Dev: `--shotlab`.
 Ogniwa NiCd i tokarka (wykonanie części ze schematów, ostrzenie broni białej) — W6b.
@@ -694,7 +694,7 @@ z lampą): [E] otwiera panel TOKARKA (`workshop_ui.open("lathe")`).
 | Co | Jak | Gdzie |
 |---|---|---|
 | **Schematy** | badanie w pracowni daje teraz schemat (`Scrap.schematics`), a nie gotową część — po udanej misji komunikat „Schemat gotowy” | `scrap.gd` (`bank_loot`, `_learned_rpc`) |
-| **Tokarka** | ze schematu część za ćwierć ceny w złomie (`machine_price`, materiał), jedno zlecenie naraz (`LATHE_SLOTS`), gotowa po następnej udanej misji; schemat się zużywa. Znaleziska nadal odblokowują od razu | `scrap.gd` (`request_machining`, `lathe`) |
+| **Tokarka** | ze schematu część za ćwierć ceny w złomie (`machine_price`, materiał), dwa zlecenia naraz (`LATHE_SLOTS`, od 1.7.455), cena z perkiem Kowal, gotowa po następnej udanej misji; schemat się zużywa. Znaleziska broni zwykłych odblokowują od razu, broni specjalnych od 1.7.454 dają schemat | `scrap.gd` (`request_machining`, `lathe`) |
 | **Ostrze** | broń biała ma stan ostrza (`Profile.edge`): każdy zamach −1 % (× niezawodność), obrażenia × (0,7 + 0,3 × ostrze) — tępa maczeta rani 70 %. Stan idzie z ciosem do serwera (`_melee_request`, przycinany 0–100), boty zawsze ostre, niezawodność OFF — bez wpływu | `profile.gd` (`edge_of`, `wear_edge`, `edge_mult`), `weapon_controller.gd` |
 | **Szlifierka** | ostrzenie bez złomu, 1 s za każde rozpoczęte 10 % (`sharpen_time`), jak czyszczenie: postęp na przycisku, przerwanie odejściem | `workshop_ui.gd` (`_start_clean` / `tick_clean` dla broni białej) |
 
