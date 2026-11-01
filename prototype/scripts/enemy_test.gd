@@ -811,8 +811,8 @@ func _test_elite_foundation() -> void:
 func _test_priest() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["kaplan"]
-	check("Kapłan/dane: 350 HP, elita, zachowanie priest, fala 6 m (96 px), stun 0,8 s, cios w zwarciu za 1",
-		float(cfg["hp"]) == 350.0 and bool(cfg["elite"]) and cfg["behavior"] == "priest" and is_equal_approx(float(cfg["priest"]["radius"]), 96.0) and is_equal_approx(float(cfg["priest"]["stun"]), 0.8) and int(cfg["damage"]) == 1 and Defs.elite_kinds().has("kaplan"))
+	check("Kapłan/dane: 350 HP, elita, zachowanie priest, fala 7 m (110 px, tyle co próg zapowiedzi), stun 0,8 s, cios w zwarciu za 1",
+		float(cfg["hp"]) == 350.0 and bool(cfg["elite"]) and cfg["behavior"] == "priest" and is_equal_approx(float(cfg["priest"]["radius"]), 110.0) and is_equal_approx(float(cfg["priest"]["stun"]), 0.8) and int(cfg["damage"]) == 1 and Defs.elite_kinds().has("kaplan"))
 	var y := -15000.0
 	var strip := _floor(FAR_X + 29000.0, FAR_X + 29600.0, y)
 	var x0 := FAR_X + 29300.0
@@ -828,13 +828,14 @@ func _test_priest() -> void:
 	player._stun_immune = 0.0
 	k._beh.scream_cd = 0.0
 	k._beh.heal_t = 99.0
-	player.global_position = Vector2(x0 + 104.0, y)                          # w polu zapowiedzi (110 px), ale poza falą (96 px)
+	player.global_position = Vector2(x0 + 104.0, y)                          # w polu zapowiedzi (110 px)
 	check("Kapłan/zapowiedź: gracz bliżej niż 110 px → zapowiedź krzyku (stan special, oczy, pierścień o promieniu fali)",
-		not k._beh.tick_phase(0.016, player) and k._sp == 1 and k.winding and is_equal_approx(float(k.view_info()["tele"]), 96.0) and bool(k.view_info()["alert"]), "sp=%d tele=%s" % [k._sp, str(k.view_info()["tele"])])
+		not k._beh.tick_phase(0.016, player) and k._sp == 1 and k.winding and is_equal_approx(float(k.view_info()["tele"]), 110.0) and bool(k.view_info()["alert"]), "sp=%d tele=%s" % [k._sp, str(k.view_info()["tele"])])
 	check("Kapłan/zapowiedź: w trakcie stoi w miejscu, tick przejmuje ruch (true)", k._beh.tick_phase(0.016, player))
+	player.global_position = Vector2(x0 + 140.0, y)                          # wyszedł z pierścienia w trakcie zapowiedzi
 	k._beh.tele_t = 0.0
 	k._beh.tick_phase(0.016, player)
-	check("Kapłan/krzyk: gracz poza falą (104 px > 96 px) nie jest ogłuszony, krzyk kończy zapowiedź i wchodzi w przerwę 8 s",
+	check("Kapłan/krzyk: gracz, który wyszedł z pierścienia (140 px > 110 px), nie jest ogłuszony, krzyk kończy zapowiedź i wchodzi w przerwę 8 s",
 		not player.is_stunned() and k._sp == 0 and not k.winding and k._beh.scream_cd > 7.0 and float(k.view_info()["tele"]) == 0.0, "stun=%s sp=%d cd=%.1f" % [player.is_stunned(), k._sp, k._beh.scream_cd])
 	k._beh.scream_cd = 0.0
 	player.global_position = Vector2(x0 + 60.0, y)
@@ -1015,6 +1016,19 @@ func _test_priest_summon() -> void:
 	b.tick_phase(0.016, null)
 	check("Kapłan/wzywanie: bez celu i śladu nie wzywa", k._sp == 0 and b.summon_t > 0.0)
 	k._target = player
+	player.dead = true
+	b.summon_t = 0.0
+	b.tick_phase(0.016, null)
+	check("Kapłan/wzywanie: gdy wszyscy leżą, nie zaczyna gestu", k._sp == 0 and b.summon_t > 0.0 and b.waves == 0)
+	player.dead = false
+	b.summon_t = 0.0
+	b.tick_phase(0.016, null)
+	player.dead = true
+	b.tele_t = 0.0
+	b.tick_phase(0.016, null)
+	check("Kapłan/wzywanie: upadek w trakcie gestu — bez fali, licznik stoi, ponowna próba po 3 s", k._sp == 0 and b.waves == 0 and b.alive_minions().is_empty() and is_equal_approx(b.summon_t, 3.0), "fale=%d t=%.1f" % [b.waves, b.summon_t])
+	player.dead = false
+	k._target = player
 	b.summon_t = 0.0
 	b.tick_phase(0.016, player)
 	var info: Dictionary = k.view_info()
@@ -1024,7 +1038,6 @@ func _test_priest_summon() -> void:
 	for i in 12:                                                        # `_pick_spot` losuje punkty: w grze następna próba idzie po `summon.retry` s
 		if not b.alive_minions().is_empty():
 			break
-		b.waves = 0
 		b._finish_summon()
 	var first: Array = b.alive_minions().duplicate()
 	var spots_ok := first.size() == 2

@@ -105,9 +105,9 @@ func alive_minions() -> Array:
 	minions = minions.filter(func(m) -> bool: return is_instance_valid(m) and m.alive)
 	return minions
 
-## Wzywa tylko w walce: zna cel albo ślad, a poniżej limitu ma kogo dołożyć.
+## Wzywa tylko w walce: ktoś stoi na nogach, zna cel albo ślad, a poniżej limitu ma kogo dołożyć.
 func _can_summon() -> bool:
-	return not NoiseMgr.safe_zone and (e._target != null or e._has_lead) and alive_minions().size() < summon_cap()
+	return not NoiseMgr.safe_zone and not Director._humans().is_empty() and (e._target != null or e._has_lead) and alive_minions().size() < summon_cap()
 
 ## Zbyt mocny ostrzał w trakcie gestu: wezwanie przepada, następne po `summon.break_cd` s.
 func _break_summon() -> void:
@@ -122,7 +122,6 @@ func _finish_summon() -> void:
 	e.visual_attack("summon")
 	e._sp = 0
 	e.winding = false
-	waves += 1
 	summon_t = float(sc.get("every", 14.0)) * Difficulty.m("enemy_cd")
 	NoiseMgr.add_noise(float(sc.get("noise", 6.0)), e.global_position, "enemy")
 	if NoiseMgr.has_network():
@@ -131,7 +130,8 @@ func _finish_summon() -> void:
 		e._cue_fx("scream")
 	var lvl: Node = e.get_tree().get_first_node_in_group("level")
 	var humans: Array = Director._humans()
-	if lvl == null or lvl.get("nav") == null or humans.is_empty():
+	if lvl == null or lvl.get("nav") == null or humans.is_empty():            # gracz upadł w trakcie gestu: wezwanie przepada i nie liczy się do `waves`
+		summon_t = float(sc.get("retry", 3.0))
 		return
 	var anchor: Node2D = humans[0]
 	for h in humans:
@@ -146,6 +146,7 @@ func _finish_summon() -> void:
 ## Fala wezwanych w `spot` (serwer), przycięta do limitu żywych.
 func spawn_wave(spot: Vector2) -> void:
 	var sc := summon_cfg()
+	waves += 1
 	var size := int(sc.get("late", 3)) if waves > int(sc.get("late_from", 2)) else int(sc.get("count", 2))
 	var n := mini(size, summon_cap() - alive_minions().size())
 	for i in n:

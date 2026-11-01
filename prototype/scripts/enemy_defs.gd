@@ -108,8 +108,8 @@ const DEFS := {
 	"kaplan": {
 		"hp": 350.0, "speed": 42.0, "damage": 1, "windup": 0.5, "reach": 16.0,
 		"cooldown": 1.8, "leap": false, "hear": 220.0, "wake_near": 80.0, "sight": 260.0,
-		"behavior": "priest", "elite": true, "armor": 2.0, "stun_resist": true, "sheet": "podsluchacz", "ring_r": 88.0, "alert": 0.5,
-		"priest": {"radius": 96.0, "trigger": 110.0, "stun": 0.8, "tele": 0.7, "scream_cd": 8.0, "heal_r": 112.0, "heal_pct": 0.10, "heal_every": 1.0, "bless_every": 3.0, "hold": 190.0, "noise": 8.0,
+		"behavior": "priest", "elite": true, "armor": 2.0, "stun_resist": true, "sheet": "podsluchacz", "ring_r": 102.0, "alert": 0.5,
+		"priest": {"radius": 110.0, "trigger": 110.0, "stun": 0.8, "tele": 0.7, "scream_cd": 8.0, "heal_r": 112.0, "heal_pct": 0.10, "heal_every": 1.0, "bless_every": 3.0, "hold": 190.0, "noise": 8.0,
 			# wzywanie (K3): first s od przebudzenia, every s × `enemy_cd`, channel s gestu × `enemy_windup`, break obrażeń przerywa gest, break_cd s po przerwaniu, cap żywych wezwanych × `boss_adds`,
 			# count Trzosków na wezwanie, late od wezwania numer late_from + 1, retry s, gdy nie ma miejsca albo celu, noise hałas
 			"summon": {"first": 6.0, "every": 14.0, "channel": 1.2, "break": 60.0, "break_cd": 6.0, "cap": 4, "count": 2, "late": 3, "late_from": 2, "retry": 3.0, "noise": 6.0}},

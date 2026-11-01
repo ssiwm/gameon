@@ -55,6 +55,8 @@ Playtest autora: Kapłan wlókł nogi, był bierny, uciekał i ginął bez trudu
 - **K3, wzywanie:** pierwsze po 6 s, potem co 14 s × `enemy_cd`, gest 1,2 s, 2 Trzoski (od trzeciego wezwania 3) poza kadrem, limit żywych 4 × `boss_adds`. 60 obrażeń przerywa gest. Wezwani bez XP i łupu, padają razem z Kapłanem. Dziennik: `elite` scream, summon, summon_break.
 - **K4, gesty:** klipy `summon` i `bless`, oczy i obwódka widoczne w ciemności.
 
+Po drugim playteście: fala krzyku ma zasięg progu zapowiedzi (110 px, wcześniej 96 px i tylko 1 z 5 krzyków ogłuszył), a wezwanie bez żywego gracza nie zaczyna gestu i nie podbija licznika fal.
+
 Do sprawdzenia w playteście: czy 1.1 nie jest teraz za trudna (najpierw zwiększyć odstęp, potem zmniejszyć limit).
 
 ## Progresja
