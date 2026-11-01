@@ -882,10 +882,13 @@ func _test_priest() -> void:
 	far_t.hp = 10.0
 	blind.hp = 20.0
 	k._beh.heal_t = 0.0
+	k._beh.scream_cd = 5.0
+	k._beh.summon_t = 5.0
 	k._beh._tick_heal(0.016)
 	var max_hp: float = hurt._max_hp
 	check("Kapłan/leczenie: ranny Trzosek w zasięgu +10% maks. HP, cały bez zmian, daleki i Ślepiec nie leczeni",
 		absf(hurt.hp - (10.0 + max_hp * 0.10)) < 0.01 and whole.hp == whole._max_hp and far_t.hp == 10.0 and blind.hp == 20.0, "hurt=%.2f/%.1f far=%.1f" % [hurt.hp, max_hp, far_t.hp])
+	check("Kapłan/leczenie: gest `bless` przy leczeniu, a następny dopiero po przerwie", k.visual_attack_action == "bless" and k._beh.bless_t > 2.0, "%s %.1f" % [k.visual_attack_action, k._beh.bless_t])
 	check("Kapłan/leczenie: wiązka do leczonego widoczna w view_info (beams, 0,6 s)", (k.view_info()["beams"] as PackedVector2Array).size() == 1 and k._heal_fx_t > 0.5)
 	hurt.hp = hurt._max_hp - 0.5
 	k._beh.heal_t = 0.0

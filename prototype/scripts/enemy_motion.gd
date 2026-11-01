@@ -5,7 +5,7 @@ const PATH := "res://art/enemy3d/motion.tres"
 const KIND := {"wolek": "smash", "rzeznik": "cleave", "slepiec": "claw", "stalker": "grab", "mimik": "reveal_grab",
 	"podsluchacz": "scream", "kaplan": "ritual", "skoczek": "pounce", "zerca": "snatch", "trzosek": "bite", "cma": "dive"}
 const TIMING := {"smash": [0.60, 0.76], "cleave": [0.50, 0.64], "claw": [0.35, 0.46], "grab": [0.40, 0.68],
-	"reveal_grab": [0.40, 0.55], "scream": [0.90, 0.60], "ritual": [0.70, 0.82], "pounce": [0.30, 0.38],
+	"reveal_grab": [0.40, 0.55], "scream": [0.90, 0.60], "ritual": [0.70, 0.82], "summon": [1.20, 0.70], "bless": [0.05, 0.85], "pounce": [0.30, 0.38],
 	"snatch": [0.40, 0.56], "bite": [0.28, 0.42], "dive": [0.20, 0.40], "charge": [0.70, 0.25], "throw": [0.60, 0.52], "landing": [0.0, 0.24]}
 ## Klatki: [ułamek zapowiedzi lub odzyskania równowagi, kanały riga]. Ujemny czas = przed kontaktem.
 const KEYS := {
@@ -54,6 +54,18 @@ const KEYS := {
 		[-0.18,{"lean": -7.0,"hR": Vector3(0.18,1.84,0.25),"hL": Vector3(0.18,1.84,-0.25)}],
 		[0.0,{"lean": -12.0,"hR": Vector3(0.62,1.46,0.60),"hL": Vector3(0.62,1.46,-0.60)}],
 		[0.30,{"lean": -6.0,"hR": Vector3(0.46,1.35,0.50),"hL": Vector3(0.46,1.35,-0.50)}]],
+	# Kapłan wzywa (ELITE_PLACEMENT_PLAN.md K4): ręce szeroko w górę, głowa odchylona, potem zamach ku ziemi, po którym Trzoski idą z ciemności.
+	"summon": [[-1.0,{"lean": 1.0,"drop": 0.0,"head": 0.8,"hR": Vector3(0.05,0.76,0.35),"hL": Vector3(0.05,0.76,-0.35)}],
+		[-0.72,{"lean": -2.0,"hR": Vector3(0.02,1.30,0.52),"hL": Vector3(0.02,1.30,-0.52)}],
+		[-0.38,{"lean": -8.0,"head": 1.2,"hR": Vector3(-0.02,1.92,0.40),"hL": Vector3(-0.02,1.92,-0.40)}],
+		[-0.12,{"lean": -11.0,"head": 1.3,"hR": Vector3(0.0,2.02,0.34),"hL": Vector3(0.0,2.02,-0.34)}],
+		[0.0,{"lean": 17.0,"drop": 0.12,"head": 0.7,"hR": Vector3(0.72,0.52,0.50),"hL": Vector3(0.72,0.52,-0.50)}],
+		[0.30,{"lean": 14.0,"drop": 0.10,"hR": Vector3(0.66,0.60,0.50),"hL": Vector3(0.66,0.60,-0.50)}]],
+	# Kapłan leczy: spokojnie unosi prawą rękę ku watasze. Klatka kontaktu to zwykła poza, bo gest startuje od razu z `trigger`, bez zapowiedzi.
+	"bless": [[-1.0,{"lean": 1.0,"hR": Vector3(0.05,0.76,0.35),"hL": Vector3(0.05,0.76,-0.35)}],
+		[0.0,{"lean": 1.0,"hR": Vector3(0.05,0.76,0.35),"hL": Vector3(0.05,0.76,-0.35)}],
+		[0.35,{"lean": -2.0,"hR": Vector3(0.85,1.28,0.30),"hL": Vector3(0.06,0.80,-0.36)}],
+		[0.68,{"lean": -2.0,"hR": Vector3(0.88,1.34,0.30),"hL": Vector3(0.06,0.80,-0.36)}]],
 	"pounce": [[-1.0,{"lean": 0.0,"shift": 0.0,"lift": 0.0,"arm": 0.0,"leg": 0.0}],[-0.35,{"lean": -12.0,"shift": -0.10,"arm": 24.0,"leg": 20.0}],
 		[0.0,{"lean": 16.0,"shift": 0.14,"arm": -46.0,"leg": -20.0}], [0.20,{"lean": 19.0,"arm": -34.0,"leg": -12.0}], [0.65,{"lean": 4.0,"shift": 0.04,"arm": -6.0,"leg": 5.0}]],
 	"snatch": [[-1.0,{"lean": 0.0,"shift": 0.0,"lift": 0.0,"arm": 0.0,"leg": 0.0}],[-0.45,{"lean": -8.0,"shift": -0.06,"arm": 16.0}],

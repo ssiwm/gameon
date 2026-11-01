@@ -47,6 +47,16 @@ Kontynuacja `ENEMY_PLAN.md` F4. Elity są w kodzie od 1.7.253–1.7.261, ale gra
 - Strojenie F4f według zdarzeń `elite` i decyzja o Dyrektorze według `mission_end.director`.
 - Jeśli stałe miejsca się opatrzą: wystawianie po postępie celu, wzorem `FINALE_SPAWNS` z 1.1.
 
+## Przebudowa Kapłana (K1–K4, po pierwszym playteście)
+Playtest autora: Kapłan wlókł nogi, był bierny, uciekał i ginął bez trudu (20,5 s od przebudzenia). Pomiar: prawa stopa przez 52% cyklu sunęła po ziemi (1,27 m), cofał się na 110 px, czyli poza zasięg krzyku, a seria M-83 blokowała krzyk.
+
+- **K1, chód:** klip `human`, cykl 0,75 s.
+- **K2, postawa:** nie cofa się (`hold` 190 px), `stun_resist`, cios łapą za 1 w przerwie krzyku, HP 350, XP 40.
+- **K3, wzywanie:** pierwsze po 6 s, potem co 14 s × `enemy_cd`, gest 1,2 s, 2 Trzoski (od trzeciego wezwania 3) poza kadrem, limit żywych 4 × `boss_adds`. 60 obrażeń przerywa gest. Wezwani bez XP i łupu, padają razem z Kapłanem. Dziennik: `elite` scream, summon, summon_break.
+- **K4, gesty:** klipy `summon` i `bless`, oczy i obwódka widoczne w ciemności.
+
+Do sprawdzenia w playteście: czy 1.1 nie jest teraz za trudna (najpierw zwiększyć odstęp, potem zmniejszyć limit).
+
 ## Progresja
 Elita daje 1 próbkę, 15–25 złomu, 60% szans na amunicję specjalną i 30% na część broni. Przy jednej zabitej elicie na misję próbek będzie ok. 1,8 zamiast 0,8, czyli 20 próbek na strefę w ok. 11 misji zamiast 25. Złom na tę strefę zbiera się przez ok. 14 misji.
 

@@ -16,6 +16,7 @@ var summon_t := 6.0          ## s do następnego wezwania (serwer)
 var waves := 0               ## wezwania w tej próbie
 var channel_hp := 0.0        ## HP na początku gestu wezwania (`summon.break`)
 var serial := 0              ## numer w nazwach wezwanych
+var bless_t := 0.0           ## s do następnego gestu leczenia
 var minions: Array = []      ## wezwani (serwer)
 
 var tele_duration := 0.0
@@ -60,6 +61,7 @@ func scream_pitch() -> float:
 func tick_phase(delta: float, _target: Node2D) -> bool:
 	scream_cd = maxf(0.0, scream_cd - delta)
 	summon_t = maxf(0.0, summon_t - delta)
+	bless_t = maxf(0.0, bless_t - delta)
 	if e._sp == SP_SUMMON:
 		e.velocity.x = move_toward(e.velocity.x, 0.0, 800.0 * delta)
 		if channel_hp - e.hp >= float(summon_cfg().get("break", 60.0)):
@@ -283,6 +285,10 @@ func _tick_heal(delta: float) -> void:
 			e._heal_fx.rpc(pts)
 		else:
 			e._heal_fx(pts)
+		# Gest raz na `bless_every` s, tylko gdy nie zasłoni zapowiedzi: klip kontaktu wstrzymuje klip zapowiedzi (`enemy3d.gd: _advance_motion`).
+		if bless_t <= 0.0 and not e.winding and scream_cd > 1.0 and summon_t > 1.0 and not _player_in_trigger():
+			bless_t = float(c.get("bless_every", 3.0))
+			e.visual_attack("bless")
 
 func _line_clear(o: Node2D) -> bool:
 	var from: Vector2 = e.global_position + Vector2(0.0, -20.0)

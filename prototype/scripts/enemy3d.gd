@@ -48,7 +48,8 @@ const SPEC := {
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	# Kapłan (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/kaplan.glb). Chód `human`, cykl 0,75 s: klip `zombie` z cyklem 1,0 s przy 42 px/s
 	# wlókł prawą stopę po ziemi przez ponad połowę cyklu (1,27 m), a sylwetka przysiadała w wykroku (ELITE_PLACEMENT_PLAN.md K1).
-	"kaplan": {"fit": ["height", 44.0], "frame_h": 52.0, "cycle": 0.75,
+	# Oczy (`eye_lamp`) i obwódka (`flare`): w ciemności sama sylwetka z zapowiedzią ginie, więc gest musi być widoczny także bez latarki (K4).
+	"kaplan": {"fit": ["height", 44.0], "frame_h": 52.0, "cycle": 0.75, "eyes": true, "eye_off": [0.145, 0.0, 0.035], "eye_r": 0.012, "eye_lamp": true, "flare": 0.6,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "human",
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
@@ -1078,7 +1079,9 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 ## Obwódka tuż przed ciosem: rośnie w ostatnich FLARE_LEAD s zapowiedzi (czas z symulacji, a bez niego z zegara klipu) i gaśnie po kontakcie.
 func _update_flare(anim: String) -> void:
 	var f := 0.0
-	if not _dead and anim == "windup" and _motion_name != "":
+	if _motion_name == "bless":
+		f = 0.0                                                    # gest leczenia nie jest atakiem, więc obwódka go nie zapowiada
+	elif not _dead and anim == "windup" and _motion_name != "":
 		var left := _motion_remaining if is_finite(_motion_remaining) else Motion.contact(_motion_name) - _motion_time
 		f = 1.0 - smoothstep(0.0, FLARE_LEAD, left)
 	elif not _dead and _clip == "attack":
