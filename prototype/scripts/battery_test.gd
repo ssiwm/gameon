@@ -7,7 +7,7 @@ extends "res://scripts/stalker_test.gd"
 ## 2. Pełna latarka nie bierze baterii; słaba bierze +BATTERY_PICKUP s; ponad BATTERY_MAX nie wchodzi; od BATTERY_TAKE_BELOW w górę leży dalej.
 ## 3. Bot ustępuje człowiekowi, któremu brakuje baterii; gdy człowiek ma pełną — bot bierze.
 ## 4. Sejf patrolu zostawia baterię; Ćma nie ma losowego zrzutu (bateria tylko z rozbitego gniazda), Ślepiec ma.
-## 5. Dziennik sesji: `bat` w próbce `pos`, zdarzenia `battery` i `battery_empty`, liczniki do `mission_end.battery`.
+## 5. Dziennik sesji: `bat` w próbce `pos`, zdarzenia `battery` i `battery_empty`, liczniki do `mission_end.battery`, zużyte przedmioty (`item`, `mission_end.items`).
 ## 6. Czytelność (B2): snop przygasa tylko poniżej 20%, karta LATARKA w kodeksie (portret baterii), podpowiedź „battery_low”,
 ##    licznik baterii misji do raportu po akcji.
 ## 7. Ładowarka (B3): ładuje tylko przy zgaszonej latarce i w zasięgu, CHARGE_PER_S, stan „pracuje” i buczenie (hałas „charger”)
@@ -172,6 +172,21 @@ func _empty_and_log() -> void:
 	var empties := rows.filter(func(r: Dictionary) -> bool: return r.get("ev") == "battery_empty")
 	check("dziennik: pos z `bat` %d, battery %d, battery_empty %d" % [pos_bat.size(), picks.size(), empties.size()],
 		not pos_bat.is_empty() and picks.size() >= 3 and not empties.is_empty())
+	# użycie przedmiotów (1.7.467): zdarzenie `item` z rzucającym i licznik do mission_end.items
+	Arsenal.stock["smoke"] = 2
+	Arsenal.stock["scanner"] = 1
+	NoiseMgr.add_flare(1)
+	var items_before: Dictionary = SessionLog._items.duplicate()
+	NoiseMgr.request_flare(player.global_position + Vector2(40.0, -20.0), Vector2.ZERO)
+	Arsenal.request_throw("smoke", player.global_position + Vector2(40.0, -20.0), Vector2.ZERO)
+	Arsenal.request_use("scanner", 0)
+	await _frames(0.1)
+	var item_rows := _log_rows().filter(func(r: Dictionary) -> bool: return r.get("ev") == "item")
+	var item_of := func(what: String) -> Array:
+		return item_rows.filter(func(r: Dictionary) -> bool: return r.get("what") == what and r.get("who") == "P%d" % int(player.display_id) and r.has("pos") and r.has("noise"))
+	check("dziennik: flara, granat dymny i skaner mają wiersz `item` z graczem", not item_of.call("flare").is_empty() and not item_of.call("smoke").is_empty() and not item_of.call("scanner").is_empty())
+	check("dziennik: licznik przedmiotów %s" % str(SessionLog._items), int(SessionLog._items.get("flare", 0)) == int(items_before.get("flare", 0)) + 1
+		and int(SessionLog._items.get("smoke", 0)) == int(items_before.get("smoke", 0)) + 1 and int(SessionLog._items.get("scanner", 0)) == int(items_before.get("scanner", 0)) + 1)
 
 # ---------------------------------------------------------------- 6. czytelność
 

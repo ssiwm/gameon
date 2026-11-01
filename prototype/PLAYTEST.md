@@ -28,7 +28,8 @@ decydują o priorytetach przed jakąkolwiek nową zawartością.
 - [ ] Gracze mają słuchawki. Bez nich cały filar „dźwięk jako groza" przepada.
 - [ ] Dziennik sesji pisze się sam u hosta (`%APPDATA%\Godot\app_userdata\Dead Air '87 Prototype\sessions\`). Po sesji skopiuj
       ten katalog razem z nagraniem — jest w nim źródło każdego upadku, Uwaga, zamachy Stalkera i statystyki broni (README, „Dziennik sesji”).
-      Od 1.7.397 dziennik zapisuje też misje przerwane wyjściem z gry (`"result":"quit"`) i każde friendly fire ze strzelcem (`"ev":"ff"`).
+      Od 1.7.397 dziennik zapisuje też misje przerwane wyjściem z gry (`"result":"quit"`) i każde friendly fire ze strzelcem (`"ev":"ff"`),
+      a od 1.7.467 zużyte przedmioty (`"ev":"item"`: flary, granaty, miny, apteczki, skaner).
       Raport: `python tools/session_progress.py --dir KATALOG --since RRRR-MM-DD` (mapy, przerwane próby, kryjówka, perki, broń).
 
 ## 2. Zasady sesji

@@ -17,6 +17,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 const Ammo := preload("res://scripts/ammo.gd")
 const Parts := preload("res://scripts/parts.gd")
 
@@ -266,6 +267,7 @@ func _throw_server(kind: String, pos: Vector2, vel: Vector2, shooter: int) -> vo
 			break
 	stock[kind] = get_throwable(kind) - 1
 	_push_stock()
+	SessionLog.note_item(kind, _player_by_id(shooter))
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl == null:
 		return
@@ -508,3 +510,4 @@ func _use_server(kind: String, target_id: int, user_id: int) -> void:
 	if ok:
 		stock[kind] = get_throwable(kind) - 1
 		_push_stock()
+		SessionLog.note_item(kind, user)

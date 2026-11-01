@@ -22,6 +22,8 @@ extends RefCounted
 ##                  `bat` (od 1.7.450) — procent baterii latarki (BATTERY_PLAN.md B0)
 ##   battery        who, bot, src (pickup), amount (s świecenia), before (% przed) — gracz wziął baterię 4,5 V (BATTERY_PLAN.md B1, od 1.7.450)
 ##   battery_empty  who, bot, phase, pos — latarka zgasła, bo bateria spadła do zera (B0, od 1.7.450)
+##   item           what (flare, frag, phos, smoke, mine, charge, medkit, defib, scanner, cleankit — `Throwables.KINDS`), who, bot, pos, noise — zużyty przedmiot, rozstrzyga serwer (od 1.7.467);
+##                  krzyk i Q mają własne wpisy: `noise.scream`, `overcharge`
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   elite          what (spawn — tylko w trakcie próby / wake / kill / scream: stunned / summon: n, alive, wave / summon_break: dmg), kind, src (map / director / finale / dev), pos, hp, max_hp; wake: noise;
 ##                  kill: by (player_id, 0 = nikt), weapon (ostatnie źródło obrażeń), after (s od przebudzenia), dmg (źródło → obrażenia; od 1.7.466, ELITE_PLACEMENT_PLAN.md E0)
@@ -44,6 +46,7 @@ extends RefCounted
 ## `mission_end.silent` (od 1.7.403): cichy cel dotrzymany — Uwaga < 60 przez cały cel główny (FUN_PLAN.md P2.1).
 ## `players[id]` (od 1.7.391): oprócz name, kills, downs, revived, dmg także `kinds` (rodzaj wroga → zabójstwa) i `xp_kills` (XP za te zabójstwa) — P0.1, P0.3;
 ## od 1.7.401 (FUN_PLAN.md P0.5) `revives` (podniesienia kolegów), `escapes` (ucieczki o włos), `lures` (udane Q), `noise` (własny hałas gracza).
+## `mission_end.items` (od 1.7.467): rodzaj przedmiotu → liczba użyć w tej próbie (te same rodzaje co zdarzenie `item`).
 ## `mission_start.elites` i `mission_end.elites` (od 1.7.466): [{kind, src, pos, hp, max_hp, woke}] — elity na mapie, także przeżyłe.
 ## `mission_end.director` (od 1.7.466): run (s fazy celu), relax, breath, stress, groups (s blokady odliczania, mogą się nakładać), open (s odliczania), spawns, no_spot.
 ## `mission_start.checkpoint` = "boss": próba od punktu kontrolnego walki z bossem (FUN_PLAN.md P0.3); `mission_start.via` = "direct" (od 1.7.404):
@@ -71,6 +74,7 @@ static var _weapons := {}              ## klucz broni → {shots, noise, dmg, ki
 static var _dmg_by := {}               ## id gracza → {klucz broni → obrażenia}
 static var _scrap_drop := 0            ## złom wyrzucony przez wrogów i bossa w tej próbie (podniesiony czy nie)
 static var _battery := {}              ## baterie w tej próbie: dropped / picked / empty (mission_end.battery)
+static var _items := {}                ## rodzaj przedmiotu → użycia w tej próbie (mission_end.items)
 static var _kills_by := {}             ## id gracza → {rodzaj wroga → zabójstwa} (tylko zabójstwa dające XP: ludzie)
 static var _xp_by := {}                ## id gracza → XP za zabójstwa w tej próbie
 static var _build := ""
@@ -158,6 +162,7 @@ static func mission_start(data: Dictionary) -> void:
 	_dmg_by = {}
 	_scrap_drop = 0
 	_battery = {"dropped": 0, "picked": 0, "empty": 0}
+	_items = {}
 	_kills_by = {}
 	_xp_by = {}
 	row.merge(data)
@@ -191,6 +196,7 @@ static func mission_end(data: Dictionary) -> void:
 	scrap["dropped"] = _scrap_drop
 	row["scrap"] = scrap
 	row["battery"] = _battery.duplicate()
+	row["items"] = _items.duplicate()
 	_write("mission_end", row)
 	_in_mission = false
 
@@ -260,6 +266,18 @@ static func note_battery(what: String) -> void:
 	if not active() or not _in_mission:
 		return
 	_battery[what] = int(_battery.get(what, 0)) + 1
+
+## Gracz `p` zużył przedmiot `kind` (arsenal.gd, noise_manager.gd; serwer): zdarzenie `item` i licznik do mission_end.items. `p` = null, gdy nie wiadomo kto.
+static func note_item(kind: String, p: Node2D) -> void:
+	if not active() or not _in_mission:
+		return
+	_items[kind] = int(_items.get(kind, 0)) + 1
+	var row := {"what": kind, "noise": roundi(NoiseMgr.level)}
+	if p != null:
+		row["who"] = "P%d" % int(p.display_id)
+		row["bot"] = bool(p.is_bot)
+		row["pos"] = xy(p.global_position)
+	_write("item", row)
 
 # ---------------------------------------------------------------- wydajność (host i klient)
 

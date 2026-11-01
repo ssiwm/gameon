@@ -4046,40 +4046,7 @@ func _sync_boss_fx() -> void:
 		ml.light_color = Color(maw.r, maw.g, maw.b)
 		ml.light_energy = 4.0 * maw.a * r / 9.0
 		# znacznik lądowania plwociny
-		var mark := (root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh
-		mark.clear_surfaces()
-		var sm: Vector2 = b.spit_mark
-		if sm != Vector2.INF:
-			var c := Level3D.px_to_m(sm) - base + Vector3(0.0, 0.06, 0.0)
-			var hit_r: float = float(b.SPIT_HIT_R) * PX
-			var flying: bool = not b.spitting
-			var mp2 := 0.5 + 0.5 * sin(t * (16.0 if flying else 8.0))
-			var acid := Color(0.55, 1.0, 0.25)
-			var rr := hit_r * 1.6
-			# kamera patrzy prawie poziomo, więc sam krąg na podłodze był kreską — plama na podłodze + pionowa poświata nad nią
-			mark.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-			for i in 24:
-				var a0 := TAU * float(i) / 24.0
-				var a1 := TAU * float(i + 1) / 24.0
-				mark.surface_set_color(Color(acid, 0.30 + 0.30 * mp2))
-				mark.surface_add_vertex(c)
-				mark.surface_set_color(Color(acid, 0.0))
-				mark.surface_add_vertex(c + Vector3(cos(a0) * rr, 0.0, sin(a0) * rr * 0.55))
-				mark.surface_set_color(Color(acid, 0.0))
-				mark.surface_add_vertex(c + Vector3(cos(a1) * rr, 0.0, sin(a1) * rr * 0.55))
-			mark.surface_end()
-			var hh := 1.4 + 0.3 * mp2
-			mark.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-			for i in 9:
-				var u := float(i) / 8.0
-				var x := (u * 2.0 - 1.0) * rr
-				var edge := 1.0 - absf(u * 2.0 - 1.0)
-				mark.surface_set_color(Color(acid, (0.25 + 0.35 * mp2) * edge))
-				mark.surface_add_vertex(c + Vector3(x, 0.0, 0.45))
-				mark.surface_set_color(Color(acid, 0.0))
-				mark.surface_add_vertex(c + Vector3(x, hh, 0.45))
-			mark.surface_end()
-			_water_ring(mark, c, hit_r, 0.05, Color(acid, 0.6 + 0.4 * mp2))
+		_draw_spit_mark((root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh, b.spit_mark, base, float(b.SPIT_HIT_R) * PX, not b.spitting, t)
 		# łuk zasięgu macki
 		var arc := (root.get_node("Arc") as MeshInstance3D).mesh as ImmediateMesh
 		arc.clear_surfaces()
@@ -4158,6 +4125,40 @@ const TIDE_Z0 := -1.6                    ## woda przypływu: od ściany w głęb
 const TIDE_Z1 := 0.95                    ## …do krawędzi przed graczami [m]
 
 ## Okrąg leżący na wodzie (pierścień w płaszczyźnie XZ, spłaszczony w głąb) dopisany do siatki `im`.
+## Znacznik lądowania plwociny (Żyła, Pijawka): plama na podłodze, pionowa poświata nad nią i krąg zasięgu trafienia. `sm` w pikselach świata, INF = brak.
+## Kamera patrzy prawie poziomo, więc sam krąg na podłodze był kreską.
+func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float) -> void:
+	mark.clear_surfaces()
+	if sm == Vector2.INF:
+		return
+	var c := Level3D.px_to_m(sm) - base + Vector3(0.0, 0.06, 0.0)
+	var mp2 := 0.5 + 0.5 * sin(t * (16.0 if flying else 8.0))
+	var acid := Color(0.55, 1.0, 0.25)
+	var rr := hit_r * 1.6
+	mark.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 24:
+		var a0 := TAU * float(i) / 24.0
+		var a1 := TAU * float(i + 1) / 24.0
+		mark.surface_set_color(Color(acid, 0.30 + 0.30 * mp2))
+		mark.surface_add_vertex(c)
+		mark.surface_set_color(Color(acid, 0.0))
+		mark.surface_add_vertex(c + Vector3(cos(a0) * rr, 0.0, sin(a0) * rr * 0.55))
+		mark.surface_set_color(Color(acid, 0.0))
+		mark.surface_add_vertex(c + Vector3(cos(a1) * rr, 0.0, sin(a1) * rr * 0.55))
+	mark.surface_end()
+	var hh := 1.4 + 0.3 * mp2
+	mark.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for i in 9:
+		var u := float(i) / 8.0
+		var x := (u * 2.0 - 1.0) * rr
+		var edge := 1.0 - absf(u * 2.0 - 1.0)
+		mark.surface_set_color(Color(acid, (0.25 + 0.35 * mp2) * edge))
+		mark.surface_add_vertex(c + Vector3(x, 0.0, 0.45))
+		mark.surface_set_color(Color(acid, 0.0))
+		mark.surface_add_vertex(c + Vector3(x, hh, 0.45))
+	mark.surface_end()
+	_water_ring(mark, c, hit_r, 0.05, Color(acid, 0.6 + 0.4 * mp2))
+
 func _water_ring(im: ImmediateMesh, c: Vector3, r: float, w: float, col: Color) -> void:
 	im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 	for i in 33:
@@ -4182,6 +4183,9 @@ func _sync_leech_fx() -> void:
 		root.name = "LeechFx"
 		_world.add_child(root)
 		_imm(root, _add_mat()).name = "Rings"
+		var spit_km := _add_mat()                              # jak u Żyły: bez testu głębi, znacznik widać przez wodę i trzciny
+		spit_km.no_depth_test = true
+		_imm(root, spit_km).name = "SpitMark"
 		var sm := StandardMaterial3D.new()                     # cień: czarna miękka plama — na ciemnej wodzie niewidoczna, w świetle wyraźna
 		sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -4251,6 +4255,7 @@ func _sync_leech_fx() -> void:
 		var fs: Array = b.call("fx_state")
 		var base := Level3D.px_to_m((b as Node2D).global_position)
 		root.position = base
+		_draw_spit_mark((root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh, b.spit_mark, base, float(b.SPIT_HIT_R) * PX, b.spit_flying(), t)
 		root.visible = (b as Node2D).is_visible_in_tree()
 		var rings := (root.get_node("Rings") as MeshInstance3D).mesh as ImmediateMesh
 		rings.clear_surfaces()

@@ -1550,7 +1550,7 @@ func _bot_dodge_acid() -> void:
 				velocity.y = JUMP_VELOCITY
 			return
 
-## x znacznika plwociny Żyły (`boss.gd: spit_mark`), w którego zasięgu stoi bot; INF = bezpiecznie. Opinia testera 2026-10-29:
+## x znacznika plwociny bossa (Żyła: `boss.gd`, Pijawka: `leech.gd`, `spit_mark`), w którego zasięgu stoi bot; INF = bezpiecznie. Opinia testera 2026-10-29:
 ## bot podnosił leżącego pod ostrzałem i padał od plucia — teraz najpierw schodzi ze znacznika, a podnosi po rozbryzgu.
 func _spit_danger_x() -> float:
 	for b in get_tree().get_nodes_in_group("boss"):

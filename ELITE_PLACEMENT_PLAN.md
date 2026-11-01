@@ -61,6 +61,14 @@ Rzeźnik: w trzech grach ginął w tym samym punkcie, na kratownicy w szybie na 
 
 Do sprawdzenia w playteście: czy 1.1 nie jest teraz za trudna (najpierw zwiększyć odstęp, potem zmniejszyć limit).
 
+## Kapłan w jaskini (1.7.467, przegląd 2026-11-01)
+W obozie (kol. 112) Kapłan budził się w 46–57. s misji w 6 z 7 prób, a 3 z 6 upadków z tego dnia na 1.1 przypadły na 56–72. s, wszystkie od Trzosków. To pierwsza mapa gry, więc elita spotykała gracza przed drugim nieśmiertelnikiem.
+
+- Znacznik `A`: kolumna 170, rząd 18, środkowa półka jaskini, przed trzecim nieśmiertelnikiem (mediana zebrania 109. s).
+- Półka jest 64 px nad ścieżką: na kucaka gracz przechodzi (budzi z 40 px), wyprostowany budzi z 80 px. Cicha droga zostaje.
+- Leczeniem sięga tylko Trzoska z tej półki, zamiast 3 z 5 z watahy. Resztę wzywa. Wataha w obozie zostaje bez zmian.
+- Do sprawdzenia w playteście: kiedy się budzi (`elite` wake), czy upadki na 1.1 się przesunęły i czy Kapłan schodzi z półki do gracza.
+
 ## Progresja
 Elita daje 1 próbkę, 15–25 złomu, 60% szans na amunicję specjalną i 30% na część broni. Przy jednej zabitej elicie na misję próbek będzie ok. 1,8 zamiast 0,8, czyli 20 próbek na strefę w ok. 11 misji zamiast 25. Złom na tę strefę zbiera się przez ok. 14 misji.
 

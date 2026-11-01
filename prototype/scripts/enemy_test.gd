@@ -1448,7 +1448,7 @@ func _test_butcher_pit() -> void:
 		n.queue_free()
 	await get_tree().physics_frame
 
-## Znaczniki elit w kampanii (ELITE_PLACEMENT_PLAN.md E1–E2): miejsca, leczenie Kapłana, zapas amunicji na Rzeźnika, beczki, cicha droga przez obóz.
+## Znaczniki elit w kampanii (ELITE_PLACEMENT_PLAN.md E1–E2): miejsca, leczenie Kapłana, zapas amunicji na Rzeźnika, beczki, cicha droga przez obóz i jaskinię.
 func _test_elite_placement() -> void:
 	var m1: Array = load("res://scripts/maps/z1_m1.gd").MAP
 	var m2: Array = load("res://scripts/maps/z1_m2.gd").MAP
@@ -1459,22 +1459,22 @@ func _test_elite_placement() -> void:
 				if (rows[r] as String)[c] == ch:
 					out.append([c, r])
 		return out
-	check("elity/mapy: Kapłan tylko w obozie 1.1, Rzeźnik tylko w pompowni 1.2", marks.call(m1, "A") == [[112, 22]] and marks.call(m2, "U") == [[228, 25]] and marks.call(m1, "U").is_empty() and marks.call(m2, "A").is_empty())
+	check("elity/mapy: Kapłan tylko w jaskini 1.1, Rzeźnik tylko w pompowni 1.2", marks.call(m1, "A") == [[170, 18]] and marks.call(m2, "U") == [[228, 25]] and marks.call(m1, "U").is_empty() and marks.call(m2, "A").is_empty())
 	for id in ["z1_m3", "z1_b1"]:
 		var rows: Array = load("res://scripts/maps/%s.gd" % id).MAP
 		check("elity/mapy: %s bez znaczników elit" % id, marks.call(rows, "A").is_empty() and marks.call(rows, "U").is_empty() and marks.call(rows, "V").is_empty())
 	var heal_r: float = float(EnemyDefs.DEFS["kaplan"]["priest"]["heal_r"])
 	var healed := 0
 	for t in marks.call(m1, "T"):
-		if int(t[1]) == 22 and absf(float(int(t[0]) - 112)) * 16.0 <= heal_r:
+		if int(t[1]) == 18 and absf(float(int(t[0]) - 170)) * 16.0 <= heal_r:
 			healed += 1
-	check("elity/mapy: Kapłan sięga leczeniem co najmniej 3 Trzosków watahy", healed >= 3, "w zasięgu: %d" % healed)
+	check("elity/mapy: Kapłan sięga leczeniem Trzoska na półce (resztę wzywa)", healed >= 1, "w zasięgu: %d" % healed)
 	var butcher_hp: float = float(EnemyDefs.DEFS["rzeznik"]["hp"]) * float(load("res://scripts/maps/z1_m2.gd").ENEMY_HP)
 	var m83: Dictionary = {"dmg": 8.0, "ammo": 180.0}
 	check("elity/mapy: Rzeźnika na 1.2 NORMAL da się zabić zapasem startowym M-83", butcher_hp / (float(m83["dmg"]) - float(EnemyDefs.DEFS["rzeznik"]["armor"])) <= float(m83["ammo"]), "HP %.0f" % butcher_hp)
 	check("elity/mapy: na parterze pompowni są beczki przy Rzeźniku", (m2[25] as String)[224] == "o" and (m2[25] as String)[233] == "o")
 	check("elity/mapy: wybór Rzeźnika nie zmienia liczby wrogów na parterze (bez Wołka w pompowni)", marks.call(m2, "W").filter(func(p: Array) -> bool: return int(p[1]) == 25 and int(p[0]) >= 217 and int(p[0]) <= 246).is_empty())
-	# cicha droga przez obóz (MAPS_PLAN.md M1a): na kucaka wróg budzi się z połowy `wake_near`, a skok i spadek liczą się jak marsz wyprostowany
+	# cicha droga przez obóz i jaskinię (MAPS_PLAN.md M1a): na kucaka wróg budzi się z połowy `wake_near`, a skok i spadek liczą się jak marsz wyprostowany
 	var solid := func(c: int, r: int) -> bool:
 		if r < 0 or r >= m1.size() or c < 0 or c >= (m1[0] as String).length():
 			return true
@@ -1487,7 +1487,7 @@ func _test_elite_placement() -> void:
 	nav.build((m1[0] as String).length(), m1.size(), solid, plat)
 	var foes: Array = []
 	for r in m1.size():
-		for c in range(77, 141):
+		for c in range(77, 197):
 			var ch := (m1[r] as String)[c]
 			if ch == "T" or ch == "A":
 				foes.append([Vector2(c * 16 + 8, (r + 1) * 16), float(EnemyDefs.DEFS["trzosek" if ch == "T" else "kaplan"]["wake_near"])])
@@ -1497,7 +1497,7 @@ func _test_elite_placement() -> void:
 				return false
 		return true
 	var from: int = nav.nearest_id(Vector2(77 * 16 + 8, 23 * 16))
-	var goal: int = nav.nearest_id(Vector2(140 * 16 + 8, 23 * 16))
+	var goal: int = nav.nearest_id(Vector2(196 * 16 + 8, 23 * 16))
 	var seen := {from: true}
 	var queue: Array = [from]
 	while not queue.is_empty():
@@ -1509,7 +1509,7 @@ func _test_elite_placement() -> void:
 			if safe.call(nav.get_point_position(a), walking) and safe.call(nav.get_point_position(b), walking):
 				seen[b] = true
 				queue.append(b)
-	check("elity/mapy: przez obóz nadal prowadzi cicha droga z Kapłanem na miejscu", seen.has(goal))
+	check("elity/mapy: przez obóz i jaskinię nadal prowadzi cicha droga z Kapłanem na miejscu", seen.has(goal))
 
 ## Dziennik elit i Dyrektora (ELITE_PLACEMENT_PLAN.md E0): spawn, przebudzenie, zabicie z rozbiciem obrażeń, stan przy końcu misji, blokady Dyrektora.
 func _test_elite_log() -> void:

@@ -459,20 +459,26 @@ func _flares_rpc(n: int) -> void:
 ## Rzut flarą (F). Serwer sprawdza pulę i tworzy flarę u wszystkich peerów (level.spawn_flare).
 func request_flare(pos: Vector2, vel: Vector2) -> void:
 	if is_server():
-		_throw_flare(pos, vel)
+		_throw_flare(pos, vel, local_id())
 	else:
 		_flare_request.rpc_id(1, pos, vel)
 
 @rpc("any_peer", "call_remote", "reliable")
 func _flare_request(pos: Vector2, vel: Vector2) -> void:
 	if is_server() and pos.is_finite() and vel.is_finite():
-		_throw_flare(sane_pos(pos), vel)
+		_throw_flare(sane_pos(pos), vel, multiplayer.get_remote_sender_id())
 
-func _throw_flare(pos: Vector2, vel: Vector2) -> void:
+func _throw_flare(pos: Vector2, vel: Vector2, thrower: int) -> void:
 	if flares <= 0:
 		return
 	flares -= 1
 	_push_flares()
+	var who: Node2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if int(p.player_id) == thrower:
+			who = p
+			break
+	SessionLog.note_item("flare", who)
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl != null:
 		lvl.spawn_flare(pos, vel.limit_length(420.0))

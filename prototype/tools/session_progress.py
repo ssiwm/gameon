@@ -185,6 +185,12 @@ def report(sessions):
                       "bought": [b.get("id") for b in ok if b.get("kind") == "weapon"]}
 
     rep["night_shift"] = {"attempts": sum(1 for a in attempts if a["start"].get("mode") == "night_shift")}
+    # przedmioty (od 1.7.467): mission_end.items; próby bez tego pola (starsze buildy) nie liczą się do średniej
+    with_items = [a for a in attempts if "items" in a["end"]]
+    items = Counter()
+    for a in with_items:
+        items.update(a["end"]["items"])
+    rep["items"] = {"attempts_with_data": len(with_items), "total": dict(items.most_common())}
     rep["warnings"] = warnings(rep)
     return rep
 
@@ -260,6 +266,7 @@ def print_report(rep):
     w = rep["weapons"]
     print("== Broń: zabójstwa %s;  największy udział %s;  kupione bronie %s" % (w["kills"], w["top_share"], w["bought"]))
     print("== Nocny Dyżur: %d prób" % rep["night_shift"]["attempts"])
+    print("== Przedmioty: %s (prób z danymi: %d)" % (rep["items"]["total"], rep["items"]["attempts_with_data"]))
     print("\n== Sygnały (PROGRESSION_PLAN.md §4)")
     for line in rep["warnings"] or ["brak"]:
         print("   - " + line)
