@@ -258,7 +258,9 @@ func _jobs_deliveries() -> void:
 	var bank: int = Scrap.bank
 	var samples: int = Scrap.samples
 	Scrap.bank_loot(0)
-	check("odzysk znalezionej części anuluje zbędne badanie i zwraca koszt", Scrap.has_part("lr7_cell") and not Scrap.schematics.has("lr7_cell") and Scrap.research.is_empty() and Scrap.bank == bank + cost.y and Scrap.samples == samples + cost.x)
+	# od 1.7.454 znaleziona część broni specjalnej daje schemat (tokarka nadal potrzebna), a nie gotową część
+	check("odzysk znalezionej części daje schemat, anuluje zbędne badanie i zwraca koszt", not Scrap.has_part("lr7_cell") and Scrap.schematics.has("lr7_cell") and Scrap.research.is_empty() and Scrap.bank == bank + cost.y and Scrap.samples == samples + cost.x)
+	Scrap.schematics.erase("lr7_cell")
 	var maxn := int(Throwables.KINDS["ammo_slug"]["max"])
 	Arsenal.stock["ammo_slug"] = maxn - 3
 	Scrap.orders = ["ammo_slug"]

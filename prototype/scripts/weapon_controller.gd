@@ -67,7 +67,7 @@ const MAG_MAX := 16               ## tyle magazynków najwyżej leży na mapie (
 const WEAR_SHOT := 0.06           ## % stanu na strzał (× WeaponDef.wear × ustawienie); od 1.7.347 ×3 — M-83 traci ok. 15 % na misję, zaniedbany zaczyna się zacinać
 const WEAR_HOT := 3.0             ## lufa gorętsza niż HOT_WEAR_AT — zużycie ×3
 const HOT_WEAR_AT := 0.8
-const WEAR_CAN := 1.5             ## tłumik: gazy cofają się do mechanizmu
+## tłumik brudzi broń przez pole `wear` części (parts.gd, od 1.7.454 widoczne na karcie; wcześniej stała WEAR_CAN 1,5 w kodzie)
 ## Części eksploatacyjne (WORKSHOP_PLAN.md W2, od 1.7.350): % zużycia na strzał × WeaponDef.wear × ustawienie; lufę gorąca lufa zużywa ×WEAR_HOT.
 ## M-83: lufa ok. 5 % na misję (~20 misji, szybciej przy długim ogniu), sprężyny ok. 6 % (po ~10 misjach czyszczenie nie dobija do 70 %).
 const WEAR_BARREL := 0.02
@@ -513,8 +513,6 @@ func _wear_shot(d: WeaponDef) -> void:
 	var a := WEAR_SHOT * d.wear * Settings.reliability_mult()
 	if barrel_of(d.id) >= HOT_WEAR_AT:
 		a *= WEAR_HOT
-	if d.suppressor > 0.0:
-		a *= WEAR_CAN
 	Profile.wear(String(d.key), a)
 	if d.can_jam():                                        # broń na naboje: lufa i sprężyny (stół konserwacji)
 		var m := d.wear * Settings.reliability_mult()

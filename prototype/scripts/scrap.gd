@@ -55,9 +55,13 @@ const BONUS_CLEAR := 30               ## za ukończenie misji
 const BONUS_SIDE := 15                ## za cel poboczny
 const BONUS_NO_DOWNS := 10            ## za misję bez upadków
 const BONUS_SILENT := 30              ## cichy cel: Uwaga nie przekroczyła 60 przez cały cel główny (FUN_PLAN.md P2.1) — podwaja premię za ukończenie
-## Części jako znaleziska (GUNSMITH_PLAN §7.1, od 1.7.333): skrytka misji zawiera część, elita czasem ją zostawia. Znaleziona część czeka
-## w `found` do ekstrakcji (jak łup złomu) i dopiero wtedy jest odblokowana dla drużyny; wipe ją zabiera.
+## Części jako znaleziska (GUNSMITH_PLAN §7.1, od 1.7.333): skrytka misji czasem zawiera część, elita czasem ją zostawia. Znaleziona część
+## czeka w `found` do ekstrakcji (jak łup złomu) i dopiero wtedy jest odblokowana dla drużyny; wipe ją zabiera. Część broni specjalnej
+## (pracownia) daje po ekstrakcji schemat, nie gotową część — trzeba ją jeszcze wytoczyć.
 const ELITE_PART_DROP := 0.3
+## Do 1.7.453 każda skrytka miała część: dwie skrytki 1.1 były warte więcej niż złom z całej misji, a kupowanie na ławie traciło sens.
+const STASH_PART_CHANCE := 0.35
+var stash_part_roll := -1.0          ## testy: wymuszony wynik losowania skrytki (0..1); < 0 — randf()
 
 ## Warsztat (faza B): ceny broni z kryjówki. Broń spoza tej tabeli i spoza LATER jest odblokowana od początku (M-83, SPREAD-12, P-83, maczeta).
 const PRICES := {Weapons.LR7: 150, Weapons.HKM9: 200, Weapons.SRUT8: 250, Weapons.GNIEW4: 300, Weapons.WIDMO1: 400}
@@ -168,9 +172,15 @@ func bank_loot(bonus: int) -> int:
 	bank += gain
 	last_gain = gain
 	loot = 0
-	var newp: Array = found.keys()
-	for id in newp:
-		parts[id] = true
+	var newp: Array = []
+	var found_schem: Array = []
+	for id in found.keys():
+		if is_lab_part(String(id)):
+			found_schem.append(id)                                    # broń specjalna: znalezisko zastępuje badanie, nie tokarkę
+			schematics[String(id)] = true                             # przed _reconcile_jobs: równoległe badanie tej części wraca do banku
+		else:
+			newp.append(id)
+			parts[id] = true
 	found.clear()
 	samples += samples_loot
 	samples_loot = 0
@@ -179,6 +189,7 @@ func bank_loot(bonus: int) -> int:
 	for id in learned:
 		schematics[String(id)] = true                                 # badanie skończone: schemat dla tokarki (W6b)
 	research.clear()
+	learned.append_array(found_schem)
 	var machined: Array = lathe.duplicate()
 	for id in machined:
 		parts[String(id)] = true                                      # tokarka: część gotowa, odblokowana dla drużyny
@@ -259,6 +270,11 @@ func pick_find() -> String:
 	var pool := find_candidates()
 	return "" if pool.is_empty() else String(pool[randi() % pool.size()])
 
+## Część ze skrytki (STASH_PART_CHANCE): "" — skrytka ma tylko złom albo wszystko już jest.
+func pick_stash_find() -> String:
+	var roll := stash_part_roll if stash_part_roll >= 0.0 else randf()
+	return pick_find() if roll < STASH_PART_CHANCE else ""
+
 ## Jawna pula pozwala sprawdzić wykluczenia bez probabilistycznego testu losowania.
 func find_candidates() -> Array:
 	var pool: Array = []
@@ -288,8 +304,9 @@ func find_part(id: String) -> bool:
 @rpc("authority", "call_local", "reliable")
 func _found_rpc(id: String) -> void:
 	part_found.emit(id)
+	var sub := tr("After extraction: a schematic for the lathe") if is_lab_part(id) else tr("The squad gets it after extraction")
 	Msg.post("find.%s" % id, Msg.Ch.TOAST, tr("Found: %s") % tr(String(Parts.get_part(id).get("name", id))),
-		{"sub": tr("The squad gets it after extraction"), "style": Msg.Style.SUCCESS, "ttl": 5.0, "prio": 75})
+		{"sub": sub, "style": Msg.Style.SUCCESS, "ttl": 5.0, "prio": 75})
 	Audio.play("weapon_pickup", Audio.BUS_UI, -8.0)
 
 @rpc("authority", "call_local", "reliable")
