@@ -1,17 +1,15 @@
 extends "res://scripts/enemy_behavior.gd"
-## Kapłan (GDD §7.2, F4b): elita wspierająca. Nie bije w zwarciu; trzyma dystans (`priest.keep`) za Trzoskami, co `heal_every` s leczy rannych Trzosków w `heal_r` px
-## (`heal_pct` maks. HP, tylko z czystą linią) i — gdy gracz podejdzie bliżej niż `trigger` px — krzyczy: zapowiedź `tele` s z pierścieniem fali, potem wszyscy gracze w `radius` px
-## (bez ściany na linii) dostają ogłuszenie `stun` s (`Player.deliver_stun`; strzał, skok i bicie zablokowane, chodzić można). Kontra: cofnąć się z pierścienia albo
-## zabić go, zanim krzyk się skończy. Zabity — przestaje leczyć, a Trzoski w pobliżu tracą morale. Dane w `enemy_defs.gd`: `priest`.
-
-const RETREAT_HOLD := 0.25   ## s po ostatnim kroku w tył, zanim znów odwróci się do gracza
+## Kapłan (GDD §7.2, F4b, ELITE_PLACEMENT_PLAN.md K2): elita dowodząca watahą. Idzie ku graczowi do `priest.hold` px i tam stoi, nie ucieka. Co `heal_every` s leczy rannych
+## Trzosków w `heal_r` px (`heal_pct` maks. HP, tylko z czystą linią), a gdy gracz podejdzie bliżej niż `trigger` px — krzyczy: zapowiedź `tele` s z pierścieniem fali, potem wszyscy
+## gracze w `radius` px (bez ściany na linii) dostają ogłuszenie `stun` s (`Player.deliver_stun`; strzał, skok i bicie zablokowane, chodzić można). Gdy krzyk jest w przerwie, bije
+## w zwarciu. Trafienia go nie chwieją, więc seria nie zagłusza krzyku. Kontra: cofnąć się z pierścienia albo zabić go, zanim krzyk się skończy. Zabity — przestaje leczyć,
+## a Trzoski w pobliżu tracą morale. Dane w `enemy_defs.gd`: `priest`.
 
 var scream_cd := 3.0         ## s do następnego krzyku (pierwszy zaraz po wejściu w walkę, ale nie od razu)
 var heal_t := 0.0            ## s do następnego tiku leczenia
 var tele_t := 0.0            ## s do końca zapowiedzi krzyku (stan `_sp` = 1)
 
 var tele_duration := 0.0
-var retreat_t := 0.0         ## s, przez które jeszcze liczy się cofanie (kierunek modelu nie drga przy krótkich krokach w tył)
 
 func cfg() -> Dictionary:
 	return e._def.get("priest", {}) as Dictionary
@@ -21,11 +19,14 @@ func reset() -> void:
 	scream_cd = 3.0
 	heal_t = 0.0
 	tele_t = 0.0
-	retreat_t = 0.0
 
-## Wsparcie, nie bijatyka.
+## Bije tylko, gdy krzyk jest w przerwie: z bliska najpierw ogłusza.
 func may_attack() -> bool:
-	return false
+	return e._sp == 0 and scream_cd > 0.0
+
+## Cios łapą: bez tego kontakt grałby klip krzyku (`EnemyMotion.KIND`).
+func attack_action() -> String:
+	return "claw"
 
 func scream_pitch() -> float:
 	return 0.75
@@ -33,7 +34,6 @@ func scream_pitch() -> float:
 ## Zapowiedź krzyku i leczenie w tiku aktywnego Kapłana; true = zapowiedź przejęła ruch (stoi w miejscu).
 func tick_phase(delta: float, _target: Node2D) -> bool:
 	scream_cd = maxf(0.0, scream_cd - delta)
-	retreat_t = maxf(0.0, retreat_t - delta)
 	if e._sp == 1:
 		e.velocity.x = move_toward(e.velocity.x, 0.0, 800.0 * delta)
 		tele_t -= delta
@@ -41,32 +41,27 @@ func tick_phase(delta: float, _target: Node2D) -> bool:
 			_scream()
 		return true
 	_tick_heal(delta)
-	if scream_cd <= 0.0 and e._stagger <= 0.0 and _player_in_trigger():
+	if e._windup > 0.0:
+		return false
+	if scream_cd <= 0.0 and _player_in_trigger():
 		e._sp = 1
 		e.winding = true
 		tele_t = float(cfg().get("tele", 0.7)) * Difficulty.m("enemy_windup")
 		tele_duration = tele_t
 	return false
 
-## Trzyma dystans: za blisko → cofa się (nie z krawędzi), w komfortowym pasie stoi, dalej zostawia pościg rdzeniowi.
-func chase_hold(_target: Node2D, d: Vector2, speed: float) -> bool:
-	var keep := cfg().get("keep", [110.0, 190.0]) as Array
-	var ax := absf(d.x)
-	if ax < float(keep[0]):
-		var away: float = -signf(d.x) if absf(d.x) > 1.0 else -e._facing
-		retreat_t = RETREAT_HOLD
-		e.velocity.x = away * speed * 0.8 if (not e.is_on_wall() and _floor_ahead(away)) else 0.0
-		return true
-	if ax <= float(keep[1]):
+## Idzie ku graczowi do `hold` px i tam stoi; nie cofa się. Dalej zostawia pościg rdzeniowi.
+func chase_hold(_target: Node2D, d: Vector2, _speed: float) -> bool:
+	if absf(d.x) <= float(cfg().get("hold", 190.0)):
 		e.velocity.x = 0.0
 		return true
 	return false
 
-## Stoi albo szykuje krzyk: patrzy na cel, ślad lub najbliższego gracza. W marszu i przy cofaniu patrzy tam, dokąd idzie, więc cios w plecy działa tylko, gdy ucieka.
+## Stoi albo szykuje krzyk: patrzy na cel, ślad lub najbliższego gracza. W marszu patrzy tam, dokąd idzie.
 func look_at_point() -> Vector2:
 	if not e.active:
 		return Vector2(INF, INF)
-	if e._sp != 1 and (retreat_t > 0.0 or (e._stagger <= 0.0 and absf(e.velocity.x) > float(e._def["speed"]) * 0.5)):
+	if not e.winding and absf(e.velocity.x) > float(e._def["speed"]) * 0.5:
 		return Vector2(INF, INF)
 	if e._target != null and is_instance_valid(e._target) and not e._target.dead:
 		return e._target.global_position
@@ -83,6 +78,8 @@ func view_extra(d: Dictionary) -> void:
 	if e._sp == 1:
 		d["windup_remaining"] = maxf(tele_t, 0.0)
 		d["windup_duration"] = tele_duration
+	if e.winding:
+		d["motion_action"] = "ritual" if e._sp == 1 else "claw"                      # `_sp` zna też klient, `_windup` nie
 	d["alert"] = bool(d["alert"]) or e._sp == 1                                      # w zapowiedzi oczy żarzą się
 	d["tele"] = float(cfg().get("radius", 96.0)) if (e._sp == 1 and e.winding) else 0.0   # promień (px) pierścienia zapowiedzi fali
 	d["beams"] = e._heal_pts if e._heal_fx_t > 0.0 else PackedVector2Array()         # punkty leczonych Trzosków (zielone wiązki)
@@ -108,11 +105,11 @@ func _player_in_trigger() -> bool:
 
 ## Koniec zapowiedzi: fala krzyku — hałas, ogłuszenie graczy w zasięgu, dźwięk i pierścień na wszystkich peerach.
 func _scream() -> void:
-	e.visual_attack()
+	e.visual_attack("ritual")
 	var c := cfg()
 	e._sp = 0
 	e.winding = false
-	scream_cd = float(e._def["cooldown"]) * Difficulty.m("enemy_cd")
+	scream_cd = float(c.get("scream_cd", 8.0)) * Difficulty.m("enemy_cd")
 	NoiseMgr.add_noise(float(c.get("noise", 8.0)), e.global_position, "enemy")
 	var origin: Vector2 = e.body_center()
 	var r := float(c.get("radius", 96.0))
@@ -154,9 +151,3 @@ func _line_clear(o: Node2D) -> bool:
 	var from: Vector2 = e.global_position + Vector2(0.0, -20.0)
 	var q := PhysicsRayQueryParameters2D.create(from, o.global_position + Vector2(0.0, -6.0), 1)
 	return e.get_world_2d().direct_space_state.intersect_ray(q).is_empty()
-
-## Czy za krokiem w kierunku `dir` jest podłoga (Kapłan cofając się nie spada z krawędzi).
-func _floor_ahead(dir: float) -> bool:
-	var top: Vector2 = e.global_position + Vector2(dir * 12.0, -4.0)
-	var q := PhysicsRayQueryParameters2D.create(top, top + Vector2(0.0, 28.0), 1 | (1 << (e.PLATFORM_BIT - 1)))
-	return not e.get_world_2d().direct_space_state.intersect_ray(q).is_empty()

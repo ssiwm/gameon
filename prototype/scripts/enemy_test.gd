@@ -68,7 +68,7 @@ func run(m: Node2D) -> void:
 	await _test_behaviors()
 	await _test_elite_foundation()
 	await _test_priest()
-	await _test_priest_facing()
+	await _test_priest_stance()
 	await _test_butcher()
 	await _test_elite_placement()
 	await _test_elite_log()
@@ -810,8 +810,8 @@ func _test_elite_foundation() -> void:
 func _test_priest() -> void:
 	var Defs := load("res://scripts/enemy_defs.gd")
 	var cfg: Dictionary = Defs.DEFS["kaplan"]
-	check("Kapłan/dane: 250 HP, elita, zachowanie priest, fala 6 m (96 px), stun 0,8 s, brak ciosu w zwarciu (damage 0)",
-		float(cfg["hp"]) == 250.0 and bool(cfg["elite"]) and cfg["behavior"] == "priest" and is_equal_approx(float(cfg["priest"]["radius"]), 96.0) and is_equal_approx(float(cfg["priest"]["stun"]), 0.8) and int(cfg["damage"]) == 0 and Defs.elite_kinds().has("kaplan"))
+	check("Kapłan/dane: 350 HP, elita, zachowanie priest, fala 6 m (96 px), stun 0,8 s, cios w zwarciu za 1",
+		float(cfg["hp"]) == 350.0 and bool(cfg["elite"]) and cfg["behavior"] == "priest" and is_equal_approx(float(cfg["priest"]["radius"]), 96.0) and is_equal_approx(float(cfg["priest"]["stun"]), 0.8) and int(cfg["damage"]) == 1 and Defs.elite_kinds().has("kaplan"))
 	var y := -15000.0
 	var strip := _floor(FAR_X + 29000.0, FAR_X + 29600.0, y)
 	var x0 := FAR_X + 29300.0
@@ -846,19 +846,26 @@ func _test_priest() -> void:
 	k._beh.scream_cd = 5.0
 	player.global_position = Vector2(x0 + 40.0, y)
 	check("Kapłan/przerwa: w czasie przerwy krzyku nie zaczyna zapowiedzi", not k._beh.tick_phase(0.016, player) and k._sp == 0)
-	check("Kapłan/zwarcie: nie bije (może_atakować = false, brak zapowiedzi ciosu przy graczu w zasięgu ręki)", not k._beh.may_attack() and (func():
+	player.global_position = Vector2(x0 + 10.0, y)
+	check("Kapłan/zwarcie: gdy krzyk jest w przerwie, bije łapą; zapowiedź gra klip `claw`", k._beh.may_attack() and (func():
 		k._cd = 0.0
 		k._try_begin_attack(player)
-		return k._windup == 0.0 and not k.winding).call())
-	# dystans: za blisko → cofa się, w pasie stoi, dalej zostawia pościg
-	k.velocity = Vector2.ZERO
+		return k._windup > 0.0 and k.winding and k.view_info().get("motion_action") == "claw" and k._beh.attack_action() == "claw").call())
+	k._windup = 0.0
+	k._windup_target = null
+	k.winding = false
+	k._beh.scream_cd = 0.0
+	check("Kapłan/zwarcie: gdy krzyk jest gotowy, nie bije", not k._beh.may_attack())
+	k._beh.scream_cd = 5.0
+	# dystans: nie cofa się, do `hold` stoi, dalej zostawia pościg
+	k.velocity = Vector2(5.0, 0.0)
 	var near_hold: bool = k._beh.chase_hold(player, Vector2(60.0, 0.0), 42.0)
-	var back_v: float = k.velocity.x
+	var near_v: float = k.velocity.x
 	k.velocity = Vector2(5.0, 0.0)
 	var mid_hold: bool = k._beh.chase_hold(player, Vector2(150.0, 0.0), 42.0)
 	var mid_v: float = k.velocity.x
 	var far_hold: bool = k._beh.chase_hold(player, Vector2(260.0, 0.0), 42.0)
-	check("Kapłan/dystans: gracz 60 px → cofa się (w lewo), 150 px → stoi, 260 px → pościg rdzenia", near_hold and back_v < 0.0 and mid_hold and mid_v == 0.0 and not far_hold, "%s %.0f / %s %.0f / %s" % [near_hold, back_v, mid_hold, mid_v, far_hold])
+	check("Kapłan/dystans: gracz 60 i 150 px → stoi, nie cofa się, 260 px → pościg rdzenia", near_hold and near_v == 0.0 and mid_hold and mid_v == 0.0 and not far_hold, "%s %.0f / %s %.0f / %s" % [near_hold, near_v, mid_hold, mid_v, far_hold])
 
 	# leczenie Trzosków: tylko ranni, tylko Trzoski (pack), tylko w zasięgu, nie ponad maks.
 	player.global_position = Vector2(x0 + 400.0, y)
@@ -918,8 +925,8 @@ func _test_priest() -> void:
 		n.queue_free()
 	await get_tree().physics_frame
 
-## Kapłan po wycofaniu i w zapowiedzi patrzy na gracza; tyłem jest tylko w trakcie cofania, a śpiący się nie obraca.
-func _test_priest_facing() -> void:
+## Kapłan stoi przodem do gracza, nie ucieka, a seria trafień nie zagłusza krzyku (ELITE_PLACEMENT_PLAN.md K2).
+func _test_priest_stance() -> void:
 	var y := -15000.0
 	var x0 := FAR_X + 29300.0
 	var strip := _floor(FAR_X + 28000.0, FAR_X + 30600.0, y)
@@ -935,33 +942,42 @@ func _test_priest_facing() -> void:
 	for i in 10:
 		player.velocity = Vector2.ZERO
 		await get_tree().physics_frame
-	check("Kapłan/kierunek: śpiący nie obraca się do gracza", k._facing == 1.0 and not k.active)
+	check("Kapłan/postawa: śpiący nie obraca się do gracza", k._facing == 1.0 and not k.active)
 	k.wake()
 	k._alert = 0.0
-	var px: float = x0
-	var backed := false
-	for i in 40:                                                           # gracz dociska z lewej: Kapłan cofa się w prawo
-		px = float(k.global_position.x) - 90.0
+	var walked := false
+	for i in 60:                                                           # gracz daleko z lewej: Kapłan idzie ku niemu i patrzy, dokąd idzie
+		player.global_position = Vector2(x0 - 300.0, y)
+		player.velocity = Vector2.ZERO
+		await get_tree().physics_frame
+		walked = walked or (k.velocity.x < -1.0 and k._facing < 0.0)
+	check("Kapłan/postawa: idzie ku graczowi przodem", walked, "vx=%.0f facing=%.0f" % [k.velocity.x, k._facing])
+	var start_x: float = k.global_position.x
+	var px: float = start_x - 90.0
+	for i in 120:                                                          # gracz 90 px obok: Kapłan zostaje na miejscu, przodem
 		player.global_position = Vector2(px, y)
 		player.velocity = Vector2.ZERO
 		await get_tree().physics_frame
-		backed = backed or (k.velocity.x > 1.0 and k._facing > 0.0)
-	check("Kapłan/kierunek: cofając się, patrzy tam, dokąd idzie", backed, "vx=%.0f facing=%.0f" % [k.velocity.x, k._facing])
-	for i in 150:                                                          # gracz stoi: Kapłan zatrzymuje się w pasie dystansu
+	check("Kapłan/postawa: gracz na 90 px — nie cofa się i patrzy na niego", absf(k.global_position.x - start_x) < 3.0 and k._facing < 0.0 and not k._is_behind(Vector2(1.0, 0.0)), "dx=%.1f facing=%.0f" % [k.global_position.x - start_x, k._facing])
+	check("Kapłan/postawa: widok bierze kierunek z serwera", k._beh.server_facing())
+	k.hp = 100000.0
+	k._max_hp = 100000.0
+	k._beh.scream_cd = 0.0
+	var began := false
+	for i in 30:                                                           # seria: co 6 fizycznych klatek ok. 0,1 s, jak M-83
 		player.global_position = Vector2(px, y)
 		player.velocity = Vector2.ZERO
+		if i % 6 == 0:
+			k.take_hit({"amount": 8.0, "dir": Vector2(1, 0), "shooter": 1, "w": Weapons.M83, "type": "bullet", "pos": k.global_position})
 		await get_tree().physics_frame
-	var d: float = k.global_position.x - px
-	check("Kapłan/kierunek: po zatrzymaniu patrzy na gracza i nie ma go za plecami", absf(k.velocity.x) < 1.0 and k._facing < 0.0 and not k._is_behind(Vector2(1.0, 0.0)), "d=%.0f vx=%.0f facing=%.0f" % [d, k.velocity.x, k._facing])
-	check("Kapłan/kierunek: widok bierze kierunek z serwera", k._beh.server_facing())
-	k._beh.tele_t = 5.0
-	k._sp = 1
-	k._beh.retreat_t = 1.0
-	k.velocity.x = 30.0
-	var look: Vector2 = k._beh.look_at_point()
-	check("Kapłan/kierunek: w zapowiedzi krzyku patrzy na gracza, nawet tuż po cofaniu", is_finite(look.x) and look.x < k.global_position.x, str(look))
+		began = began or k._sp == 1
+	check("Kapłan/postawa: seria trafień nie chwieje go i nie blokuje zapowiedzi krzyku", began and k._stagger <= 0.0, "sp=%d stagger=%.2f" % [k._sp, k._stagger])
+	k._sp = 0
+	k.winding = false
 	player.global_position = keep_pos
 	player.dead = keep_dead
+	player.stun_t = 0.0
+	player._stun_immune = 0.0
 	for n in [k, strip]:
 		n.queue_free()
 	await get_tree().physics_frame
@@ -1570,7 +1586,7 @@ const GOLDEN := {
 	"slepiec": {"xp": 6, "scrap": 5, "supply": 0.1, "ammo": 0.3, "health": 0.0, "voice": ["slepiec_attack", 2, -4.0, 1.0]},
 	"podsluchacz": {"xp": 4, "scrap": 4, "supply": 0.15, "ammo": 0.15, "health": 0.0, "voice": []},
 	"wolek": {"xp": 12, "scrap": 6, "supply": 0.35, "ammo": 0.6, "health": 0.75, "voice": ["wolek_attack", 2, -3.0, 1.0]},
-	"kaplan": {"xp": 25, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "voice": ["slepiec_attack", 2, -3.0, 0.8]},
+	"kaplan": {"xp": 40, "scrap": 15, "supply": 0.5, "ammo": 0.5, "health": 1.0, "voice": ["slepiec_attack", 2, -3.0, 0.8]},
 	"rzeznik": {"xp": 40, "scrap": 25, "supply": 0.6, "ammo": 0.7, "health": 1.0, "voice": ["rzeznik_roar", 2, -2.0, 1.0]},
 	"zerca": {"xp": 30, "scrap": 20, "supply": 0.3, "ammo": 0.3, "health": 0.5, "voice": ["trzosek_attack", 3, -4.0, 0.7]},
 }

@@ -1198,7 +1198,7 @@ func _try_begin_attack(target: Node2D) -> void:
 
 func _resolve_attack() -> void:
 	winding = false
-	visual_attack()
+	visual_attack(_beh.attack_action())
 	var pp := _windup_target
 	_windup_target = null
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
