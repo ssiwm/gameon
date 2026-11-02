@@ -64,6 +64,7 @@ const AURA_ACTOR := 0.55                    ## mnożnik energii aury gracza dla 
 const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
 const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość [m za płaszczyzną gry]
 const WADE_SHOT_BLEND_M := 3.0              ## m: na tym odcinku lotu smuga pocisku brodzącego strzelca wraca z wysokości lufy modelu na tor symulacji
+const FOG_SYM_DENS := 4.0                   ## gęstość bryły mgły (× bazowa, `_fog_dens`), od której kamera świata ma bryłę symetryczną (pogoda MGŁA: ok. 9×)
 const EYE_UP_M := 2.2                       ## wysokość oka kamery ponad środkiem kadru [m] (punkt zbiegu nad głowami postaci)
 const Z_BG := -60
 const Z_FG := 1
@@ -129,6 +130,10 @@ var _no_model := {}                      ## id węzłów z grup wrogów bez mode
 var _probe_q := PhysicsRayQueryParameters2D.new()   ## jedno zapytanie promienia dla podpór stóp wrogów (bez nowego obiektu na każdą stopę)
 var _estate := {}                        ## id węzła wroga 2D → stan do wykrywania zdarzeń (żyje, błysk trafienia, zapowiedź ataku)
 var _fog_dens := 1.0                     ## gęstość bryły mgły względem bazowej (`_sync_weather`): MGŁA podnosi ją do ok. 10×
+var fog_sym := 1                         ## bryła symetryczna kamery świata (`_sync_camera`): 0 — nigdy (dawny „shift”), 1 — w gęstej mgle, 2 — zawsze (pomiary)
+var _fog_sym_on := false                 ## tryb 1: bryła mgły gęstsza niż FOG_SYM_DENS (z histerezą)
+var _fog_rows := 0                       ## wierszy obrazu świata ponad kadrem gry (symetryczna bryła dla mgły wolumetrycznej)
+var _fog_top := 0                        ## pierwszy wiersz kadru gry w obrazie świata (wycinek sprite'a świata)
 var _lights := {}                        ## id światła gry (Lights.GameLight) → [światło, Light3D]
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
@@ -294,7 +299,8 @@ func screen_point(p: Vector3) -> Vector2:
 	if _cam_a == null or _cam_a.is_position_behind(p):
 		return Vector2(NAN, NAN)
 	var px := _cam_a.unproject_position(p)
-	return get_viewport().get_canvas_transform() * (_spr_bg.global_transform * (px - Vector2(_vp_bg.size) * 0.5))
+	var mid := _spr_bg.region_rect.get_center() if _spr_bg.region_enabled else Vector2(_vp_bg.size) * 0.5     # środek kadru gry w obrazie świata
+	return get_viewport().get_canvas_transform() * (_spr_bg.global_transform * (px - mid))
 
 ## Wrogowie, bossowie i gniazda z modelami: pary [węzeł 2D, Enemy3D albo null] (world_bars.gd).
 func bar_targets() -> Array:
@@ -638,25 +644,55 @@ func _sync_camera() -> void:
 	for ci in [_level, _players]:                              # etykiety i paski 2D nad postaciami nie pasują do widoku z oczu — gasną
 		if ci is CanvasItem and absf((ci as CanvasItem).modulate.a - (1.0 - hide_2d)) > 0.001:
 			(ci as CanvasItem).modulate.a = 1.0 - hide_2d
-	_cam_a.set_frustum(fsize, foff, near, 160.0)
-	_cam_b.set_frustum(fsize, foff, near, 160.0)
-	_cam_a.global_transform = xf
-	if _cam_a.environment != null:                          # mgła głębi zaczyna się tuż za płaszczyzną gry
-		_cam_a.environment.fog_depth_begin = dist + FOG_BEGIN_M
-		_cam_a.environment.fog_depth_end = dist + FOG_END_M
-		_cam_a.environment.volumetric_fog_length = dist + 14.0
-	_cam_b.global_transform = xf
 	# rozmiar viewportów (`_res_scale`; skalę renderu 3D w środku robi `scaling_3d_scale`, _apply_render_scale) i dopasowanie sprite'ów do
 	# kadru: środek na środku kamery, wysokość = wysokość kadru
 	var rs := _res_scale()
 	var sz := Vector2i(maxi(int(win.x * rs), 64), maxi(int(win.y * rs), 64))
-	if _vp_bg.size != sz:
-		_vp_bg.size = sz
+	# Mgła wolumetryczna Godota (fog.cpp, volumetric_fog_process.glsl) układa komórki z `Projection.get_viewport_half_extents`, czyli zakłada
+	# bryłę symetryczną. Przy „shifcie” o EYE_UP_M liczyła światło 2–4 m wyżej, niż je widać: snop latarki we mgle nie brał cienia ściany ani
+	# deski (cień leżał nad nimi), a poświaty lamp wisiały pod lampami. Przy włączonej mgle wolumetrycznej bryła jest więc symetryczna wokół
+	# oka, a obraz świata wyższy o pas nad kadrem (`_fog_rows`); sprite pokazuje tylko kadr gry — w kadrze ten sam obraz co z „shiftem”.
+	# Pas rośnie skokami po 32 wiersze (zmiana zoomu nie przebudowuje viewportu co klatkę); resztę (< 0,5 px) wyrównuje szczątkowe przesunięcie.
+	# Warstwa graczy nie ma mgły wolumetrycznej — zostaje przy „shifcie” i rozmiarze kadru (pas kosztowałby ją tyle samo co świat).
+	_cam_b.set_frustum(fsize, foff, near, 160.0)
+	if _vp_fg.size != sz:
 		_vp_fg.size = sz
+	# Koszt: pas to ok. 31% wierszy więcej (+1,6 ms GPU w 4K na HIGH, RTX 3080), więc domyślnie tylko w gęstej mgle (pogoda MGŁA), gdzie snopy
+	# są wyraźne; w pogodną noc i w deszczu zamglenie jest słabe, a błąd ledwo widoczny.
+	var env_a := _cam_a.environment
+	var need := float(sz.y) * -foff.y / (fsize * 0.5)        # wierszy nad kadrem dla bryły symetrycznej
+	if _fog_dens >= FOG_SYM_DENS:
+		_fog_sym_on = true
+	elif _fog_dens < FOG_SYM_DENS * 0.75:
+		_fog_sym_on = false
+	var sym := fog_sym == 2 or (fog_sym == 1 and _fog_sym_on)
+	if sym and env_a != null and env_a.volumetric_fog_enabled and need > 0.5 and fe <= 0.0 and re <= 0.0:
+		if float(_fog_rows) < need or float(_fog_rows) > need + 48.0:
+			_fog_rows = int(ceil(need / 32.0)) * 32
+		_fog_top = roundi((float(_fog_rows) + need) * 0.5)
+		var px_n := fsize / float(sz.y)                        # wiersz obrazu na płaszczyźnie bliskiej
+		var fsize_s := px_n * float(sz.y + _fog_rows)
+		foff = Vector2(foff.x, foff.y + fsize * 0.5 + float(_fog_top) * px_n - fsize_s * 0.5)
+		fsize = fsize_s
+	else:
+		_fog_rows = 0
+		_fog_top = 0
+	_cam_a.set_frustum(fsize, foff, near, 160.0)
+	_cam_a.global_transform = xf
+	if env_a != null:                                       # mgła głębi zaczyna się tuż za płaszczyzną gry
+		env_a.fog_depth_begin = dist + FOG_BEGIN_M
+		env_a.fog_depth_end = dist + FOG_END_M
+		env_a.volumetric_fog_length = dist + 14.0
+	_cam_b.global_transform = xf
+	var vsz := Vector2i(sz.x, sz.y + _fog_rows)
+	if _vp_bg.size != vsz:
+		_vp_bg.size = vsz
 	var k := h_px / float(sz.y)
 	for s in [_spr_bg, _spr_fg]:
 		(s as Sprite2D).global_position = ctr
 		(s as Sprite2D).scale = Vector2(k, k)
+	_spr_bg.region_enabled = _fog_rows > 0
+	_spr_bg.region_rect = Rect2(0.0, float(_fog_top), float(sz.x), float(sz.y))
 
 ## Jasność z ustawień (ekran kalibracji): ta sama ekspozycja dla świata i warstwy graczy, inaczej postacie odklejałyby się od tła.
 func _apply_brightness() -> void:
