@@ -403,15 +403,23 @@ func _process(delta: float) -> void:
 	_update_board()
 	_dot.queue_redraw()
 
-## Rozmiar renderu = piksele okna zajęte przez interfejs (640×360 × skala okna) × skala „Effects quality” (jak view3d._res_scale).
+## Rozmiar renderu = piksele okna zajęte przez interfejs (640×360 × skala okna) × skala „Effects quality” jak w widoku misji
+## (view3d._res_scale / _quality_3d_scale): LOW — viewport 50% rozciągany, MEDIUM — viewport okna i render 75% (tunel przez FSR 1,
+## model broni na przezroczystym tle dwuliniowo).
 func _fit_viewport() -> void:
 	var vp := get_viewport()
 	var px := vp.get_visible_rect().size * vp.get_final_transform().get_scale()
-	var rs := 0.5 if Settings.quality_idx == 0 else (0.75 if Settings.quality_idx == 1 else 1.0)
+	var rs := 0.5 if Settings.quality_idx == 0 else 1.0
+	var q := 0.75 if Settings.quality_idx == 1 else 1.0
 	var want := Vector2i(maxi(int(px.x * rs), 64), maxi(int(px.y * rs), 36))
 	if _vp.size != want:
 		_vp.size = want
 		_vp_vm.size = want
+	if not is_equal_approx(_vp.scaling_3d_scale, q):
+		_vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if q < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR
+		_vp.scaling_3d_scale = q
+		_vp_vm.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+		_vp_vm.scaling_3d_scale = q
 
 ## Model broni zgodny z trzymaną bronią (części i nacięcia gracza); przebudowa przy zmianie.
 func _sync_gun() -> void:

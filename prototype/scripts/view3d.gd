@@ -553,13 +553,15 @@ func _tick(delta: float) -> void:
 
 # ---------------------------------------------------------------- kamera i obraz
 
+## Rozmiar viewportów świata i graczy względem okna z „Effects quality”: LOW 50% (obraz rozciąga sprite), MEDIUM i HIGH 100%.
+## MEDIUM renderuje 75% przez `scaling_3d_scale` (`_quality_3d_scale`) — FSR 1 w świecie zamiast rozciągania: ostrzej i o 0,2 ms taniej
+## (z1_m2, 4K, RTX 3080). LOW zostaje przy rozciąganiu, bo FSR przy 50% kosztował +0,3 ms GPU (obróbka obrazu w pełnej rozdzielczości).
 func _res_scale() -> float:
-	match Settings.quality_idx:
-		0:
-			return 0.5
-		1:
-			return 0.75
-	return 1.0
+	return 0.5 if Settings.quality_idx == 0 else 1.0
+
+## Skala renderu 3D wewnątrz viewportu z „Effects quality” (MEDIUM 75%); mnoży się z „Render scale”.
+func _quality_3d_scale() -> float:
+	return 0.75 if Settings.quality_idx == 1 else 1.0
 
 func _sync_camera() -> void:
 	var c2 := get_viewport().get_camera_2d()
@@ -633,7 +635,8 @@ func _sync_camera() -> void:
 		_cam_a.environment.fog_depth_end = dist + FOG_END_M
 		_cam_a.environment.volumetric_fog_length = dist + 14.0
 	_cam_b.global_transform = xf
-	# rozmiar renderu (skala wg „Effects quality”) i dopasowanie sprite'ów do kadru: środek na środku kamery, wysokość = wysokość kadru
+	# rozmiar viewportów (`_res_scale`; skalę renderu 3D w środku robi `scaling_3d_scale`, _apply_render_scale) i dopasowanie sprite'ów do
+	# kadru: środek na środku kamery, wysokość = wysokość kadru
 	var rs := _res_scale()
 	var sz := Vector2i(maxi(int(win.x * rs), 64), maxi(int(win.y * rs), 64))
 	if _vp_bg.size != sz:
@@ -2545,9 +2548,14 @@ func _warm_loadouts() -> void:
 func _apply_render_scale() -> void:
 	if _vp_bg == null:
 		return
-	var sc := Settings.render_scale()
+	# świat: „Render scale” × skala z „Effects quality” (MEDIUM 75%) przez FSR 1. Dawniej MEDIUM zmniejszało sam viewport, a obraz rozciągał
+	# sprite dwuliniowo (rozmyty, bez wyostrzenia). Warstwa graczy (przezroczyste tło) skaluje się dwuliniowo jak dotąd
+	var q := _quality_3d_scale()
+	var sc := Settings.render_scale() * q
 	_vp_bg.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if sc < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR
 	_vp_bg.scaling_3d_scale = sc
+	_vp_fg.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	_vp_fg.scaling_3d_scale = q
 
 ## Model broni do gabloty (pistolet na półce, ślad pustego haka): naturalna długość z gun_proc.py, środek bryły w (0, 0, 0).
 func _cab_gun(key: String) -> Node3D:

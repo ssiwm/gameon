@@ -39,7 +39,7 @@ const FP_SENS_DEFAULT := 3
 const QUALITY_NAMES := ["LOW", "MEDIUM", "HIGH"]
 ## Skala renderu świata 3D (tylko viewport świata; postacie i interfejs jej nie podlegają). Poniżej 100% skaluje AMD FSR 1 —
 ## w 4K 75% to ok. −3 ms GPU (--perfreport 2026-10-23, RTX 3080); dla słabszych kart największa dźwignia wydajności. Mnoży się ze skalą
-## z „Effects quality” (View3D._res_scale: LOW 50%, MEDIUM 75% rozdzielczości okna dla świata i postaci).
+## z „Effects quality” (View3D._res_scale / _quality_3d_scale: LOW — viewport 50% okna rozciągany, MEDIUM — render 75% przez FSR 1).
 const RENDER_SCALE_LIST := [1.0, 0.85, 0.75, 0.67, 0.5]
 const VFX_MULT := [0.4, 0.7, 1.0]                                  ## ile cząsteczek i szczątków (Vfx.burst / gibs)
 const POST_MULT := [0.0, 0.6, 1.0]                                 ## siła aberracji (horror_fx.gd)
