@@ -260,8 +260,8 @@ jako dzielnik ciosu.
 
 ### D1 — rekwizyty, które pękają (najmniejsze ryzyko, od razu widać)
 
-- **Skrzynia `k`** pęka po N trafieniach / wybuchu / szarży (dziś tylko lata): drzazgi, hałas; opcjonalnie wypada drobny łup (złom 1–2,
-  rzadko bateria) — zgodnie z progresją z `PROGRESSION_PLAN.md`, do strojenia.
+- **Skrzynia `k`** pęka po N trafieniach / wybuchu / szarży (dziś tylko lata): drzazgi, hałas; wypada drobny łup (złom 1–2,
+  rzadko bateria; decyzja 3) — zgodnie z progresją z `PROGRESSION_PLAN.md`, do strojenia.
 - **Beczka `o`**: zostaje wrak z osmaleniem zamiast znikania.
 - **Lampy na misjach do zestrzelenia** (nowy znacznik): gaśnie światło, sypie szkło, krótki dźwięk. W grze o ciemności to realna
   decyzja: ciemniej = trudniej widzieć, ale też trudniej być widzianym (Stalker, Ćmy lecą do światła). Dziś lampy `l` są tylko w kryjówce.
@@ -302,7 +302,7 @@ Nowe znaczniki map (litery do wybrania z wolnych):
   zaprojektowany** fragment: kładka spada albo strop sypie się i zamyka przejście (zgniata wrogów pod spodem, hałas jak wybuch).
 - Technicznie: fragment, który się zawala, to od początku osobny węzeł (jak `breakable`), a nie kafle mapy — inaczej wraca problem 2ⁿ stanów
   geometrii 3D. Kafle mapy pod nim tylko rezerwują komórki dla nawigacji, jak `_wall_cells`.
-- Uogólnienie zawału 1.1 na ten mechanizm (opcjonalnie, jeśli zysk wart ryzyka — zawał 1.1 działa i jest pod `--finaletest`).
+- Zawał 1.1 zostaje na obecnym mechanizmie (decyzja 5: działa i jest pod `--finaletest`); przeniesienie dopiero, gdy podpory się sprawdzą.
 - Dyrektor (`director.gd`) traktuje zawalone przejście jak zamkniętą drogę przy wypuszczaniu grup.
 
 ### D4 — kosmetyka walki (bez wpływu na rozgrywkę)
@@ -425,17 +425,20 @@ przy rozbiciu ściany na 1.2.
   [BitMap](https://docs.godotengine.org/en/4.7/classes/class_bitmap.html), [ConcavePolygonShape2D](https://docs.godotengine.org/en/4.7/classes/class_concavepolygonshape2d.html),
   [GPUParticlesCollisionHeightField3D](https://docs.godotengine.org/en/4.7/classes/class_gpuparticlescollisionheightfield3d.html)
 
-## Decyzje do podjęcia
+## Decyzje
 
-1. **Zakres:** tylko oznaczone elementy (rekomendacja) czy także szerzej (np. każda kładka z desek `-` łamliwa)?
-2. **Kolejność:** zacząć od D0 + D1 (szybki efekt) czy od D0 + D2 (rdzeń mechaniki)?
-3. **Łup ze skrzyń:** tak / nie (wpływ na ekonomię złomu).
-4. **Lampy na misjach:** dodać jako nowy element map (D1) czy zostawić ciemność bez źródeł do gaszenia?
-5. **Zawał 1.1:** przenieść na nowy mechanizm (D3) czy zostawić jak jest?
-6. **Barykadowanie (D2b):** wchodzi do planu? Koszt w złomie czy tylko deski z rozbitych skrzyń?
-7. **Spike'i S1 i S2 przed D0:** zgoda na 2–4 dni sprawdzenia ryzyk, zanim powstanie kod produkcyjny?
+Wszystkie decyzje z v4 rozstrzygnięte 2026-11-02 (po spike'ach S1 i S2):
 
-Rozstrzygnięte 2026-11-02:
+1. **Zakres:** zniszczalne są **tylko oznaczone elementy** (osobne znaczniki map); zwykłe kafle, w tym kładki `-`, zostają niezniszczalne.
+2. **Kolejność:** **D0 + D1** (rekwizyty: skrzynie, beczki, lampy, szkło), potem D2. Skrzynie stoją przodem do kamery, więc maska dziur
+   jest na nich widoczna wprost (S1).
+3. **Łup ze skrzyń:** **tak, drobny** — złom 1–2, rzadko bateria; liczby do strojenia zgodnie z `PROGRESSION_PLAN.md`.
+4. **Lampy na misjach:** **tak**, nowy znacznik do zestrzelenia (D1).
+5. **Zawał 1.1:** **zostaje jak jest**; D3 robi nowe podpory obok, przeniesienie zawału 1.1 dopiero, gdy mechanizm się sprawdzi.
+6. **Barykadowanie (D2b):** **wchodzi**, po D2; koszt: deski z rozbitych skrzyń, a gdy ich brak — złom.
+7. **Spike'i S1 i S2:** zrobione (wyniki wyżej); poprawka mgły, od której zależy poświata przez dziury, scalona w #578 (1.7.478).
+
+Wcześniej rozstrzygnięte 2026-11-02:
 
 - Strefy wydobycia (D5): znajdźki **z limitem** (pula na strefę, odnowienie po 3 udanych misjach — liczby do strojenia); strefy
   **zapowiadają kopalnię FPP**.
