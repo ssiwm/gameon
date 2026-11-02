@@ -3459,6 +3459,27 @@ func _t_melee() -> void:
 	check("MACZETA: cios w plecy czujnego = zabójstwo", dealt(g) >= 100000.0 - 0.5 or not g.alive)
 	free_dummies()
 	await frames(2)
+	# W6b: tępe ostrze liczy obrażenia lokalnie. Do 1.7.470 serwer mnożył wspólną definicję z rejestru (Weapons.def_build), więc każdy
+	# kolejny cios był słabszy, a naostrzenie nie wracało do 30.
+	var rel0: int = Settings.reliability_idx
+	Settings.reliability_idx = 1
+	var h := await dummy(14.0, 100000.0, "trzosek")
+	h.active = true
+	h._facing = -1.0
+	var origin: Vector2 = player.global_position + Vector2(0, -9)
+	var per_hit: Array = []
+	for i in 4:
+		var hp0: float = h.hp
+		wc._server_melee(origin, Vector2.RIGHT, Weapons.MACZETA, player.player_id, 50.0 if i < 3 else 100.0)
+		per_hit.append(snappedf(hp0 - h.hp, 0.01))
+		await wait(0.3)
+	Settings.reliability_idx = rel0
+	var dull := 30.0 * Profile.edge_mult(50.0)
+	check("MACZETA: ostrze 50%% — trzy ciosy po %.1f, naostrzona znów 30, definicja w rejestrze 30 (%s, def %.2f)" % [dull, str(per_hit), Weapons.def(Weapons.MACZETA).damage],
+		absf(float(per_hit[0]) - dull) < 0.1 and absf(float(per_hit[2]) - dull) < 0.1 and absf(float(per_hit[3]) - 30.0) < 0.1
+		and Weapons.def(Weapons.MACZETA).damage == 30.0)
+	free_dummies()
+	await frames(2)
 
 func _t_ammo_reload() -> void:
 	Arsenal.reset_mission()
@@ -3894,6 +3915,8 @@ func run_net_host(m: Node2D) -> void:
 	check("sieć: broń mocy klienta — przyjęte dokładnie 2 strzały z przydziału, sfałszowane odrzucone (%d)" % (int(cp.weapons.srv_shots) - shots0),
 		int(cp.weapons.srv_shots) - shots0 == 2)
 	check("sieć: koniec broni mocy u klienta zeruje licznik serwera", cp.weapons._srv_power_w == -1 and cp.weapons._srv_power_left == 0)
+	# walidacja żądań klienta (przegląd 2026-11-02): cios bronią spoza zestawu, seria ciosów i strzały z NaN / INF / zerowym kierunkiem
+	await _net_invalid_requests(cp, cid, e)
 	# Rzeczywisty zdalny człowiek, przy każdym właściwym stanowisku; lokalny host stoi poza ławą.
 	main._set_map("z1_hub")
 	await frames(3)
@@ -4007,6 +4030,79 @@ func _net_power_phase() -> void:
 @rpc("any_peer", "call_remote", "reliable")
 func _net_power_report() -> void:
 	_net_power_done = true
+
+var _net_invalid_stage := 0
+
+## Host: manekin tuż przed klientem; klient (_net_invalid_phase) najpierw wysyła 10 ciosów kilofem, którego nie ma w zestawie, potem serię
+## 6 ciosów maczetą i 4 strzały M-83 z NaN / INF / zerowym kierunkiem, na koniec jeden prawidłowy strzał (kontrola, że RPC dochodzi).
+func _net_invalid_requests(cp: CharacterBody2D, cid: int, e: Node) -> void:
+	e.global_position = cp.global_position + Vector2(14.0, 0.0)
+	e.set("_last_x", e.global_position.x)
+	e.active = true
+	e._facing = -1.0                       # twarzą do klienta — bez ciosu w plecy
+	var hp0: float = e.hp
+	var shots0 := int(cp.weapons.srv_shots)
+	_net_invalid_stage = 0
+	_net_invalid_phase.rpc_id(cid)
+	var w8 := 0.0
+	while _net_invalid_stage < 1 and w8 < 6.0:
+		await wait(0.1)
+		w8 += 0.1
+	await wait(0.3)
+	var pick_dmg: float = hp0 - e.hp
+	var hp1: float = e.hp
+	while _net_invalid_stage < 2 and w8 < 12.0:
+		await wait(0.1)
+		w8 += 0.1
+	await wait(0.3)
+	var mach_dmg: float = hp1 - e.hp
+	var bad_proj := 0
+	for b in get_tree().current_scene.get_children():
+		if b is Projectile and not (b as Node2D).global_position.is_finite():
+			bad_proj += 1
+	var shots_bad := int(cp.weapons.srv_shots) - shots0
+	while _net_invalid_stage < 3 and w8 < 16.0:
+		await wait(0.1)
+		w8 += 0.1
+	await wait(0.3)
+	var shots_ok := int(cp.weapons.srv_shots) - shots0
+	var mach := Weapons.def(Weapons.MACZETA).damage
+	check("sieć: 10 ciosów kilofem spoza zestawu klienta odrzucone (obrażenia %.1f)" % pick_dmg, _net_invalid_stage >= 1 and pick_dmg == 0.0)
+	check("sieć: seria 6 ciosów maczetą — serwer przyjmuje 1–2 (obrażenia %.1f, cios %.0f)" % [mach_dmg, mach],
+		mach_dmg >= mach * 0.69 and mach_dmg <= mach * 2.0 + 0.5)
+	check("sieć: strzały z wylotem NaN, kierunkiem NaN / zerowym i rozrzutem INF odrzucone (przyjęte %d, pociski z NaN %d), prawidłowy po nich przyjęty (%d)" % [shots_bad, bad_proj, shots_ok],
+		shots_bad == 0 and bad_proj == 0 and shots_ok == 1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _net_invalid_report(stage: int) -> void:
+	_net_invalid_stage = stage
+
+@rpc("authority", "call_remote", "reliable")
+func _net_invalid_phase() -> void:
+	wc._cancel_actions()
+	wc.melee_id = Weapons.MACZETA          # w zestawie maczeta (faza ruchu zostawiła kilof); kit dociera do serwera synchronizacją gracza
+	wc._sync_player()
+	await wait(1.0)
+	var origin: Vector2 = player.global_position + Vector2(0, -9)
+	for i in 10:
+		wc._melee_request.rpc_id(1, origin, Vector2.RIGHT, Weapons.KILOF, 100.0)
+	await wait(0.6)
+	_net_invalid_report.rpc_id(1, 1)
+	await wait(0.6)
+	for i in 6:
+		wc._melee_request.rpc_id(1, origin, Vector2.RIGHT, Weapons.MACZETA, 100.0)
+	var d := Weapons.def(Weapons.M83)
+	var muzzle: Vector2 = wc.muzzle_pos(Vector2.RIGHT, d)
+	wc._fire_request.rpc_id(1, Vector2(NAN, NAN), Vector2.RIGHT, Weapons.M83, randi(), 0.0, 0)
+	wc._fire_request.rpc_id(1, muzzle, Vector2(NAN, 0.0), Weapons.M83, randi(), 0.0, 0)
+	wc._fire_request.rpc_id(1, muzzle, Vector2.ZERO, Weapons.M83, randi(), 0.0, 0)
+	wc._fire_request.rpc_id(1, muzzle, Vector2.RIGHT, Weapons.M83, randi(), INF, 0)
+	await wait(0.6)
+	_net_invalid_report.rpc_id(1, 2)
+	await wait(1.2)                        # limiter strzałów ma pełny zapas — prawidłowy strzał musi przejść
+	wc._fire_request.rpc_id(1, wc.muzzle_pos(Vector2.RIGHT, d), Vector2.RIGHT, Weapons.M83, randi(), 0.0, 0)
+	await wait(0.6)
+	_net_invalid_report.rpc_id(1, 3)
 
 ## Prawdziwy klient publikuje zamach i przeładowanie; host obserwuje normalną replikację.
 @rpc("authority", "call_remote", "reliable")

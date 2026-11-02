@@ -1,7 +1,7 @@
 extends SceneTree
 ## Test magazynu postaci (scripts/characters.gd, PROFILES_PLAN.md E1) na osobnych katalogach w user:// — zapis gracza zostaje nietknięty:
 ## migracja starego zapisu (pliki, klucze gracza z settings.cfg, kopie), brak drugiej migracji, nowa postać i wybór aktywnej, kryptonimy,
-## świeża instalacja, limit postaci, czas gry.
+## świeża instalacja, limit postaci, czas gry, reset i usuwanie z Cofnij, nieudana kopia i przywracanie (nic nie znika).
 ##   godot --headless --path prototype -s tools/test_characters.gd     → ostatni wiersz: PASS / FAIL
 
 const Store := preload("res://scripts/characters.gd")
@@ -132,6 +132,7 @@ func _init() -> void:
 	fresh.free()
 
 	_reset_checks()
+	_backup_failure_checks()
 
 	_rm_tree(BASE)
 	print("[CHARS-TEST] %s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
@@ -207,4 +208,40 @@ func _reset_checks() -> void:
 	var d := DirAccess.open(c.root + Store.TRASH)
 	var kept: int = d.get_directories().size() if d != null else -1
 	_check("kopie: najwyżej %d w koszu (jest %d)" % [Store.TRASH_KEEP, kept], kept == Store.TRASH_KEEP)
+	c.free()
+
+
+## 9. Kopia albo przywracanie się nie zapisały (pełny dysk, blokada): nic nie znika, Cofnij zostaje. Plik w miejscu folderu
+## `_trash` / `_restore_<id>` wymusza błąd tworzenia katalogu (do 1.7.470 reset kasował kampanię mimo nieudanej kopii).
+func _write_blocker(path: String) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("blocker")
+	f.close()
+
+
+func _backup_failure_checks() -> void:
+	var c := _store(BASE + "fail/")
+	c.ensure_ready(BASE + "empty/", BASE + "fail_backup/")
+	var a: String = c.active_id
+	c.rename(a, "Kruk")
+	_seed(c, a, 1200, 123, 3)
+	var trash: String = c.root + Store.TRASH.trim_suffix("/")
+	_write_blocker(trash)
+	_check("kosz nie do zapisu: nowa kampania odmówiona, złom %d i progress.cfg zostały, bez Cofnij" % int(c.summary(a)["bank"]),
+		not c.reset_campaign(a) and FileAccess.file_exists(c.dir_of(a) + "progress.cfg") and int(c.summary(a)["bank"]) == 123 and not c.can_undo())
+	_check("kosz nie do zapisu: reset postaci odmówiony, XP %d zostało" % int(c.summary(a)["xp"]), not c.reset_character(a) and int(c.summary(a)["xp"]) == 1200)
+	c.delete(a)
+	_check("kosz nie do zapisu: usunięcie odmówione, postać i folder zostały", c.has(a) and DirAccess.dir_exists_absolute(c.dir_of(a)) and c.count() == 1)
+	DirAccess.remove_absolute(trash)
+
+	# udana kopia, ale przywracanie nie ma gdzie złożyć folderu: bieżący stan bez zmian, Cofnij dalej dostępne
+	_check("kosz znów działa: nowa kampania wykonana", c.reset_campaign(a) and int(c.summary(a)["bank"]) == 0 and c.can_undo())
+	var staged: String = c.root + Store.RESTORE_PREFIX + a
+	_write_blocker(staged)
+	_check("przywracanie nie do zapisu: odmówione, folder postaci nietknięty (złom %d), Cofnij zostało" % int(c.summary(a)["bank"]),
+		not c.undo() and DirAccess.dir_exists_absolute(c.dir_of(a)) and int(c.summary(a)["bank"]) == 0 and c.can_undo())
+	DirAccess.remove_absolute(staged)
+	var restored: bool = c.undo()
+	_check("przywracanie po usunięciu blokady: złom %d wrócił, bez folderów tymczasowych" % int(c.summary(a)["bank"]),
+		restored and int(c.summary(a)["bank"]) == 123 and not DirAccess.dir_exists_absolute(staged) and not DirAccess.dir_exists_absolute(staged + "_old"))
 	c.free()

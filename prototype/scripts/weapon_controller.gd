@@ -32,6 +32,7 @@ const MELEE_HIT_AT := 0.45        ## ułamek czasu ciosu, w którym liczymy traf
 const GRANT_TIMEOUT := 1.5        ## s oczekiwania na naboje z serwera, potem przerwanie
 const MUZZLE_TOLERANCE := 40.0    ## px — dalszy wylot niż to serwer koryguje do pozycji gracza
 const RATE_CAP := 2.5             ## „zapas” strzałów po lagu sieci (token bucket)
+const MELEE_RATE_CAP := 2.0       ## to samo dla ciosów (_melee_request): seria sfałszowanych RPC daje najwyżej 2 ciosy
 const FX_REPORT_EVERY := 0.2      ## efekt trafienia promieniem/płomieniem nie częściej niż co tyle
 const NOISE_RELOAD := 0.25
 const NOISE_DRY := 0.12
@@ -192,6 +193,8 @@ var _cycle_dir := Vector2.RIGHT
 var _burst_left := 0              ## ile strzałów trwającej serii jeszcze zostało (seria dobiega bez trzymania spustu)
 var _srv_tokens := 1.5
 var _srv_last_ms := 0
+var _srv_melee_tokens := 1.5
+var _srv_melee_last_ms := 0
 var _srv_tick := 0.0
 var _srv_fx_t := 0.0
 var _srv_patch_t := 0.0              ## HKM-9: ile płomienia upłynęło od ostatniego ognia na podłodze
@@ -1194,12 +1197,19 @@ func _spawn_projectiles(d: WeaponDef, muzzle: Vector2, dir: Vector2, seed: int, 
 		p.launch(d.id, muzzle, dd, shooter, auth, lag, d.build)
 		scene.add_child(p)
 
-## Serwer: waliduje (tempo, wylot) i wykonuje strzał; resztę peerów informuje o kosmetyce.
+## Kierunek z RPC klienta: skończony i niezerowy (dopiero wtedy `normalized()` daje wektor jednostkowy).
+static func net_dir_ok(v: Vector2) -> bool:
+	return v.is_finite() and v.length_squared() > 1e-6
+
+## Serwer: waliduje (liczby, tempo, wylot) i wykonuje strzał; resztę peerów informuje o kosmetyce.
 @rpc("any_peer", "call_remote", "reliable")
 func _fire_request(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float, build: int) -> void:
 	if not NoiseMgr.is_server() or player == null or player.dead:
 		return
 	if multiplayer.get_remote_sender_id() != player.player_id or not Weapons.is_valid(w):
+		return
+	# NaN / INF nie przechodzi porównania z MUZZLE_TOLERANCE (do 1.7.470 pocisk z wylotem NaN trafiał do symulacji i do innych peerów)
+	if not muzzle.is_finite() or not net_dir_ok(dir) or not is_finite(extra):
 		return
 	# części tylko odblokowane przez drużynę (reszta = fabryczne), nieznany typ naboju = zwykły (Weapons.def_build)
 	var fit := Parts.sanitize(String(Weapons.def(w).key), Weapons.fit_of_build(build), Scrap.parts)
@@ -1610,6 +1620,15 @@ func _melee_request(origin: Vector2, dir: Vector2, w: int, e: float = 100.0) -> 
 		return
 	if multiplayer.get_remote_sender_id() != player.player_id or not Weapons.is_valid(w) or not Weapons.def(w).is_melee():
 		return
+	# jak w _fire_request: liczby skończone, broń z zestawu i tempo z definicji (do 1.7.470 serwer przyjmował serię ciosów każdą bronią białą)
+	if not origin.is_finite() or not net_dir_ok(dir) or not is_finite(e) or not _kit_has(w):
+		return
+	var now := Time.get_ticks_msec()
+	_srv_melee_tokens = minf(MELEE_RATE_CAP, _srv_melee_tokens + float(now - _srv_melee_last_ms) / (maxf(Weapons.def(w).cooldown, 0.2) * 1000.0))
+	_srv_melee_last_ms = now
+	if _srv_melee_tokens < 1.0:
+		return
+	_srv_melee_tokens -= 1.0
 	var expect := player.global_position + Vector2(0, -9)
 	if origin.distance_to(expect) > MUZZLE_TOLERANCE:
 		origin = expect
@@ -1617,14 +1636,16 @@ func _melee_request(origin: Vector2, dir: Vector2, w: int, e: float = 100.0) -> 
 
 func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int, e: float = 100.0) -> void:
 	var d := server_def(w)                                      # części gracza, ale tylko odblokowane przez drużynę
-	d.damage *= Profile.edge_mult(e) if Settings.reliability_mult() > 0.0 else 1.0     # tępe ostrze rani słabiej (W6b; niezawodność OFF — bez)
+	# tępe ostrze rani słabiej (W6b; niezawodność OFF — bez). Definicja z rejestru jest wspólna (Weapons.def_build), więc tylko kopia lokalna:
+	# do 1.7.470 `d.damage *=` mnożyło ją trwale i każdy kolejny cios (też bota i drugiego gracza) był słabszy
+	var dmg := d.damage * (Profile.edge_mult(e) if Settings.reliability_mult() > 0.0 else 1.0)
 	var space := player.get_world_2d().direct_space_state
 	var hit_any := false
 	for t in Combat.in_cone(get_tree(), space, origin, dir, d.reach, d.arc_deg):
 		var c := Combat.center_of(t)
-		var info := Combat.make_info(w, d.damage, c, dir, shooter, "melee", d.build)
+		var info := Combat.make_info(w, dmg, c, dir, shooter, "melee", d.build)
 		info["backstab"] = d.key == "maczeta"
-		info["heavy"] = d.damage >= 50.0
+		info["heavy"] = dmg >= 50.0
 		var res := Combat.apply(t, info)
 		Combat.report(info, res)
 		hit_any = hit_any or bool(res["hit"])
@@ -1632,7 +1653,7 @@ func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int, e: float
 		var q := PhysicsRayQueryParameters2D.create(origin, origin + dir * d.reach, Combat.LAYER_WORLD)
 		var wall := space.intersect_ray(q)
 		if not wall.is_empty():
-			Arsenal.broadcast_hit(wall["position"], -dir, Arsenal.Mat.METAL, false, d.damage >= 50.0)
+			Arsenal.broadcast_hit(wall["position"], -dir, Arsenal.Mat.METAL, false, dmg >= 50.0)
 
 # ---------------------------------------------------------------- podnoszenie i zamiana broni
 
