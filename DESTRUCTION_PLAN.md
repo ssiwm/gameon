@@ -57,7 +57,7 @@ i nowe węzły cząsteczek przy każdym trafieniu. Wybór poniżej — najlepsza
 
 | Obszar | Wybór | Dlaczego nie inaczej |
 |---|---|---|
-| Stopnie uszkodzeń | **Jedna siatka na materiał + shader z maską uszkodzeń.** Maska to mała tekstura na obiekt (`ImageTexture` 64 × 64, kanał R), do której serwerowe zdarzenie trafienia „wypala” miękką plamę (`Image.blend_rect` / zapis pikseli + `ImageTexture.update`): z progu wycina dziurę `alpha scissor`, poniżej progu dokłada pęknięcia w normalnych i ciemniejsze drewno. Liczba trafień bez limitu, dziury tam, gdzie naprawdę padła kula. `alpha scissor` działa też w przebiegu cieni, a reflektor latarki rzuca cienie (`view3d.gd`, limit `SHADOW_LIGHTS`), więc **snop przebija przez dziury** i w mgle wolumetrycznej widać smugi (do sprawdzenia w spike'u S1 — mgła ma dziś 128 × 128 × 54, cienkie smugi mogą się nie rozdzielić). | 3 modele na stan: 3× więcej zasobów, skok wyglądu. **`instance uniform` odpada** — dokumentacja 4.7: per-instancja tylko typy skalarne i wektorowe, bez tablic i tekstur (max 16). Zwykła tablica `uniform vec4 hits[16]` działa, ale wymaga osobnego materiału na obiekt i ogranicza liczbę trafień — tekstura maski jest równie tania i bez limitu. Materiał na obiekt rozbija grupowanie wywołań rysowania, ale przy kilkudziesięciu obiektach na mapie to pomijalne. Shader trzeba **rozgrzać pod planszą wczytywania** (jak `spawn_burst` przy budowie mapy), inaczej pierwsze trafienie zatnie klatkę. |
+| Stopnie uszkodzeń | **Jedna siatka na materiał + shader z maską uszkodzeń.** Maska to mała tekstura na obiekt (`ImageTexture` 64 × 64, kanał R), do której serwerowe zdarzenie trafienia „wypala” miękką plamę (`Image.blend_rect` / zapis pikseli + `ImageTexture.update`): z progu wycina dziurę `alpha scissor`, poniżej progu dokłada pęknięcia w normalnych i ciemniejsze drewno. Liczba trafień bez limitu, dziury tam, gdzie naprawdę padła kula. `alpha scissor` działa też w przebiegu cieni, a reflektor latarki rzuca cienie (`view3d.gd`, limit `SHADOW_LIGHTS`), więc **snop przebija przez dziury** i rzuca plamy światła na grunt za obiektem (S1: widać już 6 dziur po kulach). Po zapisie do maski obiekt trzeba **oznaczyć jako zmieniony**, inaczej Godot nie przerysuje cienia nieruchomego światła (S1). Zapis stemplem (`Image.blend_rect`), jedno `update` na obiekt na klatkę. **Smug we mgle nie będzie** — poświata snopu w mgle dziś w ogóle nie bierze cienia przeszkód (S1, osobny błąd). Maska widać wprost tylko na obiektach równoległych do ekranu; poprzeczne (barykady, drzwi) kamera widzi z boku — tam uszkodzenie pokazują światło za nimi, odłamki i rozpad na bryły. | 3 modele na stan: 3× więcej zasobów, skok wyglądu. **`instance uniform` odpada** — dokumentacja 4.7: per-instancja tylko typy skalarne i wektorowe, bez tablic i tekstur (max 16). Zwykła tablica `uniform vec4 hits[16]` działa, ale wymaga osobnego materiału na obiekt i ogranicza liczbę trafień — tekstura maski jest równie tania i bez limitu. Materiał na obiekt rozbija grupowanie wywołań rysowania, ale przy kilkudziesięciu obiektach na mapie to pomijalne. Shader trzeba **rozgrzać pod planszą wczytywania** (jak `spawn_burst` przy budowie mapy), inaczej pierwsze trafienie zatnie klatkę. |
 | Rozpad | **Pre-fraktura** w Blenderze headless: własny skrypt Voronoi (bmesh, cięcie płaszczyznami), 6–14 brył na obiekt, wnętrze z osobnym materiałem przekroju (drzazgi, cegła w środku). | Fraktura w locie (koszt CPU, brzydkie przekroje); dodatek Cell Fracture — zależność od rozszerzenia Blendera |
 | Odłamki | **Istniejące `Vfx.debris`** (RigidBody2D na kolizji kafli + bryła 3D z `mirror_debris`) — odbijają się i zatrzymują na prawdziwej mapie, bez sieci. Nowe: kształt bryły z pre-fraktury zamiast kulki, a **uśpiony odłamek przechodzi do `MultiMeshInstance3D`** (ciało 2D usuwane) — setki leżących kawałków w jednym wywołaniu rysowania. Ziarno losowania w RPC, więc u wszystkich wyglądają tak samo. | Analityczne łuki (pierwsza wersja planu): brak odbić i turlania; fizyka 3D: łamie zasadę symulacji 2D i wymaga kolizji 3D świata, której nie ma |
 | Cząsteczki | **Pula** emiterów (`spawn_burst` dziś tworzy nowy `CPUParticles3D` przy każdym trafieniu); pył opadający — `GPUParticles3D` z kolizją **`GPUParticlesCollisionBox3D` postawionym na podłodze z mapy** pod miejscem wybuchu (wysokość podłogi znamy z kafli); chmury pyłu — istniejąca mgła wolumetryczna (`FogVolume`) na kilka sekund. | Nowy węzeł na każde trafienie: alokacje i zacięcia. **`GPUParticlesCollisionHeightField3D` odpada** — dokumentacja 4.7: mapa wysokości nie zna nawisów („indoors or caves”), więc w podziemiach złapałaby strop zamiast podłogi; do tego kolizja działa tylko z `GPUParticles3D`, nie z `CPUParticles3D`. |
@@ -122,13 +122,54 @@ Satysfakcja z niszczenia to w połowie dźwięk i odpowiedź pod ręką, a v3 pr
 
 Dwie rzeczy są ryzykowne i tanio je sprawdzić, zanim powstanie kod produkcyjny:
 
-- **S1 — dziury i snop latarki** (1–2 dni): jedna deska z shaderem maski, kilka trafień, latarka za deską, zrzuty w nocy i w mgle
+- **S1 — dziury i snop latarki** (zrobiony 2026-11-02, wynik niżej): jedna deska z shaderem maski, kilka trafień, latarka za deską, zrzuty w nocy i w mgle
   (`--weaponshots`-podobny kadr). Odpowiada: czy smugi przez dziury są widoczne przy obecnej mgle, ile kosztuje cień przez `alpha scissor`.
 - **S2 — ruch po wykopie** (zrobiony 2026-11-02, wynik niżej): jedna strefa 12 × 6 kafli na mapie testowej, kolizja z odcinków, gracz biega, skacze i kopie kilofem.
   Odpowiada: czy `CharacterBody2D` dobrze chodzi po krzywych skosach z marching squares (wygładzanie, `floor_snap_length`, maks. kąt podłogi),
   czy kopanie „czuje się” dobrze (ile ciosów, wielkość wyrwy), czy łatwo się zakopać.
 
 Wynik obu idzie do planu przed D0 (liczby, ewentualna zmiana podejścia).
+
+### Wynik S1 (2026-11-02, gałąź robocza `spike/dig-zone`, test `--holetest`)
+
+Deska 6 cm × 2,2 m × 3,5 m (cała głębokość drogi) 2,5 m przed graczem na starcie 1.1, poprzecznie do drogi; shader z maską `R8` 128 × 80
+(`ALPHA` z maski, `ALPHA_SCISSOR_THRESHOLD = 0,5`, ciemniejsze drewno wokół dziur); latarka gracza (reflektor z cieniem) w osi deski.
+Kolejno: 6 dziur po kulach (9 cm), 12 po śrucie (5 cm), wyrwa 26 cm, kontrolna wyrwa 1,6 m. Jasność liczona z obrazu (grunt 0,3–14 m za deską,
+powietrze 1–2,5 m nad nim) plus różnica zrzutów; okno 4K, RTX 3080; pogodna noc i MGŁA (`--shotweather`). Zrzuty: `--holeshots=KATALOG`.
+
+**Odpowiedzi**
+
+- **`alpha scissor` działa w przebiegu cieni** (shader własny i `StandardMaterial3D`): cała deska zabiera 34–51% światła z gruntu za nią,
+  deska z wyciętą maską, przezroczysty `StandardMaterial3D` i deska bez rzucania cienia dają to samo (85–97% jasności bez deski — reszta to sama
+  deska w kadrze).
+- **Pogodna noc — dziury widać po świetle, nie po desce.** Już 6 dziur po kulach rzuca wyraźną plamę światła na grunt 4–8 m za deską (różnica
+  zrzutów; snop idzie poziomo, więc plama z każdej dziury rośnie z odległością jak z otworkowej kamery). Wyrwa 26 cm: plama większa (+2 pkt
+  średniej jasności gruntu), wyrwa 1,6 m: 92% jasności bez deski. To jest dobry sygnał „tu coś przestrzeliłem” bez żadnych cząsteczek.
+- **Pułapka silnika: cień nie odświeża się po zmianie tekstury maski.** Godot przerysowuje mapę cieni reflektora tylko, gdy coś w jego zasięgu
+  się ruszy lub zmieni materiał; `ImageTexture.update()` tego nie robi. Zmierzone: wyrwa 1,6 m przy nieruchomej latarce — cień bez zmian (47%),
+  po przesunięciu deski o 0,1 mm i z powrotem — 88%. Latarka gracza zwykle się rusza (celowanie, kołysanie), więc zwykle się odświeży, ale
+  lampy stałe i latarka nieruchomego gracza nie. **D0: po aktualizacji maski oznaczyć obiekt jako zmieniony** (przesunięcie o ułamek mm
+  i powrót w następnej klatce sprawdzone; tańszy sposób przez `RenderingServer` — do sprawdzenia przy D0).
+- **MGŁA — smug przez dziury nie ma i obecnie być nie może:** poświata snopu w mgle wolumetrycznej **nie bierze cienia przeszkody w ogóle**.
+  Jasność powietrza za deską jest taka sama bez deski, z całą deską, ze ścianą grubości 1 m i po wyłączeniu cienia reflektora; na zrzutach
+  stożek poświaty idzie „przez” deskę. Grunt za deską jest przy tym zacieniony, a plamy z dziur na gruncie widać także we mgle. Shader mgły
+  Godota (`volumetric_fog_process.glsl`) próbkuje cień reflektora (warunek `shadow_opacity`), więc przyczyna leży w ustawieniach lub skali
+  (siatka mgły 96 × 96 × 96 na kadr kilkudziesięciu metrów, długość mgły „odległość kamery + 14 m”, światło 0,5 m przed postacią) —
+  **nie ustalona**. To błąd, który jest już w grze (snop we mgle świeci przez ściany i teren) i trzeba go zbadać osobno; **smugi przez dziury
+  wypadają z D0** i wracają dopiero, gdy poświata zacznie brać cień.
+- **Deska poprzeczna do drogi jest widziana z boku** (kamera z przodu, na osi z): w pogodną noc prawie jej nie widać, we mgle widać ciemną
+  sylwetkę słupka; dziur w niej samej nie widać. Wniosek dla D0: zniszczalne obiekty **poprzeczne** (barykady, drzwi, deski w przejściu)
+  informują o uszkodzeniu światłem za nimi, odłamkami, dźwiękiem i zmianą sylwetki (rozpad na bryły), a **maska z dziurami pracuje na
+  obiektach równoległych do ekranu** (skrzynie, zabite deskami okna i ściany w tle, płoty wzdłuż drogi), gdzie widać ją wprost.
+- **Koszt:** maska z `alpha scissor` kontra zwykły materiał **+0,001 / +0,007 / −0,032 ms GPU** (trzy przebiegi po 180 klatek, w szumie),
+  sama deska +0,09 / −0,02 / +0,04 ms przy klatce 8,3 ms, z aktywnym cieniem latarki. Zapis dziury do maski w GDScript (`set_pixel` w pętli
+  + `update` 128 × 80) **0,1–1,3 ms na dziurę** — w D0 gotowy stempel `Image.blend_rect` i jedno `update` na obiekt na klatkę (seria z karabinu
+  to kilka trafień na klatkę).
+- **Czego S1 nie sprawdził:** pęknięcia w normalnych, krawędź drzazg, odłamki, deska pod kątem do kamery, wiele obiektów z maską naraz,
+  koszt przerysowania cienia przy serii (każde trafienie = nowa mapa cieni latarki; latarka w ruchu i tak ją przerysowuje co klatkę).
+
+**Zmiany w planie po S1:** wiersz „Stopnie uszkodzeń” (smugi we mgle wypadają, odświeżenie cienia po zmianie maski, stempel zamiast pętli,
+gdzie maska ma sens), osobne zadanie na poświatę snopu we mgle przez przeszkody (błąd obecnej gry, poza tym planem).
 
 ### Wynik S2 (2026-11-02, gałąź robocza `spike/dig-zone`, test `--digtest` 14/14)
 
