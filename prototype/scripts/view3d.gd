@@ -39,6 +39,8 @@ const OFFSCREEN_ENEMY_EVERY := 4          ## wróg poza kadrem: pełna synchroni
 const ENEMY_CULL_R := 3.5                ## m: promień sfery wroga przy teście kadru (`_sync_enemies`); bossowie ×3
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
+const BEAM_FOG_ENERGY := 6.0              ## snop latarki we mgle wolumetrycznej przy gęstości bazowej (bez pogody)
+const FOG_LIGHT_EXP := 0.8                ## światła gry w gęstszej mgle (pogoda MGŁA do ok. 10× gęstości): energia we mgle × gęstość^−wykładnik — snop dalej widać, ale się nie przepala
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
 const ACTOR_AMBIENT := 0.09                ## światło otoczenia dla modeli graczy (tylko warstwa 2)
@@ -126,6 +128,7 @@ var _enemy_scan := true                  ## trzeba przejrzeć grupy wrogów (`_o
 var _no_model := {}                      ## id węzłów z grup wrogów bez modelu (rekwizyty w „enemies”) — przegląd ich pomija
 var _probe_q := PhysicsRayQueryParameters2D.new()   ## jedno zapytanie promienia dla podpór stóp wrogów (bez nowego obiektu na każdą stopę)
 var _estate := {}                        ## id węzła wroga 2D → stan do wykrywania zdarzeń (żyje, błysk trafienia, zapowiedź ataku)
+var _fog_dens := 1.0                     ## gęstość bryły mgły względem bazowej (`_sync_weather`): MGŁA podnosi ją do ok. 10×
 var _lights := {}                        ## id światła gry (Lights.GameLight) → [światło, Light3D]
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
@@ -5095,7 +5098,8 @@ func _sync_weather(delta: float) -> void:
 			fv.set_meta("base_density", fm.density)
 		# zamglenie bazowe (snopy świateł w powietrzu) zależy od pogody: w noc pogodną powietrze jest czyste, w deszczu lekko zamglone
 		var haze := lerpf(1.0, float(HAZE_K.get(id, 1.0)), k)
-		fm.density = float(fv.get_meta("base_density")) * (haze + 9.0 * fogk)
+		_fog_dens = haze + 9.0 * fogk
+		fm.density = float(fv.get_meta("base_density")) * _fog_dens
 		for gf in _geo.get_children():                             # wstęgi mgły przy ziemi (`Level3D.build_ground_fog`)
 			if String(gf.name).begins_with("GroundFog") and gf is MeshInstance3D:
 				var gm := (gf as MeshInstance3D).material_override as ShaderMaterial
@@ -5921,13 +5925,11 @@ func _scan_lights() -> void:
 			var l3: Light3D
 			if is_cone:
 				var sp := SpotLight3D.new()
-				sp.light_volumetric_fog_energy = 6.0               # snop latarki widoczny we mgle
 				sp.spot_angle = 24.0
 				sp.spot_attenuation = 0.55
 				l3 = sp
 			else:
 				l3 = OmniLight3D.new()
-				l3.light_volumetric_fog_energy = 0.12 if is_aura else 0.7
 			l3.light_color = li.color
 			l3.layers = LAYER_WORLD | LAYER_ACTORS
 			var l3a: Light3D = null
@@ -5969,6 +5971,9 @@ func _sync_lights() -> void:
 			continue
 		var li: Lights.GameLight = li_v
 		l3.visible = true
+		# w gęstszej mgle (pogoda MGŁA) to samo światło rozświetlało jej bryłę kilka razy mocniej: snop latarki zalewał pół kadru bielą
+		var fog_k := pow(maxf(_fog_dens, 1.0), -FOG_LIGHT_EXP)
+		l3.light_volumetric_fog_energy = (BEAM_FOG_ENERGY if l3 is SpotLight3D else (0.12 if pair[3] else 0.7)) * fog_k
 		var rng_px := li.range_px
 		var gp := li.global_position
 		var pick := pair.size() > 4 and bool(pair[4])
