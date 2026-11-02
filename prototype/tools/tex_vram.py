@@ -7,8 +7,14 @@ więcej (z1_m2, RTX 3080). Ten skrypt ustawia `compress/mode=2` (VRAM: S3TC/BPTC
 (wg `normalTexture` w materiałach GLB, a w braku GLB — po nazwie z „normal") dostają `compress/normal_map=1` (kanały RG, bez sRGB).
 Kompresja dzieje się przy imporcie (pliki .ctex w .godot/imported), więc działa też w wyeksportowanym buildzie.
 
+Mipmapy: tekstury ładowane z kodu przez `load()` (PBR świata i karty lasu w `level3d.gd`, dekale) import headless traktuje jak tekstury 2D —
+bez mipmap. Filtr `..._MIPMAPS_ANISOTROPIC` w materiałach nie miał wtedy czego próbkować: moiré na blasze pomostów, iskrzenie gruntu, postrzępione
+karty lasu (analiza 2026-11-02, 78 tekstur w art/world3d). Skrypt włącza `mipmaps/generate` wszystkim teksturom z DIRS. Mapy ORM świata
+(`<nazwa>_orm` obok `<nazwa>_normal`) dostają też `roughness/mode` = kanał G i `roughness/src_normal`: import podnosi chropowatość w mipach tam,
+gdzie normalne są gęste — mniej iskrzących odblasków w świetle latarki, bez kosztu w grze.
+
 Użycie (z prototype/): python tools/tex_vram.py [--check]  → potem godot --headless --path . --import
-  --check: tylko wypisuje tekstury bez kompresji i kończy kodem 1, jeśli są (do CI / przed commitem).
+  --check: tylko wypisuje tekstury bez kompresji, bez mipmap albo bez chropowatości z normalnych i kończy kodem 1, jeśli są (do CI / przed commitem).
 """
 import glob
 import json
@@ -23,6 +29,10 @@ DIRS = ["art/enemy3d", "art/items3d", "art/world3d", "art/char3d"]
 # BC7 zamiast BC1/DXT5 (compress/high_quality): ręce i bronie strzelnicy FPP (char3d/fp, 4K) ogląda się z bliska — BC1 dawał „kostkę”
 # na ciemnym metalu broni. Dwa razy więcej pamięci niż BC1, wciąż 4× mniej niż RGBA8.
 HQ_DIRS = {"fp"}
+# roughness/mode w imporcie Godota: 0 wykryj, 1 wyłączone, 2 R, 3 G, 4 B, 5 A, 6 szarość — w ORM chropowatość leży w G
+ROUGHNESS_GREEN = 3
+# katalog z ORM świata (`Level3D.make_pbr`): tylko tu nazwa ORM i normalnej jest stała, w GLB pary wyznacza materiał
+ORM_DIR = "art/world3d"
 
 
 def image_source(texture):
@@ -103,6 +113,13 @@ def main():
                 want = want.replace("\ncompress/high_quality=false\n", "\ncompress/high_quality=true\n")
             if is_normal:
                 want = want.replace("\ncompress/normal_map=0\n", "\ncompress/normal_map=1\n")
+            if not base.lower().endswith((".hdr", ".exr")):       # panoramy HDRI (niebo odbić) to nie tekstury powierzchni
+                want = want.replace("\nmipmaps/generate=false\n", "\nmipmaps/generate=true\n")
+            if d.replace("\\", "/") == ORM_DIR and stem.endswith("_orm"):
+                normal = "%s/%s_normal.png" % (ORM_DIR, stem[: -len("_orm")])
+                if os.path.exists(normal):
+                    want = re.sub(r"\nroughness/mode=\d+\n", "\nroughness/mode=%d\n" % ROUGHNESS_GREEN, want)
+                    want = re.sub(r'\nroughness/src_normal="[^"]*"\n', '\nroughness/src_normal="res://%s"\n' % normal, want)
             if want != s:
                 bad.append(f.replace("\\", "/"))
                 if not check:
@@ -115,7 +132,7 @@ def main():
                 stale.append(f.replace("\\", "/"))
     if check:
         for b in bad:
-            print("bez kompresji VRAM:", b)
+            print("bez kompresji VRAM / mipmap / chropowatości z normalnych:", b)
         for b in stale:
             print("nieaktualny [remap] (zaimportuj i zatwierdź .import):", b)
         print("tekstur do poprawy: %d" % (len(bad) + len(stale)))
