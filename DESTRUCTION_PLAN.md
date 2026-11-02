@@ -124,11 +124,62 @@ Dwie rzeczy są ryzykowne i tanio je sprawdzić, zanim powstanie kod produkcyjny
 
 - **S1 — dziury i snop latarki** (1–2 dni): jedna deska z shaderem maski, kilka trafień, latarka za deską, zrzuty w nocy i w mgle
   (`--weaponshots`-podobny kadr). Odpowiada: czy smugi przez dziury są widoczne przy obecnej mgle, ile kosztuje cień przez `alpha scissor`.
-- **S2 — ruch po wykopie** (1–2 dni): jedna strefa 12 × 6 kafli na mapie testowej, kolizja z odcinków, gracz biega, skacze i kopie kilofem.
+- **S2 — ruch po wykopie** (zrobiony 2026-11-02, wynik niżej): jedna strefa 12 × 6 kafli na mapie testowej, kolizja z odcinków, gracz biega, skacze i kopie kilofem.
   Odpowiada: czy `CharacterBody2D` dobrze chodzi po krzywych skosach z marching squares (wygładzanie, `floor_snap_length`, maks. kąt podłogi),
   czy kopanie „czuje się” dobrze (ile ciosów, wielkość wyrwy), czy łatwo się zakopać.
 
 Wynik obu idzie do planu przed D0 (liczby, ewentualna zmiana podejścia).
+
+### Wynik S2 (2026-11-02, gałąź robocza `spike/dig-zone`, test `--digtest` 14/14)
+
+Strefa 10 × 8 kafli w gruncie pod startem 1.1 (`--digzone=z1_m1:2,23,11,30`), siatka 4 × 4 na kafel, kolizja z odcinków
+(`ConcavePolygonShape2D` na fragment 16 × 16 komórek), kilof przez `weapon_controller._server_melee`, siatka 3D w `view3d._sync_dig_zones`.
+Zrzuty z okna: `--digshots=KATALOG`.
+
+**Odpowiedzi**
+
+- **Czy `CharacterBody2D` chodzi po konturze z marching squares — tak, po trzech poprawkach** (bez nich nie):
+  1. Narożniki pierścienia (kafle mapy tuż za strefą) leżące na krawędzi kafla dostają gęstość **ISO**, nie 255 / 0. Inaczej na szwie
+     strefa / mapa wychodzi skos 2 px z jednej strony i pionowy próg 2 px z drugiej — prostokąt postaci na nim staje (zmierzone: marsz
+     w lewo zatrzymany na x 201). Po poprawce rozrzut wysokości stóp na szwie 0,00 px w obie strony.
+  2. **Wyrwa kilofa nie jest kołem wokół punktu trafienia**, tylko prostokątem liczonym od postaci i wyrównanym do siatki komórek
+     (gęstość = odległość od brzegu kształtu w paśmie ±4 px, łączona przez `min`, czyli dokładna suma brył). Koło o promieniu 13 px dawało
+     tunel niższy od postaci (efektywnie ok. 9 px po progu ISO): 13 z 14 ciosów w bok bez postępu. Zaokrąglone rogi na siatce 4 px dawały
+     fazę na całą komórkę, po której dno tunelu wędrowało w górę (2,7 px na 5 kafli). Prostokąty na siatce: dno płaskie (0,0 px na całej
+     długości).
+  3. **Klin:** prostokąt postaci (10 × 22 px) w szczelinie „V” o ścianach stromszych niż 45° wisi rogami na dwóch ścianach — nie jest
+     „na ziemi”, spada z prędkością 620 px/s w miejscu i nie może skoczyć (zmierzone w szybie 16 px z fazami: zaklinowany na stałe).
+     Szyb poszerzony do 20 px (płaskie dno szersze od postaci) i bezpiecznik w `player.gd`: wiszenie w „V” (dwie kolizje z normalnymi
+     w przeciwne strony, obie w górę, pozycja stoi) odnawia coyote, więc da się wyskoczyć. Pierwsza wersja bezpiecznika (każde zatrzymanie
+     przy dwóch kolizjach) wyłączała grawitację przy ścianie w szczycie skoku i przyklejała postać — zawężona.
+- **Marching squares nie da ostrych rogów obu rodzajów naraz**, gdy narożnik leży dokładnie na progu. Wybór: wklęsłe rogi wyrwy (dno przy
+  ścianie) ostre, wypukła krawędź przy wierzchu strefy dostaje skos 45° na komórkę (4 px). Skos działa jak małe podciągnięcie (wyjście
+  z dołu sięga 48 px zamiast 44) i wizualnie fazuje krawędź — zostaje.
+- **Wrażenie kopania (liczby):** szyb w dół 12 px na cios (2 kafle = 3 ciosy, ok. 2,7 s przy cooldownie kilofa 0,9 s), tunel w bok
+  **0,99 kafla na cios** (wysokość 28 px = wzrost + 6, czoło 19 px przed środkiem postaci, tył 8 px za nim), schody w dół 8 px na cios,
+  stopień w górę 8 px. Kształt idzie za kierunkiem ciosu (8 kierunków `aim_dir`), więc nie trzeba celować w piksel — jak „smart cursor”
+  z Terrarii. Kopanie w samej ziemi jest **szybkie**: znajdźka 4–6 kafli w głąb to 4–6 s, a plan zakłada 20–40 s w co-op, więc twardość
+  materiału musi dzielić cios (skała: siła 85–128 zamiast 255, 2–3 ciosy na wyrwę; żyła 3–4). Wartości do strojenia w grze.
+- **Czy łatwo się zakopać — tak, ale nie na stałe:** skok sięga ok. 44 px; z dołu 48 px wychodzi się dzięki skosowi krawędzi, z 60 px już nie.
+  **Ratunek bez pomocy działa:** cios po skosie w górę wycina stopień 8 px i podnosi strop nad postacią (tył wyrwy 8 px za nią — bez tego
+  nad stopniem zostawało 4 px luzu i nie dało się wskoczyć); z 60 px wyjście w 4 ciosach. Prawdziwa pułapka powstaje tylko tam, gdzie
+  ściany dołu są niekopalne (brzeg strefy, kafle mapy) — stąd poprawiona reguła anty-pułapki w D5.
+- **Koszt:** przebudowa konturu i kolizji po ciosie 0,4–1,2 ms (1–4 fragmenty, GDScript), siatka 3D **1,0–1,4 ms na fragment** po
+  optymalizacji (było 4,4 ms: wywołanie `Callable` na wierzchołek, tablice w pętli, dwa trójkąty na każdą pełną komórkę; teraz pełne komórki
+  scalone w pasy w wierszu). Cios dotyka zwykle 1–2 fragmentów, więc 1–3 ms w klatce ciosu na głównym wątku — do przyjęcia przy cooldownie
+  0,9 s; limit „4 fragmenty na klatkę” z D0 zostaje (wybuch).
+- **Obraz:** zrzuty z okna złapały błąd, którego test headless nie widzi — przód strefy był wycinany jako tył (Godot: przód zgodnie z ruchem
+  wskazówek, odbicie osi y przy przejściu ekran → 3D kolejności nie odwraca). Po poprawce przód ma teksturę jak teren mapy obok, tunel
+  widać jako wnękę z dnem i ścianami w świetle latarki. Wnętrze wykopu w nocy jest bardzo ciemne (dobrze dla horroru); pył, grudki i dekal
+  świeżego wykopu z D5 — nadal do zrobienia.
+- **Sieć:** operacja kopania to prostokąt (środek, połówki boków, zaokrąglenie, siła) — kilkanaście bajtów RPC, każdy peer liczy sam,
+  wynik identyczny. Delta komórek potrzebna tylko dla dołączającego (stan strefy), zgodnie z D0.
+- **Czego S2 nie sprawdził:** ręczne wrażenie z pada i myszy (test steruje wejściem z kodu), osypywanie żwiru, wyspy, znajdźki, klient
+  w sieci, wybuch (`blast_dig` jest, niepodpięty do `Combat.explode`), aktualizacja nawigacji i siatki dźwięku po wykopie.
+
+**Zmiany w planie po S2:** tabela technologii D5 (kształt wyrwy, gęstość jako przycięta odległość, narożniki pierścienia, koszt siatki 3D,
+klin), reguła anty-pułapki (3 kafle i niekopalne ściany zamiast 2 kafli), bezpiecznik klina w `player.gd` jako część D5, twardość materiału
+jako dzielnik ciosu.
 
 ## Etapy
 
@@ -238,9 +289,11 @@ nie łamią zasady „symulacja 2D” i działają w co-op od razu.
   w ostatnich sekundach), krok 15–20 Hz, na serwerze; wynik idzie jak zwykła delta komórek (Noita). **Wyspy skały bez połączenia z brzegiem
   strefy spadają** jako jeden odłamek (sprawdzenie spójności zalewaniem po każdym ciosie, który coś odciął) — nic nie wisi w powietrzu
   (lekcja z Teardown).
-- **Anty-pułapka** (lekcja z SteamWorld Dig): strefa nie schodzi niżej niż 2 kafle pod najniższe miejsce, z którego da się do niej wejść
-  (skok sięga 2,6 kafla); cios kilofem w dół-skos zostawia stopień, a nie pionową ścianę; `--digtest` sprawdza na losowych wykopach, że
-  z każdej komórki, w której gracz może stać, istnieje droga na zewnątrz. Znajdźki leżą **w bok i w głąb ściany**, nie pod wejściem — kopanie
+- **Anty-pułapka** (lekcja z SteamWorld Dig, liczby z S2): z dołu do 48 px (3 kafle) wychodzi się skokiem, z głębszego — stopniami
+  wyciętymi po skosie w górę (4 ciosy z 60 px). Dlatego strefa nie schodzi niżej niż **3 kafle pod najniższe wejście tam, gdzie jej
+  ściany są niekopalne** (brzeg strefy przy kaflach mapy, materiał, którego nie bierze żadne narzędzie); przy kopalnych ścianach głębokość
+  jest wolna. Cios po skosie zostawia stopień 8 px, a nie pionową ścianę; bezpiecznik klina w `player.gd` (wiszenie w „V” = ziemia do skoku);
+  `--digtest` sprawdza na losowych wykopach, że z każdej komórki, w której gracz może stać, istnieje droga na zewnątrz. Znajdźki leżą **w bok i w głąb ściany**, nie pod wejściem — kopanie
   prosto w dół nie ma być najlepszą strategią.
 - **Rytm co-op** (lekcja z Deep Rock Galactic): wydobycie cennej znajdźki trwa ok. 20–40 s kopania w hałasie — dość, żeby opłacało się,
   by jeden kopał, a drugi pilnował; bot pilnuje kopiącego człowieka (nie kopie sam).
@@ -251,9 +304,10 @@ nie łamią zasady „symulacja 2D” i działają w co-op od razu.
 
 | Element | Wybór | Uwagi |
 |---|---|---|
-| Dane | Siatka **4 × 4 komórki na kafel** (komórka 4 px = 0,33 m; decyzja 2026-11-02), gęstość 0–255 w `PackedByteArray` (gładkie krawędzie, wytrzymałość materiału), osobna tablica materiałów. | Strefa 20 × 10 kafli = 3200 komórek — znikome dane |
-| Siatka 3D | **Marching squares** po gęstości → kontur → bryła wyciągnięta w głąb do `DEPTH_BACK`, przód z przemieszczeniem szumem, krawędzie fazowane; fragmenty 16 × 16 komórek, przebudowa tylko dotkniętego fragmentu **na głównym wątku** (zmierzone 0,18 ms w najgorszym przypadku; limit 4 na klatkę, reszta w następnej). Materiał PBR **triplanarny** (te same skany co ściany mapy, bez szwów na krzywych), okluzja z głębokości wykopu w kolorach wierzchołków (tanie „wnętrze jaskini”), tylna ściana wykopu. | `godot_voxel` (Zylann) — moduł C++ zależny od wersji silnika i robiony pod 3D, a nam wystarcza siatka 2D z głębią; własny greedy meshing z `MINING_PLAN.md` — sześciany, kanciaste, nie pasują do gładkiego terenu mapy |
-| Kolizja | Te same odcinki z marching squares → **`ConcavePolygonShape2D` na `StaticBody2D`**, jeden na fragment (co widać, w to się uderza; gładkie skosy, puste kieszenie i wyspy działają same, bo to tylko odcinki; podmiana 0,08 ms). Odłamki i łuski w strefie z `continuous_cd`. | Drobne kafle 4 px w `TileMapLayer` — postać „tnie” na schodkach; `CollisionPolygon2D` (tryb SOLIDS) i `BitMap.opaque_to_polygons` — nie obsługują dziur w wielokącie (sprawdzone pomiarem) |
+| Dane | Siatka **4 × 4 komórki na kafel** (komórka 4 px = 0,33 m; decyzja 2026-11-02), gęstość 0–255 w `PackedByteArray` jako **przycięta odległość od brzegu** (±4 px, brzeg = ISO − 1, łączenie wyrw przez `min`), osobna tablica materiałów. Narożniki pierścienia (kafle mapy tuż za strefą) na krawędzi kafla = ISO — szew strefa / mapa bez progu (S2). | Strefa 20 × 10 kafli = 3200 komórek — znikome dane |
+| Wyrwa | **Prostokąt od postaci, wyrównany do siatki**, kształt z kierunku ciosu: w bok przejście 28 px wysokości (czoło 19 px przed, tył 8 px za środkiem postaci), w dół szyb 20 × 12 px, w górę wnęka 12 px, po skosie stopień 8 px. Cios kopie, gdy we wnętrzu prostokąta jest skała; twardość materiału ogranicza gęstość zabraną na cios (2–3 ciosy na wyrwę w skale). Wybuch: koło (S2). | Koło wokół punktu trafienia (pierwsza wersja S2) — tunel niższy od postaci, dno wędruje, kliny |
+| Siatka 3D | **Marching squares** po gęstości → kontur → bryła wyciągnięta w głąb do `DEPTH_BACK`, przód z przemieszczeniem szumem, krawędzie fazowane; fragmenty 16 × 16 komórek, przebudowa tylko dotkniętego fragmentu **na głównym wątku** (kontur 0,18 ms w najgorszym przypadku, siatka 3D w GDScript 1,0–1,4 ms na fragment po scaleniu pełnych komórek w pasy — S2; limit 4 na klatkę, reszta w następnej). Materiał PBR **triplanarny** (te same skany co ściany mapy, bez szwów na krzywych), okluzja z głębokości wykopu w kolorach wierzchołków (tanie „wnętrze jaskini”), tylna ściana wykopu. | `godot_voxel` (Zylann) — moduł C++ zależny od wersji silnika i robiony pod 3D, a nam wystarcza siatka 2D z głębią; własny greedy meshing z `MINING_PLAN.md` — sześciany, kanciaste, nie pasują do gładkiego terenu mapy |
+| Kolizja | Te same odcinki z marching squares → **`ConcavePolygonShape2D` na `StaticBody2D`**, jeden na fragment (co widać, w to się uderza; gładkie skosy, puste kieszenie i wyspy działają same, bo to tylko odcinki; podmiana 0,08 ms). Odłamki i łuski w strefie z `continuous_cd`. Postać (prostokąt 10 × 22) zawisa w szczelinach „V” stromszych niż 45° — bezpiecznik klina w `player.gd` (S2). | Drobne kafle 4 px w `TileMapLayer` — postać „tnie” na schodkach; `CollisionPolygon2D` (tryb SOLIDS) i `BitMap.opaque_to_polygons` — nie obsługują dziur w wielokącie (sprawdzone pomiarem) |
 | Świat 3D mapy | Komórki strefy są pomijane przy wypiekaniu (`Level3D.build_level`), bryłę strefy rysuje jej własny węzeł — bez przebudowy świata. | — |
 | Nawigacja | Kafel strefy przechodni, gdy w środku nie ma już gęstości ponad próg; zmiana kafla → `Nav.rebuild_region` z D0. | Bot i wrogowie nie wchodzą w niedokończone tunele |
 | Dźwięk | `sound_grid.refresh(region)` po zmianie kafla (już jest). | Odkopany tunel przewodzi hałas |
