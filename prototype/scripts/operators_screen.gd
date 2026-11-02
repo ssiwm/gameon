@@ -616,24 +616,42 @@ func _set_action(kind: String) -> void:
 
 func _do_action() -> void:
 	var before := String(Characters.meta(_act_id)["name"])
+	var done := false
 	match _act_kind:
 		"campaign":
-			Characters.reset_campaign(_act_id)
+			done = Characters.reset_campaign(_act_id)
 		"character":
-			Characters.reset_character(_act_id)
+			done = Characters.reset_character(_act_id)
 		"delete":
 			Characters.delete(_act_id)
-	Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
-	_note.text = tr(String(OP_NOTE[_act_kind])) % (before if before != "" else tr("UNNAMED"))
+			done = not Characters.has(_act_id)
+	var who := before if before != "" else tr("UNNAMED")
+	if done:
+		Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
+		_show_note(tr(String(OP_NOTE[_act_kind])) % who)
+	else:
+		# kopia do Cofnij się nie zapisała (pełny dysk, blokada pliku) — Characters niczego nie skasował
+		Audio.play("ui_deny", Audio.BUS_UI, -8.0)
+		_show_note(tr("Backup failed — nothing changed for %s") % who, true)
 	_act.visible = false
 	_focus_id = Characters.active_id if _act_kind == "delete" else _act_id
 	_rebuild()
 
 func _undo() -> void:
 	var info := Characters.undo_info()
-	if info.is_empty() or not Characters.undo():
+	if info.is_empty():
+		return
+	var who := String(info["name"]) if String(info["name"]) != "" else tr("UNNAMED")
+	if not Characters.undo():
+		Audio.play("ui_deny", Audio.BUS_UI, -8.0)
+		_show_note(tr("Restore failed — %s unchanged") % who, true)
 		return
 	Audio.play("ui_confirm", Audio.BUS_UI, -8.0)
-	_note.text = tr("Restored: %s") % (String(info["name"]) if String(info["name"]) != "" else tr("UNNAMED"))
+	_show_note(tr("Restored: %s") % who)
 	_dlg.visible = false
 	_rebuild()
+
+## Wynik operacji nad przyciskami; `failed` — w kolorze krwi.
+func _show_note(s: String, failed := false) -> void:
+	_note.text = s
+	_note.add_theme_color_override("font_color", UiTheme.DANGER if failed else UiTheme.ACCENT)

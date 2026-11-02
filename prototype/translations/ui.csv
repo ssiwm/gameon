@@ -1514,6 +1514,8 @@
 "%s reset","%s — reset wykonany"
 "%s deleted","%s — usunięty"
 "Restored: %s","Przywrócono: %s"
+"Backup failed — nothing changed for %s","Kopia się nie zapisała — %s bez zmian"
+"Restore failed — %s unchanged","Przywracanie się nie udało — %s bez zmian"
 "[{inspect_weapon}] [{pause}]  Close","[{inspect_weapon}] [{pause}]  Zamknij"
 "[{interact}]  Take","[{interact}]  Weź"
 "[{interact}]  Collect ammo","[{interact}]  Odbierz amunicję"
