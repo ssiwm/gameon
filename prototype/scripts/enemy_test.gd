@@ -297,6 +297,8 @@ func _test_moth_swarm() -> void:
 func _test_reed_cover() -> void:
 	var cells: Dictionary = level._reed_cells
 	check("trzcina: mapa 1.3 ma strefy trzcin przy cieczach", cells.size() >= 4, "%d komórek" % cells.size())
+	var in_oil := cells.keys().filter(func(k: Vector2i) -> bool: return level._ch(k.x, k.y) == "O")
+	check("trzcina: przy oleju nie rośnie (od 1.7.473)", in_oil.is_empty(), "%d komórek w oleju" % in_oil.size())
 	if cells.is_empty():
 		return
 	var cell: Vector2i = cells.keys()[0]
