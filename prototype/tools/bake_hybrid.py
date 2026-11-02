@@ -33,6 +33,10 @@ stalker_whisper_loop (niski oddech),
 amb_far_cry; quake, collapse, radio_beep (sam szum), tape_stop (magnetofon); trzosek_attack, trzosek_death (wilkołak), wolek_attack, wolek_death, slepiec_death, podsluchacz_scream, leech_growl,
 leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_thud; step_concrete, step_metal, step_dirt,
 step_water, land_hard (buty), player_hurt, player_down; ui_confirm, mission_start; amb_forest, amb_rain, amb_rain_roof, amb_wind.
+Odsłuch 2026-11-02 (rodziny dotąd tylko syntetyczne), z nagrań: mech_* (strzelnica FPP), plate_ring, plate_fall; stalker_appear
+(braam); rzeznik_roar, zerca_grab, zerca_warn, moth_dust; flare_ignite, flare_loop, generator_loop; breath_loop, heart_fast_loop,
+heart_slow_loop, revive; amb_machine, amb_air, amb_drips. Zostały syntetyczne: kaplan_scream, moth_flutter_loop, moth_crack
+(odsłuch), alarm_bell (brak nagrania dzwonu kościelnego), mine_beep, radio_static, sygnały UI, muzyka.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
@@ -355,6 +359,55 @@ def _pickup_tag_bake() -> None:                                      # nieśmier
     finalize("tag_pickup", d.reverb(x, ir("close"), wet=.16), lufs=-19.0)
 
 
+# --- Mechanika broni na strzelnicy FPP: te same nagrania co „reload” (G36C, Saiga), rozcięte na zdarzenia; zatrzask magazynka —
+# kliknięcie z obsługi M1911; chwyt łoża — chwyt wiatrówki. Odciągnięcie suwadła = nagranie do zatrzaśnięcia, powrót = samo zatrzaśnięcie.
+MECH_NEEDS = ["g36c_mag_foley", "saiga12_cocking", "m1911_handling", "bb_rifle_grab_017"]
+_RACKS = ((4.461, 0.135), (7.847, 0.130), (10.560, 0.155))           # początek odciągnięcia i zatrzaśnięcie po nim w saiga12_cocking [s]
+
+
+def _mech_bake() -> None:
+    for i, t in enumerate((1.09, 2.25)):
+        x = _fade(bc.src("m1911_handling", t - .005, .12), .04, .10)
+        finalize("mech_mag_release_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12), lufs=-26.6)
+    for i in range(2):
+        x = _fade(bc.src("g36c_mag_foley", _MAG_OUT[i] - 0.01, 0.22), 0.12, 0.20)
+        finalize("mech_mag_out_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12), lufs=-22.6)
+    for i in range(3):
+        mag = _fade(bc.src("g36c_mag_foley", _MAG_IN[i] - 0.01, 0.26), 0.16, 0.24)
+        x = d.mix([(_unit(mag), 1.0), (thump(.09, 220, 90, .02, .03), .6, .05)], ms(280))
+        finalize("mech_mag_in_%d" % (i + 1), d.reverb(x, ir("close"), wet=.14), lufs=-22.2)
+    for i in range(2):
+        t, snap = _RACKS[i]
+        x = _fade(bc.src("saiga12_cocking", t - .005, snap - .005), snap - .04, snap - .005)
+        finalize("mech_bolt_back_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12), lufs=-26.4)
+    for i in range(3):
+        t, snap = _RACKS[i]
+        x = _fade(bc.src("saiga12_cocking", t + snap - .012, .2), .1, .19)
+        x = d.mix([(_unit(x), 1.0), (thump(.07, 260, 120, .015, .02), .4, .012)], ms(200))
+        finalize("mech_bolt_fwd_%d" % (i + 1), d.reverb(x, ir("close"), wet=.14), lufs=-23.3)
+    for i in range(2):
+        grab = _clip("bb_rifle_grab_017", 0.09, 0.3, -2.0 * i, 0.26, tail=.1)
+        x = d.mix([(grab, 1.0), (thump(.05, 170, 90, .01, .02), .4, .01)], ms(280))
+        finalize("mech_regrip_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12), lufs=-28.0)
+
+
+# --- Blacha strzelnicy: uderzenie kuli w ciężki metal + dzwonienie kowadła (każdy wariant inne uderzenie i strojenie);
+# stuk o ogranicznik — to samo uderzenie obniżone i przyciemnione, z niskim stukiem syntezy.
+PLATE_NEEDS = ["anvil_hits_08", "bullet_metal_heavy_08"]
+
+
+def _plate_bake() -> None:
+    for i, (t, semis) in enumerate(((0.34, 0.0), (0.89, 1.0), (1.38, -1.0), (0.34, 2.0))):
+        steel = _clip("anvil_hits_08", t - .01, 1.4, semis, 1.3, tail=.6)
+        hit = _clip("bullet_metal_heavy_08", 0.0, .3, 2.0 * (i % 2), .25, tail=.15)
+        x = d.mix([(hit, 1.0), (steel, .8, .001)], ms(1300))
+        finalize("plate_ring_%d" % (i + 1), d.reverb(x, ir("close"), wet=.18), lufs=-17.5, fade_out_ms=200)
+    for i in range(2):
+        x = d.lp(_clip("bullet_metal_heavy_08", 0.0, .35, -7.0 - 2.0 * i, .26, tail=.12), 2500.0)
+        x = d.mix([(_unit(x), 1.0), (thump(.12, 210, 95, .02, .035), .7)], ms(260))
+        finalize("plate_fall_%d" % (i + 1), d.reverb(x, ir("close"), wet=.14), lufs=-21.7)
+
+
 def weapons() -> None:
     """Wersje z nagrań dla broni — wołane na końcu bake_weapons.build_weapons()."""
     bc.hybrid(["item_pickup"], _pickup_item_bake, PICKUP_ITEM_NEEDS)
@@ -378,6 +431,9 @@ def weapons() -> None:
     bc.hybrid(_keys("reload_shell", 3), _reload_shell_bake, RELOAD_SHELL_NEEDS)
     bc.hybrid(_keys("maczeta", 2), _maczeta_bake, MACZETA_NEEDS)
     bc.hybrid(["hkm9_flame_loop"], _flame_loop_bake, FLAME_NEEDS)
+    bc.hybrid(_keys("mech_mag_release", 2) + _keys("mech_mag_out", 2) + _keys("mech_mag_in", 3) + _keys("mech_bolt_back", 2)
+              + _keys("mech_bolt_fwd", 3) + _keys("mech_regrip", 2), _mech_bake, MECH_NEEDS)
+    bc.hybrid(_keys("plate_ring", 4) + _keys("plate_fall", 2), _plate_bake, PLATE_NEEDS)
     # Dalekie wersje (F6 a) rodzin, których bliska wersja jest z nagrań: ta sama funkcja co dla syntezy, na plikach z nagrań.
     import bake_weapons
     for near, needs in (("m83_shot", M83_NEEDS), ("spread12_shot", SPREAD12_NEEDS), ("srut8_shot", SRUT8_NEEDS),
@@ -479,6 +535,15 @@ def _whisper_bake() -> None:
     finalize("stalker_whisper_loop", d.saturate(x, 1.4), loop=True, lufs=WHISPER_LUFS)
 
 
+# --- Pojawienie się: ciemny „braam” zamiast syntetycznego narastającego szumu z uderzeniem (odsłuch 2026-11-02: braam przed stingerem).
+APPEAR_NEEDS = ["braam_slow_dark"]
+
+
+def _stalker_appear_bake() -> None:
+    x = _clip("braam_slow_dark", 0.0, 2.9, 0.0, 2.6, tail=.8)
+    finalize("stalker_appear", d.reverb(x, ir("hall"), wet=.2), lufs=-15.3)
+
+
 def stalker() -> None:
     """Wersje z nagrań dla Stalkera — wołane na końcu bake_sfx.build_stalker()."""
     bc.hybrid(["stalker_whisper_loop"], _whisper_bake, WHISPER_NEEDS)
@@ -486,6 +551,7 @@ def stalker() -> None:
     bc.hybrid(_keys("stalker_shriek", 2), _shriek_bake, SHRIEK_NEEDS)
     bc.hybrid(_keys("amb_far_cry", 2), _far_cry_bake, SHRIEK_NEEDS)
     bc.hybrid(_keys("stalker_step", 3), _stalker_step_bake, [sid for sid, _ in STALKER_STEP_SRC])
+    bc.hybrid(["stalker_appear"], _stalker_appear_bake, APPEAR_NEEDS)
 
 
 # ============================================================ GRACZ (bake_sfx.build_player)
@@ -550,6 +616,55 @@ def _land_hard_bake() -> None:
     finalize("land_hard", d.reverb(x, ir("close"), wet=.15), lufs=-17.5)
 
 
+# --- Gracz: zadyszka z nagranych wdechów i wydechów ułożonych w rytm syntezy (4 cykle po 0,75 s); serce — pojedyncze „lub” i „dub”
+# ze stetoskopu ułożone w tempie 74 i 132 uderzeń/min; podniesienie — nagrany gwałtowny wdech + ten sam akord kwinty co w syntezie.
+BREATH_NEEDS = ["male_breath_gasping"]
+HEART_NEEDS = ["heartbeat_stetho"]
+_INHALES = (0.91, 3.76, 8.74, 13.64)                                 # wdechy (jasne, ok. 2,2 kHz) w male_breath_gasping [s]
+_EXHALES = (2.32, 5.52, 12.05, 20.22)                                # wydechy (ciemne, ok. 600 Hz) [s]
+_HEARTBEATS = ((0.21, 0.56), (1.32, 1.67), (2.44, 2.80), (3.57, 3.93))   # „lub” i „dub” w heartbeat_stetho [s]
+
+
+def _breath_loop_bake() -> None:
+    n = d.sec(3.0)
+    cyc = n // 4
+    buf = np.zeros(n + d.sec(1.0))
+    for b in range(4):
+        inh = _clip("male_breath_gasping", _INHALES[b] - .02, 0.35, 0.0, 0.30, tail=.1)
+        exh = _clip("male_breath_gasping", _EXHALES[b] - .02, 0.5, 0.0, 0.42, tail=.15)
+        k = b * cyc
+        buf[k:k + len(inh)] += inh * .6
+        k2 = k + d.sec(.30)
+        buf[k2:k2 + len(exh)] += exh
+    finalize("breath_loop", d.fold_loop(buf, n), loop=True, lufs=-18.6)
+
+
+def _heart_bake() -> None:
+    for key, bpm, lufs in (("heart_fast_loop", 132.0, -17.2), ("heart_slow_loop", 74.0, -19.7)):
+        beat = 60.0 / bpm
+        loop_n = int(round(4 * beat * d.SR))
+        gap = 0.09 + 0.25 * beat
+        buf = np.zeros(loop_n + d.sec(1.0))
+        for b, (tl, td) in enumerate(_HEARTBEATS):
+            lub = _clip("heartbeat_stetho", tl - .03, .3, 0.0, min(.25, gap - .01), tail=.08)
+            dub = _clip("heartbeat_stetho", td - .03, .3, 0.0, min(.25, beat - gap - .02), tail=.08)
+            s = 1.0 if b % 2 == 0 else .86
+            k = int(round(b * beat * d.SR))
+            buf[k:k + len(lub)] += lub * s
+            k2 = k + int(round(gap * d.SR))
+            buf[k2:k2 + len(dub)] += dub * s * .8
+        x = d.limiter(_unit(d.filt(d.fold_loop(buf, loop_n), "hp", 30.0, order=2)), -12.0)   # pojedyncze szczyty stetoskopu
+        finalize(key, x, loop=True, lufs=lufs)
+
+
+def _revive_bake() -> None:
+    n = d.sec(1.1)
+    inh = _clip("male_breath_gasping", _INHALES[0] - .02, 0.4, 0.0, 0.34, tail=.12)
+    chord = (d.osc("sine", 220.0, n) + .6 * d.osc("sine", 330.0, n) + .3 * d.osc("sine", 440.0, n)) * d.env_pts(n, [(0, 0), (.25, 0), (.55, .8), (1.1, 0)])
+    x = d.mix([(inh, 1.0), (_unit(d.lp(chord, 1800.0)), .45)], n)
+    finalize("revive", d.reverb(x, ir("room"), wet=.25), lufs=-21.0, fade_out_ms=200)
+
+
 def player() -> None:
     """Wersje z nagrań dla gracza — wołane na końcu bake_sfx.build_player()."""
     bc.hybrid(_keys("step_concrete", 5), _step_concrete_bake, STEP_CONCRETE_NEEDS)
@@ -559,6 +674,9 @@ def player() -> None:
     bc.hybrid(["land_hard"], _land_hard_bake, LAND_NEEDS)
     bc.hybrid(_keys("player_hurt", 2), _player_hurt_bake, PLAYER_HURT_NEEDS)
     bc.hybrid(["player_down"], _player_down_bake, PLAYER_DOWN_NEEDS)
+    bc.hybrid(["breath_loop"], _breath_loop_bake, BREATH_NEEDS)
+    bc.hybrid(["heart_fast_loop", "heart_slow_loop"], _heart_bake, HEART_NEEDS)
+    bc.hybrid(["revive"], _revive_bake, BREATH_NEEDS)
 
 
 # ============================================================ AMBIENT (bake_amb.build_ambience)
@@ -571,6 +689,10 @@ AMB_LOOPS = (                       # klucz, źródło, start [s], długość [s
     ("amb_rain", "rain_hard_loop", 1.0, 16.0, -16.0, 0.0),
     ("amb_rain_roof", "rain_on_plastic", 0.5, 16.0, -17.0, -12.0),      # pojedyncze głośne krople: bez ścięcia pętla wychodzi za cicha
     ("amb_wind", "wind_mountain_loop", 10.25, 16.0, -19.6, 0.0),
+    # (2026-11-02) pompa ciśnieniowa z buczeniem, szum wentylacji, krople w jaskini; pętle stereo synteza osiąga w całości
+    ("amb_machine", "hvac_pressure_pump", 22.5, 8.0, -15.0, 0.0),
+    ("amb_air", "hvac_roomtone", 3.25, 10.0, -18.0, 0.0),
+    ("amb_drips", "cave_drips_05", 7.25, 12.0, -20.0, -14.0),          # pojedyncze głośne krople: ścięcie jak w amb_rain_roof
 )
 
 
@@ -827,6 +949,61 @@ def _thud_bake() -> None:
         finalize("amb_thud_%d" % (i + 1), x, lufs=-24.0, fade_out_ms=500)
 
 
+# --- Rzeźnik: ryk trolla (wariant 2: ryk potwora) obniżony o 3 półtony, warkot wilkołaka pod spodem, oktawa w dół i dudnienie.
+RZEZNIK_NEEDS = ["troll_growl_long_05", "monster_roar_growl_009", "werewolf_growl_06"]
+
+
+def _rzeznik_roar_bake() -> None:
+    for i, (sid, t0) in enumerate((("troll_growl_long_05", 0.07), ("monster_roar_growl_009", 0.03))):
+        n = d.sec(1.2 + .1 * i)
+        T = n / d.SR
+        v = _clip(sid, t0, T + .3, -3.0, T, tail=.3)
+        low = _clip("werewolf_growl_06", 0.19 + 1.5 * i, T + .3, -5.0, T, tail=.3, onset=(i == 0))
+        sub = _unit(d.lp(d.repitch(v, -12.0)[:len(v)], 160.0))
+        x = d.mix([(v, 1.0), (low, .55, .03), (sub, .35), (thump(.5, 70, 32, .1, .16), .5, .1)], n)
+        x = d.saturate(_unit(d.filt(x, "hp", 45.0, order=2)), 2.2)
+        finalize("rzeznik_roar_%d" % (i + 1), d.reverb(x, ir("room"), wet=.22, keep_len=True), lufs=-12.6, fade_out_ms=100)
+
+
+# --- Żerca: chrapliwy skrzek z syczeniem i mokrym chwytem; ukryty Żerca — dwa niskie, mokre oddechy i suchy szelest.
+ZERCA_GRAB_NEEDS = ["screech_breath_05", "zombie_b_hiss_1", "stab_punch_hit"]
+ZERCA_WARN_NEEDS = ["monster1_breathing3", "paper_rustle_50"]
+
+
+def _zerca_grab_bake() -> None:
+    for i in range(2):
+        scr = _clip("screech_breath_05", 0.0, 0.95, -1.0 - 2.0 * i, 0.9, tail=.3)
+        hiss = _clip("zombie_b_hiss_1", 0.5 * i, 1.2, -2.0, 1.05, tail=.4, onset=(i == 0))
+        grab = _clip("stab_punch_hit", 0.03, 0.35, -2.0 * i, 0.3, tail=.12)
+        x = d.mix([(scr, 1.0, .03), (hiss, .5, .05), (grab, .9), (thump(.35, 90, 40, .06, .1), .5)], d.sec(1.1))
+        x = d.saturate(_unit(d.filt(x, "hp", 60.0, order=2)), 2.0)
+        finalize("zerca_grab_%d" % (i + 1), d.reverb(x, ir("close"), wet=.2, keep_len=True), lufs=-12.0, fade_out_ms=100)
+
+
+def _zerca_warn_bake() -> None:
+    b1 = _clip("monster1_breathing3", 0.06, 0.85, -4.0, 0.75, tail=.35)
+    b2 = _clip("monster1_breathing3", 0.06, 0.85, -6.0, 0.8, tail=.4)
+    rustle = d.filt(_unit(_fade(bc.src("paper_rustle_50", 0.3, 1.6), 1.2, 1.6)), "hp", 1500.0, order=2)
+    x = d.mix([(b1, 1.0, 0.0), (b2, .8, .75), (rustle, .25)], d.sec(1.6))
+    finalize("zerca_warn_1", d.reverb(d.lp(x, 3500.0), ir("close"), wet=.25, keep_len=True), lufs=-24.0, fade_out_ms=300)
+
+
+# --- Ćma zabita przy twarzy: miękki wydmuch pyłu z syntezy, szczypta gniecionego papieru i nagrany, stłumiony dwukrotny kaszel.
+# Trzepot i trzask skrzydełek zostały syntetyczne (werdykt odsłuchu 2026-11-02).
+MOTH_DUST_NEEDS = ["paper_crumple_02", "cop_cough_11"]
+
+
+def _moth_dust_bake() -> None:
+    for i in range(2):
+        r = Rng(0xF200 + i * 3907)
+        n = ms(900)
+        puff = d.filt(d.colored(n, r, .8), "lp", 1400.0, .7) * d.env_pts(n, [(0, 0), (.008, 1), (.08, .45), (.35, 0), (n / d.SR, 0)])
+        cough = d.lp(_clip("cop_cough_11", 0.15, 0.95, -1.0 * i, 0.78, tail=.2), 2600.0)
+        dust = d.filt(_clip("paper_crumple_02", 0.3 + .5 * i, 0.4, 0.0, 0.3, tail=.2), "hp", 2000.0, order=2)
+        x = d.mix([(_unit(puff), .9), (dust, .25), (cough, .8, .1)], n)
+        finalize("moth_dust_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15, keep_len=True), lufs=-17.0, fade_out_ms=120)
+
+
 def enemies() -> None:
     """Wersje z nagrań dla głosów wrogów — wołane na końcu bake_sfx.build_enemies()."""
     bc.hybrid(_keys("trzosek_attack", 3), _trzosek_attack_bake, TRZOSEK_NEEDS)
@@ -838,6 +1015,10 @@ def enemies() -> None:
     bc.hybrid(_keys("leech_growl", 2), _leech_growl_bake, LEECH_GROWL_NEEDS)
     bc.hybrid(_keys("leech_shriek", 2), _leech_shriek_bake, LEECH_SHRIEK_NEEDS)
     bc.hybrid(_keys("zyla_roar", 2), _zyla_roar_bake, ZYLA_ROAR_NEEDS)
+    bc.hybrid(_keys("rzeznik_roar", 2), _rzeznik_roar_bake, RZEZNIK_NEEDS)
+    bc.hybrid(_keys("zerca_grab", 2), _zerca_grab_bake, ZERCA_GRAB_NEEDS)
+    bc.hybrid(["zerca_warn_1"], _zerca_warn_bake, ZERCA_WARN_NEEDS)
+    bc.hybrid(_keys("moth_dust", 2), _moth_dust_bake, MOTH_DUST_NEEDS)
 
 
 # --- Finał misji: wstrząs górotworu, zawał stropu i sygnał radia „cel wykonany” (dawniej: dzwon alarmowy, zatrzymanie
@@ -894,6 +1075,35 @@ def _tape_stop_bake() -> None:
     finalize("tape_stop", d.reverb(x, ir("dead"), wet=.1), lufs=TAPE_LUFS)
 
 
+# --- Flara: zapłon ognia z syczeniem chemicznym; pętla — syk palnika gazowego i trzaski syczącego kwasu.
+FLARE_NEEDS = ["fire_ignition_03", "acid_sizzle_02", "gas_burner_4"]
+
+
+def _flare_bake() -> None:
+    ign = _clip("fire_ignition_03", 0.0, 0.9, 3.0, 0.8, tail=.4)
+    sz = d.filt(_clip("acid_sizzle_02", 0.0, 0.9, 0.0, 0.8, tail=.4), "hp", 800.0, order=2)
+    x = d.mix([(ign, .8), (sz, 1.0, .05), (thump(.12, 190, 80, .02, .03), .5)], ms(850))
+    finalize("flare_ignite", d.reverb(x, ir("room"), wet=.15), lufs=-16.0)
+
+    xf = d.sec(0.3)
+    hiss = d.filt(bc.src("gas_burner_4", 10.0, 3.3), "hp", 1500.0, order=2)
+    s1 = _fade(bc.src("acid_sizzle_02", 0.15, 1.65), 1.45, 1.65)
+    s2 = d.repitch(s1, -1.0)
+    crackle = d.filt(d.mix([(_unit(s1), 1.0), (_unit(s2), 1.0, 1.5)], len(hiss)), "hp", 1500.0, order=2)
+    x = d.limiter(_unit(hiss / (np.std(hiss) + 1e-9) + 0.7 * crackle / (np.std(crackle) + 1e-9)), -8.0)   # trzaski bez ścięcia dławią pętlę
+    finalize("flare_loop", d.seam_xfade(x, xf), loop=True, lufs=-15.7)
+
+
+# --- Agregat: diesel na wolnych obrotach (nagranie z silnika łodzi), bez infradźwięków, z podbitym środkiem (stuk zaworów).
+GENERATOR_NEEDS = ["diesel_boat_idle"]
+
+
+def _generator_bake() -> None:
+    x = d.filt(bc.src("diesel_boat_idle", 3.0, 5.0), "hp", 45.0, order=2)
+    x = d.limiter(_unit(d.filt(x, "peak", 900.0, 0.8, gain_db=6.0)), -4.0)
+    finalize("generator_loop", d.seam_xfade(x, d.sec(1.0)), loop=True, lufs=-15.2)
+
+
 def world() -> None:
     """Wersje z nagrań dla dźwięków świata — wołane na końcu bake_sfx.build_world()."""
     bc.hybrid(["tape_stop"], _tape_stop_bake, TAPE_NEEDS)
@@ -906,6 +1116,8 @@ def world() -> None:
     bc.hybrid(_keys("amb_creak", 3), _creak_bake, CREAK_NEEDS)
     bc.hybrid(_keys("amb_gust", 3), _gust_bake, GUST_NEEDS)
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
+    bc.hybrid(["flare_ignite", "flare_loop"], _flare_bake, FLARE_NEEDS)
+    bc.hybrid(["generator_loop"], _generator_bake, GENERATOR_NEEDS)
 
 
 # ============================================================ SYGNAŁY (bake_sfx.build_ui)

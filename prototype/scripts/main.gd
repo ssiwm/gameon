@@ -265,7 +265,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 		if not carry and not c.is_bot:
 			level.register_weapon_kit(int(c.player_id))
 		c.deliver_spawn(Vector2.INF)     # punkt kontrolny bossa (jeśli był) przestaje obowiązywać
-		c.request_full_reset(carry)
+		c.request_full_reset(carry, level.objective == "hub")   # w kryjówce leczenie bez wdechu odrodzenia
 	level.clear_pickups()
 	mission.on_restart(new_run)
 	Scrap.reset_loot()                   # wipe / nowa misja: łup z poprzedniej próby przepada (po sukcesie już trafił do banku)

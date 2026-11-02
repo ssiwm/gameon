@@ -1363,7 +1363,7 @@ func _do_revive() -> void:
 	if not is_bot:
 		Feel.shake(1.5)
 
-func _respawn(hp_amount: int) -> void:
+func _respawn(hp_amount: int, quiet := false) -> void:
 	dead = false
 	hp = hp_amount
 	chip = 0.0
@@ -1381,12 +1381,13 @@ func _respawn(hp_amount: int) -> void:
 	_step_dist = 0.0
 	battery = maxf(battery, BATTERY_MAX * BATTERY_RESPAWN)
 	bat_pct = battery_pct()
-	Audio.play("revive", Audio.BUS_PLAYER, -9.0)
+	if not quiet:
+		Audio.play("revive", Audio.BUS_PLAYER, -9.0)
 
-## Restart po wipe (wszyscy leżą): pełne zdrowie w punkcie startu.
-func full_reset(keep_loadout := false) -> void:
+## Restart po wipe (wszyscy leżą): pełne zdrowie w punkcie startu. `quiet` = bez dźwięku odrodzenia (wejście do kryjówki).
+func full_reset(keep_loadout := false, quiet := false) -> void:
 	_second_used = false            # „Second chance" — raz na misję
-	_respawn(max_hp())
+	_respawn(max_hp(), quiet)
 	battery = BATTERY_MAX           # wipe, punkt kontrolny bossa, nowa misja i kryjówka: świeża bateria
 	bat_pct = 100
 	if not keep_loadout:
@@ -1418,18 +1419,18 @@ func apply_spawn(at: Vector2) -> void:
 
 ## Wołane przez serwer po wipe — reset wykonuje właściciel postaci, bo tylko on
 ## ma autorytet nad jej pozycją i HP (synchronizator by to nadpisał).
-func request_full_reset(keep_loadout := false) -> void:
+func request_full_reset(keep_loadout := false, quiet := false) -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
-		full_reset(keep_loadout)
+		full_reset(keep_loadout, quiet)
 	else:
-		_full_reset_rpc.rpc_id(get_multiplayer_authority(), keep_loadout)
+		_full_reset_rpc.rpc_id(get_multiplayer_authority(), keep_loadout, quiet)
 
 ## „any_peer", bo woła serwer na postaci należącej do klienta; przyjmujemy
 ## tylko od serwera.
 @rpc("any_peer", "call_remote", "reliable")
-func _full_reset_rpc(keep_loadout: bool) -> void:
+func _full_reset_rpc(keep_loadout: bool, quiet: bool) -> void:
 	if multiplayer.get_remote_sender_id() == 1:
-		full_reset(keep_loadout)
+		full_reset(keep_loadout, quiet)
 
 # ---------------------------------------------------------------- audio
 
@@ -2089,8 +2090,7 @@ func apply_heal(amount: int) -> void:
 	chip = 0.0
 	Vfx.burst(_fx_root(), global_position + Vector2(0, -10), Color(0.4, 1.0, 0.5), 10, 15.0, 45.0,
 		Vector2.UP, 60.0, -30.0, 0.6, Vector2(1.0, 1.8), true)
-	if not is_bot:
-		Audio.play("revive", Audio.BUS_PLAYER, -6.0, 1.4)
+	# bez dźwięku: „revive” (podniesienie rannego) przyspieszony do leczenia apteczką przeszkadzał; podniesienie z ziemi ma medkit_pickup
 
 ## Ładowarka (charger.gd, BATTERY_PLAN.md B3): doładowanie o `amount` s — tylko u właściciela postaci, jak całe liczenie baterii.
 func charge_battery(amount: float) -> void:
