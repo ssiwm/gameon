@@ -3917,8 +3917,18 @@ func _map_test() -> void:
 		print("[MAPTEST] %s %s: %d x %d, kształt %s" % [id, level.title, w, rows.size(), "OK" if shape_ok else "BŁĄD (różne szerokości wierszy)"])
 		if not shape_ok:
 			fails += 1
+		# lokalna przebudowa nawigacji (nav.gd `rebuild_region`) daje ten sam graf co pełna budowa — losowe bryły i rozbite ściany
+		var t_full := Time.get_ticks_usec()
+		level.nav_diff_vs_full()
+		var full_ms := float(Time.get_ticks_usec() - t_full) / 1000.0
+		var fz: Array = level.nav_local_fuzz(40, hash(id))
+		var nav_bad: Array = fz[0]
 		if level.walls_total() > 0:
-			level.open_all_walls_for_test()          # skrytki za zamurowanymi przejściami też muszą być osiągalne po rozbiciu
+			nav_bad.append_array(level.open_walls_checked())      # skrytki za zamurowanymi przejściami też muszą być osiągalne po rozbiciu
+		print("[MAPTEST] %s: lokalna przebudowa nawigacji — 80 zmian, najdłużej %.2f ms, średnio %.2f ms (pełna budowa + porównanie %.0f ms)" % [id, fz[1], fz[2], full_ms])
+		# średnia jest stabilna także na wolnym CI; najdłuższa tylko z dużym zapasem (pojedynczy pomiar skacze)
+		if float(fz[2]) > 2.0 or float(fz[1]) > 10.0:
+			nav_bad.append("lokalna przebudowa nawigacji: średnio %.2f ms, najdłużej %.2f ms (limit 2 / 10 ms)" % [fz[2], fz[1]])
 		var nav: AStar2D = level.nav
 		var points: Array = []          # [etykieta, pozycja]
 		for i in level.spawns.size():
@@ -3952,7 +3962,7 @@ func _map_test() -> void:
 				# broń w gablocie (cabinet.gd) leży do 7,5 px od środka kafla gabloty — rozstawiona na jej szerokości
 				points.append(["przedmiot %s%d" % [k, i], level._map_items[k][i], 8.0 if (k == "g" and level._cab_slots > 0) else 2.0])
 		var ids := {}
-		var bad: Array = []
+		var bad: Array = nav_bad
 		for p in points:
 			var cid := nav.get_closest_point(p[1])
 			if cid < 0 or nav.get_point_position(cid).distance_to(p[1]) > (float(p[2]) if p.size() > 2 else 2.0):

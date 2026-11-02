@@ -245,7 +245,8 @@ jako dzielnik ciosu.
 - **Lokalna przebudowa nawigacji**: `Nav.rebuild_region(rect)` — usuwa węzły i krawędzie w prostokącie powiększonym o zasięg skoku
   (`GAP_SIDE` = 4 w bok, `JUMP_UP` = 2 w górę, spadki w kolumnach do podłogi) i dokłada je od nowa. Cel: < 2 ms. Test: graf po lokalnej
   przebudowie identyczny z pełną budową (porównanie punktów i krawędzi) dla każdej ściany i każdej mapy. **Naprawia też dzisiejsze przycięcie
-  przy `q`.**
+  przy `q`.** **Zrobione w 1.7.479:** pas nad prostokątem przelicza tylko zejścia i zeskoki, kafle w kopii `PackedByteArray` zamiast wywołań
+  `Callable`; `--maptest` (80 losowych zmian 1–4 × 1–5 kafli na mapę + każda ściana) — 0 różnic, średnio 0,4–1,5 ms, najdłużej 1,3–4,9 ms (z innym testem w tle).
 - **Stan zniszczeń w jednym miejscu** (`level.gd`): lista zniszczonych z nazwami, synchronizacja dołączających (uogólnione `send_walls_to`),
   reset przy wipe, nowej misji i **punkcie kontrolnym bossa** (stan z chwili przebudzenia — jak łup od 1.7.424).
 - **Widok 3D**: każdy materiał ma jeden model z shaderem maski uszkodzeń i zestaw brył z pre-fraktury (skrypt Blendera w `tools/`,
