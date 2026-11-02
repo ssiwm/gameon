@@ -34,6 +34,7 @@ const WorldBars := preload("res://scripts/world_bars.gd")
 const PX := Level3D.PX
 const FOV := 40.0
 const ENEMY_MODELS_PER_FRAME := 1        ## nowe modele wrogów na klatkę poza budową mapy (`_sync_enemies`)
+const ENEMY_RESCAN_EVERY := 30           ## klatki: zapasowy przegląd grup wrogów (`_sync_enemies`), poza tym tylko po dodaniu węzła z `view_info`
 const OFFSCREEN_ENEMY_EVERY := 4          ## wróg poza kadrem: pełna synchronizacja co tyle klatek (rozłożona po wrogach), z zebraną deltą
 const ENEMY_CULL_R := 3.5                ## m: promień sfery wroga przy teście kadru (`_sync_enemies`); bossowie ×3
 const MAX_LIGHTS := 14
@@ -121,6 +122,9 @@ var _spr_bg: Sprite2D
 var _spr_fg: Sprite2D
 var _rigs := {}                          ## Node gracza → {actor, model, gun, root}
 var _enemies := {}                       ## id węzła wroga 2D → [węzeł, Enemy3D] (modele 3D wrogów; null w drugim polu = brak modelu)
+var _enemy_scan := true                  ## trzeba przejrzeć grupy wrogów (`_on_node_added`, model czekający na kolejkę, zapas co ENEMY_RESCAN_EVERY)
+var _no_model := {}                      ## id węzłów z grup wrogów bez modelu (rekwizyty w „enemies”) — przegląd ich pomija
+var _probe_q := PhysicsRayQueryParameters2D.new()   ## jedno zapytanie promienia dla podpór stóp wrogów (bez nowego obiektu na każdą stopę)
 var _estate := {}                        ## id węzła wroga 2D → stan do wykrywania zdarzeń (żyje, błysk trafienia, zapowiedź ataku)
 var _lights := {}                        ## id światła gry (Lights.GameLight) → [światło, Light3D]
 var _frames_cache := {}
@@ -182,6 +186,10 @@ var label_fade := 1.0                     ## 1 = paski i plakietki nad postaciam
 var _bars_layer: CanvasLayer              ## warstwa ekranu z paskami życia i plakietkami (world_bars.gd), tuż pod HUD-em
 
 func setup(level: Node2D, players: Node2D) -> void:
+	if not get_tree().node_added.is_connected(_on_node_added):
+		get_tree().node_added.connect(_on_node_added)
+	_enemy_scan = true
+	_probe_q.collision_mask = 1
 	_level = level
 	_players = players
 	name = "View3D"
@@ -988,6 +996,11 @@ func _release_rig(p) -> void:
 
 # ---------------------------------------------------------------- billboardy (wrogowie i reszta animowanych sprite'ów)
 
+## Nowy węzeł z kontraktem widoku wroga (`view_info`): w najbliższej klatce przegląd grup (`_sync_enemies`) dobierze mu model.
+func _on_node_added(n: Node) -> void:
+	if n.has_method("view_info"):
+		_enemy_scan = true
+
 ## Rodzaj wroga, jeśli ma model 3D (`enemy3d.gd`), inaczej "".
 func _enemy_kind(n: Node) -> String:
 	var k = n.call("view_info").get("kind") if n.has_method("view_info") else n.get("kind")        # rekwizyty w grupie „enemies” (skrzynie, beczki) nie mają kontraktu ani modelu
@@ -998,20 +1011,27 @@ func _sync_enemies(delta: float) -> void:
 	# model wroga kosztuje ok. 10–20 ms (scena GLB, szkielet, materiały): przy budowie mapy wszystkie naraz, w grze (finał 1.1 wypuszcza
 	# 6 wrogów w jednej klatce, gniazda, wędrowcy) najwyżej ENEMY_MODELS_PER_FRAME na klatkę
 	var budget := 1000 if _life < _spawn_burst_until else ENEMY_MODELS_PER_FRAME
-	for g in ["enemies", "roamers", "boss", "nests"]:
+	# grupy przeglądamy tylko, gdy coś mogło przybyć (`_on_node_added`) albo model czeka w kolejce, plus zapas co ENEMY_RESCAN_EVERY klatek:
+	# co klatkę było to ok. 0,5 ms w walce (127 węzłów, skrzynie i beczki bez modelu sprawdzane za każdym razem)
+	var scan := _enemy_scan or Engine.get_process_frames() % ENEMY_RESCAN_EVERY == 0
+	_enemy_scan = false
+	for g in (["enemies", "roamers", "boss", "nests"] if scan else []):
 		for n in get_tree().get_nodes_in_group(g):
 			if not (n is Node2D) or n.is_queued_for_deletion():
 				continue
 			var id: int = n.get_instance_id()
-			if _enemies.has(id):
+			if _enemies.has(id) or _no_model.has(id):
 				continue
 			var k := _enemy_kind(n)
 			if k == "":
+				if not n.has_method("view_info"):
+					_no_model[id] = true                  # rekwizyt na stałe; wróg z `view_info` bez modelu może jeszcze dostać rodzaj
 				continue
 			for c in n.get_children():
 				if c is AnimatedSprite2D:
 					(c as AnimatedSprite2D).self_modulate = Color(1, 1, 1, 0)
 			if budget <= 0:
+				_enemy_scan = true
 				continue                                  # model w następnej klatce (sprite 2D już przezroczysty)
 			budget -= 1
 			var e := Enemy3D.new()
@@ -1130,11 +1150,13 @@ func _sync_enemies(delta: float) -> void:
 		var ground := {}
 		if alive and on_screen and absf(float(st["vy"])) < 55.0:
 			var probes: Dictionary = e.call("ground_probes")
+			var space := src.get_world_2d().direct_space_state
 			for side in probes:
 				var point: Vector3 = probes[side]
 				var origin := Vector2(point.x / Level3D.PX, -e.position.y / Level3D.PX)
-				var query := PhysicsRayQueryParameters2D.create(origin + Vector2(0, -8), origin + Vector2(0, 8), 1)
-				var hit := src.get_world_2d().direct_space_state.intersect_ray(query)
+				_probe_q.from = origin + Vector2(0, -8)
+				_probe_q.to = origin + Vector2(0, 8)
+				var hit := space.intersect_ray(_probe_q)
 				if not hit.is_empty():
 					var height: float = -float(hit["position"].y) * Level3D.PX - e.position.y
 					if absf(height) <= 0.45:
