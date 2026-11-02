@@ -558,8 +558,8 @@ class HdChunk extends Node2D:
 const HD_CHUNK := 16                    ## kafli na bok fragmentu (16×16 kafli = 256×256 px świata; kadr gry to ok. 400×225 px)
 
 ## Trzcina przy cieczach jako kryjówka (od 1.7.306): komórki [kolumna, wiersz kafla pod stopami], w których rośnie trzcina brzegowa — kafel brzegu
-## i pierwszy kafel cieczy przy każdym brzegu ciągu (woda, błoto, olej), który graniczy z bryłą. To te same miejsca, w których widok stawia kępy
-## (`Level3D.build_liquid_props`). Kucającego w nich wrogowie widzą z mniejszej odległości (`enemy.gd` REED_SIGHT); rozstrzyga serwer.
+## i pierwszy kafel cieczy przy każdym brzegu ciągu wody albo błota, który graniczy z bryłą (przy oleju trzcina nie rośnie, od 1.7.473). To te same
+## miejsca, w których widok stawia kępy (`Level3D.build_liquid_props`). Kucającego w nich wrogowie widzą z mniejszej odległości (`enemy.gd` REED_SIGHT); rozstrzyga serwer.
 var _reed_cells := {}
 
 func _build_reed_cells() -> void:
@@ -569,7 +569,7 @@ func _build_reed_cells() -> void:
 		var c := 0
 		while c < cols:
 			var ch := _ch(c, r)
-			if not "~mO".contains(ch) or _is_solid(c, r - 1):
+			if not "~m".contains(ch) or _is_solid(c, r - 1):
 				c += 1
 				continue
 			var c1 := c

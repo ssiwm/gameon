@@ -1819,7 +1819,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 				parent.add_child(di)
 			c = c1
 
-## Rekwizyty cieczy (po `build_liquids`): kałuże odbijające światło, rozchlapane krople, trzcina i patyki przy brzegu, bąble gazu w oleju i błocie.
+## Rekwizyty cieczy (po `build_liquids`): kałuże odbijające światło, rozchlapane krople, trzcina (przy wodzie i błocie, nie przy oleju) i patyki przy brzegu, bąble gazu w oleju i błocie.
 ## Wszystko deterministyczne z ziarna mapy; `--noliquidprops` wyłącza. Dynamiczne rozbryzgi od kroków: `view3d.gd` (`_splash_update`).
 const PROP_COMMON := """
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -2217,8 +2217,8 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 				continue
 			var edge := x0 if sd < 0 else x0 + w
 			var ground_y := y_top + (0.095 if _ch(rows, nc, r) == "#" else 0.0)
-			# kępy na brzegu
-			var clumps := rng.randi_range(2, 4)
+			# kępy na brzegu — przy wodzie i błocie; w oleju nic nie rośnie (tylko patyki niżej)
+			var clumps := rng.randi_range(2, 4) if kd != 1 else 0
 			for k in clumps:
 				var cx := edge + float(sd) * rng.randf_range(0.12, 1.1)
 				var cz := rng.randf_range(zb + 0.9, zf - 0.25)
@@ -2230,7 +2230,7 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 					var lean := Vector3(rng.randf_range(-0.30, 0.30) * hh, 0.0, rng.randf_range(-0.12, 0.12) * hh)
 					_blade(v, nr, col, idx, base, hh, rng.randf_range(0.020, 0.036), rng.randf() * TAU, lean, cb, ct, rng.randf() < 0.32)
 			# kępy w płytkiej wodzie przy brzegu (tam, gdzie głębokość < 0,35 m)
-			if kd > 0:
+			if kd == 2:
 				for k in rng.randi_range(1, 3):
 					var fx := rng.randf_range(0.15, 0.9)
 					var xi := int(clampf((fx if sd < 0 else (w - fx)) / w * float(ns), 0.0, float(ns)))
