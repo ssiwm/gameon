@@ -2089,8 +2089,7 @@ func apply_heal(amount: int) -> void:
 	chip = 0.0
 	Vfx.burst(_fx_root(), global_position + Vector2(0, -10), Color(0.4, 1.0, 0.5), 10, 15.0, 45.0,
 		Vector2.UP, 60.0, -30.0, 0.6, Vector2(1.0, 1.8), true)
-	if not is_bot:
-		Audio.play("revive", Audio.BUS_PLAYER, -6.0, 1.4)
+	# bez dźwięku: „revive” (podniesienie rannego) przyspieszony do leczenia apteczką przeszkadzał; podniesienie z ziemi ma medkit_pickup
 
 ## Ładowarka (charger.gd, BATTERY_PLAN.md B3): doładowanie o `amount` s — tylko u właściciela postaci, jak całe liczenie baterii.
 func charge_battery(amount: float) -> void:
