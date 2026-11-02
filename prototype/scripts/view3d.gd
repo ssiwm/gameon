@@ -64,6 +64,7 @@ const AURA_ACTOR := 0.55                    ## mnożnik energii aury gracza dla 
 const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
 const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość [m za płaszczyzną gry]
 const WADE_SHOT_BLEND_M := 3.0              ## m: na tym odcinku lotu smuga pocisku brodzącego strzelca wraca z wysokości lufy modelu na tor symulacji
+const ATLAS_WARM_FRAMES := 4               ## klatki ze środowiskiem kamery świata, po których `_atlas_warm` znika (atlas cieni już istnieje)
 const FOG_SYM_DENS := 4.0                   ## gęstość bryły mgły (× bazowa, `_fog_dens`), od której kamera świata ma bryłę symetryczną (pogoda MGŁA: ok. 9×)
 const EYE_UP_M := 2.2                       ## wysokość oka kamery ponad środkiem kadru [m] (punkt zbiegu nad głowami postaci)
 const Z_BG := -60
@@ -133,6 +134,8 @@ var _fog_dens := 1.0                     ## gęstość bryły mgły względem ba
 var fog_sym := 1                         ## bryła symetryczna kamery świata (`_sync_camera`): 0 — nigdy (dawny „shift”), 1 — w gęstej mgle, 2 — zawsze (pomiary)
 var _fog_sym_on := false                 ## tryb 1: bryła mgły gęstsza niż FOG_SYM_DENS (z histerezą)
 var _fog_rows := 0                       ## wierszy obrazu świata ponad kadrem gry (symetryczna bryła dla mgły wolumetrycznej)
+var _atlas_warm: OmniLight3D             ## światło z cieniem tuż przed kamerą świata na pierwsze klatki (`_atlas_warm_sync`); potem null
+var _atlas_warm_frames := 0
 var _fog_top := 0                        ## pierwszy wiersz kadru gry w obrazie świata (wycinek sprite'a świata)
 var _lights := {}                        ## id światła gry (Lights.GameLight) → [światło, Light3D]
 var _frames_cache := {}
@@ -227,6 +230,21 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_cam_a.cull_mask = LAYER_WORLD | Level3D.LAYER_FOREST       # las ma dodatkową warstwę (światło `MoonRim` tylko na nim)
 	_cam_a.current = true
 	_vp_bg.add_child(_cam_a)
+	# Mgła wolumetryczna Godota (fog.cpp) wiąże atlas cieni świateł w zestawie uniformów raz, przy tworzeniu swoich buforów, i odtwarza go
+	# dopiero, gdy przestanie być ważny. Atlas cieni viewportu powstaje leniwie, przy pierwszym świetle z cieniem: mgła utworzona wcześniej
+	# (start mapy przed zapaleniem latarki) dostawała czarną teksturę zastępczą i nie brała cieni snopu ani lamp, dopóki jej bufory nie powstały
+	# od nowa (zmiana rozmiaru viewportu). Maleńkie światło z cieniem tuż przed kamerą (w jego zasięgu nic nie ma) tworzy atlas w pierwszej
+	# klatce, zanim kamera dostanie środowisko z mgłą; potem znika, a atlas zostaje. Odtworzenie buforów mgły w trakcie gry dawało mignięcie
+	# (jasność mgły spadała do ok. 40% na kilka klatek), więc atlas musi być pierwszy.
+	_atlas_warm = OmniLight3D.new()
+	_atlas_warm.name = "ShadowAtlasWarm"
+	_atlas_warm.position = Vector3(0.0, 0.0, -1.5)
+	_atlas_warm.omni_range = 0.3
+	_atlas_warm.light_energy = 0.001
+	_atlas_warm.light_volumetric_fog_energy = 0.0
+	_atlas_warm.light_cull_mask = LAYER_WORLD
+	_atlas_warm.shadow_enabled = true
+	_cam_a.add_child(_atlas_warm)
 	_cam_b = Camera3D.new()
 	_cam_b.fov = FOV
 	_cam_b.near = 0.3
@@ -566,7 +584,18 @@ func _tick(delta: float) -> void:
 		_scan_lights()
 		tp = _tp("scan_lights", tp)
 	_sync_lights()
+	_atlas_warm_sync()
 	tp = _tp("lights", tp)
+
+## `_atlas_warm` znika po ATLAS_WARM_FRAMES klatkach, w których kamera świata ma już środowisko (mgła powstała przy istniejącym atlasie).
+func _atlas_warm_sync() -> void:
+	if _atlas_warm == null:
+		return
+	if _cam_a.environment != null:
+		_atlas_warm_frames += 1
+	if _atlas_warm_frames >= ATLAS_WARM_FRAMES:
+		_atlas_warm.queue_free()
+		_atlas_warm = null
 
 # ---------------------------------------------------------------- kamera i obraz
 

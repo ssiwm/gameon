@@ -58,6 +58,19 @@ func run(m: Node2D) -> void:
 	info("mgła wolumetryczna %s, długość %.1f m, gęstość bryły ×%.2f" % [env.volumetric_fog_enabled, env.volumetric_fog_length, dens])
 	var dense := dens >= View3D.FOG_SYM_DENS
 	check("tryb domyślny: bryła symetryczna %s (gęstość ×%.2f)" % ["jest" if dense else "nie ma", dens], (int(v3d.get("_fog_rows")) > 0) == dense)
+	# tryb domyślny bez żadnego przełączania `fog_sym`: pas ustawiony przy wczytaniu mapy (pogoda od startu) też daje cień we mgle
+	if dense:
+		wall.visible = false
+		await _frames(0.6)
+		var none0 := await _lum_behind()
+		(wall.mesh as BoxMesh).size.x = 1.0
+		wall.visible = true
+		await _frames(0.6)
+		var wall0 := await _lum_behind()
+		info("tryb domyślny od startu, ściana 1 m: powietrze za nią %.4f (bez ściany %.4f, %.0f%%)" % [wall0.y, none0.y, _pct(wall0.y, none0.y)])
+		await _shot("auto_wall_100cm")
+		check("tryb domyślny od startu: za ścianą 1 m powietrze we mgle ciemniejsze o > 30%", wall0.y < none0.y * 0.7)
+	check("światło tworzące atlas cieni już zniknęło (`_atlas_warm`)", v3d.get("_atlas_warm") == null)
 	var res := {}
 	for sym in [false, true]:
 		v3d.set("fog_sym", 2 if sym else 0)
