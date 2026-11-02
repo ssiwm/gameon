@@ -9,6 +9,14 @@
   }
  },
  "sources": {
+  "acid_sizzle_02": {
+   "kind": "lib",
+   "file": "sonniss/2020/Articulated Sounds - Magic Elements vol.2/CHEMICAL ACID Sizzle, Burn, Short 02.wav",
+   "sha256": "bb1f57c2f8c1f16aa352d7ec8720629c0f2bffa250666bdfa710e45a6a0db880",
+   "pack": "Sonniss GDC 2020 — Magic Elements vol.2",
+   "supplier": "Articulated Sounds",
+   "license": "sonniss-gdc-2.0"
+  },
   "ak47_open_2m": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Pole Position - The Outdoor Gun Acoustics Library/AK47_big_open_area_2m_above_behind_gun_RSM191_M.wav",
@@ -31,6 +39,14 @@
    "sha256": "35d81033310daf8bb3d960510f18793618f5061e120a8df953784e0e4717d83f",
    "pack": "Sonniss GDC 2017 — CREATURES ZONE",
    "supplier": "MatiasMacSD",
+   "license": "sonniss-gdc-2.0"
+  },
+  "anvil_hits_08": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/Mononeshot - MEDIEVAL, Smithy/MEDIEVAL, Smithy - 08 - Anvil hits - Tree hits.wav",
+   "sha256": "04fb830e2a5e00611afc46f209deda4e09a6290fa893f007b94d54e090555c60",
+   "pack": "Sonniss GDC 2017 — MEDIEVAL, Smithy",
+   "supplier": "Mononeshot",
    "license": "sonniss-gdc-2.0"
   },
   "aquatic_gurgling_2": {
@@ -63,6 +79,14 @@
    "sha256": "23e6c0cb86d67d2c5b44a579c2d903a5404ed85c923a72d1c38efa004e14ac65",
    "pack": "Sonniss GDC 2020 — Monster Roars",
    "supplier": "Phase 4 Libraries",
+   "license": "sonniss-gdc-2.0"
+  },
+  "bb_rifle_grab_017": {
+   "kind": "lib",
+   "file": "sonniss/2023/Sonic Bat - BB Rifle/SBbbr_Grabbing BB Rifle 017.wav",
+   "sha256": "863bebc80260e665ec7376f2c25977d58a84d92c77ba05010188bc9bd5e3958f",
+   "pack": "Sonniss GDC 2023 — BB Rifle",
+   "supplier": "Sonic Bat",
    "license": "sonniss-gdc-2.0"
   },
   "beast01_attack_08": {
@@ -137,6 +161,14 @@
    "supplier": "Eiravaein Works",
    "license": "sonniss-gdc-2.0"
   },
+  "braam_slow_dark": {
+   "kind": "lib",
+   "file": "sonniss/2026/Cinematic Sound Design - Ultra Transitions & Impacts/Transition Braam Slow Dark Creepy.wav",
+   "sha256": "894f247e3a4a83e8f9763513502854dbe648951dbbfb588c03d9bef2c2de91c3",
+   "pack": "Sonniss GDC 2026 — Ultra Transitions & Impacts",
+   "supplier": "Cinematic Sound Design",
+   "license": "sonniss-gdc-2.0"
+  },
   "breaker_on": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 6of8/UberDuo - The Cabin Audio Playset/Switch,ElectricalPanelBreaker,On.wav",
@@ -159,6 +191,14 @@
    "sha256": "5e586500cb16b5ead802bf89a11743364dcc0ddd2f82d349918a5c4f59f0d952",
    "pack": "Sonniss GDC 2016 — Bullet SFX",
    "supplier": "Stuart Duffield",
+   "license": "sonniss-gdc-2.0"
+  },
+  "bullet_metal_heavy_08": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio -  Bullet Impact Sounds/bullet_impact_metal_heavy_08.wav",
+   "sha256": "772602f5a31856f85eeaf9f59c1bce51adc77402ee030fdadb2696957e0e0460",
+   "pack": "Sonniss GDC 2017 — Bullet Impact Sounds",
+   "supplier": "Gamemaster Audio",
    "license": "sonniss-gdc-2.0"
   },
   "cannonball_impact_005": {
@@ -185,12 +225,28 @@
    "supplier": "Tone Manufacture",
    "license": "sonniss-gdc-2.0"
   },
+  "cave_drips_05": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers - Hydrology Bubbles and Splashes/cave_drips_05_30_loop.wav",
+   "sha256": "4867f742ea462c73ab0c4a26f9bd99c042eadd7344e4adeb8c62f4fa46775282",
+   "pack": "Sonniss GDC 2018 — Hydrology Bubbles and Splashes",
+   "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
   "chain_clinking_04": {
    "kind": "lib",
    "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 1of8/Articulated Sounds - Ghosts Return/METAL CHAIN Old Barn, Manipulation, Clinking 04.wav",
    "sha256": "a72002a8e4a1b01f33343c131448d6b6688dd891d37815a22b6672561b491f7b",
    "pack": "Sonniss GDC 2019 — Ghosts Return",
    "supplier": "Articulated Sounds",
+   "license": "sonniss-gdc-2.0"
+  },
+  "cop_cough_11": {
+   "kind": "lib",
+   "file": "sonniss/2026/Epic Stock Media - AAA Game Character Police Officer/HMNCough_Police Officer Cough Vocal Male 11.wav",
+   "sha256": "3745cbcafb74ea7c6c730650f66efd8d30cef2ef2c55e8403d75d4eda57b3ca6",
+   "pack": "Sonniss GDC 2026 — AAA Game Character Police Officer",
+   "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
   "creature_step_damp": {
@@ -239,6 +295,14 @@
    "sha256": "5eefb98e5ac19d76ccb7c7fb89eff6564bf334627568a651118a75c21b2adf29",
    "pack": "Sonniss GDC 2019 — IMPACT",
    "supplier": "Baxter Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "diesel_boat_idle": {
+   "kind": "lib",
+   "file": "sonniss/2026/Epic Stock Media - Public Spaces - Basic Transportation Sounds/BOATMotr_Diesel Engine Boat Idle Steady Rpm Hum Motor Mic One 01_ESM_CPS.wav",
+   "sha256": "c79d2c3436bfbc5eee8398a1111369fa3de82237914a5839e8a051a67019ef7c",
+   "pack": "Sonniss GDC 2026 — Public Spaces - Basic Transportation Sounds",
+   "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
   "dirt_walk_loop": {
@@ -409,12 +473,36 @@
    "supplier": "BluezoneCorp",
    "license": "sonniss-gdc-2.0"
   },
+  "heartbeat_stetho": {
+   "kind": "lib",
+   "file": "sonniss/2016/ShapingWaves -  STETHOSCOPE/SW002_Stethoscope_Chest_Heart_Heartbeat_Blood_Flow_A.wav",
+   "sha256": "20e29eeccca81f36343d3b4660bdff9b69258ca0dad8104efdbbbecd871400bf",
+   "pack": "Sonniss GDC 2016 — STETHOSCOPE",
+   "supplier": "ShapingWaves",
+   "license": "sonniss-gdc-2.0"
+  },
   "hellhound_idle": {
    "kind": "lib",
    "file": "sonniss/2020/SmartSoundFX - Monsters/HELLHOUND Idle Weak 03.wav",
    "sha256": "6abc65be634f49b3283b1a746b5f5a8dfa6fb2ea0d31ac28e26f64011e19a909",
    "pack": "Sonniss GDC 2020 — Monsters",
    "supplier": "SmartSoundFX",
+   "license": "sonniss-gdc-2.0"
+  },
+  "hvac_pressure_pump": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Hzandbits - Hvac Elements/Hvac,Heating,Pressure pump,Industrial,Whine,Slight rumble,Loop.wav",
+   "sha256": "5432274f1418fa29ed4ee6fc6b11ff857787ff17f8586e3038ee2f7b9b219815",
+   "pack": "Sonniss GDC 2017 — Hvac Elements",
+   "supplier": "Hzandbits",
+   "license": "sonniss-gdc-2.0"
+  },
+  "hvac_roomtone": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Hzandbits - Hvac Elements/Roomtone,Hvac,Drone,Hum,Low Mids,Loop.wav",
+   "sha256": "f879d84a2c4bb380630051d10a44b9ba1f64299c59c0ffae4a6dec70ba9cd850",
+   "pack": "Sonniss GDC 2017 — Hvac Elements",
+   "supplier": "Hzandbits",
    "license": "sonniss-gdc-2.0"
   },
   "impact_22": {
@@ -489,6 +577,22 @@
    "supplier": "David Dumais Audio",
    "license": "sonniss-gdc-2.0"
   },
+  "m1911_handling": {
+   "kind": "lib",
+   "file": "sonniss/2020/Pole Position - Colt M1911A1 semi-automatic pistol/M1911A1, Handling, Dry Fire, MKH416.wav",
+   "sha256": "acef9a15b7985973fb97625f0f08f8c57e04cac508cb15a9a28c2c874da60b4d",
+   "pack": "Sonniss GDC 2020 — Colt M1911A1 semi-automatic pistol",
+   "supplier": "Pole Position",
+   "license": "sonniss-gdc-2.0"
+  },
+  "male_breath_gasping": {
+   "kind": "lib",
+   "file": "sonniss/2023/Pole Position Production - The Grunts Library/Male 1 - Breathing - Gasping - Ehrlund M1.wav",
+   "sha256": "51fbace3a3d549af8e5a6e7bca7a8e9ff42eff773e1c5e3da2fc3e4444b43cfb",
+   "pack": "Sonniss GDC 2023 — The Grunts Library",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
   "male_death_low_09": {
    "kind": "lib",
    "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio -  Human Vocalizations/voice_male_b_death_low_09.wav",
@@ -521,12 +625,28 @@
    "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
+  "monster1_breathing3": {
+   "kind": "lib",
+   "file": "sonniss/2020/David Dumais Audio - Monster Sound FX Pack 1/Monster1_Breathing3.wav",
+   "sha256": "454ecc177aac40b5a51bb7073f4a6a932d0f9b6647f087375f5b2f86ddcf92e1",
+   "pack": "Sonniss GDC 2020 — Monster Sound FX Pack 1",
+   "supplier": "David Dumais Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "monster_growls_4": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 4of8/Olivier Girardot - Monsters/Monster Growls 4.wav",
    "sha256": "94e47f779de1e11ce1252c4aaaf1491de5d927f8ca164d3ffc8741f116d5cff7",
    "pack": "Sonniss GDC 2018 — Monsters",
    "supplier": "Olivier Girardot",
+   "license": "sonniss-gdc-2.0"
+  },
+  "monster_roar_growl_009": {
+   "kind": "lib",
+   "file": "sonniss/2016/SoundBits -  Screams & Shouts 2 - Monsters/Monster_Roar_Growl_009.wav",
+   "sha256": "598d266c7e79408667d40c221d7e743e4a8edc3ea2889059fb12816436c4a4ac",
+   "pack": "Sonniss GDC 2016 — Screams & Shouts 2 - Monsters",
+   "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
   "mower_motor": {
@@ -559,6 +679,22 @@
    "sha256": "7a51ed47696d122e47e9b082ac24e0d852e535027f0555db5a79652d9fd4c795",
    "pack": "Sonniss GDC 2023 — Biohazard - Organic Textures and Ambiences",
    "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
+  "paper_crumple_02": {
+   "kind": "lib",
+   "file": "sonniss/2016/Sounds Hunter - Paper Sound Effects/Short Crumple 02.wav",
+   "sha256": "b5940a2b0d26927572b94d5095b7f49bd5e9e7605d65398bbeef6bca6e255e8a",
+   "pack": "Sonniss GDC 2016 — Paper Sound Effects",
+   "supplier": "Sounds Hunter",
+   "license": "sonniss-gdc-2.0"
+  },
+  "paper_rustle_50": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 8of9/The Soundcatcher - Paperlife/Paper_Rustling_Movement_Handling_50.wav",
+   "sha256": "5fd8d8061e7f0fcbfbebedcda0f03970525d693fa93f9ec3671320acb18dbdc6",
+   "pack": "Sonniss GDC 2017 — Paperlife",
+   "supplier": "The Soundcatcher",
    "license": "sonniss-gdc-2.0"
   },
   "puddle_splashes": {
@@ -639,6 +775,14 @@
    "sha256": "8201cf9e77f23517edb52018a137b6d1d3de978b79d6f86f25d2e3bc683c9a42",
    "pack": "Sonniss GDC 2017 — Junk and Debris",
    "supplier": "Double Trouble Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "screech_breath_05": {
+   "kind": "lib",
+   "file": "sonniss/2026/Epic Stock Media - Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets/HMNBrth_Construction Kit Male Screeching Breath Inhale Weak Squeal 05_ESM_HC4.wav",
+   "sha256": "f85227648434c27d41932a88029be05f809c8d825dbe93de86f3d40260c0d09c",
+   "pack": "Sonniss GDC 2026 — Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets",
+   "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
   "screeching_monster_2": {
@@ -753,6 +897,14 @@
    "supplier": "Gamemaster Audio",
    "license": "sonniss-gdc-2.0"
   },
+  "troll_growl_long_05": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Gamemaster Audio - Troll Monster Vocalizations/troll_monster_growl_long_05.wav",
+   "sha256": "917a95969b4e939be23d8c6733291a6323f7d0de7086614e3622507369aace4d",
+   "pack": "Sonniss GDC 2017 — Troll Monster Vocalizations",
+   "supplier": "Gamemaster Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "usas12_close_1m": {
    "kind": "lib",
    "file": "sonniss/2016/Pole Position Production - USAS-12 12g solid slug/USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav",
@@ -775,6 +927,14 @@
    "sha256": "7e9fdc002cb69c76aef2cfc7e4eccd07d24770b8231b922b5d0e328de24f81a8",
    "pack": "Sonniss GDC 2020 — Cave Creature Sound Effects",
    "supplier": "Bluezone",
+   "license": "sonniss-gdc-2.0"
+  },
+  "werewolf_growl_06": {
+   "kind": "lib",
+   "file": "sonniss/2026/Epic Stock Media - Halloween Game - Haunted House and Horror Audio Scare Kit/CREABeast_Creature Werewolf Growl Menacing Monstrous 06_ESM_HALG.wav",
+   "sha256": "3b87490901e201eaa2d57b65f304d69f00fc33584d7e6d6e5b827c7fbdb2818c",
+   "pack": "Sonniss GDC 2026 — Halloween Game - Haunted House and Horror Audio Scare Kit",
+   "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
   "whip_21": {
@@ -823,6 +983,14 @@
    "sha256": "15c6bd66ddd320dc5e89dff7454a4eb809e9a74b755542d627369c461e341316",
    "pack": "Sonniss GDC 2017 — Open & Close",
    "supplier": "SoundBits",
+   "license": "sonniss-gdc-2.0"
+  },
+  "zombie_b_hiss_1": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Glitchedtones - Zombie/Zombie Subject B Hiss (1).wav",
+   "sha256": "14d282072c76428b6cd5c6998b69c9f251ab9f61f8bf125ccc6247d338813305",
+   "pack": "Sonniss GDC 2019 — Zombie",
+   "supplier": "Glitchedtones",
    "license": "sonniss-gdc-2.0"
   }
  }

@@ -1,6 +1,6 @@
 # Plan: refaktor dźwięku — źródła hybrydowe i propagacja po mapie
 
-Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 135 plików z nagrań żyje poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
+Status: **plan z 2026-10-12; F0–F5 zrobione, F6 (droga dźwięku po mapie, wersje bliska / daleka) i F8 (format wydania) wdrożone, zostaje eksperyment F7; 173 pliki z nagrań żyją poza repo (`audio_licensed/`) — stan w §7.** Oparty na przeglądzie kodu (`tools/bake_*.py`, `scripts/audio_director.gd`,
 `default_bus_layout.tres`, `AUDIO.md`), nie na próbnej implementacji — rozmiary faz są szacunkowe. Kontynuacja `prototype/AUDIO.md`
 (overhaul v2), który sam stwierdza w §5: „to nie jest jeszcze AAA w sensie brzmienia” i „brzmienia nie oceniałem uchem”.
 
@@ -304,6 +304,29 @@ dawnego pisku — szumu nie da się tak ścisnąć. `tape_stop` (sukces misji, z
 z nagrań: przycisk STOP magnetofonu kasetowego i prawdziwy silnik elektryczny zwalniający do zera.
 Ustawienia: muzyka i otoczenie mają osobne suwaki głośności (`settings.gd: VOLUME_BUSES`); zapis sprzed zmiany daje
 otoczeniu tę samą wartość co muzyce.
+
+**Odsłuch 2026-11-02 — rodziny, które dotąd miały tylko syntezę.** 26 rodzin dostało kandydatów z nagrań (te same zasady:
+gest i długość syntezy, głośność = zmierzona głośność syntezy); 23 wybrane, razem 38 nowych plików w `audio_licensed/` (173):
+
+| Rodzina | Werdykt | Źródła wersji z nagrań |
+|---|---|---|
+| `mech_*` ×14 (strzelnica FPP) | z nagrań | magazynek G36C i zamek Saigi (te same nagrania co `reload`), rozcięte na zdarzenia; zatrzask — klik z obsługi M1911; chwyt łoża — chwyt wiatrówki |
+| `plate_ring` ×4, `plate_fall` ×2 | z nagrań | uderzenie kuli w ciężki metal + dzwonienie kowadła; stuk o ogranicznik — to samo uderzenie obniżone, z niskim stukiem syntezy |
+| `stalker_appear` | z nagrań, **braam** | ciemny „braam” wygrał ze stingerem horroru i z syntezą |
+| `rzeznik_roar` ×2 | z nagrań | ryk trolla / potwora o 3 półtony niżej, warkot wilkołaka pod spodem, oktawa w dół, dudnienie |
+| `zerca_grab` ×2, `zerca_warn_1` | z nagrań | chrapliwy skrzek z syczeniem i mokrym chwytem; ukryty Żerca — dwa niskie, mokre oddechy i szelest papieru |
+| `moth_dust` ×2 | z nagrań | wydmuch pyłu z syntezy + gnieciony papier + nagrany, stłumiony kaszel |
+| `kaplan_scream` ×2 | **synteza** | odrzucone: zawodzenie upiora w dwóch głosach w kwincie |
+| `moth_flutter_loop`, `moth_crack` ×3 | **synteza** | odrzucone: szelest papieru w obwiedni trzepotu; gnieciony papier |
+| `flare_ignite`, `flare_loop` | z nagrań | zapłon ognia + syczący kwas; pętla — palnik gazowy i trzaski kwasu |
+| `generator_loop` | z nagrań | diesel łodzi na wolnych obrotach (pętla 4 s), bez infradźwięków, z podbitym środkiem |
+| `breath_loop`, `revive` | z nagrań | nagrane wdechy i wydechy w rytmie syntezy (4 × 0,75 s); podniesienie — nagrany wdech + akord kwinty z syntezy |
+| `heart_fast_loop`, `heart_slow_loop` | z nagrań | „lub” i „dub” ze stetoskopu ułożone w tempie 132 i 74 uderzeń/min |
+| `amb_machine`, `amb_air`, `amb_drips` | z nagrań | pompa ciśnieniowa z buczeniem, szum wentylacji, krople w jaskini (pętle stereo 8–12 s) |
+| `alarm_bell` | synteza (bez kandydata) | w bibliotece nie ma dzwonu kościelnego; zostają też `mine_beep`, `radio_static`, sygnały UI i muzyka |
+
+Pułapka pomiaru: pętle ambientu są stereo i synteza osiąga w nich cel nominalny — mierzyć surowe kanały, nie zmiksowane do mono (zaniża
+o 2–5 dB). Pętle z pojedynczymi szczytami (krople, stetoskop, trzaski) dostają limiter przed `finalize`, inaczej true-peak dławi głośność.
 
 **Ustalenia, które zmieniają plan:**
 
