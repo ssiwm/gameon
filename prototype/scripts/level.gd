@@ -465,6 +465,8 @@ func _refresh_region(rc: Rect2i) -> void:
 	if _nav_after != null and _map == _nav_after_rows and _wall_cells.hash() == _nav_after_walls:
 		nav = _nav_after                                          # zawał z danych mapy: graf policzony przy wczytaniu
 		_nav_after = null
+	elif nav != null and nav.cols == cols and nav.rows == _map.size():
+		nav.rebuild_region(rc)                                    # tylko okolica zmiany (pełna budowa to 35–122 ms — przycięcie gry)
 	else:
 		nav = Nav.new()
 		nav.build(cols, _map.size(), _is_solid, _is_platform_cell)
@@ -1139,6 +1141,78 @@ func send_walls_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and NoiseMgr.has_network():
 		for n in _opened_walls:
 			_break_wall_rpc.rpc_id(peer_id, map_id, n)
+
+## Test map: graf `nav` po lokalnych przebudowach kontra pełna budowa od zera — pusty tekst, gdy identyczne (węzły, pozycje,
+## krawędzie i ich typy).
+func nav_diff_vs_full() -> String:
+	var full := Nav.new()
+	full.build(nav.cols, nav.rows, _is_solid, _is_platform_cell)
+	var a: PackedInt64Array = nav.get_point_ids()
+	var b: PackedInt64Array = full.get_point_ids()
+	a.sort()
+	b.sort()
+	if a != b:
+		return "węzły: lokalnie %d, pełna budowa %d" % [a.size(), b.size()]
+	for id in a:
+		if nav.get_point_position(id) != full.get_point_position(id):
+			return "pozycja węzła %s" % nav.cell_of_id(id)
+		var ca: PackedInt64Array = nav.get_point_connections(id)
+		var cb: PackedInt64Array = full.get_point_connections(id)
+		ca.sort()
+		cb.sort()
+		if ca != cb:
+			return "krawędzie z %s: lokalnie %d, pełna budowa %d" % [nav.cell_of_id(id), ca.size(), cb.size()]
+	if nav._edge.size() != full._edge.size():
+		return "wpisy typów krawędzi: lokalnie %d, pełna budowa %d" % [nav._edge.size(), full._edge.size()]
+	for key in full._edge:
+		if int(nav._edge.get(key, -1)) != int(full._edge[key]):
+			return "typ krawędzi %s → %s" % [nav.cell_of_id(int(key) >> 20), nav.cell_of_id(int(key) & ((1 << 20) - 1))]
+	return ""
+
+## Test map: rozbija ściany po kolei, po każdej porównuje graf z pełną budową. Zwraca błędy.
+func open_walls_checked() -> Array:
+	var bad: Array = []
+	for wd in _wall_defs.duplicate():
+		if _opened_walls.has(String(wd["name"])):
+			continue
+		_open_wall(String(wd["name"]), false)
+		var d := nav_diff_vs_full()
+		if d != "":
+			bad.append("nawigacja po rozbiciu %s różni się od pełnej budowy: %s" % [wd["name"], d])
+	return bad
+
+## Test map: `n` losowych prostokątów wstawianych jako bryła (jak ściana `q`) i zdejmowanych; po każdej zmianie graf kontra pełna
+## budowa. Zwraca [błędy, najdłuższy czas `rebuild_region` w ms, średni w ms].
+func nav_local_fuzz(n: int, seed_v: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_v
+	var bad: Array = []
+	var worst := 0.0
+	var sum := 0.0
+	var cnt := 0
+	for k in n:
+		var w := rng.randi_range(1, 4)
+		var h := rng.randi_range(1, 5)
+		var rc := Rect2i(rng.randi_range(0, nav.cols - w), rng.randi_range(0, nav.rows - h), w, h)
+		for add in [true, false]:
+			for r in range(rc.position.y, rc.end.y):
+				for c in range(rc.position.x, rc.end.x):
+					var cell := Vector2i(c, r)
+					if add and not _wall_cells.has(cell):
+						_wall_cells[cell] = "NavFuzz"
+					elif not add and _wall_cells.get(cell, "") == "NavFuzz":
+						_wall_cells.erase(cell)          # prawdziwe ściany `q` zostają
+			var t0 := Time.get_ticks_usec()
+			nav.rebuild_region(rc)
+			var ms := float(Time.get_ticks_usec() - t0) / 1000.0
+			worst = maxf(worst, ms)
+			sum += ms
+			cnt += 1
+			var d := nav_diff_vs_full()
+			if d != "":
+				bad.append("nawigacja po %s bryły %s różni się od pełnej budowy: %s" % ["wstawieniu" if add else "zdjęciu", rc, d])
+				return [bad, worst, sum / maxf(cnt, 1)]
+	return [bad, worst, sum / maxf(cnt, 1)]
 
 ## Test map: otwiera wszystkie ściany bez efektów (maptest sprawdza osiągalność skrytek za nimi).
 func open_all_walls_for_test() -> void:

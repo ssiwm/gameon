@@ -30,6 +30,7 @@ var _edge := {}             ## (from << 20) | to  ->  Edge
 
 var _solid: Callable        ## (c, r) -> bool
 var _platform: Callable     ## (c, r) -> bool
+var _cell := PackedByteArray()   ## kopia `_solid` / `_platform` na kafel (bit 1 — bryła, bit 2 — kładka): sprawdzenia w pętlach bez wywołań `Callable`
 
 func build(c: int, r: int, is_solid: Callable, is_platform: Callable) -> void:
 	cols = c
@@ -38,6 +39,8 @@ func build(c: int, r: int, is_solid: Callable, is_platform: Callable) -> void:
 	_platform = is_platform
 	clear()
 	_edge.clear()
+	_cell.resize(cols * rows)
+	_cache_cells(Rect2i(0, 0, cols, rows))
 	for rr in rows:
 		for cc in cols:
 			if standable(cc, rr):
@@ -51,6 +54,77 @@ func build(c: int, r: int, is_solid: Callable, is_platform: Callable) -> void:
 			_link_drop(cc, rr)
 			_link_jumps(cc, rr)
 
+## Margines lokalnej przebudowy wokół zmienionych kafli: kolumny — najdalszy skok w bok (GAP_SIDE) + 1, wiersze — skok w górę
+## z zapasem na szczyt toru (`_jump_clear` sprawdza 2 kafle nad niższym z punktów) i podłogę / głowę celu.
+const REBUILD_MARGIN := Vector2i(GAP_SIDE + 1, JUMP_UP + 3)
+
+## Przebudowa grafu po zmianie kafli w `rect` (rozbita ściana, zniszczalny obiekt) — wynik taki sam jak pełne `build`, ale liczony
+## tylko tam, gdzie zmiana może coś ruszyć. Węzły powstają / znikają w kolumnach `rect` o wiersz nad i pod nim (`standable` patrzy na
+## kafel, głowę i podłogę). Krawędzie wychodzące liczymy od nowa z każdego węzła, którego krawędź może dotknąć zmienionego kafla albo
+## węzła: w prostokącie powiększonym o REBUILD_MARGIN (chodzenie, skoki) i w pasie kolumn `rect` ± 1 nad nim do samej góry
+## (zejście z krawędzi i zeskok przez kładkę spadają w kolumnie dowolnie nisko). Każde źródło krawędzi do węzła w `rect` leży w tym zbiorze,
+## więc znikający węzeł nie zostawia wpisów w `_edge`, a nowy dostaje wszystkie krawędzie wchodzące. Pas nad prostokątem leży ponad zasięgiem
+## chodzenia i skoków (cel skoku najwyżej 2 kafle niżej), więc tam liczymy od nowa tylko zejścia i zeskoki.
+func rebuild_region(rect: Rect2i) -> void:
+	if cols == 0 or rect.size.x <= 0 or rect.size.y <= 0:
+		return
+	var box := rect.grow_individual(REBUILD_MARGIN.x, REBUILD_MARGIN.y, REBUILD_MARGIN.x, REBUILD_MARGIN.y)
+	var band := Rect2i(rect.position.x - 1, 0, rect.size.x + 2, rect.end.y + 1)
+	var all := Rect2i(0, 0, cols, rows)
+	_cache_cells(rect.intersection(all))
+	box = box.intersection(all)
+	band = band.intersection(all)
+	var src: Array[int] = []
+	for rr in range(box.position.y, box.end.y):
+		for cc in range(box.position.x, box.end.x):
+			src.append(_id(cc, rr))
+	var fall_src: Array[int] = []
+	for rr in range(band.position.y, band.end.y):
+		for cc in range(band.position.x, band.end.x):
+			if not box.has_point(Vector2i(cc, rr)) and has_point(_id(cc, rr)):
+				fall_src.append(_id(cc, rr))
+	# 1. stare krawędzie wychodzące ze źródeł
+	for id in src:
+		if not has_point(id):
+			continue
+		for nb in get_point_connections(id):
+			_edge.erase((id << 20) | nb)
+			disconnect_points(id, nb, false)
+	for id in fall_src:
+		for nb in get_point_connections(id):
+			var key := (id << 20) | nb
+			if _edge.get(key, Edge.WALK) == Edge.FALL or _edge.get(key, Edge.WALK) == Edge.DROP:
+				_edge.erase(key)
+				disconnect_points(id, nb, false)
+	# 2. węzły, które mogły się pojawić albo zniknąć
+	var exist := Rect2i(rect.position.x, rect.position.y - 1, rect.size.x, rect.size.y + 2).intersection(all)
+	for rr in range(exist.position.y, exist.end.y):
+		for cc in range(exist.position.x, exist.end.x):
+			var id := _id(cc, rr)
+			var ok := standable(cc, rr)
+			if ok and not has_point(id):
+				add_point(id, cell_floor(Vector2i(cc, rr)))
+			elif not ok and has_point(id):
+				remove_point(id)
+	# 3. krawędzie od nowa, w tej samej kolejności co w `build` (przy dwóch drogach do tego samego węzła zostaje tańsza)
+	for id in src:
+		if not has_point(id):
+			continue
+		var cc := id % cols
+		var rr := id / cols
+		_link_walk(cc, rr)
+		_link_fall(cc, rr)
+		_link_drop(cc, rr)
+		_link_jumps(cc, rr)
+	for id in fall_src:
+		_link_fall(id % cols, id / cols)
+		_link_drop(id % cols, id / cols)
+
+func _cache_cells(rc: Rect2i) -> void:
+	for rr in range(rc.position.y, rc.end.y):
+		for cc in range(rc.position.x, rc.end.x):
+			_cell[rr * cols + cc] = (1 if _solid.call(cc, rr) else 0) | (2 if _platform.call(cc, rr) else 0)
+
 func _id(c: int, r: int) -> int:
 	return r * cols + c
 
@@ -61,10 +135,10 @@ func _in(c: int, r: int) -> bool:
 	return c >= 0 and c < cols and r >= 0 and r < rows
 
 func _free(c: int, r: int) -> bool:
-	return c >= 0 and c < cols and r >= 0 and r < rows and not _solid.call(c, r)
+	return c >= 0 and c < cols and r >= 0 and r < rows and _cell[r * cols + c] & 1 == 0
 
 func _floor_at(c: int, r: int) -> bool:
-	return _solid.call(c, r + 1) or _platform.call(c, r + 1)
+	return _cell[(r + 1) * cols + c] != 0
 
 func standable(c: int, r: int) -> bool:
 	return _free(c, r) and _free(c, r - 1) and r + 1 < rows and _floor_at(c, r)
@@ -119,7 +193,7 @@ func _link_fall(c: int, r: int) -> void:
 
 ## Zeskok przez kładkę pod stopami.
 func _link_drop(c: int, r: int) -> void:
-	if not _platform.call(c, r + 1):
+	if _cell[(r + 1) * cols + c] & 2 == 0:
 		return
 	var rr := r + 2
 	while rr < rows and _free(c, rr):
