@@ -38,6 +38,7 @@ const ELITE_AMMO_DROP := 0.6          ## szansa, że elita upuści pudełko amun
 ## kontaktu wraca do domu i zasypia. Wcześniej obudzony wróg znał położenie gracza na całej mapie.
 const SEARCH_TIME := 3.5         ## s rozglądania się po dojściu na ślad
 const GIVE_UP_TIME := 9.0        ## s bez kontaktu, po których porzuca ślad
+const CLAW_ENGAGE := 40.0        ## px: z takiej odległości od barykady na drodze do celu wróg zaczyna się do niej dobijać (`_barricade_tick`)
 const HOME_SLEEP_TIME := 1.2     ## s w domu, po których znów zasypia
 const PERCEIVE_DT := 0.12        ## co tyle sprawdzamy wzrok (promień)
 const TARGET_BOT_W := 1.3             ## wagi celu (F3.5b), mnożą odległość: bot mniej pożądany, latarka / ogień / ranny / odizolowany bardziej
@@ -56,7 +57,7 @@ const JUMP_V := -275.0           ## skok po grafie A* (42 px, tyle co gracz)
 const STEP_HOP_V := -200.0           ## przeskok na stopień o 1 kafel dla wrogów, którzy nie skaczą (Ślepiec, Wołek): szczyt ≈ 22 px nad podłogą
 const STEP_MAX_RISE := 16.5          ## px: najwyższy stopień (1 kafel)
 const PLATFORM_BIT := 5          ## warstwa kładek w masce (zeskok)
-const FIRE_BIT := 7              ## warstwa „muru ognia” (fire_patch.gd): blokuje wrogów z flagą fire_shy, drużyny nie rusza
+const FIRE_BIT := 10             ## warstwa „muru ognia” (fire_patch.gd FIRE_LAYER = 512): blokuje wrogów z flagą fire_shy, drużyny nie rusza
 const DROP_TIME := 0.25
 ## Słyszalność po trasie (1.7.4): dźwięk nie przechodzi przez ściany ani piętra — liczy się długość
 ## ścieżki po grafie nawigacji, nie linia prosta. Bez ścieżki (brak węzła) — tłumienie przez mur.
@@ -102,6 +103,8 @@ var _def: Dictionary
 var _home := Vector2.ZERO
 var _windup := 0.0
 var _windup_target: Node2D = null
+var _windup_wall: Node2D = null     ## zapowiedź ciosu w barykadę (`_barricade_tick`), nie w gracza
+var _claw_wall: Node2D = null       ## barykada, w którą się dobija: trzyma się jej także, gdy ślad (jej własny hałas) leży przy niej
 var _cd := 0.0
 var _leap_cd := 0.0
 var _stagger := 0.0
@@ -296,6 +299,8 @@ func reset_enemy() -> void:
 	winding = false
 	_windup = 0.0
 	_windup_target = null
+	_windup_wall = null
+	_claw_wall = null
 	_cd = 0.0
 	_burn = 0.0
 	_panic = 0.0
@@ -568,6 +573,8 @@ func _tick_server(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, 800.0 * delta)
 	elif _beh.drive(delta, target, speed):
 		pass
+	elif _barricade_tick(target, speed):
+		pass
 	elif target != null:
 		_chase(target, speed, delta)
 		_try_begin_attack(target)
@@ -606,10 +613,11 @@ func _update_facing() -> void:
 ## daje czas na unik ALBO na ogłuszenie. Nie dotyczy zapowiedzi specjalnych Wołka (`_sp`), przemiany Mimika (bez celu ciosu) i krzyku Podsłuchacza
 ## (który i tak zaczyna się od nowa po trafieniu). Po przerwaniu krótka przerwa, żeby wróg nie ponowił ciosu w tej samej chwili.
 func _interrupt_windup() -> void:
-	if _windup <= 0.0 or _windup_target == null or _sp != 0 or not _beh.can_interrupt_windup():
+	if _windup <= 0.0 or (_windup_target == null and _windup_wall == null) or _sp != 0 or not _beh.can_interrupt_windup():
 		return
 	_windup = 0.0
 	_windup_target = null
+	_windup_wall = null                  # zamach w barykadę też
 	winding = false
 	_cd = maxf(_cd, WINDUP_INTERRUPT_CD * Difficulty.m("enemy_cd"))
 
@@ -1188,13 +1196,13 @@ func _in_reach(pp: Node2D, slack: float) -> bool:
 	return absf(pp.global_position.x - global_position.x) <= reach \
 		and absf(pp.global_position.y - global_position.y) <= 18.0
 
-## Ściana między wrogiem a celem na tym samym poziomie (cios z bliska nie przechodzi przez mur; dym go nie chroni, więc to nie `_clear_line`).
-## Przy różnicy poziomów nie sprawdzamy: poziomy promień trafiałby w bok stopnia, na którym stoi cel.
+## Ściana między wrogiem a celem na tym samym poziomie (cios z bliska nie przechodzi przez mur, kratkę ani ramę okna; dym go nie chroni, więc to
+## nie `_clear_line`). Przy różnicy poziomów nie sprawdzamy: poziomy promień trafiałby w bok stopnia, na którym stoi cel.
 func _wall_between(pp: Node2D) -> bool:
 	if absf(pp.global_position.y - global_position.y) > 6.0:
 		return false
 	var a := global_position + Vector2(0, -(_def["size"] as Vector2).y * 0.6)
-	var q := PhysicsRayQueryParameters2D.create(a, Vector2(pp.global_position.x, a.y), 1)
+	var q := PhysicsRayQueryParameters2D.create(a, Vector2(pp.global_position.x, a.y), 1 | 128)
 	return not get_world_2d().direct_space_state.intersect_ray(q).is_empty()
 
 func _try_begin_attack(target: Node2D) -> void:
@@ -1213,8 +1221,68 @@ func _resolve_attack() -> void:
 	_windup_target = null
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
 	_beh.after_attack()
+	if _windup_wall != null:
+		var bw := _windup_wall
+		_windup_wall = null
+		if is_instance_valid(bw) and not bw.is_queued_for_deletion():
+			var rc: Rect2 = bw.call("hit_rect")
+			var side := signf(rc.get_center().x - global_position.x)
+			var at := Vector2(rc.position.x if side > 0.0 else rc.end.x, global_position.y - (_def["size"] as Vector2).y * 0.6)
+			bw.call("take_hit", {"type": "claw", "amount": float(_def["claw_barricade"]), "pos": at, "dir": Vector2(side, 0.0)})
+		return
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0) and not _wall_between(pp):
 		pp.deliver_hit(_scaled_damage(int(_def["damage"])), global_position, kind)
+
+## Barykada na drodze do celu albo śladu (`claw_barricade` w danych rodzaju — obrażenia ciosu, DESTRUCTION_PLAN.md D2): wróg podchodzi i bije
+## w nią pazurami albo pięściami, zamiast stać pod nią i rezygnować — barykada kupuje graczowi czas, nie bezpieczeństwo. Tylko przegrody, które
+## przyjmują `claw` (deski), i tylko na poziomie wroga. Każdy cios to hałas przegrody (`breakable.gd`), więc słychać, że ktoś się dobija.
+func _barricade_tick(target: Node2D, speed: float) -> bool:
+	if not _def.has("claw_barricade"):
+		return false
+	var b: Node2D = null
+	if target != null:
+		b = _barricade_toward(target.global_position)
+	elif _has_lead:
+		b = _barricade_toward(_last_known)
+	_claw_wall = b
+	if b == null:
+		return false
+	var rc: Rect2 = b.call("hit_rect")
+	var dir := signf(rc.get_center().x - global_position.x)
+	var gap := ((rc.position.x if dir > 0.0 else rc.end.x) - global_position.x) * dir - (_def["size"] as Vector2).x * 0.5
+	if gap > float(_def["reach"]) * 0.6:
+		velocity.x = dir * speed                     # podchodzi pod barykadę
+		return true
+	velocity.x = 0.0
+	_facing = dir
+	if _cd <= 0.0 and _windup <= 0.0 and _beh.may_attack():
+		_windup = windup_time(float(_def["windup"]), Difficulty.m("enemy_windup"))
+		_windup_duration = _windup
+		_windup_wall = b
+		winding = true
+	return true
+
+## Barykada (przyjmuje `claw`) na poziomie wroga, najwyżej CLAW_ENGAGE px przed nim, za którą leży `goal` — albo ta, w którą już się dobija,
+## gdy ślad leży przy niej (jej własny hałas przenosi ślad na barykadę).
+func _barricade_toward(goal: Vector2) -> Node2D:
+	var half := (_def["size"] as Vector2).x * 0.5
+	for n in get_tree().get_nodes_in_group("breakables"):
+		var b := n as Node2D
+		if b == null or b.is_queued_for_deletion() or float(b.get("hp")) <= 0.0 or not (b.call("mat_def")["breaks"] as Array).has("claw"):
+			continue
+		var rc: Rect2 = b.call("hit_rect")
+		if absf(rc.end.y - global_position.y) > 6.0:
+			continue                                   # przegroda stoi na innym poziomie
+		var dir := signf(rc.get_center().x - global_position.x)
+		var gap := ((rc.position.x if dir > 0.0 else rc.end.x) - global_position.x) * dir - half
+		if gap < -2.0 or gap > CLAW_ENGAGE:
+			continue
+		var beyond := (goal.x - (rc.end.x if dir > 0.0 else rc.position.x)) * dir
+		if beyond > 0.0 and absf(goal.y - global_position.y) < 40.0:
+			return b
+		if b == _claw_wall and absf(goal.x - rc.get_center().x) < rc.size.x * 0.5 + 24.0:
+			return b
+	return null
 
 ## --- API walki (combat.gd) -------------------------------------------------
 

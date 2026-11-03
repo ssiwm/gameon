@@ -15,7 +15,8 @@ const HEIGHT := 22.0              ## px nad podłogą, w których cel się pali
 const TICK := 0.25
 const TICK_DAMAGE := 0.5          ## obrażenia na tyk — resztę robi podpalenie (enemy.gd BURN_DPS)
 const IGNITE := 1.2               ## s podpalenia odnawiane przy każdym tyku
-const FIRE_LAYER := 64            ## warstwa „muru ognia” (bit 7): maska wrogów z flagą fire_shy (enemy.gd FIRE_BIT); gracze i reszta jej nie mają
+const FIRE_LAYER := 512           ## warstwa „muru ognia” (bit 10): maska wrogów z flagą fire_shy (enemy.gd FIRE_BIT); gracze i reszta jej nie mają.
+                                  ## Własna — na bicie 7 (64) leżą odłamki Vfx.DEBRIS_LAYER, o które potykały się Trzoski
 const WALL_HEIGHT := 40.0         ## wyższy niż skok wroga (≈29 px), żeby nie przeskakiwali płomieni
 
 var weapon := 0

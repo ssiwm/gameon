@@ -19,13 +19,14 @@ uniform sampler2D mask : filter_linear, repeat_disable;
 uniform vec2 half_size;
 uniform vec3 fresh = vec3(1.6, 1.35, 1.2);
 uniform vec3 deep = vec3(0.3, 0.24, 0.22);
+uniform vec2 offset;                       // część bryły (deska, pręt): jej położenie w układzie bryły, żeby czytać tę samą maskę
 varying vec3 lp;
 varying float front;
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
 }
 void vertex() {
-	lp = VERTEX;
+	lp = VERTEX + vec3(offset, 0.0);
 	front = NORMAL.z;
 }
 void fragment() {

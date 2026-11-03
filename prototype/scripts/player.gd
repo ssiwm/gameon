@@ -76,6 +76,7 @@ const BOT_FIRE_PAST := 16.0     ## px: tor strzału sprawdzany kawałek za wroga
 const BOT_FIRE_HALF := 3.0      ## px: połowa szerokości toru przy końcu promienia (skrajne promienie)
 const BOT_FIRE_CONE := 1.5      ## °: rozchylenie skrajnych promieni (rozrzut M-83 bota 0,8° + zapas)
 const BOT_EVADE_RANGE := 46.0   ## wróg bliżej niż tyle: bot rozważa unik
+const BOT_CHOP_R := 80.0        ## px: z tej odległości od przegrody, którą rąbie dowódca, bot podchodzi rąbać razem z nim
 const BOT_CAR_LAG := 150.0      ## drezyna (handcar.gd): bot dalej od niej niż tyle px, gdy już jedzie, goni ją...
 const BOT_CAR_LAG_T := 1.5      ## ... i po tylu sekundach bez dogonienia ląduje na pokładzie (bot chodzi wolniej niż drezyna)
 const BOT_KITE_RANGE := 30.0    ## ... i cofa się, gdy jest bliżej niż to (strzela w biegu, M-83 nie ma minimalnego zasięgu)
@@ -1696,6 +1697,19 @@ func _bot_brain(delta: float) -> void:
 	if is_on_floor() and not reviving and absf(velocity.x) > 0.0 and _prop_ahead(signf(velocity.x)):
 		_bot_wants_jump = true
 		crouching = false
+	# przegroda (DESTRUCTION_PLAN.md D2): dowódca ją rąbie, a broń biała bota też ją bierze — bot podchodzi i rąbie razem z nim
+	var chop := _bot_chop_wall(leader) if not reviving and not on_deck and spit_x == INF and is_on_floor() and _nearest_enemy(BOT_EVADE_RANGE) == null else null
+	if chop != null:
+		var rc: Rect2 = chop.call("hit_rect")
+		var side := signf(rc.get_center().x - global_position.x)
+		var gap := ((rc.position.x if side > 0.0 else rc.end.x) - global_position.x) * side
+		if gap > Weapons.def(weapons.melee_id).reach - 6.0:
+			velocity.x = side * SPEED * 0.6
+		else:
+			velocity.x = 0.0
+			aim_dir = Vector2(side, 0.0)
+			if weapons.state != WeaponController.State.MELEE and weapons.cd <= 0.0:
+				weapons.try_melee()
 	_bot_check_stuck(delta, done or reviving)
 	# odrzut (np. od pocisku kolegi) działa też na bota
 	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
@@ -1724,6 +1738,26 @@ func _bot_brain(delta: float) -> void:
 		if weapons.cd <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR and stun_t <= 0.0:
 			# Boty symulowane są tylko na serwerze; serwer gra też ich dźwięk i efekty.
 			weapons.bot_fire(aim_dir)
+
+## Przegroda, którą dowódca właśnie rąbie (cios wręcz przy niej, na jego poziomie), jeśli broń biała bota też ją bierze (`breakable.gd: breaks`)
+## i bot stoi po tej samej stronie, nie dalej niż BOT_CHOP_R. Inaczej null.
+func _bot_chop_wall(leader: Node2D) -> Node2D:
+	if leader == null or leader.dead or int(leader.w_state) != WeaponController.State.MELEE:
+		return null
+	var kind := "pick" if Weapons.def(weapons.melee_id).breaks_walls else "blade"
+	for n in get_tree().get_nodes_in_group("breakables"):
+		var b := n as Node2D
+		if b == null or b.is_queued_for_deletion() or not (b.call("mat_def")["breaks"] as Array).has(kind):
+			continue
+		var rc: Rect2 = b.call("hit_rect")
+		if absf(rc.end.y - leader.global_position.y) > 6.0 or absf(rc.end.y - global_position.y) > 6.0:
+			continue
+		var side := signf(rc.get_center().x - leader.global_position.x)
+		var lgap := ((rc.position.x if side > 0.0 else rc.end.x) - leader.global_position.x) * side
+		var gap := ((rc.position.x if side > 0.0 else rc.end.x) - global_position.x) * side
+		if lgap >= -2.0 and lgap < 30.0 and gap >= -2.0 and gap < BOT_CHOP_R:
+			return b
+	return null
 
 ## Dyscyplina ognia bota (filar 2). Strzał to hałas, a każdy nowy hałas
 ## przekierowuje stalkera — bot strzelający „bo widzi wroga" kasował Q drużyny

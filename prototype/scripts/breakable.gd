@@ -1,9 +1,14 @@
 extends Node2D
-## Zniszczalny element mapy (DESTRUCTION_PLAN.md D0): jedna klasa z materiałem z tabeli `MATERIALS`. Dziś jedyny na mapach to zamurowane
-## przejście (marker „q”, materiał `brick`): cegły wypełniają wąskie przejście od podłogi do sufitu i zasłaniają skrytkę; rozbija je kilof
-## (WeaponDef.breaks_walls), wybuch (WRATH-4) albo szarża Rzeźnika — ~3 uderzenia kilofem. Kule i maczeta odbijają się.
-## Element jest bryłą (ciało na warstwie świata), więc blokuje wszystkich i pociski; dla nawigacji liczy się jako kafel
-## (level.gd `_wall_cells`), dzięki czemu boty i wrogowie nie planują drogi przez niego ani do skrytki za nim.
+## Zniszczalny element mapy (DESTRUCTION_PLAN.md D0, D2): jedna klasa z materiałem z tabeli `MATERIALS`. Na mapach są trzy przegrody, każda
+## wypełnia wąskie przejście od podłogi do sufitu i zasłania skrót albo skrytkę:
+##  - zamurowanie (znacznik „q”, `brick`): kilof (WeaponDef.breaks_walls), wybuch (WRATH-4) albo szarża Rzeźnika — ~3 uderzenia kilofem;
+##  - deski / barykada („%”, `planks`): także maczeta (cicho, kilka ciosów) i śrut (szybko, głośno); Trzoski drapią ją pazurami, Wołek
+##    wali pięściami, a Wołek i Rzeźnik łamią ją szarżą;
+##  - zardzewiała kratka wentylacji („+”, `grate`): tylko kilof i wybuch, szarża się od niej odbija. Ciało kratki leży na warstwie ramy
+##    (128, jak okno) — zatrzymuje tylko ruch; kule, wzrok, światło i dźwięk przez nią przechodzą.
+## Reszta trafień odbija się bez obrażeń. Zamurowanie i deski są bryłą (ciało na warstwie świata), więc blokują wszystkich i pociski.
+## Dla nawigacji każda przegroda liczy się jako kafel (level.gd `_wall_cells`), dzięki czemu boty i wrogowie nie planują drogi przez
+## nią ani do skrytki za nią.
 ## Obrażenia liczy serwer; rozbicie idzie do wszystkich peerów przez level.gd (`break_wall`).
 ##
 ## Stopy w (0, 0) = dół elementu, środek kafla w poziomie; `rows` = wysokość w kaflach (level.gd liczy do sufitu).
@@ -21,19 +26,19 @@ const TILE := 16.0
 ##   debris   kolor odłamków                         chips   ile odłamków przy rozbiciu
 ##   dust     kurz przy uderzeniu / przy rozbiciu    mat     znacznik trafienia (Arsenal.Mat)
 ##   chip     [świeży przełom, głąb wyrwy] — mnożniki barwy plam w masce uszkodzeń widoku 3D (`damage_mask.gd`, ~1 = bez zmian)
-## Na mapach jest dziś tylko `brick`; reszta to wartości wstępne pod D1 (deski, blacha, kratka, szkło, podpory) — strojenie, a także
-## przepuszczanie kul i światła przez kratkę i rozbite szkło, przyjdą razem z pierwszym takim elementem na mapie.
+##   layer    warstwa ciała (domyślnie 1 — bryła świata; kratka 128 — tylko ruch, jak rama okna)
+## Na mapach są `brick`, `planks` i `grate`; `sheet`, `glass` i `support` to wartości wstępne pod kolejne etapy.
 const MATERIALS := {
 	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0,
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
 		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)]},
-	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge"], "n_hit": 1.2, "n_break": 4.0,
+	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0,
 		"hit_snd": ["amb_creak", 3, -6.0, 1.2], "break_snd": ["amb_creak", 3, 0.0, 0.8],
-		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
+		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 	"sheet": {"hp": 150.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.5, "n_break": 6.0,
 		"hit_snd": ["impact_hard", 3, -3.0, 0.9], "break_snd": ["impact_hard", 3, 2.0, 0.6],
 		"debris": Color(0.38, 0.27, 0.2), "chips": 5, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
-	"grate": {"hp": 90.0, "breaks": ["pick", "blast"], "n_hit": 2.0, "n_break": 5.0,
+	"grate": {"hp": 90.0, "breaks": ["pick", "blast"], "n_hit": 2.0, "n_break": 5.0, "layer": 128,
 		"hit_snd": ["impact_hard", 3, -4.0, 1.1], "break_snd": ["impact_hard", 3, 0.0, 0.7],
 		"debris": Color(0.36, 0.25, 0.18), "chips": 6, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
 	"glass": {"hp": 5.0, "breaks": ["pick", "blade", "bullet", "pellet", "blast", "charge"], "n_hit": 1.0, "n_break": 3.0,
@@ -45,7 +50,7 @@ const MATERIALS := {
 }
 
 ## Promień plamy w masce uszkodzeń wg rodzaju trafienia (px świata; 16 px = kafel).
-const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "blast": 6.0, "charge": 8.0}
+const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "blast": 6.0, "charge": 8.0, "claw": 2.5}
 const SPLAT_GAP := 0.1           ## s: trafienia w tym oknie idą jedną paczką (seria z M-83 to nie 10 wiadomości)
 const MAX_SPLATS := 64           ## pamiętanych plam (dla dołączających); starsze wypadają z listy, w masce zostają
 
@@ -63,7 +68,7 @@ var _flash := 0.0
 var _seed := 0
 
 ## Rodzaj trafienia z `info` (Combat.make_info) dla pola `breaks`: pick (kilof), blade (inna broń biała), bullet, pellet (śrut), blast, charge
-## (szarża wroga, np. Rzeźnik). Promień, płomień i inne — pusty tekst, nic nie niszczą.
+## (szarża wroga, np. Rzeźnik), claw (pazury i pięści wroga przy barykadzie — `enemy.gd`). Promień, płomień i inne — pusty tekst, nic nie niszczą.
 static func hit_kind(info: Dictionary) -> String:
 	var w := int(info.get("w", -1))
 	match String(info.get("type", "")):
@@ -75,6 +80,8 @@ static func hit_kind(info: Dictionary) -> String:
 			return "blast"
 		"charge":
 			return "charge"
+		"claw":
+			return "claw"
 	return ""
 
 ## Wpis materiału (nieznana nazwa → `brick`).
@@ -91,7 +98,7 @@ func _ready() -> void:
 	if hp < 0.0:
 		hp = max_hp()
 	var body := StaticBody2D.new()
-	body.collision_layer = 1
+	body.collision_layer = int(mat_def().get("layer", 1))
 	body.collision_mask = 0
 	var cs := CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
@@ -145,7 +152,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 func _splat_for(info: Dictionary, kind: String) -> PackedFloat32Array:
 	var rc := hit_rect()
 	var p: Vector2 = info.get("pos", rc.get_center())
-	if kind in ["pick", "blade", "charge"]:
+	if kind in ["pick", "blade", "charge", "claw"]:
 		p += Vector2(randf_range(-4.0, 4.0), randf_range(-rc.size.y * 0.3, rc.size.y * 0.3))
 	p = p.clamp(rc.position, rc.end)
 	var share := float(info["amount"]) / max_hp()

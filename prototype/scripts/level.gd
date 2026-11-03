@@ -20,6 +20,7 @@ extends Node2D
 ##   D  drezyna (stacja startowa; tor kończy się przy wyjściu E)
 ##   n  tablica z odprawą (kryjówka)   l  lampa pod sufitem (kryjówka)   I  lampa misji do zestrzelenia (gaśnie, sypie szkłem)
 ##   |  okno ze szkłem w ścianie (pionowy ciąg kafli; rama zatrzymuje ruch, szybę tłucze kula)   — przy RACKS=true każde „g" dostaje stojak
+##   q  zamurowane przejście   %  deski / barykada   +  zardzewiała kratka wentylacji — od znacznika w górę do sufitu (breakable.gd)
 ##   B  Żyła — matka gniazd (boss misji)
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 ##   g  broń na ziemi         a  skrzynka z amunicją
@@ -163,7 +164,7 @@ var _blocks: Array = []          ## już zastosowane obszary (do synchronizacji 
 var _nav_after: Nav = null              ## graf nawigacji po zawale z danych mapy, zbudowany przy wczytaniu (zawał tylko go podstawia — bez ok. 0,15 s przestoju)
 var _nav_after_rows: Array = []
 var _nav_after_walls := 0                ## skrót zamurowanych przejść w chwili budowy (rozbita ściana = graf nieaktualny, budujemy od nowa)
-var _wall_cells: Dictionary = {}  ## Vector2i → nazwa ściany: kafle zajęte przez zamurowane przejścia (marker „q")
+var _wall_cells: Dictionary = {}  ## Vector2i → nazwa przegrody: kafle zajęte przez zamurowania, deski i kratki (znaczniki „q", „%", „+")
 var _window_cells: Dictionary = {}  ## Vector2i → nazwa okna (marker „|"): dla nawigacji zawsze bryła, dla dźwięku tylko cała szyba
 var _opened_walls: Array = []    ## nazwy już rozbitych ścian (synchronizacja dołączających)
 
@@ -598,14 +599,16 @@ func _is_solid(c: int, r: int) -> bool:
 	if r < 0 or r >= _map.size() or c < 0 or c >= (_map[0] as String).length():
 		return true
 	if _wall_cells.has(Vector2i(c, r)):
-		return true                       # zamurowane przejście (breakable.gd) — dla nawigacji i krawędzi kafli to bryła
+		return true                       # przegroda (breakable.gd: zamurowanie, deski, kratka) — dla nawigacji i krawędzi kafli to bryła
 	var ch := _ch(c, r)
 	if ch == "|":
 		return true                       # okno (window_glass.gd): rama zatrzymuje ruch
 	return KINDS.has(ch) and KINDS[ch][2] == 0
 
-## Bryła dla siatki dźwięku (sound_grid.gd): jak `_is_solid`, ale stłuczone okno przepuszcza dźwięk.
+## Bryła dla siatki dźwięku (sound_grid.gd): jak `_is_solid`, ale stłuczone okno i kratka wentylacji przepuszczają dźwięk.
 func _is_sound_solid(c: int, r: int) -> bool:
+	if _ch(c, r) == "+":
+		return false
 	var wn: Variant = _window_cells.get(Vector2i(c, r)) if _ch(c, r) == "|" else null
 	if wn != null:
 		var w := get_node_or_null(String(wn))
@@ -1094,13 +1097,15 @@ func _spawn_flare_rpc(n: String, pos: Vector2, vel: Vector2, chute: bool) -> voi
 	f.chute = chute
 	add_child(f)
 
-# ---------------------------------------------------------------- zamurowane przejścia
+# ---------------------------------------------------------------- przegrody: zamurowania, deski, kratki
 
 const WALL_MAX_ROWS := 6
+const WALL_MARKS := {"q": ["BrickWall", "brick"], "%": ["Planks", "planks"], "+": ["Grate", "grate"]}   ## znacznik → [przedrostek nazwy, materiał]
 var _wall_defs: Array = []       ## [{name, pos (stopy), rows, cells}] od lewej do prawej
 var _window_defs: Array = []     ## okna „|": [{name, pos (stopy), rows}] wierszami od góry, od lewej
 
-## Znaczniki „q" → zamurowane przejścia: ściana zajmuje kafle od znacznika w górę do pierwszej bryły (maks. WALL_MAX_ROWS).
+## Znaczniki przegród (`WALL_MARKS`: „q" zamurowanie, „%" deski, „+" kratka): przegroda zajmuje kafle od znacznika w górę do pierwszej bryły
+## (maks. WALL_MAX_ROWS); nazwy liczone osobno dla każdego rodzaju, od lewej (BrickWall1…, Planks1…, Grate1…).
 ## Rejestrujemy je przed zbudowaniem grafu nawigacji — dla A* to bryła, więc nikt nie planuje drogi do skrytki za ścianą.
 func _register_walls() -> void:
 	_wall_defs.clear()
@@ -1116,23 +1121,25 @@ func _register_walls() -> void:
 				_window_cells[Vector2i(c, r - k)] = n
 				k += 1
 			_window_defs.append({"name": n, "pos": Vector2(c * TILE + TILE * 0.5, (r + 1) * TILE), "rows": k})
-	var found: Array = []
-	for r in _map.size():
-		var row: String = _map[r]
-		for c in row.length():
-			if row[c] == "q":
-				found.append(Vector2i(c, r))
-	found.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x or (a.x == b.x and a.y < b.y))
-	for i in found.size():
-		var cell: Vector2i = found[i]
-		var rows := 1
-		while rows < WALL_MAX_ROWS and cell.y - rows >= 0 and not _is_solid(cell.x, cell.y - rows):
-			rows += 1
-		var cells: Array = []
-		for k in rows:
-			cells.append(Vector2i(cell.x, cell.y - k))
-			_wall_cells[Vector2i(cell.x, cell.y - k)] = "BrickWall%d" % (i + 1)
-		_wall_defs.append({"name": "BrickWall%d" % (i + 1), "pos": Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE), "rows": rows, "cells": cells, "material": "brick"})
+	for mark in WALL_MARKS:
+		var found: Array = []
+		for r in _map.size():
+			var row: String = _map[r]
+			for c in row.length():
+				if row[c] == mark:
+					found.append(Vector2i(c, r))
+		found.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x or (a.x == b.x and a.y < b.y))
+		for i in found.size():
+			var cell: Vector2i = found[i]
+			var n := "%s%d" % [WALL_MARKS[mark][0], i + 1]
+			var rows := 1
+			while rows < WALL_MAX_ROWS and cell.y - rows >= 0 and not _is_solid(cell.x, cell.y - rows):
+				rows += 1
+			var cells: Array = []
+			for k in rows:
+				cells.append(Vector2i(cell.x, cell.y - k))
+				_wall_cells[Vector2i(cell.x, cell.y - k)] = n
+			_wall_defs.append({"name": n, "pos": Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE), "rows": rows, "cells": cells, "material": WALL_MARKS[mark][1]})
 
 func _spawn_walls() -> void:
 	for wd in _wall_defs:

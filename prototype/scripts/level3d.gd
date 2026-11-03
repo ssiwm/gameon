@@ -29,6 +29,11 @@ const MOON_RIM := 0.35                     ## energia poświaty księżyca na le
 static func is_solid_ch(ch: String) -> bool:
 	return ch == "#" or ch == "C" or ch == "M" or ch == "m" or ch == "O" or ch == "~"
 
+## Wypełnienie przejścia w ścianie: okno `|` (window_glass.gd) i przegrody `q` / `%` / `+` (breakable.gd) — w 3D rysują je ich własne węzły,
+## ale dla konstrukcji świata (nogi kładek, dachy, nadproża) to ściana.
+static func is_wall_fill(ch: String) -> bool:
+	return ch == "|" or ch == "q" or ch == "%" or ch == "+"
+
 static func is_platform_ch(ch: String) -> bool:
 	return ch == "-" or ch == "="
 
@@ -37,8 +42,8 @@ static func is_platform_ch(ch: String) -> bool:
 ## Skrzynie `M` stojące na dachu go nie przerywają (wcześniej pod każdą skrzynią zostawał kafel betonu wśród blachy).
 static func is_roof_cell(rows: Array, c: int, r: int) -> bool:
 	var below := _ch(rows, c, r + 1)
-	if _ch(rows, c, r) != "C" or is_solid_ch(below) or below == "|":
-		return false                                            # pod spodem ściana albo okno w ścianie (window_glass.gd) — to nadproże, nie dach
+	if _ch(rows, c, r) != "C" or is_solid_ch(below) or is_wall_fill(below):
+		return false                                            # pod spodem ściana, okno albo przegroda w ścianie — to nadproże, nie dach
 	var top := r - 1
 	while _ch(rows, c, top) == "M" and top > 0:
 		top -= 1
@@ -546,10 +551,10 @@ static func wall_feet(rows: Array) -> Array:
 			if _ch(rows, c - 1, r) == "C" and _ch(rows, c + 1, r) == "C":
 				continue                                            # strop (poziomy pas betonu), nie ściana
 			var g := r + 1
-			var open_air := true                                    # pod ścianą zewnętrzne powietrze; nad przejściem we wnętrzu (tło `b`, zamurowanie `q`) beton to nadproże
+			var open_air := true                                    # pod ścianą zewnętrzne powietrze; nad przejściem we wnętrzu (tło `b`, okno, przegroda) beton to nadproże
 			while g < nrows and not is_solid_ch(_ch(rows, c, g)) and g - r <= 8:
 				var n := _ch(rows, c, g)
-				if not (n == "." or _is_marker(n)) or n == "q":
+				if not (n == "." or _is_marker(n)) or is_wall_fill(n):
 					open_air = false
 				g += 1
 			if open_air and g < nrows and is_solid_ch(_ch(rows, c, g)) and g - r <= 8:
@@ -887,8 +892,8 @@ const DECK_ROD_W := 0.04                   ## m: pręt wieszaka
 ## Pomost bez żadnej podpory: oba końce w powietrzu, bez ściany (`b`, bryła) obok, nad ani pod nim i bez słupa `w` przy nim.
 static func deck_is_free(rows: Array, ch: String, r: int, c0: int, c1: int) -> bool:
 	for e in [_ch(rows, c0 - 1, r), _ch(rows, c1 + 1, r)]:
-		if is_solid_ch(e) or e == "b" or e == "w" or e == "|":
-			return false                                    # obok ściana, tło, słup albo okno w ścianie (window_glass.gd) — pomost się o nie opiera
+		if is_solid_ch(e) or e == "b" or e == "w" or is_wall_fill(e):
+			return false                                    # obok ściana, tło, słup albo okno / przegroda w ścianie — pomost się o nie opiera
 	for k in range(c0 - 1, c1 + 2):
 		if _ch(rows, k, r - 1) == "w" or _ch(rows, k, r + 1) == "w":
 			return false

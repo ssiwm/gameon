@@ -2293,22 +2293,29 @@ func _sync_drawn() -> void:
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D) or n.get("rows") == null:
 			continue
 		var h := float(n.get("rows")) * Level3D.T
+		var mat_id := String(n.get("mat_id"))
 		var bm := BoxMesh.new()
 		bm.size = Vector3(Level3D.T, h, Level3D.DEPTH_BACK + 0.5)
 		var mi := MeshInstance3D.new()
 		mi.mesh = bm
-		mi.material_override = Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone")
+		mi.material_override = _barrier_mat(mat_id)
 		mi.layers = LAYER_WORLD
 		mi.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, h * 0.5, (0.5 - Level3D.DEPTH_BACK) * 0.5)
 		_world.add_child(mi)
+		if mat_id == "planks":
+			_barricade_boards(mi, h, bm.size.z * 0.5, absi(String(n.name).hash()))
+		elif mat_id == "grate":
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_grate_bars(mi, h, bm.size.z * 0.5)
 		var dmg := _damage_overlay(n, mi, Level3D.T, h)
+		_overlay_parts(mi, mat_id != "grate")
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
 		_warm_destruction(String(n.get("mat_id")))                # bryły, gruz i ich potoki GPU razem z mapą (pod planszą), nie przy pierwszym rozbiciu
 		_clear_rubble_near(mi.position.x, Level3D.T)
 		for old in _geo.get_children():                           # ściana odbudowana po restarcie misji: gruz po poprzedniej znika
 			if String(old.name).begins_with("Rubble") and not old is MultiMeshInstance3D and absf((old as Node3D).position.x - mi.position.x) < 0.6 and absf((old as Node3D).position.y - (mi.position.y - h * 0.5)) < 0.6:
 				old.queue_free()
-		_drawn[n.get_instance_id()] = [n, mi, "wall", String(_level.get("map_id")), h, dmg]
+		_drawn[n.get_instance_id()] = [n, mi, "wall" if mat_id == "brick" else "barrier", String(_level.get("map_id")), h, dmg]
 	for id in _drawn:
 		var dw: Array = _drawn[id]
 		if dw.size() > 5 and is_instance_valid(dw[0]):
@@ -2969,6 +2976,88 @@ func _stamp_damage(n: Node, d: Dictionary) -> void:
 		DamageMask.stamp(d["img"], sp[k * 4], sp[k * 4 + 1], sp[k * 4 + 2] * PX, int(sp[k * 4 + 3]), float(d["w"]), float(d["h"]))
 	(d["tex"] as ImageTexture).update(d["img"])
 	d["done"] = total
+
+## Bryła przegrody wg materiału (`breakable.gd`): zamurowanie — beton ściany; deski — ciemne tło szpar za deskami (`_barricade_boards`);
+## kratka — sama bryła niewidoczna (przezroczysta, bez cienia), widać pręty z `_grate_bars` i korytarz za nimi.
+func _barrier_mat(mat_id: String) -> Material:
+	match mat_id:
+		"planks":
+			var dark := Level3D.make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic").duplicate() as StandardMaterial3D
+			dark.albedo_color = dark.albedo_color * Color(0.22, 0.2, 0.18)
+			return dark
+		"grate":
+			var clear := StandardMaterial3D.new()
+			clear.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			clear.albedo_color = Color(0, 0, 0, 0)
+			clear.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			return clear
+	return Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone")
+
+## Barykada: poziome deski przybite w poprzek przejścia (słoje tekstury idą wzdłuż deski), każda trochę inna — szerokość, odcień, skos,
+## wystają za ościeżnicę na różną długość; między nimi wąskie szpary na ciemne tło bryły. Ciąg z nazwy przegrody (`seed`), więc u wszystkich
+## i po każdej przebudowie geometrii ten sam. `front` — przód bryły w jej układzie. Deski dostają nakładkę uszkodzeń (`_overlay_parts`).
+func _barricade_boards(mi: MeshInstance3D, h: float, front: float, seed: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var w := Level3D.T
+	var y := -h * 0.5 + rng.randf_range(0.02, 0.08)
+	var k := 0
+	while y < h * 0.5 - 0.1:
+		var bh := minf(rng.randf_range(0.17, 0.26), h * 0.5 - y)
+		var tilt := rng.randf_range(-0.05, 0.05)
+		var b := BoxMesh.new()
+		b.size = Vector3(w + rng.randf_range(0.08, 0.3), bh, rng.randf_range(0.035, 0.05))
+		var bi := MeshInstance3D.new()
+		bi.name = "Board%d" % k
+		bi.mesh = b
+		bi.material_override = _prop_mat("plank", 0.9, Color(0.62, 0.52, 0.4).lerp(Color(0.85, 0.72, 0.55), rng.randf()))
+		bi.layers = LAYER_WORLD
+		bi.position = Vector3(rng.randf_range(-0.06, 0.06), y + bh * 0.5, front + b.size.z * 0.5)
+		bi.rotation.z = tilt
+		bi.set_meta("dmg_part", true)
+		mi.add_child(bi)
+		y += bh + rng.randf_range(0.025, 0.07)
+		k += 1
+
+## Zardzewiała kratka: rama z kątowników, pionowe pręty co ~13 cm i płaskowniki w poprzek, na przodzie bryły (`front`), jak deski barykady.
+## Przez oczka widać korytarz i światło (bryła pod spodem jest przezroczysta — `_barrier_mat`), cień pada w paski.
+func _grate_bars(mi: MeshInstance3D, h: float, front: float) -> void:
+	var mat := _prop_mat("metal", 1.2, Color(0.62, 0.42, 0.3))
+	var w := Level3D.T
+	var z := front - 0.04
+	var parts: Array = [[Vector3(0.08, h, 0.06), Vector3(-w * 0.5 + 0.04, 0.0, z)], [Vector3(0.08, h, 0.06), Vector3(w * 0.5 - 0.04, 0.0, z)],
+		[Vector3(w, 0.08, 0.06), Vector3(0.0, -h * 0.5 + 0.04, z)], [Vector3(w, 0.08, 0.06), Vector3(0.0, h * 0.5 - 0.04, z)]]
+	var n := int(round((w - 0.16) / 0.13))
+	for i in n - 1:
+		parts.append([Vector3(0.03, h - 0.12, 0.03), Vector3(-w * 0.5 + 0.08 + (w - 0.16) * float(i + 1) / float(n), 0.0, z)])
+	var rows := maxi(2, int(round(h / 0.65)))
+	for j in rows - 1:
+		parts.append([Vector3(w - 0.12, 0.045, 0.02), Vector3(0.0, -h * 0.5 + h * float(j + 1) / float(rows), z + 0.02)])
+	for i in parts.size():
+		var b := BoxMesh.new()
+		b.size = parts[i][0]
+		var bi := MeshInstance3D.new()
+		bi.name = "Bar%d" % i
+		bi.mesh = b
+		bi.material_override = mat
+		bi.layers = LAYER_WORLD
+		bi.position = parts[i][1]
+		bi.set_meta("dmg_part", true)
+		mi.add_child(bi)
+
+## Nakładka uszkodzeń bryły (`_damage_overlay`) także na jej części z przodu (deski, pręty): ta sama maska, przesunięta o położenie części
+## (`offset`), więc plama trafienia leży na desce tam, gdzie padł strzał. `keep_own = false` — sama bryła bez nakładki (kratka jest przezroczysta).
+func _overlay_parts(mi: MeshInstance3D, keep_own: bool) -> void:
+	var sm := mi.material_overlay as ShaderMaterial
+	if sm == null:
+		return
+	for c in mi.get_children():
+		if c is MeshInstance3D and c.has_meta("dmg_part"):
+			var part := sm.duplicate() as ShaderMaterial
+			part.set_shader_parameter("offset", Vector2(c.position.x, c.position.y))
+			(c as MeshInstance3D).material_overlay = part
+	if not keep_own:
+		mi.material_overlay = null
 
 func _spawn_rubble(floor_pos: Vector3, wall_h: float) -> void:
 	var rb := _item_model("rubble")

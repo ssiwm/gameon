@@ -348,6 +348,27 @@ Nowe znaczniki map (litery do wybrania z wolnych):
   z dziurami słabiej tłumiony (`sound_grid`). Skutek: przestrzelona deska to wizjer do podglądania — ale też szpara, przez którą wróg widzi
   światło latarki.
 
+**Podział (decyzja 2026-11-03):** PR 1 — mechanika i po jednym miejscu na 1.1, 1.2 i 1.3 (wyjątek od nietykalnej 1.3 na słowo użytkownika);
+PR 2 — 1–3 miejsca na każdej mapie i dziury jako informacja. Kratka: cała przepuszcza kule, wzrok, światło i dźwięk, zatrzymuje tylko ruch;
+blacha (`sheet`) później.
+
+**Zrobione w 1.7.489 (PR 1):** znaczniki `%` (`Planks1…`) i `+` (`Grate1…`) w `level.gd` (`WALL_MARKS`), jak `q`: od znacznika w górę do
+sufitu, kafle w `_wall_cells` (bryła dla nawigacji, otwarte po rozbiciu), reset w `_reset_breakables_rpc`, dołączający — `send_state_to`.
+`breakable.gd`: deski 60 HP (`pick`, `blade`, `pellet`, `blast`, `charge`, `claw`; kula się odbija), kratka 90 HP (`pick`, `blast`) z ciałem na
+warstwie ramy 128 (pole `layer`) — maska postaci ją widzi, wzrok, kule i okluzja nie; `level._is_sound_solid` przepuszcza dźwięk przez `+`.
+Wrogowie (`enemy.gd`, `_barricade_tick` / `_barricade_toward`): rodzaj z `claw_barricade` (Trzosek 4, Wołek 20, Rzeźnik 30 — obrażenia ciosu)
+idzie do barykady, za którą jest cel albo jego ślad (`_last_known`), i bije ją zwykłym zamachem (`_windup_wall` → trafienie `claw`); trzyma się
+jej (`_claw_wall`), gdy hałas uderzeń przenosi ślad na samą barykadę. Szarża (`enemy_bruiser.gd`, `charge_through`): Rzeźnik
+(`breaks_barricades`) i Wołek (`charge_breaks: ["planks"]`) — rozbieg (`_run_clear`, maska 1 | 128) przez przegrodę, którą łamie, wolny;
+kratka zatrzymuje szarżę jak ściana (ogłuszenie). Bot (`player.gd`, `_bot_chop_wall`): dowódca w ciosie (`w_state` MELEE) przy przegrodzie,
+którą bierze broń bota (kilof: `pick`, maczeta: `blade`) → bot podchodzi i tnie razem z nim (poza walką, na ziemi). Widok 3D: deski jako
+poziome, krzywe deski ze szparami na ciemne tło (z ziarna nazwy), kratka — rama i pręty z przezroczystą bryłą; nakładka uszkodzeń na każdej
+części (`damage_mask.gd`: `offset`). `level3d.gd`: `is_wall_fill` — `|`, `q`, `%`, `+` jak ściana (nadproże, nogi kładek). Mapy: 1.1 — deski
+w kol. 289 (koniec dolnej jaskini z przedmiotem i Skoczkiem), 1.2 — kratka w kol. 214 i wnęka 215–220 (amunicja, przedmiot, bateria) obok
+legowiska Stalkera, 1.3 — deski w kol. 31 (chodnik do podziemnej sali z bronią, amunicją, gniazdami ćm i Podsłuchaczem). Przy okazji: mur
+ognia (`fire_patch.gd`) na własnej warstwie 512 — dzielił bit 7 z odłamkami `Vfx`, więc wrogowie `fire_shy` potykali się o łuski i drzazgi.
+Testy: `--destructiontest` sekcja 11. Dev `--shotwall=NAZWA`, zrzuty `C:\deadair87\shots_barrier`.
+
 ### D2b — barykadowanie (nowe w v4, po D2)
 
 - Gracz przybija deski w oznaczonych otworach (okno, wyrwa, przejście), przytrzymując `[E]` (ok. 2 s na deskę, 3 deski na otwór, młotek

@@ -93,8 +93,8 @@ func _longest_run(surfaces: Array) -> Dictionary:
 	return best
 
 func _walkable(c: int, r: int, surfaces: Array) -> bool:
-	if not level._is_solid(c, r) or int(level.KINDS[level._ch(c, r)][2]) != 0:
-		return false
+	if not level._is_solid(c, r) or not level.KINDS.has(level._ch(c, r)) or int(level.KINDS[level._ch(c, r)][2]) != 0:
+		return false                     # przegrody (`q`, `%`, `+`) i okna (`|`) są bryłą, ale nie podłogą z tabeli KINDS
 	var surf := String(level.KINDS[level._ch(c, r)][1])
 	if not surfaces.has(surf if surf != "" else "dirt"):
 		return false

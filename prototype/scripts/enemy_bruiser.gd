@@ -1,5 +1,6 @@
 extends "res://scripts/enemy_behavior.gd"
-## Wołek i Rzeźnik (GDD §7.1–7.2, bruiser; Rzeźnik to te same fazy z danymi `charge`, `throws: false`, `breaks_barricades`): szarża z zapowiedzią (rozbija skrzynie i beczki, o ścianę się ogłusza), rzut skrzynią także w górę i w dół oraz — gdy w pobliżu nie
+## Wołek i Rzeźnik (GDD §7.1–7.2, bruiser; Rzeźnik to te same fazy z danymi `charge`, `throws: false`, `breaks_barricades`): szarża z zapowiedzią (rozbija skrzynie i beczki,
+## łamie przegrody, które przyjmuje — `charge_through`; o ścianę i kratkę się ogłusza), rzut skrzynią także w górę i w dół oraz — gdy w pobliżu nie
 ## ma skrzyni — rzut głazem (F3.9; 0,5 HP, przerwa wg trudności). Stan replikowany (`_sp`: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony)
 ## zostaje w `enemy.gd`; tu są liczniki i logika faz. Dane w `enemy_defs.gd`: `boulder`.
 
@@ -205,8 +206,11 @@ func _run_clear(dir: float, dist: float) -> bool:
 	var space: PhysicsDirectSpaceState2D = e.get_world_2d().direct_space_state
 	var run := minf(dist, _c("max", RUN_CHECK_MAX))
 	var from: Vector2 = e.global_position + Vector2(0, -10)
-	if not space.intersect_ray(PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * run, 0), 1)).is_empty():
-		return false
+	var hit := space.intersect_ray(PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * run, 0), 1 | 128))
+	if not hit.is_empty():
+		var col := hit["collider"] as Node
+		if col == null or not charge_through(col.get_parent()):
+			return false                                  # ściana, kratka albo rama okna; deski (Wołek) i zamurowanie (Rzeźnik) nie zatrzymują rozbiegu
 	var x := RUN_FLOOR_STEP
 	while x <= run:
 		var top: Vector2 = e.global_position + Vector2(dir * x, -4.0)
@@ -215,6 +219,13 @@ func _run_clear(dir: float, dist: float) -> bool:
 			return false
 		x += RUN_FLOOR_STEP
 	return true
+
+## Czy szarża tego rodzaju łamie przegrodę `n` (`breakable.gd`): materiał musi przyjmować szarżę, a rodzaj mieć `breaks_barricades`
+## (Rzeźnik — wszystko poza kratką) albo materiał w `charge_breaks` (Wołek — deski).
+func charge_through(n: Node) -> bool:
+	if n == null or not n.is_in_group("breakables") or not (n.call("mat_def")["breaks"] as Array).has("charge"):
+		return false
+	return bool(e._def.get("breaks_barricades", false)) or (e._def.get("charge_breaks", []) as Array).has(String(n.get("mat_id")))
 
 func _end_charge() -> void:
 	e._sp = 0
@@ -234,8 +245,8 @@ func after_phase_move() -> void:
 		if col.is_in_group("props"):
 			if col.has_method("take_bullet"):
 				col.take_bullet(e.global_position, 45.0)
-		elif bool(e._def.get("breaks_barricades", false)) and col.get_parent() != null and col.get_parent().is_in_group("breakables"):
-			col.get_parent().take_hit({"type": "charge", "amount": 400.0})       # Rzeźnik przebija zamurowane przejścia (`breakable.gd`) zamiast się o nie ogłuszać
+		elif charge_through(col.get_parent()):
+			col.get_parent().take_hit({"type": "charge", "amount": 400.0})       # przegroda, którą szarża łamie (`breakable.gd`), zamiast ogłuszenia
 		elif absf(c.get_normal().x) > 0.7:
 			crashed = true
 	if not charge_hit:
