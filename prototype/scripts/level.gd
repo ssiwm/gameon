@@ -1296,11 +1296,6 @@ func nav_local_fuzz(n: int, seed_v: int) -> Array:
 	return [bad, worst, sum / maxf(cnt, 1), times[mini(times.size() - 1, int(times.size() * 0.95))] if not times.is_empty() else 0.0]
 
 ## Test map: otwiera wszystkie ściany bez efektów (maptest sprawdza osiągalność skrytek za nimi).
-func open_all_walls_for_test() -> void:
-	for wd in _wall_defs.duplicate():
-		if not _opened_walls.has(String(wd["name"])):
-			_open_wall(String(wd["name"]), false)
-
 func walls_total() -> int:
 	return _wall_defs.size()
 

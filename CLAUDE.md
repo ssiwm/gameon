@@ -25,7 +25,7 @@ Co-op horror run-and-gun (retro Contra), Godot **4.7.2**, GDScript, symulacja 2D
 
 ```bash
 godot --headless --path prototype --import                      # po zmianach zasobów
-godot --headless --path prototype -- --maptest --autoquit=4     # mapy (~6 s), ma wypisać PASS
+godot --headless --path prototype -- --maptest --autoquit=4     # mapy: kształt, lokalna nawigacja, osiągalność przy zniszczalnych elementach całych i rozbitych (~6 s), ma wypisać PASS
 godot --headless --path prototype -- --host --stalkertest --autoquit=70   # Stalker: ostrzał, teren, po ciosie, unik bota przed zamachem (~50 s), ma wypisać PASS
 godot --headless --path prototype -- --host --funtest --autoquit=100     # FUN_PLAN.md P0–P2: ucieczka o włos, wabik, wyróżnienia, limit hałasu wrogów, oddech, śrut na pancerz, skrzynia mocy, cichy cel, sejf, punkt kontrolny bossa (z łupem i baterią), obrażenia Żyły (wybuch, śrut), następna misja bez kryjówki (~45 s), ma wypisać PASS
 godot --headless --path prototype -- --host --mission=z1_m1 --batterytest --autoquit=40   # baterie 4,5 V (BATTERY_PLAN.md B0–B2): znaczniki `y`, kto bierze i ile, bot ustępuje człowiekowi, sejf, zrzuty, pusta latarka, dziennik sesji (`bat`, battery, battery_empty, item), przygasanie snopu, karta LATARKA, podpowiedź, licznik do raportu, ładowarka (tylko zgaszona latarka, buczenie, bot, dwóch naraz, restart, karta ŁADOWARKA; `Q` na B1) (~15 s), ma wypisać PASS
@@ -49,7 +49,7 @@ godot --headless --path prototype -- --uifittest                # menu pauzy (us
 godot --headless --path prototype -- --host --rangetest --autoquit=60   # strzelnica FPP: drzwi, opcje widoku z oczu, akcje „range”, blachy, bronie specjalne, papier, wózek, co-op, przyrządy z modelu, ćwiczenie z przeładowaniem, rekordy osobiste, porównanie grup, szafa z bronią, podrzut, amunicja ćwiczebna, oparcie, tablica drużyny (serwer), wyjście (~30 s), ma wypisać PASS
 prototype/tools/test_weapons.sh                                 # bronie + sieć (~3 min)
 prototype/tools/test_cabinets.sh                                # gabloty: otwieranie [E] / [H], Esc, rzędy, blokady, zamiana, sieć (~1 min)
-prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4, wyjście z sesji w kryjówce bez błędów peera, kryptonimy (powtórka „(2)”, czyszczenie), host bez bota, raport po akcji (gotowość klienta, poziomy, złom) (~1 min)
+prototype/tools/test_net_session.sh                             # sesja sieciowa: inna wersja, utrata hosta, czterech ludzi P1–P4, wyjście z sesji w kryjówce bez błędów peera, kryptonimy (powtórka „(2)”, czyszczenie), host bez bota, raport po akcji (gotowość klienta, poziomy, złom), zniszczenia (rany, rozbicie, punkt kontrolny i wipe u klienta i u dołączającego) (~2 min)
 ```
 
 CI (`.github/workflows/tests.yml`) odpala te testy na każdym PR.

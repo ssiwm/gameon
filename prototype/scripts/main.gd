@@ -663,6 +663,61 @@ func _charger_net_step() -> void:
 			cl = c
 	print("[CHARGER-NET] host active=%s client_pct=%d" % [str(chg.active), int(cl.bat_pct) if cl != null else -1])
 
+## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
+## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną). Host po N s rani ścianę dwoma ciosami
+## kilofa, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
+## z bossem), po 3 s czyści wszystko (wipe) i po 2 s kończy. Klient obecny od początku dostaje to przez RPC na żywo, dołączający
+## po ciosach — z `send_walls_to`; klient kończy po końcowym wipe'ie (albo w lobby po utracie hosta).
+func _destruction_net(n: float) -> void:
+	var role := "host" if "--host" in OS.get_cmdline_user_args() else "client"      # przed połączeniem klient też jest „serwerem”
+	var last := ""
+	var joined := false
+	var broke := false
+	if role == "host":
+		get_tree().create_timer(n).timeout.connect(_destruction_net_host)
+	while is_inside_tree():
+		var sig := _destruction_sig()
+		if sig != last:
+			last = sig
+			print("[DESTRUCTION-NET] %s %s" % [role, sig])
+		if level.map_id == "z1_m2":
+			joined = true
+			broke = broke or level._opened_walls.has("BrickWall1")
+		if role == "client" and ((joined and level.map_id != "z1_m2") or (broke and sig.contains("hp=120 splats=0/"))):    # po wipe'ie albo w lobby
+			get_tree().quit()
+			return
+		await get_tree().create_timer(0.25).timeout
+
+func _destruction_sig() -> String:
+	var st := "map=%s opened=[%s]" % [level.map_id, ",".join(PackedStringArray(level._opened_walls))]
+	var w: Node = level.get_node_or_null("BrickWall1")
+	if w != null and not w.is_queued_for_deletion():
+		var sp: PackedFloat32Array = w.splats
+		st += " hp=%d splats=%d/%s" % [roundi(float(w.hp)), sp.size() / 4, str(sp).md5_text().substr(0, 8)]
+	return st
+
+func _destruction_net_host() -> void:
+	var w: Node2D = level.get_node_or_null("BrickWall1")
+	if w == null:
+		print("[DESTRUCTION-NET] host: brak ściany BrickWall1 na mapie %s" % level.map_id)
+		return
+	var pick: RefCounted = Weapons.def(Weapons.KILOF)
+	for i in 2:
+		Combat.apply(w, Combat.make_info(Weapons.KILOF, pick.damage, w.call("body_center") + Vector2(0, -6 + 12 * i), Vector2.RIGHT, 1, "melee"))
+	var t0 := Time.get_ticks_msec()
+	while multiplayer.get_peers().size() < 2 and Time.get_ticks_msec() - t0 < 30000:
+		await get_tree().create_timer(0.25).timeout
+	print("[DESTRUCTION-NET] host peers=%d" % multiplayer.get_peers().size())
+	await get_tree().create_timer(3.0).timeout                      # dołączający dostaje mapę i `send_walls_to`
+	level.save_breakables_checkpoint()
+	level.break_wall("BrickWall1")
+	await get_tree().create_timer(3.0).timeout
+	level.reset_breakables(level.breakables_checkpoint())
+	await get_tree().create_timer(3.0).timeout
+	level.reset_breakables()
+	await get_tree().create_timer(2.0).timeout
+	get_tree().quit()
+
 func _next_campaign_map() -> String:
 	var order: Array = level.CAMPAIGN
 	return order[(order.find(level.map_id) + 1) % order.size()]
@@ -680,6 +735,8 @@ func _handle_cmdline() -> void:
 			get_tree().create_timer(float(sa.substr("--resultnet=".length()))).timeout.connect(_result_net_step)
 		if sa.begins_with("--chargernet="):                # test sieci: ładowarka — klient ładuje się u siebie, serwer widzi, że pracuje
 			get_tree().create_timer(float(sa.substr("--chargernet=".length()))).timeout.connect(_charger_net_step)
+		if sa.begins_with("--destructionnet="):            # test sieci: zniszczenia — rany, rozbicie, punkt kontrolny i wipe u wszystkich
+			_destruction_net(float(sa.substr("--destructionnet=".length())))
 		if sa.begins_with("--batterynet="):                # test sieci: bateria 4,5 V — klient słaby, serwer daje mu baterię z ziemi
 			get_tree().create_timer(float(sa.substr("--batterynet=".length()))).timeout.connect(_battery_net_step)
 	var autoquit := -1.0
@@ -3943,8 +4000,6 @@ func _map_test() -> void:
 		var full_ms := float(Time.get_ticks_usec() - t_full) / 1000.0
 		var fz: Array = level.nav_local_fuzz(40, hash(id))
 		var nav_bad: Array = fz[0]
-		if level.walls_total() > 0:
-			nav_bad.append_array(level.open_walls_checked())      # skrytki za zamurowanymi przejściami też muszą być osiągalne po rozbiciu
 		print("[MAPTEST] %s: lokalna przebudowa nawigacji — 80 zmian, średnio %.2f ms, 95%% do %.2f ms, najdłużej %.2f ms (pełna budowa + porównanie %.0f ms)" % [id, fz[2], fz[3], fz[1], full_ms])
 		# średnia i 95. percentyl są stabilne także na wolnym CI; najdłuższy pojedynczy pomiar skacze z planisty systemu (do ~10 ms) — tylko w wydruku
 		if float(fz[2]) > 2.0 or float(fz[3]) > 6.0:
@@ -3981,25 +4036,21 @@ func _map_test() -> void:
 			for i in (level._map_items[k] as Array).size():
 				# broń w gablocie (cabinet.gd) leży do 7,5 px od środka kafla gabloty — rozstawiona na jej szerokości
 				points.append(["przedmiot %s%d" % [k, i], level._map_items[k][i], 8.0 if (k == "g" and level._cab_slots > 0) else 2.0])
-		var ids := {}
 		var bad: Array = nav_bad
-		for p in points:
-			var cid := nav.get_closest_point(p[1])
-			if cid < 0 or nav.get_point_position(cid).distance_to(p[1]) > (float(p[2]) if p.size() > 2 else 2.0):
-				bad.append("%s nie stoi na podłodze (%s)" % [p[0], str(p[1])])
-			ids[p[0]] = cid
-		var start_id: int = ids["start 0"]
-		for p in points:
-			var cid: int = ids[p[0]]
-			if cid < 0:
-				continue
-			if nav.get_id_path(start_id, cid).is_empty():
-				bad.append("%s: brak drogi ze startu" % p[0])
-			elif nav.get_id_path(cid, start_id).is_empty():
-				bad.append("%s: brak drogi powrotnej na start" % p[0])
-			# gdzie dojdzie postać, tam musi dojść i dźwięk (siatka propagacji zbudowana i spójna z mapą)
-			elif level.sound_grid.route(level.to_local(p[1] - Vector2(0, 8)), level.to_local(level.spawns[0] - Vector2(0, 8))).is_empty():
-				bad.append("%s: brak drogi dźwięku ze startu" % p[0])
+		if level.walls_total() > 0:
+			# wszystko całe: cele misji, wyjścia i stanowiska osiągalne bez rozbijania (zamurowane przejście to skrót albo skrytka, nie warunek);
+			# potem wszystko rozbite — każdy punkt mapy osiągalny, graf po lokalnych przebudowach równy pełnej budowie
+			var must: Array = points.filter(func(p: Array) -> bool: return not (String(p[0]).begins_with("przedmiot") or String(p[0]).begins_with("Skrytka")) and not _is_enemy_point(String(p[0])))
+			var intact := _reach_errors(must, false)
+			for b in intact:
+				bad.append("przy całych ścianach: %s" % b)
+			var behind: Array = []
+			for p in points:
+				if not must.has(p) and not _reach_errors([points[0], p], false).is_empty():
+					behind.append(String(p[0]))
+			print("[MAPTEST] %s: ściany całe — %d celów i stanowisk osiągalnych z %d, za ścianą: %s" % [id, must.size() - intact.size(), must.size(), ", ".join(behind) if not behind.is_empty() else "nic"])
+			bad.append_array(level.open_walls_checked())
+		bad.append_array(_reach_errors(points, true))
 		if not level.exits.is_empty():           # kryjówka nie ma celów ani wyjścia
 			# szacunek długości trasy: start → cele (od lewej) → najdalsze wyjście; sam marsz 95 px/s, bez walki i czekania
 			var goals: Array = []
@@ -4028,6 +4079,38 @@ func _map_test() -> void:
 		print("[MAPTEST] %s: %d punktów sprawdzonych, błędów %d" % [id, points.size(), bad.size()])
 	level.load_map(original)
 	print("[MAPTEST] %s (%d błędów)" % ["PASS" if fails == 0 else "FAIL", fails])
+
+func _is_enemy_point(label: String) -> bool:
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if String(e.name) == label and not e.is_in_group("nests"):
+			return true
+	return false
+
+## Test map: punkty [etykieta, pozycja, tolerancja?] — każdy stoi na podłodze, jest osiągalny z pierwszego punktu (start 0) i z powrotem,
+## a z `sound` także droga dźwięku. Zwraca opisy błędów.
+func _reach_errors(points: Array, sound: bool) -> Array:
+	var nav: AStar2D = level.nav
+	var bad: Array = []
+	var ids := {}
+	for p in points:
+		var cid := nav.get_closest_point(p[1])
+		if cid < 0 or nav.get_point_position(cid).distance_to(p[1]) > (float(p[2]) if p.size() > 2 else 2.0):
+			bad.append("%s nie stoi na podłodze (%s)" % [p[0], str(p[1])])
+			cid = -1
+		ids[p[0]] = cid
+	var start_id: int = ids[points[0][0]]
+	for p in points:
+		var cid: int = ids[p[0]]
+		if cid < 0 or start_id < 0:
+			continue
+		if nav.get_id_path(start_id, cid).is_empty():
+			bad.append("%s: brak drogi ze startu" % p[0])
+		elif nav.get_id_path(cid, start_id).is_empty():
+			bad.append("%s: brak drogi powrotnej na start" % p[0])
+		# gdzie dojdzie postać, tam musi dojść i dźwięk (siatka propagacji zbudowana i spójna z mapą)
+		elif sound and level.sound_grid.route(level.to_local(p[1] - Vector2(0, 8)), level.to_local(points[0][1] - Vector2(0, 8))).is_empty():
+			bad.append("%s: brak drogi dźwięku ze startu" % p[0])
+	return bad
 
 ## Test Nocnego Dyżuru: przechodzi całą serię (5 × sukces), sprawdza modyfikatory i skalowanie, potem porażkę
 ## i nową serię. Rekordy w Settings zostają przywrócone. --nightshift --host --shifttest
