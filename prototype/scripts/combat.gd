@@ -231,6 +231,14 @@ static func in_cone(tree: SceneTree, space: PhysicsDirectSpaceState2D, origin: V
 		if vq.length() > 1.0 and absf(rad_to_deg(dir.angle_to(vq))) > half_deg + 25.0:
 			continue
 		found.append(b)                       # ściana jest sama w sobie przeszkodą — linii wzroku nie sprawdzamy
+	for wi in tree.get_nodes_in_group("windows"):
+		if not wi.intact:
+			continue
+		var rw: Rect2 = wi.hit_rect()
+		var qw := Vector2(clampf(origin.x, rw.position.x, rw.end.x), clampf(origin.y, rw.position.y, rw.end.y))
+		var vw := qw - origin
+		if vw.length() <= reach and (vw.length() <= 1.0 or absf(rad_to_deg(dir.angle_to(vw))) <= half_deg + 25.0):
+			found.append(wi)                  # szyba okna: cios ją tłucze
 	return found
 
 # ---------------------------------------------------------------- wybuch
@@ -279,6 +287,11 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 		if q.distance_to(pos) <= radius:
 			var binfo := make_info(w, damage, q, (q - pos).normalized() if q.distance_to(pos) > 0.5 else Vector2.UP, shooter, "blast")
 			apply(b, binfo)
+	for wi in tree.get_nodes_in_group("windows"):
+		var rw: Rect2 = wi.hit_rect()
+		var qw := Vector2(clampf(pos.x, rw.position.x, rw.end.x), clampf(pos.y, rw.position.y, rw.end.y))
+		if wi.intact and qw.distance_to(pos) <= radius:
+			apply(wi, make_info(w, damage, qw, (qw - pos).normalized() if qw.distance_to(pos) > 0.5 else Vector2.RIGHT, shooter, "blast"))   # okno: wybuch tłucze szybę
 	for ml in tree.get_nodes_in_group("mission_lamps"):
 		if ml.lit and (ml.bulb_pos() as Vector2).distance_to(pos) <= radius:
 			apply(ml, make_info(w, damage, ml.bulb_pos(), Vector2.UP, shooter, "blast"))   # lampa misji: wybuch ją tłucze (lamp.gd)

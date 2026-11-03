@@ -542,7 +542,7 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 ### Audio (filar!)
 - Muzyka adaptacyjna: warstwy (cisza / napięcie / walka / pościg) przełączane płynnie.
 - Brzmienie: analogowe syntezatory lat 80. (DX7, taśma, szum) + industrialne uderzenia w muzyce; efekty, kroki, bronie i głosy wrogów z nagrań (`AUDIO_PLAN.md`; nagrania żyją poza repo w `prototype/audio_licensed/` i trafiają tylko do buildów).
-- **Propagacja dźwięku przez ściany** — kroki i strzały są filtrowane (muffled) zależnie od geometrii; kluczowe dla horroru.
+- **Propagacja dźwięku przez ściany** — kroki i strzały są filtrowane (muffled) zależnie od geometrii; kluczowe dla horroru. Od 1.7.488 okna ze szkłem (1.2, 1.3) tłumią jak ściana, dopóki szyba jest cała; stłuczona przepuszcza dźwięk, kule i wzrok, a rama dalej zatrzymuje ruch.
 - Dźwięk 3D dla Stalkera (zawsze słyszysz, nigdy nie widzisz).
 - Lektor: tylko radio (nadające głosy), brak pełnego dubbingu.
 

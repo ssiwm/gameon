@@ -18,7 +18,8 @@ extends Node2D
 ##   b  tło: beton (wnętrze)  w  tło: drewno (pnie, belki)
 ##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera  G  generator radiostacji
 ##   D  drezyna (stacja startowa; tor kończy się przy wyjściu E)
-##   n  tablica z odprawą (kryjówka)   l  lampa pod sufitem (kryjówka)   I  lampa misji do zestrzelenia (gaśnie, sypie szkłem)   — przy RACKS=true każde „g" dostaje stojak
+##   n  tablica z odprawą (kryjówka)   l  lampa pod sufitem (kryjówka)   I  lampa misji do zestrzelenia (gaśnie, sypie szkłem)
+##   |  okno ze szkłem w ścianie (pionowy ciąg kafli; rama zatrzymuje ruch, szybę tłucze kula)   — przy RACKS=true każde „g" dostaje stojak
 ##   B  Żyła — matka gniazd (boss misji)
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 ##   g  broń na ziemi         a  skrzynka z amunicją
@@ -65,6 +66,7 @@ const HANDCAR := preload("res://scripts/handcar.gd")
 const RACK := preload("res://scripts/rack.gd")
 const CABINET := preload("res://scripts/cabinet.gd")
 const LAMP := preload("res://scripts/lamp.gd")
+const WINDOW := preload("res://scripts/window_glass.gd")
 const BOARD := preload("res://scripts/board.gd")
 const RADIO_SET := preload("res://scripts/radio_set.gd")
 const RESULTS_WALL := preload("res://scripts/results_wall.gd")
@@ -162,6 +164,7 @@ var _nav_after: Nav = null              ## graf nawigacji po zawale z danych map
 var _nav_after_rows: Array = []
 var _nav_after_walls := 0                ## skrót zamurowanych przejść w chwili budowy (rozbita ściana = graf nieaktualny, budujemy od nowa)
 var _wall_cells: Dictionary = {}  ## Vector2i → nazwa ściany: kafle zajęte przez zamurowane przejścia (marker „q")
+var _window_cells: Dictionary = {}  ## Vector2i → nazwa okna (marker „|"): dla nawigacji zawsze bryła, dla dźwięku tylko cała szyba
 var _opened_walls: Array = []    ## nazwy już rozbitych ścian (synchronizacja dołączających)
 
 var _solid: TileMapLayer
@@ -256,6 +259,7 @@ func _load(id: String) -> void:
 	_finale_on = false
 	_blocks.clear()
 	_wall_cells.clear()
+	_window_cells.clear()
 	_opened_walls.clear()
 	_weapons = m.WEAPONS
 	_accents = m.ACCENTS
@@ -266,7 +270,7 @@ func _load(id: String) -> void:
 	nav.build((_map[0] as String).length(), _map.size(), _is_solid, _is_platform_cell)
 	_prepare_collapse_nav()
 	sound_grid = SoundGrid.new()
-	sound_grid.build((_map[0] as String).length(), _map.size(), _is_solid)
+	sound_grid.build((_map[0] as String).length(), _map.size(), _is_sound_solid)
 	_spawn_entities()
 
 
@@ -471,7 +475,7 @@ func _refresh_region(rc: Rect2i) -> void:
 		nav = Nav.new()
 		nav.build(cols, _map.size(), _is_solid, _is_platform_cell)
 	if sound_grid != null:
-		sound_grid.refresh(g, _is_solid)
+		sound_grid.refresh(g, _is_sound_solid)
 
 ## Serwer: restart misji (wipe / nowa misja) — mapa wraca do stanu z danych, wrogowie finału znikają.
 func reset_collapse() -> void:
@@ -596,7 +600,26 @@ func _is_solid(c: int, r: int) -> bool:
 	if _wall_cells.has(Vector2i(c, r)):
 		return true                       # zamurowane przejście (breakable.gd) — dla nawigacji i krawędzi kafli to bryła
 	var ch := _ch(c, r)
+	if ch == "|":
+		return true                       # okno (window_glass.gd): rama zatrzymuje ruch
 	return KINDS.has(ch) and KINDS[ch][2] == 0
+
+## Bryła dla siatki dźwięku (sound_grid.gd): jak `_is_solid`, ale stłuczone okno przepuszcza dźwięk.
+func _is_sound_solid(c: int, r: int) -> bool:
+	var wn: Variant = _window_cells.get(Vector2i(c, r)) if _ch(c, r) == "|" else null
+	if wn != null:
+		var w := get_node_or_null(String(wn))
+		return w == null or bool(w.get("intact"))
+	return _is_solid(c, r)
+
+## Okno stłuczone albo wstawione (window_glass.gd, każdy peer): siatka dźwięku w jego kaflach od nowa.
+func window_changed(w: Node2D) -> void:
+	if sound_grid == null:
+		return
+	var c := int(w.global_position.x / TILE)
+	var rows := int(w.get("rows"))
+	var r1 := int(w.global_position.y / TILE) - 1
+	sound_grid.refresh(Rect2i(c - 1, r1 - rows, 3, rows + 2), _is_sound_solid)
 
 func _is_platform_cell(c: int, r: int) -> bool:
 	var ch := _ch(c, r)
@@ -1075,11 +1098,24 @@ func _spawn_flare_rpc(n: String, pos: Vector2, vel: Vector2, chute: bool) -> voi
 
 const WALL_MAX_ROWS := 6
 var _wall_defs: Array = []       ## [{name, pos (stopy), rows, cells}] od lewej do prawej
+var _window_defs: Array = []     ## okna „|": [{name, pos (stopy), rows}] wierszami od góry, od lewej
 
 ## Znaczniki „q" → zamurowane przejścia: ściana zajmuje kafle od znacznika w górę do pierwszej bryły (maks. WALL_MAX_ROWS).
 ## Rejestrujemy je przed zbudowaniem grafu nawigacji — dla A* to bryła, więc nikt nie planuje drogi do skrytki za ścianą.
 func _register_walls() -> void:
 	_wall_defs.clear()
+	_window_defs.clear()
+	for r in _map.size():
+		var wrow: String = _map[r]
+		for c in wrow.length():
+			if wrow[c] != "|" or (r + 1 < _map.size() and _ch(c, r + 1) == "|"):
+				continue                                         # okno liczone od dolnego kafla w górę
+			var n := "Window%d" % (_window_defs.size() + 1)
+			var k := 0
+			while r - k >= 0 and _ch(c, r - k) == "|":
+				_window_cells[Vector2i(c, r - k)] = n
+				k += 1
+			_window_defs.append({"name": n, "pos": Vector2(c * TILE + TILE * 0.5, (r + 1) * TILE), "rows": k})
 	var found: Array = []
 	for r in _map.size():
 		var row: String = _map[r]
@@ -1101,6 +1137,12 @@ func _register_walls() -> void:
 func _spawn_walls() -> void:
 	for wd in _wall_defs:
 		_spawn_wall(wd)
+	for wd in _window_defs:
+		var win: Node2D = WINDOW.new()                      # okno ze szkłem (DESTRUCTION_PLAN.md D1)
+		win.name = String(wd["name"])
+		win.position = wd["pos"]
+		win.rows = int(wd["rows"])
+		add_child(win)
 
 func _spawn_wall(wd: Dictionary) -> Node2D:
 	var old := get_node_or_null(String(wd["name"]))
@@ -1190,6 +1232,8 @@ func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionar
 		return
 	for ml in get_tree().get_nodes_in_group("mission_lamps"):
 		ml.relight()                                         # lampy misji świecą od nowa (także w punkcie kontrolnym bossa)
+	for win in get_tree().get_nodes_in_group("windows"):
+		win.restore()                                        # okna znów całe
 	for wd in _wall_defs:
 		var n := String(wd["name"])
 		var want_open := opened.has(n)
@@ -1220,7 +1264,7 @@ func _close_wall(wd: Dictionary) -> void:
 		_refresh_region(rc)
 
 ## Dołączający gracz dostaje listę już rozbitych ścian, plamy uszkodzeń tych, które jeszcze stoją, rozbite skrzynie / wybuchłe beczki
-## i stłuczone lampy misji.
+## oraz stłuczone lampy misji i okna.
 func send_walls_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and NoiseMgr.has_network():
 		for n in _opened_walls:
@@ -1232,6 +1276,8 @@ func send_walls_to(peer_id: int) -> void:
 			pr.send_state_to(peer_id)                        # rozbite skrzynie i wybuchłe beczki (prop.gd)
 		for ml in get_tree().get_nodes_in_group("mission_lamps"):
 			ml.send_state_to(peer_id)                        # stłuczone lampy (lamp.gd)
+		for win in get_tree().get_nodes_in_group("windows"):
+			win.send_state_to(peer_id)                       # stłuczone okna (window_glass.gd)
 
 ## Test map: graf `nav` po lokalnych przebudowach kontra pełna budowa od zera — pusty tekst, gdy identyczne (węzły, pozycje,
 ## krawędzie i ich typy).

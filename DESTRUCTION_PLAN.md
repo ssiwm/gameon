@@ -320,6 +320,15 @@ jako dzielnik ciosu.
   (wipe i punkt kontrolny), dołączający — `send_state_to`. Mapy: 1.1 — 2 lampy, 1.2 — 3 (1.3 bez zmian). Dev `--shotlamp[=2]`,
   zrzuty `C:\deadair87\shots_lamp`.
 - **Szkło / okna** w budynkach (1.2 chata radiowa, 1.3 Skład): pęka od kuli, przepuszcza potem kule i dźwięk głośniej.
+  **Zrobione w 1.7.488:** znacznik `|` (`level.gd`, `Window1…`, pionowy ciąg kafli w ścianie), `window_glass.gd` — rama (warstwa 128 w masce
+  graczy, bota i wrogów: 49 → 177) zatrzymuje tylko ruch, kule, wzrok i światło przechodzą zawsze; szyba `Pane` (warstwa 32 + 256, grupa
+  `shootables`) — kula, śrut, promień, wybuch, cios albo płomień ją tłucze (serwer: hałas 3, zdarzenie `window`) → `_break_rpc` (14 odłamków
+  w stronę strzału, `glass_break`). Cała szyba tłumi dźwięk: okluzja `audio_director.gd` (`OCCLUSION_MASK = 1 | 256`) i siatka dźwięku
+  (`level._is_sound_solid`, `window_changed` odświeża jej kafle); dla nawigacji okno zawsze jest bryłą (decyzja: „tylko kule i dźwięk”).
+  Widok 3D: drewniana rama ze szprosami, przezroczysta szyba, po stłuczeniu ostre resztki w rogach; `level3d.gd` traktuje `|` jak ścianę
+  (kładka bez nóg obok okna, `C` nad oknem to nadproże, nie dach). Reset w `level._reset_breakables_rpc`, dołączający — `send_state_to`.
+  Mapy: 1.2 — 2 okna na piętrze chaty radiowej, 1.3 — 2 w ścianach Składu (wyjątek od nietykalnej 1.3 na słowo użytkownika). Dev
+  `--shotwindow[=2]`, zrzuty `C:\deadair87\shots_window`.
 
 ### D2 — przejścia do otwierania (rdzeń mechaniki)
 

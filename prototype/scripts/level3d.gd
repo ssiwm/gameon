@@ -36,8 +36,9 @@ static func is_platform_ch(ch: String) -> bool:
 ## z blachy na wiązarach (`_build_roofs`); stropy międzypiętrowe mają nad sobą wnętrze, a podłogi i skały sąsiadują z bryłą, więc zostają betonowe.
 ## Skrzynie `M` stojące na dachu go nie przerywają (wcześniej pod każdą skrzynią zostawał kafel betonu wśród blachy).
 static func is_roof_cell(rows: Array, c: int, r: int) -> bool:
-	if _ch(rows, c, r) != "C" or is_solid_ch(_ch(rows, c, r + 1)):
-		return false
+	var below := _ch(rows, c, r + 1)
+	if _ch(rows, c, r) != "C" or is_solid_ch(below) or below == "|":
+		return false                                            # pod spodem ściana albo okno w ścianie (window_glass.gd) — to nadproże, nie dach
 	var top := r - 1
 	while _ch(rows, c, top) == "M" and top > 0:
 		top -= 1
@@ -886,8 +887,8 @@ const DECK_ROD_W := 0.04                   ## m: pręt wieszaka
 ## Pomost bez żadnej podpory: oba końce w powietrzu, bez ściany (`b`, bryła) obok, nad ani pod nim i bez słupa `w` przy nim.
 static func deck_is_free(rows: Array, ch: String, r: int, c0: int, c1: int) -> bool:
 	for e in [_ch(rows, c0 - 1, r), _ch(rows, c1 + 1, r)]:
-		if is_solid_ch(e) or e == "b" or e == "w":
-			return false
+		if is_solid_ch(e) or e == "b" or e == "w" or e == "|":
+			return false                                    # obok ściana, tło, słup albo okno w ścianie (window_glass.gd) — pomost się o nie opiera
 	for k in range(c0 - 1, c1 + 2):
 		if _ch(rows, k, r - 1) == "w" or _ch(rows, k, r + 1) == "w":
 			return false
