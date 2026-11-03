@@ -166,9 +166,9 @@ const WEAPON_TEXT := {
 		"Release before the charge completes and the shot is cancelled. The loudest weapon — plan the escape first."],
 	"ciegno6": ["Silent bolt gun: one bolt per magazine, huge damage, almost no noise. The bolt sticks in the target and can be picked up.",
 		"Aim for the head (×2) and hold higher on far targets — the bolt drops. The assassin's tool for an Eavesdropper. Tier 3 adds a tether line that yanks hit enemies toward you."],
-	"maczeta": ["Machete: fast, silent, short reach. Kills a sleeping enemy — or one with its back to you — instantly.",
+	"maczeta": ["Machete: fast, silent, short reach. Kills a sleeping enemy — or one with its back to you — instantly. Hacks through boarded-up passages.",
 		"The first answer to any sleeper. No ammo, no noise."],
-	"kilof": ["Pickaxe: slow swing, heavy damage and a long stun on hit. A little noise. It is the only tool that breaks cracked brick walls (and a grenade does too).",
+	"kilof": ["Pickaxe: slow swing, heavy damage and a long stun on hit. A little noise. It is the only tool that breaks cracked brick walls and rusty vent grates (a grenade does too).",
 		"Use it as the opener, then back off before the next swing. A bricked-up passage usually hides a stash — but breaking it is LOUD."],
 }
 

@@ -23,6 +23,10 @@ extends "res://scripts/stalker_test.gd"
 ## 10. Okna `|` (window_glass.gd, D1): na mapie całe; rama zatrzymuje ruch, nie wzrok; dla nawigacji bryła; cała szyba tłumi dźwięk
 ##    (okluzja i siatka dźwięku); promień kuli tłucze szybę i leci dalej, stłuczona przepuszcza dźwięk, rama dalej trzyma; wybuch i cios
 ##    też tłuką; reset wstawia szybę; dołączający dostaje stłuczoną bez efektów.
+## 11. Przegrody D2 (breakable.gd): kratka `+` na 1.2 — rama zatrzymuje ruch i nawigację, wzrok, kule i dźwięk przechodzą; kula i maczeta jej nie
+##    ranią, kilof rozbija; deski `%` — kula nie, maczeta, śrut i pazury tak, wzrok zasłaniają; Trzosek, którego ślad jest za deskami, dobija się
+##    do nich z swojej strony; szarża Wołka łamie deski, Rzeźnika — nie kratkę (rozbieg przez deski tak, przez kratkę nie); bot rąbie deski
+##    razem z dowódcą, a kratki (maczeta) nie rusza.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -36,6 +40,7 @@ const Prop := preload("res://scripts/prop.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Lights := preload("res://scripts/lights.gd")
 const WindowGlass := preload("res://scripts/window_glass.gd")
+const WeaponController := preload("res://scripts/weapon_controller.gd")
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -75,6 +80,7 @@ func run(m: Node2D) -> void:
 	await _crates()
 	await _lamps()
 	await _windows()
+	await _barriers()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -228,17 +234,21 @@ func _cells_solid() -> bool:
 	var ok := true
 	for cell in level._wall_cells.keys():
 		ok = ok and level._is_solid(cell.x, cell.y)
-	return ok and not level._wall_cells.is_empty()
+	return ok and _brick_cells() > 0
+
+## Kafle zamurowania BrickWall1 w `_wall_cells` (na 1.2 jest tam też kratka Grate1).
+func _brick_cells() -> int:
+	return level._wall_cells.values().count("BrickWall1")
 
 func _state() -> void:
 	var pick: RefCounted = Weapons.def(Weapons.KILOF)
 	var w := _real()
-	check("stan: ściana 1.2 stoi na starcie (%d kafli bryły)" % level._wall_cells.size(), w != null and _cells_solid())
+	check("stan: ściana 1.2 stoi na starcie (%d kafli bryły)" % _brick_cells(), w != null and _cells_solid())
 	if w == null:
 		return
 	level.break_wall("BrickWall1")
 	await _frames(0.1)
-	check("stan: po rozbiciu kafle wolne, ściana w `_opened_walls`", _real() == null and level._wall_cells.is_empty() and level._opened_walls.has("BrickWall1"))
+	check("stan: po rozbiciu kafle wolne, ściana w `_opened_walls`", _real() == null and _brick_cells() == 0 and level._opened_walls.has("BrickWall1"))
 	level.reset_breakables()
 	await _frames(0.1)
 	w = _real()
@@ -275,7 +285,7 @@ func _state() -> void:
 	level.reset_breakables(level.breakables_checkpoint())
 	await _frames(0.1)
 	check("punkt kontrolny: rozbita przy przebudzeniu zostaje rozbita (po czystym resecie stała: %s), nawigacja = pełna budowa" % str(back),
-		back and _real() == null and level._opened_walls.has("BrickWall1") and level._wall_cells.is_empty() and level.nav_diff_vs_full() == "")
+		back and _real() == null and level._opened_walls.has("BrickWall1") and _brick_cells() == 0 and level.nav_diff_vs_full() == "")
 	# rozbicie i odbudowa w jednej klatce: nowa ściana dostaje własną nazwę
 	level.reset_breakables()
 	await _frames(0.1)
@@ -620,3 +630,177 @@ func _windows() -> void:
 	await _frames(0.05)
 	check("dołączający (send_state_to → _break_rpc bez efektów): stłuczona, bez odłamków", not win.intact and _fresh_debris(old) == 0)
 	level.reset_breakables()
+
+# ---------------------------------------------------------------- 11. przegrody D2: kratka i deski
+
+const BASE_C := 94                  ## kolumna środka próbnych desek w tunelu ucieczki 1.2 (płaska podłoga w rzędzie 50, sufit nad rzędem 45)
+const BASE_FEET := 51 * 16.0
+
+func _barriers() -> void:
+	var space := level.get_world_2d().direct_space_state
+	var gr: Node2D = level.get_node_or_null("Grate1")
+	check("kratka na 1.2: Grate1 (znacznik +, wnęka przy legowisku Stalkera), %s, %d kafle" % [str(gr.get("mat_id")) if gr else "-", int(gr.get("rows")) if gr else 0],
+		gr != null and String(gr.mat_id) == "grate" and int(gr.rows) == 3)
+	if gr == null:
+		return
+	var cell := Vector2i(int(gr.global_position.x / 16.0), int(gr.global_position.y / 16.0) - 1)
+	var mid: Vector2 = gr.call("body_center")
+	var pq := PhysicsPointQueryParameters2D.new()
+	pq.position = mid
+	pq.collision_mask = 177
+	var blocks := func() -> bool: return space.intersect_point(pq).any(func(h: Dictionary) -> bool: return (h["collider"] as Node).get_parent() == gr)
+	check("kratka: zatrzymuje ruch (maska postaci), dla nawigacji bryła", blocks.call() and level._is_solid(cell.x, cell.y))
+	var a := mid + Vector2(-40.0, 0.0)
+	var b := mid + Vector2(40.0, 0.0)
+	var tr := Combat.trace(space, a, Vector2.RIGHT, 80.0, 0)
+	check("kratka: wzrok, kule i dźwięk przechodzą (linia, promień, okluzja, siatka dźwięku)",
+		Combat.clear_line(space, a, b) and float((tr["end"] as Vector2).x) > mid.x + 20.0
+		and space.intersect_ray(PhysicsRayQueryParameters2D.create(a, b, 1 | 256)).is_empty() and not level._is_sound_solid(cell.x, cell.y) and level.sound_grid._open(cell))
+	var h0 := float(gr.hp)
+	var rb := _hit(gr, Weapons.P64, 20.0, "bullet", mid)
+	var rm := _hit(gr, Weapons.MACZETA, Weapons.def(Weapons.MACZETA).damage, "melee", mid)
+	check("kratka: kula i maczeta odbijają się bez obrażeń", not bool(rb.get("hit")) and not bool(rm.get("hit")) and float(gr.hp) == h0)
+	var swings := 0
+	while is_instance_valid(gr) and not gr.is_queued_for_deletion() and swings < 5:
+		_hit(gr, Weapons.KILOF, Weapons.def(Weapons.KILOF).damage, "melee", mid)
+		swings += 1
+	await _frames(0.15)
+	check("kratka: kilof rozbija (%d ciosy), przejście otwarte dla nawigacji" % swings,
+		swings == 2 and level._opened_walls.has("Grate1") and not level._is_solid(cell.x, cell.y))
+	level.reset_breakables()
+	await _frames(0.1)
+	gr = level.get_node_or_null("Grate1")
+	check("kratka: reset wstawia ją z powrotem", gr != null and level._is_solid(cell.x, cell.y))
+
+	# deski: próbne w tunelu (od podłogi do sufitu, 6 kafli); wrogowie mapy z tunelu (para Trzosków) i skrzynie z wcześniejszych prób
+	# (fizyczne, spychały Trzoska) nie mieszają się do prób
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e != stalker:
+			e.queue_free()
+	for n in level.get_children():
+		if n is RigidBody2D:
+			n.queue_free()
+	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
+	_place_player(base + Vector2(-70.0, 0.0))
+	var pl := _barrier("DPlanks1", base)
+	await _frames(0.1)
+	var pm: Vector2 = pl.call("body_center")
+	check("deski: zasłaniają wzrok i zatrzymują kule (bryła świata)", not Combat.clear_line(space, pm + Vector2(-30.0, 0.0), pm + Vector2(30.0, 0.0)))
+	check("deski: kula pistoletu ich nie rani", not bool(_hit(pl, Weapons.P64, 20.0, "bullet", pm).get("hit")))
+	check("deski: śrut rani", bool(_hit(pl, Weapons.SRUT8, 10.0, "bullet", pm).get("hit")) and float(pl.hp) < 60.0)
+	check("deski: pazury (claw) ranią", bool(Combat.apply(pl, {"type": "claw", "amount": 4.0, "pos": pm, "dir": Vector2.RIGHT}).get("hit")))
+	pl.queue_free()
+	pl = _barrier("DPlanks2", base)
+	swings = 0
+	while is_instance_valid(pl) and not pl.is_queued_for_deletion() and swings < 5:
+		_hit(pl, Weapons.MACZETA, Weapons.def(Weapons.MACZETA).damage, "melee", pm)
+		swings += 1
+	check("deski: maczeta rozbija (%d ciosy, cicho jak cios)" % swings, swings == 2)
+	await _frames(0.15)
+
+	# Trzosek za deskami dobija się do gracza
+	pl = _barrier("DPlanks3", base)
+	await _frames(0.1)
+	var tz := _enemy("trzosek", base + Vector2(44.0, 0.0))
+	await _frames(0.2)
+	tz.wake()
+	tz._lead_at(player.global_position)
+	var hp0 := float(pl.hp)
+	await _frames(4.0)
+	check("Trzosek: ślad za deskami → podchodzi i drapie (HP %.0f → %.0f), zostaje po swojej stronie (x %+.0f)" % [hp0, float(pl.hp) if is_instance_valid(pl) else 0.0, tz.global_position.x - base.x],
+		is_instance_valid(pl) and float(pl.hp) <= hp0 - 8.0 and tz.global_position.x > base.x + 8.0 and tz.global_position.x < base.x + 30.0)
+	tz.queue_free()
+	pl.queue_free()
+	await _frames(0.1)
+
+	# szarże: Wołek łamie deski, Rzeźnik odbija się od kratki
+	pl = _barrier("DPlanks4", base)
+	await _frames(0.1)
+	var wk := _enemy("wolek", base + Vector2(150.0, 0.0))
+	await _frames(0.3)
+	var rz := _enemy("rzeznik", base + Vector2(150.0, -200000.0))
+	gr = level.get_node_or_null("Grate1")
+	check("szarża: Wołek łamie deski, kratki nie; Rzeźnik zamurowanie i deski, kratki nie",
+		wk._beh.charge_through(pl) and not wk._beh.charge_through(gr) and not wk._beh.charge_through(level.get_node_or_null("BrickWall1"))
+		and rz._beh.charge_through(pl) and rz._beh.charge_through(level.get_node_or_null("BrickWall1")) and not rz._beh.charge_through(gr))
+	rz.queue_free()
+	check("szarża: rozbieg Wołka przez deski wolny", wk._beh._run_clear(-1.0, 140.0))
+	wk.wake()
+	wk._sp = 2
+	wk._beh.sp_dir = -1.0
+	wk._beh.sp_t = 3.0
+	wk.winding = false
+	await _frames(1.5)
+	check("szarża Wołka łamie deski (Wołek x %+.0f)" % (wk.global_position.x - base.x), not is_instance_valid(pl) or pl.is_queued_for_deletion() or level._opened_walls.has("DPlanks4"))
+	wk.queue_free()
+	if is_instance_valid(pl):
+		pl.queue_free()
+	await _frames(0.1)
+
+	# bot rąbie deski razem z dowódcą
+	var bot: CharacterBody2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot:
+			bot = p
+	check("bot w drużynie do testu rąbania", bot != null)
+	if bot == null:
+		return
+	pl = _barrier("DPlanks5", base)
+	await _frames(0.1)
+	_place_player(base + Vector2(-14.0, 0.0))
+	bot.global_position = base + Vector2(-40.0, 0.0)
+	bot.velocity = Vector2.ZERO
+	player.w_state = WeaponController.State.MELEE
+	var chop: Variant = bot._bot_chop_wall(player)
+	player.w_state = WeaponController.State.READY
+	var idle: Variant = bot._bot_chop_wall(player)
+	check("bot: przegroda do rąbania, gdy dowódca rąbie (%s), bez ciosu dowódcy — nic" % str(chop.name if chop else null), chop == pl and idle == null)
+	pl.queue_free()
+	var g2 := _barrier("DGrate1", base, "grate")
+	await _frames(0.1)
+	player.w_state = WeaponController.State.MELEE
+	var chop_g: Variant = bot._bot_chop_wall(player)
+	player.w_state = WeaponController.State.READY
+	check("bot: kratki maczetą nie rąbie", Weapons.def(bot.weapons.melee_id).breaks_walls or chop_g == null)
+	g2.queue_free()
+	pl = _barrier("DPlanks6", base)
+	await _frames(0.1)
+	bot.set_physics_process(true)
+	bot.set_process(true)
+	var bot_swung := [false]
+	var hp_b := float(pl.hp)
+	await _frames(3.0, func(_t: float, _dt: float) -> void:
+		_place_player(base + Vector2(-14.0, 0.0))
+		player.aim_dir = Vector2.RIGHT
+		if player.weapons.state != WeaponController.State.MELEE:
+			player.weapons.try_melee()
+		if bot.weapons.state == WeaponController.State.MELEE:
+			bot_swung[0] = true)
+	check("bot: dowódca rąbie deski → bot podchodzi i rąbie razem z nim", bot_swung[0])
+	bot.set_physics_process(false)
+	bot.set_process(false)
+	bot.global_position = Vector2(-4000, -4000)
+	if is_instance_valid(pl):
+		pl.queue_free()
+	info("deski po rąbaniu dowódcy z botem: HP %.0f → %.0f" % [hp_b, float(pl.hp) if is_instance_valid(pl) else 0.0])
+
+## Próbna przegroda od podłogi do sufitu tunelu (6 kafli), poza `_wall_cells` — sama mechanika trafień, ruchu i wrogów.
+func _barrier(wname: String, feet: Vector2, mat := "planks") -> Node2D:
+	var w: Node2D = Breakable.new()
+	w.name = wname
+	w.mat_id = mat
+	w.rows = 6
+	w.global_position = feet
+	level.add_child(w)
+	return w
+
+func _enemy(kind: String, pos: Vector2) -> CharacterBody2D:
+	var e := (load("res://scenes/enemy.tscn") as PackedScene).instantiate() as CharacterBody2D
+	e.kind = kind
+	level.add_child(e)
+	e.global_position = pos
+	e._home = pos
+	e._remote_pos = pos
+	e._phys_x = pos.x
+	e._last_x = pos.x
+	return e

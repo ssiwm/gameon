@@ -1170,12 +1170,13 @@ func _t_phase4() -> void:
 		BrickWall.hit_kind(Combat.make_info(Weapons.SPREAD12, 1.0, Vector2.ZERO, Vector2.RIGHT, 1, "bullet")),
 		BrickWall.hit_kind(Combat.make_info(Weapons.GNIEW4, 1.0, Vector2.ZERO, Vector2.RIGHT, 1, "blast")),
 		BrickWall.hit_kind({"type": "charge", "amount": 1.0}),
+		BrickWall.hit_kind({"type": "claw", "amount": 1.0}),
 		BrickWall.hit_kind(Combat.make_info(Weapons.M83, 1.0, Vector2.ZERO, Vector2.RIGHT, 1, "fire"))]
-	check("materiały: rodzaje trafień %s" % str(kinds), kinds == ["pick", "blade", "bullet", "pellet", "blast", "charge", ""])
+	check("materiały: rodzaje trafień %s" % str(kinds), kinds == ["pick", "blade", "bullet", "pellet", "blast", "charge", "claw", ""])
 	var all_known := true
 	for mk in BrickWall.MATERIALS:
 		for bk in BrickWall.MATERIALS[mk]["breaks"]:
-			all_known = all_known and bk in ["pick", "blade", "bullet", "pellet", "blast", "charge"]
+			all_known = all_known and bk in ["pick", "blade", "bullet", "pellet", "blast", "charge", "claw"]
 	check("materiały: cegła = kilof, wybuch, szarża; komplet %s, same znane rodzaje trafień" % str(BrickWall.MATERIALS.keys()),
 		BrickWall.MATERIALS["brick"]["breaks"] == ["pick", "blast", "charge"] and all_known
 		and BrickWall.MATERIALS.keys() == ["brick", "planks", "sheet", "grate", "glass", "support"])
@@ -1199,9 +1200,10 @@ func _t_phase4() -> void:
 	var shy_ok := true
 	for k in ["trzosek", "slepiec", "skoczek"]:
 		var dm := await dummy(200.0, 100000.0, k)
-		shy_ok = shy_ok and dm.get_collision_mask_value(7)
+		shy_ok = shy_ok and dm.get_collision_mask_value(Enemy.FIRE_BIT) and not dm.get_collision_mask_value(7)     # bit 7 to odłamki (Vfx.DEBRIS_LAYER)
 	var tank2 := await dummy(220.0, 100000.0, "wolek")
-	check("mur ognia: maska FIRE_BIT tylko u Trzoska, Ślepca i Skoczka (nie u Wołka %s ani gracza %s)" % [str(tank2.get_collision_mask_value(7)), str(player.get_collision_mask_value(7))], shy_ok and not tank2.get_collision_mask_value(7) and not player.get_collision_mask_value(7))
+	check("mur ognia: maska FIRE_BIT tylko u Trzoska, Ślepca i Skoczka (nie u Wołka %s ani gracza %s), odłamki ich nie zatrzymują" % [str(tank2.get_collision_mask_value(Enemy.FIRE_BIT)), str(player.get_collision_mask_value(Enemy.FIRE_BIT))],
+		shy_ok and not tank2.get_collision_mask_value(Enemy.FIRE_BIT) and not player.get_collision_mask_value(Enemy.FIRE_BIT))
 	free_dummies()
 	await frames(2)
 	var runner := await dummy(110.0)

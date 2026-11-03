@@ -2626,7 +2626,7 @@ func _test_slepiec_shaft() -> void:
 	e.active = false
 	await get_tree().physics_frame
 	e.take_hit({"amount": 1.0, "dir": Vector2.RIGHT, "pos": e.global_position, "shooter": 0, "type": "bullet"})
-	e._lead_at(Vector2(30.0 * t, 40.0 * t - 8.0))                            # ślad na dnie szybu, po drugiej stronie
+	e._lead_at(Vector2(34.0 * t, 40.0 * t - 8.0))                            # ślad na dnie szybu, po drugiej stronie (przed deskami `%` w kol. 31, D2)
 	var tt := 0.0
 	var y_max := 0.0
 	var x_min := e.global_position.x

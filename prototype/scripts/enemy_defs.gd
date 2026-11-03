@@ -13,7 +13,10 @@ extends RefCounted
 ##   sweep   amplituda [px] przeszukiwania okolicy śladu po dojściu na miejsce hałasu (Ślepiec); search — czas szukania [s], domyślnie SEARCH_TIME
 ##   behavior  zachowanie rodzaju (enemy_behavior.gd i podklasy: listener, bruiser, moth, mimic, ambusher, pack, blind); brak = zwykły wróg bez własnych haków.
 ##             Nowy rodzaj z własną mechaniką = nowa podklasa + wpis w `enemy_behavior.gd: BEHAVIORS` i tu, bez `if kind ==` w enemy.gd
-##   stun_resist / throws / breaks_barricades  Rzeźnik (F4c): brak chwiania od trafień i ogłuszeń / (false) bez rzutów skrzynią i głazem / szarża rozbija zamurowane przejścia
+##   stun_resist / throws / breaks_barricades  Rzeźnik (F4c): brak chwiania od trafień i ogłuszeń / (false) bez rzutów skrzynią i głazem / szarża rozbija każdą przegrodę,
+##             która przyjmuje szarżę (zamurowanie, deski — nie kratkę)
+##   charge_breaks  materiały przegród (`breakable.gd`), które łamie szarża rodzaju bez `breaks_barricades` (Wołek: deski)
+##   claw_barricade  obrażenia ciosu w barykadę (DESTRUCTION_PLAN.md D2): wróg, którego cel albo ślad jest za deskami, podchodzi i bije w nie (`enemy.gd: _barricade_tick`)
 ##   charge    parametry szarży bruisera {min, max, windup, time, mult, cd, crash_stun, damage}; brak = stałe Wołka (enemy_bruiser.gd)
 ##   elite     true = elita (GDD §7.2): pasek HP nad głową od początku spotkania, Dyrektor wypuszcza najwyżej jedną naraz (F4)
 ##   death_fx  efekty śmierci {shake, hitstop, gibs, sound, pollen}; domyślnie ciężki wróg (3,0 / 0,09 / 11, „impact_flesh”, 0).
@@ -34,7 +37,7 @@ const DEFS := {
 	"trzosek": {
 		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
-		"behavior": "pack", "death_fx": {"shake": 1.8, "hitstop": 0.05, "gibs": 6}, "fears": true, "phototaxis": true, "fire_shy": true,
+		"behavior": "pack", "death_fx": {"shake": 1.8, "hitstop": 0.05, "gibs": 6}, "fears": true, "phototaxis": true, "fire_shy": true, "claw_barricade": 4.0,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
 		"xp": 2, "scrap": 2, "ammo": 0.22, "battery": 0.04, "alert": 0.4, "voice": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "alert": ["trzosek_attack", 3, -12.0, 1.35], "death": ["trzosek_death", 2, -4.0, 1.0]},
 	},
@@ -95,7 +98,7 @@ const DEFS := {
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
-		"behavior": "bruiser", "armor": 3.0,
+		"behavior": "bruiser", "armor": 3.0, "charge_breaks": ["planks"], "claw_barricade": 20.0,
 		# głaz (F3.9): zawsze dostępny, gdy w pobliżu brak skrzyni; `dmg` HP (0,5 = ukryte „stłuczenie", dwa trafienia = serce), `cd` s przerwy wg trudności
 		# [EASY, NORMAL, HARD], `windup` s zapowiedzi (× `enemy_windup`), `range` px poziomo, `noise` hałas rzutu
 		"boulder": {"dmg": 0.5, "cd": [8.0, 5.0, 3.2], "windup": 0.6, "range": 220.0, "noise": 2.0},
@@ -117,11 +120,11 @@ const DEFS := {
 		"xp": 40, "scrap": 15, "supply": 0.5, "battery": 0.3, "ammo": 0.5, "health": 1.0, "hear_error": 64.0, "voice": {"attack": ["slepiec_attack", 2, -3.0, 0.8], "scream": ["kaplan_scream", 2, -3.0, 1.0], "death": ["slepiec_death", 2, -2.0, 0.8]},
 	},
 	# Rzeźnik (GDD §7.2, F4c): miniboss — ten sam kod co Wołek (zachowanie bruiser) z innymi danymi: cięższa szarża (`charge`: min/max px, windup, time, mult, cd, crash_stun, damage)
-	# przebija zamurowane przejścia (`breaks_barricades`), nie rzuca (`throws: false`), nie chwieje się od trafień i ogłuszeń (`stun_resist`), ledwo odrzucany.
+	# przebija zamurowania i deski (`breaks_barricades`; kratka go zatrzymuje), nie rzuca (`throws: false`), nie chwieje się od trafień i ogłuszeń (`stun_resist`), ledwo odrzucany.
 	"rzeznik": {
 		"hp": 400.0, "speed": 60.0, "damage": 2, "windup": 0.8, "reach": 18.0,
 		"cooldown": 1.8, "leap": false, "hear": 180.0, "wake_near": 70.0, "sight": 240.0,
-		"behavior": "bruiser", "elite": true, "armor": 4.0, "stun_resist": true, "throws": false, "breaks_barricades": true, "climbs_out": true, "sheet": "wolek",
+		"behavior": "bruiser", "elite": true, "armor": 4.0, "stun_resist": true, "throws": false, "breaks_barricades": true, "claw_barricade": 30.0, "climbs_out": true, "sheet": "wolek",
 		"charge": {"min": 100.0, "max": 320.0, "windup": 1.0, "time": 1.4, "mult": 3.2, "cd": 9.0, "crash_stun": 1.6, "damage": 2},
 		"color": Color(0.5, 0.35, 0.33), "size": Vector2(26, 36), "hurt_h": 44.0, "knock": 8.0, "knock_mult": 0.05, "head": 0.2,
 		"xp": 40, "scrap": 25, "supply": 0.6, "battery": 0.3, "ammo": 0.7, "health": 1.0, "hear_error": 96.0, "voice": {"attack": ["rzeznik_roar", 2, -2.0, 1.0], "death": ["wolek_death", 2, -1.0, 0.75]},

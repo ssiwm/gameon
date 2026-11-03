@@ -2219,8 +2219,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 							ip.weapons.inspect_item = null)
 	if "--shotfinale" in OS.get_cmdline_user_args():
 		mission.finale = true                                 # --shotfinale: finał kopalni bez przenoszenia gracza (pył ze stropu; użyj z --shotat/--shotrow)
-	if "--shotwall" in OS.get_cmdline_user_args():
-		var sw := get_tree().get_first_node_in_group("breakables")      # --shotwall: gracz tuż przed zamurowanym przejściem (mapa 1.2)
+	if _has_arg_prefix("--shotwall"):
+		var sw := get_tree().get_first_node_in_group("breakables")      # --shotwall: gracz tuż przed zamurowanym przejściem (mapa 1.2);
+		for a in OS.get_cmdline_user_args():                            # --shotwall=NAZWA: przed wybraną przegrodą (Planks1, Grate1…)
+			if a.begins_with("--shotwall="):
+				sw = level.get_node_or_null(a.substr("--shotwall=".length()))
 		var sp: Node2D = _players.get_node_or_null("1")
 		if sw != null and sp != null:
 			sp.global_position = sw.global_position + Vector2(40.0, -1.0)
@@ -3617,7 +3620,7 @@ func _gen_test() -> void:
 	if alcove.size() > 0:
 		sealed = level.nav.get_id_path(start_id, level.nav.get_closest_point(alcove[0])).is_empty()
 	var wall_node := level.get_node_or_null("BrickWall1")
-	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 1)
+	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 2)      # zamurowanie i kratka wentylacji (D2)
 	level.break_wall("BrickWall1")
 	await get_tree().create_timer(0.3).timeout
 	var open_id: int = level.nav.get_closest_point(alcove[0]) if alcove.size() > 0 else -1
