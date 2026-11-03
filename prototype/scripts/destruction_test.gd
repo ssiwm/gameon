@@ -8,6 +8,8 @@ extends "res://scripts/stalker_test.gd"
 ##    trafienia z jednej klatki idą jedną paczką, kolejne w oknie SPLAT_GAP czekają; trafienie, które nie rani, nie zostawia plamy.
 ## 3. Dołączający: stan z `_splat_sync` daje te same plamy i tę samą maskę co u serwera; limit MAX_SPLATS.
 ## 4. Rozbicie: element znika, zapis w `_opened_walls`, odroczona paczka nie sypie błędów.
+## 5. Stan zniszczeń (level.gd): reset po rozbiciu (ściana, kafle, nawigacja, plamy), migawka z przebudzenia bossa (plamy i rozbite),
+##    ta sama klatka co rozbicie, restart misji (main._restart_mission) odbudowuje ścianę.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -48,6 +50,7 @@ func run(m: Node2D) -> void:
 	_mask()
 	await _splats()
 	await _break()
+	await _state()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -190,3 +193,76 @@ func _break() -> void:
 	check("rozbicie: %d ciosy, ściana znika, zapis w `_opened_walls`, odroczona paczka bez błędów" % swings,
 		swings == 3 and not is_instance_valid(w) and level._opened_walls.has("DWall4"))
 	level._opened_walls.erase("DWall4")
+
+# ---------------------------------------------------------------- 5. stan zniszczeń
+
+func _real() -> Node2D:
+	var w := level.get_node_or_null("BrickWall1") as Node2D
+	return w if w != null and not w.is_queued_for_deletion() else null
+
+func _cells_solid() -> bool:
+	var ok := true
+	for cell in level._wall_cells.keys():
+		ok = ok and level._is_solid(cell.x, cell.y)
+	return ok and not level._wall_cells.is_empty()
+
+func _state() -> void:
+	var pick: RefCounted = Weapons.def(Weapons.KILOF)
+	var w := _real()
+	check("stan: ściana 1.2 stoi na starcie (%d kafli bryły)" % level._wall_cells.size(), w != null and _cells_solid())
+	if w == null:
+		return
+	level.break_wall("BrickWall1")
+	await _frames(0.1)
+	check("stan: po rozbiciu kafle wolne, ściana w `_opened_walls`", _real() == null and level._wall_cells.is_empty() and level._opened_walls.has("BrickWall1"))
+	level.reset_breakables()
+	await _frames(0.1)
+	w = _real()
+	check("reset: ściana znów stoi (%.0f HP), kafle bryłą, lista rozbitych pusta, nawigacja = pełna budowa (%s)" % [float(w.hp) if w else 0.0, level.nav_diff_vs_full()],
+		w != null and float(w.hp) == 120.0 and _cells_solid() and level._opened_walls.is_empty() and level.nav_diff_vs_full() == "")
+	# punkt kontrolny z ranną ścianą
+	_hit(w, Weapons.KILOF, pick.damage, "melee", w.call("body_center"))
+	await _frames(0.15)
+	level.save_breakables_checkpoint()
+	var cp: Dictionary = level.breakables_checkpoint()
+	_hit(w, Weapons.KILOF, pick.damage, "melee", w.call("body_center"))
+	_hit(w, Weapons.KILOF, pick.damage, "melee", w.call("body_center"))
+	await _frames(0.15)
+	check("migawka: ranna ściana zapisana (plam %d), potem rozbita" % (cp["damage"].get("BrickWall1", [PackedFloat32Array()])[0] as PackedFloat32Array).size(),
+		(cp["damage"].get("BrickWall1", [PackedFloat32Array()])[0] as PackedFloat32Array).size() == 4 and _real() == null and (cp["opened"] as PackedStringArray).is_empty())
+	level.reset_breakables(cp)
+	await _frames(0.1)
+	w = _real()
+	check("punkt kontrolny: ściana wraca ranna jak przy przebudzeniu (%.0f HP, plam %d)" % [float(w.hp) if w else 0.0, int(w.splat_total) if w else -1],
+		w != null and absf(float(w.hp) - (120.0 - pick.damage)) < 0.01 and int(w.splat_total) == 1 and (w.splats as PackedFloat32Array) == (cp["damage"]["BrickWall1"][0] as PackedFloat32Array)
+		and _cells_solid() and level.nav_diff_vs_full() == "")
+	level.reset_breakables()
+	await _frames(0.05)
+	w = _real()
+	check("reset czysty: bez plam (%d) i pełne HP (%.0f), epoka rośnie (maska widoku 3D od zera)" % [int(w.splat_total), float(w.hp)],
+		int(w.splat_total) == 0 and (w.splats as PackedFloat32Array).is_empty() and float(w.hp) == 120.0 and int(w.damage_epoch) > 0)
+	# punkt kontrolny z rozbitą ścianą
+	level.break_wall("BrickWall1")
+	await _frames(0.1)
+	level.save_breakables_checkpoint()
+	level.reset_breakables()
+	await _frames(0.1)
+	var back := _real() != null
+	level.reset_breakables(level.breakables_checkpoint())
+	await _frames(0.1)
+	check("punkt kontrolny: rozbita przy przebudzeniu zostaje rozbita (po czystym resecie stała: %s), nawigacja = pełna budowa" % str(back),
+		back and _real() == null and level._opened_walls.has("BrickWall1") and level._wall_cells.is_empty() and level.nav_diff_vs_full() == "")
+	# rozbicie i odbudowa w jednej klatce: nowa ściana dostaje własną nazwę
+	level.reset_breakables()
+	await _frames(0.1)
+	level.break_wall("BrickWall1")
+	level.reset_breakables()
+	await _frames(0.1)
+	check("ta sama klatka: rozbita i odbudowana ściana ma nazwę BrickWall1 (dzieci: %s)" % str(level.get_children().filter(func(c: Node) -> bool: return String(c.name).contains("BrickWall")).map(func(c: Node) -> String: return String(c.name))),
+		_real() != null and _cells_solid())
+	# restart misji (wipe): rozbita ściana wraca
+	level.break_wall("BrickWall1")
+	await _frames(0.1)
+	main._restart_mission(false)
+	await _frames(0.5)
+	check("wipe (main._restart_mission): rozbita ściana znów stoi, kafle bryłą", _real() != null and _cells_solid() and level._opened_walls.is_empty())

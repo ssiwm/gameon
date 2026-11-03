@@ -83,8 +83,8 @@ trudniejsze z założenia mapy, a nie ze skalowania z postępem (skaluje tylko N
 - **Sam bez bota** (od 1.7.400, host wyłączył AI towarzysza — §16.3, `NOBOT_PLAN.md`): nikt nie podniesie, więc pierwszy upadek w próbie to
   wykrwawienie i powrót na start z 1 sercem (łup zostaje), a **drugi upadek w tej samej próbie = wipe**. Z botem albo drugim człowiekiem
   wipe jak zawsze: wszyscy leżą jednocześnie.
-- **Wipe** (wszyscy down jednocześnie) = **nieudana ekstrakcja**: po 3 s restart misji (Uwaga, wrogowie, ładunki Q), tracicie łup misji, ale nie postęp fabularny.
-- **Punkt kontrolny bossa** (od 1.7.401, `FUN_PLAN.md` P0.3): w misji z gniazdami i bossem (1.3) przebudzenie bossa zapisuje pozycje drużyny. Wipe w walce z bossem wraca do jej początku (gniazda zostają zniszczone, reszta jak przy wipe'ie, boss budzi się po 2,5 s; od 1.7.424 łup — złom, części, próbki — wraca do stanu z przebudzenia bossa, przepada tylko zebrany w samej walce), a wykrwawienie w walce odradza przy arenie — połowa wipe'ów 1.3 była w fazie BOSS, a powtórka całej mapy karała czasem, nie decyzją.
+- **Wipe** (wszyscy down jednocześnie) = **nieudana ekstrakcja**: po 3 s restart misji (Uwaga, wrogowie, ładunki Q, rozbite przejścia znów zamurowane — od 1.7.482), tracicie łup misji, ale nie postęp fabularny.
+- **Punkt kontrolny bossa** (od 1.7.401, `FUN_PLAN.md` P0.3): w misji z gniazdami i bossem (1.3) przebudzenie bossa zapisuje pozycje drużyny. Wipe w walce z bossem wraca do jej początku (gniazda zostają zniszczone, reszta jak przy wipe'ie, boss budzi się po 2,5 s; od 1.7.424 łup — złom, części, próbki — wraca do stanu z przebudzenia bossa, przepada tylko zebrany w samej walce; od 1.7.482 tak samo rozbite przejścia i ślady na ścianach), a wykrwawienie w walce odradza przy arenie — połowa wipe'ów 1.3 była w fazie BOSS, a powtórka całej mapy karała czasem, nie decyzją.
 - **Dlaczego bez auto-respawnu:** darmowy respawn po 3 s zabija napięcie i sens Przesterowania. Down + revive tworzy momenty, o których drużyna opowiada po sesji.
 - Uratowani NPC mogą zginąć na stałe (wpływ na zakończenie i sklep).
 

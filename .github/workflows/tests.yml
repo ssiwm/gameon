@@ -47,7 +47,7 @@ jobs:
         run: |
           godot --headless --path prototype -- --host --mission=z1_m1 --batterytest --autoquit=40 2>&1 | tee batterytest.log
           grep -a "\[BATTERY-TEST\] ==== PASS" batterytest.log
-      - name: Zniszczalne elementy — maska uszkodzeń, paczki plam, dołączający, rozbicie (--destructiontest)
+      - name: Zniszczalne elementy — maska uszkodzeń, paczki plam, dołączający, rozbicie, reset i punkt kontrolny (--destructiontest)
         run: |
           godot --headless --path prototype -- --host --mission=z1_m2 --destructiontest --autoquit=40 2>&1 | tee destructiontest.log
           grep -a "\[DESTRUCTION-TEST\] ==== PASS" destructiontest.log

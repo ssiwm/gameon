@@ -263,6 +263,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 	for car in get_tree().get_nodes_in_group("handcar"):
 		car.reset_handcar()
 	level.reset_collapse()
+	level.reset_breakables()                 # rozbite ściany i ślady trafień wracają do stanu z mapy (DESTRUCTION_PLAN.md D0)
 	for c in _players.get_children():
 		if not carry and not c.is_bot:
 			level.register_weapon_kit(int(c.player_id))
@@ -299,6 +300,7 @@ func _restart_from_checkpoint() -> void:
 			level.register_weapon_kit(int(c.player_id))
 		c.deliver_spawn(mission.checkpoint_pos(c))
 		c.request_full_reset(false)
+	level.reset_breakables(level.breakables_checkpoint())    # zniszczenia z chwili przebudzenia bossa
 	level.clear_pickups()
 	Scrap.restore_checkpoint_loot()
 	mission.on_checkpoint()

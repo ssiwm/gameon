@@ -54,6 +54,7 @@ var rows := 3
 var hp := -1.0                   ## < 0 przed `_ready`: pełne `hp` materiału
 var splats := PackedFloat32Array()   ## plamy u tego peera: po 4 liczby (u, v w ułamkach `hit_rect`, v = 0 u góry; promień px; stopień 0–2)
 var splat_total := 0             ## ile plam przyszło łącznie (widok 3D odciska tylko nowe)
+var damage_epoch := 0            ## rośnie przy `reset_damage` — widok 3D czyści wtedy maskę i odciska plamy od nowa
 var batches_sent := 0            ## serwer: wysłane paczki plam (test)
 var _pending := PackedFloat32Array()
 var _flush_queued := false
@@ -208,6 +209,16 @@ func _add_splats(data: PackedFloat32Array, frac: float) -> int:
 		splats = splats.slice(splats.size() - MAX_SPLATS * 4)
 	splat_total += n
 	return n
+
+## U wszystkich peerów (level.gd `_reset_breakables_rpc`): uszkodzenia zastąpione stanem `data` / `frac` — wipe (czysto) albo punkt
+## kontrolny bossa (plamy z przebudzenia). Czekająca paczka przepada.
+func reset_damage(data: PackedFloat32Array, frac: float) -> void:
+	_pending = PackedFloat32Array()
+	splats = PackedFloat32Array()
+	splat_total = 0
+	damage_epoch += 1
+	_add_splats(data, frac)
+	queue_redraw()
 
 ## Serwer: stan dla dołączającego (pusty, gdy element nietknięty).
 func send_state_to(peer_id: int) -> void:
