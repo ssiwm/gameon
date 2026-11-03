@@ -2228,6 +2228,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if sw != null and sp != null:
 			sp.global_position = sw.global_position + Vector2(40.0, -1.0)
 			sp.velocity = Vector2.ZERO
+		if sw != null and "--shotholes" in OS.get_cmdline_user_args():     # …i po 1 s pięć śrucin w przegrodę na różnych wysokościach (dziury w deskach, D2)
+			get_tree().create_timer(1.0).timeout.connect(func() -> void:
+				var rc: Rect2 = sw.call("hit_rect")
+				for k in 5:
+					var at := Vector2(rc.get_center().x + float(k - 2) * 3.0, rc.position.y + rc.size.y * (0.18 + 0.16 * float(k)))
+					Combat.apply(sw, Combat.make_info(Weapons.SRUT8, 10.0, at, Vector2.LEFT, 1, "bullet")))
 	if "--shotscan" in OS.get_cmdline_user_args():
 		var scp: Node2D = _players.get_node_or_null("1")     # --shotscan: skaner Sowa włączony (użyj z --shotat=KOLUMNA przy wrogach)
 		if scp != null:
@@ -3620,7 +3626,7 @@ func _gen_test() -> void:
 	if alcove.size() > 0:
 		sealed = level.nav.get_id_path(start_id, level.nav.get_closest_point(alcove[0])).is_empty()
 	var wall_node := level.get_node_or_null("BrickWall1")
-	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 2)      # zamurowanie i kratka wentylacji (D2)
+	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 3)      # zamurowanie, kratka wentylacji i deski w szybie (D2)
 	level.break_wall("BrickWall1")
 	await get_tree().create_timer(0.3).timeout
 	var open_id: int = level.nav.get_closest_point(alcove[0]) if alcove.size() > 0 else -1

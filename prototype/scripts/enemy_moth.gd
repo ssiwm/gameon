@@ -12,6 +12,7 @@ extends "res://scripts/enemy_behavior.gd"
 ## sufit niezależny od liczby ćm (FLUTTER_CAP), a ostatnia ćma gniazda zabita ciosem zostawia złom (`nest_scrap`).
 
 const Lights := preload("res://scripts/lights.gd")
+const Sight := preload("res://scripts/sight.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
@@ -193,12 +194,11 @@ func _light(delta: float) -> Dictionary:
 func beam_lit(p: Node) -> bool:
 	return bool(p.w_firing) and Weapons.def(int(p.weapon)).kind == Weapons.Kind.BEAM
 
-## Linia bez ściany (warstwa 1 — teren) od ćmy do punktu: ćma w skale nie widzi latarki w sąsiednim korytarzu.
+## Linia bez ściany (warstwa 1 — teren) od ćmy do punktu: ćma w skale nie widzi latarki w sąsiednim korytarzu (przez dziurę w deskach — tak).
 func _sees(pos: Vector2) -> bool:
 	if not e.is_inside_tree():
 		return false
-	var q := PhysicsRayQueryParameters2D.create(e.global_position, pos, 1)
-	return e.get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+	return Sight.clear(e.get_world_2d().direct_space_state, e.global_position, pos)
 
 func _set_mode(m: int) -> void:
 	if m != mode:

@@ -142,7 +142,7 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 | 4 | **HKM-9 „Miotacz"** | Miotacz ognia | 15/s DoT | — | Paliwo 80 | 4 m | 1 / 3 m | Podpala teren; **UV +3 Uwagi** (światło); strach wśród Trzosków |
 | 5 | **WRATH-4** | Granatnik | 80 AoE 3 m | 40 | 6 | 10 m | 4 / 18 m | Niszczy Gniazda i Żyły; friendly fire 100% |
 | 6 | **FALCON-6** | Naprowadzane mikro-rakietki | 6 | 300 | 40 | 10 m | 3 / 7 m | Auto-namierzanie, słabe, dobre na Skoczków |
-| 7 | **PELLET-8** | Strzelba | 7×8 | 75 | 8 | 6 m | 4 / 12 m | Odrzut wrogów, door-breacher |
+| 7 | **PELLET-8** | Strzelba | 7×8 | 75 | 8 | 6 m | 4 / 12 m | Odrzut wrogów, door-breacher — łupie deski i wybija w nich dziury-wizjery (od 1.7.490) |
 | 8 | **SPECTER-1** | Railgun | 150 przebicie | 12 (charge 1,2 s) | 5 | 30 m | 5 / 25 m | Najgłośniejsza broń w grze — używasz jej, budzisz wszystko |
 | 9 | **SINEW-6** | Harpun (kusza) | 45 | 60 | 1 (bełt do odzysku) | 12 m, bełt opada | **1 / 1 m** | **Jedyna cicha broń główna**; przybija Trzoski do ścian; bełty można odzyskać |
 
@@ -154,7 +154,7 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 ### 6.3 Broń biała
 | Broń | Dmg | Szybkość | Hałas | Uwagi |
 |------|-----|----------|-------|-------|
-| **Maczeta** | 30 | szybka | 0 | Ciche zabójstwo od tyłu (instant), rąbie zabite deskami przejścia (2 ciosy) |
+| **Maczeta** | 30 | szybka | 0 | Ciche zabójstwo od tyłu (instant), rąbie zabite deskami przejścia (2 ciosy; pierwszy wyrąbuje dziurę, przez którą widać) |
 | **Kilof** | 55 | wolna | 1 / 2 m | Otwiera zamurowane przejścia, deski i zardzewiałe kratki wentylacji, ogłusza elitki |
 
 ### 6.4 Ulepszenia broni (przykłady)

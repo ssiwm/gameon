@@ -2955,27 +2955,34 @@ func _damage_overlay(n: Node, mi: MeshInstance3D, w_m: float, h_m: float) -> Dic
 	sm.set_shader_parameter("fresh", Vector3((chip[0] as Color).r, (chip[0] as Color).g, (chip[0] as Color).b))
 	sm.set_shader_parameter("deep", Vector3((chip[1] as Color).r, (chip[1] as Color).g, (chip[1] as Color).b))
 	mi.material_overlay = sm
-	return {"img": img, "tex": tex, "done": 0, "epoch": 0, "w": w_m, "h": h_m}
+	return {"img": img, "tex": tex, "done": 0, "holes_done": 0, "epoch": 0, "w": w_m, "h": h_m}
 
-## Nowe plamy elementu `n` (od ostatniego odcisku) do maski i jedna aktualizacja tekstury.
+## Nowe plamy i dziury elementu `n` (od ostatniego odcisku) do maski i jedna aktualizacja tekstury.
 func _stamp_damage(n: Node, d: Dictionary) -> void:
 	var total := int(n.get("splat_total"))
+	var holes_total := int(n.get("hole_total"))
 	var epoch := int(n.get("damage_epoch"))
 	if epoch != int(d["epoch"]):                  # reset (wipe, punkt kontrolny): maska od zera, potem wszystkie zapamiętane plamy
 		(d["img"] as Image).fill(Color(0, 0, 0))
 		d["done"] = 0
+		d["holes_done"] = 0
 		d["epoch"] = epoch
 		if total == 0:
 			(d["tex"] as ImageTexture).update(d["img"])
 			return
-	if total == int(d["done"]):
+	if total == int(d["done"]) and holes_total == int(d["holes_done"]):
 		return
 	var sp: PackedFloat32Array = n.get("splats")
 	var fresh := mini(total - int(d["done"]), sp.size() / 4)
 	for k in range(sp.size() / 4 - fresh, sp.size() / 4):
 		DamageMask.stamp(d["img"], sp[k * 4], sp[k * 4 + 1], sp[k * 4 + 2] * PX, int(sp[k * 4 + 3]), float(d["w"]), float(d["h"]))
+	var hl: PackedFloat32Array = n.get("holes")
+	var fresh_h := mini(holes_total - int(d["holes_done"]), hl.size() / 3)
+	for k in range(hl.size() / 3 - fresh_h, hl.size() / 3):
+		DamageMask.stamp_hole(d["img"], hl[k * 3], hl[k * 3 + 1], hl[k * 3 + 2] * PX, float(d["w"]), float(d["h"]))
 	(d["tex"] as ImageTexture).update(d["img"])
 	d["done"] = total
+	d["holes_done"] = holes_total
 
 ## Bryła przegrody wg materiału (`breakable.gd`): zamurowanie — beton ściany; deski — ciemne tło szpar za deskami (`_barricade_boards`);
 ## kratka — sama bryła niewidoczna (przezroczysta, bez cienia), widać pręty z `_grate_bars` i korytarz za nimi.

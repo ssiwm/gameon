@@ -21,6 +21,7 @@ const FLARE_M := 12.0        ## flara (znacznik ekstrakcji)
 const CONE_HALF_DEG := 24.0
 
 const Weapons := preload("res://scripts/weapons.gd")
+const Sight := preload("res://scripts/sight.gd")       ## światło przez dziury w przegrodach (szpara w deskach zdradza latarkę)
 
 ## Błysk z lufy jako sygnał świetlny (faza 3 przeglądu broni): strzał o błysku ≥ FLASH_MIN widać przez FLASH_LIFE_MS.
 ## Budzi i przyciąga ćmy (enemy.gd `_nearest_light`) — głośna broń ma drugą cenę poza hałasem.
@@ -56,7 +57,7 @@ static func light_weapon_on(pos: Vector2, tree: SceneTree, space: PhysicsDirectS
 		var from: Vector2 = p.global_position + Vector2(0, -9)
 		if from.distance_to(pos) > LIGHT_WEAPON_M * PX_PER_M:
 			continue
-		if not space.intersect_ray(PhysicsRayQueryParameters2D.create(from, pos, 1)).is_empty():
+		if not Sight.clear(space, from, pos):
 			continue
 		return p
 	return null
@@ -79,9 +80,9 @@ static func lamp_lit_player(pos: Vector2, tree: SceneTree, space: PhysicsDirectS
 			var b: Vector2 = l.bulb_pos()
 			if c.distance_to(b) > LAMP_SEE_M * PX_PER_M:
 				continue
-			if not space.intersect_ray(PhysicsRayQueryParameters2D.create(b, c, 1)).is_empty():
+			if not Sight.clear(space, b, c):
 				continue
-			if not space.intersect_ray(PhysicsRayQueryParameters2D.create(pos, c, 1)).is_empty():
+			if not Sight.clear(space, pos, c):
 				continue
 			return p
 	return null
@@ -164,8 +165,7 @@ static func flashlight_on(pos: Vector2, tree: SceneTree, space: PhysicsDirectSpa
 			continue
 		if absf(d.angle_to(p.aim_dir)) > half:
 			continue
-		var q := PhysicsRayQueryParameters2D.create(from, pos, 1)
-		if not space.intersect_ray(q).is_empty():
+		if not Sight.clear(space, from, pos):
 			continue
 		return p
 	return null

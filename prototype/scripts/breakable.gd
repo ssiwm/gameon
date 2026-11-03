@@ -7,6 +7,8 @@ extends Node2D
 ##  - zardzewiała kratka wentylacji („+”, `grate`): tylko kilof i wybuch, szarża się od niej odbija. Ciało kratki leży na warstwie ramy
 ##    (128, jak okno) — zatrzymuje tylko ruch; kule, wzrok, światło i dźwięk przez nią przechodzą.
 ## Reszta trafień odbija się bez obrażeń. Zamurowanie i deski są bryłą (ciało na warstwie świata), więc blokują wszystkich i pociski.
+## Dziury (materiał z polem `holes`, dziś deski): trafienie co najmniej stopnia 1 (śrut, maczeta, pięść Wołka) przebija deskę — na wysokości
+## dziury wzrok, światło, kule i dźwięk przechodzą (`hole_at`, `sight.gd`), ruch i nawigacja dalej nie.
 ## Dla nawigacji każda przegroda liczy się jako kafel (level.gd `_wall_cells`), dzięki czemu boty i wrogowie nie planują drogi przez
 ## nią ani do skrytki za nią.
 ## Obrażenia liczy serwer; rozbicie idzie do wszystkich peerów przez level.gd (`break_wall`).
@@ -27,12 +29,14 @@ const TILE := 16.0
 ##   dust     kurz przy uderzeniu / przy rozbiciu    mat     znacznik trafienia (Arsenal.Mat)
 ##   chip     [świeży przełom, głąb wyrwy] — mnożniki barwy plam w masce uszkodzeń widoku 3D (`damage_mask.gd`, ~1 = bez zmian)
 ##   layer    warstwa ciała (domyślnie 1 — bryła świata; kratka 128 — tylko ruch, jak rama okna)
+##   holes    mnożnik promienia plamy dla dziury na wylot (brak pola — materiał bez dziur)
+##   surface  powierzchnia trafienia kulą (Vfx.impact: odpryski i dźwięk)
 ## Na mapach są `brick`, `planks` i `grate`; `sheet`, `glass` i `support` to wartości wstępne pod kolejne etapy.
 const MATERIALS := {
-	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0,
+	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0, "surface": "concrete",
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
 		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)]},
-	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0,
+	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood",
 		"hit_snd": ["amb_creak", 3, -6.0, 1.2], "break_snd": ["amb_creak", 3, 0.0, 0.8],
 		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 	"sheet": {"hp": 150.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.5, "n_break": 6.0,
@@ -53,12 +57,15 @@ const MATERIALS := {
 const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "blast": 6.0, "charge": 8.0, "claw": 2.5}
 const SPLAT_GAP := 0.1           ## s: trafienia w tym oknie idą jedną paczką (seria z M-83 to nie 10 wiadomości)
 const MAX_SPLATS := 64           ## pamiętanych plam (dla dołączających); starsze wypadają z listy, w masce zostają
+const MAX_HOLES := 32            ## pamiętanych dziur; starsze wypadają (deska z tyloma dziurami i tak zaraz pęknie)
 
 var mat_id := "brick"            ## klucz w MATERIALS (`material` zajmuje CanvasItem)
 var rows := 3
 var hp := -1.0                   ## < 0 przed `_ready`: pełne `hp` materiału
 var splats := PackedFloat32Array()   ## plamy u tego peera: po 4 liczby (u, v w ułamkach `hit_rect`, v = 0 u góry; promień px; stopień 0–2)
 var splat_total := 0             ## ile plam przyszło łącznie (widok 3D odciska tylko nowe)
+var holes := PackedFloat32Array()    ## dziury na wylot u tego peera: po 3 liczby (u, v jak w `splats`, promień px) — z plam, więc wszędzie te same
+var hole_total := 0              ## ile dziur powstało łącznie (widok 3D odciska tylko nowe)
 var damage_epoch := 0            ## rośnie przy `reset_damage` — widok 3D czyści wtedy maskę i odciska plamy od nowa
 var batches_sent := 0            ## serwer: wysłane paczki plam (test)
 var _pending := PackedFloat32Array()
@@ -215,7 +222,44 @@ func _add_splats(data: PackedFloat32Array, frac: float) -> int:
 	if splats.size() > MAX_SPLATS * 4:
 		splats = splats.slice(splats.size() - MAX_SPLATS * 4)
 	splat_total += n
+	var k := float(mat_def().get("holes", 0.0))
+	var made := 0
+	for i in n:
+		if k > 0.0 and data[i * 4 + 3] >= 1.0:
+			holes.append_array(PackedFloat32Array([data[i * 4], data[i * 4 + 1], data[i * 4 + 2] * k]))
+			made += 1
+	if made > 0:
+		if holes.size() > MAX_HOLES * 3:
+			holes = holes.slice(holes.size() - MAX_HOLES * 3)
+		hole_total += made
+		_holes_changed()
 	return n
+
+## Dziura na wylot na wysokości `y` (świat): promień poziomy na tej wysokości przechodzi przez przegrodę (`sight.gd`). Przegroda jest wąska
+## (1 kafel), więc liczy się tylko wysokość — szerokość dziury na froncie to obraz w widoku 3D.
+func hole_at(y: float) -> bool:
+	if holes.is_empty():
+		return false
+	var rc := hit_rect()
+	for i in holes.size() / 3:
+		if absf(y - (rc.position.y + holes[i * 3 + 1] * rc.size.y)) <= holes[i * 3 + 2]:
+			return true
+	return false
+
+## Czy któraś dziura sięga w pas wysokości od `y0` do `y1` (świat) — kafel siatki dźwięku przez nią otwarty (level.gd `_is_sound_solid`).
+func hole_in(y0: float, y1: float) -> bool:
+	var rc := hit_rect()
+	for i in holes.size() / 3:
+		var hy := rc.position.y + holes[i * 3 + 1] * rc.size.y
+		if hy + holes[i * 3 + 2] > y0 and hy - holes[i * 3 + 2] < y1:
+			return true
+	return false
+
+## Nowe dziury albo ich brak po resecie: siatka dźwięku w kaflach przegrody od nowa.
+func _holes_changed() -> void:
+	var lvl := get_tree().get_first_node_in_group("level") if is_inside_tree() else null
+	if lvl != null:
+		lvl.call("window_changed", self)
 
 ## U wszystkich peerów (level.gd `_reset_breakables_rpc`): uszkodzenia zastąpione stanem `data` / `frac` — wipe (czysto) albo punkt
 ## kontrolny bossa (plamy z przebudzenia). Czekająca paczka przepada.
@@ -223,8 +267,13 @@ func reset_damage(data: PackedFloat32Array, frac: float) -> void:
 	_pending = PackedFloat32Array()
 	splats = PackedFloat32Array()
 	splat_total = 0
+	var had_holes := not holes.is_empty()
+	holes = PackedFloat32Array()
+	hole_total = 0
 	damage_epoch += 1
 	_add_splats(data, frac)
+	if had_holes and holes.is_empty():
+		_holes_changed()
 	queue_redraw()
 
 ## Serwer: stan dla dołączającego (pusty, gdy element nietknięty).
