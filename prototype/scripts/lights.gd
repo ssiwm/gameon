@@ -27,6 +27,8 @@ const Weapons := preload("res://scripts/weapons.gd")
 const FLASH_MIN := 1.6                ## `flash_light` broni od tej wartości (strzelba i cięższe) liczy się jako sygnał
 const FLASH_LIFE_MS := 600
 const LIGHT_WEAPON_M := 10.0          ## wiązka i płomień widoczne dla Stalkera z tej odległości (jak flashlight_on, bez stożka)
+const LAMP_SEE_M := 8.0               ## gracz tak blisko zapalonej lampy misji (bez ściany do żarówki) stoi w jej świetle (lampa świeci na 9 m)…
+const LAMP_STALKER_M := 12.0          ## …a Stalker widzi go stąd (bez ściany) — DESTRUCTION_PLAN.md D1
 static var flashes: Array = []        ## [{pos, until, node}] — tylko serwer ich używa
 
 static func add_flash(pos: Vector2, power: float, node: Node2D) -> void:
@@ -57,6 +59,31 @@ static func light_weapon_on(pos: Vector2, tree: SceneTree, space: PhysicsDirectS
 		if not space.intersect_ray(PhysicsRayQueryParameters2D.create(from, pos, 1)).is_empty():
 			continue
 		return p
+	return null
+
+## Gracz stojący w świetle zapalonej lampy misji (`lamp.gd`, znacznik „I"): do `LAMP_SEE_M` od żarówki bez ściany po drodze, a od `pos`
+## nie dalej niż `reach_m` i też bez ściany — albo null. Stalker idzie do takiego gracza jak do latarki; zgaszona (stłuczona) lampa go chowa.
+static func lamp_lit_player(pos: Vector2, tree: SceneTree, space: PhysicsDirectSpaceState2D, reach_m := LAMP_STALKER_M) -> Node2D:
+	var lamps := tree.get_nodes_in_group("mission_lamps")
+	if lamps.is_empty():
+		return null
+	for p in tree.get_nodes_in_group("players"):
+		if p.dead:
+			continue
+		var c: Vector2 = p.global_position + Vector2(0, -9)
+		if c.distance_to(pos) > reach_m * PX_PER_M:
+			continue
+		for l in lamps:
+			if not l.lit:
+				continue
+			var b: Vector2 = l.bulb_pos()
+			if c.distance_to(b) > LAMP_SEE_M * PX_PER_M:
+				continue
+			if not space.intersect_ray(PhysicsRayQueryParameters2D.create(b, c, 1)).is_empty():
+				continue
+			if not space.intersect_ray(PhysicsRayQueryParameters2D.create(pos, c, 1)).is_empty():
+				continue
+			return p
 	return null
 
 ## Migotanie wszystkich świateł graczy do tej chwili (ms) — krzyk Żyły w fazie 3.

@@ -4682,7 +4682,7 @@ func _sync_lamps() -> void:
 				z = float(_items[ch.get_instance_id()][3])
 		var tt := float(src.get("_t"))
 		var f := 0.8 + 0.2 * sin(tt * 9.0) * sin(tt * 3.7)
-		g.visible = (src as Node2D).is_visible_in_tree()
+		g.visible = (src as Node2D).is_visible_in_tree() and src.get("lit") != false        # stłuczona lampa misji: bez poświaty
 		g.position = Level3D.px_to_m((src as Node2D).global_position + Vector2(0.0, 11.0)) + Vector3(0.0, 0.0, z + 0.12)
 		g.scale = Vector3.ONE * (0.75 + 0.1 * f)
 		(g.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.82, 0.55, 0.55 * f)

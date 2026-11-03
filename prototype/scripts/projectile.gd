@@ -208,6 +208,13 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 				node.deliver_ff(p, shooter_id)
 			cur = p
 			continue
+		if node != null and node.is_in_group("shootables"):
+			# klosz lampy misji (lamp.gd): serwer go tłucze, kula (i jej kopia u klienta) leci dalej bez straty energii
+			_skip.append(hit["rid"])
+			if authoritative:
+				_hit_target(node, p, at_dist)
+			cur = p
+			continue
 		if node != null and node.is_in_group("enemies"):
 			if not authoritative:
 				if _def.pen > 0.0 and _def.blast_radius <= 0.0 and _pass_through(node):

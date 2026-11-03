@@ -18,7 +18,7 @@ extends Node2D
 ##   b  tło: beton (wnętrze)  w  tło: drewno (pnie, belki)
 ##   S  start  E  wyjście  T  Trzosek  W  Wołek  N  gniazdo  X  dom Stalkera  G  generator radiostacji
 ##   D  drezyna (stacja startowa; tor kończy się przy wyjściu E)
-##   n  tablica z odprawą (kryjówka)   l  lampa pod sufitem (kryjówka)   — przy RACKS=true każde „g" dostaje stojak
+##   n  tablica z odprawą (kryjówka)   l  lampa pod sufitem (kryjówka)   I  lampa misji do zestrzelenia (gaśnie, sypie szkłem)   — przy RACKS=true każde „g" dostaje stojak
 ##   B  Żyła — matka gniazd (boss misji)
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 ##   g  broń na ziemi         a  skrzynka z amunicją
@@ -615,7 +615,7 @@ func _exposure(c: int, r: int) -> int:
 ## na każdym peerze.
 func _spawn_entities() -> void:
 	_spawn_walls()
-	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": [], "c": [], "d": [], "y": [], "Q": []}
+	var found := {"T": [], "A": [], "U": [], "V": [], "W": [], "L": [], "P": [], "Y": [], "J": [], "Z": [], "N": [], "G": [], "D": [], "n": [], "R": [], "v": [], "r": [], "t": [], "u": [], "h": [], "F": [], "H": [], "K": [], "f": [], "l": [], "k": [], "o": [], "a": [], "g": [], "q": [], "p": [], "j": [], "x": [], "z": [], "c": [], "d": [], "y": [], "Q": [], "I": []}
 	for r in _map.size():
 		var row: String = _map[r]
 		for c in row.length():
@@ -628,7 +628,7 @@ func _spawn_entities() -> void:
 				"e": exits_alt.append(p)
 				"X": stalker_home = p
 				"B": boss_home = p
-				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z", "c", "d", "y", "Q": found[ch].append(p)
+				"T", "A", "U", "V", "W", "L", "P", "Y", "J", "Z", "N", "G", "D", "n", "R", "v", "r", "t", "u", "h", "F", "H", "K", "f", "l", "k", "o", "a", "g", "q", "p", "j", "x", "z", "c", "d", "y", "Q", "I": found[ch].append(p)
 	for k in found:
 		found[k].sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
 	for i in found["T"].size():
@@ -761,6 +761,12 @@ func _spawn_entities() -> void:
 		lp.name = "Lamp%d" % (i + 1)
 		lp.position = _hang_pos(found["l"][i], 0.0)
 		add_child(lp)
+	for i in found["I"].size():
+		var ml: Node2D = LAMP.new()                            # lampa misji do zestrzelenia (DESTRUCTION_PLAN.md D1)
+		ml.name = "MissionLamp%d" % (i + 1)
+		ml.shootable = true
+		ml.position = _hang_pos(found["I"][i], 0.0)
+		add_child(ml)
 	if found["l"].size() > 0 and found["h"].size() > 0:
 		# kryjówka (mapa z warsztatem): meble w tle (hub_decor.gd) osobno dla każdego poziomu ze stanowiskami (v, h, n, R, g, S); lampy na innych mapach (B1) mebli nie stawiają
 		var floors := {}                                         # wiersz podłogi → [kolumny znaczników]
@@ -1182,6 +1188,8 @@ func reset_breakables(state := {}) -> void:
 func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary) -> void:
 	if id != map_id:
 		return
+	for ml in get_tree().get_nodes_in_group("mission_lamps"):
+		ml.relight()                                         # lampy misji świecą od nowa (także w punkcie kontrolnym bossa)
 	for wd in _wall_defs:
 		var n := String(wd["name"])
 		var want_open := opened.has(n)
@@ -1211,7 +1219,8 @@ func _close_wall(wd: Dictionary) -> void:
 		_push_players_out(rc)
 		_refresh_region(rc)
 
-## Dołączający gracz dostaje listę już rozbitych ścian, plamy uszkodzeń tych, które jeszcze stoją, i rozbite skrzynie / wybuchłe beczki.
+## Dołączający gracz dostaje listę już rozbitych ścian, plamy uszkodzeń tych, które jeszcze stoją, rozbite skrzynie / wybuchłe beczki
+## i stłuczone lampy misji.
 func send_walls_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and NoiseMgr.has_network():
 		for n in _opened_walls:
@@ -1221,6 +1230,8 @@ func send_walls_to(peer_id: int) -> void:
 				b.send_state_to(peer_id)
 		for pr in get_tree().get_nodes_in_group("props"):
 			pr.send_state_to(peer_id)                        # rozbite skrzynie i wybuchłe beczki (prop.gd)
+		for ml in get_tree().get_nodes_in_group("mission_lamps"):
+			ml.send_state_to(peer_id)                        # stłuczone lampy (lamp.gd)
 
 ## Test map: graf `nav` po lokalnych przebudowach kontra pełna budowa od zera — pusty tekst, gdy identyczne (węzły, pozycje,
 ## krawędzie i ich typy).

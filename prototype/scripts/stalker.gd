@@ -241,6 +241,8 @@ func _physics_process(delta: float) -> void:
 		var lighter := Lights.flashlight_on(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state)
 		if lighter == null:
 			lighter = Lights.light_weapon_on(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state)   # LR-7 i HKM-9 świecą bez hałasu
+		if lighter == null:
+			lighter = Lights.lamp_lit_player(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state)   # gracz pod zapaloną lampą misji
 		if lighter != null:
 			NoiseMgr.break_lure()             # snop latarki przerywa przytrzymanie na wabiku (FUN_PLAN.md P0.2)
 			target_pos = lighter.global_position

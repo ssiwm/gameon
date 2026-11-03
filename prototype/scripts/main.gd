@@ -697,6 +697,9 @@ func _destruction_sig() -> String:
 	var cr: Node = level.get_node_or_null("Crate1")
 	if cr != null:
 		st += " crate=%s" % ("gone" if bool(cr.get("exploded")) else "ok")
+	var ml: Node = level.get_node_or_null("MissionLamp1")
+	if ml != null:
+		st += " lamp=%s" % ("lit" if bool(ml.get("lit")) else "out")
 	return st
 
 func _destruction_net_host() -> void:
@@ -707,6 +710,9 @@ func _destruction_net_host() -> void:
 	var crate: Node = level.get_node_or_null("Crate1")
 	if crate != null:
 		crate.shatter()                                               # dołączający po ciosach dostaje ją rozbitą z `send_walls_to`
+	var lamp: Node = level.get_node_or_null("MissionLamp1")
+	if lamp != null:
+		lamp.shatter()                                                # …i lampę misji stłuczoną (punkt kontrolny zapala ją z powrotem)
 	await get_tree().create_timer(1.0).timeout
 	var pick: RefCounted = Weapons.def(Weapons.KILOF)
 	for i in 2:
@@ -2325,6 +2331,22 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			get_tree().create_timer(1.5).timeout.connect(br.explode)
 			if "--shotbarrel=2" in OS.get_cmdline_user_args():
 				get_tree().create_timer(6.0).timeout.connect(br.reset_enemy)
+	if _has_arg_prefix("--shotlamp"):               # dev: gracz 1 pod lampą misji `I` (MissionLamp2 na 1.2, legowisko Stalkera), bez wrogów w pobliżu; po 1,5 s kula ją tłucze (D1); `=2` — po 4 s znów świeci jak po wipe'ie
+		var lmp: Node2D = level.get_node_or_null("MissionLamp2")
+		if lmp == null:
+			lmp = get_tree().get_first_node_in_group("mission_lamps") as Node2D
+		var lp2: Node2D = _players.get_node_or_null("1")
+		if lmp != null and lp2 != null:
+			var fl := level.get_world_2d().direct_space_state.intersect_ray(PhysicsRayQueryParameters2D.create(lmp.bulb_pos(), lmp.bulb_pos() + Vector2(0.0, 400.0), 1 | 16))
+			lp2.global_position = (fl.get("position", lmp.global_position) as Vector2) + Vector2(-40.0, -1.0)
+			lp2.velocity = Vector2.ZERO
+			for e in get_tree().get_nodes_in_group("enemies"):
+				if not e.is_in_group("props") and (e as Node2D).global_position.distance_to(lmp.global_position) < 600.0:
+					e.queue_free()
+			get_tree().create_timer(1.5).timeout.connect(func() -> void:
+				Combat.apply(lmp.get_node("Bulb"), Combat.make_info(Weapons.KILOF, 8.0, lmp.bulb_pos(), Vector2.UP, 1, "bullet")))
+			if "--shotlamp=2" in OS.get_cmdline_user_args():
+				get_tree().create_timer(4.0).timeout.connect(func() -> void: level.reset_breakables())
 	if "--shotblood" in OS.get_cmdline_user_args():                 # dev: szczątki i krew 60 px przed graczem 1 (podgląd kałuż krwi), bez wrogów
 		var blp: Node2D = _players.get_node_or_null("1")
 		if blp != null:

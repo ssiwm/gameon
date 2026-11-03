@@ -145,6 +145,13 @@ static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2,
 		var collider: Object = hit["collider"]
 		var p: Vector2 = hit["position"]
 		var n: Vector2 = hit["normal"]
+		if collider is Node and (collider as Node).is_in_group("shootables"):
+			# klosz lampy misji: trafiony (wołający stosuje obrażenia), ale nie zatrzymuje promienia i nie liczy się do przebić
+			(out["hits"] as Array).append({"collider": collider, "pos": p, "normal": n, "dist": (p - from).length()})
+			ex.append(hit["rid"])
+			left = length - (p - from).length()
+			cur = p
+			continue
 		var is_target: bool = collider is Node and (collider as Node).is_in_group("enemies") and not (collider is TileMapLayer)
 		if not is_target:
 			# ściana: przebij cienką warstwę, jeśli broń pozwala
@@ -272,6 +279,9 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 		if q.distance_to(pos) <= radius:
 			var binfo := make_info(w, damage, q, (q - pos).normalized() if q.distance_to(pos) > 0.5 else Vector2.UP, shooter, "blast")
 			apply(b, binfo)
+	for ml in tree.get_nodes_in_group("mission_lamps"):
+		if ml.lit and (ml.bulb_pos() as Vector2).distance_to(pos) <= radius:
+			apply(ml, make_info(w, damage, ml.bulb_pos(), Vector2.UP, shooter, "blast"))   # lampa misji: wybuch ją tłucze (lamp.gd)
 	for p in tree.get_nodes_in_group("players"):
 		if p.dead:
 			continue
