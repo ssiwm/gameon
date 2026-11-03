@@ -143,6 +143,14 @@ func nearest_light(max_r: float) -> Dictionary:
 		if d3 < best_d and _sees(f["pos"]):
 			best_d = d3
 			best = {"pos": f["pos"], "kind": "player", "node": shooter}                             # błysk z lufy: ćma leci na strzelca
+	for ml in e.get_tree().get_nodes_in_group("mission_lamps"):
+		if not ml.lit:
+			continue
+		var bp: Vector2 = ml.bulb_pos()
+		var dl: float = e.global_position.distance_to(bp)
+		if dl < best_d and _sees(bp):
+			best_d = dl
+			best = {"pos": bp, "kind": "flare", "node": ml}                                        # zapalona lampa misji: krąży przy niej jak przy płomieniu
 	for p in e.get_tree().get_nodes_in_group("players"):
 		if not lamp_lit(p):
 			continue
@@ -170,6 +178,11 @@ func _light(delta: float) -> Dictionary:
 	elif _lt["kind"] == "player":
 		if lamp_lit(n):
 			_lt["pos"] = lamp_pos(n)
+	elif (n as Node).is_in_group("mission_lamps"):
+		if n.lit:
+			_lt["pos"] = n.bulb_pos()
+		else:
+			_lt = {}                                       # stłuczona lampa: ciemno, ćma szuka dalej
 	elif (n as Node).is_in_group("fire_patches"):
 		_lt["pos"] = (n as Node2D).global_position + Vector2(0, -4)
 	else:

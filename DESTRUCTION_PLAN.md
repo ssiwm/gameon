@@ -312,6 +312,13 @@ jako dzielnik ciosu.
   plama osmalenia 1,7 m i gasnący żar 9 s; reset przywraca całą beczkę. Dev `--shotbarrel[=2]`.
 - **Lampy na misjach do zestrzelenia** (nowy znacznik): gaśnie światło, sypie szkło, krótki dźwięk. W grze o ciemności to realna
   decyzja: ciemniej = trudniej widzieć, ale też trudniej być widzianym (Stalker, Ćmy lecą do światła). Dziś lampy `l` są tylko w kryjówce.
+  **Zrobione w 1.7.487:** znacznik `I` (`level.gd`, `MissionLamp1…`), `lamp.gd` z `shootable` — klosz `LampBody` (warstwa 32, grupa
+  `shootables`: `projectile.gd` i `Combat.trace` go trafiają i lecą dalej, `Combat.explode` tłucze w promieniu), `shatter` (serwer: hałas 3,
+  zdarzenie `lamp`) → `_break_rpc` (światło, 10 odłamków szkła, iskry, `glass_break`); `Lights.lamp_lit_player` — gracz do 8 m od zapalonej
+  żarówki widoczny dla Stalkera z 12 m (oba odcinki bez ściany, `stalker.gd` obok latarki i broni świetlnej); ćmy krążą przy zapalonej jak
+  przy płomieniu, ale na odległość konkurują z latarką (`enemy_moth.gd: nearest_light`). Reset w `level._reset_breakables_rpc`
+  (wipe i punkt kontrolny), dołączający — `send_state_to`. Mapy: 1.1 — 2 lampy, 1.2 — 3 (1.3 bez zmian). Dev `--shotlamp[=2]`,
+  zrzuty `C:\deadair87\shots_lamp`.
 - **Szkło / okna** w budynkach (1.2 chata radiowa, 1.3 Skład): pęka od kuli, przepuszcza potem kule i dźwięk głośniej.
 
 ### D2 — przejścia do otwierania (rdzeń mechaniki)

@@ -16,7 +16,10 @@ extends "res://scripts/stalker_test.gd"
 ## 8. Skrzynia `k` (prop.gd, D1): pęka od piątego pocisku pistoletu, płomień jej nie rani, drzazgi z pre-fraktury desek (wydłużone,
 ##    ze świeżym przełomem; plan z ziarna),
 ##    hałas, łup (złom 1–2 w ok. 60% skrzyń, bateria rzadko, nic w Nocnym Dyżurze), wybuch beczki rozbija bliską skrzynię, dalszą nie,
-##    reset po wipe'ie.
+##    reset po wipe'ie; beczka zostawia wrak (osiada na podłożu, dołączający dostaje punkt od serwera, reset).
+## 9. Lampy misji `I` (lamp.gd, D1): na mapie zapalone, gracz w ich świetle widoczny dla Stalkera (`Lights.lamp_lit_player`), ćma krąży
+##    przy zapalonej; promień kuli trafia klosz i leci dalej, trafienie tłucze lampę (światło, hałas, szkło), stłuczona chowa gracza i nie
+##    wabi ćmy, wybuch też tłucze, reset zapala, dołączający dostaje stłuczoną bez efektów.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -28,6 +31,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const MiniMap := preload("res://scripts/hud_minimap.gd")
 const Prop := preload("res://scripts/prop.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const Lights := preload("res://scripts/lights.gd")
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -65,6 +69,7 @@ func run(m: Node2D) -> void:
 	await _fracture()
 	await _minimap()
 	await _crates()
+	await _lamps()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -484,3 +489,75 @@ func _crates() -> void:
 	check("wrak beczki u dołączającego: w punkcie od serwera (send_state_to → _gone_rpc)",
 		wb.wreck and wb.global_position.distance_to(top + Vector2(0.0, 7.0)) < 1.0)
 	wb.queue_free()
+
+# ---------------------------------------------------------------- 9. lampy misji (D1)
+
+func _debris_ids() -> Dictionary:
+	var ids := {}
+	for d in Vfx._debris:
+		if is_instance_valid(d):
+			ids[(d as Object).get_instance_id()] = true
+	return ids
+
+func _lamps() -> void:
+	var lamps := get_tree().get_nodes_in_group("mission_lamps")
+	var lamp: Node2D = level.get_node_or_null("MissionLamp2")
+	check("lampy misji na 1.2: %d (znacznik I), zapalone, klosz w warstwie obiektów" % lamps.size(),
+		lamps.size() == 3 and lamp != null and lamps.all(func(l: Node) -> bool: return l.lit and l._light.enabled)
+		and lamp.get_node_or_null("Bulb") != null and int(lamp.get_node("Bulb").collision_layer) == 32)
+	if lamp == null:
+		return
+	var space := level.get_world_2d().direct_space_state
+	var bulb: Vector2 = lamp.bulb_pos()
+	var fl := space.intersect_ray(PhysicsRayQueryParameters2D.create(bulb, bulb + Vector2(0.0, 400.0), 1 | 16))
+	var feet: Vector2 = fl.get("position", bulb + Vector2(0.0, 48.0))
+	player.flashlight = false
+	player.global_position = feet + Vector2(0.0, -1.0)
+	player.velocity = Vector2.ZERO
+	await _frames(0.05)
+	var c := player.global_position + Vector2(0.0, -9.0)
+	var eye := c + Vector2(-112.0, -11.0)
+	if not Combat.clear_line(space, eye, c):
+		eye = c + Vector2(112.0, -11.0)
+	var seen := Lights.lamp_lit_player(eye, get_tree(), space)
+	check("Stalker widzi gracza pod zapaloną lampą (%.1f m od żarówki, oko 7 m obok)" % (c.distance_to(bulb) / Lights.PX_PER_M), seen == player)
+	var far := Lights.lamp_lit_player(c + Vector2(0.0, -9.0) + Vector2(Lights.LAMP_STALKER_M * Lights.PX_PER_M + 40.0, 0.0), get_tree(), space)
+	check("…ale nie spoza zasięgu Stalkera", far == null)
+	level._add_enemy("TMoth", "cma", bulb + Vector2(-60.0, 4.0))
+	var moth: Node2D = level.get_node_or_null("TMoth")
+	await _frames(0.05)
+	var lt: Dictionary = moth._beh.nearest_light(400.0) if moth != null else {}
+	check("ćma: zapalona lampa to światło do krążenia (jak płomień)", lt.get("node") == lamp and String(lt.get("kind", "")) == "flare")
+	var tr := Combat.trace(space, bulb + Vector2(0.0, 30.0), Vector2.UP, 200.0, 0)
+	var hit_bulb := (tr["hits"] as Array).any(func(h: Dictionary) -> bool: return h["collider"] == lamp.get_node("Bulb"))
+	check("promień: trafia klosz i leci dalej aż do sufitu (przebicie 0, ściana: %s)" % tr["wall"], hit_bulb and bool(tr["wall"]) and float((tr["end"] as Vector2).y) < bulb.y)
+	var noise0 := float(NoiseMgr.level)
+	var old := _debris_ids()
+	var res := Combat.apply(lamp.get_node("Bulb"), Combat.make_info(Weapons.KILOF, 8.0, bulb, Vector2.UP, 1, "bullet"))
+	await _frames(0.1)
+	var shards := Vfx._debris.filter(func(x: Variant) -> bool: return is_instance_valid(x) and not _debris_ids_has(old, x)).size()
+	check("kula tłucze lampę: gaśnie (%s), hałas %.1f → %.1f, %d odłamków szkła, pocisk leci dalej (pass)" % [lamp._light.enabled, noise0, float(NoiseMgr.level), shards],
+		not lamp.lit and not lamp._light.enabled and float(NoiseMgr.level) > noise0 and shards == lamp.SHARDS and bool(res.get("hit")) and bool(res.get("pass")))
+	check("stłuczona: kolejna kula przelatuje bez trafienia", not bool(Combat.apply(lamp.get_node("Bulb"), Combat.make_info(Weapons.KILOF, 8.0, bulb, Vector2.UP, 1, "bullet")).get("hit", false)))
+	check("stłuczona: Stalker nie widzi gracza pod nią", Lights.lamp_lit_player(eye, get_tree(), space) == null)
+	lt = moth._beh.nearest_light(400.0) if moth != null else {}
+	check("stłuczona: ćma jej nie widzi", lt.get("node") != lamp)
+	level.reset_breakables()
+	await _frames(0.05)
+	check("reset (wipe / punkt kontrolny): wszystkie lampy znów świecą", lamps.all(func(l: Node) -> bool: return l.lit and l._light.enabled))
+	Combat.explode(get_tree(), bulb + Vector2(20.0, 10.0), 48.0, 30.0, 1, Weapons.KILOF, true)
+	await _frames(0.05)
+	check("wybuch obok tłucze lampę", not lamp.lit)
+	level.reset_breakables()
+	await _frames(0.05)
+	old = _debris_ids()
+	lamp._break_rpc(false)
+	await _frames(0.05)
+	check("dołączający (send_state_to → _break_rpc bez efektów): stłuczona, bez odłamków",
+		not lamp.lit and not lamp._light.enabled and Vfx._debris.filter(func(x: Variant) -> bool: return is_instance_valid(x) and not _debris_ids_has(old, x)).is_empty())
+	level.reset_breakables()
+	if moth != null:
+		moth.queue_free()
+
+func _debris_ids_has(ids: Dictionary, x: Variant) -> bool:
+	return ids.has((x as Object).get_instance_id())
