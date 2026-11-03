@@ -245,6 +245,12 @@ jako dzielnik ciosu.
 - **Uszkodzenia**: serwer wysyła zdarzenie trafienia (punkt, promień plamy, stopień 0–2), a nie HP — każdy peer wypala tę samą plamę
   w masce, więc dziury wyglądają u wszystkich tak samo; dołączający dostaje listę plam obiektu. Trafienia w ułamku sekundy łączone
   w jedno RPC (seria z M-83 to nie 10 wiadomości).
+  **Zrobione w 1.7.481:** `breakable.gd` — plama (u, v, promień wg rodzaju trafienia `SPLAT_R`, stopień wg siły: < 10% / < 34% / więcej),
+  paczka pod koniec klatki pierwszego trafienia, kolejne co `SPLAT_GAP` 0,1 s (`_splat_rpc`, reliable), dołączający przez `send_walls_to`
+  (`_splat_sync`, do `MAX_SPLATS` 64); `damage_mask.gd` — maska R8 2,5 cm/teksel, odcisk przez max (kolejność bez znaczenia), nakładka
+  `material_overlay` z mnożeniem obrazu (`blend_mul`, bez cieniowania: tekstura zostaje, brzeg jaśniejszy, środek ciemny, szarpany szumem).
+  Cegła ma tylko przyciemnienie — przelotowe dziury (alpha scissor + poruszenie modelu dla cienia, S1) z deskami w D1. `--destructiontest`
+  w CI; zrzuty `--shotbreak=2` w `C:\deadair87\shots_damage`.
 - **Lokalna przebudowa nawigacji**: `Nav.rebuild_region(rect)` — usuwa węzły i krawędzie w prostokącie powiększonym o zasięg skoku
   (`GAP_SIDE` = 4 w bok, `JUMP_UP` = 2 w górę, spadki w kolumnach do podłogi) i dokłada je od nowa. Cel: < 2 ms. Test: graf po lokalnej
   przebudowie identyczny z pełną budową (porównanie punktów i krawędzi) dla każdej ściany i każdej mapy. **Naprawia też dzisiejsze przycięcie

@@ -1137,11 +1137,14 @@ func _open_wall(wall_name: String, with_fx: bool) -> void:
 	if not first:
 		_refresh_region(rc)
 
-## Dołączający gracz dostaje listę już rozbitych ścian.
+## Dołączający gracz dostaje listę już rozbitych ścian i plamy uszkodzeń tych, które jeszcze stoją.
 func send_walls_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and NoiseMgr.has_network():
 		for n in _opened_walls:
 			_break_wall_rpc.rpc_id(peer_id, map_id, n)
+		for b in get_tree().get_nodes_in_group("breakables"):
+			if b.get_parent() == self and not b.is_queued_for_deletion() and b.has_method("send_state_to"):
+				b.send_state_to(peer_id)
 
 ## Test map: graf `nav` po lokalnych przebudowach kontra pełna budowa od zera — pusty tekst, gdy identyczne (węzły, pozycje,
 ## krawędzie i ich typy).
@@ -1183,7 +1186,7 @@ func open_walls_checked() -> Array:
 	return bad
 
 ## Test map: `n` losowych prostokątów wstawianych jako bryła (jak ściana `q`) i zdejmowanych; po każdej zmianie graf kontra pełna
-## budowa. Zwraca [błędy, najdłuższy czas `rebuild_region` w ms, średni w ms].
+## budowa. Zwraca [błędy, najdłuższy czas `rebuild_region` w ms, średni w ms, 95. percentyl w ms].
 func nav_local_fuzz(n: int, seed_v: int) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
@@ -1191,6 +1194,7 @@ func nav_local_fuzz(n: int, seed_v: int) -> Array:
 	var worst := 0.0
 	var sum := 0.0
 	var cnt := 0
+	var times := PackedFloat64Array()
 	for k in n:
 		var w := rng.randi_range(1, 4)
 		var h := rng.randi_range(1, 5)
@@ -1209,11 +1213,13 @@ func nav_local_fuzz(n: int, seed_v: int) -> Array:
 			worst = maxf(worst, ms)
 			sum += ms
 			cnt += 1
+			times.append(ms)
 			var d := nav_diff_vs_full()
 			if d != "":
 				bad.append("nawigacja po %s bryły %s różni się od pełnej budowy: %s" % ["wstawieniu" if add else "zdjęciu", rc, d])
-				return [bad, worst, sum / maxf(cnt, 1)]
-	return [bad, worst, sum / maxf(cnt, 1)]
+				return [bad, worst, sum / maxf(cnt, 1), worst]
+	times.sort()
+	return [bad, worst, sum / maxf(cnt, 1), times[mini(times.size() - 1, int(times.size() * 0.95))] if not times.is_empty() else 0.0]
 
 ## Test map: otwiera wszystkie ściany bez efektów (maptest sprawdza osiągalność skrytek za nimi).
 func open_all_walls_for_test() -> void:

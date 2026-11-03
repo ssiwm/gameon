@@ -14,6 +14,7 @@ extends Node2D
 ## Kamera 3D jest dopasowana do Camera2D: płaszczyzna z = 0 pokrywa się z kadrem 2D (zoom, wstrząsy, „Camera zoom”).
 
 const Level3D := preload("res://scripts/level3d.gd")
+const DamageMask := preload("res://scripts/damage_mask.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
@@ -182,6 +183,7 @@ var _blood_shader: Shader
 var _burn := {}                          ## id węzła 2D (plama ognia, płonące ciało, chmura dymu) → [węzeł, Node3D, rodzaj, koniec]
 var _fires := {}                         ## id flary 2D → [węzeł, Node3D ognia, rodzaj, pierścień strefy albo null]
 var _drawn := {}                         ## id węzła rysowanego kodem (radiostacja, mur) → [węzeł 2D, Node3D]
+var _damage_shader: Shader = null        ## wspólna nakładka masek uszkodzeń (`damage_mask.gd`)
 var _span: Array = []                    ## trasa drezyny (_rail_span)
 var _span_map := ""
 var _item_tuned := {}                    ## nazwy modeli z już dostrojonymi materiałami
@@ -2294,11 +2296,16 @@ func _sync_drawn() -> void:
 		mi.layers = LAYER_WORLD
 		mi.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, h * 0.5, (0.5 - Level3D.DEPTH_BACK) * 0.5)
 		_world.add_child(mi)
+		var dmg := _damage_overlay(n, mi, Level3D.T, h)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
 		for old in _geo.get_children():                           # ściana odbudowana po restarcie misji: gruz po poprzedniej znika
 			if String(old.name).begins_with("Rubble") and absf((old as Node3D).position.x - mi.position.x) < 0.6 and absf((old as Node3D).position.y - (mi.position.y - h * 0.5)) < 0.6:
 				old.queue_free()
-		_drawn[n.get_instance_id()] = [n, mi, "wall", String(_level.get("map_id")), h]
+		_drawn[n.get_instance_id()] = [n, mi, "wall", String(_level.get("map_id")), h, dmg]
+	for id in _drawn:
+		var dw: Array = _drawn[id]
+		if dw.size() > 5 and is_instance_valid(dw[0]):
+			_stamp_damage(dw[0], dw[5])
 	for id in _drawn.keys():
 		var pr: Array = _drawn[id]
 		if not is_instance_valid(pr[0]) or (pr[0] as Node).is_queued_for_deletion():
@@ -2919,6 +2926,35 @@ func _place_inspect_lights(at: Vector3, k: float) -> void:
 
 ## Gruz po rozbitej ścianie: model `rubble` na podłodze przejścia (w głębi, żeby nie zasłaniał drogi) i dwa wyszczerbione fragmenty muru
 ## przy stropie — wyrwa zamiast gładkiego otworu. Żyje z geometrią mapy.
+## Maska uszkodzeń zniszczalnego elementu (`damage_mask.gd`) jako `material_overlay` modelu: plamy z serwera odciskane przy każdej nowej paczce.
+func _damage_overlay(n: Node, mi: MeshInstance3D, w_m: float, h_m: float) -> Dictionary:
+	var chip: Array = n.call("mat_def").get("chip", [Color(1.6, 1.35, 1.2), Color(0.3, 0.24, 0.22)])
+	if _damage_shader == null:
+		_damage_shader = Shader.new()
+		_damage_shader.code = DamageMask.OVERLAY_SHADER
+	var img := DamageMask.create(w_m, h_m)
+	var tex := ImageTexture.create_from_image(img)
+	var sm := ShaderMaterial.new()
+	sm.shader = _damage_shader
+	sm.set_shader_parameter("mask", tex)
+	sm.set_shader_parameter("half_size", Vector2(w_m, h_m) * 0.5)
+	sm.set_shader_parameter("fresh", Vector3((chip[0] as Color).r, (chip[0] as Color).g, (chip[0] as Color).b))
+	sm.set_shader_parameter("deep", Vector3((chip[1] as Color).r, (chip[1] as Color).g, (chip[1] as Color).b))
+	mi.material_overlay = sm
+	return {"img": img, "tex": tex, "done": 0, "w": w_m, "h": h_m}
+
+## Nowe plamy elementu `n` (od ostatniego odcisku) do maski i jedna aktualizacja tekstury.
+func _stamp_damage(n: Node, d: Dictionary) -> void:
+	var total := int(n.get("splat_total"))
+	if total == int(d["done"]):
+		return
+	var sp: PackedFloat32Array = n.get("splats")
+	var fresh := mini(total - int(d["done"]), sp.size() / 4)
+	for k in range(sp.size() / 4 - fresh, sp.size() / 4):
+		DamageMask.stamp(d["img"], sp[k * 4], sp[k * 4 + 1], sp[k * 4 + 2] * PX, int(sp[k * 4 + 3]), float(d["w"]), float(d["h"]))
+	(d["tex"] as ImageTexture).update(d["img"])
+	d["done"] = total
+
 func _spawn_rubble(floor_pos: Vector3, wall_h: float) -> void:
 	var rb := _item_model("rubble")
 	if rb != null:
