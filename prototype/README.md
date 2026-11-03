@@ -426,7 +426,7 @@ scripts/
   sprites.gd        # SpriteFrames z arkusza + manifestu (warstwy ciało / glow)
   # misje i kryjówka:
   generator.gd      # generator radiostacji (misja 1.2), handcar.gd — drezyna ucieczki po generatorach
-  brick_wall.gd     # zamurowane przejście (marker q) ze skrytką; board.gd, results_wall.gd, run_log.gd — tablica odprawy i ściana wyników w kryjówce
+  breakable.gd      # zniszczalny element z tabelą materiałów (dziś zamurowane przejście, marker q, ze skrytką); board.gd, results_wall.gd, run_log.gd — tablica odprawy i ściana wyników w kryjówce
   workshop_ui.gd    # panel warsztatu (złom), parts.gd — części broni w gniazdach (zakup drużyny, montaż gracza)
   stations/         # widoki stanowisk panelu: supply_view (ława, prasa, pirotechnika), service_view (konserwacja), lab_view (pracownia, tokarka), locker_view (szafka)
   station_*.gd      # rysunki kart stanowisk (STATION_CARDS_PLAN.md): kit (tabliczka, licznik, pieczątka, taśma), supply_art, service_art, lab_art, noise; vu_meter.gd

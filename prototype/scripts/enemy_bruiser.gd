@@ -235,7 +235,7 @@ func after_phase_move() -> void:
 			if col.has_method("take_bullet"):
 				col.take_bullet(e.global_position, 45.0)
 		elif bool(e._def.get("breaks_barricades", false)) and col.get_parent() != null and col.get_parent().is_in_group("breakables"):
-			col.get_parent().take_hit({"type": "blast", "amount": 400.0})        # Rzeźnik przebija zamurowane przejścia (`brick_wall.gd`) zamiast się o nie ogłuszać
+			col.get_parent().take_hit({"type": "charge", "amount": 400.0})       # Rzeźnik przebija zamurowane przejścia (`breakable.gd`) zamiast się o nie ogłuszać
 		elif absf(c.get_normal().x) > 0.7:
 			crashed = true
 	if not charge_hit:
