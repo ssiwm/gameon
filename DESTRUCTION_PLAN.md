@@ -258,6 +258,12 @@ jako dzielnik ciosu.
   `Callable`; `--maptest` (80 losowych zmian 1–4 × 1–5 kafli na mapę + każda ściana) — 0 różnic, średnio 0,4–1,5 ms, najdłużej 1,3–4,9 ms (z innym testem w tle).
 - **Stan zniszczeń w jednym miejscu** (`level.gd`): lista zniszczonych z nazwami, synchronizacja dołączających (uogólnione `send_walls_to`),
   reset przy wipe, nowej misji i **punkcie kontrolnym bossa** (stan z chwili przebudzenia — jak łup od 1.7.424).
+  **Zrobione w 1.7.482:** `level.gd` — `breakables_state()` (rozbite z `_opened_walls` + plamy i ułamek HP stojących), migawka
+  `save_breakables_checkpoint()` przy przebudzeniu bossa (`mission._save_checkpoint`), `reset_breakables(stan)` na serwerze → jedno RPC
+  do wszystkich: rozbite, których nie ma w stanie, wracają (kafle bryły, nawigacja lokalnie, gracze wypchnięci jak przy zamknięciu
+  przejścia), brakujące rozbicia dochodzą bez gruzu i hałasu, stojące dostają plamy i HP ze stanu. Wipe (`_restart_mission`) — stan
+  pusty, wipe w walce z bossem (`_restart_from_checkpoint`) — migawka. `breakable.damage_epoch` mówi widokowi 3D, że maskę trzeba
+  odcisnąć od zera. Nowa misja i tak ładuje mapę od nowa.
 - **Widok 3D**: każdy materiał ma jeden model z shaderem maski uszkodzeń i zestaw brył z pre-fraktury (skrypt Blendera w `tools/`,
   w stylu generatorów — bmesh, cięcie płaszczyznami Voronoi, osobny materiał przekroju; Blender 5.2 headless). Źródła: tekstury desek,
   cegły, rdzy i skały z ambientCG / Poly Haven (CC0, już używane w `art/world3d/`), proste bryły (deska, kratka, lampa) z generatora

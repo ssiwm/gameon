@@ -1094,12 +1094,19 @@ func _register_walls() -> void:
 
 func _spawn_walls() -> void:
 	for wd in _wall_defs:
-		var w: Node2D = BREAKABLE.new()
-		w.name = String(wd["name"])
-		w.position = wd["pos"]
-		w.rows = int(wd["rows"])
-		w.mat_id = String(wd.get("material", "brick"))
-		add_child(w)
+		_spawn_wall(wd)
+
+func _spawn_wall(wd: Dictionary) -> Node2D:
+	var old := get_node_or_null(String(wd["name"]))
+	if old != null:
+		old.name = "Old_%s" % old.name             # rozbita w tej samej klatce: nazwa zwalnia się dopiero po `queue_free`
+	var w: Node2D = BREAKABLE.new()
+	w.name = String(wd["name"])
+	w.position = wd["pos"]
+	w.rows = int(wd["rows"])
+	w.mat_id = String(wd.get("material", "brick"))
+	add_child(w)
+	return w
 
 ## Serwer: ściana rozbita — znika u wszystkich peerów, kafle odblokowują nawigację.
 func break_wall(wall_name: String) -> void:
@@ -1135,6 +1142,73 @@ func _open_wall(wall_name: String, with_fx: bool) -> void:
 		else:
 			w.queue_free()
 	if not first:
+		_refresh_region(rc)
+
+# ---------------------------------------------------------------- stan zniszczeń (DESTRUCTION_PLAN.md D0)
+
+var _breakables_cp := {}         ## stan zniszczeń z przebudzenia bossa (punkt kontrolny, `save_breakables_checkpoint`)
+
+## Stan zniszczeń: nazwy rozbitych elementów i plamy (z wytrzymałością) tych, które stoją, a oberwały.
+func breakables_state() -> Dictionary:
+	var dmg := {}
+	for wd in _wall_defs:
+		var n := String(wd["name"])
+		var w := get_node_or_null(n)
+		if w != null and not _opened_walls.has(n) and not w.is_queued_for_deletion() and not (w.splats as PackedFloat32Array).is_empty():
+			dmg[n] = [(w.splats as PackedFloat32Array).duplicate(), float(w.hp) / float(w.max_hp())]
+	return {"opened": PackedStringArray(_opened_walls), "damage": dmg}
+
+## Serwer, przebudzenie bossa (mission._save_checkpoint): wipe w tej walce wróci do zniszczeń z tej chwili — jak łup od 1.7.424.
+func save_breakables_checkpoint() -> void:
+	_breakables_cp = breakables_state()
+
+func breakables_checkpoint() -> Dictionary:
+	return _breakables_cp
+
+## Serwer: zniszczenia wracają do `state` (`breakables_state`); pusty — stan z danych mapy, wszystko całe. Wipe i nowa misja na tej samej
+## mapie (main._restart_mission) — pusty, więc rozbita ściana znów stoi razem ze skrytką za nią (przedmioty mapy też wracają);
+## wipe w walce z bossem (main._restart_from_checkpoint) — stan z przebudzenia.
+func reset_breakables(state := {}) -> void:
+	if not NoiseMgr.is_server():
+		return
+	var opened: PackedStringArray = state.get("opened", PackedStringArray())
+	var dmg: Dictionary = state.get("damage", {})
+	if NoiseMgr.has_network():
+		_reset_breakables_rpc.rpc(map_id, opened, dmg)
+	else:
+		_reset_breakables_rpc(map_id, opened, dmg)
+
+@rpc("authority", "call_local", "reliable")
+func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary) -> void:
+	if id != map_id:
+		return
+	for wd in _wall_defs:
+		var n := String(wd["name"])
+		var want_open := opened.has(n)
+		if _opened_walls.has(n) and not want_open:
+			_close_wall(wd)
+		elif not _opened_walls.has(n) and want_open:
+			_open_wall(n, false)
+		if not want_open:
+			var w := get_node_or_null(n)
+			var d: Array = dmg.get(n, [])
+			if w != null and w.has_method("reset_damage"):
+				w.reset_damage(d[0] if d.size() == 2 else PackedFloat32Array(), float(d[1]) if d.size() == 2 else 1.0)
+
+## Rozbity element wraca: kafle znów bryłą dla nawigacji, nowy węzeł (widok 3D zdejmuje gruz w tym miejscu), gracze wypchnięci z kafli.
+func _close_wall(wd: Dictionary) -> void:
+	var n := String(wd["name"])
+	_opened_walls.erase(n)
+	var rc := Rect2i()
+	var first := true
+	for cell in wd["cells"]:
+		_wall_cells[cell] = n
+		var cr := Rect2i(cell, Vector2i(1, 1))
+		rc = cr if first else rc.merge(cr)
+		first = false
+	_spawn_wall(wd)
+	if not first:
+		_push_players_out(rc)
 		_refresh_region(rc)
 
 ## Dołączający gracz dostaje listę już rozbitych ścian i plamy uszkodzeń tych, które jeszcze stoją.

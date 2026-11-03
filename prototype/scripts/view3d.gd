@@ -2941,11 +2941,19 @@ func _damage_overlay(n: Node, mi: MeshInstance3D, w_m: float, h_m: float) -> Dic
 	sm.set_shader_parameter("fresh", Vector3((chip[0] as Color).r, (chip[0] as Color).g, (chip[0] as Color).b))
 	sm.set_shader_parameter("deep", Vector3((chip[1] as Color).r, (chip[1] as Color).g, (chip[1] as Color).b))
 	mi.material_overlay = sm
-	return {"img": img, "tex": tex, "done": 0, "w": w_m, "h": h_m}
+	return {"img": img, "tex": tex, "done": 0, "epoch": 0, "w": w_m, "h": h_m}
 
 ## Nowe plamy elementu `n` (od ostatniego odcisku) do maski i jedna aktualizacja tekstury.
 func _stamp_damage(n: Node, d: Dictionary) -> void:
 	var total := int(n.get("splat_total"))
+	var epoch := int(n.get("damage_epoch"))
+	if epoch != int(d["epoch"]):                  # reset (wipe, punkt kontrolny): maska od zera, potem wszystkie zapamiętane plamy
+		(d["img"] as Image).fill(Color(0, 0, 0))
+		d["done"] = 0
+		d["epoch"] = epoch
+		if total == 0:
+			(d["tex"] as ImageTexture).update(d["img"])
+			return
 	if total == int(d["done"]):
 		return
 	var sp: PackedFloat32Array = n.get("splats")
