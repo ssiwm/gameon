@@ -2298,8 +2298,10 @@ func _sync_drawn() -> void:
 		_world.add_child(mi)
 		var dmg := _damage_overlay(n, mi, Level3D.T, h)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
+		_fracture_meshes(String(n.get("mat_id")))                 # bryły rozpadu wczytane razem z mapą (pod planszą), nie przy pierwszym rozbiciu
+		_clear_rubble_near(mi.position.x, Level3D.T)
 		for old in _geo.get_children():                           # ściana odbudowana po restarcie misji: gruz po poprzedniej znika
-			if String(old.name).begins_with("Rubble") and absf((old as Node3D).position.x - mi.position.x) < 0.6 and absf((old as Node3D).position.y - (mi.position.y - h * 0.5)) < 0.6:
+			if String(old.name).begins_with("Rubble") and not old is MultiMeshInstance3D and absf((old as Node3D).position.x - mi.position.x) < 0.6 and absf((old as Node3D).position.y - (mi.position.y - h * 0.5)) < 0.6:
 				old.queue_free()
 		_drawn[n.get_instance_id()] = [n, mi, "wall", String(_level.get("map_id")), h, dmg]
 	for id in _drawn:
@@ -2983,6 +2985,104 @@ func _spawn_rubble(floor_pos: Vector3, wall_h: float) -> void:
 		mi.position = Vector3(floor_pos.x + float(spec[0]), floor_pos.y + wall_h - float(spec[1]) * 0.5, -Level3D.DEPTH_BACK * 0.5)
 		mi.rotation.z = float(spec[3])
 		_geo.add_child(mi)
+
+# ---------------------------------------------------------------- bryły pre-fraktury i gruz (DESTRUCTION_PLAN.md D0)
+
+const RUBBLE_CAP := 32                      ## leżących brył jednego kształtu (12 kształtów cegły → do 384 w kilkunastu wywołaniach rysowania)
+const CHUNK_SETTLE_S := 4.0                 ## po tylu sekundach odłamek ląduje w gruzie, nawet jeśli jeszcze się kołysze
+const CHUNK_REST_V := 4.0                   ## px/s: wolniej = leży
+
+static var _frac_cache := {}                ## zestaw (materiał) → [Mesh] z `tools/fracture_gen.py`, materiały podmienione
+var _rubble := {}                           ## "zestaw:kształt" → [MultiMeshInstance3D, następny indeks, PackedVector3Array pozycji]
+
+## Bryły pre-fraktury materiału `mat_id` (`art/items3d/fracture_<mat_id>.glb`) z materiałami gry: zewnątrz tekstura materiału, w przekroju
+## świeży przełom. Tekstura triplanarna w przestrzeni bryły (świat „pływałby” po lecącym odłamku). Pusta lista = brak zestawu.
+func _fracture_meshes(mat_id: String) -> Array:
+	if _frac_cache.has(mat_id):
+		return _frac_cache[mat_id]
+	var out: Array = []
+	var path := Level3D.MODEL_DIR + "fracture_%s.glb" % mat_id
+	if ResourceLoader.exists(path) and not "--nomodels3d" in OS.get_cmdline_user_args():
+		var outer := (Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "")).duplicate() as StandardMaterial3D
+		outer.uv1_world_triplanar = false
+		outer.uv1_scale = Vector3.ONE * 0.7
+		var inner := outer.duplicate() as StandardMaterial3D
+		inner.albedo_color = Color(1.35, 1.05, 0.9)          # świeży przełom: jaśniejszy i cieplejszy niż ściana z brudem
+		inner.normal_scale = 0.5
+		var inst := (load(path) as PackedScene).instantiate()
+		for n in inst.find_children("chunk_*", "MeshInstance3D", true, false):
+			var msh := ((n as MeshInstance3D).mesh as ArrayMesh).duplicate() as ArrayMesh
+			for si in msh.get_surface_count():
+				var src := msh.surface_get_material(si)
+				msh.surface_set_material(si, inner if src != null and String(src.resource_name) == "inner" else outer)
+			out.append(msh)
+		inst.free()
+	_frac_cache[mat_id] = out
+	return out
+
+## Wołane z `breakable.crumble`: odłamek ciała `body` jako bryła pre-fraktury (`shape` wybiera kształt z zestawu) o najdłuższym
+## wymiarze `sz` px świata; zastępuje ogólną bryłkę z `mirror_debris`. Po wylądowaniu przechodzi do gruzu (`_settle_chunk`).
+func mirror_chunk(body: RigidBody2D, mat_id: String, sz: float, shape: int) -> void:
+	var meshes := _fracture_meshes(mat_id)
+	if meshes.is_empty():
+		return                                                # brak zestawu: zostaje bryłka
+	var k := shape % meshes.size()
+	var msh: Mesh = meshes[k]
+	var mi := MeshInstance3D.new()
+	mi.mesh = msh
+	var sc := sz * PX / maxf(msh.get_aabb().get_longest_axis_size(), 0.001)
+	mi.scale = Vector3(sc, sc, sc)
+	mi.layers = LAYER_WORLD
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_world.add_child(mi)
+	body.modulate = Color(1, 1, 1, 0)
+	var id := body.get_instance_id()
+	if _casings.has(id) and is_instance_valid(_casings[id][1]):
+		(_casings[id][1] as Node).queue_free()
+	_casings[id] = [body, mi, randf_range(-0.6, 0.6), float(shape % 7) * 0.9, "%s:%d" % [mat_id, k], Time.get_ticks_msec()]
+
+## Odłamek z pre-fraktury leży (albo leci już `CHUNK_SETTLE_S`): jego bryła przechodzi do `MultiMesh` gruzu (jedno wywołanie rysowania
+## na kształt, do `RUBBLE_CAP` — najstarsze znikają), a ciało 2D i model znikają. Gruz żyje z geometrią mapy.
+func _settle_chunk(cs: Array) -> void:
+	var key := String(cs[4])
+	var meshes := _fracture_meshes(key.get_slice(":", 0))
+	var r: Array = _rubble.get(key, [])
+	if r.is_empty() or not is_instance_valid(r[0]):
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = meshes[int(key.get_slice(":", 1))]
+		mm.instance_count = RUBBLE_CAP
+		mm.visible_instance_count = 0
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "RubbleChunks"
+		mmi.multimesh = mm
+		mmi.layers = LAYER_WORLD
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_geo.add_child(mmi)
+		r = [mmi, 0, PackedVector3Array()]
+		r[2].resize(RUBBLE_CAP)
+		_rubble[key] = r
+	var xf := (cs[1] as Node3D).global_transform
+	var mmr := (r[0] as MultiMeshInstance3D).multimesh
+	var i := int(r[1]) % RUBBLE_CAP
+	mmr.set_instance_transform(i, xf)
+	(r[2] as PackedVector3Array)[i] = xf.origin
+	r[1] = int(r[1]) + 1
+	mmr.visible_instance_count = mini(int(r[1]), RUBBLE_CAP)
+	(cs[1] as Node).queue_free()
+	(cs[0] as Node).queue_free()
+
+## Ściana odbudowana (wipe, punkt kontrolny): gruz z jej rozbicia (w pasie `half_w` m wokół `x`) znika.
+func _clear_rubble_near(x: float, half_w: float) -> void:
+	for key in _rubble:
+		var r: Array = _rubble[key]
+		if not is_instance_valid(r[0]):
+			continue
+		var mmr := (r[0] as MultiMeshInstance3D).multimesh
+		for i in mini(int(r[1]), RUBBLE_CAP):
+			var pos: Vector3 = (r[2] as PackedVector3Array)[i]
+			if absf(pos.x - x) < half_w:
+				mmr.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ZERO), pos))
 
 # ---------------------------------------------------------------- ogień flar
 
@@ -3678,6 +3778,11 @@ func _sync_casings() -> void:
 		var mi := cs[1] as Node3D
 		mi.position = Level3D.px_to_m(b.global_position) + Vector3(0.0, -float(mi.get_meta("drop", 0.0)), 0.35 + float(cs[2]) * 0.3)
 		mi.rotation = Vector3(float(cs[2]), 0.0, -b.global_rotation + (float(cs[3]) if cs.size() > 3 else PI * 0.5))       # łuska: walec wzdłuż osi łuski 2D; szczątek: płasko
+		var age := Time.get_ticks_msec() - int(cs[5]) if cs.size() > 5 else 0
+		if cs.size() > 5 and (age > 600 and (b.sleeping or b.linear_velocity.length() < CHUNK_REST_V and absf(b.angular_velocity) < 0.5)
+				or age > CHUNK_SETTLE_S * 1000.0):
+			_settle_chunk(cs)                                  # bryła pre-fraktury leży: do gruzu
+			_casings.erase(id)
 
 # ---------------------------------------------------------------- ogień, wybuchy, dym
 

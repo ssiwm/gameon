@@ -270,6 +270,13 @@ jako dzielnik ciosu.
   w Blenderze; złożone modele z Poly Haven, w razie potrzeby lokalny TRELLIS 2 (obraz → model z PBR, potrzebuje obrazu wejściowego —
   nie mamy lokalnie tekst → obraz) albo Meshy (ok. 30–40 kredytów za rekwizyt). Każdy nowy GLB przez `tex_vram.py`. Odłamki przez `Vfx.debris`, potem leżą jako gruz
   w `MultiMesh` do końca misji (limit globalny, najstarsze znikają). Szczegóły w „Technologie”.
+  **Zrobione w 1.7.483:** `tools/fracture_gen.py` (Blender 5.2 headless, bmesh: `bisect_plane` + zaślepienie, materiały `outer` / `inner`)
+  → `art/items3d/fracture_brick.glb`, 12 wypukłych brył wypełniających kostkę 1 m (objętość 1,000 m³). `breakable.chunk_plan(ziarno)` —
+  `chunks` brył (cegła 9) rozłożonych po ścianie siatką z odchyleniem, z ziarna `map_id` + nazwa, więc u wszystkich te same bez RPC;
+  `crumble` puszcza je przez `Vfx.debris` (fizyka 2D), widok 3D (`mirror_chunk`) rysuje bryłę z teksturą triplanarną w przestrzeni bryły
+  i świeżym przełomem w przekroju; po wylądowaniu (albo po 4 s) bryła przechodzi do `MultiMeshInstance3D` na kształt (`RUBBLE_CAP` 32,
+  najstarsze znikają), ciało 2D znika. Gruz żyje z geometrią mapy, odbudowa ściany (wipe, punkt kontrolny) go sprząta. Bryły wczytywane
+  przy budowie ściany (pod planszą). Zestawy dla desek, blachy, kratki i szkła — z elementami D1/D2. Zrzuty: `C:\deadair87\shots_fracture`.
 - `--maptest`: osiągalność celów **przy wszystkim całym i wszystkim zniszczonym** (rozszerzenie `open_all_walls_for_test`).
   **Zrobione (PR bez numeru wersji, same testy):** na mapach ze zniszczalnymi elementami najpierw wszystko całe — starty, wyjścia,
   generatory, nieśmiertelniki, gniazda, drezyna, stanowiska i dom Stalkera osiągalne bez rozbijania (przejście to skrót albo skrytka,
