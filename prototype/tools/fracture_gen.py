@@ -1,7 +1,10 @@
-"""Pre-fraktura zniszczalnych elementów (DESTRUCTION_PLAN.md D0, „Rozpad”): bryła materiału pocięta na komórki Voronoi.
+"""Pre-fraktura zniszczalnych elementów (DESTRUCTION_PLAN.md D0, „Rozpad”): bryła materiału pocięta na komórki Voronoi
+albo — deska — skośnymi cięciami w poprzek.
 
 Każda komórka to część wspólna bryły z półprzestrzeniami „bliżej mojego punktu niż sąsiada” — cięcie płaszczyznami w bmesh
-(`bisect_plane` + zaślepienie otworu), więc bryły są wypukłe i razem dokładnie wypełniają całość. Ściany zewnętrzne mają materiał
+(`bisect_plane` + zaślepienie otworu), więc bryły są wypukłe i razem dokładnie wypełniają całość. Deska (`cuts`) ma kawałki między
+kolejnymi płaszczyznami pochylonymi o 25–50° w płaszczyźnie deski: końce kawałków są ukośne, więc wyglądają jak drzazgi
+(komórki Voronoi na długiej listwie wychodzą prostopadłe). Ściany zewnętrzne mają materiał
 `outer`, przekroje — `inner` (świeży przełom). Widok 3D (`view3d.gd`, `mirror_chunk`) bierze bryły jako odłamki przy rozbiciu,
 a uśpione przenosi do `MultiMesh` (gruz do końca misji); materiały podmienia na własne (tekstura triplanarna w przestrzeni bryły),
 więc plik nie ma tekstur ani UV.
@@ -11,6 +14,7 @@ Wynik: prototype/art/items3d/fracture_<zestaw>.glb — obiekty chunk_00…, śro
     blender -b --factory-startup -P prototype/tools/fracture_gen.py
     blender -b --factory-startup -P prototype/tools/fracture_gen.py -- brick      # jeden zestaw
 """
+import math
 import os
 import random
 import sys
@@ -21,10 +25,12 @@ from mathutils import Vector
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "art", "items3d")
 
-# zestaw: wymiary bryły [m] (x, y, z w Blenderze: z w górę), liczba komórek, ziarno, spłaszczenie rozkładu punktów
+# zestaw: wymiary bryły [m] (x, y, z w Blenderze: z w górę), liczba komórek Voronoi (`cells`) albo skośnych cięć deski (`cuts`), ziarno
 SETS = {
     # cegła / mur: kostka 1 m, 12 brył (plan: 6–14); skala w grze wg wielkości odłamka
     "brick": {"size": (1.0, 1.0, 1.0), "cells": 12, "seed": 87},
+    # deski (skrzynia `k`, D1; potem barykady D2): listwa 1 × 0,11 × 0,03 m, 3 skośne cięcia → 4 drzazgi o ukośnych końcach
+    "planks": {"size": (1.0, 0.03, 0.11), "cuts": 3, "seed": 41},
 }
 
 
@@ -60,17 +66,52 @@ def _cell(size, pts, i):
     return bm
 
 
+def _slice(size, cuts, i):
+    """Kawałek deski `i`: prostopadłościan `size` między płaszczyzną `cuts[i - 1]` (zostaje strona dodatnia) a `cuts[i]` (ujemna)."""
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bmesh.ops.scale(bm, vec=Vector(size), verts=bm.verts)
+    for f in bm.faces:
+        f.material_index = 0
+    for k, keep_pos in ((i - 1, True), (i, False)):
+        if k < 0 or k >= len(cuts) or not bm.verts:
+            continue
+        co, n = cuts[k]
+        res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=co, plane_no=n,
+                                     clear_inner=keep_pos, clear_outer=not keep_pos)
+        cut = [e for e in res["geom_cut"] if isinstance(e, bmesh.types.BMEdge)]
+        if len(cut) >= 3:
+            for f in bmesh.ops.holes_fill(bm, edges=cut, sides=0)["faces"]:
+                f.material_index = 1
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    return bm
+
+
+def _plank_cuts(spec, rng):
+    """Płaszczyzny cięć deski wzdłuż x: równe odstępy z rozrzutem, normalna pochylona o ±25–50° w płaszczyźnie deski (x–z)."""
+    sx = spec["size"][0]
+    n = spec["cuts"]
+    out = []
+    for k in range(n):
+        x = (-0.5 + (k + 1) / (n + 1) + rng.uniform(-0.25, 0.25) / (n + 1)) * sx
+        a = math.radians(rng.uniform(25.0, 50.0)) * rng.choice((-1.0, 1.0))
+        out.append((Vector((x, 0.0, 0.0)), Vector((math.cos(a), rng.uniform(-0.1, 0.1), math.sin(a))).normalized()))
+    return out
+
+
 def build(name, spec):
     _clear()
     rng = random.Random(spec["seed"])
     sx, sy, sz = spec["size"]
-    pts = [Vector((rng.uniform(-0.5, 0.5) * sx, rng.uniform(-0.5, 0.5) * sy, rng.uniform(-0.5, 0.5) * sz)) for _ in range(spec["cells"])]
+    cuts = _plank_cuts(spec, rng) if "cuts" in spec else []
+    pts = [] if cuts else [Vector((rng.uniform(-0.5, 0.5) * sx, rng.uniform(-0.5, 0.5) * sy, rng.uniform(-0.5, 0.5) * sz))
+                           for _ in range(spec["cells"])]
     outer = _material("outer", (0.5, 0.3, 0.24, 1.0))
     inner = _material("inner", (0.75, 0.5, 0.4, 1.0))
     made = 0
     vol = 0.0
-    for i in range(len(pts)):
-        bm = _cell(spec["size"], pts, i)
+    for i in range(len(cuts) + 1 if cuts else len(pts)):
+        bm = _slice(spec["size"], cuts, i) if cuts else _cell(spec["size"], pts, i)
         if len(bm.faces) < 4:
             bm.free()
             continue

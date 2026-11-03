@@ -5,7 +5,8 @@ extends RigidBody2D
 ## Po co w grze o hałasie: upadek z wysokości robi HAŁAS w miejscu upadku —
 ## zepchnięta z kładki skrzynia to wabik (§8.4 bez ładunku Q). Beczka po
 ## kilku trafieniach wybucha: rani wszystko w promieniu, odrzuca obiekty,
-## odpala sąsiednie beczki — i budzi okolicę (+15).
+## odpala sąsiednie beczki — i budzi okolicę (+15). Skrzynia (DESTRUCTION_PLAN.md D1)
+## po kilku trafieniach pęka: drzazgi z pre-fraktury desek, hałas, czasem złom albo bateria.
 ##
 ## W grupie „enemies": pociski (projectile.gd), reset po wipe i po misji obejmują
 ## obiekty bez osobnego kodu; is_threat = false, więc boty do nich nie strzelają.
@@ -14,6 +15,8 @@ const Sprites := preload("res://scripts/sprites.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const LAYER := 32
 const IMPACT_SPEED := 150.0       ## px/s — szybciej = łoskot (hałas)
@@ -23,6 +26,13 @@ const BLAST_R := 64.0
 const BLAST_DMG := 70.0
 const N_BLAST := 15.0
 const BULLET_PUSH := 7.0          ## impuls na punkt obrażeń pocisku
+const CRATE_HP := 40.0            ## skrzynia: pistolet 5 trafień, maczeta 2 ciosy; kilof, granat, wybuch beczki, szarża Wołka i Rzeźnika — od razu
+const N_CRATE_BREAK := 4.0        ## hałas pęknięcia skrzyni (jak deski w `breakable.gd`)
+const CRATE_SCRAP := 0.6          ## szansa na złom 1–2 ze skrzyni (DESTRUCTION_PLAN.md decyzja 3; × Difficulty „drops”, do strojenia)
+const CRATE_BATTERY := 0.05       ## szansa na baterię 4,5 V ze skrzyni
+const CRATE_CHUNKS := 6           ## drzazg z pre-fraktury `planks` (widok 3D `mirror_chunk`)
+const CRATE_CHIPS := 8            ## drobnych wiórów
+const WOOD := Color(0.42, 0.3, 0.18)
 const SYNC_DT := 0.05
 
 @export var kind := "crate"
@@ -49,6 +59,7 @@ func _ready() -> void:
 	collision_layer = LAYER
 	collision_mask = 1 | 16 | LAYER
 	mass = 4.0 if kind == "crate" else 3.0
+	hp = max_hp()
 	var mat := PhysicsMaterial.new()
 	mat.friction = 0.6
 	mat.bounce = 0.05
@@ -82,7 +93,7 @@ func is_threat() -> bool:
 
 func reset_enemy() -> void:
 	exploded = false
-	hp = BARREL_HP
+	hp = max_hp()
 	visible = true
 	# teleport ciała przez _integrate_forces — samo global_position nadpisuje fizyka
 	_reset_pending = true
@@ -180,12 +191,18 @@ func _apply_push(dir: float) -> void:
 
 # ---------------------------------------------------------------- trafienia, upadki
 
-## Obrażenia z broni (combat.gd): skrzynia = drewno, beczka = blacha.
+func max_hp() -> float:
+	return CRATE_HP if kind == "crate" else BARREL_HP
+
+## Obrażenia z broni (combat.gd): skrzynia = drewno, beczka = blacha. Płomień tylko popycha (palenie skrzyń — osobno).
 func take_hit(info: Dictionary) -> Dictionary:
 	if not NoiseMgr.is_server() or exploded:
 		return {}
 	var was_exploded := exploded
-	take_bullet_dir(info["pos"], float(info["amount"]), info["dir"])
+	if String(info.get("type", "")) == "fire":
+		apply_impulse((info["dir"] as Vector2) * float(info["amount"]) * BULLET_PUSH, (info["pos"] as Vector2) - global_position)
+	else:
+		take_bullet_dir(info["pos"], float(info["amount"]), info["dir"])
 	return {"hit": true, "dealt": info["amount"], "killed": exploded and not was_exploded,
 		"mat": Arsenal.Mat.WOOD if kind == "crate" else Arsenal.Mat.METAL}
 
@@ -193,10 +210,13 @@ func take_bullet_dir(from_pos: Vector2, dmg: float, dir: Vector2) -> void:
 	if not NoiseMgr.is_server() or exploded:
 		return
 	apply_impulse(dir * dmg * BULLET_PUSH, from_pos - global_position)
+	hp -= dmg
+	if hp > 0.0:
+		return
 	if kind == "barrel":
-		hp -= dmg
-		if hp <= 0.0:
-			explode()
+		explode()
+	else:
+		shatter(from_pos)
 
 func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	take_bullet_dir(from_pos, dmg, (global_position - from_pos).normalized())
@@ -238,6 +258,8 @@ func explode() -> void:
 			if e.kind == "barrel" and not e.exploded:
 				# reakcja łańcuchowa z krótkim opóźnieniem — widać, jak idzie
 				get_tree().create_timer(0.15).timeout.connect(e.explode)
+			elif e.kind == "crate" and not e.exploded and d < BLAST_R * 0.6:
+				e.shatter(pos)                                    # skrzynia tuż przy beczce pęka, dalsza tylko odlatuje
 		elif e.has_method("take_bullet"):
 			e.take_bullet(pos, BLAST_DMG * (1.0 - 0.5 * d / BLAST_R))
 	for p in get_tree().get_nodes_in_group("players"):
@@ -247,10 +269,7 @@ func explode() -> void:
 
 @rpc("authority", "call_local", "reliable")
 func _explode_fx(pos: Vector2) -> void:
-	exploded = true
-	visible = false
-	set_deferred("collision_layer", 0)
-	set_deferred("freeze", true)
+	_gone()
 	var parent := get_parent()
 	Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, 2.0, 0.9)
 	Vfx.burst(parent, pos, Color(1.0, 0.6, 0.2), 30, 60.0, 220.0, Vector2.UP, 180.0, 200.0, 0.5, Vector2(1.5, 3.0), true)
@@ -269,3 +288,76 @@ func _explode_fx(pos: Vector2) -> void:
 		if not p.is_bot and p.is_multiplayer_authority() and p.global_position.distance_to(pos) < 300.0:
 			Feel.shake(5.0)
 			Feel.hitstop(0.06)
+
+# ---------------------------------------------------------------- pęknięcie skrzyni (DESTRUCTION_PLAN.md D1)
+
+## Serwer: skrzynia pęka — hałas, łup (złom 1–2, rzadko bateria; nie w Nocnym Dyżurze), drzazgi u wszystkich. `from_pos` — skąd przyszło
+## uderzenie (drzazgi lecą od niego); znika jak wybuchła beczka (`exploded`), wraca przy wipe'ie (`reset_enemy`).
+func shatter(from_pos := Vector2.INF) -> void:
+	if exploded or not NoiseMgr.is_server():
+		return
+	exploded = true
+	var pos := global_position + Vector2(0, -7)
+	NoiseMgr.add_noise(N_CRATE_BREAK, pos, "prop")
+	var scrap := 0
+	var battery := false
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl != null and not NightShift.active:
+		if Scrap.enabled() and randf() < minf(1.0, CRATE_SCRAP * Difficulty.m("drops")):
+			scrap = randi_range(1, 2)
+			lvl.spawn_item("scrap", 0, pos, scrap)
+		if randf() < minf(1.0, CRATE_BATTERY * Difficulty.m("drops")):
+			battery = true
+			lvl.spawn_item("battery", 0, pos + Vector2(4, 0))
+	SessionLog.event("crate", {"pos": SessionLog.xy(pos), "scrap": scrap, "battery": battery, "noise": roundi(NoiseMgr.level)})
+	var away := 0.0 if from_pos == Vector2.INF else signf(global_position.x - from_pos.x)
+	_shatter_fx.rpc(pos, rotation, away)
+
+@rpc("authority", "call_local", "reliable")
+func _shatter_fx(pos: Vector2, rot: float, away: float) -> void:
+	_gone()
+	var parent := get_parent()
+	Audio.play_variant_at("door", 2, pos, Audio.BUS_WORLD, 0.0, 0.7)
+	Audio.play_variant_at("amb_creak", 3, pos, Audio.BUS_WORLD, -4.0, 1.4)
+	for ch in chunk_plan(_seed(), away):
+		var at: Vector2 = pos + (ch[0] as Vector2).rotated(rot)
+		var sz: float = ch[2]
+		var b := Vfx.debris(parent, at, ch[1], Vector2(sz, sz * 0.3), WOOD, 0.15, 6.0)
+		if b != null and Vfx.view3d != null and is_instance_valid(Vfx.view3d):
+			Vfx.view3d.call("mirror_chunk", b, "planks", sz, int(ch[3]))
+	for i in CRATE_CHIPS:
+		Vfx.debris(parent, pos + Vector2(randf_range(-6.0, 6.0), randf_range(-6.0, 6.0)),
+			Vector2(randf_range(-70.0, 70.0) + away * 30.0, randf_range(-110.0, -30.0)), Vector2(2, 1), WOOD.lightened(0.2))
+	Vfx.dust(parent, pos, 0.8)
+
+## Drzazgi skrzyni: [przesunięcie od środka, prędkość, długość px, kształt] — z ziarna mapy i nazwy, u każdego peera te same.
+## `away` (−1 / 0 / 1): strona, w którą odlatują (od uderzenia).
+func chunk_plan(seed_v: int, away := 0.0) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_v
+	var out: Array = []
+	for i in CRATE_CHUNKS:
+		var off := Vector2(rng.randf_range(-5.0, 5.0), rng.randf_range(-5.0, 5.0))
+		var vel := Vector2(off.x * rng.randf_range(8.0, 16.0) + away * rng.randf_range(30.0, 70.0), rng.randf_range(-120.0, -40.0))
+		out.append([off, vel, rng.randf_range(6.0, 10.0), rng.randi()])
+	return out
+
+func _seed() -> int:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return hash("%s:%s" % [String(lvl.get("map_id")) if lvl != null else "", String(name)])
+
+## Zniknięcie bez efektów: po pęknięciu, po wybuchu i u dołączającego (`send_state_to`).
+func _gone() -> void:
+	exploded = true
+	visible = false
+	set_deferred("collision_layer", 0)
+	set_deferred("freeze", true)
+
+## Dołączający gracz: rozbita skrzynia albo wybuchła beczka znika u niego bez dźwięku (level.gd `send_walls_to`).
+func send_state_to(peer_id: int) -> void:
+	if NoiseMgr.is_server() and exploded:
+		_gone_rpc.rpc_id(peer_id)
+
+@rpc("authority", "call_remote", "reliable")
+func _gone_rpc() -> void:
+	_gone()

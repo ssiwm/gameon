@@ -141,7 +141,7 @@ var _fog_top := 0                        ## pierwszy wiersz kadru gry w obrazie 
 var _lights := {}                        ## id światła gry (Lights.GameLight) → [światło, Light3D]
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
-var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła]
+var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła, czy widoczny, gdzie zniknął (drzazgi do sprzątnięcia)]
 var _cabinets := {}                      ## id gabloty (cabinet.gd) → {node, root, door, ghosts: [Node3D], open}
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _gun_warm_t := 0.0                   ## s do następnego przeglądu ekwipunku graczy (_warm_loadouts)
@@ -3005,11 +3005,18 @@ func _fracture_meshes(mat_id: String) -> Array:
 	var out: Array = []
 	var path := Level3D.MODEL_DIR + "fracture_%s.glb" % mat_id
 	if ResourceLoader.exists(path) and not "--nomodels3d" in OS.get_cmdline_user_args():
-		var outer := (Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "")).duplicate() as StandardMaterial3D
-		outer.uv1_world_triplanar = false
-		outer.uv1_scale = Vector3.ONE * 0.7
-		var inner := outer.duplicate() as StandardMaterial3D
-		inner.albedo_color = Color(1.35, 1.05, 0.9)          # świeży przełom: jaśniejszy i cieplejszy niż ściana z brudem
+		var outer: StandardMaterial3D
+		var inner: StandardMaterial3D
+		if mat_id == "planks":
+			outer = _prop_mat("plank", 0.9, Color(0.78, 0.66, 0.5))           # te same deski co skrzynia (`_make_crate`)
+			inner = outer.duplicate() as StandardMaterial3D
+			inner.albedo_color = Color(1.45, 1.25, 0.95)        # świeże drewno w złamaniu: jasne, żółtawe
+		else:
+			outer = (Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "")).duplicate() as StandardMaterial3D
+			outer.uv1_world_triplanar = false
+			outer.uv1_scale = Vector3.ONE * 0.7
+			inner = outer.duplicate() as StandardMaterial3D
+			inner.albedo_color = Color(1.35, 1.05, 0.9)          # świeży przełom: jaśniejszy i cieplejszy niż ściana z brudem
 		inner.normal_scale = 0.5
 		var inst := (load(path) as PackedScene).instantiate()
 		for n in inst.find_children("chunk_*", "MeshInstance3D", true, false):
@@ -3139,6 +3146,13 @@ func _clear_rubble_near(x: float, half_w: float) -> void:
 			var pos: Vector3 = (r[2] as PackedVector3Array)[i]
 			if absf(pos.x - x) < half_w:
 				mmr.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ZERO), pos))
+	for id in _casings.keys():                                # bryły jeszcze w ruchu albo przed uśpieniem (do `CHUNK_SETTLE_S`) — też znikają
+		var cs: Array = _casings[id]
+		if cs.size() > 5 and is_instance_valid(cs[1]) and absf((cs[1] as Node3D).position.x - x) < half_w:
+			(cs[1] as Node).queue_free()
+			if is_instance_valid(cs[0]):
+				(cs[0] as Node).queue_free()
+			_casings.erase(id)
 
 # ---------------------------------------------------------------- ogień flar
 
@@ -6080,7 +6094,9 @@ func _sync_props() -> void:
 				px = _make_barrel() if kind == "barrel" else _make_crate()
 			_world.add_child(px)
 			(n as CanvasItem).modulate = Color(1, 1, 1, 0)
-			_props[n.get_instance_id()] = [n, px]
+			_props[n.get_instance_id()] = [n, px, true, Vector3.ZERO]
+			if kind == "crate":
+				_warm_destruction("planks")                     # drzazgi rozbitej skrzyni (prop.gd `shatter`) bez przycięcia
 	for id in _props.keys():
 		var pr: Array = _props[id]
 		var src = pr[0]
@@ -6091,6 +6107,12 @@ func _sync_props() -> void:
 			_props.erase(id)
 			continue
 		var s2 := src as Node2D
+		if s2.visible != bool(pr[2]):
+			pr[2] = s2.visible
+			if s2.visible:
+				_clear_rubble_near(float(pr[3].x), 4.0)          # skrzynia wraca (wipe, punkt kontrolny — wracają wszystkie naraz): jej drzazgi znikają
+			else:
+				pr[3] = px.position                               # rozbita albo wybuchła: tu leżą jej drzazgi
 		px.visible = s2.visible
 		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, PROP_Z)      # na drodze gracza: przeszkoda, przez którą się skacze i na której się stoi
 		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)

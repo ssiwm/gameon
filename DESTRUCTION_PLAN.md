@@ -297,6 +297,15 @@ jako dzielnik ciosu.
 
 - **Skrzynia `k`** pęka po N trafieniach / wybuchu / szarży (dziś tylko lata): drzazgi, hałas; wypada drobny łup (złom 1–2,
   rzadko bateria; decyzja 3) — zgodnie z progresją z `PROGRESSION_PLAN.md`, do strojenia.
+  **Zrobione w 1.7.485:** `prop.gd` — skrzynia ma 40 HP (`CRATE_HP`): pistolet 5 kul, maczeta 2 ciosy, kilof / granat / szarża Wołka
+  i Rzeźnika od razu; płomień tylko popycha; wybuch beczki rozbija skrzynię bliżej niż 0,6 promienia, dalszą odrzuca. `shatter` (serwer):
+  hałas 4, łup — złom 1–2 z szansą 0,6 i bateria 0,05 (× „drops” trudności; w Nocnym Dyżurze nic), zdarzenie `crate` w dzienniku sesji
+  (do strojenia z playtestów), drzazgi u wszystkich (`_shatter_fx`): 6 kawałków deski z nowego zestawu `fracture_planks.glb`
+  (`tools/fracture_gen.py`, tryb `cuts`: listwa 1 × 0,11 × 0,03 m, 3 cięcia pochylone o 25–50° — Voronoi na długiej listwie dawał
+  prostopadłe, krępe kawałki) z planu z ziarna, lecące od uderzenia, potem gruz w `MultiMesh`; 8 wiórów i kurz. Widok 3D: drewno
+  skrzyni na zewnątrz, jasny przełom; rozgrzanie desek przy pierwszej skrzyni pod planszą; drzazgi znikają, gdy skrzynia wraca (wipe) — także te jeszcze w ruchu, przed przejściem do gruzu (dotyczy też brył cegły przy odbudowie ściany).
+  Dołączający dostaje rozbite skrzynie i — przy okazji — wybuchłe beczki (`send_state_to`; beczki dotąd stały u niego całe).
+  Dźwięk: na razie `door` + `amb_creak` — porządne nagranie pękającego drewna do odsłuchu A/B. Zrzuty: `C:\deadair87\shots_crate`.
 - **Beczka `o`**: zostaje wrak z osmaleniem zamiast znikania.
 - **Lampy na misjach do zestrzelenia** (nowy znacznik): gaśnie światło, sypie szkło, krótki dźwięk. W grze o ciemności to realna
   decyzja: ciemniej = trudniej widzieć, ale też trudniej być widzianym (Stalker, Ćmy lecą do światła). Dziś lampy `l` są tylko w kryjówce.

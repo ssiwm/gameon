@@ -1211,7 +1211,7 @@ func _close_wall(wd: Dictionary) -> void:
 		_push_players_out(rc)
 		_refresh_region(rc)
 
-## Dołączający gracz dostaje listę już rozbitych ścian i plamy uszkodzeń tych, które jeszcze stoją.
+## Dołączający gracz dostaje listę już rozbitych ścian, plamy uszkodzeń tych, które jeszcze stoją, i rozbite skrzynie / wybuchłe beczki.
 func send_walls_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and NoiseMgr.has_network():
 		for n in _opened_walls:
@@ -1219,6 +1219,8 @@ func send_walls_to(peer_id: int) -> void:
 		for b in get_tree().get_nodes_in_group("breakables"):
 			if b.get_parent() == self and not b.is_queued_for_deletion() and b.has_method("send_state_to"):
 				b.send_state_to(peer_id)
+		for pr in get_tree().get_nodes_in_group("props"):
+			pr.send_state_to(peer_id)                        # rozbite skrzynie i wybuchłe beczki (prop.gd)
 
 ## Test map: graf `nav` po lokalnych przebudowach kontra pełna budowa od zera — pusty tekst, gdy identyczne (węzły, pozycje,
 ## krawędzie i ich typy).

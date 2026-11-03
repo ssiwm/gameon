@@ -664,9 +664,9 @@ func _charger_net_step() -> void:
 	print("[CHARGER-NET] host active=%s client_pct=%d" % [str(chg.active), int(cl.bat_pct) if cl != null else -1])
 
 ## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
-## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną). Host po N s rani ścianę dwoma ciosami
-## kilofa, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
-## z bossem), po 3 s czyści wszystko (wipe) i po 2 s kończy. Klient obecny od początku dostaje to przez RPC na żywo, dołączający
+## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną) i skrzyni Crate1 (D1). Host po N s
+## rozbija skrzynię, po 1 s rani ścianę dwoma ciosami kilofa, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
+## z bossem), po 3 s czyści wszystko (wipe, skrzynia wraca) i po 2 s kończy. Klient obecny od początku dostaje to przez RPC na żywo, dołączający
 ## po ciosach — z `send_walls_to`; klient kończy po końcowym wipe'ie (albo w lobby po utracie hosta).
 func _destruction_net(n: float) -> void:
 	var role := "host" if "--host" in OS.get_cmdline_user_args() else "client"      # przed połączeniem klient też jest „serwerem”
@@ -694,6 +694,9 @@ func _destruction_sig() -> String:
 	if w != null and not w.is_queued_for_deletion():
 		var sp: PackedFloat32Array = w.splats
 		st += " hp=%d splats=%d/%s" % [roundi(float(w.hp)), sp.size() / 4, str(sp).md5_text().substr(0, 8)]
+	var cr: Node = level.get_node_or_null("Crate1")
+	if cr != null:
+		st += " crate=%s" % ("gone" if bool(cr.get("exploded")) else "ok")
 	return st
 
 func _destruction_net_host() -> void:
@@ -701,6 +704,10 @@ func _destruction_net_host() -> void:
 	if w == null:
 		print("[DESTRUCTION-NET] host: brak ściany BrickWall1 na mapie %s" % level.map_id)
 		return
+	var crate: Node = level.get_node_or_null("Crate1")
+	if crate != null:
+		crate.shatter()                                               # dołączający po ciosach dostaje ją rozbitą z `send_walls_to`
+	await get_tree().create_timer(1.0).timeout
 	var pick: RefCounted = Weapons.def(Weapons.KILOF)
 	for i in 2:
 		Combat.apply(w, Combat.make_info(Weapons.KILOF, pick.damage, w.call("body_center") + Vector2(0, -6 + 12 * i), Vector2.RIGHT, 1, "melee"))
@@ -714,6 +721,8 @@ func _destruction_net_host() -> void:
 	await get_tree().create_timer(3.0).timeout
 	level.reset_breakables(level.breakables_checkpoint())
 	await get_tree().create_timer(3.0).timeout
+	if crate != null:
+		crate.reset_enemy()                                           # przed ścianą: klient kończy, gdy zobaczy całą ścianę
 	level.reset_breakables()
 	await get_tree().create_timer(2.0).timeout
 	get_tree().quit()
@@ -2283,6 +2292,22 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					Combat.apply(bw2, Combat.make_info(Weapons.KILOF, Weapons.def(Weapons.KILOF).damage, rc2.get_center(), Vector2.RIGHT, 1, "melee"))
 				for k in 5:
 					Combat.apply(bw2, Combat.make_info(Weapons.GNIEW4, 1.0, rc2.position + Vector2(rc2.size.x * randf(), rc2.size.y * randf()), Vector2.RIGHT, 1, "blast")))
+	if _has_arg_prefix("--shotcrate"):              # dev: gracz 1 przy pierwszej skrzyni `k`, po 1,5 s pięć pocisków pistoletu ją rozbija (podgląd drzazg, D1); `=2` — po 4 s skrzynia wraca jak po wipe'ie
+		var cr: Node2D = null
+		for p in get_tree().get_nodes_in_group("props"):
+			if String(p.get("kind")) == "crate":
+				cr = p
+				break
+		var cp: Node2D = _players.get_node_or_null("1")
+		if cr != null and cp != null:
+			cp.global_position = cr.global_position + Vector2(-48.0, 0.0)
+			cp.velocity = Vector2.ZERO
+			level.spawn_flare(cr.global_position + Vector2(-20.0, -30.0), Vector2.ZERO)
+			get_tree().create_timer(1.5).timeout.connect(func() -> void:
+				for k in 5:
+					Combat.apply(cr, Combat.make_info(Weapons.KILOF, 8.0, cr.global_position + Vector2(-6.0, -7.0), Vector2.RIGHT, 1, "bullet")))
+			if "--shotcrate=2" in OS.get_cmdline_user_args():
+				get_tree().create_timer(4.0).timeout.connect(cr.reset_enemy)
 	if "--shotblood" in OS.get_cmdline_user_args():                 # dev: szczątki i krew 60 px przed graczem 1 (podgląd kałuż krwi), bez wrogów
 		var blp: Node2D = _players.get_node_or_null("1")
 		if blp != null:
