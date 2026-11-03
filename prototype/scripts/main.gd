@@ -700,6 +700,9 @@ func _destruction_sig() -> String:
 	var ml: Node = level.get_node_or_null("MissionLamp1")
 	if ml != null:
 		st += " lamp=%s" % ("lit" if bool(ml.get("lit")) else "out")
+	var wn: Node = level.get_node_or_null("Window1")
+	if wn != null:
+		st += " win=%s" % ("ok" if bool(wn.get("intact")) else "out")
 	return st
 
 func _destruction_net_host() -> void:
@@ -713,6 +716,9 @@ func _destruction_net_host() -> void:
 	var lamp: Node = level.get_node_or_null("MissionLamp1")
 	if lamp != null:
 		lamp.shatter()                                                # …i lampę misji stłuczoną (punkt kontrolny zapala ją z powrotem)
+	var win: Node = level.get_node_or_null("Window1")
+	if win != null:
+		win.shatter()                                                 # …i okno stłuczone (punkt kontrolny wstawia szybę)
 	await get_tree().create_timer(1.0).timeout
 	var pick: RefCounted = Weapons.def(Weapons.KILOF)
 	for i in 2:
@@ -2331,6 +2337,19 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			get_tree().create_timer(1.5).timeout.connect(br.explode)
 			if "--shotbarrel=2" in OS.get_cmdline_user_args():
 				get_tree().create_timer(6.0).timeout.connect(br.reset_enemy)
+	if _has_arg_prefix("--shotwindow"):             # dev: gracz 1 na antresoli chaty radiowej (1.2) przy oknie Window1, bez wrogów w pobliżu; po 1,5 s kula tłucze szybę (D1); `=2` — po 4 s szyba wraca jak po wipe'ie
+		var wnd: Node2D = level.get_node_or_null("Window1")
+		var wp2: Node2D = _players.get_node_or_null("1")
+		if wnd != null and wp2 != null:
+			wp2.global_position = wnd.global_position + Vector2(56.0, 15.0)
+			wp2.velocity = Vector2.ZERO
+			for e in get_tree().get_nodes_in_group("enemies"):
+				if not e.is_in_group("props") and (e as Node2D).global_position.distance_to(wnd.global_position) < 600.0:
+					e.queue_free()
+			get_tree().create_timer(1.5).timeout.connect(func() -> void:
+				Combat.apply(wnd.get_node("Pane"), Combat.make_info(Weapons.KILOF, 8.0, wnd.call("body_center"), Vector2.LEFT, 1, "bullet")))
+			if "--shotwindow=2" in OS.get_cmdline_user_args():
+				get_tree().create_timer(4.0).timeout.connect(func() -> void: level.reset_breakables())
 	if _has_arg_prefix("--shotlamp"):               # dev: gracz 1 pod lampą misji `I` (MissionLamp2 na 1.2, legowisko Stalkera), bez wrogów w pobliżu; po 1,5 s kula ją tłucze (D1); `=2` — po 4 s znów świeci jak po wipe'ie
 		var lmp: Node2D = level.get_node_or_null("MissionLamp2")
 		if lmp == null:

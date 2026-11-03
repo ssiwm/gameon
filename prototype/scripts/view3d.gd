@@ -172,6 +172,7 @@ var _ring_mi: MeshInstance3D             ## pierścienie alarmu wrogów (jedna s
 var _motes: CPUParticles3D               ## pył w powietrzu wokół kamery
 var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 3D efektów na wodzie]
 var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata żarówki]
+var _winfx := {}                         ## id okna (window_glass.gd) → [węzeł 2D, model, szyba, resztki szkła]
 var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
 var _mine_dust: Array = []               ## pył finału kopalni: [drobny pył, strużki] (CPUParticles3D)
 var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyznaczono punkty stropu
@@ -562,6 +563,7 @@ func _tick(delta: float) -> void:
 	_sync_leech_fx()
 	tp = _tp("leech_fx", tp)
 	_sync_lamps()
+	_sync_windows()
 	tp = _tp("lamps", tp)
 	_sync_nests()
 	tp = _tp("nests", tp)
@@ -4656,6 +4658,79 @@ func _sync_leech_fx() -> void:
 				veil.surface_set_color(Color(top_c.r, top_c.g, top_c.b, 0.09))
 				veil.surface_add_vertex(Vector3(q2.x, q2.y, TIDE_Z1))
 			veil.surface_end()
+
+const WIN_FRAME_M := 0.07                ## grubość ramy okna [m]
+const WIN_FRAME_D := 0.14                ## głębokość ramy (przy froncie ściany)
+const WIN_FRONT_Z := 0.5                 ## front ściany z kafli (jak zamurowane przejście w `_sync_walls`)
+
+## Okna ze szkłem (`window_glass.gd`, znacznik „|"): drewniana rama ze ślemieniem przy froncie ściany i szyba; stłuczona — szyba znika,
+## w rogach zostają ostre resztki szkła. Odłamki sypie `Vfx.debris` (jak przy lampie).
+func _sync_windows() -> void:
+	for n in get_tree().get_nodes_in_group("windows"):
+		if not (n is Node2D) or n.is_queued_for_deletion() or _winfx.has(n.get_instance_id()):
+			continue
+		var h := float(n.get("rows")) * Level3D.T
+		var w := Level3D.T
+		var root := Node3D.new()
+		root.name = "Window"
+		root.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, 0.0, WIN_FRONT_Z - WIN_FRAME_D * 0.5)
+		_world.add_child(root)
+		var wood := _prop_mat("plank", 0.9, Color(0.42, 0.34, 0.27))
+		var f := WIN_FRAME_M
+		for b in [[Vector3(w, f, WIN_FRAME_D), Vector3(0.0, f * 0.5, 0.0)], [Vector3(w, f, WIN_FRAME_D), Vector3(0.0, h - f * 0.5, 0.0)],
+				[Vector3(f, h, WIN_FRAME_D), Vector3(-w * 0.5 + f * 0.5, h * 0.5, 0.0)], [Vector3(f, h, WIN_FRAME_D), Vector3(w * 0.5 - f * 0.5, h * 0.5, 0.0)],
+				[Vector3(w, f * 0.7, WIN_FRAME_D * 0.6), Vector3(0.0, h * 0.55, 0.0)], [Vector3(f * 0.7, h, WIN_FRAME_D * 0.6), Vector3(0.0, h * 0.5, 0.0)]]:
+			var bm := BoxMesh.new()
+			bm.size = b[0]
+			var mi := MeshInstance3D.new()
+			mi.mesh = bm
+			mi.material_override = wood
+			mi.layers = LAYER_WORLD
+			mi.position = b[1]
+			root.add_child(mi)
+		var glass := StandardMaterial3D.new()
+		glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		glass.albedo_color = Color(0.62, 0.72, 0.74, 0.3)            # brudnawa szyba: widać ją i to, co za nią
+		glass.roughness = 0.06
+		glass.metallic_specular = 0.9
+		glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+		var pm := QuadMesh.new()
+		pm.size = Vector2(w - f, h - f)
+		var pane := MeshInstance3D.new()
+		pane.mesh = pm
+		pane.material_override = glass
+		pane.layers = LAYER_WORLD
+		pane.position = Vector3(0.0, h * 0.5, 0.0)
+		root.add_child(pane)
+		var shards := Node3D.new()                             # resztki szkła w rogach ramy po stłuczeniu
+		var rng := RandomNumberGenerator.new()
+		rng.seed = String(n.name).hash()
+		for k in 4:
+			var tri := PrismMesh.new()
+			tri.size = Vector3(rng.randf_range(0.18, 0.34), rng.randf_range(0.22, 0.42), 0.006)
+			tri.left_to_right = rng.randf()
+			var sm := MeshInstance3D.new()
+			sm.mesh = tri
+			sm.material_override = glass
+			sm.layers = LAYER_WORLD
+			var sx := (w * 0.5 - f) * (1.0 if k % 2 == 0 else -1.0)
+			var top := k >= 2
+			sm.position = Vector3(sx - signf(sx) * tri.size.x * 0.4, (h - f - tri.size.y * 0.4) if top else (f + tri.size.y * 0.4), 0.0)
+			sm.rotation.z = PI if top else 0.0
+			shards.add_child(sm)
+		root.add_child(shards)
+		_winfx[n.get_instance_id()] = [n, root, pane, shards]
+	for id in _winfx.keys():
+		var src = _winfx[id][0]
+		var root: Node3D = _winfx[id][1]
+		if not is_instance_valid(src) or (src as Node).is_queued_for_deletion():
+			if is_instance_valid(root):
+				root.queue_free()
+			_winfx.erase(id)
+			continue
+		var whole := bool(src.get("intact"))
+		(_winfx[id][2] as Node3D).visible = whole
+		(_winfx[id][3] as Node3D).visible = not whole
 
 ## Lampy na mapach (`lamp.gd`): model stawia `_sync_items`, światło — `_scan_lights` (smugę w powietrzu daje mgła wolumetryczna).
 ## Tu dochodzi poświata żarówki w scenie.

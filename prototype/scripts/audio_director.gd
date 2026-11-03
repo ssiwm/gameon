@@ -61,8 +61,8 @@ const BUS_OCC_BLOCKED := "OccBlocked"
 const BUS_OCCLUDED := BUS_OCC_HEAVY
 const OCC_BUSES := [BUS_OCC_LIGHT, BUS_OCC_HEAVY, BUS_OCC_BLOCKED]
 
-## Warstwa kolizji ścian (World w main.tscn ustawia collision_layer = 1).
-const OCCLUSION_MASK := 1
+## Warstwa kolizji ścian (World w main.tscn ustawia collision_layer = 1) i cała szyba okna (window_glass.gd SOUND_LAYER = 256).
+const OCCLUSION_MASK := 1 | 256
 ## Siatka kwantowania pozycji w cache'u przeszkód (jeden raz na klatkę na komórkę).
 const OCCL_CELL := 24.0
 ## Rozstaw bocznych promieni okluzji (px) — „szerokość" ściany, którą dźwięk omija.

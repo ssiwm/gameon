@@ -20,6 +20,9 @@ extends "res://scripts/stalker_test.gd"
 ## 9. Lampy misji `I` (lamp.gd, D1): na mapie zapalone, gracz w ich świetle widoczny dla Stalkera (`Lights.lamp_lit_player`), ćma krąży
 ##    przy zapalonej; promień kuli trafia klosz i leci dalej, trafienie tłucze lampę (światło, hałas, szkło), stłuczona chowa gracza i nie
 ##    wabi ćmy, wybuch też tłucze, reset zapala, dołączający dostaje stłuczoną bez efektów.
+## 10. Okna `|` (window_glass.gd, D1): na mapie całe; rama zatrzymuje ruch, nie wzrok; dla nawigacji bryła; cała szyba tłumi dźwięk
+##    (okluzja i siatka dźwięku); promień kuli tłucze szybę i leci dalej, stłuczona przepuszcza dźwięk, rama dalej trzyma; wybuch i cios
+##    też tłuką; reset wstawia szybę; dołączający dostaje stłuczoną bez efektów.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -32,6 +35,7 @@ const MiniMap := preload("res://scripts/hud_minimap.gd")
 const Prop := preload("res://scripts/prop.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Lights := preload("res://scripts/lights.gd")
+const WindowGlass := preload("res://scripts/window_glass.gd")
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -70,6 +74,7 @@ func run(m: Node2D) -> void:
 	await _minimap()
 	await _crates()
 	await _lamps()
+	await _windows()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -531,13 +536,12 @@ func _lamps() -> void:
 	var tr := Combat.trace(space, bulb + Vector2(0.0, 30.0), Vector2.UP, 200.0, 0)
 	var hit_bulb := (tr["hits"] as Array).any(func(h: Dictionary) -> bool: return h["collider"] == lamp.get_node("Bulb"))
 	check("promień: trafia klosz i leci dalej aż do sufitu (przebicie 0, ściana: %s)" % tr["wall"], hit_bulb and bool(tr["wall"]) and float((tr["end"] as Vector2).y) < bulb.y)
-	var noise0 := float(NoiseMgr.level)
 	var old := _debris_ids()
 	var res := Combat.apply(lamp.get_node("Bulb"), Combat.make_info(Weapons.KILOF, 8.0, bulb, Vector2.UP, 1, "bullet"))
 	await _frames(0.1)
 	var shards := Vfx._debris.filter(func(x: Variant) -> bool: return is_instance_valid(x) and not _debris_ids_has(old, x)).size()
-	check("kula tłucze lampę: gaśnie (%s), hałas %.1f → %.1f, %d odłamków szkła, pocisk leci dalej (pass)" % [lamp._light.enabled, noise0, float(NoiseMgr.level), shards],
-		not lamp.lit and not lamp._light.enabled and float(NoiseMgr.level) > noise0 and shards == lamp.SHARDS and bool(res.get("hit")) and bool(res.get("pass")))
+	check("kula tłucze lampę: gaśnie (%s), hałas przy żarówce (ostatni hałas %s), %d odłamków szkła, pocisk leci dalej (pass)" % [lamp._light.enabled, NoiseMgr.last_noise_pos, shards],
+		not lamp.lit and not lamp._light.enabled and NoiseMgr.last_noise_pos.distance_to(bulb) < 1.0 and shards == lamp.SHARDS and bool(res.get("hit")) and bool(res.get("pass")))
 	check("stłuczona: kolejna kula przelatuje bez trafienia", not bool(Combat.apply(lamp.get_node("Bulb"), Combat.make_info(Weapons.KILOF, 8.0, bulb, Vector2.UP, 1, "bullet")).get("hit", false)))
 	check("stłuczona: Stalker nie widzi gracza pod nią", Lights.lamp_lit_player(eye, get_tree(), space) == null)
 	lt = moth._beh.nearest_light(400.0) if moth != null else {}
@@ -561,3 +565,58 @@ func _lamps() -> void:
 
 func _debris_ids_has(ids: Dictionary, x: Variant) -> bool:
 	return ids.has((x as Object).get_instance_id())
+
+# ---------------------------------------------------------------- 10. okna (D1)
+
+func _fresh_debris(old: Dictionary) -> int:
+	return Vfx._debris.filter(func(x: Variant) -> bool: return is_instance_valid(x) and not _debris_ids_has(old, x)).size()
+
+func _windows() -> void:
+	var wins := get_tree().get_nodes_in_group("windows")
+	var win: Node2D = level.get_node_or_null("Window1")
+	check("okna na 1.2: %d (znacznik |, chata radiowa), całe, 2 kafle" % wins.size(),
+		wins.size() == 2 and win != null and wins.all(func(w: Node) -> bool: return w.intact) and int(win.rows) == 2)
+	if win == null:
+		return
+	var space := level.get_world_2d().direct_space_state
+	var cell := Vector2i(int(win.global_position.x / 16.0), int(win.global_position.y / 16.0) - 1)
+	var mid: Vector2 = win.body_center()
+	var pq := PhysicsPointQueryParameters2D.new()
+	pq.position = mid
+	pq.collision_mask = 177                                    # maska graczy, bota i wrogów
+	var blocks := func() -> bool: return space.intersect_point(pq).any(func(h: Dictionary) -> bool: return (h["collider"] as Node).name == "Frame")
+	check("rama zatrzymuje ruch (maska postaci), dla nawigacji to bryła", blocks.call() and level._is_solid(cell.x, cell.y))
+	var a := mid + Vector2(-40.0, 0.0)
+	var b := mid + Vector2(40.0, 0.0)
+	check("wzrok i światło przez okno przechodzą (linia bez ściany)", Combat.clear_line(space, a, b))
+	var occl := func() -> bool: return not space.intersect_ray(PhysicsRayQueryParameters2D.create(a, b, 1 | 256)).is_empty()
+	check("cała szyba tłumi dźwięk: okluzja i siatka dźwięku", occl.call() and level._is_sound_solid(cell.x, cell.y) and not level.sound_grid._open(cell))
+	var tr := Combat.trace(space, a, Vector2.RIGHT, 80.0, 0)
+	var hit_pane := (tr["hits"] as Array).any(func(h: Dictionary) -> bool: return h["collider"] == win.get_node("Pane"))
+	check("promień: trafia szybę i leci dalej (koniec za oknem)", hit_pane and float((tr["end"] as Vector2).x) > mid.x + 20.0)
+	var old := _debris_ids()
+	var res := Combat.apply(win.get_node("Pane"), Combat.make_info(Weapons.KILOF, 8.0, mid, Vector2.RIGHT, 1, "bullet"))
+	await _frames(0.1)
+	var shards := _fresh_debris(old)
+	check("kula tłucze szybę: %d odłamków, hałas w oknie (ostatni hałas %s), pocisk leci dalej" % [shards, NoiseMgr.last_noise_pos],
+		not win.intact and shards == WindowGlass.SHARDS and NoiseMgr.last_noise_pos.distance_to(mid) < 1.0 and bool(res.get("hit")) and bool(res.get("pass")))
+	check("stłuczona: dźwięk przechodzi (okluzja, siatka), rama dalej trzyma, nawigacja bez zmian",
+		not occl.call() and not level._is_sound_solid(cell.x, cell.y) and level.sound_grid._open(cell) and blocks.call() and level._is_solid(cell.x, cell.y))
+	check("stłuczona: kolejna kula bez trafienia", not bool(Combat.apply(win.get_node("Pane"), Combat.make_info(Weapons.KILOF, 8.0, mid, Vector2.RIGHT, 1, "bullet")).get("hit", false)))
+	level.reset_breakables()
+	await _frames(0.05)
+	check("reset (wipe / punkt kontrolny): szyby znów całe, dźwięk znów tłumiony",
+		wins.all(func(w: Node) -> bool: return w.intact) and occl.call() and not level.sound_grid._open(cell))
+	Combat.explode(get_tree(), mid + Vector2(-30.0, 6.0), 48.0, 30.0, 1, Weapons.KILOF, true)
+	await _frames(0.05)
+	check("wybuch obok tłucze szybę", not win.intact)
+	level.reset_breakables()
+	await _frames(0.05)
+	var cone := Combat.in_cone(get_tree(), space, mid + Vector2(-14.0, 0.0), Vector2.RIGHT, 24.0, 40.0)
+	check("cios: szyba w zasięgu ciosu (in_cone)", cone.has(win))
+	level.reset_breakables()
+	old = _debris_ids()
+	win._break_rpc(0.0)
+	await _frames(0.05)
+	check("dołączający (send_state_to → _break_rpc bez efektów): stłuczona, bez odłamków", not win.intact and _fresh_debris(old) == 0)
+	level.reset_breakables()
