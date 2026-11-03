@@ -51,7 +51,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
-const BRICK_WALL := preload("res://scripts/brick_wall.gd")
+const BREAKABLE := preload("res://scripts/breakable.gd")
 const GRENADE := preload("res://scripts/grenade.gd")
 const ACID := preload("res://scripts/acid_spit.gd")
 const BOULDER := preload("res://scripts/boulder.gd")
@@ -594,7 +594,7 @@ func _is_solid(c: int, r: int) -> bool:
 	if r < 0 or r >= _map.size() or c < 0 or c >= (_map[0] as String).length():
 		return true
 	if _wall_cells.has(Vector2i(c, r)):
-		return true                       # zamurowane przejście (brick_wall.gd) — dla nawigacji i krawędzi kafli to bryła
+		return true                       # zamurowane przejście (breakable.gd) — dla nawigacji i krawędzi kafli to bryła
 	var ch := _ch(c, r)
 	return KINDS.has(ch) and KINDS[ch][2] == 0
 
@@ -1090,14 +1090,15 @@ func _register_walls() -> void:
 		for k in rows:
 			cells.append(Vector2i(cell.x, cell.y - k))
 			_wall_cells[Vector2i(cell.x, cell.y - k)] = "BrickWall%d" % (i + 1)
-		_wall_defs.append({"name": "BrickWall%d" % (i + 1), "pos": Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE), "rows": rows, "cells": cells})
+		_wall_defs.append({"name": "BrickWall%d" % (i + 1), "pos": Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE), "rows": rows, "cells": cells, "material": "brick"})
 
 func _spawn_walls() -> void:
 	for wd in _wall_defs:
-		var w: Node2D = BRICK_WALL.new()
+		var w: Node2D = BREAKABLE.new()
 		w.name = String(wd["name"])
 		w.position = wd["pos"]
 		w.rows = int(wd["rows"])
+		w.mat_id = String(wd.get("material", "brick"))
 		add_child(w)
 
 ## Serwer: ściana rozbita — znika u wszystkich peerów, kafle odblokowują nawigację.

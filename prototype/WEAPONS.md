@@ -243,7 +243,7 @@ Broń z trybem serii dostaje `burst_size > 0` w tabeli (dziś tylko M-83); bot z
 | Element | Jak działa | Kod |
 |---|---|---|
 | **Linka SINEW-6** (T3) | trafiony wróg dostaje prędkość ku strzelcowi (`pull` 260 px/s × `knock_mult`) zamiast odrzutu; kreska od strzelca do celu przez 0,45 s u wszystkich peerów | `WeaponDef.pull`, `combat.gd` (`_tether_fx`), `enemy.gd` (`take_hit`), `arsenal.gd` |
-| **Zamurowane przejście** (marker `q`) | ściana 16 px × do 6 kafli: bryła dla fizyki i nawigacji; HP 120; niszczą ją tylko kilof (`breaks_walls`) i wybuch; rozbicie = hałas 6, gruz, odblokowanie nawigacji, synchronizacja z dołączającymi | `brick_wall.gd`, `level.gd` (`_register_walls`, `break_wall`), `combat.gd` (`in_cone`, `explode`) |
+| **Zamurowane przejście** (marker `q`) | ściana 16 px × do 6 kafli: bryła dla fizyki i nawigacji; materiał `brick` (HP 120); niszczą ją tylko kilof (`breaks_walls`), wybuch i szarża Rzeźnika; rozbicie = hałas 6, gruz, odblokowanie nawigacji, synchronizacja z dołączającymi | `breakable.gd` (`MATERIALS`), `level.gd` (`_register_walls`, `break_wall`), `combat.gd` (`in_cone`, `explode`) |
 | **Ogień jako mur** | ciało statyczne na warstwie 64 (bit 7), 40 px wysokości; maska tylko u wrogów `fire_shy` (Trzosek, Ślepiec, Skoczek) | `fire_patch.gd`, `enemy.gd` (`FIRE_BIT`) |
 
 Przejście z kilofem jest w misji 1.2 (hala pod wieżą widokową). Nowa ściana = marker `q` w dolnym wierszu przejścia (3 kafle wysokości

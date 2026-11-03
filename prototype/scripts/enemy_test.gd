@@ -1139,7 +1139,7 @@ func _test_butcher() -> void:
 	r._windup_target = null
 
 	# barykada: szarża przebija zamurowane przejście, Wołek o nie się rozbija
-	var wall = level.BRICK_WALL.new()
+	var wall = level.BREAKABLE.new()
 	wall.name = "TestWallR"
 	wall.rows = 3
 	wall.position = Vector2(x0 + 400.0, y)
@@ -1150,7 +1150,7 @@ func _test_butcher() -> void:
 	br._beh.sp_dir = 1.0
 	br._beh.sp_t = 1.2
 	br._beh.charge_hit = true
-	var wall2 = level.BRICK_WALL.new()
+	var wall2 = level.BREAKABLE.new()
 	wall2.name = "TestWallW"
 	wall2.rows = 3
 	wall2.position = Vector2(x0 + 800.0, y)
@@ -1163,7 +1163,7 @@ func _test_butcher() -> void:
 	wk._beh.charge_hit = true
 	await get_tree().create_timer(1.0).timeout
 	check("Rzeźnik/barykada: szarża rozbija zamurowane przejście i nie ogłusza się o nie", (not is_instance_valid(wall) or wall.hp <= 0.0) and br._sp != 4, "hp=%s sp=%d" % [str(wall.hp) if is_instance_valid(wall) else "rozbita", br._sp])
-	check("Rzeźnik/barykada: zwykły Wołek o taką samą ścianę się rozbija (ogłuszony, ściana cała)", is_instance_valid(wall2) and wall2.hp == wall2.WALL_HP and wk._sp == 4, "hp=%s sp=%d" % [str(wall2.hp) if is_instance_valid(wall2) else "?", wk._sp])
+	check("Rzeźnik/barykada: zwykły Wołek o taką samą ścianę się rozbija (ogłuszony, ściana cała)", is_instance_valid(wall2) and wall2.hp == wall2.max_hp() and wk._sp == 4, "hp=%s sp=%d" % [str(wall2.hp) if is_instance_valid(wall2) else "?", wk._sp])
 	check("Rzeźnik/mapa: litera U w mapach stawia Rzeźnika, Dyrektor ma Rzeźnika w tabelach", level.THREAT_CHARS.get("U") == "rzeznik" and (func():
 		for g in Director.GROUPS:
 			if g[1] == ["rzeznik"]:

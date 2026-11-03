@@ -239,6 +239,9 @@ jako dzielnik ciosu.
 - **`breakable.gd`** zamiast `brick_wall.gd`: jedna klasa z **materiałem** (`brick`, `planks`, `sheet`, `grate`, `glass`, `support`) i tabelą
   w stylu `surfaces.gd`: HP, co niszczy (kilof / maczeta / kule / śrut / wybuch / szarża), hałas uderzenia i rozbicia, dźwięki, kolor gruzu,
   czy blokuje kule, czy blokuje widok i światło. Ściana `q` = materiał `brick` (zachowanie bez zmian, testy Rzeźnika i kilofa zielone).
+  **Zrobione w 1.7.480:** `breakable.gd` (`MATERIALS`, `hit_kind`: pick / blade / bullet / pellet / blast / charge), szarża Rzeźnika
+  jako osobny rodzaj trafienia `charge`; poza `brick` wartości wstępne. Przepuszczanie kul i światła (kratka, rozbite szkło) — razem
+  z pierwszym takim elementem na mapie (D1).
 - **Uszkodzenia**: serwer wysyła zdarzenie trafienia (punkt, promień plamy, stopień 0–2), a nie HP — każdy peer wypala tę samą plamę
   w masce, więc dziury wyglądają u wszystkich tak samo; dołączający dostaje listę plam obiektu. Trafienia w ułamku sekundy łączone
   w jedno RPC (seria z M-83 to nie 10 wiadomości).
