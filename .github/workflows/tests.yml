@@ -233,7 +233,7 @@ jobs:
         run: bash prototype/tools/test_weapons.sh
       - name: Gabloty — zamiana, amunicja, blokady i dołączenie ENet
         run: bash prototype/tools/test_cabinets.sh
-      - name: Sesja sieciowa — inna wersja, utrata hosta, numery P1–P4 (test_net_session.sh)
+      - name: Sesja sieciowa — inna wersja, utrata hosta, numery P1–P4, zniszczenia (test_net_session.sh)
         run: bash prototype/tools/test_net_session.sh
       - name: Logi testów broni
         if: failure()

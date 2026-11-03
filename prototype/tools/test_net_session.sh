@@ -7,6 +7,8 @@
 # 5. Raport po akcji (RESULTS_PLAN.md): gotowość klienta dochodzi do hosta, poziomy z misji i rozbicie złomu do wszystkich.
 # 6. Bateria 4,5 V (BATTERY_PLAN.md): klient z 20% baterii bierze baterię z ziemi — rozstrzyga serwer, dolicza właściciel.
 # 7. Ładowarka (BATTERY_PLAN.md B3): klient przy ładowarce B1 ładuje się u siebie, serwer widzi, że ładowarka pracuje.
+# 8. Zniszczenia (DESTRUCTION_PLAN.md D0): rany ściany, rozbicie, powrót do migawki z przebudzenia bossa i wipe — u klienta obecnego
+#    od początku (RPC na żywo) i u dołączającego po ciosach (`send_walls_to`) stan taki sam jak u hosta.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
@@ -125,6 +127,33 @@ godot --headless --path . -- --join=127.0.0.1 --port=8968 --chargernet=5 --autoq
 wait $HOST
 grep -a -q "\[CHARGER-NET\] host active=true client_pct=[2-9][0-9]" "$LOG/charger_host.log" && ok "host: ładowarka pracuje, klient ładowany (bat_pct z replikacji)" || fail "host: $(grep -a "\[CHARGER-NET\]" "$LOG/charger_host.log")"
 grep -a -q "\[CHARGER-NET\] client gain=\(1[5-9]\|2[0-2]\) active=true" "$LOG/charger_client.log" && ok "klient: ok. +6 s/s u właściciela, stan ładowarki z serwera" || fail "klient: $(grep -a "\[CHARGER-NET\]" "$LOG/charger_client.log")"
+
+echo "== zniszczenia =="
+# host: po 10 s dwa ciosy kilofem (S1), gdy są obaj klienci — migawka i rozbicie (S2), +3 s powrót do migawki (S1), +3 s wipe
+# (S0, ściana cała), +2 s koniec. Klient A od początku, klient B dołącza dopiero po ciosach — plamy i HP dostaje z `send_walls_to`.
+# Klienci kończą po końcowym wipe'ie (albo w lobby po utracie hosta); `--autoquit` to tylko bezpiecznik.
+godot --headless --path . -- --host --mission=z1_m2 --port=8969 --destructionnet=10 --autoquit=60 >"$LOG/dnet_host.log" 2>&1 &
+HOST=$!
+sleep 3
+godot --headless --path . -- --join=127.0.0.1 --port=8969 --destructionnet=0 --autoquit=60 >"$LOG/dnet_a.log" 2>&1 &
+CA=$!
+for _ in $(seq 120); do grep -a -q "\[DESTRUCTION-NET\] host .*splats=2/" "$LOG/dnet_host.log" && break; sleep 0.25; done
+godot --headless --path . -- --join=127.0.0.1 --port=8969 --destructionnet=0 --autoquit=50 >"$LOG/dnet_b.log" 2>&1 &
+CB=$!
+wait $CB $CA $HOST
+# stany na mapie misji jako „S;S;…” (przed dołączeniem i po utracie hosta klient jest w lobby — pomijane)
+dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //" | tr '\n' ';'; }
+H=$(dnet host "$LOG/dnet_host.log")
+IFS=';' read -r S0 S1 S2 S3 S4 _ <<<"$H"
+if [ "${S1#*splats=2/}" = "$S1" ] || [ "$S2" != "opened=[BrickWall1]" ] || [ "$S3" != "$S1" ] || [ "$S4" != "$S0" ]; then
+	fail "host: zły przebieg ($H)"
+else
+	ok "host: cała → ranna → rozbita → ranna (migawka) → cała (wipe)"
+	A=$(dnet client "$LOG/dnet_a.log")
+	[ "$A" = "$H" ] && ok "klient od początku: te same plamy, HP, rozbicie, migawka i wipe co host" || fail "klient A: $A (host: $H)"
+	B=$(dnet client "$LOG/dnet_b.log")
+	[ "$B" = "$S1;$S2;$S3;$S4;" ] && ok "dołączający po ciosach: plamy i HP z synchronizacji, potem rozbicie, migawka i wipe jak u hosta" || fail "klient B: $B (host: $H)"
+fi
 
 # Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.
 for f in "$LOG"/*.log; do

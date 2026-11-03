@@ -271,8 +271,15 @@ jako dzielnik ciosu.
   nie mamy lokalnie tekst → obraz) albo Meshy (ok. 30–40 kredytów za rekwizyt). Każdy nowy GLB przez `tex_vram.py`. Odłamki przez `Vfx.debris`, potem leżą jako gruz
   w `MultiMesh` do końca misji (limit globalny, najstarsze znikają). Szczegóły w „Technologie”.
 - `--maptest`: osiągalność celów **przy wszystkim całym i wszystkim zniszczonym** (rozszerzenie `open_all_walls_for_test`).
+  **Zrobione (PR bez numeru wersji, same testy):** na mapach ze zniszczalnymi elementami najpierw wszystko całe — starty, wyjścia,
+  generatory, nieśmiertelniki, gniazda, drezyna, stanowiska i dom Stalkera osiągalne bez rozbijania (przejście to skrót albo skrytka,
+  nie warunek), wydruk tego, co leży za ścianą (1.2: trzy przedmioty), potem wszystko rozbite (`open_walls_checked`) — każdy punkt
+  mapy osiągalny, także dla dźwięku. Nieużywane `open_all_walls_for_test` usunięte.
 - Nowy `--destructiontest` w CI: obrażenia wg materiału, hałas, stopnie, sieć (dołączający widzi zniszczenia), reset, punkt kontrolny,
   czas lokalnej nawigacji.
+  **Sieć zrobiona (ten sam PR co `--maptest`):** `tools/test_net_session.sh`, sekcja „zniszczenia” (`--destructionnet=N`): host rani
+  ścianę 1.2, rozbija ją po zapisaniu migawki, wraca do migawki i robi wipe; klient obecny od początku i klient dołączający po ciosach
+  mają po każdym kroku ten sam stan co host (rozbite, HP, plamy z sumą kontrolną). Czas lokalnej nawigacji sprawdza `--maptest`.
 
 ### D1 — rekwizyty, które pękają (najmniejsze ryzyko, od razu widać)
 
