@@ -475,6 +475,7 @@ func _tick(delta: float) -> void:
 				_saved = true
 				_vp_bg.get_texture().get_image().save_png(ar.substr("--view3dsavebg=".length()))
 	_tick_curtain(delta)
+	_destr_warm_sync()
 	var tp := Time.get_ticks_usec()
 	_sync_camera()
 	tp = _tp("camera", tp)
@@ -786,6 +787,7 @@ func _tick_curtain(delta: float) -> void:
 	_curtain_left -= minf(delta, 0.05)
 	if _curtain_frames <= 0 and _curtain_left <= 0.0:
 		_curtain.visible = false
+		_destr_warm_drop()                                # rozgrzewka rozbicia była rysowana tylko pod planszą
 		if OS.is_stdout_verbose():
 			print("[LOAD-CURTAIN] off")
 		for a in OS.get_cmdline_user_args():
@@ -2298,7 +2300,7 @@ func _sync_drawn() -> void:
 		_world.add_child(mi)
 		var dmg := _damage_overlay(n, mi, Level3D.T, h)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
-		_fracture_meshes(String(n.get("mat_id")))                 # bryły rozpadu wczytane razem z mapą (pod planszą), nie przy pierwszym rozbiciu
+		_warm_destruction(String(n.get("mat_id")))                # bryły, gruz i ich potoki GPU razem z mapą (pod planszą), nie przy pierwszym rozbiciu
 		_clear_rubble_near(mi.position.x, Level3D.T)
 		for old in _geo.get_children():                           # ściana odbudowana po restarcie misji: gruz po poprzedniej znika
 			if String(old.name).begins_with("Rubble") and not old is MultiMeshInstance3D and absf((old as Node3D).position.x - mi.position.x) < 0.6 and absf((old as Node3D).position.y - (mi.position.y - h * 0.5)) < 0.6:
@@ -3071,6 +3073,60 @@ func _settle_chunk(cs: Array) -> void:
 	mmr.visible_instance_count = mini(int(r[1]), RUBBLE_CAP)
 	(cs[1] as Node).queue_free()
 	(cs[0] as Node).queue_free()
+
+var _destr_warm: Node3D = null              ## rozgrzewka rozbicia przed kamerą świata (`_warm_destruction`); null po zejściu planszy
+var _destr_warm_frames := 0
+var _destr_warm_key := ""
+
+## Pierwsze rozbicie bez przycięcia (--hitchtest --hitchwall: było ok. 100–150 ms): model gruzu wczytany, a bryła pre-fraktury (sama
+## i w `MultiMesh`) i gruz narysowane raz tuż przed kamerą świata, w rozmiarze kilku milimetrów — potoki GPU ich materiałów kompilują
+## się pod planszą wczytywania. Raz na mapę i materiał; znika z planszą (bez planszy — po kilku klatkach).
+func _warm_destruction(mat_id: String) -> void:
+	var meshes := _fracture_meshes(mat_id)
+	var key := "%s|%s" % [_geo_key, mat_id]
+	if _destr_warm_key.contains(key):
+		return
+	_destr_warm_key += key + ";"
+	if _destr_warm == null:
+		_destr_warm = Node3D.new()
+		_destr_warm.name = "DestructionWarm"
+		_destr_warm.position = Vector3(0.0, 0.0, -1.6)
+		_cam_a.add_child(_destr_warm)
+		_destr_warm_frames = 0
+	var tiny := Basis.from_scale(Vector3.ONE * 0.004)
+	if not meshes.is_empty():
+		var mi := MeshInstance3D.new()
+		mi.mesh = meshes[0]
+		mi.transform = Transform3D(tiny, Vector3(-0.01, 0.0, 0.0))
+		mi.layers = LAYER_WORLD
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_destr_warm.add_child(mi)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = meshes[0]
+		mm.instance_count = 1
+		mm.set_instance_transform(0, Transform3D(tiny, Vector3(0.01, 0.0, 0.0)))
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.layers = LAYER_WORLD
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_destr_warm.add_child(mmi)
+	var rb := _item_model("rubble")
+	if rb != null:
+		rb.scale = Vector3.ONE * PX * 0.004
+		_destr_warm.add_child(rb)
+
+func _destr_warm_sync() -> void:
+	if _destr_warm == null:
+		return
+	_destr_warm_frames += 1
+	if _destr_warm_frames > 3 and (_curtain == null or not _curtain.visible):
+		_destr_warm_drop()
+
+func _destr_warm_drop() -> void:
+	if _destr_warm != null and is_instance_valid(_destr_warm):
+		_destr_warm.queue_free()
+	_destr_warm = null
 
 ## Ściana odbudowana (wipe, punkt kontrolny): gruz z jej rozbicia (w pasie `half_w` m wokół `x`) znika.
 func _clear_rubble_near(x: float, half_w: float) -> void:

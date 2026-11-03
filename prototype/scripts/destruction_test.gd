@@ -12,6 +12,7 @@ extends "res://scripts/stalker_test.gd"
 ##    ta sama klatka co rozbicie, restart misji (main._restart_mission) odbudowuje ścianę.
 ## 6. Rozpad na bryły: zestaw pre-fraktury cegły (`tools/fracture_gen.py`) — bryły wypełniają kostkę, mają przekrój; plan brył z ziarna
 ##    taki sam u każdego peera; rozbicie wypuszcza bryły i drobne odłamki.
+## 7. Rzut mapy w HUD (`hud_minimap.gd`): rozbita i odbudowana ściana przemalowuje tylko swoje kafle — obraz taki sam jak pełna budowa.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -20,6 +21,7 @@ const Level3D := preload("res://scripts/level3d.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const MiniMap := preload("res://scripts/hud_minimap.gd")
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -55,6 +57,7 @@ func run(m: Node2D) -> void:
 	await _break()
 	await _state()
 	await _fracture()
+	await _minimap()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -312,3 +315,26 @@ func _fracture() -> void:
 	check("rozbicie: %d nowych odłamków (bryły + drobne, %d oczekiwanych, limit %d)" % [after - before, want, Vfx.MAX_DEBRIS],
 		after - before == mini(want, Vfx.MAX_DEBRIS - before))
 	level._opened_walls.erase("DWall5")
+
+# ---------------------------------------------------------------- 7. rzut mapy w HUD
+
+func _minimap() -> void:
+	var mm: Node = MiniMap.new()
+	add_child(mm)
+	mm._lvl = level
+	mm._build(true)
+	var ok := true
+	var steps := 0
+	for st in ["break", "reset"]:
+		if st == "break":
+			level.break_wall("BrickWall1")
+		else:
+			level.reset_breakables()
+		await _frames(0.1)
+		mm._repaint_walls(level._wall_cells)
+		var part: Image = (mm._base as Image).duplicate()
+		mm._build(false)
+		ok = ok and part.get_data() == (mm._base as Image).get_data()
+		steps += 1
+	check("rzut mapy: po rozbiciu i odbudowie przemalowane kafle ściany = pełna budowa obrazu (%d kroki)" % steps, ok and steps == 2)
+	mm.queue_free()

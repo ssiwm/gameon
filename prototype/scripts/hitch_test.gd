@@ -9,7 +9,11 @@ extends Node
 ## Każda klatka ≥ HITCH_MS po starcie pomiaru drukuje [HITCH] z etykietą ostatniego zdarzenia i czasem od niego; na końcu [HITCH-SUM]
 ## — najdłuższa klatka i liczba klatek ≥ 33 ms na etykietę. Klatki pod planszą wczytywania („LOADING…”) liczą się osobno (etykieta
 ## z dopiskiem „/curtain”): gracz ich nie widzi jako przycięcia gry.
+## `--hitchwall` (z `--mission=z1_m2`): zamiast znajdziek zamurowane przejście (DESTRUCTION_PLAN.md D0) — pierwszy cios kilofem (pierwszy
+## odcisk maski uszkodzeń), drugi, rozbicie (bryły pre-fraktury, gruz w `MultiMesh`), odbudowa (wipe) i drugie rozbicie.
 
+const Combat := preload("res://scripts/combat.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 const HITCH_MS := 33.0
 const KINDS := ["scrap", "ammo", "health", "stash", "part", "supply", "flares", "cache", "power", "tag"]
 
@@ -19,15 +23,40 @@ var _label_t := 0
 var _last := 0
 var _stats := {}                      ## etykieta → [max ms, liczba ≥ HITCH_MS]
 var _v3d: Node
+var _lines: PackedStringArray = []    ## wiersze [HITCH] i [HITCH-EV] — drukowane na końcu: `print` w oknie na Windows kosztuje kilka ms i sam wydłużał następną klatkę
+
+var _proc_end := 0                   ## koniec fazy `_process` w tej klatce (sonda z process_priority 1000)
+var _phys_us := 0                     ## czas kroków fizyki od poprzedniej klatki (sondy fizyki)
+var _phys_t0 := 0
 
 func run(m: Node) -> void:
 	main = m
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	process_priority = -1000
+	process_physics_priority = -1000
+	var tail := _Probe.new()
+	tail.owner_test = self
+	tail.process_priority = 1000
+	tail.process_physics_priority = 1000
+	add_child(tail)
 	_go.call_deferred()
+
+## Sonda końca faz: `_process` i krok fizyki wszystkich węzłów (najwyższy priorytet = ostatnia).
+class _Probe extends Node:
+	var owner_test: Node
+	func _process(_d: float) -> void:
+		owner_test._proc_end = Time.get_ticks_usec()
+	func _physics_process(_d: float) -> void:
+		owner_test._phys_us += Time.get_ticks_usec() - int(owner_test._phys_t0)
+
+func _physics_process(_delta: float) -> void:
+	_phys_t0 = Time.get_ticks_usec()
 
 func _process(_delta: float) -> void:
 	var now := Time.get_ticks_usec()
+	var proc_ms := float(_proc_end - _last) / 1000.0 if _proc_end > _last else 0.0
+	var phys_ms := float(_phys_us) / 1000.0
+	_phys_us = 0
 	if _last != 0:
 		var ms := float(now - _last) / 1000.0
 		var lab := _label + ("/curtain" if _curtain_up() else "")
@@ -35,8 +64,8 @@ func _process(_delta: float) -> void:
 		s[0] = maxf(float(s[0]), ms)
 		if ms >= HITCH_MS:
 			s[1] = int(s[1]) + 1
-			print("[HITCH] %.0f ms  %s  +%.2f s  (render cpu %.0f, gpu %.0f, potoki %s)" % [ms, lab, float(now - _label_t) / 1e6,
-				_render_cpu(), _render_gpu(), _pipes()])
+			_lines.append("[HITCH] %.0f ms  %s  +%.2f s  (process %.0f, fizyka %.0f, render cpu %.0f, gpu %.0f, potoki %s)" % [ms, lab,
+				float(now - _label_t) / 1e6, proc_ms, phys_ms, _render_cpu(), _render_gpu(), _pipes()])
 		_stats[lab] = s
 	_last = now
 
@@ -77,7 +106,7 @@ func _vps() -> Array:
 func _mark(label: String) -> void:
 	_label = label
 	_label_t = Time.get_ticks_usec()
-	print("[HITCH-EV] %s" % label)
+	_lines.append("[HITCH-EV] %s" % label)
 
 func _curtain_up() -> bool:
 	if _v3d == null:
@@ -105,6 +134,10 @@ func _go() -> void:
 	await _wait_loaded()
 	_mark("idle_after_load")
 	await _wait(3.0)
+	if "--hitchwall" in OS.get_cmdline_user_args():
+		await _wall()
+		_summary()
+		return
 	for round_i in 2:
 		for k in KINDS:
 			await _pickup(k, round_i)
@@ -214,7 +247,31 @@ func _cabinets() -> void:
 			wc.set("inspect_item", null)
 			await _wait(0.3)
 
+## Zamurowane przejście przed graczem: cios, cios, rozbicie, odbudowa, cios i rozbicie — co 3 s, każde zdarzenie z etykietą.
+func _wall() -> void:
+	var w := get_tree().get_first_node_in_group("breakables") as Node2D
+	var p := _player()
+	if w == null or p == null:
+		print("[HITCH] brak zniszczalnego elementu na mapie")
+		return
+	var wname := String(w.name)
+	p.global_position = w.global_position + Vector2(-56.0, -4.0)
+	p.velocity = Vector2.ZERO
+	await _wait(2.0)
+	var steps := ["wall_hit1", "wall_hit2", "wall_break", "wall_rebuild", "wall_hit_again", "wall_break_again"]
+	for st in steps:
+		w = main.level.get_node_or_null(wname) as Node2D
+		_mark(st)
+		if st == "wall_rebuild":
+			main.level.reset_breakables()
+		elif w != null:
+			for k in (2 if st == "wall_break_again" else 1):          # kilof 55 z 120 HP: trzeci cios rozbija
+				Combat.apply(w, Combat.make_info(Weapons.KILOF, Weapons.def(Weapons.KILOF).damage, w.call("body_center"), Vector2.RIGHT, 1, "melee"))
+		await _wait(3.0)
+
 func _summary() -> void:
+	for ln in _lines:
+		print(ln)
 	var keys := _stats.keys()
 	for k in keys:
 		var s: Array = _stats[k]

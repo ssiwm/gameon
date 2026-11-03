@@ -277,6 +277,11 @@ jako dzielnik ciosu.
   i świeżym przełomem w przekroju; po wylądowaniu (albo po 4 s) bryła przechodzi do `MultiMeshInstance3D` na kształt (`RUBBLE_CAP` 32,
   najstarsze znikają), ciało 2D znika. Gruz żyje z geometrią mapy, odbudowa ściany (wipe, punkt kontrolny) go sprząta. Bryły wczytywane
   przy budowie ściany (pod planszą). Zestawy dla desek, blachy, kratki i szkła — z elementami D1/D2. Zrzuty: `C:\deadair87\shots_fracture`.
+  **Zrobione w 1.7.484 (rozgrzanie):** przy budowie ściany pod planszą `view3d._warm_destruction` stawia przed kamerą na kilka klatek
+  bryłę, `MultiMesh` gruzu i model `rubble` (raz na mapę i materiał), a rzut mapy w HUD-zie przemalowuje po rozbiciu / odbudowie tylko
+  zmienione kafle (`hud_minimap._repaint_walls`). Pomiar `--hitchtest --hitchwall` (okno, 1.2): pierwsze rozbicie 104–150 → 30–45 ms,
+  odbudowa 67–90 → ok. 30 ms. Sam `crumble` to 2,5–4,4 ms CPU, lokalna nawigacja 1,3–2 ms. **Pula cząsteczek jeszcze nie:** przy
+  rozbiciu nie wyszła w pomiarze jako koszt (kilka emiterów na zdarzenie) — wraca z D1, gdy skrzynie, szkło i lampy dołożą emiterów.
 - `--maptest`: osiągalność celów **przy wszystkim całym i wszystkim zniszczonym** (rozszerzenie `open_all_walls_for_test`).
   **Zrobione (PR bez numeru wersji, same testy):** na mapach ze zniszczalnymi elementami najpierw wszystko całe — starty, wyjścia,
   generatory, nieśmiertelniki, gniazda, drezyna, stanowiska i dom Stalkera osiągalne bez rozbijania (przejście to skrót albo skrytka,
