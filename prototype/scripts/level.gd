@@ -609,13 +609,19 @@ func _is_solid(c: int, r: int) -> bool:
 func _is_sound_solid(c: int, r: int) -> bool:
 	if _ch(c, r) == "+":
 		return false
+	var bn: Variant = _wall_cells.get(Vector2i(c, r))
+	if bn != null:
+		var bw := get_node_or_null(String(bn))
+		if bw != null and bool(bw.call("hole_in", float(r * TILE), float((r + 1) * TILE))):
+			return false                  # przegroda z dziurą w tym kaflu (deski po śrucie, maczecie): dźwięk przechodzi
 	var wn: Variant = _window_cells.get(Vector2i(c, r)) if _ch(c, r) == "|" else null
 	if wn != null:
 		var w := get_node_or_null(String(wn))
 		return w == null or bool(w.get("intact"))
 	return _is_solid(c, r)
 
-## Okno stłuczone albo wstawione (window_glass.gd, każdy peer): siatka dźwięku w jego kaflach od nowa.
+## Okno stłuczone albo wstawione (window_glass.gd), nowe dziury w przegrodzie albo ich koniec po resecie (breakable.gd), każdy peer:
+## siatka dźwięku w jego kaflach od nowa.
 func window_changed(w: Node2D) -> void:
 	if sound_grid == null:
 		return

@@ -22,6 +22,7 @@ const Nav := preload("res://scripts/nav.gd")
 const Surfaces := preload("res://scripts/surfaces.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const Behavior := preload("res://scripts/enemy_behavior.gd")
+const Sight := preload("res://scripts/sight.gd")
 
 const GRAVITY := 900.0
 const MAX_FALL := 620.0
@@ -941,8 +942,7 @@ func _clear_line(pp: Node2D) -> bool:
 	var b := pp.global_position + Vector2(0, -8)
 	if SmokeCloud.blocks(get_tree(), a, b):
 		return false                      # dym (granat dymny) zasłania cel — słyszą, ale nie widzą
-	var q := PhysicsRayQueryParameters2D.create(a, b, 1)
-	return get_world_2d().direct_space_state.intersect_ray(q).is_empty()
+	return Sight.clear(get_world_2d().direct_space_state, a, b)        # przez dziurę w deskach też widać
 
 ## --- zachowanie bez widocznego celu ----------------------------------------
 

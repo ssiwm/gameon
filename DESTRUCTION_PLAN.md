@@ -369,6 +369,21 @@ legowiska Stalkera, 1.3 — deski w kol. 31 (chodnik do podziemnej sali z broni�
 ognia (`fire_patch.gd`) na własnej warstwie 512 — dzielił bit 7 z odłamkami `Vfx`, więc wrogowie `fire_shy` potykali się o łuski i drzazgi.
 Testy: `--destructiontest` sekcja 11. Dev `--shotwall=NAZWA`, zrzuty `C:\deadair87\shots_barrier`.
 
+**Zrobione w 1.7.490 (PR 2):** dziury z plam (`breakable.gd`, pole materiału `holes` — dziś tylko deski, mnożnik promienia plamy 1,5): plama
+stopnia ≥ 1 (śrut z bliska, maczeta, kilof, pięść Wołka; kula i pazury Trzoska nie ranią albo dają stopień 0) to dziura na wylot `holes`
+(u, v, promień px; limit 32). Dziury wynikają z plam, więc serwer, klienci i dołączający mają te same bez nowej wiadomości sieciowej;
+reset i punkt kontrolny odtwarzają je z zapamiętanych plam. `hole_at(y)` — przegroda ma 1 kafel szerokości, więc liczy się tylko wysokość.
+`sight.gd`: promień przez dziury (`clear` / `first_hit` wyłączają ciało przegrody i lecą dalej) — wzrok wrogów (`enemy._clear_line`),
+latarka, lampy misji i świecąca broń (`lights.gd`), ćmy, okluzja dźwięku (`audio_director`), wiązka i szyna (`Combat.trace`); cios
+i płomień (`Combat.clear_line`) nie. Siatka dźwięku: kafel przegrody z dziurą w swoim pasie wysokości jest otwarty (`level._is_sound_solid`,
+odświeżenie przez `window_changed`). Pociski (`projectile.gd` `_sweep`): przez dziurę lecą dalej, inaczej serwer zadaje przegrodzie trafienie
+`bullet` / `pellet` — **poprawka błędu z PR 1**: pociski z broni w ogóle nie raniły przegród (tylko `in_cone` i `explode`); odprysk
+z pola materiału `surface` (`wood` — drzazgi bez iskier i rykoszetu). Widok 3D: maska RG8, kanał G = dziury (`DamageMask.stamp_hole`),
+nakładka rysuje je jako czarne szpary z poszarpanym brzegiem (snop przez dziury — później, S1 pokazał koszt cienia). Mapy: 1.1 — kratka
+w kol. 247 (betonowy kanał 241–246 × 40–42 na zachodnim końcu dolnej galerii: bateria, amunicja), 1.2 — deski w kol. 158 (schowek
+159–164 × 27–29 w prawej ścianie zachodniego szybu, z podestu w rzędzie 30: przedmiot, amunicja), 1.3 — kratka w kol. 37 (kanał 32–36 ×
+27–29 w lewej ścianie zachodniego szybu: bateria, przedmiot). Testy: `--destructiontest` sekcja 12.
+
 ### D2b — barykadowanie (nowe w v4, po D2)
 
 - Gracz przybija deski w oznaczonych otworach (okno, wyrwa, przejście), przytrzymując `[E]` (ok. 2 s na deskę, 3 deski na otwór, młotek

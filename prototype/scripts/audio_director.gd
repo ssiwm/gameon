@@ -45,6 +45,7 @@ signal quitting
 const Surfaces := preload("res://scripts/surfaces.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Manifest := preload("res://scripts/audio_manifest.gd")
+const Sight := preload("res://scripts/sight.gd")
 
 const BUS_MUSIC := "Music"
 const BUS_AMB := "Ambience"
@@ -774,7 +775,7 @@ func occlusion_tier(from: Vector2) -> int:
 				var q := PhysicsRayQueryParameters2D.create(from + off, to)
 				q.collision_mask = OCCLUSION_MASK
 				q.hit_from_inside = false
-				if not space.intersect_ray(q).is_empty():
+				if not Sight.first_hit(space, q).is_empty():             # przez dziurę w deskach słychać jak przez stłuczone okno
 					tier += 1
 	_occl[cell] = tier
 	return tier

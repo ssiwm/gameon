@@ -41,6 +41,8 @@ const NightShift := preload("res://scripts/night_shift.gd")
 const Lights := preload("res://scripts/lights.gd")
 const WindowGlass := preload("res://scripts/window_glass.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
+const Sight := preload("res://scripts/sight.gd")
+const Projectile := preload("res://scripts/projectile.gd")
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -81,6 +83,7 @@ func run(m: Node2D) -> void:
 	await _lamps()
 	await _windows()
 	await _barriers()
+	await _holes()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -783,6 +786,109 @@ func _barriers() -> void:
 	if is_instance_valid(pl):
 		pl.queue_free()
 	info("deski po rąbaniu dowódcy z botem: HP %.0f → %.0f" % [hp_b, float(pl.hp) if is_instance_valid(pl) else 0.0])
+
+# ---------------------------------------------------------------- 12. dziury w deskach (D2, PR 2)
+
+## D2, PR 2 — dziury na wylot w deskach: śrut, maczeta i kilof przebijają, kula i drapanie nie; przez dziurę widać, świeci latarka,
+## leci kula i promień (cios nie sięga), słychać (siatka dźwięku i okluzja); prawdziwy śrut z broni łupie deski; reset zabiera dziury.
+func _holes() -> void:
+	var space := level.get_world_2d().direct_space_state
+	for n in level.get_children():
+		if n is RigidBody2D:
+			n.queue_free()
+	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
+	_place_player(base + Vector2(-40.0, 0.0))
+	player.aim_dir = Vector2.RIGHT
+	var pl := _barrier("DHoles1", base)
+	await _frames(0.1)
+	var hy := base.y - 9.0                           # wysokość latarki gracza (Lights: stopy − 9 px)
+	var at := Vector2(base.x, hy)
+	_hit(pl, Weapons.P64, 20.0, "bullet", at)
+	_hit(pl, Weapons.SRUT8, 2.0, "bullet", at)      # śrut z daleka (słaby — stopień 0): odprysk bez dziury
+	_hit(pl, 0, 4.0, "claw", at)
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	check("dziury: kula, słaby śrut i drapanie nie przebijają (%d dziur)" % int(pl.hole_total), int(pl.hole_total) == 0 and not pl.hole_at(hy))
+	_hit(pl, Weapons.SRUT8, 10.0, "bullet", at)
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	check("dziury: śrut przebija deskę (%d dziura, promień %.1f px), tylko na swojej wysokości" % [int(pl.hole_total), float(pl.holes[2]) if pl.holes.size() >= 3 else 0.0],
+		int(pl.hole_total) == 1 and pl.hole_at(hy) and not pl.hole_at(hy - 20.0) and not pl.hole_at(hy + 6.0))
+	var a := Vector2(base.x - 40.0, hy)
+	var b := Vector2(base.x + 40.0, hy)
+	check("dziury: wzrok przez dziurę, obok niej nie", Sight.clear(space, a, b) and not Sight.clear(space, a - Vector2(0.0, 20.0), b - Vector2(0.0, 20.0)))
+	check("dziury: cios i płomień przez dziurę nie sięgają (Combat.clear_line)", not Combat.clear_line(space, a, b))
+	var tr := Combat.trace(space, a, Vector2.RIGHT, 80.0, 0)
+	check("dziury: promień (wiązka, szyna) leci dalej (koniec x %+.0f)" % (float((tr["end"] as Vector2).x) - base.x), float((tr["end"] as Vector2).x) > base.x + 20.0)
+	var oq := PhysicsRayQueryParameters2D.create(a, b, 1 | 256)
+	check("dziury: okluzja dźwięku przez dziurę słabsza (promień przechodzi)", Sight.first_hit(space, oq).is_empty())
+	player.flashlight = true
+	var lit: Variant = Lights.flashlight_on(b, get_tree(), space)
+	var dark: Variant = Lights.flashlight_on(b - Vector2(0.0, 20.0), get_tree(), space)
+	player.flashlight = false
+	check("dziury: latarka świeci przez szparę (wróg za deskami ją widzi), obok niej nie", lit == player and dark == null)
+	# kula przez dziurę trafia skrzynię za deskami; ta sama kula obok dziury zostaje w desce
+	var cr := _crate(Vector2(base.x + 30.0, base.y))
+	await _frames(0.1)
+	var c0 := float(cr.hp)
+	var hp0 := float(pl.hp)
+	var miss := Projectile.new()
+	miss.launch(Weapons.P64, Vector2(base.x - 30.0, hy - 20.0), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(miss)
+	await _frames(0.3)
+	var stopped := float(cr.hp) == c0 and float(pl.hp) == hp0
+	var shot := Projectile.new()
+	shot.launch(Weapons.P64, Vector2(base.x - 30.0, hy), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(shot)
+	await _frames(0.3)
+	check("dziury: kula obok dziury zostaje w desce (%s), przez dziurę trafia skrzynię za deskami (HP %.0f → %.0f)" % [str(stopped), c0, float(cr.hp) if is_instance_valid(cr) else 0.0],
+		stopped and is_instance_valid(cr) and float(cr.hp) < c0)
+	if is_instance_valid(cr):
+		cr.queue_free()
+	pl.queue_free()
+	await _frames(0.1)
+
+	# prawdziwy śrut z broni (pociski SPREAD-12: 5 × 7, deski zostają): deski tracą HP i dostają dziury; dotąd pociski w ogóle nie raniły przegród
+	var p2 := _barrier("DHoles2", base)
+	await _frames(0.1)
+	var d := Weapons.def(Weapons.SPREAD12)
+	var muzzle := Vector2(base.x - 40.0, base.y - 30.0)
+	for dd in Weapons.pellet_dirs(d, Vector2.RIGHT, 7, 0.0):
+		var pr := Projectile.new()
+		pr.launch(Weapons.SPREAD12, muzzle, dd, 1, true)
+		get_tree().current_scene.add_child(pr)
+	await _frames(0.3)
+	check("dziury: strzał z SPREAD-12 z bliska łupie deski (HP %.0f) i je przebija (%d dziur)" % [float(p2.hp) if is_instance_valid(p2) else 0.0, int(p2.hole_total) if is_instance_valid(p2) else 0],
+		is_instance_valid(p2) and float(p2.hp) < 60.0 and int(p2.hole_total) >= 1)
+	if is_instance_valid(p2):
+		p2.queue_free()
+	var p3 := _barrier("DHoles3", base)
+	_hit(p3, Weapons.MACZETA, Weapons.def(Weapons.MACZETA).damage, "melee", Vector2(base.x, base.y - 40.0))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	check("dziury: maczeta wyrąbuje dziurę (%d)" % int(p3.hole_total), int(p3.hole_total) == 1)
+	p3.queue_free()
+	var g := _barrier("DHoles4", base, "grate")
+	_hit(g, Weapons.KILOF, 30.0, "melee", Vector2(base.x, base.y - 40.0))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	check("dziury: kratka ich nie ma (i tak przepuszcza wzrok)", int(g.hole_total) == 0)
+	g.queue_free()
+	await _frames(0.1)
+
+	# deski na mapie 1.2 (schowek w zachodnim szybie): dziura otwiera kafel siatki dźwięku, reset go zamyka
+	var mp: Node2D = level.get_node_or_null("Planks1")
+	check("deski na 1.2: Planks1 (schowek w ścianie zachodniego szybu), %d kafle" % (int(mp.get("rows")) if mp else 0), mp != null and int(mp.rows) == 3)
+	if mp == null:
+		return
+	var col := int(mp.global_position.x / 16.0)
+	var row := int(mp.global_position.y / 16.0) - 2                   # środkowy kafel przegrody
+	var cell := Vector2i(col, row)
+	var before: bool = level._is_sound_solid(col, row) and not level.sound_grid._open(cell)
+	_hit(mp, Weapons.SRUT8, 10.0, "bullet", Vector2(mp.global_position.x, row * 16.0 + 8.0))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	check("deski na 1.2: dziura otwiera tylko swój kafel siatki dźwięku (przed %s, po %s, wyżej %s)" % [str(before), str(not level._is_sound_solid(col, row)), str(level._is_sound_solid(col, row - 1))],
+		before and not level._is_sound_solid(col, row) and level.sound_grid._open(cell) and level._is_sound_solid(col, row - 1))
+	level.reset_breakables()
+	await _frames(0.1)
+	mp = level.get_node_or_null("Planks1")
+	check("deski na 1.2: reset zabiera dziury i zamyka kafel dźwięku", mp != null and int(mp.hole_total) == 0 and level._is_sound_solid(col, row) and not level.sound_grid._open(cell))
 
 ## Próbna przegroda od podłogi do sufitu tunelu (6 kafli), poza `_wall_cells` — sama mechanika trafień, ruchu i wrogów.
 func _barrier(wname: String, feet: Vector2, mat := "planks") -> Node2D:

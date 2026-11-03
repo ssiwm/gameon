@@ -18,6 +18,7 @@ const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Sight := preload("res://scripts/sight.gd")
 
 const MASK_AUTH := Combat.LAYER_WORLD | Combat.LAYER_PLAYER | Combat.LAYER_TARGET
 const MASK_COSMETIC := Combat.LAYER_WORLD | Combat.LAYER_TARGET
@@ -256,6 +257,19 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 			_skip.append(hit["rid"])
 			cur = p
 			continue
+		var bw := Sight.barrier_of(collider)
+		if bw != null:
+			# przegroda (breakable.gd): przez dziurę na tej wysokości kula leci dalej (u serwera i u klienta te same dziury); inaczej serwer
+			# zadaje trafienie — śrut łupie deski, kula się odbija (`breaks`); bez potwierdzenia trafienia, jak w ścianę
+			if bool(bw.call("hole_at", p.y)):
+				_skip.append(hit["rid"])
+				cur = p
+				continue
+			if authoritative and _def.blast_radius <= 0.0 and String(_def.payload) == "":
+				var dmg: float = float(_def.damage) * float(_def.falloff(at_dist)) * float(_def.boost_damage(_vel.length())) * _energy
+				Combat.apply(bw, Combat.make_info(weapon, dmg, p, direction, shooter_id, "bullet", build))
+			_world_hit(p, n, String((bw.call("mat_def") as Dictionary).get("surface", "")))
+			return true
 		# ściana (metal pod ostrym kątem — rykoszet: kula leci dalej odbita)
 		if _ricochet(p, n):
 			return false
@@ -316,10 +330,13 @@ func _hit_target(node: Node, p: Vector2, at_dist: float) -> Dictionary:
 	Combat.report(info, res)
 	return res
 
-func _world_hit(p: Vector2, n: Vector2) -> void:
+## `surface_override` — powierzchnia przegrody (`breakable.gd`, pole `surface`), która nie jest kaflem mapy.
+func _world_hit(p: Vector2, n: Vector2, surface_override := "") -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	var surface := "dirt"
-	if lvl != null:
+	if surface_override != "":
+		surface = surface_override
+	elif lvl != null:
 		surface = lvl.surface_at_hit(p, n)
 	Vfx.impact(lvl if lvl != null else get_parent(), p, n, surface, _def.pellets >= 5)
 	if authoritative and sticks_on_hit():

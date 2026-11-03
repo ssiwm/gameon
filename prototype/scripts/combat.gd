@@ -21,6 +21,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 
 const Hurtbox := preload("res://scripts/hurtbox.gd")
+const Sight := preload("res://scripts/sight.gd")
 const LAYER_WORLD := 1
 const LAYER_PLAYER := 2
 const LAYER_TARGET := 4 | 32      ## wrogowie, gniazda, boss, Stalker (4) i obiekty (32)
@@ -153,6 +154,11 @@ static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2,
 			cur = p
 			continue
 		var is_target: bool = collider is Node and (collider as Node).is_in_group("enemies") and not (collider is TileMapLayer)
+		if not is_target and Sight.through_hole(collider, p):
+			ex.append(hit["rid"])                                 # dziura w przegrodzie (breakable.gd): promień leci dalej
+			left = length - (p - from).length()
+			cur = p
+			continue
 		if not is_target:
 			# ściana: przebij cienką warstwę, jeśli broń pozwala
 			if wall_budget > 0.0:
