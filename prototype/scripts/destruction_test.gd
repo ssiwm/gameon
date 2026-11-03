@@ -13,6 +13,10 @@ extends "res://scripts/stalker_test.gd"
 ## 6. Rozpad na bryły: zestaw pre-fraktury cegły (`tools/fracture_gen.py`) — bryły wypełniają kostkę, mają przekrój; plan brył z ziarna
 ##    taki sam u każdego peera; rozbicie wypuszcza bryły i drobne odłamki.
 ## 7. Rzut mapy w HUD (`hud_minimap.gd`): rozbita i odbudowana ściana przemalowuje tylko swoje kafle — obraz taki sam jak pełna budowa.
+## 8. Skrzynia `k` (prop.gd, D1): pęka od piątego pocisku pistoletu, płomień jej nie rani, drzazgi z pre-fraktury desek (wydłużone,
+##    ze świeżym przełomem; plan z ziarna),
+##    hałas, łup (złom 1–2 w ok. 60% skrzyń, bateria rzadko, nic w Nocnym Dyżurze), wybuch beczki rozbija bliską skrzynię, dalszą nie,
+##    reset po wipe'ie.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -22,6 +26,8 @@ const Combat := preload("res://scripts/combat.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const MiniMap := preload("res://scripts/hud_minimap.gd")
+const Prop := preload("res://scripts/prop.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -58,6 +64,7 @@ func run(m: Node2D) -> void:
 	await _state()
 	await _fracture()
 	await _minimap()
+	await _crates()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -338,3 +345,118 @@ func _minimap() -> void:
 		steps += 1
 	check("rzut mapy: po rozbiciu i odbudowie przemalowane kafle ściany = pełna budowa obrazu (%d kroki)" % steps, ok and steps == 2)
 	mm.queue_free()
+
+# ---------------------------------------------------------------- 8. skrzynia (D1)
+
+var _crate_n := 0
+
+func _crate(at: Vector2, kind := "crate") -> RigidBody2D:
+	_crate_n += 1
+	var pr: RigidBody2D = Prop.new()
+	pr.kind = kind
+	pr.name = "TCrate%d" % _crate_n
+	level.add_child(pr)
+	pr.global_position = at
+	pr.freeze = true                                       # bez fizyki: liczą się obrażenia, łup i efekty
+	return pr
+
+func _bullet(c: Node2D, amount: float, type := "bullet") -> void:
+	Combat.apply(c, Combat.make_info(Weapons.KILOF, amount, c.global_position + Vector2(-6, -7), Vector2.RIGHT, 1, type))
+
+func _items_since(serial: int) -> Array:
+	var out: Array = []
+	for i in range(serial + 1, int(level._pickup_serial) + 1):
+		var it := level.get_node_or_null("Item%d" % i)
+		if it != null and not it.is_queued_for_deletion():
+			out.append(it)
+	return out
+
+func _crates() -> void:
+	var pieces := 0
+	var cut := 0
+	var path := Level3D.MODEL_DIR + "fracture_planks.glb"
+	if ResourceLoader.exists(path):
+		var inst := (load(path) as PackedScene).instantiate()
+		for nd in inst.find_children("chunk_*", "MeshInstance3D", true, false):
+			var msh := (nd as MeshInstance3D).mesh
+			var aabb := msh.get_aabb()
+			pieces += 1
+			for si in msh.get_surface_count():
+				var m := msh.surface_get_material(si)
+				if m != null and String(m.resource_name) == "inner" and aabb.size.x > 2.0 * maxf(aabb.size.y, aabb.size.z):
+					cut += 1
+					break
+		inst.free()
+	check("pre-fraktura desek: %d drzazg, wydłużone (dłuższe niż 2× szerokość) i z przełomem: %d" % [pieces, cut], pieces >= 3 and cut == pieces)
+	var base := player.global_position + Vector2(0, -3000)        # z dala od gracza i ścian (wybuch beczki rani w promieniu)
+	var c := _crate(base)
+	await _frames(0.05)
+	check("skrzynia: %.0f HP (pistolet 8 → pięć trafień)" % float(c.hp), float(c.hp) == Prop.CRATE_HP)
+	for i in 4:
+		_bullet(c, 8.0)
+	_bullet(c, 20.0, "fire")
+	check("skrzynia: cztery pociski i płomień — stoi (%.0f HP)" % float(c.hp), not c.exploded and float(c.hp) == Prop.CRATE_HP - 32.0)
+	var a: Array = c.chunk_plan(77, 1.0)
+	check("drzazgi: plan %d brył z ziarna (ten sam u każdego peera), lecą od uderzenia" % a.size(),
+		a.size() == Prop.CRATE_CHUNKS and str(a) == str(c.chunk_plan(77, 1.0)) and str(a) != str(c.chunk_plan(78, 1.0))
+		and float(a.reduce(func(acc: float, ch: Array) -> float: return acc + (ch[1] as Vector2).x, 0.0)) > 0.0)
+	var noise0 := float(NoiseMgr.level)
+	var old := {}
+	for d in Vfx._debris:
+		if is_instance_valid(d):
+			old[(d as Object).get_instance_id()] = true
+	var serial := int(level._pickup_serial)
+	_bullet(c, 8.0)
+	await _frames(0.1)
+	var fresh := Vfx._debris.filter(func(x: Variant) -> bool: return is_instance_valid(x) and not old.has((x as Object).get_instance_id())).size()
+	check("skrzynia: piąty pocisk — pęka (znika, bez kolizji), %d nowych odłamków (drzazgi + wióry), hałas %.1f → %.1f" % [fresh, noise0, float(NoiseMgr.level)],
+		c.exploded and not c.visible and c.collision_layer == 0 and fresh == Prop.CRATE_CHUNKS + Prop.CRATE_CHIPS and float(NoiseMgr.level) > noise0)
+	for it in _items_since(serial):
+		it.queue_free()
+	c.reset_enemy()
+	await _frames(0.1)
+	check("skrzynia po wipe'ie: wraca cała (%.0f HP, widoczna, kolizja)" % float(c.hp),
+		not c.exploded and c.visible and c.collision_layer == Prop.LAYER and float(c.hp) == Prop.CRATE_HP)
+	c.queue_free()
+	# łup: 40 skrzyń z ustalonym ziarnem losowania
+	seed(87)
+	var n := 40
+	var scrap := 0
+	var scrap_bad := 0
+	var batteries := 0
+	serial = int(level._pickup_serial)
+	for i in n:
+		var ci := _crate(base + Vector2(200.0 + 120.0 * i, 0.0))
+		ci.shatter()
+	await _frames(0.1)
+	for it in _items_since(serial):
+		if String(it.kind) == "scrap":
+			scrap += 1
+			scrap_bad += 0 if int(it.rounds) >= 1 and int(it.rounds) <= 2 else 1
+		elif String(it.kind) == "battery":
+			batteries += 1
+		it.queue_free()
+	var p_scrap := minf(1.0, Prop.CRATE_SCRAP * Difficulty.m("drops"))
+	if Scrap.enabled():
+		check("łup: złom z %d / %d skrzyń (szansa %.2f), po 1–2 sztuki; bateria z %d" % [scrap, n, p_scrap, batteries],
+			absf(float(scrap) / n - p_scrap) < 0.2 and scrap_bad == 0 and batteries <= n / 5)
+	else:
+		info("łup: złom wyłączony w tym trybie (Scrap.enabled = false) — baterii %d / %d" % [batteries, n])
+	NightShift.active = true
+	serial = int(level._pickup_serial)
+	for i in 10:
+		_crate(base + Vector2(200.0 + 120.0 * i, 200.0)).shatter()
+	await _frames(0.1)
+	NightShift.active = false
+	check("łup: Nocny Dyżur — nic ze skrzyń (%d przedmiotów)" % _items_since(serial).size(), _items_since(serial).is_empty())
+	# wybuch beczki
+	var bp := base + Vector2(-600.0, 0.0)
+	var barrel := _crate(bp, "barrel")
+	var near := _crate(bp + Vector2(20.0, 0.0))
+	var far := _crate(bp + Vector2(-52.0, 0.0))
+	await _frames(0.05)
+	barrel.explode()
+	await _frames(0.1)
+	check("wybuch beczki: skrzynia 20 px obok pęka, 52 px dalej tylko odlatuje", near.exploded and not far.exploded)
+	for x in [barrel, near, far]:
+		x.queue_free()
