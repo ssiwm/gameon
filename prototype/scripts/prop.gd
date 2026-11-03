@@ -297,7 +297,8 @@ func _explode_fx(pos: Vector2, at: Vector2) -> void:
 
 # ---------------------------------------------------------------- pęknięcie skrzyni (DESTRUCTION_PLAN.md D1)
 
-## Serwer: skrzynia pęka — hałas, łup (złom 1–2, rzadko bateria; nie w Nocnym Dyżurze), drzazgi u wszystkich. `from_pos` — skąd przyszło
+## Serwer: skrzynia pęka — hałas, łup (złom 1–2, rzadko bateria; nie w Nocnym Dyżurze), 1–2 deski do zapasu drużyny na barykady
+## (level.gd `add_planks`, D2b — także w Nocnym Dyżurze), drzazgi u wszystkich. `from_pos` — skąd przyszło
 ## uderzenie (drzazgi lecą od niego); znika jak wybuchła beczka (`exploded`), wraca przy wipe'ie (`reset_enemy`).
 func shatter(from_pos := Vector2.INF) -> void:
 	if exploded or not NoiseMgr.is_server():
@@ -315,7 +316,11 @@ func shatter(from_pos := Vector2.INF) -> void:
 		if randf() < minf(1.0, CRATE_BATTERY * Difficulty.m("drops")):
 			battery = true
 			lvl.spawn_item("battery", 0, pos + Vector2(4, 0))
-	SessionLog.event("crate", {"pos": SessionLog.xy(pos), "scrap": scrap, "battery": battery, "noise": roundi(NoiseMgr.level)})
+	var planks := 0
+	if lvl != null and lvl.has_method("add_planks"):
+		planks = randi_range(1, 2)
+		lvl.add_planks(planks)
+	SessionLog.event("crate", {"pos": SessionLog.xy(pos), "scrap": scrap, "battery": battery, "planks": planks, "noise": roundi(NoiseMgr.level)})
 	var away := 0.0 if from_pos == Vector2.INF else signf(global_position.x - from_pos.x)
 	_shatter_fx.rpc(pos, rotation, away)
 

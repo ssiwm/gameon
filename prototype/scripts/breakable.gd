@@ -9,6 +9,8 @@ extends Node2D
 ## Reszta trafień odbija się bez obrażeń. Zamurowanie i deski są bryłą (ciało na warstwie świata), więc blokują wszystkich i pociski.
 ## Dziury (materiał z polem `holes`, dziś deski): trafienie co najmniej stopnia 1 (śrut, maczeta, pięść Wołka) przebija deskę — na wysokości
 ## dziury wzrok, światło, kule i dźwięk przechodzą (`hole_at`, `sight.gd`), ruch i nawigacja dalej nie.
+## Deski da się przybijać z powrotem (D2b, `barricade_spot.gd`, level.gd `nail_board`): wytrzymałość dzieli się na deski (level.gd `BOARDS`),
+## pusty otwór „:” to ta sama przegroda w stanie rozbitym na starcie; widok 3D pokazuje tyle desek, ile wytrzymałości (`boards`).
 ## Dla nawigacji każda przegroda liczy się jako kafel (level.gd `_wall_cells`), dzięki czemu boty i wrogowie nie planują drogi przez
 ## nią ani do skrytki za nią.
 ## Obrażenia liczy serwer; rozbicie idzie do wszystkich peerów przez level.gd (`break_wall`).
@@ -276,9 +278,18 @@ func reset_damage(data: PackedFloat32Array, frac: float) -> void:
 		_holes_changed()
 	queue_redraw()
 
+## U wszystkich peerów (level.gd `_nail_rpc`): przybita deska — nowa wytrzymałość (ułamek), plamy zostają.
+func set_hp_frac(frac: float) -> void:
+	hp = max_hp() * clampf(frac, 0.0, 1.0)
+	queue_redraw()
+
+## Ile z `n` desek stoi (widok 3D barykady): nadłamana deska dalej wisi.
+func boards(n: int) -> int:
+	return clampi(ceili(hp / max_hp() * float(n) - 0.001), 0, n)
+
 ## Serwer: stan dla dołączającego (pusty, gdy element nietknięty).
 func send_state_to(peer_id: int) -> void:
-	if not splats.is_empty():
+	if not splats.is_empty() or hp < max_hp():
 		_splat_sync.rpc_id(peer_id, splats, clampf(hp / max_hp(), 0.0, 1.0))
 
 ## Rozpad na bryły (DESTRUCTION_PLAN.md D0): `chunks` brył z materiału, rozłożonych po prostokącie elementu siatką z odchyleniem, lekko

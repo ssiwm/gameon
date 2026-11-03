@@ -129,7 +129,7 @@ grep -a -q "\[CHARGER-NET\] host active=true client_pct=[2-9][0-9]" "$LOG/charge
 grep -a -q "\[CHARGER-NET\] client gain=\(1[5-9]\|2[0-2]\) active=true" "$LOG/charger_client.log" && ok "klient: ok. +6 s/s u właściciela, stan ładowarki z serwera" || fail "klient: $(grep -a "\[CHARGER-NET\]" "$LOG/charger_client.log")"
 
 echo "== zniszczenia =="
-# host: po 10 s rozbija skrzynię Crate1, tłucze lampę MissionLamp1 i okno Window1 (SC), po 1 s dwa ciosy kilofem (S1), gdy są obaj
+# host: po 10 s rozbija skrzynię Crate1, tłucze lampę MissionLamp1 i okno Window1, zabija pusty otwór Opening1 dwiema deskami (SC), po 1 s dwa ciosy kilofem (S1), gdy są obaj
 # klienci — migawka i rozbicie (S2), +3 s powrót do migawki (S1 z zapaloną lampą i całym oknem), +3 s wipe (S0, ściana i skrzynia całe,
 # lampa świeci, szyba cała), +2 s koniec. Klient A od początku, klient B dołącza dopiero po ciosach — plamy, HP, rozbitą skrzynię,
 # stłuczoną lampę i okno dostaje z `send_walls_to`.
@@ -147,14 +147,15 @@ wait $CB $CA $HOST
 dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //" | tr '\n' ';'; }
 H=$(dnet host "$LOG/dnet_host.log")
 IFS=';' read -r S0 SC S1 S2 S3 S4 _ <<<"$H"
-if [ "${S0% crate=ok lamp=lit win=ok}" = "$S0" ] || [ "$SC" != "${S0% crate=ok lamp=lit win=ok} crate=gone lamp=out win=out" ] || [ "${S1#*splats=2/}" = "$S1" ] 		|| [ "$S2" != "opened=[BrickWall1] crate=gone lamp=out win=out" ] || [ "$S3" != "${S1% lamp=out win=out} lamp=lit win=ok" ] || [ "$S4" != "$S0" ]; then
+S0X="${S0% bar=0 crate=ok lamp=lit win=ok}"          # stan bez desek, skrzyni, lampy i okna; na starcie otwarty jest tylko pusty otwór
+if [ "$S0X" = "$S0" ] || [ "${S0X#opened=\[Opening1\] }" = "$S0X" ] || [ "$SC" != "opened=[] ${S0X#opened=\[Opening1\] } bar=2 crate=gone lamp=out win=out" ] || [ "${S1#*splats=2/}" = "$S1" ] 		|| [ "$S2" != "opened=[BrickWall1] bar=2 crate=gone lamp=out win=out" ] || [ "$S3" != "${S1% lamp=out win=out} lamp=lit win=ok" ] || [ "$S4" != "$S0" ]; then
 	fail "host: zły przebieg ($H)"
 else
-	ok "host: cała → skrzynia rozbita, lampa i okno stłuczone → ranna → rozbita → ranna, lampa świeci, szyba cała (migawka) → cała ze skrzynią (wipe)"
+	ok "host: cała → skrzynia rozbita, lampa i okno stłuczone, otwór zabity dwiema deskami → ranna → rozbita → ranna, lampa świeci, szyba cała (migawka) → cała ze skrzynią (wipe)"
 	A=$(dnet client "$LOG/dnet_a.log")
 	[ "$A" = "$H" ] && ok "klient od początku: te same plamy, HP, rozbicie, skrzynia, migawka i wipe co host" || fail "klient A: $A (host: $H)"
 	B=$(dnet client "$LOG/dnet_b.log")
-	[ "$B" = "$S1;$S2;$S3;$S4;" ] && ok "dołączający po ciosach: plamy, HP, rozbita skrzynia, stłuczona lampa i okno z synchronizacji, potem rozbicie, migawka i wipe jak u hosta" || fail "klient B: $B (host: $H)"
+	[ "$B" = "$S1;$S2;$S3;$S4;" ] && ok "dołączający po ciosach: plamy, HP, rozbita skrzynia, stłuczona lampa i okno, zabity otwór z synchronizacji, potem rozbicie, migawka i wipe jak u hosta" || fail "klient B: $B (host: $H)"
 fi
 
 # Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.

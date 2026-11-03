@@ -12,6 +12,8 @@ extends CharacterBody2D
 ##   Trafienie go spowalnia, ale zatrzymuje najwyżej raz na STAGGER_COOLDOWN — ostrzałem nie da się go unieruchomić
 ##   Teren spowalnia go tak samo jak gracza (woda, błoto) — na każdej powierzchni zostaje wolniejszy od biegnącego
 ##   Ciało widać tylko z bliska; z daleka są same oczy
+##   Barykada z desek na drodze do hałasu go nie zatrzymuje: podchodzi i rozbija ją (deska na cios co SMASH_EVERY s) — kupuje sekundy,
+##   nie azyl (DESTRUCTION_PLAN.md D2b). Mur i kratka zostają dla niego ścianą.
 ##
 ## Tryb „przechodzący" (`pass_mode`, mapa z `STALKER_PASS` zamiast znacznika X — misja 1.1, MAPS_PLAN.md M1b): nie śpi na mapie,
 ## tylko czeka poza nią. Gdy w fazie celu Uwaga przekroczy próg, wychodzi z ciemności za plecami drużyny (poza kadrem), przez
@@ -51,6 +53,10 @@ const HIT_SLOW_TIME := 1.2
 const HIT_SLOW := 0.4
 const HIT_STAGGER := 0.7
 const STAGGER_COOLDOWN := 3.0
+const SMASH_DMG := 20.0         ## cios w barykadę = jedna deska (level.gd BOARDS = 3 na 60 HP)
+const SMASH_EVERY := 1.1        ## s między ciosami: pełna barykada ≈ 3 s plus dojście
+const SMASH_FIRST := 0.45       ## s od stanięcia pod barykadą do pierwszego ciosu
+const SMASH_STAND := 7.0        ## px przed barykadą, skąd bije
 
 ## Granice ruchu w poziomie — z mapy (level.gd), z marginesem na ściany.
 var _x_min := -270.0
@@ -132,6 +138,12 @@ var _last_x := 0.0
 var _path: Array = []
 var _path_i := 0
 var _path_goal := Vector2.INF
+## Barykada, którą rozbija (droga do `_smash_for` prowadzi tylko przez nią), strona, z której bije, i cel, dla którego już jej szukał.
+var _smash: Node2D = null
+var _smash_side := -1.0
+var _smash_for := Vector2.INF
+var _smash_cd := 0.0
+var _smash_check := Vector2.INF
 ## Tor bieżącej krawędzi skoku/spadku jako łamana (punkty pośrednie).
 var _leg: Array[Vector2] = []
 var _leg_for := -1
@@ -190,6 +202,8 @@ func reset_enemy() -> void:
 	visible = false
 	_path = []
 	_path_goal = Vector2.INF
+	_smash = null
+	_smash_check = Vector2.INF
 	pass_state = Pass.IDLE
 	_pass_t = 0.0
 	_pass_cd = 0.0
@@ -439,18 +453,89 @@ func _move_toward_target(delta: float, noise: float) -> void:
 	if lvl != null:
 		speed *= float(Surfaces.of(lvl.surface_at(global_position))["speed"])      # woda i błoto hamują go jak gracza (GDD §8.5)
 	if lvl != null and lvl.nav != null:
+		if _smash_tick(delta, speed, lvl.nav):
+			return
 		_follow_path(delta, speed, lvl.nav)
+		if _path.is_empty() and _smash_check != target_pos:
+			# do hałasu nie ma drogi — może zamyka ją barykada z desek (rozbije ją zamiast nasłuchiwać pod nią)
+			_smash_check = target_pos
+			_smash = _barricade_blocking(lvl.nav, target_pos)
+			if _smash != null:
+				_smash_for = target_pos
+				_smash_cd = SMASH_FIRST
+				_arrived = false
+				_listen = 0.0
+				_hesitate = 0.0
+				print("[STALKER] smashing barricade %s" % _smash.name)
+				SessionLog.event("stalker", {"what": "barricade", "wall": String(_smash.name), "noise": roundi(noise)})
 		return
 	_move_direct(delta, speed)
 
-func _follow_path(delta: float, speed: float, nav: AStar2D) -> void:
-	if target_pos != _path_goal:
-		_path_goal = target_pos
-		_path = nav.find_path(global_position, target_pos)
+## Rozbijanie barykady (`_smash`): dojście na stronę SMASH_STAND px przed nią, potem cios co SMASH_EVERY s (trafienie `claw` — każdy cios to
+## hałas desek, którego sam nie bierze za nowy cel). Rozbita albo nowy cel — droga do celu liczona od nowa. false — nic do rozbijania.
+func _smash_tick(delta: float, speed: float, nav: AStar2D) -> bool:
+	if _smash == null:
+		return false
+	if not is_instance_valid(_smash) or _smash.is_queued_for_deletion() or float(_smash.get("hp")) <= 0.0 or _smash_for != target_pos:
+		_smash = null
+		_path_goal = Vector2.INF                        # przejście otwarte (albo inny cel): droga od nowa
+		_smash_check = Vector2.INF
+		return false
+	var rc: Rect2 = _smash.call("hit_rect")
+	var stand := Vector2((rc.position.x - SMASH_STAND) if _smash_side < 0.0 else (rc.end.x + SMASH_STAND), rc.end.y)
+	if absf(global_position.y - stand.y) > 6.0 or absf(global_position.x - stand.x) > 24.0:
+		_follow_path(delta, speed, nav, stand)
+		if _path.is_empty():
+			_smash = null                               # pod barykadę też nie dojdzie
+			return false
+		return true
+	if absf(global_position.x - stand.x) > 0.5:
+		global_position = global_position.move_toward(Vector2(stand.x, global_position.y), speed * delta)
+		return true
+	_smash_cd -= delta
+	if _smash_cd <= 0.0:
+		_smash_cd = SMASH_EVERY
+		var at := Vector2(rc.position.x if _smash_side < 0.0 else rc.end.x, rc.end.y - 26.0)
+		_smash.call("take_hit", {"type": "claw", "amount": SMASH_DMG, "pos": at, "dir": Vector2(-_smash_side, 0.0)})
+		_seen_serial = NoiseMgr.noise_serial            # własne uderzenia (i trzask rozbitych desek) nie przestawiają mu celu
+	return true
+
+## Barykada z desek, przez którą wiedzie jedyna droga do `goal`: z miejsca Stalkera da się dojść pod jedną jej stronę, a z drugiej strony
+## do celu. Z kilku — najkrótsza łączna droga (liczba punktów ścieżek). Ustawia `_smash_side`. Wołane raz na nowy cel bez drogi.
+func _barricade_blocking(nav: AStar2D, goal: Vector2) -> Node2D:
+	var best: Node2D = null
+	var best_cost := INF
+	for n in get_tree().get_nodes_in_group("breakables"):
+		var b := n as Node2D
+		if b == null or b.is_queued_for_deletion() or float(b.get("hp")) <= 0.0 or String(b.get("mat_id")) != "planks":
+			continue
+		var rc: Rect2 = b.call("hit_rect")
+		var y := rc.end.y - 2.0
+		for side in [-1.0, 1.0]:
+			var near := Vector2((rc.position.x - 10.0) if side < 0.0 else (rc.end.x + 10.0), y)
+			var far := Vector2((rc.end.x + 10.0) if side < 0.0 else (rc.position.x - 10.0), y)
+			var a: Array = nav.find_path(global_position, near)
+			if a.is_empty() or signf((a[a.size() - 1].pos as Vector2).x - rc.get_center().x) != side:
+				continue
+			var z: Array = nav.find_path(far, goal)
+			if z.is_empty() or signf((z[0].pos as Vector2).x - rc.get_center().x) != -side:
+				continue
+			var cost := float(a.size() + z.size())
+			if cost < best_cost:
+				best_cost = cost
+				best = b
+				_smash_side = side
+	return best
+
+func _follow_path(delta: float, speed: float, nav: AStar2D, goal := Vector2.INF) -> void:
+	var to := target_pos if goal == Vector2.INF else goal
+	if to != _path_goal:
+		_path_goal = to
+		_path = nav.find_path(global_position, to)
 		_path_i = 1
 		_leg_for = -1
 	if _path_i >= _path.size():
-		if not _arrived:
+		if not _arrived and goal == Vector2.INF:
 			# dotarł do źródła hałasu (najbliższy punkt na powierzchni): NASŁUCHUJE
 			_arrived = true
 			_listen = LISTEN_TIME

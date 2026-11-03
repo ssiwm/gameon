@@ -2320,6 +2320,8 @@ func _sync_drawn() -> void:
 		var dw: Array = _drawn[id]
 		if dw.size() > 5 and is_instance_valid(dw[0]):
 			_stamp_damage(dw[0], dw[5])
+			if String(dw[0].get("mat_id")) == "planks":
+				_sync_boards(dw[0], dw[1], float(dw[4]))
 	for id in _drawn.keys():
 		var pr: Array = _drawn[id]
 		if not is_instance_valid(pr[0]) or (pr[0] as Node).is_queued_for_deletion():
@@ -3025,6 +3027,41 @@ func _barricade_boards(mi: MeshInstance3D, h: float, front: float, seed: int) ->
 		mi.add_child(bi)
 		y += bh + rng.randf_range(0.025, 0.07)
 		k += 1
+
+## Barykada (DESTRUCTION_PLAN.md D2b): widać tyle desek, ile przegroda ma wytrzymałości (`breakable.boards`, BARRICADE_BOARDS części) —
+## przybita deska się pojawia, odłupana spada drzazgą. Kolejność desek z nazwy przegrody, przemieszana (u wszystkich ta sama), więc jedna
+## przybita deska z trzech to kilka krzywych desek przez cały otwór, a nie zabity dół.
+const BARRICADE_BOARDS := 3
+
+func _sync_boards(n: Node2D, mi: MeshInstance3D, h: float) -> void:
+	var want := int(n.call("boards", BARRICADE_BOARDS))
+	var had := int(mi.get_meta("boards", -1))
+	if want == had:
+		return
+	mi.set_meta("boards", want)
+	var parts: Array = []
+	for c in mi.get_children():
+		if String(c.name).begins_with("Board"):
+			parts.append(c)
+	var order: Array = range(parts.size())
+	var rng := RandomNumberGenerator.new()
+	rng.seed = absi(String(n.name).hash()) + 7
+	for i in range(order.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var t: int = order[i]
+		order[i] = order[j]
+		order[j] = t
+	var show := int(ceil(float(parts.size()) * float(want) / float(BARRICADE_BOARDS)))
+	for k in order.size():
+		var bi := parts[order[k]] as MeshInstance3D
+		var vis := k < show
+		if bi.visible and not vis and had > want:
+			# deska odłupana: spada drzazgą z miejsca, gdzie wisiała
+			var at := Vector2(n.global_position.x + bi.position.x / Level3D.PX, n.global_position.y - (h * 0.5 + bi.position.y) / Level3D.PX)
+			var b := Vfx.debris(_level, at, Vector2(randf_range(-40.0, 40.0), randf_range(-60.0, -10.0)), Vector2(6, 4), Color(0.42, 0.3, 0.18), 0.1, 3.0)
+			if b != null:
+				mirror_chunk(b, "planks", 6.0, randi())
+		bi.visible = vis
 
 ## Zardzewiała kratka: rama z kątowników, pionowe pręty co ~13 cm i płaskowniki w poprzek, na przodzie bryły (`front`), jak deski barykady.
 ## Przez oczka widać korytarz i światło (bryła pod spodem jest przezroczysta — `_barrier_mat`), cień pada w paski.

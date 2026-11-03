@@ -322,6 +322,14 @@ func _banked_rpc(ids: Array) -> void:
 			{"sub": tr("Mount new parts at the workbench"), "style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
 
 ## Wydatek z banku (warsztat, faza B). false = za mało.
+## Serwer: wydatek z łupu bieżącej misji (barykada bez desek, DESTRUCTION_PLAN.md D2b) — złom, który drużyna niesie, nie bank kryjówki.
+func spend_loot(n: int) -> bool:
+	if not NoiseMgr.is_server() or not enabled() or n < 0 or loot < n:
+		return false
+	loot -= n
+	_push()
+	return true
+
 func spend(n: int) -> bool:
 	if not NoiseMgr.is_server() or n < 0 or bank < n:
 		return false
