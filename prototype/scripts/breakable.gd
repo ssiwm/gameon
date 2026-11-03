@@ -26,7 +26,7 @@ const TILE := 16.0
 const MATERIALS := {
 	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0,
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
-		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)]},
+		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)]},
 	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge"], "n_hit": 1.2, "n_break": 4.0,
 		"hit_snd": ["amb_creak", 3, -6.0, 1.2], "break_snd": ["amb_creak", 3, 0.0, 0.8],
 		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
@@ -225,12 +225,35 @@ func send_state_to(peer_id: int) -> void:
 	if not splats.is_empty():
 		_splat_sync.rpc_id(peer_id, splats, clampf(hp / max_hp(), 0.0, 1.0))
 
-## Rozbicie (u wszystkich peerów, z level.gd): odłamki i kurz, potem element znika.
+## Rozpad na bryły (DESTRUCTION_PLAN.md D0): `chunks` brył z materiału, rozłożonych po prostokącie elementu siatką z odchyleniem, lekko
+## w bok i w dół — mur osypuje się w miejscu, a nie wybucha. Z ziarna (`map_id` + nazwa), więc u wszystkich peerów te same miejsca,
+## prędkości, rozmiary i kształty bez wysyłania ich w RPC. Wynik: [pozycja, prędkość, rozmiar px, kształt].
+func chunk_plan(seed_v: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_v
+	var rc := hit_rect()
+	var n := int(mat_def().get("chunks", 0))
+	var cols := maxi(1, roundi(sqrt(n * rc.size.x / maxf(rc.size.y, 1.0))))
+	var rows := ceili(float(n) / cols)
+	var out: Array = []
+	for i in n:
+		var cx := (float(i % cols) + 0.5 + rng.randf_range(-0.3, 0.3)) / cols
+		var cy := (float(i / cols) + 0.5 + rng.randf_range(-0.3, 0.3)) / rows
+		var pos := rc.position + rc.size * Vector2(cx, cy)
+		out.append([pos, Vector2((cx - 0.5) * rng.randf_range(40.0, 90.0), rng.randf_range(-50.0, 10.0)), rng.randf_range(4.5, 7.0), rng.randi()])
+	return out
+
+## Rozbicie (u wszystkich peerów, z level.gd): bryły pre-fraktury (`chunk_plan`, widok 3D `mirror_chunk`), drobne odłamki i kurz, potem element znika.
 func crumble() -> void:
 	var m := mat_def()
 	var lvl := get_tree().get_first_node_in_group("level")
 	var parent: Node = lvl if lvl != null else get_parent()
 	var rc := hit_rect()
+	for ch in chunk_plan(hash("%s:%s" % [String(lvl.get("map_id")) if lvl != null else "", String(name)])):
+		var sz: float = ch[2]
+		var b := Vfx.debris(parent, ch[0], ch[1], Vector2(sz, sz * 0.75), m["debris"], 0.1, 3.0)
+		if b != null and Vfx.view3d != null and is_instance_valid(Vfx.view3d):
+			Vfx.view3d.call("mirror_chunk", b, mat_id, sz, int(ch[3]))
 	for i in int(m["chips"]):
 		var p := Vector2(rc.position.x + randf() * rc.size.x, rc.position.y + randf() * rc.size.y)
 		Vfx.debris(parent, p, Vector2(randf_range(-60.0, 60.0), randf_range(-90.0, -20.0)), Vector2(3, 3), m["debris"])

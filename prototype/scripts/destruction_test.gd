@@ -10,6 +10,8 @@ extends "res://scripts/stalker_test.gd"
 ## 4. Rozbicie: element znika, zapis w `_opened_walls`, odroczona paczka nie sypie błędów.
 ## 5. Stan zniszczeń (level.gd): reset po rozbiciu (ściana, kafle, nawigacja, plamy), migawka z przebudzenia bossa (plamy i rozbite),
 ##    ta sama klatka co rozbicie, restart misji (main._restart_mission) odbudowuje ścianę.
+## 6. Rozpad na bryły: zestaw pre-fraktury cegły (`tools/fracture_gen.py`) — bryły wypełniają kostkę, mają przekrój; plan brył z ziarna
+##    taki sam u każdego peera; rozbicie wypuszcza bryły i drobne odłamki.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -17,6 +19,7 @@ const DamageMask := preload("res://scripts/damage_mask.gd")
 const Level3D := preload("res://scripts/level3d.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -51,6 +54,7 @@ func run(m: Node2D) -> void:
 	await _splats()
 	await _break()
 	await _state()
+	await _fracture()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -266,3 +270,45 @@ func _state() -> void:
 	main._restart_mission(false)
 	await _frames(0.5)
 	check("wipe (main._restart_mission): rozbita ściana znów stoi, kafle bryłą", _real() != null and _cells_solid() and level._opened_walls.is_empty())
+
+# ---------------------------------------------------------------- 6. rozpad na bryły
+
+func _fracture() -> void:
+	var path := Level3D.MODEL_DIR + "fracture_brick.glb"
+	var meshes: Array = []
+	var inner := 0
+	var inside := true
+	if ResourceLoader.exists(path):
+		var inst := (load(path) as PackedScene).instantiate()
+		for n in inst.find_children("chunk_*", "MeshInstance3D", true, false):
+			var msh := (n as MeshInstance3D).mesh
+			meshes.append(msh)
+			var box: AABB = (n as Node3D).transform * msh.get_aabb()
+			inside = inside and AABB(Vector3(-0.501, -0.501, -0.501), Vector3(1.002, 1.002, 1.002)).encloses(box)
+			for si in msh.get_surface_count():
+				var m := msh.surface_get_material(si)
+				if m != null and String(m.resource_name) == "inner":
+					inner += 1
+					break
+		inst.free()
+	check("pre-fraktura cegły: %d brył (plan 6–14), każda z przekrojem (%d), wszystkie w kostce 1 m (%s)" % [meshes.size(), inner, str(inside)],
+		meshes.size() >= 6 and meshes.size() <= 14 and inner == meshes.size() and inside)
+	var w := _wall("DWall5", 40.0)
+	await _frames(0.1)
+	var a: Array = w.chunk_plan(123)
+	var rc: Rect2 = w.hit_rect()
+	var in_rect := true
+	for ch in a:
+		in_rect = in_rect and rc.grow(1.0).has_point(ch[0])
+	check("plan brył: %d brył cegły w obrysie ściany, to samo ziarno = ten sam plan (każdy peer), inne ziarno = inny" % a.size(),
+		a.size() == int(Breakable.MATERIALS["brick"]["chunks"]) and in_rect and str(a) == str(w.chunk_plan(123)) and str(a) != str(w.chunk_plan(124)))
+	var before := Vfx._debris.filter(func(x: Variant) -> bool: return is_instance_valid(x)).size()
+	var pick: RefCounted = Weapons.def(Weapons.KILOF)
+	for i in 3:
+		_hit(w, Weapons.KILOF, pick.damage, "melee", w.call("body_center"))
+	await _frames(0.15)
+	var after := Vfx._debris.filter(func(x: Variant) -> bool: return is_instance_valid(x)).size()
+	var want := int(Breakable.MATERIALS["brick"]["chunks"]) + int(Breakable.MATERIALS["brick"]["chips"])
+	check("rozbicie: %d nowych odłamków (bryły + drobne, %d oczekiwanych, limit %d)" % [after - before, want, Vfx.MAX_DEBRIS],
+		after - before == mini(want, Vfx.MAX_DEBRIS - before))
+	level._opened_walls.erase("DWall5")
