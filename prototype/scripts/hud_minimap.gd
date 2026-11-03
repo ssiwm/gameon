@@ -38,7 +38,8 @@ var markers: Array = []            ## [{pos: Vector2 świata, kind: "obj" | "exi
 var _lvl = null                    ## level.gd (bez typu: pola prywatne siatki czytamy dynamicznie)
 var _sig := ""                     ## identyfikator wczytanej mapy (instancja poziomu + id mapy)
 var _rows_cache: Array = []
-var _walls_n := -1
+var _walls: Dictionary = {}         ## kafle zniszczalnych ścian przy ostatnim rysowaniu (`level._wall_cells`)
+var _pal: Array = []                ## kolory terenu z `_build`: wypełnienie, wierzch, bok, kładka, tło, woda, błoto
 var _cols := 0
 var _nrows := 0
 var _base: Image
@@ -104,9 +105,10 @@ func _sync_level(delta: float) -> void:
 	if _scan_t > 0.0:
 		return
 	_scan_t = SCAN_S
-	var walls: int = (lvl._wall_cells as Dictionary).size()
-	if walls != _walls_n or not _same_rows(lvl._map):
+	if not _same_rows(lvl._map):
 		_build(false)
+	elif (lvl._wall_cells as Dictionary).size() != _walls.size() or (lvl._wall_cells as Dictionary).hash() != _walls.hash():
+		_repaint_walls(lvl._wall_cells)
 
 func _same_rows(rows: Array) -> bool:
 	if rows.size() != _rows_cache.size():
@@ -120,42 +122,19 @@ func _same_rows(rows: Array) -> bool:
 func _build(reset_fog: bool) -> void:
 	var rows: Array = _lvl._map
 	_rows_cache = rows.duplicate()
-	_walls_n = (_lvl._wall_cells as Dictionary).size()
+	_walls = (_lvl._wall_cells as Dictionary).duplicate()
 	var cols: int = (rows[0] as String).length()
 	var nrows := rows.size()
 	var resized := cols != _cols or nrows != _nrows
 	_cols = cols
 	_nrows = nrows
 	var bone := UiTheme.TEXT
-	var c_fill := Color(bone, 0.12)
-	var c_top := Color(bone, 0.78)
-	var c_side := Color(bone, 0.32)
-	var c_plat := Color(bone, 0.5)
-	var c_back := Color(bone, 0.05)
-	var c_water := Color(0.43, 0.63, 0.75, 0.45)
-	var c_mud := Color(0.51, 0.39, 0.24, 0.45)
+	_pal = [Color(bone, 0.12), Color(bone, 0.78), Color(bone, 0.32), Color(bone, 0.5), Color(bone, 0.05),
+		Color(0.43, 0.63, 0.75, 0.45), Color(0.51, 0.39, 0.24, 0.45)]
 	var img := Image.create_empty(cols * PX, nrows * PX, false, Image.FORMAT_RGBA8)
 	for r in nrows:
 		for c in cols:
-			var x := c * PX
-			var y := r * PX
-			if _lvl._is_solid(c, r):
-				var ch: String = _lvl._ch(c, r)
-				img.fill_rect(Rect2i(x, y, PX, PX), c_water if ch == "~" else (c_mud if ch == "m" else c_fill))
-				if not _lvl._is_solid(c - 1, r):
-					img.fill_rect(Rect2i(x, y, 1, PX), c_side)
-				if not _lvl._is_solid(c + 1, r):
-					img.fill_rect(Rect2i(x + PX - 1, y, 1, PX), c_side)
-				if not _lvl._is_solid(c, r + 1):
-					img.fill_rect(Rect2i(x, y + PX - 1, PX, 1), c_side)
-				if not _lvl._is_solid(c, r - 1):
-					img.fill_rect(Rect2i(x, y, PX, 2), c_top)
-			elif _lvl._is_platform_cell(c, r):
-				img.fill_rect(Rect2i(x, y, PX, 1), c_plat)
-			else:
-				var k: Array = _lvl.KINDS.get(_lvl._ch(c, r), [])
-				if k.size() == 3 and int(k[2]) == 2:
-					img.fill_rect(Rect2i(x, y, PX, PX), c_back)
+			_paint_cell(img, c, r)
 	_base = img
 	if _tex == null or resized:
 		_tex = ImageTexture.create_from_image(img)
@@ -167,6 +146,51 @@ func _build(reset_fog: bool) -> void:
 		_mat.set_shader_parameter("fog", _fog_tex)
 		_seen_cells.clear()
 		_r0 = -1.0
+
+## Kafel (c, r) terenu w obrazie mapy: bryła z wierzchem i bokami od strony pustki, kładka, tło (obraz pusty w tym miejscu).
+func _paint_cell(img: Image, c: int, r: int) -> void:
+	var x := c * PX
+	var y := r * PX
+	if _lvl._is_solid(c, r):
+		var ch: String = _lvl._ch(c, r)
+		img.fill_rect(Rect2i(x, y, PX, PX), _pal[5] if ch == "~" else (_pal[6] if ch == "m" else _pal[0]))
+		if not _lvl._is_solid(c - 1, r):
+			img.fill_rect(Rect2i(x, y, 1, PX), _pal[2])
+		if not _lvl._is_solid(c + 1, r):
+			img.fill_rect(Rect2i(x + PX - 1, y, 1, PX), _pal[2])
+		if not _lvl._is_solid(c, r + 1):
+			img.fill_rect(Rect2i(x, y + PX - 1, PX, 1), _pal[2])
+		if not _lvl._is_solid(c, r - 1):
+			img.fill_rect(Rect2i(x, y, PX, 2), _pal[1])
+	elif _lvl._is_platform_cell(c, r):
+		img.fill_rect(Rect2i(x, y, PX, 1), _pal[3])
+	else:
+		var k: Array = _lvl.KINDS.get(_lvl._ch(c, r), [])
+		if k.size() == 3 and int(k[2]) == 2:
+			img.fill_rect(Rect2i(x, y, PX, PX), _pal[4])
+
+## Rozbita albo odbudowana ściana: przemalowanie tylko jej kafli i sąsiadów (boki i wierzch zależą od sąsiadów). Pełna budowa obrazu
+## 288 × 44 kafli to ok. 50 ms — przycięcie gry pół sekundy po rozbiciu (--hitchtest --hitchwall).
+func _repaint_walls(walls: Dictionary) -> void:
+	var changed: Array = []
+	for cell in walls:
+		if not _walls.has(cell):
+			changed.append(cell)
+	for cell in _walls:
+		if not walls.has(cell):
+			changed.append(cell)
+	_walls = walls.duplicate()
+	var done := {}
+	for cell in changed:
+		for dr in range(-1, 2):
+			for dc in range(-1, 2):
+				var q := Vector2i(cell.x + dc, cell.y + dr)
+				if done.has(q) or q.x < 0 or q.y < 0 or q.x >= _cols or q.y >= _nrows:
+					continue
+				done[q] = true
+				_base.fill_rect(Rect2i(q.x * PX, q.y * PX, PX, PX), Color(0, 0, 0, 0))
+				_paint_cell(_base, q.x, q.y)
+	_tex.update(_base)
 
 ## Odsłania kafle wokół każdego gracza (wspólna wiedza drużyny; licz lokalnie, bez sieci).
 func _reveal() -> void:
