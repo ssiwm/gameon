@@ -307,6 +307,9 @@ jako dzielnik ciosu.
   Dołączający dostaje rozbite skrzynie i — przy okazji — wybuchłe beczki (`send_state_to`; beczki dotąd stały u niego całe).
   Dźwięk: na razie `door` + `amb_creak` — porządne nagranie pękającego drewna do odsłuchu A/B. Zrzuty: `C:\deadair87\shots_crate`.
 - **Beczka `o`**: zostaje wrak z osmaleniem zamiast znikania.
+  **Zrobione w 1.7.486:** `prop.gd` — po wybuchu `wreck` (beczka osiada na podłożu pod sobą, `_floor_below`; dołączający dostaje punkt
+  z `_gone_rpc`), `view3d._set_wreck` — model przysiadły (×1,12 / 0,68), przekrzywiony, nakładka sadzy (`_wreck_mat`, mnożenie),
+  plama osmalenia 1,7 m i gasnący żar 9 s; reset przywraca całą beczkę. Dev `--shotbarrel[=2]`.
 - **Lampy na misjach do zestrzelenia** (nowy znacznik): gaśnie światło, sypie szkło, krótki dźwięk. W grze o ciemności to realna
   decyzja: ciemniej = trudniej widzieć, ale też trudniej być widzianym (Stalker, Ćmy lecą do światła). Dziś lampy `l` są tylko w kryjówce.
 - **Szkło / okna** w budynkach (1.2 chata radiowa, 1.3 Skład): pęka od kuli, przepuszcza potem kule i dźwięk głośniej.

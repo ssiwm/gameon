@@ -5,7 +5,7 @@ extends RigidBody2D
 ## Po co w grze o hałasie: upadek z wysokości robi HAŁAS w miejscu upadku —
 ## zepchnięta z kładki skrzynia to wabik (§8.4 bez ładunku Q). Beczka po
 ## kilku trafieniach wybucha: rani wszystko w promieniu, odrzuca obiekty,
-## odpala sąsiednie beczki — i budzi okolicę (+15). Skrzynia (DESTRUCTION_PLAN.md D1)
+## odpala sąsiednie beczki — i budzi okolicę (+15) — i zostaje po niej osmalony wrak. Skrzynia (DESTRUCTION_PLAN.md D1)
 ## po kilku trafieniach pęka: drzazgi z pre-fraktury desek, hałas, czasem złom albo bateria.
 ##
 ## W grupie „enemies": pociski (projectile.gd), reset po wipe i po misji obejmują
@@ -39,6 +39,9 @@ const SYNC_DT := 0.05
 
 var hp := BARREL_HP
 var exploded := false
+## Beczka po wybuchu (D1): zostaje wrak — widok 3D rysuje go zgniecionego i osmalonego na podłożu pod miejscem wybuchu; bez kolizji
+## i obrażeń jak dotąd (`exploded`), wipe przywraca całą beczkę.
+var wreck := false
 var _home := Vector2.ZERO
 var _prev_speed := 0.0
 var _net_t := 0.0
@@ -93,6 +96,7 @@ func is_threat() -> bool:
 
 func reset_enemy() -> void:
 	exploded = false
+	wreck = false
 	hp = max_hp()
 	visible = true
 	# teleport ciała przez _integrate_forces — samo global_position nadpisuje fizyka
@@ -107,6 +111,7 @@ func reset_enemy() -> void:
 @rpc("authority", "call_remote", "reliable")
 func _reset_rpc() -> void:
 	exploded = false
+	wreck = false
 	visible = true
 	global_position = _home
 	rotation = 0.0
@@ -265,11 +270,12 @@ func explode() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.dead and p.hurt_point(pos).distance_to(pos) <= BLAST_R:
 			p.deliver_hit(1, pos, "prop")
-	_explode_fx.rpc(pos)
+	_explode_fx.rpc(pos, _floor_below(global_position))
 
+## `at` — gdzie leży wrak (podłoże pod beczką, liczone na serwerze: w reakcji łańcuchowej beczka wybucha w locie).
 @rpc("authority", "call_local", "reliable")
-func _explode_fx(pos: Vector2) -> void:
-	_gone()
+func _explode_fx(pos: Vector2, at: Vector2) -> void:
+	_gone(at)
 	var parent := get_parent()
 	Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, 2.0, 0.9)
 	Vfx.burst(parent, pos, Color(1.0, 0.6, 0.2), 30, 60.0, 220.0, Vector2.UP, 180.0, 200.0, 0.5, Vector2(1.5, 3.0), true)
@@ -346,18 +352,32 @@ func _seed() -> int:
 	var lvl := get_tree().get_first_node_in_group("level")
 	return hash("%s:%s" % [String(lvl.get("map_id")) if lvl != null else "", String(name)])
 
-## Zniknięcie bez efektów: po pęknięciu, po wybuchu i u dołączającego (`send_state_to`).
-func _gone() -> void:
+## Zniknięcie bez efektów: po pęknięciu, po wybuchu i u dołączającego (`send_state_to`). Beczka zostaje wrakiem (`wreck`) w punkcie `at`
+## (bez niego — na podłożu pod sobą).
+func _gone(at := Vector2.INF) -> void:
 	exploded = true
 	visible = false
 	set_deferred("collision_layer", 0)
 	set_deferred("freeze", true)
+	if kind == "barrel":
+		wreck = true
+		var p := _floor_below(global_position) if at == Vector2.INF else at
+		_remote_pos = p                                    # klient i tak dociąga do `_remote_pos` (`_physics_process`)
+		_remote_rot = 0.0
+		set_deferred("global_position", p)
+		set_deferred("rotation", 0.0)
 
-## Dołączający gracz: rozbita skrzynia albo wybuchła beczka znika u niego bez dźwięku (level.gd `send_walls_to`).
+## Podłoże (grunt albo kładka) pod punktem `p`, do 20 kafli niżej; bez podłoża — sam punkt.
+func _floor_below(p: Vector2) -> Vector2:
+	var q := PhysicsRayQueryParameters2D.create(p + Vector2(0, -4), p + Vector2(0, 320), 1 | 16)
+	var hit := get_world_2d().direct_space_state.intersect_ray(q)
+	return hit["position"] if not hit.is_empty() else p
+
+## Dołączający gracz: rozbita skrzynia znika u niego bez dźwięku, wybuchła beczka zostaje wrakiem tam, gdzie u serwera (level.gd `send_walls_to`).
 func send_state_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and exploded:
-		_gone_rpc.rpc_id(peer_id)
+		_gone_rpc.rpc_id(peer_id, global_position)
 
 @rpc("authority", "call_remote", "reliable")
-func _gone_rpc() -> void:
-	_gone()
+func _gone_rpc(at: Vector2) -> void:
+	_gone(at)
