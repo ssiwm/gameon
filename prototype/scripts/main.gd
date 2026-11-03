@@ -30,6 +30,7 @@ const HITCH_TEST := preload("res://scripts/hitch_test.gd")
 const NOBOT_TEST := preload("res://scripts/nobot_test.gd")
 const FUN_TEST := preload("res://scripts/fun_test.gd")
 const BATTERY_TEST := preload("res://scripts/battery_test.gd")
+const DESTRUCTION_TEST := preload("res://scripts/destruction_test.gd")
 const FOG_SHADOW_TEST := preload("res://scripts/fog_shadow_test.gd")
 const RESULT_TEST := preload("res://scripts/result_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
@@ -688,6 +689,7 @@ func _handle_cmdline() -> void:
 	var nobottest := false
 	var funtest := false
 	var batterytest := false
+	var destructiontest := false
 	var fogshadowtest := false
 	var resulttest := false
 	var rangetest := false
@@ -814,6 +816,8 @@ func _handle_cmdline() -> void:
 			funtest = true
 		elif a == "--batterytest":
 			batterytest = true
+		elif a == "--destructiontest":
+			destructiontest = true
 		elif a == "--fogshadowtest":
 			fogshadowtest = true
 		elif a == "--resulttest":
@@ -984,6 +988,11 @@ func _handle_cmdline() -> void:
 		bat.name = "BatteryTest"
 		add_child(bat)
 		bat.run(self)
+	if destructiontest:
+		var dt := DESTRUCTION_TEST.new()
+		dt.name = "DestructionTest"
+		add_child(dt)
+		dt.run(self)
 	if fogshadowtest:
 		var fst := FOG_SHADOW_TEST.new()
 		fst.name = "FogShadowTest"
@@ -2206,6 +2215,15 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var bw1 := get_tree().get_first_node_in_group("breakables")
 		if bw1 != null:
 			get_tree().create_timer(1.5).timeout.connect(level.break_wall.bind(String(bw1.name)))
+	if "--shotbreak=2" in OS.get_cmdline_user_args():                # dev: po 1,5 s dwa ciosy kilofem i drobne odpryski — podgląd maski uszkodzeń
+		var bw2 := get_tree().get_first_node_in_group("breakables")
+		if bw2 != null:
+			get_tree().create_timer(1.5).timeout.connect(func() -> void:
+				var rc2: Rect2 = bw2.hit_rect()
+				for k in 2:
+					Combat.apply(bw2, Combat.make_info(Weapons.KILOF, Weapons.def(Weapons.KILOF).damage, rc2.get_center(), Vector2.RIGHT, 1, "melee"))
+				for k in 5:
+					Combat.apply(bw2, Combat.make_info(Weapons.GNIEW4, 1.0, rc2.position + Vector2(rc2.size.x * randf(), rc2.size.y * randf()), Vector2.RIGHT, 1, "blast")))
 	if "--shotblood" in OS.get_cmdline_user_args():                 # dev: szczątki i krew 60 px przed graczem 1 (podgląd kałuż krwi), bez wrogów
 		var blp: Node2D = _players.get_node_or_null("1")
 		if blp != null:
@@ -3925,10 +3943,10 @@ func _map_test() -> void:
 		var nav_bad: Array = fz[0]
 		if level.walls_total() > 0:
 			nav_bad.append_array(level.open_walls_checked())      # skrytki za zamurowanymi przejściami też muszą być osiągalne po rozbiciu
-		print("[MAPTEST] %s: lokalna przebudowa nawigacji — 80 zmian, najdłużej %.2f ms, średnio %.2f ms (pełna budowa + porównanie %.0f ms)" % [id, fz[1], fz[2], full_ms])
-		# średnia jest stabilna także na wolnym CI; najdłuższa tylko z dużym zapasem (pojedynczy pomiar skacze)
-		if float(fz[2]) > 2.0 or float(fz[1]) > 10.0:
-			nav_bad.append("lokalna przebudowa nawigacji: średnio %.2f ms, najdłużej %.2f ms (limit 2 / 10 ms)" % [fz[2], fz[1]])
+		print("[MAPTEST] %s: lokalna przebudowa nawigacji — 80 zmian, średnio %.2f ms, 95%% do %.2f ms, najdłużej %.2f ms (pełna budowa + porównanie %.0f ms)" % [id, fz[2], fz[3], fz[1], full_ms])
+		# średnia i 95. percentyl są stabilne także na wolnym CI; najdłuższy pojedynczy pomiar skacze z planisty systemu (do ~10 ms) — tylko w wydruku
+		if float(fz[2]) > 2.0 or float(fz[3]) > 6.0:
+			nav_bad.append("lokalna przebudowa nawigacji: średnio %.2f ms, 95%% do %.2f ms (limit 2 / 6 ms)" % [fz[2], fz[3]])
 		var nav: AStar2D = level.nav
 		var points: Array = []          # [etykieta, pozycja]
 		for i in level.spawns.size():
