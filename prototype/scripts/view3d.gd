@@ -141,7 +141,8 @@ var _fog_top := 0                        ## pierwszy wiersz kadru gry w obrazie 
 var _lights := {}                        ## id światła gry (Lights.GameLight) → [światło, Light3D]
 var _frames_cache := {}
 var _proj := {}                          ## id pocisku 2D → [Node2D, Node3D proxy]
-var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła, czy widoczny, gdzie zniknął (drzazgi do sprzątnięcia)]
+var _props := {}                         ## id obiektu fizycznego 2D (prop.gd) → [Node2D, Node3D bryła, czy widoczny, gdzie zniknął (drzazgi do sprzątnięcia),
+                                         ##   węzły wraku beczki (sadza, żar), skala bryły]
 var _cabinets := {}                      ## id gabloty (cabinet.gd) → {node, root, door, ghosts: [Node3D], open}
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _gun_warm_t := 0.0                   ## s do następnego przeglądu ekwipunku graczy (_warm_loadouts)
@@ -3118,6 +3119,14 @@ func _warm_destruction(mat_id: String) -> void:
 		mmi.layers = LAYER_WORLD
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_destr_warm.add_child(mmi)
+	if mat_id == "wreck":
+		var bx := MeshInstance3D.new()
+		bx.mesh = BoxMesh.new()
+		bx.material_overlay = _wreck_mat()
+		bx.transform = Transform3D(tiny, Vector3(0.0, 0.01, 0.0))
+		bx.layers = LAYER_WORLD
+		_destr_warm.add_child(bx)
+		return
 	var rb := _item_model("rubble")
 	if rb != null:
 		rb.scale = Vector3.ONE * PX * 0.004
@@ -6094,9 +6103,11 @@ func _sync_props() -> void:
 				px = _make_barrel() if kind == "barrel" else _make_crate()
 			_world.add_child(px)
 			(n as CanvasItem).modulate = Color(1, 1, 1, 0)
-			_props[n.get_instance_id()] = [n, px, true, Vector3.ZERO]
+			_props[n.get_instance_id()] = [n, px, true, Vector3.ZERO, [], px.scale]
 			if kind == "crate":
 				_warm_destruction("planks")                     # drzazgi rozbitej skrzyni (prop.gd `shatter`) bez przycięcia
+			elif kind == "barrel":
+				_warm_destruction("wreck")                      # osmalenie wraku beczki bez przycięcia
 	for id in _props.keys():
 		var pr: Array = _props[id]
 		var src = pr[0]
@@ -6113,9 +6124,79 @@ func _sync_props() -> void:
 				_clear_rubble_near(float(pr[3].x), 4.0)          # skrzynia wraca (wipe, punkt kontrolny — wracają wszystkie naraz): jej drzazgi znikają
 			else:
 				pr[3] = px.position                               # rozbita albo wybuchła: tu leżą jej drzazgi
-		px.visible = s2.visible
+		var wr := bool(s2.get("wreck"))
+		if wr != bool(px.get_meta("wreck", false)):
+			_set_wreck(pr, wr)
+		px.visible = s2.visible or wr
 		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, 0.0, PROP_Z)      # na drodze gracza: przeszkoda, przez którą się skacze i na której się stoi
-		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
+		px.rotation = Vector3(0.0, float(px.get_meta("yaw", 0.0)), -s2.global_rotation + float(px.get_meta("tilt", 0.0)))
+
+## Wrak beczki (prop.gd `wreck`, DESTRUCTION_PLAN.md D1): bryła zgnieciona i przekrzywiona, osmalona nakładką (`_wreck_mat`), pod nią
+## plama sadzy, przez kilka sekund dogasający żar. `on` = false (wipe) — beczka znów cała, sadza i żar znikają.
+func _set_wreck(pr: Array, on: bool) -> void:
+	var px: Node3D = pr[1]
+	px.set_meta("wreck", on)
+	var meshes: Array = px.find_children("*", "MeshInstance3D", true, false)
+	if px is MeshInstance3D:
+		meshes.append(px)
+	for mi in meshes:
+		(mi as GeometryInstance3D).material_overlay = _wreck_mat() if on else null
+	var h := hash(String((pr[0] as Node).name))
+	px.scale = (pr[5] as Vector3) * (Vector3(1.12, 0.68, 1.12) if on else Vector3.ONE)        # rozerwana i przysiadła
+	px.set_meta("tilt", (float(h % 21) - 10.0) * 0.012 if on else 0.0)
+	px.set_meta("yaw", float(h % 360) * PI / 180.0 if on else 0.0)
+	for nd in pr[4]:
+		if is_instance_valid(nd):
+			(nd as Node).queue_free()
+	pr[4] = []
+	if not on:
+		return
+	var foot := (pr[0] as Node2D).global_position
+	if _scorch_tex == null:
+		_scorch_tex = _make_mark_tex(true)
+	pr[4].append(_mark(foot, Vector2.UP, WRECK_SOOT_M, _scorch_tex, 0.5))
+	var ember := OmniLight3D.new()
+	ember.light_color = Color(1.0, 0.45, 0.15)
+	ember.light_energy = 1.4
+	ember.omni_range = 1.3
+	ember.shadow_enabled = false
+	ember.light_cull_mask = LAYER_WORLD
+	ember.position = Level3D.px_to_m(foot) + Vector3(0.0, 0.3, 0.35)
+	_world.add_child(ember)
+	var tw := ember.create_tween()
+	tw.tween_property(ember, "light_energy", 0.0, WRECK_EMBER_S).set_ease(Tween.EASE_IN)
+	tw.tween_callback(ember.queue_free)
+	pr[4].append(ember)
+
+const WRECK_SOOT_M := 1.7                  ## średnica plamy sadzy pod wrakiem beczki [m]
+const WRECK_EMBER_S := 9.0                 ## s dogasania żaru we wraku
+static var _wreck_mat_c: StandardMaterial3D
+
+## Nakładka osmalenia: mnoży obraz bryły przez plamisty szum sadzy (tekstura beczki zostaje pod spodem), w przestrzeni świata —
+## wrak stoi, więc nic nie pływa, a ta sama nakładka pasuje do modelu w pikselach i do bryły zastępczej w metrach.
+static func _wreck_mat() -> StandardMaterial3D:
+	if _wreck_mat_c == null:
+		var nz := FastNoiseLite.new()
+		nz.seed = 87
+		nz.frequency = 0.035
+		var g := Gradient.new()
+		g.set_color(0, Color(0.05, 0.045, 0.04))
+		g.set_color(1, Color(0.45, 0.36, 0.3))
+		var nt := NoiseTexture2D.new()
+		nt.width = 128
+		nt.height = 128
+		nt.seamless = true
+		nt.noise = nz
+		nt.color_ramp = g
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_MUL
+		m.albedo_texture = nt
+		m.uv1_triplanar = true
+		m.uv1_world_triplanar = true
+		m.uv1_scale = Vector3.ONE * 1.6
+		_wreck_mat_c = m
+	return _wreck_mat_c
 
 ## Materiał PBR świata dla ruchomej bryły: kopia z triplanarem w przestrzeni obiektu (światowy „pływałby” po przesuwanej skrzyni).
 func _prop_mat(name: String, per_m: float, tint := Color.WHITE) -> StandardMaterial3D:

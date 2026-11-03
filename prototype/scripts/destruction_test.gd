@@ -455,8 +455,32 @@ func _crates() -> void:
 	var near := _crate(bp + Vector2(20.0, 0.0))
 	var far := _crate(bp + Vector2(-52.0, 0.0))
 	await _frames(0.05)
+	var at0 := barrel.global_position
 	barrel.explode()
 	await _frames(0.1)
 	check("wybuch beczki: skrzynia 20 px obok pęka, 52 px dalej tylko odlatuje", near.exploded and not far.exploded)
+	await _frames(0.05)
+	check("wrak beczki: zostaje (wreck), bez kolizji, w powietrzu bez podłoża na miejscu wybuchu (%s → %s)" % [at0, barrel.global_position],
+		barrel.exploded and barrel.wreck and barrel.collision_layer == 0 and barrel.global_position.distance_to(at0) < 1.0)
+	barrel.reset_enemy()
+	await _frames(0.1)
+	check("wrak beczki po wipe'ie: cała beczka wraca (bez wraku, widoczna, kolizja)",
+		not barrel.exploded and not barrel.wreck and barrel.visible and barrel.collision_layer == Prop.LAYER)
 	for x in [barrel, near, far]:
 		x.queue_free()
+	# wrak na podłożu: beczka 40 px nad graczem (bez wybuchu — `_gone` jak u dołączającego bez punktu); gracz nie jest w masce podłoża
+	var top := player.global_position + Vector2(0.0, -40.0)
+	var floor_hit := level.get_world_2d().direct_space_state.intersect_ray(
+		PhysicsRayQueryParameters2D.create(top, top + Vector2(0.0, 320.0), 1 | 16))
+	var wb := _crate(top, "barrel")
+	await _frames(0.05)
+	wb._gone()
+	await _frames(0.1)
+	var want: Vector2 = floor_hit.get("position", top)
+	check("wrak beczki: osiada na podłożu pod sobą (%.0f → %.0f, podłoże %.0f)" % [top.y, wb.global_position.y, want.y],
+		wb.wreck and not floor_hit.is_empty() and wb.global_position.distance_to(want) < 1.0 and is_zero_approx(wb.rotation))
+	wb._gone_rpc(top + Vector2(0.0, 7.0))
+	await _frames(0.1)
+	check("wrak beczki u dołączającego: w punkcie od serwera (send_state_to → _gone_rpc)",
+		wb.wreck and wb.global_position.distance_to(top + Vector2(0.0, 7.0)) < 1.0)
+	wb.queue_free()

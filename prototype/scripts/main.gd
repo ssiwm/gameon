@@ -2308,6 +2308,23 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					Combat.apply(cr, Combat.make_info(Weapons.KILOF, 8.0, cr.global_position + Vector2(-6.0, -7.0), Vector2.RIGHT, 1, "bullet")))
 			if "--shotcrate=2" in OS.get_cmdline_user_args():
 				get_tree().create_timer(4.0).timeout.connect(cr.reset_enemy)
+	if _has_arg_prefix("--shotbarrel"):             # dev: gracz 1 przy pierwszej beczce `o` (poza zasięgiem wybuchu), po 1,5 s beczka wybucha (podgląd wraku, D1); `=2` — po 6 s wraca cała jak po wipe'ie
+		var br: Node2D = null
+		for p in get_tree().get_nodes_in_group("props"):
+			if String(p.get("kind")) == "barrel":
+				br = p
+				break
+		var bp2: Node2D = _players.get_node_or_null("1")
+		if br != null and bp2 != null:
+			bp2.global_position = br.global_position + Vector2(-90.0, 0.0)
+			bp2.velocity = Vector2.ZERO
+			for e in get_tree().get_nodes_in_group("enemies"):              # czysty kadr: bez wrogów w pobliżu
+				if not e.is_in_group("props") and (e as Node2D).global_position.distance_to(br.global_position) < 600.0:
+					e.queue_free()
+			level.spawn_flare(br.global_position + Vector2(-40.0, -30.0), Vector2.ZERO)
+			get_tree().create_timer(1.5).timeout.connect(br.explode)
+			if "--shotbarrel=2" in OS.get_cmdline_user_args():
+				get_tree().create_timer(6.0).timeout.connect(br.reset_enemy)
 	if "--shotblood" in OS.get_cmdline_user_args():                 # dev: szczątki i krew 60 px przed graczem 1 (podgląd kałuż krwi), bez wrogów
 		var blp: Node2D = _players.get_node_or_null("1")
 		if blp != null:
