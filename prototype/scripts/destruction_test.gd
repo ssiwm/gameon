@@ -665,8 +665,8 @@ const BASE_FEET := 51 * 16.0
 func _barriers() -> void:
 	var space := level.get_world_2d().direct_space_state
 	var gr: Node2D = level.get_node_or_null("Grate1")
-	check("kratka na 1.2: Grate1 (znacznik +, wnęka przy legowisku Stalkera), %s, %d kafle" % [str(gr.get("mat_id")) if gr else "-", int(gr.get("rows")) if gr else 0],
-		gr != null and String(gr.mat_id) == "grate" and int(gr.rows) == 3)
+	check("kratka na 1.2: Grate1 (znacznik +, wnęka przy legowisku Stalkera) w niskim otworze pod nadprożem (B2), %s, %d kafle" % [str(gr.get("mat_id")) if gr else "-", int(gr.get("rows")) if gr else 0],
+		gr != null and String(gr.mat_id) == "grate" and int(gr.rows) == 2)
 	if gr == null:
 		return
 	var cell := Vector2i(int(gr.global_position.x / 16.0), int(gr.global_position.y / 16.0) - 1)
