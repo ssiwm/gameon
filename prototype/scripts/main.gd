@@ -672,19 +672,23 @@ func _charger_net_step() -> void:
 func _destruction_net(n: float, want := "z1_m2") -> void:
 	var role := "host" if "--host" in OS.get_cmdline_user_args() else "client"      # przed połączeniem klient też jest „serwerem”
 	var last := ""
+	var prev := ""
 	var joined := false
 	var broke := false
 	if role == "host":
 		get_tree().create_timer(n).timeout.connect(_destruction_net_host if want == "z1_m2" else _cave_net_host)
 	while is_inside_tree():
 		var sig := _destruction_sig()
-		if sig != last:
+		# stan wypisany dopiero, gdy trzyma się przez dwie próbki: HP ściany idzie od razu, plamy w paczkach co 0,1 s, więc chwilowe
+		# „hp=10 splats=0” między nimi to nie krok testu (CI #596); najkrótszy prawdziwy krok — trzeszczenie stempla — trwa CAVE_DELAY 0,8 s
+		if sig == prev and sig != last:
 			last = sig
 			print("[DESTRUCTION-NET] %s %s" % [role, sig])
+		prev = sig
 		if level.map_id == want:
 			joined = true
 			broke = broke or level._opened_walls.has("BrickWall1")
-		if role == "client" and ((joined and level.map_id != want) or (broke and sig.contains("hp=120 splats=0/"))):    # po wipe'ie albo w lobby
+		if role == "client" and ((joined and level.map_id != want) or (broke and last.contains("hp=120 splats=0/"))):    # po wypisanym wipe'ie albo w lobby
 			get_tree().quit()
 			return
 		await get_tree().create_timer(0.25).timeout
