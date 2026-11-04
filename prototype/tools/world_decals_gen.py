@@ -282,6 +282,50 @@ def d_crack(out, name="d_crack", seed=1):
     save(img, out, name)
 
 
+def d_crack_cave(out, name="d_crack_cave"):
+    """Pęknięcia tylnej ściany nad zawałem (BARRIER_FIX_PLAN.md B0, obraz docelowy): rysy rozchodzą się od osi przegrody na boki
+    i w górę, od stropu w dół — ściana pękła razem z zawalonym przejściem. Sprite 1024 × 1024 na ok. 7 × 7 m (`view3d.gd`)."""
+    w = h = 1024
+    S = 2
+    im = Image.new("L", (w * S, h * S), 0)
+    d = ImageDraw.Draw(im)
+    r = np.random.default_rng(4711)
+    def crack(x, y, ang, ln, width, depth):
+        """Rysa: prawie prosta łamana (pęknięcie muru, nie korzeń), zwęża się; rzadkie odgałęzienia."""
+        pts = [(x, y)]
+        step = 22
+        for i in range(int(ln / step)):
+            ang += r.normal(0, 0.16)
+            x += math.cos(ang) * step
+            y += math.sin(ang) * step
+            pts.append((x, y))
+        for i in range(len(pts) - 1):                       # zwężanie ku końcowi
+            wd = max(1, int(width * (1.0 - 0.75 * i / len(pts))))
+            d.line([pts[i], pts[i + 1]], fill=255, width=wd)
+        if depth > 0:
+            for i in range(3, len(pts) - 3, 5):
+                if r.random() < 0.35:
+                    bx, by = pts[i]
+                    crack(bx, by, ang + r.choice([-1, 1]) * r.uniform(0.4, 0.9), ln * 0.4, width * 0.55, depth - 1)
+
+    for k in range(6):                                       # z osi przegrody na boki (na przemian) i ukośnie w górę ku stropowi
+        side = -1 if k % 2 == 0 else 1
+        y0 = h * S * (0.32 + 0.4 * (k // 2) / 2.0 + r.uniform(-0.04, 0.04))   # od połowy słupa w górę, za słupem — wychodzi zza niego
+        tilt = r.uniform(-0.95, -0.2)                        # ujemne = w górę
+        crack(w * S * 0.5 + side * r.uniform(10, 60), y0, (math.pi - tilt) if side < 0 else tilt, w * S * r.uniform(0.3, 0.42), r.uniform(9, 13), 1)
+    for k in range(2):                                       # od stropu w dół, przy osi
+        crack(w * S * (0.5 + (k - 0.5) * r.uniform(0.15, 0.35)), 0.0, math.pi / 2 + r.normal(0, 0.25), h * S * r.uniform(0.18, 0.3), 8, 1)
+    im = im.resize((w, h), Image.LANCZOS)
+    m = np.asarray(im, np.float32) / 255.0
+    core = gaussian_filter(m, 0.8)
+    edge = gaussian_filter(m, 2.2) * (1 - core)                # cień przy rysie, nie jasna krawędź (na cegle czytała się jak korzeń)
+    yy, xx = np.mgrid[0:h, 0:w] / float(w)
+    fade = np.clip(1.25 - 2.2 * np.hypot(xx - 0.5, (yy - 0.45) * 0.9), 0, 1)   # brzegi sprite'u bez ostrych końców
+    img = paint_img(np.clip(edge * 0.9, 0, 1) * fade, (0.08, 0.06, 0.05), name, var=0.1)
+    img.alpha_composite(paint_img(np.clip(core * 1.9, 0, 1) * fade, (0.01, 0.01, 0.01), name, var=0.1))
+    save(img, out, name)
+
+
 def d_bullets(out, name="d_bullets"):
     w, h = 512, 512
     r = np.random.default_rng(77)
@@ -401,6 +445,9 @@ def main():
     a = sys.argv[1:]
     out = next((x.split("=")[1] for x in a if x.startswith("--out=")), os.path.join(ROOT, "prototype", "art", "world3d"))
     os.makedirs(out, exist_ok=True)
+    if "--only=d_crack_cave" in a:                           # tylko pęknięcia nad zawałem (reszta bez zmian)
+        d_crack_cave(out)
+        return
     # grafiti (rozmiar docelowy w kaflach: patrz Level3D.DECALS)
     g_text(out, "g_dont_listen", "DON'T LISTEN", "red", size=200, angle=-4)
     g_text(out, "g_they_hear", "THEY HEAR", "white", size=225, angle=3)
@@ -420,6 +467,7 @@ def main():
     d_waterstain(out)
     d_crack(out, "d_crack_a", 1)
     d_crack(out, "d_crack_b", 2)
+    d_crack_cave(out)
     d_bullets(out)
     d_plaster(out)
     d_rustbleed(out)

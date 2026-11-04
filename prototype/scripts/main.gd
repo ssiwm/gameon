@@ -668,22 +668,27 @@ func _charger_net_step() -> void:
 ## Crate1 (D1). Host po N s rozbija skrzynię, zabija otwór dwiema deskami, po 1 s rani ścianę dwoma ciosami kilofa, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
 ## z bossem), po 3 s czyści wszystko (wipe, skrzynia wraca) i po 2 s kończy. Klient obecny od początku dostaje to przez RPC na żywo, dołączający
 ## po ciosach — z `send_walls_to`; klient kończy po końcowym wipe'ie (albo w lobby po utracie hosta).
-func _destruction_net(n: float) -> void:
+## `want`: mapa testu — 1.2 (ściana, skrzynia, lampa, okno, otwór) albo t_mine (stempel i strefa zawału, `--cavenet`).
+func _destruction_net(n: float, want := "z1_m2") -> void:
 	var role := "host" if "--host" in OS.get_cmdline_user_args() else "client"      # przed połączeniem klient też jest „serwerem”
 	var last := ""
+	var prev := ""
 	var joined := false
 	var broke := false
 	if role == "host":
-		get_tree().create_timer(n).timeout.connect(_destruction_net_host)
+		get_tree().create_timer(n).timeout.connect(_destruction_net_host if want == "z1_m2" else _cave_net_host)
 	while is_inside_tree():
 		var sig := _destruction_sig()
-		if sig != last:
+		# stan wypisany dopiero, gdy trzyma się przez dwie próbki: HP ściany idzie od razu, plamy w paczkach co 0,1 s, więc chwilowe
+		# „hp=10 splats=0” między nimi to nie krok testu (CI #596); najkrótszy prawdziwy krok — trzeszczenie stempla — trwa CAVE_DELAY 0,8 s
+		if sig == prev and sig != last:
 			last = sig
 			print("[DESTRUCTION-NET] %s %s" % [role, sig])
-		if level.map_id == "z1_m2":
+		prev = sig
+		if level.map_id == want:
 			joined = true
 			broke = broke or level._opened_walls.has("BrickWall1")
-		if role == "client" and ((joined and level.map_id != "z1_m2") or (broke and sig.contains("hp=120 splats=0/"))):    # po wipe'ie albo w lobby
+		if role == "client" and ((joined and level.map_id != want) or (broke and last.contains("hp=120 splats=0/"))):    # po wypisanym wipe'ie albo w lobby
 			get_tree().quit()
 			return
 		await get_tree().create_timer(0.25).timeout
@@ -715,12 +720,6 @@ func _destruction_net_host() -> void:
 	if w == null:
 		print("[DESTRUCTION-NET] host: brak ściany BrickWall1 na mapie %s" % level.map_id)
 		return
-	var sb: Node2D = level.get_node_or_null("Support1")
-	if sb != null:                                                    # stempel złamany kilofem: u klienta na żywo trzask, po CAVE_DELAY zawał;
-		var pk: RefCounted = Weapons.def(Weapons.KILOF)               # dołączający dostaje złamany stempel i zawaloną strefę z `send_walls_to`
-		while bool(sb.get("intact")):
-			Combat.apply(sb, Combat.make_info(Weapons.KILOF, pk.damage, sb.call("body_center"), Vector2.RIGHT, 1, "melee"))
-		await get_tree().create_timer(level.CAVE_DELAY + 0.7).timeout
 	var crate: Node = level.get_node_or_null("Crate1")
 	if crate != null:
 		crate.shatter()                                               # dołączający po ciosach dostaje ją rozbitą z `send_walls_to`
@@ -753,6 +752,31 @@ func _destruction_net_host() -> void:
 	await get_tree().create_timer(2.0).timeout
 	get_tree().quit()
 
+## Host testu zawału w sieci (t_mine): stempel złamany kilofem — u klienta na żywo trzask, po CAVE_DELAY zawał; dołączający dostaje złamany
+## stempel i zawaloną strefę z `send_walls_to`; potem wipe (stempel cały, strefa wolna), migawka z przebudzenia bossa (zawał wraca) i wipe.
+func _cave_net_host() -> void:
+	var sb: Node2D = level.get_node_or_null("Support1")
+	if sb == null:
+		print("[DESTRUCTION-NET] host: brak stempla Support1 na mapie %s" % level.map_id)
+		return
+	var pk: RefCounted = Weapons.def(Weapons.KILOF)
+	while bool(sb.get("intact")):
+		Combat.apply(sb, Combat.make_info(Weapons.KILOF, pk.damage, sb.call("body_center"), Vector2.RIGHT, 1, "melee"))
+	await get_tree().create_timer(level.CAVE_DELAY + 0.7).timeout
+	var t0 := Time.get_ticks_msec()
+	while multiplayer.get_peers().size() < 2 and Time.get_ticks_msec() - t0 < 30000:
+		await get_tree().create_timer(0.25).timeout
+	print("[DESTRUCTION-NET] host peers=%d" % multiplayer.get_peers().size())
+	await get_tree().create_timer(3.0).timeout
+	level.save_breakables_checkpoint()
+	level.reset_breakables()
+	await get_tree().create_timer(3.0).timeout
+	level.reset_breakables(level.breakables_checkpoint())
+	await get_tree().create_timer(3.0).timeout
+	level.reset_breakables()
+	await get_tree().create_timer(2.0).timeout
+	get_tree().quit()
+
 func _next_campaign_map() -> String:
 	var order: Array = level.CAMPAIGN
 	return order[(order.find(level.map_id) + 1) % order.size()]
@@ -772,6 +796,8 @@ func _handle_cmdline() -> void:
 			get_tree().create_timer(float(sa.substr("--chargernet=".length()))).timeout.connect(_charger_net_step)
 		if sa.begins_with("--destructionnet="):            # test sieci: zniszczenia — rany, rozbicie, punkt kontrolny i wipe u wszystkich
 			_destruction_net(float(sa.substr("--destructionnet=".length())))
+		if sa.begins_with("--cavenet="):                   # test sieci: zawał na mapie testowej t_mine — stempel, strefa, migawka i wipe u wszystkich
+			_destruction_net(float(sa.substr("--cavenet=".length())), "t_mine")
 		if sa.begins_with("--batterynet="):                # test sieci: bateria 4,5 V — klient słaby, serwer daje mu baterię z ziemi
 			get_tree().create_timer(float(sa.substr("--batterynet=".length()))).timeout.connect(_battery_net_step)
 	var autoquit := -1.0
@@ -2254,8 +2280,18 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				for k in 5:
 					var at := Vector2(rc.get_center().x + float(k - 2) * 3.0, rc.position.y + rc.size.y * (0.18 + 0.16 * float(k)))
 					Combat.apply(sw, Combat.make_info(Weapons.SRUT8, 10.0, at, Vector2.LEFT, 1, "bullet")))
-		if sw != null and "--shotcave" in OS.get_cmdline_user_args() and sw.has_method("snap"):   # …stempel (--shotwall=Support1) po 1 s złamany: kikut, belka na ziemi, gruz (D3)
+		var cave_arg := ""
+		for a in OS.get_cmdline_user_args():
+			if a == "--shotcave" or a.begins_with("--shotcave="):
+				cave_arg = a
+		if sw != null and cave_arg != "" and sw.has_method("snap"):   # …stempel (--shotwall=Support1) po 1 s złamany: kikut, belka na ziemi, gruz (D3)
 			get_tree().create_timer(1.0).timeout.connect(func() -> void: level.support_broken(String(sw.name)))
+			if cave_arg == "--shotcave=2":                            # =2: po 3,5 s gruz odkopany kilofem — resztki na podłodze (B0)
+				get_tree().create_timer(3.5).timeout.connect(func() -> void:
+					var rb := level.get_node_or_null(String(sw.get("wall_name")))
+					for k in 6:
+						if rb != null and is_instance_valid(rb) and not rb.is_queued_for_deletion():
+							Combat.apply(rb, Combat.make_info(Weapons.KILOF, 55.0, (rb as Node2D).global_position + Vector2(0, -20), Vector2.RIGHT, 1, "melee")))
 	if "--shotscan" in OS.get_cmdline_user_args():
 		var scp: Node2D = _players.get_node_or_null("1")     # --shotscan: skaner Sowa włączony (użyj z --shotat=KOLUMNA przy wrogach)
 		if scp != null:

@@ -1,5 +1,5 @@
 """Pre-fraktura zniszczalnych elementów (DESTRUCTION_PLAN.md D0, „Rozpad”): bryła materiału pocięta na komórki Voronoi
-albo — deska — skośnymi cięciami w poprzek.
+albo — deska — skośnymi cięciami w poprzek; gruz zawału (`rock`, BARRIER_FIX_PLAN.md B0) — nieregularny głaz zamiast kostki.
 
 Każda komórka to część wspólna bryły z półprzestrzeniami „bliżej mojego punktu niż sąsiada” — cięcie płaszczyznami w bmesh
 (`bisect_plane` + zaślepienie otworu), więc bryły są wypukłe i razem dokładnie wypełniają całość. Deska (`cuts`) ma kawałki między
@@ -31,6 +31,9 @@ SETS = {
     "brick": {"size": (1.0, 1.0, 1.0), "cells": 12, "seed": 87},
     # deski (skrzynia `k`, D1; potem barykady D2): listwa 1 × 0,11 × 0,03 m, 3 skośne cięcia → 4 drzazgi o ukośnych końcach
     "planks": {"size": (1.0, 0.03, 0.11), "cuts": 3, "seed": 41},
+    # gruz zawału (D3, BARRIER_FIX_PLAN.md B0): głaz ok. 1 × 0,85 × 0,7 m (zniekształcona ikosfera), 10 brył — kamienie o jednej
+    # chropowatej, zaokrąglonej stronie i płaskich przełomach, nie kostki muru
+    "rock": {"size": (1.0, 0.85, 0.7), "cells": 10, "seed": 63, "shape": "boulder", "bumps": 0.12},
 }
 
 
@@ -44,11 +47,24 @@ def _material(name, color):
     return m
 
 
-def _cell(size, pts, i):
-    """Komórka `i`: prostopadłościan `size` przycięty płaszczyznami symetralnych do wszystkich innych punktów."""
-    bm = bmesh.new()
-    bmesh.ops.create_cube(bm, size=1.0)
+def _boulder(bm, size, bumps, seed):
+    """Głaz: ikosfera o promieniu 0,5 rozciągnięta do `size`, wierzchołki odsunięte promieniowo o ±`bumps` (to samo ziarno
+    dla każdej komórki, więc komórki dalej razem wypełniają jedną bryłę)."""
+    bmesh.ops.create_icosphere(bm, subdivisions=2, radius=0.5)
+    rng = random.Random(seed * 7919)
+    for v in sorted(bm.verts, key=lambda v: (round(v.co.x, 4), round(v.co.y, 4), round(v.co.z, 4))):
+        v.co *= 1.0 + rng.uniform(-bumps, bumps)
     bmesh.ops.scale(bm, vec=Vector(size), verts=bm.verts)
+
+
+def _cell(size, pts, i, spec=None):
+    """Komórka `i`: prostopadłościan `size` (albo głaz, `shape` = boulder) przycięty płaszczyznami symetralnych do wszystkich innych punktów."""
+    bm = bmesh.new()
+    if spec and spec.get("shape") == "boulder":
+        _boulder(bm, size, spec.get("bumps", 0.1), spec["seed"])
+    else:
+        bmesh.ops.create_cube(bm, size=1.0)
+        bmesh.ops.scale(bm, vec=Vector(size), verts=bm.verts)
     for f in bm.faces:
         f.material_index = 0
     p = pts[i]
@@ -104,14 +120,15 @@ def build(name, spec):
     rng = random.Random(spec["seed"])
     sx, sy, sz = spec["size"]
     cuts = _plank_cuts(spec, rng) if "cuts" in spec else []
-    pts = [] if cuts else [Vector((rng.uniform(-0.5, 0.5) * sx, rng.uniform(-0.5, 0.5) * sy, rng.uniform(-0.5, 0.5) * sz))
+    span = 0.38 if spec.get("shape") == "boulder" else 0.5          # punkty komórek głazu w środku, nie poza zaokrąglonym brzegiem
+    pts = [] if cuts else [Vector((rng.uniform(-span, span) * sx, rng.uniform(-span, span) * sy, rng.uniform(-span, span) * sz))
                            for _ in range(spec["cells"])]
     outer = _material("outer", (0.5, 0.3, 0.24, 1.0))
     inner = _material("inner", (0.75, 0.5, 0.4, 1.0))
     made = 0
     vol = 0.0
     for i in range(len(cuts) + 1 if cuts else len(pts)):
-        bm = _slice(spec["size"], cuts, i) if cuts else _cell(spec["size"], pts, i)
+        bm = _slice(spec["size"], cuts, i) if cuts else _cell(spec["size"], pts, i, spec)
         if len(bm.faces) < 4:
             bm.free()
             continue
@@ -132,7 +149,7 @@ def build(name, spec):
     path = os.path.join(OUT, "fracture_%s.glb" % name)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_apply=True, export_animations=False,
                               export_materials="EXPORT", export_texcoords=False)
-    print("[FRACTURE] %s: %d brył, objętość %.3f z %.3f m³ -> %s" % (name, made, vol, sx * sy * sz, path))
+    print("[FRACTURE] %s: %d brył, objętość %.3f z %.3f m³ (prostopadłościan) -> %s" % (name, made, vol, sx * sy * sz, path))
 
 
 def main():

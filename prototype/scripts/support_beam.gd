@@ -104,7 +104,7 @@ func _hit_fx_rpc(p: Vector2) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	var parent: Node = lvl if lvl != null else get_parent()
 	for i in 3:
-		Vfx.debris(parent, p, Vector2(randf_range(-50.0, 50.0), randf_range(-60.0, -10.0)), Vector2(2, 2), m["debris"])
+		Vfx.chip(parent, p, Vector2(randf_range(-50.0, 50.0), randf_range(-60.0, -10.0)), 2.0, m["debris"], "planks")     # drzazgi stempla
 	var snd: Array = m["hit_snd"]
 	Audio.play_variant_at(String(snd[0]), int(snd[1]), p, Audio.BUS_WORLD, float(snd[2]), float(snd[3]))
 

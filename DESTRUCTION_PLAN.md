@@ -46,14 +46,14 @@ Po D0–D3 (1.7.492):
 
 | Element | Gdzie | Znacznik / mapy |
 |---|---|---|
-| Przegrody z materiałem (cegła, deski, kratka, gruz) | `breakable.gd`, `level.gd` (`WALL_MARKS`, `_wall_cells`) | `q`, `%`, `+`, `^`; 1.1, 1.2, 1.3 |
+| Przegrody z materiałem (cegła, deski, kratka, gruz) | `breakable.gd`, `level.gd` (`WALL_MARKS`, `_wall_cells`) | `q`, `%`, `+` na 1.1, 1.2, 1.3; `^` od 1.7.494 tylko na mapie testowej `t_mine` |
 | Maska uszkodzeń, dziury w deskach | `damage_mask.gd`, `sight.gd` | — |
 | Pre-fraktura i gruz w MultiMesh | `tools/fracture_gen.py`, `view3d.mirror_chunk` | cegła, deski |
 | Skrzynie pękają, wrak beczki | `prop.gd` | `k`, `o` |
 | Lampy misji | `lamp.gd` | `I`; 1.1, 1.2 |
 | Okna | `window_glass.gd` | `|`; 1.2, 1.3 |
 | Barykadowanie | `barricade_spot.gd`, `level.nail_board` | `:` i rozbite `%`; 1.1, 1.2, 1.3 |
-| Stemple i zawał | `support_beam.gd`, `level.cave_in` | `!` + `^`; 1.1, 1.2, 1.3 |
+| Stemple i zawał | `support_beam.gd`, `level.cave_in` | `!` + `^`; od 1.7.494 tylko mapa testowa `t_mine` (1.1–1.3 bez stref) |
 | Stan, reset, punkt kontrolny, dołączający | `level.breakables_state` / `reset_breakables` / `send_walls_to` | — |
 | Pomiar | `session_log.gd` (`break`, `crate`, `lamp`, `window`, `barricade`, `support`, `cave`), `tools/session_progress.py` | — |
 
@@ -464,6 +464,13 @@ złamany: kikut do kolan i belka na ziemi po stronie przejścia), gruz to ciemni
 `test_net_session.sh` (stempel i zawał na żywo i u dołączającego, migawka zostawia zawał, wipe otwiera). Podgląd: `--shotwall=Support1
 --shotcave`. Zostaje: kładka spadająca po zestrzeleniu słupa (osobny PR), strojenie po playteście (czy gracze zawalają za sobą, czas
 trzeszczenia, czy stempel widać w ciemności), dźwięk zawału po A/B.
+
+**1.7.494 (B0):** strefy i stemple zdjęte z 1.1, 1.2 i 1.3 — w halach 4–5 rzędów i pod lekkim dachem zawał nie trzymał się logiki
+(płyta ~6,8 m przy ~3,5 m głębokości tunelu, strefa na 1.2 bez celu). Mechanika zostaje na przyszłe mapy w podziemiach: strefa w niskim
+przejściu (2–3 rzędy) pod skałą lub betonem, stempel z podciągiem tuż przed nią. Testy na mapie testowej `t_mine` (poza kampanią):
+`--destructiontest` sekcja 14, `--maptest`, `test_net_session.sh` (`--cavenet`); podgląd `--mission=t_mine --shotwall=Support1 --shotcave`.
+Modele zawału (`tools/rubble_pile_gen.py`) są dziś dla stref 4 i 5 rzędów — niższe skaluje widok w pionie; przy pierwszej prawdziwej mapie
+wygenerować zestawy 2–3 rzędy.
 
 ### D4 — kosmetyka walki (bez wpływu na rozgrywkę)
 
