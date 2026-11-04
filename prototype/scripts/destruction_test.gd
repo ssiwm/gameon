@@ -31,6 +31,8 @@ extends "res://scripts/stalker_test.gd"
 ## 14. Zawał (D3, support_beam.gd, level.gd `cave_in`): stempel `!` na 1.2 trzyma strefę gruzu `^` obok; kula, śrut, wybuch i kilof go ranią,
 ##    maczeta nie; po złamaniu strefa zapada się po CAVE_DELAY s (nawigacja zamknięta, hałas), zwykły wróg ginie, Stalker i gracz lądują
 ##    obok; gruz odkopuje kilof, kula nie; wipe w czasie trzeszczenia odwołuje zawał; wipe, punkt kontrolny bossa i wstrząs finału.
+## 15. Dziennik sesji (DESTRUCTION_PLAN.md „Pomiar po wdrożeniu”): po sekcjach 1–14 w pliku są wiersze `break` (materiał, czym, kto,
+##    rodzaj wroga, czas barykady), `crate`, `lamp` i `window` (czym), `barricade`, `support`, `cave`.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -47,6 +49,8 @@ const WindowGlass := preload("res://scripts/window_glass.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
 const Sight := preload("res://scripts/sight.gd")
 const Projectile := preload("res://scripts/projectile.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
+const LOG_DIR := "user://test_destruction_sessions"
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -74,6 +78,9 @@ func run(m: Node2D) -> void:
 	_isolate()
 	if stalker != null:
 		stalker.queue_free()
+	SessionLog.enabled = true                      # dziennik w headless: osobny katalog testu, kasowany na końcu (sekcja 15)
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "destruction"})
 	var real := level.get_node_or_null("BrickWall1")
 	check("zamurowane przejście na mapie 1.2: materiał %s, %.0f HP" % [str(real.get("mat_id")) if real else "-", float(real.get("hp")) if real else 0.0],
 		real != null and String(real.mat_id) == "brick" and float(real.hp) == 120.0)
@@ -90,6 +97,7 @@ func run(m: Node2D) -> void:
 	await _holes()
 	await _barricade()
 	await _cave()
+	_session_log()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -1177,3 +1185,47 @@ func _enemy(kind: String, pos: Vector2) -> CharacterBody2D:
 	e._phys_x = pos.x
 	e._last_x = pos.x
 	return e
+
+# ---------------------------------------------------------------- 15. dziennik sesji
+
+func _session_log() -> void:
+	var rows: Array = []
+	if SessionLog.path != "" and FileAccess.file_exists(SessionLog.path):
+		for line in FileAccess.get_file_as_string(SessionLog.path).split("\n", false):
+			var v: Variant = JSON.parse_string(line)
+			if v is Dictionary:
+				rows.append(v)
+	var by_ev := {}
+	for r in rows:
+		var ev := String(r.get("ev", ""))
+		by_ev[ev] = int(by_ev.get(ev, 0)) + 1
+	info("dziennik: %s" % str(by_ev))
+	var breaks := rows.filter(func(r: Dictionary) -> bool: return r.get("ev") == "break")
+	var mats := {}
+	for r in breaks:
+		mats[String(r.get("mat", ""))] = true
+	check("dziennik: `break` dla cegły, desek i kratki (%s)" % str(mats.keys()), mats.has("brick") and mats.has("planks") and mats.has("grate"))
+	check("dziennik: `break` ma czym, kto, hałas i pozycję", not breaks.is_empty() and breaks.all(func(r: Dictionary) -> bool:
+		return r.has("by") and r.has("shooter") and r.has("noise") and r.has("pos") and String(r["by"]) != ""))
+	check("dziennik: gruz odkopany kilofem to `break` z materiałem rubble",
+		breaks.any(func(r: Dictionary) -> bool: return r.get("mat") == "rubble" and r.get("by") == "pick"))
+	var srcs := {}
+	for r in breaks:
+		if r.has("src"):
+			srcs[String(r["src"])] = true
+	check("dziennik: rozbicie przez wroga ma rodzaj (%s)" % str(srcs.keys()), not srcs.is_empty())
+	var held := breaks.filter(func(r: Dictionary) -> bool: return r.has("held"))
+	check("dziennik: rozbita przybita barykada ma `held` (%s)" % str(held.map(func(r: Dictionary) -> String: return "%s %s s" % [r.get("src", r.get("by")), r["held"]])),
+		not held.is_empty() and held.all(func(r: Dictionary) -> bool: return float(r["held"]) >= 0.0))
+	for ev in ["crate", "barricade", "support", "cave"]:
+		check("dziennik: zdarzenie `%s`" % ev, int(by_ev.get(ev, 0)) > 0)
+	for ev in ["lamp", "window"]:
+		var rs := rows.filter(func(r: Dictionary) -> bool: return r.get("ev") == ev)
+		check("dziennik: `%s` z rodzajem trafienia" % ev, not rs.is_empty() and rs.any(func(r: Dictionary) -> bool: return String(r.get("by", "")) != ""))
+	SessionLog.reset_for_test()                      # zwalnia plik (inaczej Windows nie da go skasować)
+	SessionLog.enabled = false
+	var d := DirAccess.open(LOG_DIR)
+	if d != null:
+		for f in d.get_files():
+			d.remove(f)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(LOG_DIR))

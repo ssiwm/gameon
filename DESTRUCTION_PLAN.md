@@ -1,7 +1,12 @@
 # DESTRUCTION_PLAN — niszczenie otoczenia
 
-Stan wyjścia: main 1.7.477 (2026-11-02). Plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
-spike'i przed D0), nic nie wdrożone.
+Stan wyjścia planu: main 1.7.477 (2026-11-02), plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
+spike'i przed D0).
+
+**Stan wdrożenia (2026-11-04, main 1.7.493):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
+1.7.493. Zostaje: playtest z raportem (`tools/session_progress.py`, sekcja „Niszczenie”), odsłuch A/B tymczasowych dźwięków (drewno
+skrzyni, młotek, zawał), D4 z pulą cząsteczek, spadająca kładka (D3), blacha `sheet` (D2, brak na mapach), misje „przetrzymaj” (D2b,
+po strefie 2) i D5. Kod spike'u S2 tylko lokalnie (gałąź robocza `spike/dig-zone`).
 
 ## Cel
 
@@ -25,6 +30,8 @@ Zasady:
 
 ## Co już jest
 
+Stan przed planem (1.7.477); stan po wdrożeniu — w „Zrobione w …” przy etapach i w tabeli pod spodem.
+
 | Element | Gdzie | Stan |
 |---|---|---|
 | Zamurowane przejście `q` | `brick_wall.gd`, `level.gd` (`_wall_cells`, `break_wall`, `send_walls_to`) | kilof (`breaks_walls`) i wybuch; HP 120; hałas 1,5 / 6; gruz `view3d._spawn_rubble`; tylko **1 sztuka** w mapach (1.2) |
@@ -34,6 +41,21 @@ Zasady:
 | Zawał 1.1 | `level.gd collapse`, `view3d._geo_alt` | jedno, z góry policzone „po zawale” (geometria 3D i nawigacja przy wczytaniu) |
 | Ślady kul i osmalenia | `mark_hit` / `mark_scorch` (#391) | dekale, bez stanu |
 | Cele „zniszcz” | gniazda, Żyła, totemy (GDD) | osobne obiekty-wrogowie |
+
+Po D0–D3 (1.7.492):
+
+| Element | Gdzie | Znacznik / mapy |
+|---|---|---|
+| Przegrody z materiałem (cegła, deski, kratka, gruz) | `breakable.gd`, `level.gd` (`WALL_MARKS`, `_wall_cells`) | `q`, `%`, `+`, `^`; 1.1, 1.2, 1.3 |
+| Maska uszkodzeń, dziury w deskach | `damage_mask.gd`, `sight.gd` | — |
+| Pre-fraktura i gruz w MultiMesh | `tools/fracture_gen.py`, `view3d.mirror_chunk` | cegła, deski |
+| Skrzynie pękają, wrak beczki | `prop.gd` | `k`, `o` |
+| Lampy misji | `lamp.gd` | `I`; 1.1, 1.2 |
+| Okna | `window_glass.gd` | `|`; 1.2, 1.3 |
+| Barykadowanie | `barricade_spot.gd`, `level.nail_board` | `:` i rozbite `%`; 1.1, 1.2, 1.3 |
+| Stemple i zawał | `support_beam.gd`, `level.cave_in` | `!` + `^`; 1.1, 1.2, 1.3 |
+| Stan, reset, punkt kontrolny, dołączający | `level.breakables_state` / `reset_breakables` / `send_walls_to` | — |
+| Pomiar | `session_log.gd` (`break`, `crate`, `lamp`, `window`, `barricade`, `support`, `cave`), `tools/session_progress.py` | — |
 
 ## Ograniczenia techniczne (zmierzone)
 
@@ -536,6 +558,13 @@ Pierwszy krok, który warto zrobić od razu niezależnie od reszty: **lokalna pr
 przy rozbiciu ściany na 1.2.
 
 ## Pomiar po wdrożeniu
+
+**Zrobione w 1.7.493:** zdarzenie `break` (nazwa, materiał, czym, id gracza albo rodzaj wroga `src`, Uwaga, pozycja; `held` — sekundy
+od ostatniej przybitej deski), `lamp` i `window` z rodzajem trafienia; `tools/session_progress.py` sekcja „Niszczenie” (próby od 1.7.485):
+odsetek prób z niszczeniem wg mapy, przegrody wg materiału i narzędzia, kto rozbija, łup ze skrzyń, barykady (deski, komplety, czas
+wytrzymania, kto rozbił), zawały, pobudki Stalkera i elit do 20 s po zniszczeniu i sygnały (mniej niż 20% prób z niszczeniem, nikt nie
+przybija, barykady padają w medianie < 5 s, ponad połowa zniszczeń budzi Stalkera / elitę). Dyrektor nie zapisuje pojedynczych
+wypuszczeń grup, więc „ściąga wrogów” liczy na razie tylko Stalkera i elity. `dig` — z D5.
 
 - Dziennik sesji (`session_log`): zdarzenie `break` (materiał, czym, kto, hałas) → ile przejść otwierają gracze, czym, czy to ściąga wrogów.
 - `--hitchtest` / `[PERF]`: rozbicie w walce bez klatki > 33 ms.

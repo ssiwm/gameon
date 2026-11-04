@@ -496,7 +496,7 @@ func _smash_tick(delta: float, speed: float, nav: AStar2D) -> bool:
 	if _smash_cd <= 0.0:
 		_smash_cd = SMASH_EVERY
 		var at := Vector2(rc.position.x if _smash_side < 0.0 else rc.end.x, rc.end.y - 26.0)
-		_smash.call("take_hit", {"type": "claw", "amount": SMASH_DMG, "pos": at, "dir": Vector2(-_smash_side, 0.0)})
+		_smash.call("take_hit", {"type": "claw", "amount": SMASH_DMG, "pos": at, "dir": Vector2(-_smash_side, 0.0), "src": "stalker"})
 		_seen_serial = NoiseMgr.noise_serial            # własne uderzenia (i trzask rozbitych desek) nie przestawiają mu celu
 	return true
 

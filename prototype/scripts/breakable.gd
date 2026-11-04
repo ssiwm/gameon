@@ -22,6 +22,7 @@ extends Node2D
 const Weapons := preload("res://scripts/weapons.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Mat := preload("res://scripts/arsenal.gd").Mat
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const TILE := 16.0
 
@@ -156,9 +157,23 @@ func take_hit(info: Dictionary) -> Dictionary:
 	if broken:
 		NoiseMgr.add_noise(float(m["n_break"]), global_position, "wall")
 		var lvl := get_tree().get_first_node_in_group("level")
+		SessionLog.event("break", break_row(info, kind, lvl))
 		if lvl != null:
 			lvl.break_wall(String(name))
 	return {"hit": true, "dealt": float(info["amount"]), "killed": broken, "mat": int(m["mat"])}
+
+## Wiersz zdarzenia `break` w dzienniku sesji (DESTRUCTION_PLAN.md „Pomiar po wdrożeniu”): co, czym, kto (gracz `shooter`
+## albo rodzaj wroga `src`), hałas po rozbiciu; przybita barykada dostaje `held` — sekundy od ostatniej przybitej deski.
+func break_row(info: Dictionary, kind: String, lvl: Node) -> Dictionary:
+	var row := {"name": String(name), "mat": mat_id, "by": kind, "shooter": int(info.get("shooter", -1)),
+		"pos": SessionLog.xy(global_position), "noise": roundi(NoiseMgr.level)}
+	if String(info.get("src", "")) != "":
+		row["src"] = String(info["src"])
+	if lvl != null and lvl.has_method("nail_held"):
+		var held: float = lvl.nail_held(String(name))
+		if held >= 0.0:
+			row["held"] = snappedf(held, 0.1)
+	return row
 
 ## Serwer: plama trafienia. Punkt z `info.pos` (wybuch: najbliższy punkt elementu) w obrębie elementu; cios i szarża bez dokładnego punktu
 ## dostają rozrzut, żeby kolejne nie lądowały w tym samym miejscu (losuje tylko serwer — peery dostają gotowe liczby). Stopień z siły

@@ -267,6 +267,7 @@ func _load(id: String) -> void:
 	_window_cells.clear()
 	_opened_walls.clear()
 	plank_stock = 0
+	_nail_ms.clear()
 	_supports_down.clear()
 	_cave_epoch += 1                                  # zawał zaplanowany na poprzedniej mapie przepada
 	_weapons = m.WEAPONS
@@ -1136,6 +1137,7 @@ const NAIL_SCRAP := 2            ## deska bez zapasu desek kosztuje tyle złomu 
 const NAIL_NOISE := 1.5          ## ostatnie uderzenia młotka — deska przybita
 const BARRICADE_SPOT := preload("res://scripts/barricade_spot.gd")
 var plank_stock := 0             ## zapas desek drużyny w tej misji (serwer; klienci dostają przez `_planks_rpc`); rozbita skrzynia daje 1–2
+var _nail_ms := {}               ## serwer: nazwa przegrody → czas ostatniej przybitej deski (ms), do `held` w zdarzeniu `break` dziennika sesji
 var _wall_defs: Array = []       ## [{name, pos (stopy), rows, cells}] od lewej do prawej
 var _window_defs: Array = []     ## okna „|": [{name, pos (stopy), rows}] wierszami od góry, od lewej
 
@@ -1264,6 +1266,7 @@ func _break_wall_rpc(id: String, wall_name: String) -> void:
 
 func _open_wall(wall_name: String, with_fx: bool) -> void:
 	_opened_walls.append(wall_name)
+	_nail_ms.erase(wall_name)
 	var rc := Rect2i()
 	var first := true
 	for cell in _wall_cells.keys():
@@ -1330,6 +1333,7 @@ func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionar
 	if id != map_id:
 		return
 	plank_stock = stock                                      # zapas desek: wipe zabiera, punkt kontrolny bossa przywraca
+	_nail_ms.clear()                                         # dziennik: barykada z migawki nie ma czasu przybicia z tej próby
 	_cave_epoch += 1                                         # trzeszczący strop (złamany stempel, zawał jeszcze nie spadł) już nie spadnie
 	_supports_down = Array(down)
 	for sb in get_tree().get_nodes_in_group("supports"):
@@ -1462,6 +1466,7 @@ func nail_board(wall_name: String) -> String:
 	var frac := float(boards_of(wall_name) + 1) / float(BOARDS)
 	var wd := wall_def(wall_name)
 	NoiseMgr.add_noise(NAIL_NOISE, Vector2(wd["pos"]) + Vector2(0, -TILE), "barricade")
+	_nail_ms[wall_name] = Time.get_ticks_msec()
 	SessionLog.event("barricade", {"wall": wall_name, "boards": roundi(frac * BOARDS), "planks": plank_stock, "noise": roundi(NoiseMgr.level)})
 	if NoiseMgr.has_network():
 		_nail_rpc.rpc(map_id, wall_name, frac, plank_stock, true)
@@ -1488,6 +1493,12 @@ func _nail_rpc(id: String, wall_name: String, frac: float, stock: int, with_fx: 
 		var at := Vector2(wd["pos"]) + Vector2(0, -TILE * float(wd["rows"]) * 0.5)
 		Audio.play_variant_at("amb_thud", 2, at, Audio.BUS_WORLD, -3.0, 1.5)      # tymczasowo: stuk z istniejących próbek (młotek po odsłuchu A/B)
 		Vfx.dust(self, at, 0.4)
+
+## Serwer: sekundy od ostatniej przybitej deski w przegrodzie `wall_name` (ile wytrzymała barykada); -1, gdy w tej próbie nikt jej nie przybijał.
+func nail_held(wall_name: String) -> float:
+	if not _nail_ms.has(wall_name):
+		return -1.0
+	return float(Time.get_ticks_msec() - int(_nail_ms[wall_name])) / 1000.0
 
 ## Serwer: rozbita skrzynia (prop.gd `shatter`) dorzuca deski do zapasu drużyny.
 func add_planks(n: int) -> void:

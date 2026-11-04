@@ -28,6 +28,16 @@ extends RefCounted
 ##   objective      what (tag / stash / generator / nest / boss), n, of, pos, who, bot — zaliczony cel lub cel poboczny (czas odcinków trasy, P2)
 ##   elite          what (spawn — tylko w trakcie próby / wake / kill / scream: stunned / summon: n, alive, wave / summon_break: dmg), kind, src (map / director / finale / dev), pos, hp, max_hp; wake: noise;
 ##                  kill: by (player_id, 0 = nikt), weapon (ostatnie źródło obrażeń), after (s od przebudzenia), dmg (źródło → obrażenia; od 1.7.466, ELITE_PLACEMENT_PLAN.md E0)
+##   crate          pos, scrap, battery, planks, noise — rozbita skrzynia `k` (DESTRUCTION_PLAN.md D1, od 1.7.485)
+##   lamp           name, by, shooter, noise — stłuczona lampa misji `I` (D1, od 1.7.487; by / shooter / noise od 1.7.493)
+##   window         name, by, shooter, noise — stłuczona szyba okna `|` (D1, od 1.7.488; by / shooter / noise od 1.7.493)
+##   break          name, mat (brick / planks / grate / rubble), by (pick / blade / bullet / pellet / blast / charge / claw), shooter (id gracza,
+##                  -1 = nie gracz), src (rodzaj wroga, gdy rozbił wróg), pos, noise, held (s od ostatniej przybitej deski — tylko barykada
+##                  przybita w tej próbie) — rozbita przegroda albo odkopany gruz (D0–D3, od 1.7.493)
+##   barricade      wall, boards (stojące deski po przybiciu), planks (zapas desek), noise — przybita deska (D2b, od 1.7.491)
+##   support        name, zone, by, shooter — złamany stempel `!` (D3, od 1.7.492)
+##   cave           zone, crushed (zasypani wrogowie) — strefa `^` zawalona (D3, od 1.7.492)
+##                  Raport: sekcja „Niszczenie” w tools/session_progress.py (próby od 1.7.485)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
 ##   xp             who, mission (XP za wynik misji), rows (etykiety bonusów), xp (łącznie w profilu po misji), level — po udanej misji,
 ##                  raport właściciela profilu (u klienta przez RPC do hosta); pisany po mission_end (PROGRESSION_PLAN.md P0.1)

@@ -10,6 +10,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Breakable := preload("res://scripts/breakable.gd")
 
 ## Cienie postaci od lampy (plan ATMOSPHERE_PLAN.md, F3): włączane tylko, gdy w pobliżu ktoś stoi — MEDIUM bliżej, HIGH dalej, LOW wcale.
 const SHADOW_RANGE_PX := [0.0, 190.0, 300.0]
@@ -90,15 +91,15 @@ func bulb_pos() -> Vector2:
 func take_hit(info: Dictionary) -> Dictionary:
 	if not NoiseMgr.is_server() or not shootable or not lit or float(info.get("amount", 0.0)) <= 0.0:
 		return {}
-	shatter()
+	shatter(info)
 	return {"hit": true, "pass": true, "dealt": 0.0, "mat": Arsenal.Mat.WORLD}
 
 ## Serwer: stłuczenie — hałas, wpis do dziennika sesji i efekt u wszystkich.
-func shatter() -> void:
+func shatter(info := {}) -> void:
 	if not NoiseMgr.is_server() or not lit:
 		return
 	NoiseMgr.add_noise(N_BREAK, bulb_pos(), "glass")
-	SessionLog.event("lamp", {"name": String(name)})
+	SessionLog.event("lamp", {"name": String(name), "by": Breakable.hit_kind(info), "shooter": int(info.get("shooter", -1)), "noise": roundi(NoiseMgr.level)})
 	if NoiseMgr.has_network():
 		_break_rpc.rpc(true)
 	else:
