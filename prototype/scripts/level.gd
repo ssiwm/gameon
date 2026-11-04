@@ -22,6 +22,8 @@ extends Node2D
 ##   |  okno ze szkłem w ścianie (pionowy ciąg kafli; rama zatrzymuje ruch, szybę tłucze kula)   — przy RACKS=true każde „g" dostaje stojak
 ##   q  zamurowane przejście   %  deski / barykada   +  zardzewiała kratka wentylacji — od znacznika w górę do sufitu (breakable.gd)
 ##   :  pusty otwór — na starcie wolny, gracze zabijają go deskami jak rozbite `%` (barricade_spot.gd, DESTRUCTION_PLAN.md D2b)
+##   ^  strefa zawału — od znacznika w górę do stropu; na starcie wolna, zapada się gruzem po złamaniu stempla „!” obok (D3)
+##   !  stempel — drewniana podpora stropu; kula, śrut, kilof i wybuch ją łamią (support_beam.gd, DESTRUCTION_PLAN.md D3)
 ##   B  Żyła — matka gniazd (boss misji)
 ##   k  skrzynia (fizyczna)   o  beczka (fizyczna, wybucha)
 ##   g  broń na ziemi         a  skrzynka z amunicją
@@ -54,6 +56,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Combat := preload("res://scripts/combat.gd")
 const BREAKABLE := preload("res://scripts/breakable.gd")
 const GRENADE := preload("res://scripts/grenade.gd")
 const ACID := preload("res://scripts/acid_spit.gd")
@@ -264,6 +267,8 @@ func _load(id: String) -> void:
 	_window_cells.clear()
 	_opened_walls.clear()
 	plank_stock = 0
+	_supports_down.clear()
+	_cave_epoch += 1                                  # zawał zaplanowany na poprzedniej mapie przepada
 	_weapons = m.WEAPONS
 	_accents = m.ACCENTS
 	_map_items = {}
@@ -366,6 +371,9 @@ func _collapse_rpc(id: String, rects: Array) -> void:
 		if not _blocks.has(r):
 			_blocks.append(r)
 	_apply_blocks(rects)
+	for wd in _wall_defs:                                    # wstrząs zawału z danych mapy (finał 1.1) rozsypuje gruz wszystkich stref „^” (D3):
+		if String(wd["material"]) == "rubble" and not _opened_walls.has(String(wd["name"])):   # droga powrotna po finale nigdy nie jest zasypana
+			_open_wall(String(wd["name"]), true)
 
 ## Dołączający gracz dostaje już zastosowane zawały (po tym, jak załadował mapę) i wrogów wypuszczonych przez finał.
 func send_collapse_to(peer_id: int) -> void:
@@ -1111,8 +1119,17 @@ func _spawn_flare_rpc(n: String, pos: Vector2, vel: Vector2, chute: bool) -> voi
 # ---------------------------------------------------------------- przegrody: zamurowania, deski, kratki
 
 const WALL_MAX_ROWS := 6
-const WALL_MARKS := {"q": ["BrickWall", "brick"], "%": ["Planks", "planks"], "+": ["Grate", "grate"], ":": ["Opening", "planks"]}   ## znacznik → [przedrostek nazwy, materiał]
-const WALL_START_OPEN := ":"     ## pusty otwór: przegroda z desek, która na starcie (i po czystym resecie) jest rozbita
+const WALL_MARKS := {"q": ["BrickWall", "brick"], "%": ["Planks", "planks"], "+": ["Grate", "grate"], ":": ["Opening", "planks"], "^": ["Rubble", "rubble"]}   ## znacznik → [przedrostek nazwy, materiał]
+const WALL_START_OPEN := ":^"    ## znaczniki przegród, które na starcie (i po czystym resecie) są rozbite: pusty otwór i strefa zawału
+## Zawalanie za sobą (DESTRUCTION_PLAN.md D3): stempel „!” trzyma strop nad strefą „^” obok; złamany — po CAVE_DELAY s strefa zapada się gruzem.
+const SUPPORT_BEAM := preload("res://scripts/support_beam.gd")
+const SUPPORT_LINK := 6          ## kafli: stempel trzyma najbliższą strefę „^” najwyżej tak daleko w poziomie, ze stopami w tym samym wierszu
+const SUPPORT_MAX_ROWS := 8
+const CAVE_DELAY := 0.8          ## s trzeszczenia między złamaniem stempla a zawałem (czas, żeby przebiec albo odskoczyć)
+const CAVE_CRUSH := 400.0        ## obrażenia wrogów zasypanych gruzem (zwykłych zabija; Stalker i boss tylko wypchnięci)
+var _support_defs: Array = []    ## [{name, pos (stopy), rows, wall}] od lewej
+var _supports_down: Array = []   ## nazwy złamanych stempli
+var _cave_epoch := 0             ## rośnie przy wipe'ie, punkcie kontrolnym i nowej mapie — zaplanowany zawał wtedy przepada
 ## Barykadowanie (DESTRUCTION_PLAN.md D2b): deski z desek `planks` dzielą wytrzymałość na BOARDS części; przybita deska to jedna część.
 const BOARDS := 3
 const NAIL_SCRAP := 2            ## deska bez zapasu desek kosztuje tyle złomu z łupu misji
@@ -1154,7 +1171,7 @@ func _register_walls() -> void:
 			while rows < WALL_MAX_ROWS and cell.y - rows >= 0 and not _is_solid(cell.x, cell.y - rows):
 				rows += 1
 			var cells: Array = []
-			var open: bool = mark == WALL_START_OPEN
+			var open: bool = WALL_START_OPEN.contains(mark)
 			for k in rows:
 				cells.append(Vector2i(cell.x, cell.y - k))
 				if not open:
@@ -1162,6 +1179,35 @@ func _register_walls() -> void:
 			if open:
 				_opened_walls.append(n)                      # pusty otwór: dla nawigacji przejście, węzła przegrody nie ma
 			_wall_defs.append({"name": n, "pos": Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE), "rows": rows, "cells": cells, "material": WALL_MARKS[mark][1], "start_open": open})
+	_register_supports()
+
+## Stemple „!” (D3): od znacznika w górę do stropu; każdy trzyma najbliższą strefę zawału „^” w zasięgu SUPPORT_LINK (`wall`, pusty —
+## stempel bez strefy, maptest to zgłasza). Nazwy od lewej: Support1…
+func _register_supports() -> void:
+	_support_defs.clear()
+	var found: Array = []
+	for r in _map.size():
+		var row: String = _map[r]
+		for c in row.length():
+			if row[c] == "!":
+				found.append(Vector2i(c, r))
+	found.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.x < b.x or (a.x == b.x and a.y < b.y))
+	for i in found.size():
+		var cell: Vector2i = found[i]
+		var rows := 1
+		while rows < SUPPORT_MAX_ROWS and cell.y - rows >= 0 and not _is_solid(cell.x, cell.y - rows):
+			rows += 1
+		var feet := Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE)
+		var wall := ""
+		var best := INF
+		for wd in _wall_defs:
+			if String(wd["material"]) != "rubble" or absf((wd["pos"] as Vector2).y - feet.y) > 0.5:
+				continue
+			var dx := absf((wd["pos"] as Vector2).x - feet.x)
+			if dx <= SUPPORT_LINK * TILE and dx < best:
+				best = dx
+				wall = String(wd["name"])
+		_support_defs.append({"name": "Support%d" % (i + 1), "pos": feet, "rows": rows, "wall": wall})
 
 func _spawn_walls() -> void:
 	for wd in _wall_defs:
@@ -1173,6 +1219,13 @@ func _spawn_walls() -> void:
 			add_child(spot)
 		if not _opened_walls.has(String(wd["name"])):
 			_spawn_wall(wd)
+	for sd in _support_defs:
+		var sb: Node2D = SUPPORT_BEAM.new()                 # stempel nad strefą zawału (D3)
+		sb.name = String(sd["name"])
+		sb.position = sd["pos"]
+		sb.rows = int(sd["rows"])
+		sb.wall_name = String(sd["wall"])
+		add_child(sb)
 	for wd in _window_defs:
 		var win: Node2D = WINDOW.new()                      # okno ze szkłem (DESTRUCTION_PLAN.md D1)
 		win.name = String(wd["name"])
@@ -1242,7 +1295,7 @@ func breakables_state() -> Dictionary:
 		var w := get_node_or_null(n)
 		if w != null and not _opened_walls.has(n) and not w.is_queued_for_deletion() and (not (w.splats as PackedFloat32Array).is_empty() or float(w.hp) < float(w.max_hp())):
 			dmg[n] = [(w.splats as PackedFloat32Array).duplicate(), float(w.hp) / float(w.max_hp())]
-	return {"opened": PackedStringArray(_opened_walls), "damage": dmg, "planks": plank_stock}
+	return {"opened": PackedStringArray(_opened_walls), "damage": dmg, "planks": plank_stock, "supports": PackedStringArray(_supports_down)}
 
 ## Serwer, przebudzenie bossa (mission._save_checkpoint): wipe w tej walce wróci do zniszczeń z tej chwili — jak łup od 1.7.424.
 func save_breakables_checkpoint() -> void:
@@ -1266,16 +1319,24 @@ func reset_breakables(state := {}) -> void:
 				opened.append(String(wd["name"]))            # czysty stan: puste otwory znów wolne
 	var dmg: Dictionary = state.get("damage", {})
 	var stock := int(state.get("planks", 0))
+	var down: PackedStringArray = state.get("supports", PackedStringArray())
 	if NoiseMgr.has_network():
-		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock)
+		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock, down)
 	else:
-		_reset_breakables_rpc(map_id, opened, dmg, stock)
+		_reset_breakables_rpc(map_id, opened, dmg, stock, down)
 
 @rpc("authority", "call_local", "reliable")
-func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0) -> void:
+func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0, down := PackedStringArray()) -> void:
 	if id != map_id:
 		return
 	plank_stock = stock                                      # zapas desek: wipe zabiera, punkt kontrolny bossa przywraca
+	_cave_epoch += 1                                         # trzeszczący strop (złamany stempel, zawał jeszcze nie spadł) już nie spadnie
+	_supports_down = Array(down)
+	for sb in get_tree().get_nodes_in_group("supports"):
+		if down.has(String(sb.name)):
+			sb.snap(false)
+		else:
+			sb.restore()                                     # stemple znów stoją (D3)
 	for sp in get_tree().get_nodes_in_group("barricade_spots"):
 		sp.reset_spot()
 	for ml in get_tree().get_nodes_in_group("mission_lamps"):
@@ -1322,7 +1383,12 @@ func send_walls_to(peer_id: int) -> void:
 			var wn := String(wd["name"])
 			var w := get_node_or_null(wn)
 			if bool(wd.get("start_open", false)) and not _opened_walls.has(wn) and w != null:
-				_nail_rpc.rpc_id(peer_id, map_id, wn, float(w.hp) / float(w.max_hp()), plank_stock, false)   # zabity pusty otwór (u dołączającego wolny)
+				if String(wd["material"]) == "rubble":
+					_cave_rpc.rpc_id(peer_id, map_id, wn, false)      # zawalona strefa (u dołączającego wolna); plamy i HP gruzu niżej
+				else:
+					_nail_rpc.rpc_id(peer_id, map_id, wn, float(w.hp) / float(w.max_hp()), plank_stock, false)   # zabity pusty otwór (u dołączającego wolny)
+		for sn in _supports_down:
+			_support_rpc.rpc_id(peer_id, map_id, String(sn), false)   # złamane stemple
 		for b in get_tree().get_nodes_in_group("breakables"):
 			if b.get_parent() == self and not b.is_queued_for_deletion() and b.has_method("send_state_to"):
 				b.send_state_to(peer_id)
@@ -1521,7 +1587,7 @@ func close_openings_checked() -> Array:
 	var bad: Array = []
 	var n := 0
 	for wd in _wall_defs:
-		if not bool(wd.get("start_open", false)) or not _opened_walls.has(String(wd["name"])):
+		if not bool(wd.get("start_open", false)) or String(wd["material"]) != "planks" or not _opened_walls.has(String(wd["name"])):
 			continue
 		n += 1
 		_close_wall(wd, 1.0 / float(BOARDS))
@@ -1529,12 +1595,151 @@ func close_openings_checked() -> Array:
 		if d != "":
 			bad.append("nawigacja po zabiciu deskami %s różni się od pełnej budowy: %s" % [wd["name"], d])
 	for wd in _wall_defs:
-		if bool(wd.get("start_open", false)) and not _opened_walls.has(String(wd["name"])):
+		if bool(wd.get("start_open", false)) and String(wd["material"]) == "planks" and not _opened_walls.has(String(wd["name"])):
 			_open_wall(String(wd["name"]), false)
 			var d := nav_diff_vs_full()
 			if d != "":
 				bad.append("nawigacja po ponownym otwarciu %s różni się od pełnej budowy: %s" % [wd["name"], d])
 	return [bad, n]
+
+## Test map (D3): każdy stempel trzyma strefę zawału, każda strefa ma stempel; wszystkie strefy zawalone naraz — graf jak pełna budowa,
+## a `check` (maptest: cele, wyjścia, stanowiska) dalej osiągalne. Gruz odkopie tylko kilof albo wybuch, a kilofu drużyna może nie mieć,
+## więc strefa nigdy nie może odciąć jedynej drogi. Potem strefy znów wolne. Zwraca [błędy, ile stref].
+func cave_checked(check: Callable) -> Array:
+	var bad: Array = []
+	var held := {}
+	for sd in _support_defs:
+		if String(sd["wall"]) == "":
+			bad.append("%s nie trzyma żadnej strefy zawału „^” (najwyżej %d kafli obok, stopy w tym samym wierszu)" % [sd["name"], SUPPORT_LINK])
+		held[String(sd["wall"])] = true
+	var zones: Array = _wall_defs.filter(func(wd: Dictionary) -> bool: return String(wd["material"]) == "rubble")
+	for wd in zones:
+		if not held.has(String(wd["name"])):
+			bad.append("%s: strefy zawału nie trzyma żaden stempel „!”" % wd["name"])
+		if _opened_walls.has(String(wd["name"])):
+			_close_wall(wd)
+	if not zones.is_empty():
+		var d := nav_diff_vs_full()
+		if d != "":
+			bad.append("nawigacja po zawaleniu stref różni się od pełnej budowy: %s" % d)
+		for e in check.call():
+			bad.append("po zawaleniu wszystkich stref „^”: %s" % e)
+	for wd in zones:
+		if not _opened_walls.has(String(wd["name"])):
+			_open_wall(String(wd["name"]), false)
+	if not zones.is_empty():
+		var d2 := nav_diff_vs_full()
+		if d2 != "":
+			bad.append("nawigacja po odkopaniu stref różni się od pełnej budowy: %s" % d2)
+	return [bad, zones.size()]
+
+# ---------------------------------------------------------------- zawalanie za sobą (DESTRUCTION_PLAN.md D3)
+
+func support_def(sname: String) -> Dictionary:
+	for sd in _support_defs:
+		if String(sd["name"]) == sname:
+			return sd
+	return {}
+
+func supports_total() -> int:
+	return _support_defs.size()
+
+## Serwer (support_beam.gd): stempel złamany — pęka u wszystkich, strop trzeszczy, po CAVE_DELAY s strefa się zawala (`cave_in`).
+## Wipe albo punkt kontrolny w tym czasie (`_cave_epoch`) odwołuje zawał.
+func support_broken(sname: String) -> void:
+	if not NoiseMgr.is_server() or _supports_down.has(sname):
+		return
+	if NoiseMgr.has_network():
+		_support_rpc.rpc(map_id, sname, true)
+	else:
+		_support_rpc(map_id, sname, true)
+	var wn := String(support_def(sname).get("wall", ""))
+	if wn == "":
+		return
+	var ep := _cave_epoch
+	get_tree().create_timer(CAVE_DELAY).timeout.connect(func() -> void:
+		if ep == _cave_epoch and is_inside_tree():
+			cave_in(wn))
+
+@rpc("authority", "call_local", "reliable")
+func _support_rpc(id: String, sname: String, fx: bool) -> void:
+	if id != map_id:
+		return
+	if not _supports_down.has(sname):
+		_supports_down.append(sname)
+	var sb := get_node_or_null(sname)
+	if sb != null:
+		sb.snap(fx)
+	if not fx:
+		return
+	var wd := wall_def(String(support_def(sname).get("wall", "")))
+	if wd.is_empty() or not _opened_walls.has(String(wd["name"])):
+		return
+	var rc := wall_rect(wd)                                  # zapowiedź: ze stropu nad strefą sypie się pył i kamyki, strop trzeszczy
+	var top := Vector2(rc.get_center().x, rc.position.y + 2.0)
+	for i in 6:
+		Vfx.debris(self, top + Vector2(randf_range(-7.0, 7.0), 0.0), Vector2(randf_range(-15.0, 15.0), randf_range(0.0, 30.0)), Vector2(2, 2), Color(0.42, 0.36, 0.3))
+	Vfx.dust(self, top + Vector2(0, 4), 1.2)
+	Audio.play_variant_at("amb_creak", 3, top, Audio.BUS_WORLD, 2.0, 0.55)
+
+## Serwer: strefa „^” zapada się — wrogowie w niej giną pod gruzem (Stalker i boss zostają wypchnięci na bliższą stronę), gracze lądują
+## obok (`_close_wall`), hałas jak granat. Już zawalona albo wolna z innego powodu — nic.
+func cave_in(wall_name: String) -> void:
+	if not NoiseMgr.is_server() or not _opened_walls.has(wall_name):
+		return
+	var wd := wall_def(wall_name)
+	if wd.is_empty():
+		return
+	var rc := wall_rect(wd)
+	var zone := rc.grow_individual(6.0, 0.0, 6.0, 0.0)
+	var crushed := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var en := e as Node2D
+		if en == null or en.is_queued_for_deletion() or not en.visible or en.get("dead") == true or en.get("alive") == false:
+			continue
+		if not zone.has_point(en.global_position + Vector2(0, -4)):
+			continue
+		var info := Combat.make_info(0, CAVE_CRUSH, en.global_position + Vector2(0, -8), Vector2.DOWN, -1, "blast")
+		info["knock"] = 0.0
+		info["stun"] = 0.0
+		info["heavy"] = true
+		if bool(Combat.apply(en, info).get("killed", false)):
+			crushed += 1
+	NoiseMgr.add_noise(NoiseMgr.N_GRENADE, rc.get_center(), "explosive")
+	SessionLog.event("cave", {"zone": wall_name, "crushed": crushed})
+	if NoiseMgr.has_network():
+		_cave_rpc.rpc(map_id, wall_name, true)
+	else:
+		_cave_rpc(map_id, wall_name, true)
+	for e in get_tree().get_nodes_in_group("enemies"):    # ci, co przeżyli (Stalker, boss), nie mogą stać w gruzie
+		var en := e as Node2D
+		if en == null or en.is_queued_for_deletion() or not zone.has_point(en.global_position + Vector2(0, -4)):
+			continue
+		en.global_position.x = rc.end.x + 10.0 if en.global_position.x >= rc.get_center().x else rc.position.x - 10.0
+		if en.get("velocity") != null:
+			en.set("velocity", Vector2.ZERO)
+
+@rpc("authority", "call_local", "reliable")
+func _cave_rpc(id: String, wall_name: String, fx: bool) -> void:
+	if id != map_id or not _opened_walls.has(wall_name):
+		return
+	var wd := wall_def(wall_name)
+	if wd.is_empty():
+		return
+	_close_wall(wd)
+	if not fx:
+		return
+	var rc := wall_rect(wd)
+	for i in 14:                                             # gruz spada ze stropu i odbija się na boki
+		var p := Vector2(rc.position.x + randf() * rc.size.x, rc.position.y + randf() * rc.size.y * 0.5)
+		Vfx.debris(self, p, Vector2(randf_range(-90.0, 90.0), randf_range(-40.0, 40.0)), Vector2(4, 3), Color(0.42, 0.36, 0.3), 0.1, 3.0)
+	Vfx.dust(self, rc.get_center(), 3.5)
+	Audio.play_at("collapse", rc.get_center(), Audio.BUS_WORLD, 0.0, 1.1)
+	for pl in get_tree().get_nodes_in_group("players"):       # wstrząs u gracza tego peera, jeśli stoi blisko
+		if int(pl.get("player_id")) == NoiseMgr.local_id():
+			var dist := (pl as Node2D).global_position.distance_to(rc.get_center())
+			if dist < 420.0:
+				Feel.shake(6.0 if dist < 160.0 else 3.0)
 
 ## Test map: otwiera wszystkie ściany bez efektów (maptest sprawdza osiągalność skrytek za nimi).
 func walls_total() -> int:

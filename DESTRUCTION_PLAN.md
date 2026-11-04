@@ -423,6 +423,26 @@ Zostaje: miejsca w misjach „przetrzymaj” (2.3 Dzwon), strojenie po playteśc
 - Zawał 1.1 zostaje na obecnym mechanizmie (decyzja 5: działa i jest pod `--finaletest`); przeniesienie dopiero, gdy podpory się sprawdzą.
 - Dyrektor (`director.gd`) traktuje zawalone przejście jak zamkniętą drogę przy wypuszczaniu grup.
 
+**Zrobione w 1.7.492 (D3):** decyzje 2026-11-04 — gruz do odkopania (nie trwała ściana), stempel łamią te same trafienia co materiał
+`support`, mapy 1.1, 1.2 i 1.3, spadająca kładka później w osobnym PR. Znaczniki: stempel `!` (`support_beam.gd`, grupa `supports`, ciało
+na warstwie 32 w `shootables` jak klosz lampy — kula rani i leci dalej) i strefa `^` (level.gd `WALL_MARKS` → `Rubble1…`, materiał `rubble`
+200 HP: kilof, wybuch, ładunek). Strefa jest zarejestrowana jak pusty otwór `:` — wolna od startu (`WALL_START_OPEN`), bez węzła i bez kafli
+w `_wall_cells`. `_register_supports` łączy każdy stempel z najbliższą strefą w tym samym wierszu stóp (do `SUPPORT_LINK` = 6 kafli).
+Przebieg (serwer): `support_beam.take_hit` → `level.support_broken` → `_support_rpc` u wszystkich (kikut, trzask, pył i kamyki ze stropu,
+skrzypienie) → po `CAVE_DELAY` 0,8 s `cave_in`: wrogowie w strefie (+6 px) dostają `CAVE_CRUSH` 400 jako `blast` bez odrzutu, hałas
+N_GRENADE, `SessionLog` „cave”, `_cave_rpc` → `_close_wall` (nawigacja, kafle, wypchnięcie graczy na bliższą stronę), kto przeżył (Stalker,
+boss), ląduje obok; wstrząs u lokalnego gracza do 420 px. `_cave_epoch` (nowa mapa, wipe, punkt kontrolny) odwołuje zaplanowany zawał.
+Stan: `breakables_state` → `supports` (złamane); reset stawia stemple, migawka łamie je bez efektów; dołączający dostaje `_support_rpc` i
+`_cave_rpc` bez efektów (`send_walls_to`). Finał 1.1: `_collapse_rpc` otwiera wszystkie zawalone strefy — droga powrotna nigdy nie jest
+zasypana. Cios w stożku (`Combat.in_cone`) i wybuch (`Combat.explode`) sięgają stempla tylko przy czystej linii. Dyrektor (`_pick_spot`)
+pomija miejsca, z których nie ma ścieżki do graczy. `--maptest` (`cave_checked`): każdy stempel ma strefę i odwrotnie, a wszystkie strefy
+zawalone naraz nie odcinają celów, wyjść ani stanowisk — kilofu drużyna może nie mieć. Widok 3D: `_support_model` (belka z podciągiem;
+złamany: kikut do kolan i belka na ziemi po stronie przejścia), gruz to ciemniejszy kamień (`_barrier_mat`) z kupą 16 odłamków
+(`_rubble_heap`), bryły pre-fraktury cegły, po odkopaniu gruz na podłodze jak po murze. Testy: `--destructiontest` sekcja 14,
+`test_net_session.sh` (stempel i zawał na żywo i u dołączającego, migawka zostawia zawał, wipe otwiera). Podgląd: `--shotwall=Support1
+--shotcave`. Zostaje: kładka spadająca po zestrzeleniu słupa (osobny PR), strojenie po playteście (czy gracze zawalają za sobą, czas
+trzeszczenia, czy stempel widać w ciemności), dźwięk zawału po A/B.
+
 ### D4 — kosmetyka walki (bez wpływu na rozgrywkę)
 
 - Odpryski i kurz wg materiału przy trafieniu w świat (rozszerzenie `mark_hit`: beton — pył i odłamki, drewno — drzazgi, blacha — iskry,

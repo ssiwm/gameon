@@ -7,8 +7,8 @@
 # 5. Raport po akcji (RESULTS_PLAN.md): gotowość klienta dochodzi do hosta, poziomy z misji i rozbicie złomu do wszystkich.
 # 6. Bateria 4,5 V (BATTERY_PLAN.md): klient z 20% baterii bierze baterię z ziemi — rozstrzyga serwer, dolicza właściciel.
 # 7. Ładowarka (BATTERY_PLAN.md B3): klient przy ładowarce B1 ładuje się u siebie, serwer widzi, że ładowarka pracuje.
-# 8. Zniszczenia (DESTRUCTION_PLAN.md D0): rany ściany, rozbicie, powrót do migawki z przebudzenia bossa i wipe — u klienta obecnego
-#    od początku (RPC na żywo) i u dołączającego po ciosach (`send_walls_to`) stan taki sam jak u hosta.
+# 8. Zniszczenia (DESTRUCTION_PLAN.md D0–D3): złamany stempel i zawał, rany ściany, rozbicie, powrót do migawki z przebudzenia bossa i wipe —
+#    u klienta obecnego od początku (RPC na żywo) i u dołączającego po ciosach (`send_walls_to`) stan taki sam jak u hosta.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
@@ -129,7 +129,7 @@ grep -a -q "\[CHARGER-NET\] host active=true client_pct=[2-9][0-9]" "$LOG/charge
 grep -a -q "\[CHARGER-NET\] client gain=\(1[5-9]\|2[0-2]\) active=true" "$LOG/charger_client.log" && ok "klient: ok. +6 s/s u właściciela, stan ładowarki z serwera" || fail "klient: $(grep -a "\[CHARGER-NET\]" "$LOG/charger_client.log")"
 
 echo "== zniszczenia =="
-# host: po 10 s rozbija skrzynię Crate1, tłucze lampę MissionLamp1 i okno Window1, zabija pusty otwór Opening1 dwiema deskami (SC), po 1 s dwa ciosy kilofem (S1), gdy są obaj
+# host: po 10 s łamie stempel Support1 (SS), po zawale strefy Rubble1 (SV) rozbija skrzynię Crate1, tłucze lampę MissionLamp1 i okno Window1, zabija pusty otwór Opening1 dwiema deskami (SC), po 1 s dwa ciosy kilofem (S1), gdy są obaj
 # klienci — migawka i rozbicie (S2), +3 s powrót do migawki (S1 z zapaloną lampą i całym oknem), +3 s wipe (S0, ściana i skrzynia całe,
 # lampa świeci, szyba cała), +2 s koniec. Klient A od początku, klient B dołącza dopiero po ciosach — plamy, HP, rozbitą skrzynię,
 # stłuczoną lampę i okno dostaje z `send_walls_to`.
@@ -146,16 +146,20 @@ wait $CB $CA $HOST
 # stany na mapie misji jako „S;S;…” (przed dołączeniem i po utracie hosta klient jest w lobby — pomijane)
 dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //" | tr '\n' ';'; }
 H=$(dnet host "$LOG/dnet_host.log")
-IFS=';' read -r S0 SC S1 S2 S3 S4 _ <<<"$H"
-S0X="${S0% bar=0 crate=ok lamp=lit win=ok}"          # stan bez desek, skrzyni, lampy i okna; na starcie otwarty jest tylko pusty otwór
-if [ "$S0X" = "$S0" ] || [ "${S0X#opened=\[Opening1\] }" = "$S0X" ] || [ "$SC" != "opened=[] ${S0X#opened=\[Opening1\] } bar=2 crate=gone lamp=out win=out" ] || [ "${S1#*splats=2/}" = "$S1" ] 		|| [ "$S2" != "opened=[BrickWall1] bar=2 crate=gone lamp=out win=out" ] || [ "$S3" != "${S1% lamp=out win=out} lamp=lit win=ok" ] || [ "$S4" != "$S0" ]; then
+IFS=';' read -r S0 SS SV SC S1 S2 S3 S4 _ <<<"$H"
+S0X="${S0% bar=0 crate=ok lamp=lit win=ok sup=ok}"   # stan bez desek, skrzyni, lampy, okna i stempla
+HW="${S0X#opened=\[Opening1,Rubble1\] }"            # sama ściana; na starcie wolne są tylko pusty otwór i strefa zawału
+if [ "$S0X" = "$S0" ] || [ "$HW" = "$S0X" ] || [ "$SS" != "opened=[Opening1,Rubble1] $HW bar=0 crate=ok lamp=lit win=ok sup=down" ] \
+		|| [ "$SV" != "opened=[Opening1] $HW bar=0 crate=ok lamp=lit win=ok sup=down" ] || [ "$SC" != "opened=[] $HW bar=2 crate=gone lamp=out win=out sup=down" ] \
+		|| [ "${S1#*splats=2/}" = "$S1" ] || [ "$S2" != "opened=[BrickWall1] bar=2 crate=gone lamp=out win=out sup=down" ] \
+		|| [ "$S3" != "${S1% lamp=out win=out sup=down} lamp=lit win=ok sup=down" ] || [ "$S4" != "$S0" ]; then
 	fail "host: zły przebieg ($H)"
 else
-	ok "host: cała → skrzynia rozbita, lampa i okno stłuczone, otwór zabity dwiema deskami → ranna → rozbita → ranna, lampa świeci, szyba cała (migawka) → cała ze skrzynią (wipe)"
+	ok "host: cała → stempel złamany → strefa zawalona → skrzynia rozbita, lampa i okno stłuczone, otwór zabity dwiema deskami → ranna → rozbita → ranna, lampa świeci, szyba cała, zawał zostaje (migawka) → cała ze skrzynią i stemplem, strefa wolna (wipe)"
 	A=$(dnet client "$LOG/dnet_a.log")
 	[ "$A" = "$H" ] && ok "klient od początku: te same plamy, HP, rozbicie, skrzynia, migawka i wipe co host" || fail "klient A: $A (host: $H)"
 	B=$(dnet client "$LOG/dnet_b.log")
-	[ "$B" = "$S1;$S2;$S3;$S4;" ] && ok "dołączający po ciosach: plamy, HP, rozbita skrzynia, stłuczona lampa i okno, zabity otwór z synchronizacji, potem rozbicie, migawka i wipe jak u hosta" || fail "klient B: $B (host: $H)"
+	[ "$B" = "$S1;$S2;$S3;$S4;" ] && ok "dołączający po ciosach: plamy, HP, rozbita skrzynia, stłuczona lampa i okno, zabity otwór, złamany stempel i zawał z synchronizacji, potem rozbicie, migawka i wipe jak u hosta" || fail "klient B: $B (host: $H)"
 fi
 
 # Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.
