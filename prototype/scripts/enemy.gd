@@ -1228,7 +1228,7 @@ func _resolve_attack() -> void:
 			var rc: Rect2 = bw.call("hit_rect")
 			var side := signf(rc.get_center().x - global_position.x)
 			var at := Vector2(rc.position.x if side > 0.0 else rc.end.x, global_position.y - (_def["size"] as Vector2).y * 0.6)
-			bw.call("take_hit", {"type": "claw", "amount": float(_def["claw_barricade"]), "pos": at, "dir": Vector2(side, 0.0)})
+			bw.call("take_hit", {"type": "claw", "amount": float(_def["claw_barricade"]), "pos": at, "dir": Vector2(side, 0.0), "src": kind})
 		return
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0) and not _wall_between(pp):
 		pp.deliver_hit(_scaled_damage(int(_def["damage"])), global_position, kind)

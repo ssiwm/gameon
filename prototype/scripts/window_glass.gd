@@ -7,6 +7,7 @@ extends Node2D
 
 const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Breakable := preload("res://scripts/breakable.gd")
 
 const TILE := 16
 const FRAME_LAYER := 128            ## rama okna: tylko ruch (maska graczy, bota i wrogów)
@@ -66,15 +67,15 @@ func body_center() -> Vector2:
 func take_hit(info: Dictionary) -> Dictionary:
 	if not NoiseMgr.is_server() or not intact or float(info.get("amount", 0.0)) <= 0.0:
 		return {}
-	shatter((info.get("dir", Vector2.RIGHT) as Vector2))
+	shatter((info.get("dir", Vector2.RIGHT) as Vector2), info)
 	return {"hit": true, "pass": true, "dealt": 0.0, "mat": Arsenal.Mat.WORLD}
 
 ## Serwer: stłuczenie — hałas, wpis do dziennika sesji i efekt u wszystkich (odłamki lecą w stronę strzału).
-func shatter(dir := Vector2.RIGHT) -> void:
+func shatter(dir := Vector2.RIGHT, info := {}) -> void:
 	if not NoiseMgr.is_server() or not intact:
 		return
 	NoiseMgr.add_noise(N_BREAK, body_center(), "glass")
-	SessionLog.event("window", {"name": String(name)})
+	SessionLog.event("window", {"name": String(name), "by": Breakable.hit_kind(info), "shooter": int(info.get("shooter", -1)), "noise": roundi(NoiseMgr.level)})
 	var side := 1.0 if dir.x >= 0.0 else -1.0
 	if NoiseMgr.has_network():
 		_break_rpc.rpc(side)

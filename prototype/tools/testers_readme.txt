@@ -50,3 +50,6 @@ Lista klawiszy jest na dole ekranu w grze oraz pod klawiszem pomocy. Gra obsług
   4. Czy chciałeś zacząć od innej misji niż ta, którą dała gra?
   5. Czy powtórka misji była nudna, a jeśli tak — która i za którym razem?
   6. Czy brakowało ci światła? Czy znalazłeś baterie 4,5 V albo ładowarkę (B1) i czy wiedziałeś, skąd je brać?
+  7. Czy rozbijałeś coś celowo (skrzynie, lampy, okna, deski, kratki, zamurowania, stemple w tunelach)?
+     Czy było to przyjemne i czy hałas był wart tego, co zyskałeś?
+  8. Czy zabiłeś deskami jakieś przejście albo zawaliłeś tunel za sobą? Jeśli nie — czy wiedziałeś, że się da?
