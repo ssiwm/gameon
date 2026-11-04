@@ -28,7 +28,7 @@ extends "res://scripts/stalker_test.gd"
 ##    do nich z swojej strony; szarża Wołka łamie deski, Rzeźnika — nie kratkę (rozbieg przez deski tak, przez kratkę nie); bot rąbie deski
 ##    razem z dowódcą, a kratki (maczeta) nie rusza.
 ## 12. Dziury w deskach (D2). 13. Barykadowanie pustego otworu `:` (D2b).
-## 14. Zawał (D3, support_beam.gd, level.gd `cave_in`): stempel `!` na 1.2 trzyma strefę gruzu `^` obok; kula, śrut, wybuch i kilof go ranią,
+## 14. Zawał (D3, support_beam.gd, level.gd `cave_in`) na mapie testowej t_mine (1.1–1.3 bez stref od 1.7.494): stempel `!` trzyma strefę gruzu `^` obok; kula, śrut, wybuch i kilof go ranią,
 ##    maczeta nie; po złamaniu strefa zapada się po CAVE_DELAY s (nawigacja zamknięta, hałas), zwykły wróg ginie, Stalker i gracz lądują
 ##    obok; gruz odkopuje kilof, kula nie; wipe w czasie trzeszczenia odwołuje zawał; wipe, punkt kontrolny bossa i wstrząs finału.
 ## 15. Dziennik sesji (DESTRUCTION_PLAN.md „Pomiar po wdrożeniu”): po sekcjach 1–14 w pliku są wiersze `break` (materiał, czym, kto,
@@ -274,7 +274,7 @@ func _state() -> void:
 	level.reset_breakables()
 	await _frames(0.1)
 	w = _real()
-	check("reset: ściana znów stoi (%.0f HP), kafle bryłą, lista rozbitych tylko z pustym otworem i strefą zawału, nawigacja = pełna budowa (%s)" % [float(w.hp) if w else 0.0, level.nav_diff_vs_full()],
+	check("reset: ściana znów stoi (%.0f HP), kafle bryłą, lista rozbitych tylko z pustym otworem, nawigacja = pełna budowa (%s)" % [float(w.hp) if w else 0.0, level.nav_diff_vs_full()],
 		w != null and float(w.hp) == 120.0 and _cells_solid() and _only_start_open(level._opened_walls) and level.nav_diff_vs_full() == "")
 	# punkt kontrolny z ranną ścianą
 	_hit(w, Weapons.KILOF, pick.damage, "melee", w.call("body_center"))
@@ -321,7 +321,7 @@ func _state() -> void:
 	await _frames(0.1)
 	main._restart_mission(false)
 	await _frames(0.5)
-	check("wipe (main._restart_mission): rozbita ściana znów stoi, kafle bryłą, pusty otwór i strefa zawału wolne", _real() != null and _cells_solid() and _only_start_open(level._opened_walls))
+	check("wipe (main._restart_mission): rozbita ściana znów stoi, kafle bryłą, pusty otwór wolny", _real() != null and _cells_solid() and _only_start_open(level._opened_walls))
 
 # ---------------------------------------------------------------- 6. rozpad na bryły
 
@@ -1045,19 +1045,32 @@ func _cave_path_through(a: Vector2, b: Vector2, rc: Rect2) -> bool:
 				return true
 	return false
 
-## Lista rozbitych / wolnych przegród zawiera tylko te, które są wolne od startu mapy: pusty otwór „:” i strefa zawału „^”.
+## Lista rozbitych / wolnych przegród zawiera tylko te, które są wolne od startu mapy: pusty otwór „:” (1.2 nie ma już strefy zawału „^”).
 func _only_start_open(arr: Variant) -> bool:
-	var a := Array(arr)
-	a.sort()
-	return a == ["Opening1", "Rubble1"]
+	return Array(arr) == ["Opening1"]
 
+## Zawał sprawdzamy na mapie testowej t_mine (niskie przejście pod skałą); potem z powrotem 1.2 bez wrogów i Stalkera.
 func _cave() -> void:
+	level.load_map("t_mine")
+	await _frames(0.3)
+	check("mapa testowa zawału: %s, stempli %d" % [level.map_id, level.supports_total()], level.map_id == "t_mine" and level.supports_total() == 1)
+	await _cave_body()
+	await _support_blast()
+	level.load_map("z1_m2")
+	await _frames(0.3)
+	_isolate()
+	var st: Node = level.get_node_or_null("Stalker")
+	if st != null:
+		st.queue_free()
+	await _frames(0.1)
+
+func _cave_body() -> void:
 	var sb: Node2D = level.get_node_or_null("Support1")
 	var sd: Dictionary = level.support_def("Support1")
 	var zn := String(sd.get("wall", ""))
 	var wd: Dictionary = level.wall_def(zn)
 	var cells: Array = wd.get("cells", [])
-	check("stempel na 1.2: Support1 trzyma %s (stempli %d), strefa na starcie wolna (bez węzła, kafle wolne)" % [zn, level.supports_total()],
+	check("stempel na t_mine: Support1 trzyma %s (stempli %d), strefa na starcie wolna (bez węzła, kafle wolne)" % [zn, level.supports_total()],
 		sb != null and zn == "Rubble1" and level.supports_total() == 1 and level._opened_walls.has(zn) and level.get_node_or_null(zn) == null
 		and not cells.is_empty() and not level._wall_cells.has(cells[0]))
 	if sb == null or wd.is_empty() or cells.is_empty():
@@ -1066,7 +1079,7 @@ func _cave() -> void:
 	var rc: Rect2 = level.wall_rect(wd)
 	var feet: Vector2 = wd["pos"]
 	var a := feet + Vector2(-120.0, -2.0)
-	var b := feet + Vector2(40.0, -2.0)                 # ślepy koniec pokoju za strefą (1.2: jedyne wejście przez strefę)
+	var b := feet + Vector2(40.0, -2.0)                 # niskie przejście za strefą, przed ślepą komorą (jedyne wejście przez strefę)
 	var space := level.get_world_2d().direct_space_state
 	var c: Vector2 = sb.body_center()
 	_place_player(feet + Vector2(-260.0, 0.0))
@@ -1170,6 +1183,32 @@ func _cave() -> void:
 	level.reset_breakables()
 	await _frames(0.1)
 
+## Stempel na t_mine (B0): granat z 2 m nie, z bliska tak, ładunek burzący z 2,5 m tak.
+func _support_blast() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	var frag: Dictionary = Throwables.KINDS["frag"]
+	var fr := float(frag["radius"])
+	var sb: Node2D = null
+	for s in get_tree().get_nodes_in_group("supports"):
+		if s.intact:
+			sb = s
+	check("stempel na mapie po resecie", sb != null)
+	if sb == null:
+		return
+	var c: Vector2 = sb.body_center()
+	var hp0 := float(sb.hp)
+	Combat.explode(get_tree(), c + Vector2(-32.0, 0.0), fr, 10.0, 1, Weapons.GNIEW4)
+	var far := float(sb.hp)
+	Combat.explode(get_tree(), c + Vector2(-6.0, 0.0), fr, 10.0, 1, Weapons.GNIEW4)
+	var near := float(sb.hp)
+	Combat.explode(get_tree(), c + Vector2(-40.0, 0.0), 80.0, 10.0, 1, Weapons.GNIEW4, true, true)
+	var demo := float(sb.hp)
+	check("stempel: granat z 2 m nie rani (%.0f → %.0f), z bliska tak (%.0f), ładunek burzący z 2,5 m tak (%.0f)" % [hp0, far, near, demo],
+		far == hp0 and near < far and demo < near)
+	level.reset_breakables()
+	await _frames(0.1)
+
 ## Próbna przegroda od podłogi do sufitu tunelu (6 kafli), poza `_wall_cells` — sama mechanika trafień, ruchu i wrogów.
 func _barrier(wname: String, feet: Vector2, mat := "planks") -> Node2D:
 	var w: Node2D = Breakable.new()
@@ -1270,26 +1309,6 @@ func _barrier_fixes() -> void:
 	if is_instance_valid(r):
 		r.queue_free()
 
-	# stempel: granat z 2 m nie, z bliska tak, ładunek burzący z 2,5 m tak
-	var sb: Node2D = null
-	for s in get_tree().get_nodes_in_group("supports"):
-		if s.intact:
-			sb = s
-	check("stempel na mapie po resecie", sb != null)
-	if sb != null:
-		var c: Vector2 = sb.body_center()
-		var hp0 := float(sb.hp)
-		Combat.explode(get_tree(), c + Vector2(-32.0, 0.0), fr, 10.0, 1, Weapons.GNIEW4)
-		var far := float(sb.hp)
-		Combat.explode(get_tree(), c + Vector2(-6.0, 0.0), fr, 10.0, 1, Weapons.GNIEW4)
-		var near := float(sb.hp)
-		Combat.explode(get_tree(), c + Vector2(-40.0, 0.0), 80.0, 10.0, 1, Weapons.GNIEW4, true, true)
-		var demo := float(sb.hp)
-		check("stempel: granat z 2 m nie rani (%.0f → %.0f), z bliska tak (%.0f), ładunek burzący z 2,5 m tak (%.0f)" % [hp0, far, near, demo],
-			far == hp0 and near < far and demo < near)
-		level.reset_breakables()
-		await _frames(0.1)
-
 	# komunikat o złym narzędziu: raz na przegrodę, tylko dla człowieka
 	var b := _barrier("FixBrick", base, "brick")
 	await _frames(0.1)
@@ -1305,6 +1324,15 @@ func _barrier_fixes() -> void:
 		first == 1 and shown and int(b.bounce_shown) == 1 and text.contains("machete"))
 	b.queue_free()
 	Msg.withdraw("barrier.FixBrick")
+
+	# mapy kampanii bez stref zawału `^` i stempli `!` (1.7.494: zawał tylko w niskich przejściach przyszłych map w podziemiach)
+	var caves := []
+	for id in level.CAMPAIGN:
+		for row in ((level.MAPS[id] as GDScript).get_script_constant_map().get("MAP", []) as Array):
+			if String(row).contains("^") or String(row).contains("!"):
+				caves.append(id)
+				break
+	check("mapy kampanii bez stref zawału `^` i stempli `!` (%s)" % (", ".join(caves) if not caves.is_empty() else "żadna"), caves.is_empty())
 
 	# mapa 1.1: bez pustego otworu i kratki (decyzja 3)
 	var m11: Script = load("res://scripts/maps/z1_m1.gd")

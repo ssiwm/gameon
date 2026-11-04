@@ -2295,12 +2295,13 @@ func _sync_drawn() -> void:
 		var h := float(n.get("rows")) * Level3D.T
 		var mat_id := String(n.get("mat_id"))
 		var bm := BoxMesh.new()
-		bm.size = Vector3(Level3D.T, h, Level3D.DEPTH_BACK + 0.5)
+		var core_back := RUBBLE_CORE_BACK if mat_id == "rubble" else 0.0      # gruz: bryła cofnięta, kupa leży przed nią
+		bm.size = Vector3(Level3D.T, h, Level3D.DEPTH_BACK + 0.5 - core_back)
 		var mi := MeshInstance3D.new()
-		mi.mesh = bm
+		mi.mesh = bm                                              # gruz: `_rubble_heap` podmienia bryłę na płytę zawału z symulacji
 		mi.material_override = _barrier_mat(mat_id)
 		mi.layers = LAYER_WORLD
-		mi.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, h * 0.5, (0.5 - Level3D.DEPTH_BACK) * 0.5)
+		mi.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, h * 0.5, (0.5 - Level3D.DEPTH_BACK) * 0.5 - core_back * 0.5)
 		_world.add_child(mi)
 		if mat_id == "planks":
 			_barricade_boards(mi, h, bm.size.z * 0.5, absi(String(n.name).hash()))
@@ -2308,7 +2309,8 @@ func _sync_drawn() -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			_grate_bars(mi, h, bm.size.z * 0.5)
 		elif mat_id == "rubble":
-			_rubble_heap(mi, h, bm.size.z * 0.5, absi(String(n.name).hash()))
+			_rubble_heap(mi, h, bm.size.z * 0.5 + core_back, _cave_seed(mi.position.x), _cave_set((n as Node2D).global_position, int(n.get("rows"))),
+				_cave_variant(n as Node2D))
 		var dmg := _damage_overlay(n, mi, Level3D.T, h)
 		_overlay_parts(mi, mat_id != "grate")
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
@@ -2317,15 +2319,19 @@ func _sync_drawn() -> void:
 		for old in _geo.get_children():                           # ściana odbudowana po restarcie misji: gruz po poprzedniej znika
 			if String(old.name).begins_with("Rubble") and not old is MultiMeshInstance3D and absf((old as Node3D).position.x - mi.position.x) < 0.6 and absf((old as Node3D).position.y - (mi.position.y - h * 0.5)) < 0.6:
 				old.queue_free()
-		_drawn[n.get_instance_id()] = [n, mi, "wall" if mat_id == "brick" else "barrier", String(_level.get("map_id")), h, dmg]   # gruz zawału: bez ceglanego gruzu po odkopaniu (BARRIER_FIX_PLAN.md B0)
+		var kind := "wall" if mat_id == "brick" else ("cave" if mat_id == "rubble" else "barrier")   # gruz zawału: bez ceglanego gruzu po odkopaniu, własne resztki (B0)
+		_drawn[n.get_instance_id()] = [n, mi, kind, String(_level.get("map_id")), h, dmg]
 	for n in get_tree().get_nodes_in_group("supports"):        # stempel nad strefą zawału (D3): belka z podciągiem; złamana — kikut i belka na ziemi
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D):
 			continue
 		var away := -1.0                                          # belka pada w stronę wolnego przejścia, nie w strefę gruzu
-		for w in get_tree().get_nodes_in_group("breakables"):
-			if String(w.name) == String(n.get("wall_name")) and w is Node2D:
-				away = -1.0 if (w as Node2D).global_position.x > (n as Node2D).global_position.x else 1.0
-		var sm := _support_model(float(n.get("rows")) * Level3D.T, away)
+		var reach := 0.0                                          # m do osi strefy zawału: podciąg sięga nad nią
+		var zone: Vector2 = _level.call("wall_pos", String(n.get("wall_name"))) if _level != null and _level.has_method("wall_pos") else Vector2.INF
+		if zone != Vector2.INF:                                   # strefa `^` jest otwarta do zawału — położenie z danych mapy, nie z węzła
+			var zx := zone.x + ((n as Node2D).global_position.x - (n as Node2D).position.x)   # stopy strefy w układzie poziomu → świat
+			away = -1.0 if zx > (n as Node2D).global_position.x else 1.0
+			reach = absf(zx - (n as Node2D).global_position.x) * Level3D.T / 16.0
+		var sm := _support_model(float(n.get("rows")) * Level3D.T, away, reach)
 		sm.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, 0.0, SUPPORT_Z)
 		_world.add_child(sm)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
@@ -2344,6 +2350,7 @@ func _sync_drawn() -> void:
 				(sn.get_node("Beam") as Node3D).visible = up
 				(sn.get_node("Stub") as Node3D).visible = not up
 				(sn.get_node("Fallen") as Node3D).visible = not up
+				(sn.get_node("CapFallen") as Node3D).visible = not up
 	for id in _drawn.keys():
 		var pr: Array = _drawn[id]
 		if not is_instance_valid(pr[0]) or (pr[0] as Node).is_queued_for_deletion():
@@ -2351,6 +2358,10 @@ func _sync_drawn() -> void:
 				# rozbite zamurowane przejście (ta sama mapa): na podłodze zostaje gruz, a przy stropie wyszczerbione resztki muru
 				if pr.size() > 3 and String(pr[2]) == "wall" and String(pr[3]) == String(_level.get("map_id")):
 					_spawn_rubble((pr[1] as Node3D).position - Vector3(0.0, float(pr[4]) * 0.5, 0.0), float(pr[4]))
+				elif pr.size() > 3 and String(pr[2]) == "cave" and String(pr[3]) == String(_level.get("map_id")):
+					var cp := (pr[1] as Node3D).position
+					_spawn_cave_remains(Vector3(cp.x, cp.y - float(pr[4]) * 0.5, 0.0), float(pr[4]), _cave_seed(cp.x),
+						String((pr[1] as Node).get_meta("cave_set", "concrete")), int((pr[1] as Node).get_meta("cave_variant", 0)))
 				(pr[1] as Node).queue_free()
 			_drawn.erase(id)
 		elif is_instance_valid(pr[1]):
@@ -3017,9 +3028,9 @@ func _barrier_mat(mat_id: String) -> Material:
 			dark.albedo_color = dark.albedo_color * Color(0.22, 0.2, 0.18)
 			return dark
 		"rubble":
-			# zasypane: ziemia z kamieniami (`mud`), ciemna — tekstura muru (Bricks097) robiła z zawału ścianę z cegieł (playtest 1.1, BARRIER_FIX_PLAN.md B0)
-			var soil := Level3D.make_pbr("mud", 0.6, Color(0.16, 0.13, 0.10), 0.98, 1.0, 1.0, false, "stone").duplicate() as StandardMaterial3D
-			soil.albedo_color = soil.albedo_color * Color(0.72, 0.66, 0.58)
+			# zawał: rozbity mur z betonu — tekstura muru (Bricks097) robiła z zawału ścianę z cegieł (playtest 1.1, BARRIER_FIX_PLAN.md B0)
+			var soil := Level3D.make_pbr("concrete", 0.7, Color(0.24, 0.23, 0.22), 0.95, 1.0, 1.0, false, "stone").duplicate() as StandardMaterial3D
+			soil.albedo_color = soil.albedo_color * Color(0.74, 0.72, 0.68)      # rozbity mur za kupą: zwietrzały beton z brudem
 			return soil
 		"grate":
 			var clear := StandardMaterial3D.new()
@@ -3029,49 +3040,272 @@ func _barrier_mat(mat_id: String) -> Material:
 			return clear
 	return Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone")
 
-const RUBBLE_ROCKS := 26                   ## brył w usypisku zawału (D3; B0: więcej, bo kamienie skały są mniejsze od brył muru)
+const RUBBLE_GRAVEL := 30                  ## drobnego gruzu przy podstawie (MultiMesh)
+const RUBBLE_CORE_BACK := 0.6              ## m: początek układu zawału (`tools/rubble_pile_gen.py`) za płaszczyzną przegrody
+const RUBBLE_PILE_ROWS := [4, 5]           ## wysokości przejść (rzędy kafli) z gotowym zawałem z symulacji (`tools/rubble_pile_gen.py`)
+const RUBBLE_PILE_VARIANTS := 2            ## wariantów na wysokość
+const CAVE_CRACKS_M := 7.0                 ## m: bok dekala pęknięć tylnej ściany nad zawałem (`d_crack_cave.png`)
+## Odcienie gruzu (mnożnik barwy): czysty beton, ciemny zawilgocony, zażółcony zaciekiem, szary brudny — kawałki nie są jednym płaskim szarym.
+const RUBBLE_TINTS := [Color(1.0, 1.0, 1.0), Color(0.68, 0.67, 0.64), Color(0.92, 0.84, 0.7), Color(0.52, 0.5, 0.48)]
 
-## Zawał (D3): na bryle przejścia usypisko kamieni (pre-fraktura głazu, `fracture_rock.glb`) — szerzej u dołu, wyżej pośrodku, wystaje
-## przed lico i na boki, żeby strefa nie wyglądała jak równy mur; w kupie złamana belka stropu (B0: zawał to strop, nie ściana).
-## Układ z nazwy (`seed`), u wszystkich ten sam; bryły to dzieci `mi` (odkopanie zabiera je razem).
-func _rubble_heap(mi: MeshInstance3D, h: float, front: float, seed: int) -> void:
-	var meshes := _fracture_meshes("rubble")
-	if meshes.is_empty():
+var _rebar_mat: StandardMaterial3D = null
+var _tint_cache := {}                      ## "id materiału:odcień" → zabarwiona kopia
+static var _pile_cache := {}               ## "zestaw_rzędy_wariant" → {nazwa części → ArrayMesh z materiałami gry}
+var _pile_wall_cache := {}                 ## płyta przesunięta do układu przegrody (klucz: zestaw, wariant, wysokość, lico)
+var _cave_crack_tex: Texture2D = null
+
+## Pręty zbrojenia z rozbitego betonu: zardzewiała stal.
+func _rubble_rebar_mat() -> StandardMaterial3D:
+	if _rebar_mat == null:
+		_rebar_mat = StandardMaterial3D.new()
+		_rebar_mat.albedo_color = Color(0.24, 0.14, 0.09)
+		_rebar_mat.roughness = 0.75
+		_rebar_mat.metallic = 0.45
+	return _rebar_mat
+
+## Kopia materiału `base` zabarwiona odcieniem `k` z `RUBBLE_TINTS` (0 = bez zmian); jedna na parę, wspólna dla wszystkich kup.
+func _tinted(base: Material, k: int) -> Material:
+	if k <= 0 or not base is StandardMaterial3D:
+		return base
+	var key := "%d:%d" % [base.get_instance_id(), k]
+	if not _tint_cache.has(key):
+		var m := (base as StandardMaterial3D).duplicate() as StandardMaterial3D
+		m.albedo_color = m.albedo_color * (RUBBLE_TINTS[k % RUBBLE_TINTS.size()] as Color)
+		_tint_cache[key] = m
+	return _tint_cache[key]
+
+## Drobny gruz przy podstawie: `count` kamyków (bryły skały w skali 5–10 cm) w MultiMesh — jedno wywołanie rysowania na kształt.
+func _rubble_gravel(parent: Node3D, rng: RandomNumberGenerator, count: int, half_w: float, y0: float, z_min: float, z_max: float) -> void:
+	var rocks := _fracture_meshes("rubble")
+	if rocks.is_empty():
 		return
+	var per := ceili(float(count) / 3.0)
+	for k in 3:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = rocks[k % rocks.size()]
+		mm.instance_count = per
+		for i in per:
+			var bs := Basis.from_euler(Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU)).scaled(Vector3.ONE * rng.randf_range(0.18, 0.34))
+			mm.set_instance_transform(i, Transform3D(bs, Vector3(rng.randf_range(-half_w, half_w), y0 + 0.03, rng.randf_range(z_min, z_max))))
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "Gravel%d" % k
+		mmi.multimesh = mm
+		mmi.layers = LAYER_WORLD
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mmi)
+
+## Zestaw zawału wg stropu nad strefą (`feet` — stopy przegrody w px, `rows` — wysokość w kaflach): skała i ziemia („#”) — kopalnia
+## (skalny blok, deski okładziny, ziemia), inaczej budynek (płyta betonu na prętach, cegły).
+func _cave_set(feet: Vector2, rows: int) -> String:
+	var r := int(roundf(feet.y / 16.0)) - rows - 1
+	var c := int(floorf(feet.x / 16.0))
+	if r >= 0 and r < _rows.size() and c >= 0 and c < String(_rows[r]).length() and String(_rows[r])[c] == "#":
+		return "mine"
+	return "concrete"
+
+## Wariant zawału strefy `zone` (`tools/rubble_pile_gen.py`: 0 — górna krawędź płyty przechylona w prawo, 1 — w lewo): z dala od
+## stempla, który ją trzymał — jego koniec płyty opadł na podłogę, drugi brzeg został przy stropie. Bez stempla — 0.
+func _cave_variant(zone: Node2D) -> int:
+	for sp in get_tree().get_nodes_in_group("supports"):
+		if String(sp.get("wall_name")) == String(zone.name) and sp is Node2D:
+			return 0 if (sp as Node2D).global_position.x < zone.global_position.x else 1
+	return 0
+
+## Ziarno układu zawału z położenia przegrody na osi x — to samo przy zawale i w resztkach po odkopaniu (wariant kupy).
+static func _cave_seed(x_m: float) -> int:
+	return absi(int(roundf(x_m * 100.0)))
+
+## Materiał części zawału z `rubble_pile_*.glb`: beton — `outer` lico (jasny, zwietrzały; gruz w odcieniu `tint`), `inner` przełom,
+## `brick` cegły, `rebar` pręty; kopalnia — `rock` / `rock_in` skała (jak strop kopalni), `wood` deski okładziny, `earth` ziemia.
+func _pile_mat(id: String, tint: int, wall: bool) -> Material:
+	match id:
+		"outer":
+			return _rubble_slab_mat(false) if wall else _tinted(_rubble_slab_mat(false), tint)
+		"brick":
+			return _tinted(_rubble_brick_mat(), tint)
+		"rebar":
+			return _rubble_rebar_mat()
+		"rock", "rock_in":
+			return _tinted(_rubble_rock_mat(id == "rock_in"), 0 if wall else tint)
+		"wood":
+			return _prop_mat("plank", 0.9, Color(0.62, 0.5, 0.36))
+		"earth":
+			return _rubble_earth_mat()
+	return _rubble_slab_mat(true) if wall else _tinted(_rubble_slab_mat(true), tint)
+
+## Skała zawału w kopalni: tekstura terenu (jak skalny strop nad nią), triplanarna w układzie siatki, bez warstwy brudu;
+## przełom (`rock_in`) szarszy.
+func _rubble_rock_mat(inner: bool) -> StandardMaterial3D:
+	var key := "rock_inner" if inner else "rock_outer"
+	if not _tint_cache.has(key):
+		var m := (Level3D.make_pbr("terrain", 0.6, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "")).duplicate() as StandardMaterial3D
+		m.uv1_world_triplanar = false
+		m.albedo_color = Color(0.9, 0.88, 0.85) if inner else Color(1.0, 0.97, 0.92)
+		_tint_cache[key] = m
+	return _tint_cache[key]
+
+## Ziemia pod zawałem w kopalni: ta sama tekstura terenu, ciemniejsza i drobniejsza.
+func _rubble_earth_mat() -> StandardMaterial3D:
+	if not _tint_cache.has("earth"):
+		var m := (Level3D.make_pbr("terrain", 1.4, Color(0.16, 0.13, 0.1), 1.0, 0.6, 1.0, false, "")).duplicate() as StandardMaterial3D
+		m.uv1_world_triplanar = false
+		m.albedo_color = Color(0.62, 0.55, 0.48)
+		_tint_cache["earth"] = m
+	return _tint_cache["earth"]
+
+## Beton zawału (płyta i gruz): zwietrzałe lico (`inner` = false) i świeży przełom; tekstura triplanarna w układzie siatki (jak bryły
+## pre-fraktury), bez warstwy zacieków — w świecie to plamy po ~14 m i gruz w jednej wychodził czarny.
+func _rubble_slab_mat(inner: bool) -> StandardMaterial3D:
+	var key := "slab_inner" if inner else "slab_outer"
+	if not _tint_cache.has(key):
+		var m := (Level3D.make_pbr("concrete", 0.8, Color(0.3, 0.29, 0.27), 0.95, 1.0, 1.0, false, "")).duplicate() as StandardMaterial3D
+		m.uv1_world_triplanar = false
+		m.albedo_color = Color(0.82, 0.77, 0.69) if inner else Color(0.95, 0.92, 0.86)
+		if inner:
+			m.normal_scale = 0.5
+		_tint_cache[key] = m
+	return _tint_cache[key]
+
+## Cegły w gruzie zawału (obraz docelowy: czerwone cegły między szarym betonem): ten sam beton zabarwiony na wypaloną glinę.
+func _rubble_brick_mat() -> StandardMaterial3D:
+	if not _tint_cache.has("brick"):
+		var m := _rubble_slab_mat(false).duplicate() as StandardMaterial3D
+		m.albedo_color = Color(0.72, 0.4, 0.3)
+		_tint_cache["brick"] = m
+	return _tint_cache["brick"]
+
+## Części zawału z symulacji (`art/items3d/rubble_pile_<zestaw>_r<rzędy>_<wariant>.glb`, `tools/rubble_pile_gen.py`): A_* przed
+## odkopaniem, B_* po; materiały gry. Pusty słownik bez pliku albo z `--nomodels3d`.
+func _rubble_pile(set_id: String, rows: int, variant: int) -> Dictionary:
+	var key := "%s_%d_%d" % [set_id, rows, variant]
+	if _pile_cache.has(key):
+		return _pile_cache[key]
+	var out := {}
+	var path := Level3D.MODEL_DIR + "rubble_pile_%s_r%d_%d.glb" % [set_id, rows, variant]
+	if ResourceLoader.exists(path) and not "--nomodels3d" in OS.get_cmdline_user_args():
+		var inst := (load(path) as PackedScene).instantiate()
+		for n in inst.find_children("*", "MeshInstance3D", true, false):
+			var nm := String(n.name)
+			var tint := 0
+			if nm.contains("Fall"):
+				tint = ([0, 1, 3] if set_id == "mine" else [0, 2, 3])[int(nm.right(1)) % 3]   # gruz w trzech odcieniach (beton: czysty, zaciek, brud)
+			elif nm.contains("Brick"):
+				tint = [0, 2][int(nm.right(1)) % 2]              # cegły czyste i przykurzone (ciemny „brud” robił z nich czarne)
+			var msh := ((n as MeshInstance3D).mesh as ArrayMesh).duplicate() as ArrayMesh
+			for si in msh.get_surface_count():
+				var src := msh.surface_get_material(si)
+				msh.surface_set_material(si, _pile_mat(String(src.resource_name) if src != null else "inner", tint, nm.contains("Wall")))
+			out[nm] = msh
+		inst.free()
+	_pile_cache[key] = out
+	return out
+
+## Zawał do przejścia wysokości `h`: [rzędy gotowego zawału (najbliższe), skala w pionie, wariant `variant`].
+static func _pile_pick(h: float, variant: int) -> Array:
+	var rows := h / Level3D.T
+	var best: int = RUBBLE_PILE_ROWS[0]
+	for r in RUBBLE_PILE_ROWS:
+		if absf(float(r) - rows) < absf(float(best) - rows):
+			best = r
+	return [best, rows / float(best), variant % RUBBLE_PILE_VARIANTS]
+
+## Części `names` zawału jako dzieci `parent`: węzeł „Pile” z początkiem układu zawału w `at` (podłoga na osi przegrody), skala w pionie `sy`.
+func _pile_parts(parent: Node3D, parts: Dictionary, names: Array, at: Vector3, sy: float) -> void:
+	var root := Node3D.new()
+	root.name = "Pile"
+	root.position = at
+	root.scale = Vector3(1.0, sy, 1.0)
+	parent.add_child(root)
+	for nm in names:
+		if not parts.has(nm):
+			continue
+		var p := MeshInstance3D.new()
+		p.name = String(nm)
+		p.mesh = parts[nm]
+		p.layers = LAYER_WORLD
+		if String(nm).contains("Rebar"):
+			p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(p)
+
+## Pęknięcia tylnej ściany nad zawałem (obraz docelowy; zostają też po odkopaniu): dekal rzutowany na ścianę tła (świat
+## z = −DEPTH_BACK + 0,3), tylko geometria świata — nie płyta ani postacie przed nią. `floor_w` — podłoga na osi przegrody w świecie.
+func _cave_cracks(parent: Node3D, floor_w: Vector3, h: float) -> void:
+	if _cave_crack_tex == null:
+		var path := Level3D.DECAL_DIR + "d_crack_cave.png"
+		if not ResourceLoader.exists(path):
+			return
+		_cave_crack_tex = load(path) as Texture2D
+	var dcl := Decal.new()
+	dcl.name = "CaveCracks"
+	dcl.texture_albedo = _cave_crack_tex
+	dcl.size = Vector3(CAVE_CRACKS_M, 0.8, maxf(CAVE_CRACKS_M, h * 1.05))     # x szerokość, y głębokość rzutu, z wysokość (po obrocie)
+	dcl.cull_mask = LAYER_WORLD
+	dcl.upper_fade = 0.0
+	dcl.lower_fade = 0.0
+	dcl.rotation.x = PI * 0.5                                  # rzut wzdłuż −Y dekala → w −Z świata (na ścianę tła)
+	parent.add_child(dcl)
+	dcl.global_position = floor_w + Vector3(0.0, h * 0.55, -Level3D.DEPTH_BACK + 0.3)
+
+## Zawał (D3, BARRIER_FIX_PLAN.md B0): po złamaniu stempla urwał się fragment stropu nad przejściem — górną krawędzią wisi przy
+## stropie nad tylną ścianą, dolną opiera się o podłogę i zamyka przejście od podłogi do stropu; u jego stóp to, co odpadło przy
+## urwaniu, ułożone symulacją fizyki (każdy kawałek na czymś leży); na tylnej ścianie pęknięcia. Zestaw wg stropu (`set_id`,
+## `_cave_set`): budynek — płyta betonu na prętach i cegły; kopalnia — skalny blok, połamane deski okładziny i ziemia. Płyta to
+## siatka `mi` (maska uszkodzeń na niej), reszta to dzieci `mi` — odkopanie zabiera je razem, resztki — `_spawn_cave_remains`.
+## Bez pliku zawału zostaje bryła.
+func _rubble_heap(mi: MeshInstance3D, h: float, front: float, seed: int, set_id: String, variant: int) -> void:
+	var pick := _pile_pick(h, variant)
+	var parts := _rubble_pile(set_id, int(pick[0]), int(pick[2]))
+	var wall_z := front - RUBBLE_CORE_BACK                      # początek układu zawału w układzie przegrody
+	mi.set_meta("cave_set", set_id)
+	mi.set_meta("cave_variant", variant)
+	if parts.has("A_Wall"):
+		var key := "%s_%d_%d:%.3f:%.3f" % [set_id, pick[0], pick[2], h, wall_z]
+		if not _pile_wall_cache.has(key):
+			var src := parts["A_Wall"] as ArrayMesh
+			var dst := ArrayMesh.new()
+			var xf := Transform3D(Basis.from_scale(Vector3(1.0, float(pick[1]), 1.0)), Vector3(0.0, -h * 0.5, wall_z))
+			for si in src.get_surface_count():
+				var st := SurfaceTool.new()
+				st.append_from(src, si, xf)
+				st.commit(dst)
+				dst.surface_set_material(dst.get_surface_count() - 1, src.surface_get_material(si))
+			_pile_wall_cache[key] = dst
+		mi.mesh = _pile_wall_cache[key]
+		mi.material_override = null
+	_pile_parts(mi, parts, ["A_Rebar", "A_Wood", "A_Earth", "A_Fall0", "A_Fall1", "A_Fall2", "A_Brick0", "A_Brick1"],
+		Vector3(0.0, -h * 0.5, wall_z), float(pick[1]))
+	_cave_cracks(mi, mi.global_position - Vector3(0.0, h * 0.5, mi.global_position.z), h)
 	var rng := RandomNumberGenerator.new()
-	rng.seed = seed
-	for i in RUBBLE_ROCKS:
-		var u := rng.randf()                                    # 0 = dół usypiska, 1 = wierzchołek
-		var half := lerpf(Level3D.T * 0.95, Level3D.T * 0.25, u)
-		var rock := MeshInstance3D.new()
-		rock.name = "Rock%d" % i
-		rock.mesh = meshes[rng.randi() % meshes.size()]
-		var sz := rng.randf_range(1.0, 1.7) * (1.15 - u * 0.45)        # kamień ~0,3–0,6 m: kupa zakrywa lico ziemi
-		rock.scale = Vector3.ONE * sz
-		rock.rotation = Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU)
-		rock.position = Vector3(rng.randf_range(-half, half), -h * 0.5 + u * h * 0.95, front + rng.randf_range(-0.15, 0.2) * (1.0 - u * 0.6))
-		rock.layers = LAYER_WORLD
-		mi.add_child(rock)
-	var wood := _prop_mat("plank", 0.9, Color(0.5, 0.4, 0.28))
-	for k in 2:                                                 # złamana belka stropu: dwie połówki pod kątem, jedna wbita w kupę
-		var beam := MeshInstance3D.new()
-		beam.name = "Beam%d" % k
-		var bmsh := BoxMesh.new()
-		bmsh.size = Vector3(rng.randf_range(0.9, 1.3), SUPPORT_W * 0.9, SUPPORT_W * 0.9)
-		beam.mesh = bmsh
-		beam.material_override = wood
-		var side := -1.0 if k == 0 else 1.0
-		beam.position = Vector3(side * Level3D.T * 0.35, -h * 0.5 + h * rng.randf_range(0.3, 0.55), front + 0.05)
-		beam.rotation = Vector3(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.4, 0.4), side * rng.randf_range(0.5, 0.9))
-		beam.layers = LAYER_WORLD
-		mi.add_child(beam)
+	rng.seed = seed + 3
+	_rubble_gravel(mi, rng, RUBBLE_GRAVEL, Level3D.T * 0.9, -h * 0.5, wall_z - 0.3, front + 0.05)
+
+## Po odkopaniu zawału: płyty nie ma — jej płaty leżą płasko za płaszczyzną postaci razem z resztą gruzu (druga symulacja
+## w `rubble_pile_*.glb`, części B_*), ze stropu zwisają kikuty prętów (budynek) albo deski okładziny (kopalnia), pęknięcia na tylnej
+## ścianie zostają. Węzeł „RubbleRemains” w `_geo` na osi przegrody (`at` = podłoga): odbudowa po wipe'ie go usuwa.
+func _spawn_cave_remains(at: Vector3, h: float, seed: int, set_id: String, variant: int) -> void:
+	var root := Node3D.new()
+	root.name = "RubbleRemains"
+	root.position = at
+	_geo.add_child(root)
+	var pick := _pile_pick(h, variant)
+	var front := 0.5                                            # płaszczyzna przegrody w świecie
+	_pile_parts(root, _rubble_pile(set_id, int(pick[0]), int(pick[2])),
+		["B_Rebar", "B_Wood", "B_Earth", "B_Fall0", "B_Fall1", "B_Fall2", "B_Brick0", "B_Brick1"],
+		Vector3(0.0, 0.0, front - RUBBLE_CORE_BACK), float(pick[1]))
+	_cave_cracks(root, root.global_position, h)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed + 17
+	_rubble_gravel(root, rng, RUBBLE_GRAVEL, Level3D.T * 1.2, 0.0, front - RUBBLE_CORE_BACK - 0.6, 0.2)
 
 const SUPPORT_Z := -0.55                   ## m: oś stempla — za postaciami, przed tylną ścianą tunelu
 const SUPPORT_W := 0.2                     ## m: przekrój belki
 
-## Stempel (D3): pionowa belka do stropu z podciągiem na górze. Dzieci: „Beam” (cały), „Stub” (kikut przy podłodze) i „Fallen” (górna część
-## leżąca na podłodze po stronie `away`: −1 w lewo, 1 w prawo, z dala od gruzu) — złamany pokazuje dwie ostatnie (przełącza `_sync_drawn` wg `intact`).
-func _support_model(h: float, away: float) -> Node3D:
+## Stempel (D3): pionowa belka do stropu z podciągiem na górze — podciąg sięga nad strefę zawału (`reach` m w stronę przeciwną do `away`),
+## bo to ten fragment stropu stempel trzyma. Dzieci: „Beam” (cały, z podciągiem), „Stub” (kikut przy podłodze), „Fallen” (górna część
+## leżąca na podłodze po stronie `away`: −1 w lewo, 1 w prawo, z dala od gruzu) i „CapFallen” (podciąg spadł z płytą: jeden koniec
+## na podłodze przy stemplu, drugi na gruzie) — złamany pokazuje trzy ostatnie (przełącza `_sync_drawn` wg `intact`).
+func _support_model(h: float, away: float, reach := 0.0) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Support3D"
 	var wood := _prop_mat("plank", 0.9, Color(0.62, 0.5, 0.36))
@@ -3088,12 +3322,23 @@ func _support_model(h: float, away: float) -> Node3D:
 	beam.add_child(post)
 	var cap := MeshInstance3D.new()
 	var cm := BoxMesh.new()
-	cm.size = Vector3(1.1, 0.14, 0.32)
+	var cap_len := maxf(1.1, reach + 1.0)                          # od 0,5 m za stemplem do 0,5 m za osią strefy zawału
+	cm.size = Vector3(cap_len, 0.14, 0.32)
 	cap.mesh = cm
 	cap.material_override = wood
-	cap.position = Vector3(0.0, h - 0.07, 0.0)
+	cap.position = Vector3(-away * (cap_len * 0.5 - 0.5) if reach > 0.0 else 0.0, h - 0.07, 0.0)
 	cap.layers = LAYER_WORLD
 	beam.add_child(cap)
+	var capf := MeshInstance3D.new()
+	capf.name = "CapFallen"
+	capf.mesh = cm
+	capf.material_override = wood
+	capf.layers = LAYER_WORLD
+	capf.visible = false
+	var lift := 0.55 if reach > 0.0 else 0.0                       # koniec nad strefą leży na gruzie
+	capf.position = Vector3(cap.position.x, 0.07 + lift * 0.5, 0.15)
+	capf.rotation = Vector3(0.0, 0.08 * away, -away * asin(clampf(lift / cap_len, 0.0, 0.9)))
+	root.add_child(capf)
 	var stub := MeshInstance3D.new()
 	var sm := BoxMesh.new()
 	var sh := minf(h * 0.3, 0.6)                                   # kikut do kolan, nie do pasa — inaczej wygląda jak cały stempel
@@ -3267,7 +3512,7 @@ func _fracture_meshes(mat_id: String) -> Array:
 		elif mat_id == "rubble":
 			outer = (Level3D.make_pbr("concrete", 0.9, Color(0.24, 0.23, 0.22), 0.95, 1.0, 1.0, false, "")).duplicate() as StandardMaterial3D
 			outer.uv1_world_triplanar = false
-			outer.albedo_color = Color(0.42, 0.39, 0.36)        # skała stropu: szarobrązowa, ciemniejsza od betonu
+			outer.albedo_color = Color(0.5, 0.47, 0.43)         # skała stropu: szarobrązowa, ciemniejsza od płyt
 			inner = outer.duplicate() as StandardMaterial3D
 			inner.albedo_color = Color(0.58, 0.55, 0.5)         # przełom: jaśniejszy, bez brudu
 		else:

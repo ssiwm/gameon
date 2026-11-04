@@ -100,6 +100,15 @@ static func smoke(parent: Node, pos: Vector2, dir: Vector2) -> void:
 
 # ---------------------------------------------------------------- szczątki i łuski
 
+## Odłamek materiału `mat_id` (kamyk, drzazga — DESTRUCTION_PLAN.md, BARRIER_FIX_PLAN.md B0): jak `debris`, ale widok 3D rysuje go
+## bryłą z pre-fraktury materiału (`mirror_chunk`), nie ogólną mokrą bryłką — tamta na podłodze wyglądała jak czarne ziarenka.
+## Materiał bez zestawu brył zostaje przy bryłce.
+static func chip(parent: Node, pos: Vector2, vel: Vector2, sz: float, color: Color, mat_id: String, bounce := 0.25, spin := 8.0) -> RigidBody2D:
+	var b := debris(parent, pos, vel, Vector2(sz, sz * 0.75), color, bounce, spin)
+	if b != null and view3d != null and is_instance_valid(view3d):
+		view3d.call("mirror_chunk", b, mat_id, sz, randi())
+	return b
+
 ## Kawałek ciała / łuska: małe RigidBody2D z kolorowym wielokątem.
 static func debris(parent: Node, pos: Vector2, vel: Vector2, size: Vector2, color: Color,
 		bounce := 0.25, spin := 8.0, on_hit := Callable(), visual: Node2D = null) -> RigidBody2D:

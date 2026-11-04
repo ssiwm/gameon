@@ -97,6 +97,7 @@ const MAPS := {
 	"z1_m3": preload("res://scripts/maps/z1_m3.gd"),
 	"z1_b1": preload("res://scripts/maps/z1_b1.gd"),
 	"z1_hub": preload("res://scripts/maps/z1_hub.gd"),     # kryjówka między misjami (nie należy do CAMPAIGN)
+	"t_mine": preload("res://scripts/maps/t_mine.gd"),     # mapa testowa zawału D3 (nie należy do CAMPAIGN ani SHIFT_POOL): --destructiontest, --maptest, test sieci
 }
 ## Kolejność kampanii Strefy I: 1.1 → 1.2 → 1.3 → boss B1 (Pijawka); po bossie kampania wraca przez kryjówkę do 1.1.
 const CAMPAIGN := ["z1_m1", "z1_m2", "z1_m3", "z1_b1"]
@@ -1290,6 +1291,13 @@ func _open_wall(wall_name: String, with_fx: bool) -> void:
 
 var _breakables_cp := {}         ## stan zniszczeń z przebudzenia bossa (punkt kontrolny, `save_breakables_checkpoint`)
 
+## Stopy elementu `wall_name` z danych mapy (także strefy zawału `^`, która do zawału nie ma węzła); nieznany — `Vector2.INF`.
+func wall_pos(wall_name: String) -> Vector2:
+	for wd in _wall_defs:
+		if String(wd["name"]) == wall_name:
+			return wd["pos"]
+	return Vector2.INF
+
 ## Stan zniszczeń: nazwy rozbitych elementów i plamy (z wytrzymałością) tych, które stoją, a oberwały.
 func breakables_state() -> Dictionary:
 	var dmg := {}
@@ -1689,7 +1697,7 @@ func _support_rpc(id: String, sname: String, fx: bool) -> void:
 	var rc := wall_rect(wd)                                  # zapowiedź: ze stropu nad strefą sypie się pył i kamyki, strop trzeszczy
 	var top := Vector2(rc.get_center().x, rc.position.y + 2.0)
 	for i in 6:
-		Vfx.debris(self, top + Vector2(randf_range(-7.0, 7.0), 0.0), Vector2(randf_range(-15.0, 15.0), randf_range(0.0, 30.0)), Vector2(2, 2), Color(0.42, 0.36, 0.3))
+		Vfx.chip(self, top + Vector2(randf_range(-7.0, 7.0), 0.0), Vector2(randf_range(-15.0, 15.0), randf_range(0.0, 30.0)), 2.0, Color(0.42, 0.36, 0.3), "rubble")
 	Vfx.dust(self, top + Vector2(0, 4), 1.2)
 	Audio.play_variant_at("amb_creak", 3, top, Audio.BUS_WORLD, 2.0, 0.55)
 
@@ -1743,7 +1751,7 @@ func _cave_rpc(id: String, wall_name: String, fx: bool) -> void:
 	var rc := wall_rect(wd)
 	for i in 14:                                             # gruz spada ze stropu i odbija się na boki
 		var p := Vector2(rc.position.x + randf() * rc.size.x, rc.position.y + randf() * rc.size.y * 0.5)
-		Vfx.debris(self, p, Vector2(randf_range(-90.0, 90.0), randf_range(-40.0, 40.0)), Vector2(4, 3), Color(0.42, 0.36, 0.3), 0.1, 3.0)
+		Vfx.chip(self, p, Vector2(randf_range(-90.0, 90.0), randf_range(-40.0, 40.0)), 4.0, Color(0.42, 0.36, 0.3), "rubble", 0.1, 3.0)
 	Vfx.dust(self, rc.get_center(), 3.5)
 	Audio.play_at("collapse", rc.get_center(), Audio.BUS_WORLD, 0.0, 1.1)
 	for pl in get_tree().get_nodes_in_group("players"):       # wstrząs u gracza tego peera, jeśli stoi blisko

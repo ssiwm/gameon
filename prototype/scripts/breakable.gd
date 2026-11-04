@@ -381,7 +381,7 @@ func crumble() -> void:
 			Vfx.view3d.call("mirror_chunk", b, mat_id, sz, int(ch[3]))
 	for i in int(m["chips"]):
 		var p := Vector2(rc.position.x + randf() * rc.size.x, rc.position.y + randf() * rc.size.y)
-		Vfx.debris(parent, p, Vector2(randf_range(-60.0, 60.0), randf_range(-90.0, -20.0)), Vector2(3, 3), m["debris"])
+		Vfx.chip(parent, p, Vector2(randf_range(-60.0, 60.0), randf_range(-90.0, -20.0)), 3.0, m["debris"], mat_id)
 	var dust: float = (m["dust"] as Array)[1]
 	if dust > 0.0:
 		Vfx.dust(parent, rc.get_center(), dust)
