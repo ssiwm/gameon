@@ -11,6 +11,8 @@ extends Node2D
 ## dziury wzrok, światło, kule i dźwięk przechodzą (`hole_at`, `sight.gd`), ruch i nawigacja dalej nie.
 ## Deski da się przybijać z powrotem (D2b, `barricade_spot.gd`, level.gd `nail_board`): wytrzymałość dzieli się na deski (level.gd `BOARDS`),
 ## pusty otwór „:” to ta sama przegroda w stanie rozbitym na starcie; widok 3D pokazuje tyle desek, ile wytrzymałości (`boards`).
+## Gruz (D3, strefa „^”, `rubble`): na starcie przejście jest wolne; zapada się, gdy pęknie stempel „!” obok (`support_beam.gd`, level.gd
+## `cave_in`), i odkopuje się go jak zamurowanie — kilof, wybuch, ładunek, wolniej niż cegły.
 ## Dla nawigacji każda przegroda liczy się jako kafel (level.gd `_wall_cells`), dzięki czemu boty i wrogowie nie planują drogi przez
 ## nią ani do skrytki za nią.
 ## Obrażenia liczy serwer; rozbicie idzie do wszystkich peerów przez level.gd (`break_wall`).
@@ -33,7 +35,7 @@ const TILE := 16.0
 ##   layer    warstwa ciała (domyślnie 1 — bryła świata; kratka 128 — tylko ruch, jak rama okna)
 ##   holes    mnożnik promienia plamy dla dziury na wylot (brak pola — materiał bez dziur)
 ##   surface  powierzchnia trafienia kulą (Vfx.impact: odpryski i dźwięk)
-## Na mapach są `brick`, `planks` i `grate`; `sheet`, `glass` i `support` to wartości wstępne pod kolejne etapy.
+## Na mapach są `brick`, `planks`, `grate` i `rubble` (gruz zawału, D3); `support` ma stempel (`support_beam.gd`), `sheet` i `glass` to wartości wstępne.
 const MATERIALS := {
 	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0, "surface": "concrete",
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
@@ -50,6 +52,9 @@ const MATERIALS := {
 	"glass": {"hp": 5.0, "breaks": ["pick", "blade", "bullet", "pellet", "blast", "charge"], "n_hit": 1.0, "n_break": 3.0,
 		"hit_snd": ["glass_break", 2, -8.0, 1.3], "break_snd": ["glass_break", 2, 0.0, 1.0],
 		"debris": Color(0.6, 0.7, 0.72), "chips": 12, "dust": [0.0, 0.3], "mat": Mat.WORLD, "chip": [Color(1.8, 1.85, 1.9), Color(0.45, 0.5, 0.52)]},
+	"rubble": {"hp": 200.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.0, "n_break": 6.0, "surface": "concrete",
+		"hit_snd": ["amb_thud", 2, -3.0, 1.1], "break_snd": ["amb_thud", 2, 1.0, 0.6],
+		"debris": Color(0.42, 0.36, 0.3), "chips": 12, "chunks": 10, "dust": [1.5, 3.0], "mat": Mat.WORLD, "chip": [Color(1.5, 1.35, 1.2), Color(0.3, 0.26, 0.22)]},
 	"support": {"hp": 80.0, "breaks": ["pick", "bullet", "pellet", "blast", "charge"], "n_hit": 1.2, "n_break": 5.0,
 		"hit_snd": ["amb_creak", 3, -6.0, 1.0], "break_snd": ["amb_creak", 3, 2.0, 0.6],
 		"debris": Color(0.4, 0.29, 0.17), "chips": 8, "dust": [0.5, 2.0], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},

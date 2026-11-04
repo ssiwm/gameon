@@ -32,7 +32,7 @@ static func is_solid_ch(ch: String) -> bool:
 ## Wypełnienie przejścia w ścianie: okno `|` (window_glass.gd), przegrody `q` / `%` / `+` i pusty otwór `:` na barykadę (breakable.gd) — w 3D rysują je ich własne węzły,
 ## ale dla konstrukcji świata (nogi kładek, dachy, nadproża) to ściana.
 static func is_wall_fill(ch: String) -> bool:
-	return ch == "|" or ch == "q" or ch == "%" or ch == "+" or ch == ":"
+	return ch == "|" or ch == "q" or ch == "%" or ch == "+" or ch == ":" or ch == "^"
 
 static func is_platform_ch(ch: String) -> bool:
 	return ch == "-" or ch == "="

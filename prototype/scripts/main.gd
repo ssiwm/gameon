@@ -705,6 +705,9 @@ func _destruction_sig() -> String:
 	var wn: Node = level.get_node_or_null("Window1")
 	if wn != null:
 		st += " win=%s" % ("ok" if bool(wn.get("intact")) else "out")
+	var sb: Node = level.get_node_or_null("Support1")
+	if sb != null:
+		st += " sup=%s" % ("ok" if bool(sb.get("intact")) else "down")   # stempel nad strefą zawału (D3); zawał widać po Rubble1 w `opened`
 	return st
 
 func _destruction_net_host() -> void:
@@ -712,6 +715,12 @@ func _destruction_net_host() -> void:
 	if w == null:
 		print("[DESTRUCTION-NET] host: brak ściany BrickWall1 na mapie %s" % level.map_id)
 		return
+	var sb: Node2D = level.get_node_or_null("Support1")
+	if sb != null:                                                    # stempel złamany kilofem: u klienta na żywo trzask, po CAVE_DELAY zawał;
+		var pk: RefCounted = Weapons.def(Weapons.KILOF)               # dołączający dostaje złamany stempel i zawaloną strefę z `send_walls_to`
+		while bool(sb.get("intact")):
+			Combat.apply(sb, Combat.make_info(Weapons.KILOF, pk.damage, sb.call("body_center"), Vector2.RIGHT, 1, "melee"))
+		await get_tree().create_timer(level.CAVE_DELAY + 0.7).timeout
 	var crate: Node = level.get_node_or_null("Crate1")
 	if crate != null:
 		crate.shatter()                                               # dołączający po ciosach dostaje ją rozbitą z `send_walls_to`
@@ -2237,7 +2246,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				sw = level.get_node_or_null(wn)
 		var sp: Node2D = _players.get_node_or_null("1")
 		if sw != null and sp != null:
-			sp.global_position = sw.global_position + Vector2(40.0, -1.0)
+			sp.global_position = sw.global_position + (Vector2(-12.0, -1.0) if sw.has_method("snap") else Vector2(40.0, -1.0))   # tuż przed stemplem (w ciemności widać go z bliska)
 			sp.velocity = Vector2.ZERO
 		if sw != null and "--shotholes" in OS.get_cmdline_user_args():     # …i po 1 s pięć śrucin w przegrodę na różnych wysokościach (dziury w deskach, D2)
 			get_tree().create_timer(1.0).timeout.connect(func() -> void:
@@ -2245,6 +2254,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				for k in 5:
 					var at := Vector2(rc.get_center().x + float(k - 2) * 3.0, rc.position.y + rc.size.y * (0.18 + 0.16 * float(k)))
 					Combat.apply(sw, Combat.make_info(Weapons.SRUT8, 10.0, at, Vector2.LEFT, 1, "bullet")))
+		if sw != null and "--shotcave" in OS.get_cmdline_user_args() and sw.has_method("snap"):   # …stempel (--shotwall=Support1) po 1 s złamany: kikut, belka na ziemi, gruz (D3)
+			get_tree().create_timer(1.0).timeout.connect(func() -> void: level.support_broken(String(sw.name)))
 	if "--shotscan" in OS.get_cmdline_user_args():
 		var scp: Node2D = _players.get_node_or_null("1")     # --shotscan: skaner Sowa włączony (użyj z --shotat=KOLUMNA przy wrogach)
 		if scp != null:
@@ -3637,7 +3648,7 @@ func _gen_test() -> void:
 	if alcove.size() > 0:
 		sealed = level.nav.get_id_path(start_id, level.nav.get_closest_point(alcove[0])).is_empty()
 	var wall_node := level.get_node_or_null("BrickWall1")
-	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 4)      # zamurowanie, kratka wentylacji, deski w szybie (D2) i pusty otwór na barykadę (D2b)
+	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 5)      # zamurowanie, kratka wentylacji, deski w szybie (D2), pusty otwór na barykadę (D2b) i strefa zawału (D3)
 	level.break_wall("BrickWall1")
 	await get_tree().create_timer(0.3).timeout
 	var open_id: int = level.nav.get_closest_point(alcove[0]) if alcove.size() > 0 else -1
@@ -4156,6 +4167,10 @@ func _map_test() -> void:
 			bad.append_array(oc[0])
 			if int(oc[1]) > 0:
 				print("[MAPTEST] %s: puste otwory na barykadę: %d (zabite i znów wolne — graf jak pełna budowa)" % [id, int(oc[1])])
+			var cv: Array = level.cave_checked(func() -> Array: return _reach_errors(must, false))   # strefy zawału „^” zawalone naraz (D3)
+			bad.append_array(cv[0])
+			if int(cv[1]) > 0:
+				print("[MAPTEST] %s: strefy zawału: %d, stempli %d (wszystkie zawalone — cele, wyjścia i stanowiska dalej osiągalne)" % [id, int(cv[1]), level.supports_total()])
 			bad.append_array(level.open_walls_checked())
 		bad.append_array(_reach_errors(points, true))
 		if not level.exits.is_empty():           # kryjówka nie ma celów ani wyjścia

@@ -348,7 +348,8 @@ func live_groups() -> int:
 			_groups.erase(g)
 	return live
 
-## Punkt do postawienia wędrowców: węzeł grafu nawigacji 380–640 px od gracza, bez linii wzroku do żadnego człowieka.
+## Punkt do postawienia wędrowców: węzeł grafu nawigacji 380–640 px od gracza, bez linii wzroku do żadnego człowieka i z drogą do niego
+## (zawalone przejście, zamurowanie i barykada to dla dyrektora zamknięta droga — DESTRUCTION_PLAN.md D3).
 func _pick_spot(lvl: Node, near: Vector2, humans: Array) -> Vector2:
 	var nav: AStar2D = lvl.nav
 	var ids := nav.get_point_ids()
@@ -368,8 +369,11 @@ func _pick_spot(lvl: Node, near: Vector2, humans: Array) -> Vector2:
 			if space.intersect_ray(q).is_empty() and p.global_position.distance_to(pt) < 460.0:
 				visible = true
 				break
-		if not visible:
-			return pt
+		if visible:
+			continue
+		if lvl.nav.find_path(pt, near).is_empty():
+			continue                                      # za zamkniętą drogą (zawał „^”, ściana, barykada) — grupa nie dojdzie (D3)
+		return pt
 	return Vector2.ZERO
 
 ## Kleszcze (F3.4): po której stronie `near` (−1 / +1) są już żywi wędrowcy z poprzedniej grupy — średnia ich pozycji w PINCER_R; 0, gdy nikogo nie ma

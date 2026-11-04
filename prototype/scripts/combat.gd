@@ -245,6 +245,14 @@ static func in_cone(tree: SceneTree, space: PhysicsDirectSpaceState2D, origin: V
 		var vw := qw - origin
 		if vw.length() <= reach and (vw.length() <= 1.0 or absf(rad_to_deg(dir.angle_to(vw))) <= half_deg + 25.0):
 			found.append(wi)                  # szyba okna: cios ją tłucze
+	for sb in tree.get_nodes_in_group("supports"):
+		if not sb.intact:
+			continue
+		var rsb: Rect2 = sb.hit_rect()
+		var qs := Vector2(clampf(origin.x, rsb.position.x, rsb.end.x), clampf(origin.y, rsb.position.y, rsb.end.y))
+		var vs := qs - origin
+		if vs.length() <= reach and (vs.length() <= 1.0 or absf(rad_to_deg(dir.angle_to(vs))) <= half_deg + 25.0) and clear_line(space, origin, qs):
+			found.append(sb)                  # stempel (D3): kilof go łamie, maczeta odbija się (`support_beam.gd`)
 	return found
 
 # ---------------------------------------------------------------- wybuch
@@ -298,6 +306,17 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 		var qw := Vector2(clampf(pos.x, rw.position.x, rw.end.x), clampf(pos.y, rw.position.y, rw.end.y))
 		if wi.intact and qw.distance_to(pos) <= radius:
 			apply(wi, make_info(w, damage, qw, (qw - pos).normalized() if qw.distance_to(pos) > 0.5 else Vector2.RIGHT, shooter, "blast"))   # okno: wybuch tłucze szybę
+	for sb in tree.get_nodes_in_group("supports"):
+		if not sb.intact:
+			continue
+		var rsb: Rect2 = sb.hit_rect()
+		var qs := Vector2(clampf(pos.x, rsb.position.x, rsb.end.x), clampf(pos.y, rsb.position.y, rsb.end.y))
+		if qs.distance_to(pos) > radius:
+			continue
+		if space == null:
+			space = (sb as Node2D).get_world_2d().direct_space_state
+		if clear_line(space, pos, qs):                            # stempel (D3): ściana zasłania go przed wybuchem
+			apply(sb, make_info(w, damage, qs, (qs - pos).normalized() if qs.distance_to(pos) > 0.5 else Vector2.UP, shooter, "blast"))
 	for ml in tree.get_nodes_in_group("mission_lamps"):
 		if ml.lit and (ml.bulb_pos() as Vector2).distance_to(pos) <= radius:
 			apply(ml, make_info(w, damage, ml.bulb_pos(), Vector2.UP, shooter, "blast"))   # lampa misji: wybuch ją tłucze (lamp.gd)
