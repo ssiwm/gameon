@@ -105,7 +105,7 @@ func _detonate_mine() -> void:
 func _detonate_charge() -> void:
 	_done = true
 	NoiseMgr.add_noise(float(_data["noise"]), global_position, "explosive")
-	Combat.explode(get_tree(), _origin() + Vector2(0, -2), float(_data["radius"]), float(_data["damage"]), shooter_id, Weapons.GNIEW4, true)
+	Combat.explode(get_tree(), _origin() + Vector2(0, -2), float(_data["radius"]), float(_data["damage"]), shooter_id, Weapons.GNIEW4, true, true)   # ładunek burzący: stemple w całym promieniu
 	_finish()
 
 func _finish() -> void:

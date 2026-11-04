@@ -36,30 +36,36 @@ const TILE := 16.0
 ##   layer    warstwa ciała (domyślnie 1 — bryła świata; kratka 128 — tylko ruch, jak rama okna)
 ##   holes    mnożnik promienia plamy dla dziury na wylot (brak pola — materiał bez dziur)
 ##   surface  powierzchnia trafienia kulą (Vfx.impact: odpryski i dźwięk)
+##   blasts   ile wybuchów w zasięgu rozbija element (BARRIER_FIX_PLAN.md B0): wybuch zadaje co najmniej max_hp / blasts, nawet na brzegu
+##            promienia — kratka pada od jednego granatu, gruz od dwóch (brak pola — zwykłe obrażenia wybuchu)
+##   label    nazwa dla gracza w komunikacie o złym narzędziu (tłumaczona `tr`)
 ## Na mapach są `brick`, `planks`, `grate` i `rubble` (gruz zawału, D3); `support` ma stempel (`support_beam.gd`), `sheet` i `glass` to wartości wstępne.
 const MATERIALS := {
-	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0, "surface": "concrete",
+	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0, "surface": "concrete", "label": "Bricked-up passage",
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
 		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)]},
-	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood",
+	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood", "label": "Boards",
 		"hit_snd": ["amb_creak", 3, -6.0, 1.2], "break_snd": ["amb_creak", 3, 0.0, 0.8],
 		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 	"sheet": {"hp": 150.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.5, "n_break": 6.0,
 		"hit_snd": ["impact_hard", 3, -3.0, 0.9], "break_snd": ["impact_hard", 3, 2.0, 0.6],
 		"debris": Color(0.38, 0.27, 0.2), "chips": 5, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
-	"grate": {"hp": 90.0, "breaks": ["pick", "blast"], "n_hit": 2.0, "n_break": 5.0, "layer": 128,
+	"grate": {"hp": 90.0, "breaks": ["pick", "blast"], "n_hit": 2.0, "n_break": 5.0, "layer": 128, "blasts": 1, "label": "Vent grate",
 		"hit_snd": ["impact_hard", 3, -4.0, 1.1], "break_snd": ["impact_hard", 3, 0.0, 0.7],
 		"debris": Color(0.36, 0.25, 0.18), "chips": 6, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
 	"glass": {"hp": 5.0, "breaks": ["pick", "blade", "bullet", "pellet", "blast", "charge"], "n_hit": 1.0, "n_break": 3.0,
 		"hit_snd": ["glass_break", 2, -8.0, 1.3], "break_snd": ["glass_break", 2, 0.0, 1.0],
 		"debris": Color(0.6, 0.7, 0.72), "chips": 12, "dust": [0.0, 0.3], "mat": Mat.WORLD, "chip": [Color(1.8, 1.85, 1.9), Color(0.45, 0.5, 0.52)]},
-	"rubble": {"hp": 200.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.0, "n_break": 6.0, "surface": "concrete",
+	"rubble": {"hp": 200.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.0, "n_break": 6.0, "surface": "concrete", "blasts": 2, "label": "Rubble",
 		"hit_snd": ["amb_thud", 2, -3.0, 1.1], "break_snd": ["amb_thud", 2, 1.0, 0.6],
 		"debris": Color(0.42, 0.36, 0.3), "chips": 12, "chunks": 10, "dust": [1.5, 3.0], "mat": Mat.WORLD, "chip": [Color(1.5, 1.35, 1.2), Color(0.3, 0.26, 0.22)]},
 	"support": {"hp": 80.0, "breaks": ["pick", "bullet", "pellet", "blast", "charge"], "n_hit": 1.2, "n_break": 5.0,
 		"hit_snd": ["amb_creak", 3, -6.0, 1.0], "break_snd": ["amb_creak", 3, 2.0, 0.6],
 		"debris": Color(0.4, 0.29, 0.17), "chips": 8, "dust": [0.5, 2.0], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 }
+
+## Rodzaj trafienia → nazwa dla gracza (komunikat o złym narzędziu; `charge` i `claw` to wrogowie, nie gracz).
+const TOOL_LABELS := {"pick": "a pickaxe", "blade": "a machete", "bullet": "bullets", "pellet": "a shotgun", "blast": "explosives"}
 
 ## Promień plamy w masce uszkodzeń wg rodzaju trafienia (px świata; 16 px = kafel).
 const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "blast": 6.0, "charge": 8.0, "claw": 2.5}
@@ -148,7 +154,11 @@ func take_hit(info: Dictionary) -> Dictionary:
 	var m := mat_def()
 	var kind := hit_kind(info)
 	if not (m["breaks"] as Array).has(kind):
+		_tell_bounce(int(info.get("shooter", -1)), kind)
 		return {"hit": false, "dealt": 0.0, "killed": false, "mat": 0}
+	if kind == "blast" and m.has("blasts"):
+		info = info.duplicate()                   # słownik należy do wołającego (Combat.explode)
+		info["amount"] = maxf(float(info["amount"]), max_hp() / float(m["blasts"]) + 0.01)
 	hp -= float(info["amount"])
 	NoiseMgr.add_noise(float(m["n_hit"]), global_position, "wall")
 	var broken := hp <= 0.0
@@ -161,6 +171,34 @@ func take_hit(info: Dictionary) -> Dictionary:
 		if lvl != null:
 			lvl.break_wall(String(name))
 	return {"hit": true, "dealt": float(info["amount"]), "killed": broken, "mat": int(m["mat"])}
+
+## Serwer: trafienie, które się odbiło — strzelec (człowiek) dostaje komunikat, czym ten element ruszyć (BARRIER_FIX_PLAN.md B0).
+## Raz na element u każdego gracza (`_bounce_told` liczy się u odbiorcy); bot i wrogowie nic nie dostają.
+func _tell_bounce(shooter: int, kind: String) -> void:
+	if shooter <= 0 or not TOOL_LABELS.has(kind):
+		return
+	if not NoiseMgr.has_network() or shooter == NoiseMgr.local_id():
+		_bounce_rpc(kind)
+	elif multiplayer.get_peers().has(shooter):
+		_bounce_rpc.rpc_id(shooter, kind)
+
+var _bounce_told := false           ## u tego peera: komunikat o złym narzędziu już był (raz na element)
+
+@rpc("authority", "call_remote", "reliable")
+func _bounce_rpc(kind: String) -> void:
+	if _bounce_told:
+		return
+	_bounce_told = true
+	var m := mat_def()
+	var ways: Array = []
+	for k in m["breaks"]:
+		if TOOL_LABELS.has(k):
+			ways.append(tr(String(TOOL_LABELS[k])))
+	var text := tr("%s: not with %s") % [tr(String(m.get("label", "Barrier"))), tr(String(TOOL_LABELS[kind]))]
+	Msg.post("barrier.%s" % name, Msg.Ch.TOAST, text, {"sub": tr("Breaks with: %s") % ", ".join(ways), "style": Msg.Style.WARN, "ttl": 4.0, "prio": 55})
+	bounce_shown += 1
+
+var bounce_shown := 0               ## ile razy u tego peera pokazano komunikat o złym narzędziu (test)
 
 ## Wiersz zdarzenia `break` w dzienniku sesji (DESTRUCTION_PLAN.md „Pomiar po wdrożeniu”): co, czym, kto (gracz `shooter`
 ## albo rodzaj wroga `src`), hałas po rozbiciu; przybita barykada dostaje `held` — sekundy od ostatniej przybitej deski.

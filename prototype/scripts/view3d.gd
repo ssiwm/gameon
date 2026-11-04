@@ -2317,7 +2317,7 @@ func _sync_drawn() -> void:
 		for old in _geo.get_children():                           # ściana odbudowana po restarcie misji: gruz po poprzedniej znika
 			if String(old.name).begins_with("Rubble") and not old is MultiMeshInstance3D and absf((old as Node3D).position.x - mi.position.x) < 0.6 and absf((old as Node3D).position.y - (mi.position.y - h * 0.5)) < 0.6:
 				old.queue_free()
-		_drawn[n.get_instance_id()] = [n, mi, "wall" if mat_id == "brick" or mat_id == "rubble" else "barrier", String(_level.get("map_id")), h, dmg]
+		_drawn[n.get_instance_id()] = [n, mi, "wall" if mat_id == "brick" else "barrier", String(_level.get("map_id")), h, dmg]   # gruz zawału: bez ceglanego gruzu po odkopaniu (BARRIER_FIX_PLAN.md B0)
 	for n in get_tree().get_nodes_in_group("supports"):        # stempel nad strefą zawału (D3): belka z podciągiem; złamana — kikut i belka na ziemi
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D):
 			continue
@@ -3017,9 +3017,10 @@ func _barrier_mat(mat_id: String) -> Material:
 			dark.albedo_color = dark.albedo_color * Color(0.22, 0.2, 0.18)
 			return dark
 		"rubble":
-			var rock := Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone").duplicate() as StandardMaterial3D
-			rock.albedo_color = rock.albedo_color * Color(0.72, 0.64, 0.56)     # zasypane: ciemniejsze, ziemiste — inne niż mur
-			return rock
+			# zasypane: ziemia z kamieniami (`mud`), ciemna — tekstura muru (Bricks097) robiła z zawału ścianę z cegieł (playtest 1.1, BARRIER_FIX_PLAN.md B0)
+			var soil := Level3D.make_pbr("mud", 0.6, Color(0.16, 0.13, 0.10), 0.98, 1.0, 1.0, false, "stone").duplicate() as StandardMaterial3D
+			soil.albedo_color = soil.albedo_color * Color(0.72, 0.66, 0.58)
+			return soil
 		"grate":
 			var clear := StandardMaterial3D.new()
 			clear.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -3028,10 +3029,11 @@ func _barrier_mat(mat_id: String) -> Material:
 			return clear
 	return Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone")
 
-const RUBBLE_ROCKS := 16                   ## brył w usypisku zawału (D3)
+const RUBBLE_ROCKS := 26                   ## brył w usypisku zawału (D3; B0: więcej, bo kamienie skały są mniejsze od brył muru)
 
-## Zawał (D3): na bryle przejścia usypisko kamieni z pre-fraktury muru — szerzej u dołu, wyżej pośrodku, wystaje przed lico i na boki,
-## żeby strefa nie wyglądała jak równy mur. Układ z nazwy (`seed`), u wszystkich ten sam; bryły to dzieci `mi` (odkopanie zabiera je razem).
+## Zawał (D3): na bryle przejścia usypisko kamieni (pre-fraktura głazu, `fracture_rock.glb`) — szerzej u dołu, wyżej pośrodku, wystaje
+## przed lico i na boki, żeby strefa nie wyglądała jak równy mur; w kupie złamana belka stropu (B0: zawał to strop, nie ściana).
+## Układ z nazwy (`seed`), u wszystkich ten sam; bryły to dzieci `mi` (odkopanie zabiera je razem).
 func _rubble_heap(mi: MeshInstance3D, h: float, front: float, seed: int) -> void:
 	var meshes := _fracture_meshes("rubble")
 	if meshes.is_empty():
@@ -3044,12 +3046,25 @@ func _rubble_heap(mi: MeshInstance3D, h: float, front: float, seed: int) -> void
 		var rock := MeshInstance3D.new()
 		rock.name = "Rock%d" % i
 		rock.mesh = meshes[rng.randi() % meshes.size()]
-		var sz := rng.randf_range(0.28, 0.55) * (1.15 - u * 0.5)
+		var sz := rng.randf_range(1.0, 1.7) * (1.15 - u * 0.45)        # kamień ~0,3–0,6 m: kupa zakrywa lico ziemi
 		rock.scale = Vector3.ONE * sz
 		rock.rotation = Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU)
 		rock.position = Vector3(rng.randf_range(-half, half), -h * 0.5 + u * h * 0.95, front + rng.randf_range(-0.15, 0.2) * (1.0 - u * 0.6))
 		rock.layers = LAYER_WORLD
 		mi.add_child(rock)
+	var wood := _prop_mat("plank", 0.9, Color(0.5, 0.4, 0.28))
+	for k in 2:                                                 # złamana belka stropu: dwie połówki pod kątem, jedna wbita w kupę
+		var beam := MeshInstance3D.new()
+		beam.name = "Beam%d" % k
+		var bmsh := BoxMesh.new()
+		bmsh.size = Vector3(rng.randf_range(0.9, 1.3), SUPPORT_W * 0.9, SUPPORT_W * 0.9)
+		beam.mesh = bmsh
+		beam.material_override = wood
+		var side := -1.0 if k == 0 else 1.0
+		beam.position = Vector3(side * Level3D.T * 0.35, -h * 0.5 + h * rng.randf_range(0.3, 0.55), front + 0.05)
+		beam.rotation = Vector3(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.4, 0.4), side * rng.randf_range(0.5, 0.9))
+		beam.layers = LAYER_WORLD
+		mi.add_child(beam)
 
 const SUPPORT_Z := -0.55                   ## m: oś stempla — za postaciami, przed tylną ścianą tunelu
 const SUPPORT_W := 0.2                     ## m: przekrój belki
@@ -3241,7 +3256,7 @@ func _fracture_meshes(mat_id: String) -> Array:
 	if _frac_cache.has(mat_id):
 		return _frac_cache[mat_id]
 	var out: Array = []
-	var path := Level3D.MODEL_DIR + "fracture_%s.glb" % ("brick" if mat_id == "rubble" else mat_id)     # gruz zawału (D3): bryły jak z muru
+	var path := Level3D.MODEL_DIR + "fracture_%s.glb" % ("rock" if mat_id == "rubble" else mat_id)      # gruz zawału: głaz pocięty na kamienie (B0)
 	if ResourceLoader.exists(path) and not "--nomodels3d" in OS.get_cmdline_user_args():
 		var outer: StandardMaterial3D
 		var inner: StandardMaterial3D
@@ -3249,6 +3264,12 @@ func _fracture_meshes(mat_id: String) -> Array:
 			outer = _prop_mat("plank", 0.9, Color(0.78, 0.66, 0.5))           # te same deski co skrzynia (`_make_crate`)
 			inner = outer.duplicate() as StandardMaterial3D
 			inner.albedo_color = Color(1.45, 1.25, 0.95)        # świeże drewno w złamaniu: jasne, żółtawe
+		elif mat_id == "rubble":
+			outer = (Level3D.make_pbr("concrete", 0.9, Color(0.24, 0.23, 0.22), 0.95, 1.0, 1.0, false, "")).duplicate() as StandardMaterial3D
+			outer.uv1_world_triplanar = false
+			outer.albedo_color = Color(0.42, 0.39, 0.36)        # skała stropu: szarobrązowa, ciemniejsza od betonu
+			inner = outer.duplicate() as StandardMaterial3D
+			inner.albedo_color = Color(0.58, 0.55, 0.5)         # przełom: jaśniejszy, bez brudu
 		else:
 			outer = (Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "")).duplicate() as StandardMaterial3D
 			outer.uv1_world_triplanar = false

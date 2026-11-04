@@ -33,6 +33,9 @@ extends "res://scripts/stalker_test.gd"
 ##    obok; gruz odkopuje kilof, kula nie; wipe w czasie trzeszczenia odwołuje zawał; wipe, punkt kontrolny bossa i wstrząs finału.
 ## 15. Dziennik sesji (DESTRUCTION_PLAN.md „Pomiar po wdrożeniu”): po sekcjach 1–14 w pliku są wiersze `break` (materiał, czym, kto,
 ##    rodzaj wroga, czas barykady), `crate`, `lamp` i `window` (czym), `barricade`, `support`, `cave`.
+## 16. Poprawki po playteście 1.1 (BARRIER_FIX_PLAN.md B0): kratkę rozbija jeden granat na brzegu promienia, gruz dwa (jeden nie);
+##    granat dalej niż SUPPORT_BLAST_R od stempla go nie rusza, bliski tak, ładunek burzący (`demolition`) pełnym promieniem;
+##    cios, który się odbił, daje strzelcowi komunikat raz na przegrodę (bot i wróg — nic); na 1.1 nie ma otworu `:` ani kratki.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -50,6 +53,7 @@ const WeaponController := preload("res://scripts/weapon_controller.gd")
 const Sight := preload("res://scripts/sight.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 const LOG_DIR := "user://test_destruction_sessions"
 
 func check(label: String, ok: bool) -> void:
@@ -97,6 +101,7 @@ func run(m: Node2D) -> void:
 	await _holes()
 	await _barricade()
 	await _cave()
+	await _barrier_fixes()
 	_session_log()
 	_finish()
 
@@ -1077,7 +1082,7 @@ func _cave() -> void:
 	var after_bullet := float(sb.hp)
 	_hit(sb, Weapons.SPREAD12, 10.0, "bullet", c)
 	var after_pellet := float(sb.hp)
-	Combat.explode(get_tree(), c + Vector2(-20.0, 10.0), 48.0, 10.0, 1, Weapons.KILOF, true)
+	Combat.explode(get_tree(), c + Vector2(-6.0, 4.0), 48.0, 10.0, 1, Weapons.KILOF, true)
 	var after_blast := float(sb.hp)
 	var cone := Combat.in_cone(get_tree(), space, c + Vector2(-14.0, 0.0), Vector2.RIGHT, 24.0, 40.0)
 	check("stempel: maczeta odbija się (zadane %.0f, HP %.0f), promień kuli trafia belkę i leci dalej (%s), kula %.0f → %.0f (pass %s), śrut → %.0f, wybuch → %.0f, cios w stożku sięga belki (%s)" % [float(r_blade.get("dealt", -1.0)), hp0, str(beam_hit), hp0, after_bullet, str(r_bullet.get("pass")), after_pellet, after_blast, str(cone.has(sb))],
@@ -1229,3 +1234,83 @@ func _session_log() -> void:
 		for f in d.get_files():
 			d.remove(f)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(LOG_DIR))
+
+# ---------------------------------------------------------------- 16. poprawki po playteście 1.1 (BARRIER_FIX_PLAN.md B0)
+
+func _barrier_fixes() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
+	var frag: Dictionary = Throwables.KINDS["frag"]
+	var fr := float(frag["radius"])
+	var fd := float(frag["damage"])
+
+	# kratka: jeden granat na brzegu promienia (dziś 45 obrażeń przy 90 HP)
+	var g := _barrier("FixGrate", base, "grate")
+	await _frames(0.1)
+	var grc: Rect2 = g.hit_rect()
+	Combat.explode(get_tree(), Vector2(grc.position.x - fr + 4.0, grc.get_center().y), fr, fd, 1, Weapons.GNIEW4)
+	await _frames(0.1)
+	check("kratka: jeden granat na brzegu promienia ją rozbija", not is_instance_valid(g) or g.is_queued_for_deletion() or float(g.hp) <= 0.0)
+	if is_instance_valid(g):
+		g.queue_free()
+
+	# gruz: jeden granat na brzegu nie, drugi tak
+	var r := _barrier("FixRubble", base, "rubble")
+	await _frames(0.1)
+	var rrc: Rect2 = r.hit_rect()
+	var at := Vector2(rrc.position.x - fr + 4.0, rrc.get_center().y)
+	Combat.explode(get_tree(), at, fr, fd, 1, Weapons.GNIEW4)
+	await _frames(0.05)
+	var after_one := float(r.hp) if is_instance_valid(r) else 0.0
+	Combat.explode(get_tree(), at, fr, fd, 1, Weapons.GNIEW4)
+	await _frames(0.1)
+	var gone := not is_instance_valid(r) or r.is_queued_for_deletion() or float(r.hp) <= 0.0
+	check("gruz: po jednym granacie stoi (%.0f / 200 HP), drugi go rozbija (%s)" % [after_one, str(gone)], after_one > 0.0 and after_one < 200.0 and gone)
+	if is_instance_valid(r):
+		r.queue_free()
+
+	# stempel: granat z 2 m nie, z bliska tak, ładunek burzący z 2,5 m tak
+	var sb: Node2D = null
+	for s in get_tree().get_nodes_in_group("supports"):
+		if s.intact:
+			sb = s
+	check("stempel na mapie po resecie", sb != null)
+	if sb != null:
+		var c: Vector2 = sb.body_center()
+		var hp0 := float(sb.hp)
+		Combat.explode(get_tree(), c + Vector2(-32.0, 0.0), fr, 10.0, 1, Weapons.GNIEW4)
+		var far := float(sb.hp)
+		Combat.explode(get_tree(), c + Vector2(-6.0, 0.0), fr, 10.0, 1, Weapons.GNIEW4)
+		var near := float(sb.hp)
+		Combat.explode(get_tree(), c + Vector2(-40.0, 0.0), 80.0, 10.0, 1, Weapons.GNIEW4, true, true)
+		var demo := float(sb.hp)
+		check("stempel: granat z 2 m nie rani (%.0f → %.0f), z bliska tak (%.0f), ładunek burzący z 2,5 m tak (%.0f)" % [hp0, far, near, demo],
+			far == hp0 and near < far and demo < near)
+		level.reset_breakables()
+		await _frames(0.1)
+
+	# komunikat o złym narzędziu: raz na przegrodę, tylko dla człowieka
+	var b := _barrier("FixBrick", base, "brick")
+	await _frames(0.1)
+	var bc: Vector2 = b.call("body_center")
+	_hit(b, Weapons.MACZETA, 30.0, "melee", bc)
+	var first := int(b.bounce_shown)
+	var shown := Msg.has("barrier.FixBrick")
+	_hit(b, Weapons.MACZETA, 30.0, "melee", bc)
+	_hit(b, Weapons.M83, 20.0, "bullet", bc)
+	Combat.apply(b, Combat.make_info(Weapons.MACZETA, 30.0, bc, Vector2.RIGHT, -1, "melee"))
+	var text := String(Msg.live("barrier.FixBrick").get("text", ""))
+	check("komunikat o złym narzędziu: raz na przegrodę (%d → %d), tekst „%s”" % [first, int(b.bounce_shown), text],
+		first == 1 and shown and int(b.bounce_shown) == 1 and text.contains("machete"))
+	b.queue_free()
+	Msg.withdraw("barrier.FixBrick")
+
+	# mapa 1.1: bez pustego otworu i kratki (decyzja 3)
+	var m11: Script = load("res://scripts/maps/z1_m1.gd")
+	var rows: Array = m11.get_script_constant_map().get("MAP", [])
+	var marks := 0
+	for row in rows:
+		marks += String(row).count(":") + String(row).count("+")
+	check("mapa 1.1 bez pustego otworu `:` i kratki `+` (%d znaczników)" % marks, not rows.is_empty() and marks == 0)
+	await _frames(0.1)

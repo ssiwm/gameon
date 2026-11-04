@@ -155,7 +155,7 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 | Broń | Dmg | Szybkość | Hałas | Uwagi |
 |------|-----|----------|-------|-------|
 | **Maczeta** | 30 | szybka | 0 | Ciche zabójstwo od tyłu (instant), rąbie zabite deskami przejścia (2 ciosy; pierwszy wyrąbuje dziurę, przez którą widać) |
-| **Kilof** | 55 | wolna | 1 / 2 m | Otwiera zamurowane przejścia, deski i zardzewiałe kratki wentylacji, odkopuje gruz zawału (od 1.7.492), ogłusza elitki |
+| **Kilof** | 55 | wolna | 1 / 2 m | Otwiera zamurowane przejścia, deski i zardzewiałe kratki wentylacji (kratkę bierze też jeden granat, gruz dwa — od 1.7.494), odkopuje gruz zawału (od 1.7.492), ogłusza elitki |
 
 ### 6.4 Ulepszenia broni (przykłady)
 

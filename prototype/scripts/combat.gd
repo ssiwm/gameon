@@ -28,6 +28,7 @@ const LAYER_TARGET := 4 | 32      ## wrogowie, gniazda, boss, Stalker (4) i obie
 
 ## Obrażenia wybuchu rosną do środka: na brzegu zostaje ta część.
 const BLAST_EDGE := 0.5
+const SUPPORT_BLAST_R := 16.0      ## px (~1 m): granat łamie stempel tylko tak blisko belki — rzucony na wroga obok nie wywołuje zawału (BARRIER_FIX_PLAN.md B0); ładunek burzący pełnym promieniem
 
 ## `build` = części strzelca i typ naboju (Weapons.build_of): niosą podpalenie, ogłuszenie, odrzut, krytyk i przebicie pancerza (`ap`).
 static func make_info(w: int, amount: float, pos: Vector2, dir: Vector2, shooter: int, type: String, build := 0) -> Dictionary:
@@ -263,7 +264,7 @@ static func in_cone(tree: SceneTree, space: PhysicsDirectSpaceState2D, origin: V
 ## Ściana (warstwa świata) zasłania przed wybuchem wrogów i graczy — jak przed ciosem i płomieniem (`in_cone`);
 ## zamurowane przejścia (`breakables`) są same przeszkodą i obrywają bez sprawdzania linii.
 static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float, shooter: int, w: int,
-		silent_for_noise := false) -> void:
+		silent_for_noise := false, demolition := false) -> void:
 	if not NoiseMgr.is_server():
 		return
 	if not silent_for_noise:
@@ -311,7 +312,7 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 			continue
 		var rsb: Rect2 = sb.hit_rect()
 		var qs := Vector2(clampf(pos.x, rsb.position.x, rsb.end.x), clampf(pos.y, rsb.position.y, rsb.end.y))
-		if qs.distance_to(pos) > radius:
+		if qs.distance_to(pos) > (radius if demolition else minf(radius, SUPPORT_BLAST_R)):
 			continue
 		if space == null:
 			space = (sb as Node2D).get_world_2d().direct_space_state
