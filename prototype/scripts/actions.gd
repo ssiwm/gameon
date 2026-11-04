@@ -643,6 +643,16 @@ static func save_to(cf: ConfigFile) -> void:
 			cf.set_value("keys", id, _binds[id])
 
 ## Migracja boola left, walidacja danych i przywrócenie tylko niebezpiecznych nadpisań.
+## Czy `binding` akcji `id` koliduje z przypisaniem gracza (`custom`) w akcji czynnej w tym samym kontekście (load_from: nowe akcje).
+static func _taken_by(candidate: Dictionary, custom: Array, id: String, binding: Dictionary) -> bool:
+	for other in custom:
+		if other == id or not Policy.simultaneous(id, other):
+			continue
+		for existing in candidate[other]:
+			if Policy.overlaps(binding, existing):
+				return true
+	return false
+
 static func load_from(cf: ConfigFile) -> void:
 	load_repairs.clear()
 	if not cf.has_section("keys"):
@@ -688,6 +698,21 @@ static func load_from(cf: ConfigFile) -> void:
 						candidate.inspect_weapon.erase(binding)
 		if candidate.inspect_weapon != inspect:
 			load_repairs.append("inspect_weapon")
+	# Kilof (B1, 1.7.495) tak samo: domyślne C nie odbiera klawisza ze starszego zapisu (np. latarka pod C z układu „nowoczesnego”).
+	# Zajęte C zastępuje zapasowe 4 (jak w układzie „nowoczesnym”); gdy i ono zajęte — kilof bez klawisza (cios przy murze i tak go bierze).
+	if not cf.has_section_key("keys", "tool"):
+		var keep := []
+		for binding in candidate.tool:
+			if not _taken_by(candidate, custom, "tool", binding):
+				keep.append(binding)
+		if keep.is_empty():
+			var spare := Policy.normalize({"type": "key", "code": KEY_4})
+			if not _taken_by(candidate, custom, "tool", spare):
+				keep.append(spare)
+		if keep != candidate.tool:
+			candidate.tool = keep
+			if keep.is_empty():
+				load_repairs.append("tool")
 	for attempt in LABELS.size():
 		var conflicts := Policy.conflicts(candidate)
 		if conflicts.is_empty():
