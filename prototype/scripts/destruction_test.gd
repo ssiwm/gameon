@@ -33,6 +33,9 @@ extends "res://scripts/stalker_test.gd"
 ##    obok; gruz odkopuje kilof, kula nie; wipe w czasie trzeszczenia odwołuje zawał; wipe, punkt kontrolny bossa i wstrząs finału.
 ## 15. Dziennik sesji (DESTRUCTION_PLAN.md „Pomiar po wdrożeniu”): po sekcjach 1–14 w pliku są wiersze `break` (materiał, czym, kto,
 ##    rodzaj wroga, czas barykady), `crate`, `lamp` i `window` (czym), `barricade`, `support`, `cave`.
+## 17. Kilof u każdego (BARRIER_FIX_PLAN.md B1): gracz z maczetą przy kratce, murze, gruzie i stemplu bije kilofem (sam), przy deskach
+##     maczetą, z wrogiem w zasięgu maczetą; klawisz narzędzia — kilof zawsze; serwer przyjmuje cios kilofem bez kilofa w zestawie; masa zestawu
+##     liczy kilof (zestaw startowy = odniesienie); 1.2 bez kilofa na ziemi; kilof z ziemi niczego nie podmienia.
 ## 16. Poprawki po playteście 1.1 (BARRIER_FIX_PLAN.md B0): kratkę rozbija jeden granat na brzegu promienia, gruz dwa (jeden nie);
 ##    granat dalej niż SUPPORT_BLAST_R od stempla go nie rusza, bliski tak, ładunek burzący (`demolition`) pełnym promieniem;
 ##    cios, który się odbił, daje strzelcowi komunikat raz na przegrodę (bot i wróg — nic); na 1.1 nie ma otworu `:` ani kratki.
@@ -102,6 +105,7 @@ func run(m: Node2D) -> void:
 	await _barricade()
 	await _cave()
 	await _barrier_fixes()
+	await _tool_for_all()
 	_session_log()
 	_finish()
 
@@ -783,7 +787,7 @@ func _barriers() -> void:
 	player.w_state = WeaponController.State.MELEE
 	var chop_g: Variant = bot._bot_chop_wall(player)
 	player.w_state = WeaponController.State.READY
-	check("bot: kratki maczetą nie rąbie", Weapons.def(bot.weapons.melee_id).breaks_walls or chop_g == null)
+	check("bot: kratkę rąbie kilofem, który ma każdy (B1; broń biała %s)" % Weapons.def(bot.weapons.melee_id).name, chop_g == g2)
 	g2.queue_free()
 	pl = _barrier("DPlanks6", base)
 	await _frames(0.1)
@@ -1273,6 +1277,77 @@ func _session_log() -> void:
 		for f in d.get_files():
 			d.remove(f)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(LOG_DIR))
+
+# ---------------------------------------------------------------- 17. kilof u każdego (BARRIER_FIX_PLAN.md B1)
+
+func _tool_for_all() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	var wc: Node = player.weapons
+	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
+	check("gracz ma maczetę jako broń białą, kilof jako narzędzie (niesie: %s)" % str(wc.carries(Weapons.TOOL)),
+		wc.melee_id == Weapons.MACZETA and Weapons.def(Weapons.TOOL).slot == Weapons.Slot.TOOL and wc.carries(Weapons.TOOL))
+	var picks := {}
+	for mat in ["grate", "brick", "rubble", "planks"]:
+		var b := _barrier("B1%s" % mat, base, mat)
+		await _frames(0.1)
+		_place_player(base + Vector2(-14.0, 0.0))
+		player.aim_dir = Vector2.RIGHT
+		picks[mat] = int(wc.melee_for_target())
+		b.queue_free()
+		await _frames(0.05)
+	check("cios przy kratce, murze i gruzie bierze kilof, przy deskach maczetę (%s)" % str(picks),
+		picks["grate"] == Weapons.TOOL and picks["brick"] == Weapons.TOOL and picks["rubble"] == Weapons.TOOL and picks["planks"] == Weapons.MACZETA)
+	# kratka z wrogiem w zasięgu: maczeta (szybki cios w wroga, nie wolny kilof)
+	var g := _barrier("B1grate2", base, "grate")
+	await _frames(0.1)
+	var tz := _enemy("trzosek", base + Vector2(-4.0, -1.0))
+	tz.set_physics_process(false)
+	_place_player(base + Vector2(-14.0, 0.0))
+	await _frames(0.05)
+	var with_enemy := int(wc.melee_for_target())
+	tz.queue_free()
+	await _frames(0.05)
+	check("kratka z wrogiem w zasięgu ciosu: maczeta (%s)" % Weapons.def(with_enemy).name, with_enemy == Weapons.MACZETA)
+	# prawdziwy cios gracza z maczetą: kilof rozbija kratkę (dwa ciosy po 55 przy 90 HP)
+	var swings: Array = []
+	var t0 := Time.get_ticks_msec()
+	while is_instance_valid(g) and not g.is_queued_for_deletion() and float(g.hp) > 0.0 and Time.get_ticks_msec() - t0 < 6000:
+		_place_player(base + Vector2(-14.0, 0.0))
+		player.aim_dir = Vector2.RIGHT
+		if wc.state != WeaponController.State.MELEE:
+			wc.try_melee()
+			swings.append(int(wc.swing_id))
+		await get_tree().physics_frame
+	var broke := not is_instance_valid(g) or g.is_queued_for_deletion() or float(g.hp) <= 0.0
+	check("gracz z maczetą rozbija kratkę ciosem (%d ciosów, wszystkie kilofem: %s)" % [swings.size(), str(swings.all(func(x: int) -> bool: return x == Weapons.TOOL))],
+		broke and not swings.is_empty() and swings.all(func(x: int) -> bool: return x == Weapons.TOOL))
+	if is_instance_valid(g):
+		g.queue_free()
+	await _frames(1.0)
+	# klawisz narzędzia: kilof także w pustym korytarzu
+	_place_player(base + Vector2(-200.0, 0.0))
+	var plain := int(wc.melee_for_target())
+	wc.try_melee(Weapons.TOOL)
+	var tool_swing := int(wc.swing_id)
+	await _frames(1.0)
+	check("pusty korytarz: cios maczetą (%s), klawisz narzędzia — kilof (%s)" % [Weapons.def(plain).name, Weapons.def(tool_swing).name],
+		plain == Weapons.MACZETA and tool_swing == Weapons.TOOL)
+	# serwer: kilof od każdego, inna broń biała spoza zestawu nie
+	check("serwer przyjmuje cios kilofem bez kilofa w zestawie (zestaw %s)" % str(player.kit), wc._kit_has(Weapons.TOOL) and int(player.kit.z) == Weapons.MACZETA)
+	# masa: kilof w zestawie i w odniesieniu — zestaw startowy daje mnożnik 1
+	var ref: float = WeaponController.mass_ref()
+	check("masa: kilof liczony w zestawie i w odniesieniu (%.1f kg, odniesienie %.1f kg)" % [wc.kit_mass(), ref],
+		absf(ref - (Weapons.def(Weapons.START_PRIMARY_A).mass + Weapons.def(Weapons.START_PRIMARY_B).mass + Weapons.def(Weapons.START_SIDEARM).mass
+			+ Weapons.def(Weapons.MACZETA).mass + Weapons.def(Weapons.TOOL).mass)) < 0.01)
+	# 1.2 bez kilofa na ziemi; kilof z ziemi nie podmienia maczety
+	var tools_on_map := 0
+	for it in get_tree().get_nodes_in_group("pickups"):
+		if String(it.get("kind")) == "weapon" and int(it.get("arg")) == Weapons.TOOL:
+			tools_on_map += 1
+	check("1.2 bez kilofa na ziemi (%d)" % tools_on_map, tools_on_map == 0 and not (level.MAPS["z1_m2"] as GDScript).get_script_constant_map()["WEAPONS"].has(Weapons.TOOL))
+	wc.grant_weapon(Weapons.TOOL)
+	check("przyznany kilof nie podmienia broni białej (%s)" % Weapons.def(wc.melee_id).name, wc.melee_id == Weapons.MACZETA)
 
 # ---------------------------------------------------------------- 16. poprawki po playteście 1.1 (BARRIER_FIX_PLAN.md B0)
 

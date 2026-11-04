@@ -37,7 +37,7 @@ const TIPS := [
 	["scream", "{scream} screams: a burst of NOISE that pulls every enemy nearby — and HIM. Turn on the microphone in the lobby and the game hears your real scream"],
 	["scream_mic", "The microphone is on: scream for real (or press {scream}) and everything nearby comes running. Whispering is safe"],
 	["grenade", "{throw} uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), {throw_next} switches. A frag or a charge hurts the squad too"],
-	["pickaxe", "Swing the pickaxe ({melee}) at the wall, boards or grate to break through — it is loud"],
+	["pickaxe", "Melee ({melee}) at a wall, grate or rubble swings the pickaxe — everyone carries one ({tool} any time). It is loud"],
 	["firemode", "{firemode} switches the M-83 between full auto and a quiet 3-round burst"],
 	["jam", "Jammed! Tap {reload} to clear it. A dirty gun jams more often — clean it at the maintenance table in the safe room"],
 	["samples", "SAMPLES (from elites, bosses and side goals) go to the LAB bench here in the safe room ({interact}): they research parts for special weapons"],
@@ -118,7 +118,7 @@ func _collect(p: Node) -> void:
 		if p.global_position.distance_to(bw.global_position) < 70.0:
 			wall_near = true
 	_queue("grenade", _session > 120.0, true)
-	_queue("pickaxe", wall_near and p.weapons != null and Weapons.def(p.weapons.melee_id).breaks_walls, false)
+	_queue("pickaxe", wall_near, false)                     # kilof ma każdy (B1) — podpowiedź dla każdego przy pierwszej przegrodzie
 	_queue("firemode", _session > 90.0 and p.weapons != null and p.weapons.cur().burst_size > 0, true)
 	_queue("jam", p.weapons != null and int(p.weapons.jam_count) > 0, true)                  # pierwsze zacięcie (etap 4a)
 	_queue("magdrop", p.weapons != null and int(p.weapons.dropped_mags) > 0, true)          # szybkie przeładowanie upuściło magazynek z nabojami (etap 3c)

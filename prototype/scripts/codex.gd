@@ -168,7 +168,7 @@ const WEAPON_TEXT := {
 		"Aim for the head (×2) and hold higher on far targets — the bolt drops. The assassin's tool for an Eavesdropper. Tier 3 adds a tether line that yanks hit enemies toward you."],
 	"maczeta": ["Machete: fast, silent, short reach. Kills a sleeping enemy — or one with its back to you — instantly. Hacks through boarded-up passages.",
 		"The first answer to any sleeper. No ammo, no noise."],
-	"kilof": ["Pickaxe: slow swing, heavy damage and a long stun on hit. A little noise. It is the only tool that breaks cracked brick walls and rusty vent grates (a grenade does too).",
+	"kilof": ["Pickaxe: everyone carries one next to the machete. Slow swing, heavy damage and a long stun on hit. A little noise. It breaks cracked brick walls, rusty vent grates, rubble and props (a grenade does too) — melee at one of them swings it by itself.",
 		"Use it as the opener, then back off before the next swing. A bricked-up passage usually hides a stash — but breaking it is LOUD."],
 }
 
@@ -279,7 +279,7 @@ static func noise_text(k: String) -> String:
 
 static func arsenal() -> Array:
 	var out: Array = []
-	for slot in [WeaponDef.Slot.PRIMARY, WeaponDef.Slot.SIDEARM, WeaponDef.Slot.MELEE]:
+	for slot in [WeaponDef.Slot.PRIMARY, WeaponDef.Slot.SIDEARM, WeaponDef.Slot.MELEE, WeaponDef.Slot.TOOL]:
 		for d: WeaponDef in Weapons.defs():
 			if d.slot == slot:
 				out.append(weapon_entry(d.id))
@@ -340,6 +340,8 @@ static func _slot_name(d: WeaponDef) -> String:
 			return "Primary weapon"
 		WeaponDef.Slot.SIDEARM:
 			return "Sidearm"
+		WeaponDef.Slot.TOOL:
+			return "Tool — everyone carries it"
 	return "Melee"
 
 static func _weapon_stats(d: WeaponDef) -> Array:

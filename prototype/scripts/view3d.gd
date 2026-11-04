@@ -1000,6 +1000,14 @@ func _sync_rigs() -> void:
 			rig["gun"] = gun_now
 			if c3._gun_n != null:
 				c3._gun_n.visible = false
+		var tool_now = c3._tool                            # kilof na plecach (B1): Char3D buduje go w swoim świecie — przepinamy do aktora jak broń
+		if tool_now != null and is_instance_valid(tool_now) and (tool_now as Node).get_parent() != actor:
+			(tool_now as Node).reparent(actor, false)
+			for mi in (tool_now as Node).find_children("*", "MeshInstance3D", true, false):
+				(mi as MeshInstance3D).layers = LAYER_ACTORS
+			rig["tool"] = tool_now
+			if c3._tool_n != null:
+				c3._tool_n.visible = false
 		# na drezynie: tor leży w korycie przed peronem, a pokład jest równo z peronem — pasażer przesuwa się tylko na oś toru (ku kamerze)
 		var want_lift := 0.0
 		for hc in get_tree().get_nodes_in_group("handcar"):
@@ -1054,6 +1062,8 @@ func _release_rig(p) -> void:
 			(rig["model"] as Node).reparent(root, false)
 		if rig["gun"] != null and is_instance_valid(rig["gun"]) and is_instance_valid(root):
 			(rig["gun"] as Node).reparent(root, false)
+		if rig.get("tool") != null and is_instance_valid(rig["tool"]) and is_instance_valid(root):
+			(rig["tool"] as Node).reparent(root, false)
 		if is_instance_valid(root):
 			for mi in root.find_children("*", "MeshInstance3D", true, false):
 				var m := mi as MeshInstance3D
@@ -2681,6 +2691,7 @@ func _warm_loadouts() -> void:
 			continue
 		var ids: Array = (wc.get("loadout") as Array).duplicate() if wc.get("loadout") != null else []
 		ids.append(int(wc.get("melee_id")) if wc.get("melee_id") != null else -1)
+		ids.append(Weapons.TOOL)                                                  # kilof nosi każdy (B1)
 		for id in ids:
 			if int(id) >= 0 and int(id) < Weapons.defs().size():
 				var key := String(Weapons.def(int(id)).key)

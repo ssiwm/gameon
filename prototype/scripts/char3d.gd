@@ -29,6 +29,7 @@ const FRAME_WP := Vector2(44.0, 44.0)       ## ramka w pikselach świata (zapas 
 const CAM_Y := 1.25                         ## wysokość środka ramki (m)
 const PRE := "mixamorig_"
 const DIR := "res://art/char3d/"
+const BACK_TOOL_DEPTH := 0.27                  ## m: kilof na plecach tyle za kręgosłupem (szyja) — przypięty na zewnątrz plecaka, obuch widać nad nim (pod plecakiem znikał)
 const DEFAULT_CHAR := "male_scav"
 const DEFAULT_GUN := "m83"
 
@@ -171,6 +172,9 @@ var _rev := 0
 var _last_zoom := 2.0
 var _last_h := 1080.0
 var _gun_n: Node3D
+var _tool: Node3D                             ## narzędzie na plecach (B1: kilof ma każdy), ukryte, gdy jest w dłoniach
+var _tool_n: Node3D
+var _tool_key := ""
 var _normal_mat: ShaderMaterial
 var _cam: Camera3D
 var _sprite: Sprite2D
@@ -777,6 +781,61 @@ func set_gun(key: String, fit := 0, notch := 0) -> void:
 		_parts_pose_n = PartsPose.new()
 		_parts_pose_n.bind(_gun_n)
 
+## Narzędzie na plecach (BARRIER_FIX_PLAN.md B1): kilof nosi każdy, więc wisi ukosem na plecach, dopóki nie trafi do dłoni (cios kilofem).
+## `key` = klucz modelu (weapon_def), "" — bez narzędzia (wrogi dwunożne, strzelnica).
+func set_back_tool(key: String) -> void:
+	if key == _tool_key:
+		return
+	for n in [_tool, _tool_n]:
+		if n != null:
+			n.queue_free()
+	_tool = null
+	_tool_n = null
+	_tool_key = key
+	if key == "" or not ResourceLoader.exists(DIR + "gun_%s.glb" % key):
+		_tool_key = ""
+		return
+	var muzzle: Vector3 = gun_info(key)["muzzle"]
+	_tool = GunModel.build(key, [], muzzle)
+	_tool.visible = false
+	_root3d.add_child(_tool)
+	_tune_gun_materials(_tool)
+	if _camn != null:
+		_tool_n = GunModel.build(key, [], muzzle)
+		_tool_n.visible = false
+		_root3d.add_child(_tool_n)
+		for mi in _tool_n.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).layers = 2
+			(mi as MeshInstance3D).material_override = _normal_mat
+
+## Kilof na plecach: trzonek ukosem od lewego biodra do prawego barku, obuch nad barkiem, ostrza płasko przy plecach (model: x wzdłuż trzonka,
+## y wzdłuż ostrzy, z — grubość). Układ liczony z kości (biodra → szyja, bark → bark, stopa → palce), więc idzie za każdą pozą i klipem.
+func _place_back_tool() -> void:
+	if _tool == null:
+		return
+	var show := _gun_key != _tool_key
+	_tool.visible = show
+	if _tool_n != null:
+		_tool_n.visible = show
+	if not show:
+		return
+	var hips := _gp(_b["Hips"]).origin
+	var up := (_gp(_b["Neck"]).origin - hips).normalized()
+	var right := _gp(_b["RightArm"]).origin - _gp(_b["LeftArm"]).origin
+	right = (right - up * right.dot(up)).normalized()
+	var fwd := up.cross(right)
+	var toe: int = _leg_toe.get("Right", -1)
+	if toe >= 0 and fwd.dot(_gp(toe).origin - _gp(_b["RightFoot"]).origin) < 0.0:
+		fwd = -fwd
+	var dir := (up * 0.86 + right * 0.5).normalized()
+	var z := -fwd
+	var y := z.cross(dir).normalized()
+	var head := _gp(_b["Neck"]).origin + up * 0.07 + right * 0.12 - fwd * BACK_TOOL_DEPTH     # obuch nad prawym barkiem, obok hełmu
+	var xf := Transform3D(Basis(dir, y, dir.cross(y)), head - dir * 0.5)      # obuch modelu na x ≈ 0,5 m, trzonek w dół do lewego biodra
+	_tool.transform = xf
+	if _tool_n != null:
+		_tool_n.transform = xf
+
 ## Materiały broni z GLB (albedo + normalne + ORM + opcjonalnie emisja): pełna metaliczność z tekstury — stal odbija „niebo odbić" warstwy graczy
 ## (view3d.gd, `_actor_reflection_sky`) i światła sceny; reszta modeli ma metaliczność wyzerowaną w shaderach. Emisja (cewki, kontrolki) wzmocniona
 ## dla bloomu.
@@ -1368,6 +1427,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		_gun.visible = holding
 		if _gun_n != null:
 			_gun_n.visible = holding
+	_place_back_tool()
 
 ## Parametry pozy bazowej (przed mieszaniem wagami): pochylenie tułowia (°), zapadnięcie bioder (m), kołysanie (m).
 func _body_state(a: String) -> Dictionary:

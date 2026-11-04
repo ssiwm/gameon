@@ -121,7 +121,8 @@ var player: CharacterBody2D
 
 # --- zestaw (właściciel; `kit` w graczu replikuje go reszcie)
 var loadout: Array[int] = [Weapons.START_PRIMARY_A, Weapons.START_PRIMARY_B, Weapons.START_SIDEARM]
-var melee_id := Weapons.START_MELEE
+var melee_id := Weapons.START_MELEE   ## broń biała zestawu (maczeta); kilof to narzędzie (`Weapons.TOOL`), które ma każdy
+var swing_id := Weapons.START_MELEE   ## broń bieżącego ciosu: `melee_id` albo `Weapons.TOOL` (try_melee)
 var slot := 0
 var inspect_item: Node2D               ## lokalnie: broń w oględzinach ([H]; widok z oczu gracza i panel HUD)
 var inspect_slot := 0                  ## docelowy slot broni głównej w oględzinach
@@ -349,6 +350,8 @@ func _power_end_rpc() -> void:
 ## Serwer: czy gracz nosi `w` — replikowany `player.kit`, zestaw znany serwerowi (level.server_weapon_kit: podniesienia i gabloty
 ## rozstrzyga serwer, więc zna je przed replikacją) albo sidearm. Inaczej strzał może iść tylko z przydziału broni mocy.
 func _kit_has(w: int) -> bool:
+	if w == Weapons.TOOL:
+		return true                                            # kilof nosi każdy (B1)
 	var k: Vector3i = player.kit
 	if w == k.x or w == k.y or w == k.z or w == loadout[2] or w == Weapons.START_SIDEARM:
 		return true
@@ -576,7 +579,7 @@ func _heat_barrel(d: WeaponDef) -> void:
 		_barrel[d.id] = minf(1.0, barrel_of(d.id) + d.barrel_heat)
 
 func carries(w: int) -> bool:
-	return loadout.has(w) or w == melee_id
+	return loadout.has(w) or w == melee_id or w == Weapons.TOOL
 
 func primaries() -> Array:
 	return [loadout[0], loadout[1]]
@@ -630,6 +633,7 @@ func kit_mass() -> float:
 				_mass += def_of(int(w)).mass
 		if Weapons.is_valid(melee_id):
 			_mass += def_of(melee_id).mass
+		_mass += def_of(Weapons.TOOL).mass               # kilof nosi każdy (B1); `mass_ref` liczy go tak samo, więc zestaw startowy dalej = 1×
 	return _mass
 
 ## Mnożnik hałasu biegu od masy ekwipunku (1 w obsłudze klasycznej, dla botów i poza strzelnicą — jak niżej).
@@ -646,7 +650,8 @@ func mass_speed_mult() -> float:
 
 ## Masa fabrycznego zestawu startowego (bez części) — punkt odniesienia masy ekwipunku.
 static func mass_ref() -> float:
-	return Weapons.def(Weapons.START_PRIMARY_A).mass + Weapons.def(Weapons.START_PRIMARY_B).mass + Weapons.def(Weapons.START_SIDEARM).mass + Weapons.def(Weapons.START_MELEE).mass
+	return Weapons.def(Weapons.START_PRIMARY_A).mass + Weapons.def(Weapons.START_PRIMARY_B).mass + Weapons.def(Weapons.START_SIDEARM).mass + Weapons.def(Weapons.START_MELEE).mass \
+		+ Weapons.def(Weapons.TOOL).mass
 
 func _mass_applies() -> bool:
 	return Settings.realistic_handling and player != null and not player.is_bot
@@ -749,6 +754,7 @@ func reset() -> void:
 		loadout = [Weapons.M83, Weapons.M83, Weapons.P64]
 		ammo_enabled = false
 	melee_id = Weapons.START_MELEE
+	swing_id = melee_id
 	slot = 0
 	inspect_item = null
 	inspect_slot = 0
@@ -829,7 +835,9 @@ func tick_local(delta: float, reviving: bool) -> void:
 	if Input.is_action_just_pressed("firemode"):
 		toggle_fire_mode()
 	if Input.is_action_just_pressed("melee") and range_sink == null:      # strzelnica: PPM celuje przez przyrządy (fp_mode.gd)
-		try_melee()
+		try_melee()                                                       # przy murze, kratce, gruzie i stemplu sam bierze kilof (B1)
+	elif Input.is_action_just_pressed("tool") and range_sink == null:
+		try_melee(Weapons.TOOL)                                           # kilof zawsze, np. do walki (ogłuszenie)
 	if Input.is_action_just_pressed("reload"):
 		try_reload()
 	if Input.is_action_just_pressed("ammo_type"):
@@ -1586,10 +1594,12 @@ func _on_rounds_granted(w: int, n: int) -> void:
 
 # ---------------------------------------------------------------- broń biała
 
-func try_melee() -> void:
+## Cios. `w` < 0: broń wg celu (`melee_for_target`); `Weapons.TOOL` — kilofem (klawisz `tool`); inaczej broń biała zestawu.
+func try_melee(w := -1) -> void:
 	if player.dead or state == State.MELEE:
 		return
-	var md := def_of(melee_id)
+	swing_id = Weapons.TOOL if w == Weapons.TOOL else (melee_id if w >= 0 else melee_for_target())
+	var md := def_of(swing_id)
 	_cancel_actions()
 	state = State.MELEE
 	melee_total = md.cooldown
@@ -1599,20 +1609,37 @@ func try_melee() -> void:
 	NoiseMgr.add_noise(md.noise(0.0), player.global_position, "shot:" + md.key)
 	Audio.play_variant(md.sfx, md.sfx_count, Audio.BUS_WEAPONS, md.sfx_vol, 1.0)
 	Feel.shake(md.shake * 0.5)
-	_begin_motion(Motion.MELEE, melee_id, melee_total)
-	melee_swung.emit(melee_id)
+	_begin_motion(Motion.MELEE, swing_id, melee_total)
+	melee_swung.emit(swing_id)
+
+## Czym bić teraz (B1, BARRIER_FIX_PLAN.md): kilofem, gdy w zasięgu ciosu przed graczem stoi przegroda albo stempel, który kilof bierze,
+## a broń biała zestawu się od niego odbija (mur, kratka, gruz, stempel), i nie ma tam wroga; inaczej bronią białą. Liczy właściciel
+## (człowiek u siebie, bot na serwerze); serwer przyjmuje kilof od każdego (`_kit_has`).
+func melee_for_target() -> int:
+	if player == null or melee_id == Weapons.TOOL:
+		return melee_id
+	var td := Weapons.def(Weapons.TOOL)
+	var have := "pick" if Weapons.def(melee_id).breaks_walls else "blade"
+	var space := player.get_world_2d().direct_space_state
+	var wall := false
+	for t in Combat.in_cone(get_tree(), space, player.global_position + Vector2(0, -9), player.aim_dir, td.reach, td.arc_deg):
+		if not (t as Object).has_method("mat_def"):
+			return melee_id                                    # wróg (albo rekwizyt) w zasięgu: szybka broń biała, nie wolny kilof
+		var br: Array = t.call("mat_def")["breaks"]
+		wall = wall or (br.has("pick") and not br.has(have))
+	return Weapons.TOOL if wall else melee_id
 
 func _melee_resolve() -> void:
 	var origin := player.global_position + Vector2(0, -9)
 	var dir: Vector2 = player.aim_dir
-	var key := String(Weapons.def(melee_id).key)
+	var key := String(Weapons.def(swing_id).key)
 	var e := 100.0 if player.is_bot else Profile.edge_of(key)              # ostrze siedzi w profilu gracza — idzie z ciosem (serwer przycina)
 	if not player.is_bot and Settings.reliability_mult() > 0.0:
 		Profile.wear_edge(key, Profile.EDGE_WEAR * Settings.reliability_mult())
 	if NoiseMgr.is_server():
-		_server_melee(origin, dir, melee_id, player.player_id, e)
+		_server_melee(origin, dir, swing_id, player.player_id, e)
 	else:
-		_melee_request.rpc_id(1, origin, dir, melee_id, e)
+		_melee_request.rpc_id(1, origin, dir, swing_id, e)
 
 @rpc("any_peer", "call_remote", "reliable")
 func _melee_request(origin: Vector2, dir: Vector2, w: int, e: float = 100.0) -> void:
@@ -1835,7 +1862,7 @@ func range_take(w: int) -> void:
 	if not Weapons.is_valid(w):
 		return
 	var d := Weapons.def(w)
-	if d.slot == Weapons.Slot.MELEE:
+	if d.slot == Weapons.Slot.MELEE or d.slot == Weapons.Slot.TOOL:
 		return
 	var have := loadout.find(w)
 	if have >= 0:

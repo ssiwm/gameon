@@ -118,8 +118,8 @@ func free_dummies() -> void:
 ## Przygotowuje zestaw: broń w slocie 0, pełny magazynek, zimne lufy, gotowość.
 func equip(w: int, full_reserve := true) -> WeaponDef:
 	var d := Weapons.def(w)
-	if d.slot == Weapons.Slot.MELEE:
-		wc.melee_id = w
+	if d.slot == Weapons.Slot.MELEE or d.slot == Weapons.Slot.TOOL:
+		wc.melee_id = w                        # kilof (narzędzie, B1) też jako broń biała: try_melee() bije nim bez względu na cel
 		return d
 	wc.loadout[0] = w
 	wc.slot = 0
@@ -405,7 +405,7 @@ func _t_phase1() -> void:
 	var worst := ""
 	var worst_r := 0.0
 	for d in Weapons.defs():
-		if d.slot == Weapons.Slot.MELEE or d.kind == WeaponDef.Kind.LAUNCHER or d.kind == WeaponDef.Kind.RAIL:
+		if d.slot == Weapons.Slot.MELEE or d.slot == Weapons.Slot.TOOL or d.kind == WeaponDef.Kind.LAUNCHER or d.kind == WeaponDef.Kind.RAIL:
 			continue
 		var sim := Weapons.simulate_heat(d.id, 12.0)
 		var ns: float = float(sim["noise_per_s"])
@@ -3153,7 +3153,7 @@ func _t_mass() -> void:
 	wc.melee_id = Weapons.MACZETA
 	var ref: float = Controller.mass_ref()
 	var start_ok: bool = is_equal_approx(wc.kit_mass(), ref) and is_equal_approx(wc.mass_noise_mult(), 1.0) and is_equal_approx(wc.mass_speed_mult(), 1.0)
-	check("masa: zestaw startowy %.2f kg = punkt odniesienia (hałas biegu ×%.2f, tempo ×%.2f)" % [wc.kit_mass(), wc.mass_noise_mult(), wc.mass_speed_mult()], start_ok and ref > 8.0 and ref < 12.0)
+	check("masa: zestaw startowy %.2f kg = punkt odniesienia (hałas biegu ×%.2f, tempo ×%.2f)" % [wc.kit_mass(), wc.mass_noise_mult(), wc.mass_speed_mult()], start_ok and ref > 8.0 and ref < 14.0)   # od 1.7.495 z kilofem (2,6 kg), który ma każdy
 	await fit_player(Weapons.M83, ["m83_drum75"])
 	var with_drum: float = wc.kit_mass()
 	check("masa: bęben RPK dokłada %.2f kg do ekwipunku (masa M-83 %.2f kg)" % [with_drum - ref, wc.def_of(Weapons.M83).mass], is_equal_approx(with_drum - ref, 1.6))
@@ -4065,7 +4065,8 @@ func _net_power_report() -> void:
 
 var _net_invalid_stage := 0
 
-## Host: manekin tuż przed klientem; klient (_net_invalid_phase) najpierw wysyła 10 ciosów kilofem, którego nie ma w zestawie, potem serię
+## Host: manekin tuż przed klientem; klient (_net_invalid_phase) najpierw wysyła serię 10 ciosów kilofem (od 1.7.495 ma go każdy — serwer
+## przyjmuje cios spoza `kit`, ale limit tempa puszcza 1–2), potem serię
 ## 6 ciosów maczetą i 4 strzały M-83 z NaN / INF / zerowym kierunkiem, na koniec jeden prawidłowy strzał (kontrola, że RPC dochodzi).
 func _net_invalid_requests(cp: CharacterBody2D, cid: int, e: Node) -> void:
 	e.global_position = cp.global_position + Vector2(14.0, 0.0)
@@ -4099,7 +4100,9 @@ func _net_invalid_requests(cp: CharacterBody2D, cid: int, e: Node) -> void:
 	await wait(0.3)
 	var shots_ok := int(cp.weapons.srv_shots) - shots0
 	var mach := Weapons.def(Weapons.MACZETA).damage
-	check("sieć: 10 ciosów kilofem spoza zestawu klienta odrzucone (obrażenia %.1f)" % pick_dmg, _net_invalid_stage >= 1 and pick_dmg == 0.0)
+	var pick := Weapons.def(Weapons.KILOF).damage
+	check("sieć: seria 10 ciosów kilofem spoza zestawu (kilof ma każdy, B1) — serwer przyjmuje 1–2 (obrażenia %.1f, cios %.0f)" % [pick_dmg, pick],
+		_net_invalid_stage >= 1 and pick_dmg >= pick * 0.69 and pick_dmg <= pick * 2.0 + 0.5)
 	check("sieć: seria 6 ciosów maczetą — serwer przyjmuje 1–2 (obrażenia %.1f, cios %.0f)" % [mach_dmg, mach],
 		mach_dmg >= mach * 0.69 and mach_dmg <= mach * 2.0 + 0.5)
 	check("sieć: strzały z wylotem NaN, kierunkiem NaN / zerowym i rozrzutem INF odrzucone (przyjęte %d, pociski z NaN %d), prawidłowy po nich przyjęty (%d)" % [shots_bad, bad_proj, shots_ok],

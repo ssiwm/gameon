@@ -235,7 +235,7 @@ func _carried_same_slot(id: int) -> RefCounted:
 		if p.is_bot or not p.is_multiplayer_authority() or p.get("weapons") == null:
 			continue
 		var wc: Node = p.weapons
-		var owned: Array = Array(wc.loadout) + [int(wc.melee_id)]
+		var owned: Array = Array(wc.loadout) + [int(wc.melee_id), Codex.Weapons.TOOL]
 		if owned.has(id):
 			return null                                     # oglądana broń jest przy sobie: kreska pokazywałaby ją samą
 		for w in owned:

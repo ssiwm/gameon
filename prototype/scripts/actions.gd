@@ -49,6 +49,8 @@ const DEFS := {
 	"throw": {"keys": [{"key": KEY_ALT, "left": true}], "keys_macos": [{"key": KEY_META, "left": true}, {"key": KEY_ALT, "left": true}], "pad": [JOY_BUTTON_RIGHT_SHOULDER]},
 	"throw_next": {"keys": [KEY_X], "pad": [JOY_BUTTON_DPAD_UP]},
 	"melee": {"keys": [KEY_V], "mouse": [MOUSE_BUTTON_RIGHT], "pad": [JOY_BUTTON_X]},
+	# kilof w każdej chwili (B1); pad bez osobnego przycisku — cios przy murze, kratce i gruzie sam bierze kilof (weapon_controller.gd)
+	"tool": {"keys": [KEY_C]},
 	# strzelnica FPP (scripts/range3d/fp_mode.gd): celowanie przez przyrządy — ten sam PPM co cios i ten sam lewy spust co krzyk, bo na
 	# strzelnicy cios i krzyk są wyłączone, a poza nią przyrządów nie ma (kontekst „range”: RANGE_SHEET)
 	"aim_sights": {"mouse": [MOUSE_BUTTON_RIGHT], "axis": [[JOY_AXIS_TRIGGER_LEFT, 1.0]]},
@@ -93,7 +95,7 @@ const DEFS := {
 ## `menu_*` mają stałe wiązania.)
 const LABELS := {
 	"move_left": "Move left", "move_right": "Move right", "move_up": "Aim / move up", "move_down": "Aim down / drop",
-	"jump": "Jump", "fire": "Fire", "reload": "Reload", "firemode": "Fire mode", "ammo_type": "Ammo type", "melee": "Melee",
+	"jump": "Jump", "fire": "Fire", "reload": "Reload", "firemode": "Fire mode", "ammo_type": "Ammo type", "melee": "Melee", "tool": "Pickaxe",
 	"weapon_1": "Weapon 1", "weapon_2": "Weapon 2", "weapon_3": "Weapon 3", "weapon_next": "Next weapon", "weapon_prev": "Previous weapon",
 	"crouch": "Sneak", "overcharge": "Overcharge (lure)", "scream": "Scream", "flare": "Flare", "flashlight": "Flashlight", "inspect_weapon": "Inspect weapon",
 	"aim_sights": "Aim down sights (range)", "range_exercise": "Change exercise (range)", "range_locker": "Weapon locker (range)",
@@ -377,6 +379,7 @@ static func sheet() -> Array:
 		[text("inspect_weapon"), "Inspect weapon"],
 		[text("firemode"), "Fire mode (auto / burst)"],
 		[text("melee"), "Melee"],
+		[text("tool"), "Pickaxe (melee at a wall takes it too)"],
 		[text("weapon_next") if _device_for(["weapon_next"], DEV_AUTO) == DEV_PAD else _join([cluster(WEAPON_IDS, " "), text("weapon_next")]), "Switch weapon"],
 		[text("overcharge"), "Overcharge — lure HIM away"],
 		[text("scream"), "Scream — lures enemies"],
@@ -605,6 +608,7 @@ static func _preset(name: String) -> Dictionary:
 		out[id] = _default_list(id)
 	if name == "modern":
 		out.flashlight.insert(0, Policy.normalize({"type": "key", "code": KEY_C}))
+		out.tool = [Policy.normalize({"type": "key", "code": KEY_4})]       # C bierze latarka — kilof obok wyboru broni 1–3
 		out.throw.push_front(Policy.normalize({"type": "mouse", "button": MOUSE_BUTTON_XBUTTON1}))
 		out.inspect_weapon.append(Policy.normalize({"type": "mouse", "button": MOUSE_BUTTON_XBUTTON2}))
 		out.inspect_weapon.append(Policy.normalize({"type": "joy", "button": JOY_BUTTON_MISC1}))

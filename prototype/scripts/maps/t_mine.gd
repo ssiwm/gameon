@@ -16,7 +16,7 @@ const AMBIENT := Color(0, 0, 0, 0)
 const BRIEF := ""
 const ENEMY_HP := 1.0
 const UNDERGROUND_ROW := 0
-const WEAPONS := [Weapons.KILOF]
+const WEAPONS := []
 const ACCENTS := []
 
 const MAP := [

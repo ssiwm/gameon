@@ -2135,8 +2135,8 @@ func _weapon_pickup_server(item_name: String, peer_id: int, target_slot := -1) -
 		return
 	var w: int = it.arg
 	var d := Weapons.def(w)
-	if d.slot == Weapons.Slot.SIDEARM:
-		return
+	if d.slot == Weapons.Slot.SIDEARM or d.slot == Weapons.Slot.TOOL:
+		return                                               # kilof ma każdy (B1): na ziemi to tylko dekoracja
 	var kit := server_weapon_kit(pl)
 	var have := w == kit.x or w == kit.y or w == kit.z
 	if target_slot < 0:

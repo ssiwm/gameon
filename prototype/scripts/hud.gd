@@ -715,7 +715,7 @@ func _build_gear_card() -> void:
 	wr.alignment = BoxContainer.ALIGNMENT_CENTER
 	wr.modulate.a = 0.0
 	_slot_row = wr
-	for i in 4:
+	for i in 5:                                             # 3 bronie, broń biała, kilof (narzędzie u każdego, B1)
 		var sl := PanelContainer.new()
 		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		sl.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
@@ -1511,11 +1511,13 @@ func _drive_weapons() -> void:
 	for i in 3:
 		names.append(wc.def_of_slot(i).name)
 	names.append(Weapons.def(wc.melee_id).name)
+	names.append(Weapons.def(Weapons.TOOL).name)
 	for i in _slots.size():
-		var sel: bool = (i == wc.slot) if i < 3 else (wc.state == wc.State.MELEE)
-		var key := Actions.key(Actions.WEAPON_IDS[i]) if i < 3 else Actions.key("melee")
+		var swing: int = wc.swing_id if wc.state == wc.State.MELEE else -1
+		var sel: bool = (i == wc.slot) if i < 3 else (swing == (Weapons.TOOL if i == 4 else wc.melee_id))
+		var key := Actions.key(Actions.WEAPON_IDS[i]) if i < 3 else Actions.key("tool" if i == 4 else "melee")
 		_slot_labels[i].text = key
-		var d: RefCounted = wc.def_of_slot(i) if i < 3 else Weapons.def(wc.melee_id)
+		var d: RefCounted = wc.def_of_slot(i) if i < 3 else Weapons.def(Weapons.TOOL if i == 4 else wc.melee_id)
 		_slot_icons[i].set_weapon(String(d.key), wc.fit_of(d.id), wc.notches_of(d.id), Color.WHITE if sel else Color(1, 1, 1, 0.45))
 		_slots[i].tooltip_text = names[i]
 		_slot_labels[i].add_theme_color_override("font_color", UiTheme.ACCENT if sel else UiTheme.MUTED)
@@ -1981,8 +1983,8 @@ func _drive_cards() -> void:
 		var nd: RefCounted = Weapons.def(wid)
 		var lvl_i := get_tree().get_first_node_in_group("level")
 		var locked: bool = lvl_i != null and lvl_i.is_locked_item(it)
-		var hand: int = wc.melee_id if nd.slot == Weapons.Slot.MELEE else wc.loadout[wc.inspect_slot]
-		if nd.slot != Weapons.Slot.MELEE and wc.carries(wid):
+		var hand: int = wc.melee_id if nd.slot == Weapons.Slot.MELEE else (Weapons.TOOL if nd.slot == Weapons.Slot.TOOL else wc.loadout[wc.inspect_slot])
+		if nd.slot != Weapons.Slot.MELEE and nd.slot != Weapons.Slot.TOOL and wc.carries(wid):
 			hand = wc.loadout[wc.slot]
 		var gk = it.get("_hd_gun")
 		# Esc / Start też zamyka (pause_menu.gd → close_inspect, 1.7.431); części stopki tłumaczone osobno

@@ -2809,8 +2809,7 @@ func _dev_player(what: String) -> void:
 			for i in 3:
 				if not is_instance_valid(pl):
 					return
-				pl.weapons.melee_id = 11 if what == "chop" else 10
-				pl.weapons.try_melee()
+				pl.weapons.try_melee(Weapons.TOOL if what == "chop" else Weapons.MACZETA)
 				await get_tree().create_timer(1.4).timeout
 		"grab":                                            # chwycenie przez Pijawkę (stan `grabbed` na 3 s)
 			pl.set("grab_pos", pl.global_position)
