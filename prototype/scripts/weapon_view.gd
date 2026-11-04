@@ -282,6 +282,7 @@ func _update_gun3d(d: WeaponDef) -> void:
 	var swinging := _swing_t >= 0.0
 	var wd := Weapons.def(_swing_w) if swinging else d
 	c3d.set_gun(String(wd.key), ctrl.fit_of(wd.id), ctrl.notches_of(wd.id))      # części gracza i nacięcia na kolbie widoczne na modelu (gun_model.gd)
+	c3d.set_back_tool(String(Weapons.def(Weapons.TOOL).key))                     # kilof ma każdy (B1): na plecach, gdy nie jest w dłoniach
 	var v := 0.0                                  # rad, dodatnie = lufa w dół (względem kierunku patrzenia)
 	var kick := 0.0
 	var rl := -1.0

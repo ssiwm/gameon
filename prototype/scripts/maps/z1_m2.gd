@@ -22,9 +22,9 @@ const AMBIENT := Color(0, 0, 0, 0)         ## kolor ciemności mapy; alfa 0 = do
 const BRIEF := "Start all four radio generators spread across the map, then escape through the deep tunnel on the handcar. Bonus: keep Attention under 40 until the last one."
 const ENEMY_HP := 1.25                    ## mnożnik HP wrogów tej mapy (dłuższa i trudniejsza misja)
 const UNDERGROUND_ROW := 30
-## Broń na ziemi („g") od lewej: strzelba na dziedzińcu, kusza (cicha — pasuje do celu pobocznego) na antresoli chaty, kilof przy wieży nad podziemną halą
-## (rozbija zamurowane przejście „q" w lewej ścianie hali: skrytka ze złomem i amunicją; wejście 3 kafle, wiersze 37-39).
-const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.KILOF]
+## Broń na ziemi („g") od lewej: strzelba na dziedzińcu, kusza (cicha — pasuje do celu pobocznego) na antresoli chaty. Kilof przy wieży zniknął w 1.7.495
+## (B1: ma go każdy) — zamurowane przejście „q" w lewej ścianie podziemnej hali (skrytka ze złomem i amunicją; wejście 3 kafle, wiersze 37-39) bierze każdy.
+const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6]
 ## Skrzynie mocy (FUN_PLAN.md P1.3): [kolumna, rząd, broń, naboje] — FALCON-6 w podziemnym korytarzu (obok skrzynki amunicji).
 const POWER_CRATES := [[149, 39, Weapons.SOKOL6, 60]]
 ## Sejfy (FUN_PLAN.md P2.2): [kolumna, rząd, złom] — wyważanie trzymanym [E] jest głośne; tuż obok Podsłuchacza przy generatorze.
@@ -61,7 +61,7 @@ const MAP := [
 	"##........w...w.......................w...............w.w...----...bbb=====================bbbbbbbbb....w.......w...................w.........w...w.w...........----w..........w..w......................................bbbbbbCCCCCCCCCCCCCCCCCCCCCCC........----........ww............w.....##",
 	"##........w...w.......................w...............w.w..........bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb....w.......w...................w.........w...w.w...............w..........w..w......................................bbbbbbbbbbbbbbbbbIbbbbbbbbbbb....................ww............w.....##",
 	"##........w...w.......####............w...............w.w.----.....b====bbbbbbbbbbbbbbbbbbbbbbbbbbbb....w.......w...................w.........w...w.w.........----..w..........w..w......................................b----bbbbbbbbbbbbbbbbbbbbbbbb......----..........ww............w.....##",
-	"##...S..S.w...w.....########......g.kkw.a...T.T.T.T..kwow.W........bbbbbbbbbLbbbbbbLbbbbbbbbkbGbbPab.u..w...T..Tw.T...J..ok.Z...J...w.........Y...W.w...........g...w..........w..w................k.....................bbbbbbbobbbUbbbbobbTbbbTbb:kb................T...Twa.T.........W.P...##",
+	"##...S..S.w...w.....########......g.kkw.a...T.T.T.T..kwow.W........bbbbbbbbbLbbbbbbLbbbbbbbbkbGbbPab.u..w...T..Tw.T...J..ok.Z...J...w.........Y...W.w...............w..........w..w................k.....................bbbbbbbobbbUbbbbobbTbbbTbb:kb................T...Twa.T.........W.P...##",
 	"##################################################################CCCCCCCCCCCCCCCCCCOOOOCCCCCCCCCCCCC#####mmmmmmmmmmmmm#######~~~~~~~~~~~~~#############bbbbbb#################################################bbbbbb###CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#########################bbbbbb##########",
 	"##############################################################################################################################~~~~~~~~~~~~~#############bbbbbbbbbbbbb##########################################bbbbbb###########################################################bbbbbb##########",
 	"########################################################################################################################################################======bbbbbbb##########################################======###########################################################======##########",

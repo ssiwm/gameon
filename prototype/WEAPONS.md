@@ -84,7 +84,7 @@ Wartości domyślne z `weapons.gd`; DPS = pełne trafienie, bez krytyków i spad
 | 9 | **SPECTER-1** | szyna, ładowanie 1,2 s | 150 dmg przez wszystkich; **najgłośniejsza** (14 Uwagi); puszczenie przed końcem anuluje |
 | 10 | **SINEW-6** | kusza, bełt do odzysku; od 1.7.313 zasięg 200 px (krótszy niż M-83) i bełt opada z prawdziwym g (120 px/s² ≈ 9,8 m/s²) | **Cicha** (0,08); bełt zostaje w świecie jako skrzynka z 1 nabojem |
 | 11 | **Maczeta** | melee | 30 dmg, cisza; **zabija śpiącego lub odwróconego plecami natychmiast** i bez hałasu |
-| 12 | **Kilof** | melee | 55 dmg, ogłusza (1,2 s), odrzut, hałas 0,8 |
+| 12 | **Kilof** | narzędzie (od 1.7.495 ma je każdy, `Slot.TOOL`) | 55 dmg, ogłusza (1,2 s), odrzut, hałas 0,8; cios przy murze, kratce, gruzie i stemplu sam go bierze (`melee_for_target`), klawisz C — zawsze |
 
 ### Profil liczbowy (wygenerowany przez `--weapontest`)
 
@@ -243,10 +243,10 @@ Broń z trybem serii dostaje `burst_size > 0` w tabeli (dziś tylko M-83); bot z
 | Element | Jak działa | Kod |
 |---|---|---|
 | **Linka SINEW-6** (T3) | trafiony wróg dostaje prędkość ku strzelcowi (`pull` 260 px/s × `knock_mult`) zamiast odrzutu; kreska od strzelca do celu przez 0,45 s u wszystkich peerów | `WeaponDef.pull`, `combat.gd` (`_tether_fx`), `enemy.gd` (`take_hit`), `arsenal.gd` |
-| **Zamurowane przejście** (marker `q`) | ściana 16 px × do 6 kafli: bryła dla fizyki i nawigacji; materiał `brick` (HP 120); niszczą ją tylko kilof (`breaks_walls`), wybuch i szarża Rzeźnika; rozbicie = hałas 6, gruz, odblokowanie nawigacji, synchronizacja z dołączającymi | `breakable.gd` (`MATERIALS`), `level.gd` (`_register_walls`, `break_wall`), `combat.gd` (`in_cone`, `explode`) |
+| **Zamurowane przejście** (marker `q`) | ściana 16 px × do 6 kafli: bryła dla fizyki i nawigacji; materiał `brick` (HP 120); niszczą ją tylko kilof (`breaks_walls`; od 1.7.495 ma go każdy), wybuch i szarża Rzeźnika; rozbicie = hałas 6, gruz, odblokowanie nawigacji, synchronizacja z dołączającymi | `breakable.gd` (`MATERIALS`), `level.gd` (`_register_walls`, `break_wall`), `combat.gd` (`in_cone`, `explode`) |
 | **Ogień jako mur** | ciało statyczne na warstwie 64 (bit 7), 40 px wysokości; maska tylko u wrogów `fire_shy` (Trzosek, Ślepiec, Skoczek) | `fire_patch.gd`, `enemy.gd` (`FIRE_BIT`) |
 
-Przejście z kilofem jest w misji 1.2 (hala pod wieżą widokową). Nowa ściana = marker `q` w dolnym wierszu przejścia (3 kafle wysokości
+Przejście za murem jest w misji 1.2 (hala pod wieżą widokową; do 1.7.494 kilof leżał przy wieży, od 1.7.495 ma go każdy). Nowa ściana = marker `q` w dolnym wierszu przejścia (3 kafle wysokości
 i bryła nad nimi); `--maptest` otwiera wszystkie ściany przed sprawdzeniem osiągalności.
 
 ## 10. Osłabienie LR-7 (1.7.61)

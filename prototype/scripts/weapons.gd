@@ -52,6 +52,9 @@ const START_PRIMARY_A := M83
 const START_PRIMARY_B := SPREAD12
 const START_SIDEARM := P64
 const START_MELEE := MACZETA
+## Narzędzie (od 1.7.495, BARRIER_FIX_PLAN.md B1): kilof nosi każdy gracz i bot obok broni białej — przegrody `q`, `+`, gruz i stempel mają klucz
+## u każdego. Cios przy przegrodzie, której broń biała nie bierze, sam bierze kilof (weapon_controller.gd `melee_for_target`), klawisz `tool` — zawsze.
+const TOOL := KILOF
 
 static var _defs: Array = []
 
@@ -200,7 +203,7 @@ static func _table() -> Array:
 			"gun_len": 13.0, "gun_row": 10, "sfx": "maczeta", "sfx_count": 2, "sfx_vol": -6.0,
 		},
 		{
-			"key": "kilof", "mass": 2.6, "name": "PICKAXE", "slot": Slot.MELEE, "kind": Kind.MELEE,
+			"key": "kilof", "mass": 2.6, "name": "PICKAXE", "slot": Slot.TOOL, "kind": Kind.MELEE,
 			"auto": false, "cooldown": 0.9, "draw_time": 0.3,
 			"damage": 55.0, "knock": 160.0, "stun": 1.2, "reach": 24.0, "arc_deg": 50.0, "breaks_walls": true,
 			"n_min": 0.8, "n_max": 0.8, "mag": 0, "infinite": true,

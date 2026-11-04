@@ -186,7 +186,7 @@ func _paused() -> bool:
 static func locker_weapons() -> Array:
 	var out := []
 	for w in Weapons.COUNT:
-		if Weapons.def(w).slot != Weapons.Slot.MELEE:
+		if Weapons.def(w).slot != Weapons.Slot.MELEE and Weapons.def(w).slot != Weapons.Slot.TOOL:
 			out.append(w)
 	return out
 

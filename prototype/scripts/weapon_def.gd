@@ -14,7 +14,7 @@ enum Kind {
 	MELEE,      ## cios w łuku
 }
 
-enum Slot { PRIMARY, SIDEARM, MELEE }
+enum Slot { PRIMARY, SIDEARM, MELEE, TOOL }    ## TOOL: kilof — narzędzie, które ma każdy (BARRIER_FIX_PLAN.md B1), poza wyborem broni białej
 
 # --- tożsamość
 var id := 0

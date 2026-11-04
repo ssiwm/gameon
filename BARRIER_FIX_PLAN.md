@@ -3,7 +3,7 @@
 Stan wyjścia: main 1.7.492 + PR #595 (build 1.7.493+b594644), 2026-11-04. Kontynuacja `DESTRUCTION_PLAN.md` (D0–D3 wdrożone).
 Źródło: pierwszy ludzki przebieg 1.1 z niszczeniem (dziennik `2026-11-04_12-10-30.jsonl`, solo, NORMAL, bez bota) i uwagi autora.
 
-**Stan (2026-11-04):** B0 w PR #597 (1.7.494, na #595). W trakcie B0 zapadła decyzja 5 — **zawał zdjęty z 1.1, 1.2 i 1.3**;
+**Stan (2026-11-04):** B0 scalone (#597, 1.7.494). B1 (kilof u każdego) w 1.7.495 — bez rozgarniania gruzu (czeka na mapę z zawałem, decyzja 5). W trakcie B0 zapadła decyzja 5 — **zawał zdjęty z 1.1, 1.2 i 1.3**;
 mechanika zostaje na przyszłe mapy w podziemiach z niskimi przejściami i jest testowana na mapie testowej `t_mine`.
 Punkty planu o gruzie i stemplach na mapach kampanii (B1 rozgarnianie, B2 gruz, B4 zawał) czekają przez to na pierwszą taką mapę.
 
@@ -59,6 +59,12 @@ i modeli tego nie naprawią — trzeba najpierw ustalić **zasadę klucza** i **
   (poza kampanią) trzyma testy: `--destructiontest` sekcja 14, `--maptest`, `test_net_session.sh` (`--cavenet`).
 
 ### B1 — zasada klucza: kilof w osobnym slocie (decyzja 1, 1–2 PR)
+
+*Wykonanie (1.7.495):* `Slot.TOOL` i `Weapons.TOOL`; cios (V / PPM / pad X) sam bierze kilof przy murze, kratce, gruzie i stemplu,
+jeśli w zasięgu nie ma wroga (`melee_for_target`), klawisz C (układ „nowoczesny” 4) — kilof zawsze; bez osobnego wyciągania i powrotu
+— cios kilofem jest szybką akcją jak cios maczetą. Kilof zostaje w liście warsztatu (części i ostrzenie), ale nie jest wyborem broni białej.
+Kilof na plecach: przypięty na zewnątrz plecaka (pod plecakiem znikał). Bot, HUD, podpowiedź, kodeks i migracja zapisu jak niżej.
+
 
 **Decyzja 2026-11-04: kilof w osobnym slocie narzędzia** obok broni białej — każdy gracz (i bot) ma go zawsze, więc kratka, mur `q`
 i deski mają klucz u każdego. Wybór maczeta / kilof w warsztacie znika; slot broni białej to maczeta (i przyszłe bronie białe).

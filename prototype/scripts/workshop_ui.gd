@@ -2223,7 +2223,7 @@ func _refresh_detail(w: int) -> void:
 	var next_rows: Array = _comparison_rows(preview) if preview != null else []
 	if next_rows.is_empty():
 		next_rows = now_rows.duplicate(true)
-	if controller != null and (controller.loadout.has(w) or controller.melee_id == w):
+	if controller != null and controller.carries(w):
 		var km: float = controller.kit_mass()
 		var next_mass: float = km + (preview.mass - cur.mass if preview != null else 0.0)
 		now_rows.append([tr("Kit mass"), tr("%.2f kg") % km])
@@ -2528,7 +2528,7 @@ func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Arra
 	for i in LIST.size():
 		var wid := int(LIST[i])
 		var definition: RefCounted = Weapons.base_def(wid)
-		var carried: bool = wc != null and (wc.loadout.has(wid) or wc.melee_id == wid)
+		var carried: bool = wc != null and wc.carries(wid)
 		var status := tr("Carried") if carried else (tr("Unlocked") if Scrap.is_unlocked(wid) else (tr("Boss reward") if Scrap.is_gated(wid) else (tr("Later zone") if Scrap.is_later(wid) else tr("%d scrap") % Scrap.price_of(wid))))
 		var fresh := Parts.of(String(definition.key)).any(func(pp: Dictionary) -> bool: return Profile.is_new("part:" + String(pp["id"])))
 		weapons.append({"index": i, "name": String(definition.name), "row": int(definition.gun_row), "color": definition.tracer_color,

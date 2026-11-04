@@ -1393,6 +1393,8 @@ func full_reset(keep_loadout := false, quiet := false) -> void:
 	bat_pct = 100
 	if not keep_loadout:
 		weapons.reset()            # przejście między misjami kampanii (kryjówka) zachowuje ekwipunek
+	elif Weapons.def(weapons.melee_id).slot != Weapons.Slot.MELEE:
+		weapons.melee_id = Weapons.START_MELEE      # sesja sprzed B1 z kilofem jako bronią białą: kilof jest teraz narzędziem u każdego
 	_kick = 0.0
 	_revive_hold = 0.0
 	_revive_target_ref = null
@@ -1703,7 +1705,7 @@ func _bot_brain(delta: float) -> void:
 		var rc: Rect2 = chop.call("hit_rect")
 		var side := signf(rc.get_center().x - global_position.x)
 		var gap := ((rc.position.x if side > 0.0 else rc.end.x) - global_position.x) * side
-		if gap > Weapons.def(weapons.melee_id).reach - 6.0:
+		if gap > minf(Weapons.def(weapons.melee_id).reach, Weapons.def(Weapons.TOOL).reach) - 6.0:
 			velocity.x = side * SPEED * 0.6
 		else:
 			velocity.x = 0.0
@@ -1739,15 +1741,19 @@ func _bot_brain(delta: float) -> void:
 			# Boty symulowane są tylko na serwerze; serwer gra też ich dźwięk i efekty.
 			weapons.bot_fire(aim_dir)
 
-## Przegroda, którą dowódca właśnie rąbie (cios wręcz przy niej, na jego poziomie), jeśli broń biała bota też ją bierze (`breakable.gd: breaks`)
-## i bot stoi po tej samej stronie, nie dalej niż BOT_CHOP_R. Inaczej null.
+## Przegroda, którą dowódca właśnie rąbie (cios wręcz przy niej, na jego poziomie), jeśli bot ją weźmie — kilofem, który ma każdy (B1),
+## albo bronią białą (`breakable.gd: breaks`) — i stoi po tej samej stronie, nie dalej niż BOT_CHOP_R. Inaczej null. Czym bić, wybiera
+## `try_melee` (kilof przy murze, kratce i gruzie; maczeta przy deskach).
 func _bot_chop_wall(leader: Node2D) -> Node2D:
 	if leader == null or leader.dead or int(leader.w_state) != WeaponController.State.MELEE:
 		return null
-	var kind := "pick" if Weapons.def(weapons.melee_id).breaks_walls else "blade"
+	var blade := "pick" if Weapons.def(weapons.melee_id).breaks_walls else "blade"
 	for n in get_tree().get_nodes_in_group("breakables"):
 		var b := n as Node2D
-		if b == null or b.is_queued_for_deletion() or not (b.call("mat_def")["breaks"] as Array).has(kind):
+		if b == null or b.is_queued_for_deletion():
+			continue
+		var br: Array = b.call("mat_def")["breaks"]
+		if not (br.has("pick") or br.has(blade)):
 			continue
 		var rc: Rect2 = b.call("hit_rect")
 		if absf(rc.end.y - leader.global_position.y) > 6.0 or absf(rc.end.y - global_position.y) > 6.0:

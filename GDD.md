@@ -103,7 +103,8 @@ trudniejsze z założenia mapy, a nie ze skalowania z postępem (skaluje tylko N
 | Przeładowanie | R | R3 |
 | Tryb ognia (seria M-83) | B | D-pad ↓ |
 | Rodzaj amunicji (następny magazynek) | Z | — (do przypisania) |
-| Cios (maczeta / kilof) | V / PPM | X |
+| Cios (maczeta; przy murze, kratce, gruzie i stemplu sam bierze kilof) | V / PPM | X |
+| Kilof (w każdej chwili; od 1.7.495) | C | — (z kontekstu ciosu) |
 | Przedmiot (granat, mina, apteczka…) / zmiana przedmiotu | lewy Alt (rzut przy puszczeniu; Alt+Tab nie rzuca) / X | RB / D-pad ↑ |
 | Flara | F | D-pad → |
 | Latarka | L | D-pad ← |
@@ -151,11 +152,15 @@ Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 |------|-----|-----|------|-------|-------|
 | **P-83 „Wanad"** | 10 | 300 | ∞ (rezerwa, magazynek 8) | 2 / 4 m | Nigdy się nie kończy; ratunek w sytuacjach awaryjnych |
 
-### 6.3 Broń biała
+### 6.3 Broń biała i narzędzie
+Od 1.7.495 kilof to **narzędzie, które ma każdy** (gracz i bot) obok broni białej — nie wybiera się go zamiast maczety, a znaleziony niczego nie podmienia.
+Cios przy przegrodzie, której maczeta nie ruszy (mur, kratka, gruz, stempel), sam bierze kilof, jeśli w zasięgu nie ma wroga; klawisz C — kilof zawsze.
+Na plecach (widok 3D) wisi przypięty do plecaka; masa (2,6 kg) liczy się w zestawie każdego.
+
 | Broń | Dmg | Szybkość | Hałas | Uwagi |
 |------|-----|----------|-------|-------|
 | **Maczeta** | 30 | szybka | 0 | Ciche zabójstwo od tyłu (instant), rąbie zabite deskami przejścia (2 ciosy; pierwszy wyrąbuje dziurę, przez którą widać) |
-| **Kilof** | 55 | wolna | 1 / 2 m | Otwiera zamurowane przejścia, deski i zardzewiałe kratki wentylacji (kratkę bierze też jeden granat, gruz dwa — od 1.7.494), odkopuje gruz zawału (od 1.7.492), ogłusza elitki |
+| **Kilof** (narzędzie, ma każdy) | 55 | wolna | 1 / 2 m | Otwiera zamurowane przejścia, deski i zardzewiałe kratki wentylacji (kratkę bierze też jeden granat, gruz dwa — od 1.7.494), odkopuje gruz zawału (od 1.7.492), ogłusza elitki |
 
 ### 6.4 Ulepszenia broni (przykłady)
 
