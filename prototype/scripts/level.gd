@@ -450,15 +450,16 @@ func _apply_blocks(rects: Array) -> void:
 		_push_players_out(rr)
 	_refresh_region(dirty)
 
-## Gracze (własni na tym peerze) uwięzieni w obszarze, który zaraz stanie się skałą, lądują tuż za nim — po stronie wschodniej.
-func _push_players_out(rc: Rect2i) -> void:
+## Gracze (własni na tym peerze) uwięzieni w obszarze, który zaraz stanie się skałą, lądują tuż za nim — po stronie wschodniej
+## (zawał finału: po stronie sali). `nearer` — na bliższą stronę (zamykana przegroda: przybijający deskę stoi obok otworu
+## i nie może zostać przerzucony na drugą stronę barykady).
+func _push_players_out(rc: Rect2i, nearer := false) -> void:
 	var area := Rect2(rc.position * TILE, rc.size * TILE)
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.is_queued_for_deletion() or not p.is_multiplayer_authority():
 			continue
 		if area.grow(4.0).has_point(p.global_position + Vector2(0, -8)):
-			# na bliższą stronę (gracz przybijający deskę stoi obok otworu — nie przerzucamy go na drugą stronę barykady)
-			var right: bool = p.global_position.x >= area.get_center().x
+			var right: bool = not nearer or p.global_position.x >= area.get_center().x
 			p.global_position = Vector2(area.end.x + 10.0 if right else area.position.x - 10.0, p.global_position.y)
 			p.velocity = Vector2.ZERO
 
@@ -1307,7 +1308,7 @@ func _close_wall(wd: Dictionary, frac := 1.0) -> void:
 		first = false
 	_spawn_wall(wd, frac)
 	if not first:
-		_push_players_out(rc)
+		_push_players_out(rc, true)
 		_refresh_region(rc)
 
 ## Dołączający gracz dostaje listę już rozbitych ścian, plamy uszkodzeń tych, które jeszcze stoją, rozbite skrzynie / wybuchłe beczki
