@@ -664,8 +664,8 @@ func _charger_net_step() -> void:
 	print("[CHARGER-NET] host active=%s client_pct=%d" % [str(chg.active), int(cl.bat_pct) if cl != null else -1])
 
 ## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
-## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną) i skrzyni Crate1 (D1). Host po N s
-## rozbija skrzynię, po 1 s rani ścianę dwoma ciosami kilofa, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
+## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną), deski w pustym otworze Opening1 (D2b) i skrzyni
+## Crate1 (D1). Host po N s rozbija skrzynię, zabija otwór dwiema deskami, po 1 s rani ścianę dwoma ciosami kilofa, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
 ## z bossem), po 3 s czyści wszystko (wipe, skrzynia wraca) i po 2 s kończy. Klient obecny od początku dostaje to przez RPC na żywo, dołączający
 ## po ciosach — z `send_walls_to`; klient kończy po końcowym wipe'ie (albo w lobby po utracie hosta).
 func _destruction_net(n: float) -> void:
@@ -694,6 +694,8 @@ func _destruction_sig() -> String:
 	if w != null and not w.is_queued_for_deletion():
 		var sp: PackedFloat32Array = w.splats
 		st += " hp=%d splats=%d/%s" % [roundi(float(w.hp)), sp.size() / 4, str(sp).md5_text().substr(0, 8)]
+	if not level.wall_def("Opening1").is_empty():
+		st += " bar=%d" % level.boards_of("Opening1")                 # pusty otwór zabity deskami (D2b)
 	var cr: Node = level.get_node_or_null("Crate1")
 	if cr != null:
 		st += " crate=%s" % ("gone" if bool(cr.get("exploded")) else "ok")
@@ -719,6 +721,9 @@ func _destruction_net_host() -> void:
 	var win: Node = level.get_node_or_null("Window1")
 	if win != null:
 		win.shatter()                                                 # …i okno stłuczone (punkt kontrolny wstawia szybę)
+	level.add_planks(2)
+	for i in 2:
+		level.nail_board("Opening1")                                  # …i pusty otwór zabity dwiema deskami (wipe go otwiera, migawka zostawia)
 	await get_tree().create_timer(1.0).timeout
 	var pick: RefCounted = Weapons.def(Weapons.KILOF)
 	for i in 2:
@@ -2223,7 +2228,13 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var sw := get_tree().get_first_node_in_group("breakables")      # --shotwall: gracz tuż przed zamurowanym przejściem (mapa 1.2);
 		for a in OS.get_cmdline_user_args():                            # --shotwall=NAZWA: przed wybraną przegrodą (Planks1, Grate1…)
 			if a.begins_with("--shotwall="):
-				sw = level.get_node_or_null(a.substr("--shotwall=".length()))
+				var wn := a.substr("--shotwall=".length())
+				for b in OS.get_cmdline_user_args():                    # --shotboards=N: najpierw N desek przybitych w tej przegrodzie (pusty otwór `:`, D2b)
+					if b.begins_with("--shotboards="):
+						level.plank_stock = int(b.substr("--shotboards=".length()))
+						for k in int(b.substr("--shotboards=".length())):
+							level.nail_board(wn)
+				sw = level.get_node_or_null(wn)
 		var sp: Node2D = _players.get_node_or_null("1")
 		if sw != null and sp != null:
 			sp.global_position = sw.global_position + Vector2(40.0, -1.0)
@@ -3626,7 +3637,7 @@ func _gen_test() -> void:
 	if alcove.size() > 0:
 		sealed = level.nav.get_id_path(start_id, level.nav.get_closest_point(alcove[0])).is_empty()
 	var wall_node := level.get_node_or_null("BrickWall1")
-	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 3)      # zamurowanie, kratka wentylacji i deski w szybie (D2)
+	check.call("zamurowane przejście: ściana + skrytka za nią (%d × złom), nawigacja jej nie widzi (szczelna: %s)" % [alcove.size(), str(sealed)], wall_node != null and alcove.size() == 2 and sealed and level.walls_total() == 4)      # zamurowanie, kratka wentylacji, deski w szybie (D2) i pusty otwór na barykadę (D2b)
 	level.break_wall("BrickWall1")
 	await get_tree().create_timer(0.3).timeout
 	var open_id: int = level.nav.get_closest_point(alcove[0]) if alcove.size() > 0 else -1
@@ -4141,6 +4152,10 @@ func _map_test() -> void:
 				if not must.has(p) and not _reach_errors([points[0], p], false).is_empty():
 					behind.append(String(p[0]))
 			print("[MAPTEST] %s: ściany całe — %d celów i stanowisk osiągalnych z %d, za ścianą: %s" % [id, must.size() - intact.size(), must.size(), ", ".join(behind) if not behind.is_empty() else "nic"])
+			var oc: Array = level.close_openings_checked()       # puste otwory `:` zabite deskami i znów wolne (D2b)
+			bad.append_array(oc[0])
+			if int(oc[1]) > 0:
+				print("[MAPTEST] %s: puste otwory na barykadę: %d (zabite i znów wolne — graf jak pełna budowa)" % [id, int(oc[1])])
 			bad.append_array(level.open_walls_checked())
 		bad.append_array(_reach_errors(points, true))
 		if not level.exits.is_empty():           # kryjówka nie ma celów ani wyjścia

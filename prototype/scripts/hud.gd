@@ -2179,6 +2179,13 @@ func _near_strongbox() -> Node:
 			return sb
 	return null
 
+## Miejsce przybijania desek (barricade_spot.gd, D2b), przy którym stoi lokalny gracz, albo null.
+func _near_barricade() -> Node:
+	for sp in get_tree().get_nodes_in_group("barricade_spots"):
+		if bool(sp.get("local_in_range")):
+			return sp
+	return null
+
 func _near_generator() -> Node:
 	for g in get_tree().get_nodes_in_group("generators"):
 		if g.local_in_range:
@@ -2244,6 +2251,22 @@ func _prompt_candidates() -> Array:
 			add.call(tr("Prying the strongbox open…  it's loud"), box.progress, UiTheme.ACCENT)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Pry open the strongbox  (LOUD · +%d scrap)")) % int(box.value), -1.0, UiTheme.ACCENT)
+	var bar := _near_barricade()
+	if bar != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+		# barykadowanie (D2b): ile desek już stoi, zapas desek drużyny albo cena w złomie
+		var lvl := get_tree().get_first_node_in_group("level")
+		var have := int(bar.boards())
+		if float(bar.progress) > 0.0:
+			add.call(tr("Nailing a board…  %d/%d  ·  loud") % [have + 1, int(lvl.BOARDS)], float(bar.progress), UiTheme.OK)
+		else:
+			match String(bar.local_reason):
+				"blocked":
+					add.call(tr("Something is in the opening — can't board it up"), -1.0, UiTheme.MUTED)
+				"nomat":
+					add.call(tr("No boards — break crates for planks (or carry %d scrap)") % int(lvl.NAIL_SCRAP), -1.0, UiTheme.MUTED)
+				_:
+					var cost := (tr("boards: %d") % int(lvl.plank_stock)) if int(lvl.plank_stock) > 0 else (tr("%d scrap") % int(lvl.NAIL_SCRAP))
+					add.call(Actions.fmt(tr("Hold [{interact}]  Board up  %d/%d  (loud · %s)")) % [have, int(lvl.BOARDS), cost], -1.0, UiTheme.ACCENT)
 	if _near_workshop():
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
 	if _near_lathe():

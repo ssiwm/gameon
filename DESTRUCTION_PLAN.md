@@ -395,6 +395,25 @@ w kol. 247 (betonowy kanał 241–246 × 40–42 na zachodnim końcu dolnej gale
 - Technicznie to ta sama klasa `breakable` z materiałem `planks` w stanie „pusty otwór” — przybicie deski cofa stopień, a nie tworzy
   nowy obiekt; sieć i reset jak w D0.
 
+**Zrobione w 1.7.491 (D2b):** decyzje 2026-11-03 — miejsca: rozbite `%` i nowe puste otwory; koszt: zapas desek drużyny na misję (skrzynia
+daje 1–2), bez niego 2 złomu z łupu misji (`Scrap.spend_loot`, nie bank); tempo: 3 deski × 2 s. Pusty otwór `:` (level.gd `WALL_MARKS`,
+nazwy `Opening1…`) to przegroda z desek zarejestrowana jako rozbita: bez węzła i bez kafli w `_wall_cells`, czysty reset znów ją otwiera.
+Wytrzymałość dzieli się na `BOARDS` = 3 deski po 20 HP; `boards_of` liczy nadłamaną deskę jako stojącą. Przybicie (level.gd `nail_board`,
+serwer): wolny otwór — `_close_wall` z 1/3 HP (nowy węzeł jak po wipe'ie, nawigacja znów zamknięta; od planu różni się tym, że węzeł
+powstaje, ale sieć i reset są te same), stojąca przegroda — `set_hp_frac` na kolejną pełną deskę; u wszystkich przez `_nail_rpc`.
+Miejsce przybijania `barricade_spot.gd` (węzeł na całą misję przy każdej przegrodzie z desek, jak generator): peer zgłasza tylko
+„trzymam / puściłem”, serwer sprawdza zasięg (30 × 20 px, ×1,4 przy walidacji), życie i koszt; puszczenie przerywa deskę. Hałas: 1,2/s
+stukania porcjami + 1,5 przy przybiciu; stuk z próbek `amb_thud` tymczasowo. Wróg w kaflach otworu blokuje (`blocked`), gracza
+`_push_players_out` wypycha teraz na bliższą stronę. Zapas desek (`plank_stock`) w `breakables_state` — wipe zeruje, punkt kontrolny
+przywraca; dołączający dostaje zapas, zabite otwory (`_nail_rpc` bez efektów) i HP stojących przegród (`send_state_to` także bez plam).
+Stalker (`stalker.gd`): gdy do hałasu nie ma drogi, szuka barykady z desek, przez którą ona wiedzie (`_barricade_blocking`: ścieżka pod
+jedną stronę i z drugiej do celu), podchodzi i bije trafieniem `claw` 20 co 1,1 s; własny hałas uderzeń nie przestawia mu celu. Widok 3D:
+`_sync_boards` pokazuje tyle desek z `_barricade_boards`, ile wytrzymałości (kolejność z nazwy, przemieszana), odłupana spada drzazgą.
+Mapy: 1.1 kol. 270 wiersze 29–33 (tunel między szybami), 1.2 kol. 243 wiersze 23–25 (dolny korytarz budynku z generatorem, skrzynia `k`
+tuż za otworem), 1.3 kol. 46 wiersze 36–39 (chodnik między szybem a galerią z gniazdami). Testy: `--destructiontest` sekcja 13, `--maptest`
+(otwory zabite i znów wolne — graf jak pełna budowa), `test_net_session.sh` (otwór zabity dwiema deskami u klienta i dołączającego).
+Zostaje: miejsca w misjach „przetrzymaj” (2.3 Dzwon), strojenie po playteście (czy gracze barykadują, koszt, czas), dźwięk młotka po A/B.
+
 ### D3 — zawalanie za sobą (ryzyko / nagroda)
 
 - **Podpory** (`support`): stempel w tunelu albo słup kładki do zestrzelenia / wysadzenia. Po zniszczeniu zapada się **z góry

@@ -84,6 +84,7 @@ func run(m: Node2D) -> void:
 	await _windows()
 	await _barriers()
 	await _holes()
+	await _barricade()
 	_finish()
 
 # ---------------------------------------------------------------- 1. maska
@@ -255,8 +256,8 @@ func _state() -> void:
 	level.reset_breakables()
 	await _frames(0.1)
 	w = _real()
-	check("reset: ściana znów stoi (%.0f HP), kafle bryłą, lista rozbitych pusta, nawigacja = pełna budowa (%s)" % [float(w.hp) if w else 0.0, level.nav_diff_vs_full()],
-		w != null and float(w.hp) == 120.0 and _cells_solid() and level._opened_walls.is_empty() and level.nav_diff_vs_full() == "")
+	check("reset: ściana znów stoi (%.0f HP), kafle bryłą, lista rozbitych tylko z pustym otworem, nawigacja = pełna budowa (%s)" % [float(w.hp) if w else 0.0, level.nav_diff_vs_full()],
+		w != null and float(w.hp) == 120.0 and _cells_solid() and level._opened_walls == ["Opening1"] and level.nav_diff_vs_full() == "")
 	# punkt kontrolny z ranną ścianą
 	_hit(w, Weapons.KILOF, pick.damage, "melee", w.call("body_center"))
 	await _frames(0.15)
@@ -266,7 +267,7 @@ func _state() -> void:
 	_hit(w, Weapons.KILOF, pick.damage, "melee", w.call("body_center"))
 	await _frames(0.15)
 	check("migawka: ranna ściana zapisana (plam %d), potem rozbita" % (cp["damage"].get("BrickWall1", [PackedFloat32Array()])[0] as PackedFloat32Array).size(),
-		(cp["damage"].get("BrickWall1", [PackedFloat32Array()])[0] as PackedFloat32Array).size() == 4 and _real() == null and (cp["opened"] as PackedStringArray).is_empty())
+		(cp["damage"].get("BrickWall1", [PackedFloat32Array()])[0] as PackedFloat32Array).size() == 4 and _real() == null and cp["opened"] == PackedStringArray(["Opening1"]))
 	level.reset_breakables(cp)
 	await _frames(0.1)
 	w = _real()
@@ -302,7 +303,7 @@ func _state() -> void:
 	await _frames(0.1)
 	main._restart_mission(false)
 	await _frames(0.5)
-	check("wipe (main._restart_mission): rozbita ściana znów stoi, kafle bryłą", _real() != null and _cells_solid() and level._opened_walls.is_empty())
+	check("wipe (main._restart_mission): rozbita ściana znów stoi, kafle bryłą, pusty otwór wolny", _real() != null and _cells_solid() and level._opened_walls == ["Opening1"])
 
 # ---------------------------------------------------------------- 6. rozpad na bryły
 
@@ -889,6 +890,126 @@ func _holes() -> void:
 	await _frames(0.1)
 	mp = level.get_node_or_null("Planks1")
 	check("deski na 1.2: reset zabiera dziury i zamyka kafel dźwięku", mp != null and int(mp.hole_total) == 0 and level._is_sound_solid(col, row) and not level.sound_grid._open(cell))
+
+## D2b — barykadowanie: pusty otwór `:` na 1.2 (dolny korytarz budynku z generatorem), deski ze skrzyń, złom z łupu bez desek, trzymanie [E]
+## ~2 s na deskę (serwer: zasięg, koszt, hałas), komplet 3 desek, nadłamana deska się liczy, wróg w otworze blokuje, gracz w otworze
+## wypchnięty na bliższą stronę, reset (wipe) i punkt kontrolny bossa, Stalker rozbija barykadę na jedynej drodze do hałasu.
+func _barricade() -> void:
+	var on := "Opening1"
+	var wd: Dictionary = level.wall_def(on)
+	var cell := Vector2i(243, 25)
+	var spot: Node2D = level.get_node_or_null("Nail_" + on)
+	check("pusty otwór na 1.2: %s (znacznik :), %d kafle, na starcie wolny (bez węzła, nawigacja przechodzi), miejsce przybijania %s" % [on, int(wd.get("rows", 0)), str(spot != null)],
+		not wd.is_empty() and int(wd["rows"]) == 3 and level._opened_walls.has(on) and level.get_node_or_null(on) == null
+		and not level._wall_cells.has(cell) and spot != null and level.boards_of(on) == 0)
+	if wd.is_empty() or spot == null:
+		return
+	var feet: Vector2 = wd["pos"]
+	var pid := int(String(player.name))
+	level.plank_stock = 0
+	Scrap.loot = 0
+	check("bez desek i złomu nie da się (%s)" % level.nail_reason(on), level.nail_reason(on) == "nomat")
+	var cr := _crate(feet + Vector2(60, 0))
+	await _frames(0.1)
+	cr.shatter()
+	await _frames(0.1)
+	var got := int(level.plank_stock)
+	check("rozbita skrzynia: %d deski do zapasu drużyny" % got, got >= 1 and got <= 2)
+
+	# trzymanie [E]: deska co ~2 s; pierwsza z zapasu, kolejne za złom z łupu
+	level.plank_stock = 1
+	Scrap.loot = 4
+	_place_player(feet + Vector2(-20, 0))
+	await _frames(0.2)
+	var ns0 := int(NoiseMgr.noise_serial)
+	spot.force_worker(pid, true)
+	await _frames(1.0)
+	var mid := float(spot.progress)
+	var knocks := int(NoiseMgr.noise_serial) - ns0
+	await _frames(1.15)
+	var at: Vector2 = NoiseMgr.last_noise_pos
+	check("trzymanie [E]: po 1 s połowa deski (%.2f), po ~2 s jedna deska (%d), otwór znów przegrodą dla nawigacji, deska z zapasu (zostało %d), stukanie to hałas (%d zgłoszeń w 1 s, źródło %.0f px od otworu)" % [mid, level.boards_of(on), int(level.plank_stock), knocks, at.distance_to(feet)],
+		mid > 0.4 and mid < 0.6 and level.boards_of(on) == 1 and level._wall_cells.has(cell) and int(level.plank_stock) == 0 and knocks >= 3 and at.distance_to(feet) < 32.0)
+	await _frames(4.3)
+	var w: Node2D = level.get_node_or_null(on)
+	check("trzyma dalej: komplet %d desek (%.0f HP), druga i trzecia za %d złomu każda (łup %d), więcej się nie da (%s), postęp stoi (%.2f)" % [level.boards_of(on), float(w.hp) if w else 0.0, int(level.NAIL_SCRAP), int(Scrap.loot), level.nail_reason(on), float(spot.progress)],
+		level.boards_of(on) == 3 and w != null and is_equal_approx(float(w.hp), 60.0) and int(Scrap.loot) == 0 and level.nail_reason(on) == "full" and float(spot.progress) == 0.0)
+	spot.force_worker(pid, false)
+	await _frames(0.1)
+	_place_player(feet + Vector2(-60, 0))
+	level.plank_stock = 1
+	_hit(w, 0, 25.0, "claw", feet + Vector2(-8.0, -24.0))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	spot.force_worker(pid, true)
+	await _frames(0.3)
+	check("gracz za daleko (%s): serwer nie przybija (postęp %.2f, desek %d)" % [level.nail_reason(on), float(spot.progress), level.boards_of(on)], float(spot.progress) == 0.0 and level.boards_of(on) == 2)
+	spot.force_worker(pid, false)
+	level.plank_stock = 0
+	check("nadłamana barykada: %.0f HP = %d deski, brak desek (%s)" % [float(w.hp), level.boards_of(on), level.nail_reason(on)], level.boards_of(on) == 2 and level.nail_reason(on) == "nomat")
+	level.plank_stock = 1
+	check("dobita deską: %s, %.0f HP, zapas %d" % [level.nail_board(on), float(w.hp), int(level.plank_stock)], is_equal_approx(float(w.hp), 60.0) and int(level.plank_stock) == 0)
+
+	# wipe i punkt kontrolny bossa
+	_hit(w, 0, 25.0, "claw", feet + Vector2(-8.0, -24.0))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	level.plank_stock = 3
+	var st: Dictionary = level.breakables_state()
+	level.reset_breakables()
+	await _frames(0.1)
+	check("wipe: otwór znów wolny (nawigacja przechodzi), zapas desek przepada (%d)" % int(level.plank_stock),
+		level._opened_walls.has(on) and level.get_node_or_null(on) == null and not level._wall_cells.has(cell) and int(level.plank_stock) == 0)
+	level.reset_breakables(st)
+	await _frames(0.1)
+	w = level.get_node_or_null(on)
+	check("punkt kontrolny bossa: barykada z %d deskami (%.0f HP) i zapas %d wracają" % [level.boards_of(on), float(w.hp) if w else 0.0, int(level.plank_stock)],
+		level.boards_of(on) == 2 and w != null and is_equal_approx(float(w.hp), 35.0) and int(level.plank_stock) == 3 and level._wall_cells.has(cell))
+	level.reset_breakables()
+	await _frames(0.1)
+
+	# wróg w otworze blokuje; gracz w otworze wypchnięty na bliższą stronę
+	level.plank_stock = 2
+	var tz := _enemy("trzosek", feet + Vector2(0, -1))
+	var blocked := String(level.nail_reason(on))
+	tz.queue_free()
+	await _frames(0.1)
+	check("wróg w otworze: nie da się go zabić (%s), po nim znów można (%s)" % [blocked, level.nail_reason(on)], blocked == "blocked" and level.nail_reason(on) == "ok")
+	_place_player(feet + Vector2(3, 0))
+	await _frames(0.05)
+	var why := String(level.nail_board(on))
+	check("gracz w otworze: deska przybita (%s), gracz wypchnięty na bliższą stronę (x %+.0f)" % [why, player.global_position.x - feet.x], why == "ok" and player.global_position.x > feet.x + 8.0)
+	level.reset_breakables()
+	await _frames(0.1)
+
+	# Stalker: barykada na jedynej drodze do hałasu — dochodzi i rozbija ją, zamiast czekać pod nią
+	level.plank_stock = 3
+	for k in 3:
+		level.nail_board(on)
+	_place_player(feet + Vector2(400, -2000))
+	var s: CharacterBody2D = level.STALKER_SCENE.instantiate()
+	s.name = "TStalker"
+	s.position = feet + Vector2(-160, 0)
+	level.add_child(s)
+	await _frames(0.1)
+	var goal := feet + Vector2(120, 0)
+	check("pełna barykada zamyka jedyną drogę z korytarza na wschód (%d deski, ścieżka %d punktów)" % [level.boards_of(on), (level.nav.find_path(s.global_position, goal) as Array).size()],
+		level.boards_of(on) == 3 and (level.nav.find_path(s.global_position, goal) as Array).is_empty())
+	s.awake = true
+	s.target_pos = goal
+	s._seen_serial = NoiseMgr.noise_serial
+	var tb := -1.0
+	var t := 0.0
+	while t < 10.0 and s.global_position.x <= feet.x + 40.0:       # do 10 s: rozbicie i przejście na drugą stronę
+		NoiseMgr.level = maxf(float(NoiseMgr.level), 70.0)          # poluje dalej (nie zasypia)
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		if tb < 0.0 and level._opened_walls.has(on):
+			tb = t
+	check("Stalker rozbija barykadę na drodze do hałasu po %.1f s (dojście + 3 ciosy — sekundy, nie azyl) i idzie dalej (x %+.0f)" % [tb, s.global_position.x - feet.x],
+		tb >= 2.5 and tb <= 8.0 and s.global_position.x > feet.x + 40.0)
+	s.queue_free()
+	NoiseMgr.level = 0.0
+	level.reset_breakables()
+	await _frames(0.1)
 
 ## Próbna przegroda od podłogi do sufitu tunelu (6 kafli), poza `_wall_cells` — sama mechanika trafień, ruchu i wrogów.
 func _barrier(wname: String, feet: Vector2, mat := "planks") -> Node2D:
