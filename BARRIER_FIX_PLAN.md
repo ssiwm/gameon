@@ -3,6 +3,10 @@
 Stan wyjścia: main 1.7.492 + PR #595 (build 1.7.493+b594644), 2026-11-04. Kontynuacja `DESTRUCTION_PLAN.md` (D0–D3 wdrożone).
 Źródło: pierwszy ludzki przebieg 1.1 z niszczeniem (dziennik `2026-11-04_12-10-30.jsonl`, solo, NORMAL, bez bota) i uwagi autora.
 
+**Stan (2026-11-04):** B0 w PR #597 (1.7.494, na #595). W trakcie B0 zapadła decyzja 5 — **zawał zdjęty z 1.1, 1.2 i 1.3**;
+mechanika zostaje na przyszłe mapy w podziemiach z niskimi przejściami i jest testowana na mapie testowej `t_mine`.
+Punkty planu o gruzie i stemplach na mapach kampanii (B1 rozgarnianie, B2 gruz, B4 zawał) czekają przez to na pierwszą taką mapę.
+
 ## Werdykt
 
 Przegrody mają dziś postać „zamka bez klucza”: mapa stawia przeszkodę, a gracz zwykle nie ma czym jej otworzyć, nie wie czym,
@@ -39,7 +43,8 @@ i modeli tego nie naprawią — trzeba najpierw ustalić **zasadę klucza** i **
 ### B0 — szybkie poprawki bez zmiany projektu (1 PR)
 
 - **Przegrody bez celu zdjęte z map** (decyzja 3): otwór `:` na 1.1 (kol. 270) i kratka 1.1 (kol. 247, kanał z baterią i amunicją —
-  rzeczy zostają, kanał otwarty albo zamurowany); 1.2 i 1.3 przejrzane tą samą miarą (co za przegrodą, czy jest powód), wynik w PR.
+  rzeczy zostają, kanał otwarty albo zamurowany). Z 1.2 i 1.3 w B0 zeszły tylko strefy zawału (decyzja 5); przegląd pozostałych
+  przegród 1.2 i 1.3 (`q`, `%`, `+`, `:`) tą samą miarą przechodzi do B4.
   `--maptest` i `--destructiontest` (sekcje 11–13 używają przegród z 1.2 i próbnych w tunelu — sprawdzić, czy nie zależą od 1.1).
 - **Komunikat przy złym narzędziu** (zasada 2): pierwszy cios, który się odbił, pokazuje nad przegrodą nazwę materiału i czym ją
   ruszyć (arbiter komunikatów, `Actions.fmt`, tłumaczenia w `ui.csv`).
@@ -47,6 +52,11 @@ i modeli tego nie naprawią — trzeba najpierw ustalić **zasadę klucza** i **
 - **Stempel nie od przypadkowego wybuchu:** odłamki granatu rzuconego na wroga nie łamią stempla, chyba że wybuch jest bliżej niż
   ok. 1 m od belki (dziś wystarcza cały promień 4 m).
 - **Gruz nie wygląda jak cegła:** bryły pre-fraktury skały (nowy zestaw w `tools/fracture_gen.py`), ziemia, złamana belka w kupie.
+  *Wykonanie w #597:* zarwany fragment stropu z symulacji brył sztywnych (`tools/rubble_pile_gen.py`, zestaw „beton” albo „kopalnia”
+  wg stropu nad strefą), rysy na ścianie, podciąg stempla nad strefą spada z płytą; po odkopaniu płyta leży na płasko.
+- **Zawał zdjęty z 1.1–1.3** (decyzja 5): plansze „przed → zawał → odkopanie” pokazały, że w halach 4–5 rzędów i pod lekkim dachem
+  zawał się nie broni (płyta ~6,8 m przy ~3,5 m głębokości tunelu, strefa na 1.2 przed ślepym zaułkiem). Mapa testowa `t_mine`
+  (poza kampanią) trzyma testy: `--destructiontest` sekcja 14, `--maptest`, `test_net_session.sh` (`--cavenet`).
 
 ### B1 — zasada klucza: kilof w osobnym slocie (decyzja 1, 1–2 PR)
 
@@ -72,6 +82,7 @@ Odrzucone na rzecz D: wspólna akcja [E] na każdą przegrodę (A), łom w zesta
 dla ładunków burzących, gdy mapa ma mur, którego kilof nie bierze).
 
 **Gruz po zawale (decyzja 2): rozgarnianie [E]** — wyjątek od D, bo zawał ma zatrzymać wrogów, a nie zamknąć drogę drużynie.
+*Odłożone (decyzja 5):* mapy kampanii nie mają dziś stref zawału — rozgarnianie wchodzi razem z pierwszą mapą z niskim przejściem.
 Miejsce przy strefie `^` jak `barricade_spot.gd`: trzymanie [E] 10–12 s (kilofem 3–4 ciosy dalej szybciej), hałas porcjami, przerwane
 przez puszczenie; wrogowie przez gruz nie przechodzą (Stalker — jak przy barykadzie, rozbija powoli). Serwer rozstrzyga, postęp
 w stanie zniszczeń (wipe, punkt kontrolny, dołączający).
@@ -83,7 +94,8 @@ w stanie zniszczeń (wipe, punkt kontrolny, dołączający).
 - Stany z maski i HP: cała → wgięta (pręty wygięte w stronę ciosu) → jedna strona wyrwana, wisi na zawiasie → leży na podłodze.
   Przy kolejnych ciosach kilofa śruby wypadają po kolei (widać postęp bez paska).
 - Deski: gwoździe i poprzeczka widoczne, odrywana deska odchodzi od jednej strony (nie znika).
-- Gruz: zasada 4 — skała, ziemia i złamana belka, szczelina u góry kupy; przy rozgarnianiu [E] kupa maleje etapami.
+- Gruz: zasada 4 — skała, ziemia i złamana belka, szczelina u góry kupy; przy rozgarnianiu [E] kupa maleje etapami (razem z rozgarnianiem,
+  po decyzji 5). Modele `rubble_pile_*` są dziś dla stref 4 i 5 rzędów — dla niskich przejść wygenerować 2–3 rzędy.
 - Zrzuty przed / po (`--shotwall=Grate1 --view3dlit`) w `C:\deadair87\shots_barrier_v2`.
 
 ### B3 — dźwięk (1 PR, odsłuch A/B przed podmianą)
@@ -110,7 +122,8 @@ Odsłuch: 3–4 kandydatów na rodzinę w katalogu `C:\deadair87\odsluch\barrier
   i zawale — przegrody były celem samym w sobie, nie częścią drogi).
 - Otwór `:` (D2b) tylko tam, gdzie zabicie go ma cel: zatrzymanie Stalkera na trasie ucieczki albo misja „przetrzymaj”; na 1.1 bez
   takiego celu — rozważyć usunięcie.
-- Zawał: stempel w miejscu, gdzie zawalenie za sobą ratuje przed pościgiem (Stalker, fala z dyrektora), z drugą drogą dla drużyny.
+- Zawał (decyzja 5): nie na 1.1–1.3. Na nowej mapie w podziemiach — strefa w niskim przejściu (2–3 rzędy) pod skałą lub betonem, stempel
+  z podciągiem tuż przed nią, w miejscu, gdzie zawalenie za sobą ratuje przed pościgiem (Stalker, fala z dyrektora), z drugą drogą dla drużyny.
 
 ### B5 — playtest i pomiar
 
@@ -129,7 +142,8 @@ Odsłuch: 3–4 kandydatów na rodzinę w katalogu `C:\deadair87\odsluch\barrier
 | B4 | 1–2 | średnie (projekt map, `--maptest`) | B1, decyzja 3 |
 | B5 | 0 | — | B0–B4 |
 
-Decyzje podjęte — B0, B1 i B3 można zaczynać od razu (B3 równolegle, czeka tylko na odsłuch). B2 po B1, B4 po B1 i B2.
+Decyzje podjęte — B0 gotowe (#597), B1 i B3 można zaczynać od razu (B3 równolegle, czeka tylko na odsłuch). B2 po B1, B4 po B1 i B2.
+Rozgarnianie gruzu (B1) i wygląd gruzu (B2) czekają na pierwszą mapę ze strefą zawału (decyzja 5).
 
 ## Decyzje (2026-11-04)
 
@@ -138,3 +152,5 @@ Decyzje podjęte — B0, B1 i B3 można zaczynać od razu (B3 równolegle, czeka
 3. **Przegrody bez celu** (otwór `:` na 1.1, kratka z samą drobnicą): **usunąć na razie** — w B0 zdjęte z map, wracają w B4 z nagrodą
    albo skrótem. Przegląd 1.2 i 1.3 tą samą miarą w B0.
 4. **Stempel od granatu:** tylko bliski wybuch (ok. 1 m od belki); kula, śrut, kilof i ładunek jak dziś; trzask i pył jako ostrzeżenie (B0).
+5. **Zawał na mapach kampanii:** zdjęty z 1.1, 1.2 i 1.3 („nie ma najmniejszego sensu”) — mechanika zostaje na mapy w podziemiach
+   z niskimi przejściami; testy na mapie testowej `t_mine` (B0, #597).
