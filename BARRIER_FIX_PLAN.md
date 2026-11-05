@@ -128,7 +128,7 @@ Warstwy na materiał (uderzenie, pęknięcie przy zmianie stopnia, rozpad, ogon 
 
 Odsłuch: 3–4 kandydatów na rodzinę w katalogu `C:\deadair87\odsluch\barriers`, wybór autora, potem podmiana w `audio_manifest.gd`.
 
-**Zrobione w 1.7.499 (drewno, młotek; odsłuch 2026-11-05):** strona `odsluch\barriers\index.html` (`render.py`: wersja z gry —
+**Zrobione w 1.7.501 (drewno, młotek; odsłuch 2026-11-05):** strona `odsluch\barriers\index.html` (`render.py`: wersja z gry —
 te same pliki, wysokość i dB z wywołań — obok kandydatów wyrównanych do jej głośności chwilowej, okno 400 ms). Wybór autora:
 trafienie w drewno — David Dumais „Impact Wood 23”, rozbicie — „Designed Wood Crash And Debris 13”, młotek — The Sound Pack Tree
 „Nail Hammering 03”; zawał i trzeszczenie stropu przed nim — **obecne** (bez zmian). Nowe klucze `wood_hit`, `wood_break`,

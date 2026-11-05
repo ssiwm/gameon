@@ -277,23 +277,39 @@ static func hit(parent: Node, pos: Vector2, dir: Vector2, mat: int, crit: bool, 
 				Audio.play_variant_at("ricochet", 2, pos, Audio.BUS_WORLD, -17.0, 1.1, 0.12)
 		Arsenal.Mat.WOOD:
 			burst(parent, pos, Color(0.55, 0.38, 0.2), 7, 30.0, 90.0, -dir, 70.0, 420.0, 0.35, Vector2(1.0, 2.0))
+			chips(parent, pos, -dir, Color(0.6, 0.45, 0.28), 4 + (2 if heavy else 0), "splinter", 110.0, Vector2(0.6, 1.3))
 			if snd:
 				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -14.0, 0.62)
 		Arsenal.Mat.DUST:
 			pollen(parent, pos, 2)                                  # Ćma: bez krwi — dźwięk i główny obłok daje śmierć (enemy.gd: _death_fx)
+
+## Kanciaste odpryski materiału (DESTRUCTION_PLAN.md D4): bryłki (`chip`) albo drzazgi (`splinter`) jako cieniowane bryły 3D, które
+## koziołkują w płaszczyźnie gry, spadają i maleją pod koniec życia — bez ciał fizyki 2D (te są dla brył z pre-fraktury przy rozbiciu).
+## `size` — mnożnik rozmiaru bryłki (ok. 3 cm) albo drzazgi (ok. 7 cm).
+static func chips(parent: Node, pos: Vector2, out: Vector2, color: Color, amount: int, kind := "chip", vmax := 110.0,
+		size := Vector2(0.6, 1.2)) -> void:
+	burst(parent, pos, color, amount, 30.0, vmax, out, 60.0, 520.0, 0.55, size, false, false, {"mesh": kind})
+
+## Obłoczek pyłu po trafieniu (beton, ziemia, drewno): wisi chwilę przy ścianie, rośnie i rozwiewa się. Cieniowany — w ciemności widać go
+## tylko w snopie latarki albo przy lampie, jak prawdziwy kurz.
+static func puff(parent: Node, pos: Vector2, out: Vector2, color: Color, strength := 1.0) -> void:
+	burst(parent, pos + out * 2.0, color, int(round(3.0 + 3.0 * strength)), 4.0, 22.0 * strength, out, 75.0, -10.0, 1.0 + 0.5 * strength,
+		Vector2(2.5, 4.5) * (0.8 + 0.3 * strength), false, true, {"fade": true, "explosiveness": 0.85})
 
 ## Pyłek ze skrzydeł Ćmy: blady, ochrowy obłoczek, który wolno opada i mieni się tylko w świetle (cząstki cieniowane — w snopie latarki
 ## jak kurz w promieniu, w ciemności niewidoczne).
 static func pollen(parent: Node, pos: Vector2, amount: int) -> void:
 	burst(parent, pos, Color(0.86, 0.8, 0.62, 0.75), amount, 4.0, 18.0, Vector2.UP, 180.0, 16.0, 1.6, Vector2(0.5, 1.1), false, true)
 
-## Pocisk w ścianę: efekt wg powierzchni (kafel mapy), z krótkim progiem na dźwięk.
+## Pocisk w ścianę: efekt wg powierzchni (kafel mapy), z krótkim progiem na dźwięk. Od D4 (DESTRUCTION_PLAN.md) pył i okruchy są
+## cieniowane — nocą widać je w latarce, a nie świecą same jak iskry; świecą tylko iskry (beton, blacha).
 static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String, heavy := false) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
 	var out := normal if normal.length() > 0.1 else Vector2.UP
 	if view3d != null and is_instance_valid(view3d) and not (surface in ["water", "mud", "oil"]):
 		view3d.call("mark_hit", pos, out, surface)                 # ślad po kuli w scenie 3D (ciecze go nie trzymają)
+	var hk := 2 if heavy else 0                                   # śrut i ciężkie pociski: więcej odprysków
 	var now := Time.get_ticks_msec()
 	var snd := heavy or now - _impact_snd_ms > 45
 	if snd:
@@ -312,23 +328,36 @@ static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String,
 			burst(parent, pos, Color(0.05, 0.05, 0.06, 0.95), 6, 20.0, 60.0, out, 45.0, 480.0, 0.45, Vector2(0.9, 1.8), false, true)
 			if snd:
 				Audio.play_variant_at("step_water", 5, pos, Audio.BUS_WORLD, -12.0, 0.8, 0.1)
-		"dirt":
-			burst(parent, pos, Color(0.5, 0.4, 0.28, 0.8), 6, 20.0, 70.0, out, 60.0, 380.0, 0.35, Vector2(1.0, 2.0))
+		"dirt":                                                   # ziemia: grudki i brązowy kurz
+			burst(parent, pos, Color(0.5, 0.4, 0.28, 0.8), 6, 20.0, 70.0, out, 60.0, 380.0, 0.35, Vector2(1.0, 2.0), false, true)
+			chips(parent, pos, out, Color(0.3, 0.23, 0.16), 4 + hk, "chip", 85.0, Vector2(0.7, 1.4))
+			puff(parent, pos, out, Color(0.46, 0.38, 0.28, 0.42), 0.9 + 0.4 * float(hk))
 			if snd:
 				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -15.0, 0.7)
 		"wood":                                                   # deski przegrody: drzazgi i głuchy stuk, bez iskier i rykoszetu
-			burst(parent, pos, Color(0.46, 0.33, 0.2, 0.9), 6, 25.0, 80.0, out, 55.0, 420.0, 0.35, Vector2(0.7, 2.2))
+			burst(parent, pos, Color(0.46, 0.33, 0.2, 0.9), 6, 25.0, 80.0, out, 55.0, 420.0, 0.35, Vector2(0.7, 2.2), false, true)
+			chips(parent, pos, out, Color(0.62, 0.47, 0.3), 4 + hk, "splinter", 120.0, Vector2(0.6, 1.3))
+			puff(parent, pos, out, Color(0.55, 0.45, 0.32, 0.25), 0.5)
 			if snd:
 				Audio.play_variant_at("wood_hit", 3, pos, Audio.BUS_WORLD, -11.0, 1.1)     # kula w deskę (B3)
 		"concrete":
-			burst(parent, pos, Color(0.6, 0.6, 0.62, 0.9), 5, 30.0, 90.0, out, 55.0, 420.0, 0.3, Vector2(0.8, 1.6))
-			sparks(parent, pos, -out)
+			burst(parent, pos, Color(0.6, 0.6, 0.62, 0.9), 5, 30.0, 90.0, out, 55.0, 420.0, 0.3, Vector2(0.8, 1.6), false, true)
+			chips(parent, pos, out, Color(0.52, 0.51, 0.49), 4 + hk, "chip", 120.0, Vector2(0.5, 1.1))
+			puff(parent, pos, out, Color(0.62, 0.61, 0.58, 0.45), 1.0 + 0.5 * float(hk))
+			burst(parent, pos, Color(1.0, 0.85, 0.45), 3, 40.0, 110.0, out, 55.0, 380.0, 0.2, Vector2(0.7, 1.2), true)   # mniej iskier niż blacha
 			if snd:
 				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -12.0, 1.0)
 				if randf() < 0.5:
 					Audio.play_variant_at("ricochet", 2, pos, Audio.BUS_WORLD, -20.0, 1.0, 0.12)
-		_:
+		"ice", "snow":                                            # lód: białe okruchy; śnieg: tylko biały obłoczek
+			if surface == "ice":
+				chips(parent, pos, out, Color(0.8, 0.86, 0.9), 4 + hk, "chip", 110.0, Vector2(0.5, 1.0))
+			puff(parent, pos, out, Color(0.86, 0.88, 0.9, 0.5), 1.1)
+			if snd:
+				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -15.0, 1.3 if surface == "ice" else 0.7)
+		_:                                                        # blacha: snop iskier, część spada i odbija się jeszcze chwilę
 			sparks(parent, pos, -out)
+			burst(parent, pos, Color(1.0, 0.78, 0.38), 5 + 3 * hk, 60.0, 170.0, out, 70.0, 640.0, 0.45, Vector2(0.6, 1.1), true)
 			if snd:
 				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -12.0, 1.2)
 				Audio.play_variant_at("ricochet", 2, pos, Audio.BUS_WORLD, -19.0, 1.0, 0.12)
@@ -403,6 +432,13 @@ static func explosion(parent: Node, pos: Vector2, radius: float) -> void:
 				Feel.shake(5.0 * k * (1.0 - d / 400.0))
 				Feel.kick(((p.global_position - pos).normalized()) * 3.0 * k)
 				Feel.hitstop(0.06)
+
+## Wstrząs bez wybuchu (zawał stempla, D3): pył i kamyki ze stropu wokół `pos` i rozbujane lampy — tylko w scenie 3D (DESTRUCTION_PLAN.md D4).
+## Wybuch robi to sam (`view3d.mirror_explosion`).
+static func quake(pos: Vector2, radius: float, strength := 1.0) -> void:
+	if view3d != null and is_instance_valid(view3d):
+		view3d.call("ceiling_dust", pos, radius, strength)
+		view3d.call("kick_lamps", pos, radius, strength)
 
 ## Płomienie na ciele (wróg, beczka) przez `seconds`: cząstki + migoczące światło.
 static func burning(host: Node2D, seconds: float) -> void:
