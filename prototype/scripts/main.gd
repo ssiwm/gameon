@@ -33,6 +33,8 @@ const BATTERY_TEST := preload("res://scripts/battery_test.gd")
 const DESTRUCTION_TEST := preload("res://scripts/destruction_test.gd")
 const FOG_SHADOW_TEST := preload("res://scripts/fog_shadow_test.gd")
 const FX_TEST := preload("res://scripts/fx_test.gd")
+const DIG_TEST := preload("res://scripts/dig_test.gd")
+const DigMats := preload("res://scripts/dig_materials.gd")
 const RESULT_TEST := preload("res://scripts/result_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
@@ -669,7 +671,8 @@ func _charger_net_step() -> void:
 ## Crate1 (D1). Host po N s rozbija skrzynię, zabija otwór dwiema deskami, po 1 s rani ścianę dwoma ciosami kilofa, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
 ## z bossem), po 3 s czyści wszystko (wipe, skrzynia wraca) i po 2 s kończy. Klient obecny od początku dostaje to przez RPC na żywo, dołączający
 ## po ciosach — z `send_walls_to`; klient kończy po końcowym wipe'ie (albo w lobby po utracie hosta).
-## `want`: mapa testu — 1.2 (ściana, skrzynia, lampa, okno, otwór) albo t_mine (stempel i strefa zawału, `--cavenet`).
+## `want`: mapa testu — 1.2 (ściana, skrzynia, lampa, okno, otwór), t_mine (stempel i strefa zawału, `--cavenet`) albo t_dig (strefy
+## wydobycia D5, `--dignet`).
 func _destruction_net(n: float, want := "z1_m2") -> void:
 	var role := "host" if "--host" in OS.get_cmdline_user_args() else "client"      # przed połączeniem klient też jest „serwerem”
 	var last := ""
@@ -677,7 +680,8 @@ func _destruction_net(n: float, want := "z1_m2") -> void:
 	var joined := false
 	var broke := false
 	if role == "host":
-		get_tree().create_timer(n).timeout.connect(_destruction_net_host if want == "z1_m2" else _cave_net_host)
+		var step := _destruction_net_host if want == "z1_m2" else (_dig_net_host if want == "t_dig" else _cave_net_host)
+		get_tree().create_timer(n).timeout.connect(step)
 	while is_inside_tree():
 		var sig := _destruction_sig()
 		# stan wypisany dopiero, gdy trzyma się przez dwie próbki: HP ściany idzie od razu, plamy w paczkach co 0,1 s, więc chwilowe
@@ -714,6 +718,8 @@ func _destruction_sig() -> String:
 	var sb: Node = level.get_node_or_null("Support1")
 	if sb != null:
 		st += " sup=%s" % ("ok" if bool(sb.get("intact")) else "down")   # stempel nad strefą zawału (D3); zawał widać po Rubble1 w `opened`
+	for z in level.dig_zones():
+		st += " %s=%s" % [String(z.name).replace("DigZone", "dig"), (z._d as PackedByteArray).hex_encode().md5_text().substr(0, 8)]   # gęstość strefy (D5)
 	return st
 
 func _destruction_net_host() -> void:
@@ -749,6 +755,35 @@ func _destruction_net_host() -> void:
 	await get_tree().create_timer(3.0).timeout
 	if crate != null:
 		crate.reset_enemy()                                           # przed ścianą: klient kończy, gdy zobaczy całą ścianę
+	level.reset_breakables()
+	await get_tree().create_timer(2.0).timeout
+	get_tree().quit()
+
+## Host testu stref wydobycia w sieci (t_dig, D5): trzy ciosy kilofem w DigZone1 (dół i tunel, ta sama droga co cios gracza na serwerze) i wybuch
+## w DigZone2 w jednej klatce; gdy są obaj klienci: migawka, wipe (strefy jak w danych mapy), migawka (wykopy wracają) i wipe. Klient obecny od
+## początku dostaje operacje kopania przez RPC na żywo, dołączający po wykopach — gęstość stref z `send_walls_to`.
+func _dig_net_host() -> void:
+	var z1: Node2D = level.get_node_or_null("DigZone1")
+	var z2: Node2D = level.get_node_or_null("DigZone2")
+	if z1 == null or z2 == null:
+		print("[DESTRUCTION-NET] host: brak stref wydobycia na mapie %s" % level.map_id)
+		return
+	var space := z1.get_world_2d().direct_space_state
+	var top := float(z1.r0) * 16.0
+	z1.melee_dig(space, Vector2(104.0, top - 9.0), Vector2.DOWN, 24.0, DigMats.Tool.PICK)
+	z1.melee_dig(space, Vector2(104.0, top + 3.0), Vector2.DOWN, 24.0, DigMats.Tool.PICK)
+	z1.melee_dig(space, Vector2(104.0, top + 3.0), Vector2.RIGHT, 24.0, DigMats.Tool.PICK)
+	Combat.explode(get_tree(), Vector2(35.0 * 16.0, 13.0 * 16.0), 48.0, 50.0, 1, Weapons.KILOF)
+	var t0 := Time.get_ticks_msec()
+	while multiplayer.get_peers().size() < 2 and Time.get_ticks_msec() - t0 < 30000:
+		await get_tree().create_timer(0.25).timeout
+	print("[DESTRUCTION-NET] host peers=%d" % multiplayer.get_peers().size())
+	await get_tree().create_timer(3.0).timeout
+	level.save_breakables_checkpoint()
+	level.reset_breakables()
+	await get_tree().create_timer(3.0).timeout
+	level.reset_breakables(level.breakables_checkpoint())
+	await get_tree().create_timer(3.0).timeout
 	level.reset_breakables()
 	await get_tree().create_timer(2.0).timeout
 	get_tree().quit()
@@ -799,6 +834,8 @@ func _handle_cmdline() -> void:
 			_destruction_net(float(sa.substr("--destructionnet=".length())))
 		if sa.begins_with("--cavenet="):                   # test sieci: zawał na mapie testowej t_mine — stempel, strefa, migawka i wipe u wszystkich
 			_destruction_net(float(sa.substr("--cavenet=".length())), "t_mine")
+		if sa.begins_with("--dignet="):                    # test sieci: strefy wydobycia na mapie testowej t_dig — wykopy, wybuch, migawka i wipe u wszystkich
+			_destruction_net(float(sa.substr("--dignet=".length())), "t_dig")
 		if sa.begins_with("--batterynet="):                # test sieci: bateria 4,5 V — klient słaby, serwer daje mu baterię z ziemi
 			get_tree().create_timer(float(sa.substr("--batterynet=".length()))).timeout.connect(_battery_net_step)
 	var autoquit := -1.0
@@ -813,6 +850,7 @@ func _handle_cmdline() -> void:
 	var destructiontest := false
 	var fogshadowtest := false
 	var fxtest := false
+	var digtest := false
 	var resulttest := false
 	var rangetest := false
 	var range3d := false
@@ -888,7 +926,7 @@ func _handle_cmdline() -> void:
 			SessionLog.enabled = true
 			SessionLog.dir = a.substr("--sessionlog=".length())
 		if a == "--nobot":
-			Settings.ai_companion = false                 # dev / testy: gra bez AI towarzysza, bez zapisu ustawień (NOBOT_PLAN.md); przed --host
+			Settings.override_ai_companion(false)         # dev / testy: gra bez AI towarzysza, bez zapisu ustawień (NOBOT_PLAN.md); przed --host
 		if a.begins_with("--fakebuild="):                 # dev: inna wersja przy łączeniu (test sprawdzenia wersji, tools/test_net_session.sh)
 			_fake_build = a.substr("--fakebuild=".length())
 		if a.begins_with("--port="):
@@ -944,6 +982,8 @@ func _handle_cmdline() -> void:
 			fogshadowtest = true
 		elif a == "--fxtest":
 			fxtest = true
+		elif a == "--digtest":
+			digtest = true
 		elif a == "--resulttest":
 			resulttest = true
 		elif a == "--rangetest":
@@ -1127,6 +1167,11 @@ func _handle_cmdline() -> void:
 		fxt.name = "FxTest"
 		add_child(fxt)
 		fxt.run(self)
+	if digtest:
+		var dgt := DIG_TEST.new()
+		dgt.name = "DigTest"
+		add_child(dgt)
+		dgt.run(self)
 	if enemytest:
 		var et := ENEMY_TEST.new()
 		et.name = "EnemyTest"
@@ -4145,6 +4190,49 @@ func _ui_fit_test() -> void:
 	var fails: int = await load("res://tools/test_ui_fit.gd").new().run(self)
 	get_tree().quit(1 if fails > 0 else 0)
 
+## Strefy wydobycia mapy (DESTRUCTION_PLAN.md D5) w --maptest: prostokąt w mapie, w środku tylko grunt i tło (bez znaczników), materiał
+## z tabeli, i reguła anty-pułapki — strefa głębsza niż 3 kafle pod najniższym wejściem musi mieć co najmniej 3 kafle szerokości, żeby
+## przy każdej ścianie dołu była kopalna ściana na stopnie w górę (S2: z dołu 60 px wychodzi się 4 ciosami po skosie). To, że strefa nie leży
+## na drodze do celu, sprawdza zwykła osiągalność niżej: na starcie kafle stref są dla nawigacji bryłą.
+func _map_test_dig_zones(rows: Array) -> Array:
+	var bad: Array = []
+	var w := (rows[0] as String).length()
+	var zones: Array = level.dig_zones()
+	if zones.size() != (level._dig_defs as Array).size():
+		bad.append("stref w danych %d, węzłów %d" % [(level._dig_defs as Array).size(), zones.size()])
+	for z in level._dig_defs:
+		var c0 := int(z[0])
+		var r0 := int(z[1])
+		var c1 := int(z[2])
+		var r1 := int(z[3])
+		var tag := "[%d, %d, %d, %d]" % [c0, r0, c1, r1]
+		if c0 < 1 or r0 < 1 or c1 >= w - 1 or r1 >= rows.size() - 1 or c1 < c0 or r1 < r0:
+			bad.append("%s poza mapą albo pusty (brzeg mapy zostaje bryłą)" % tag)
+			continue
+		if z.size() < 6 or not DigMats.MATS.has(String(z[4])):
+			bad.append("%s bez materiału z dig_materials.gd albo bez ziarna" % tag)
+		var lowest := -1                                   # najniższe wejście: kafel gruntu strefy z powietrzem mapy obok (nad nim albo z boku)
+		for r in range(r0, r1 + 1):
+			for c in range(c0, c1 + 1):
+				var ch: String = (rows[r] as String)[c]
+				var solid: bool = level.KINDS.has(ch) and level.KINDS[ch][2] == 0
+				if not solid and ch != "." and ch != "b":
+					bad.append("%s: znacznik „%s” w strefie (%d, %d)" % [tag, ch, c, r])
+				if not solid:
+					continue
+				for o in [Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0)]:
+					var q: Vector2i = Vector2i(c, r) + o
+					if q.x >= c0 and q.x <= c1 and q.y >= r0 and q.y <= r1:
+						continue
+					var qc: String = (rows[q.y] as String)[q.x]
+					if not (level.KINDS.has(qc) and level.KINDS[qc][2] == 0):
+						lowest = maxi(lowest, r)
+		if lowest < 0:
+			bad.append("%s bez wejścia (żaden kafel nie styka się z powietrzem mapy)" % tag)
+		elif r1 - lowest > 3 and c1 - c0 + 1 < 3:
+			bad.append("%s: %d kafli pod najniższym wejściem przy szerokości %d — pułapka (reguła anty-pułapki: do 3 kafli albo szerokość ≥ 3)" % [tag, r1 - lowest, c1 - c0 + 1])
+	return bad
+
 func _map_test() -> void:
 	var fails := 0
 	var original: String = level.map_id
@@ -4160,6 +4248,10 @@ func _map_test() -> void:
 		print("[MAPTEST] %s %s: %d x %d, kształt %s" % [id, level.title, w, rows.size(), "OK" if shape_ok else "BŁĄD (różne szerokości wierszy)"])
 		if not shape_ok:
 			fails += 1
+		var dig_bad := _map_test_dig_zones(rows)
+		for msg in dig_bad:
+			print("[MAPTEST] %s: BŁĄD strefy wydobycia: %s" % [id, msg])
+		fails += dig_bad.size()
 		# lokalna przebudowa nawigacji (nav.gd `rebuild_region`) daje ten sam graf co pełna budowa — losowe bryły i rozbite ściany
 		var t_full := Time.get_ticks_usec()
 		level.nav_diff_vs_full()

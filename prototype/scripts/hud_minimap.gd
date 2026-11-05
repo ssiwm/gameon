@@ -105,10 +105,13 @@ func _sync_level(delta: float) -> void:
 	if _scan_t > 0.0:
 		return
 	_scan_t = SCAN_S
-	if not _same_rows(lvl._map):
+	if not _same_rows(lvl._map) or (lvl._dig_cells as Dictionary).size() != _dig_n:
+		_dig_n = (lvl._dig_cells as Dictionary).size()     # strefa wydobycia (D5): wykopany kafel znika z rzutu
 		_build(false)
 	elif (lvl._wall_cells as Dictionary).size() != _walls.size() or (lvl._wall_cells as Dictionary).hash() != _walls.hash():
 		_repaint_walls(lvl._wall_cells)
+
+var _dig_n := -1                         ## kafli skały w strefach wydobycia przy ostatnim malowaniu
 
 func _same_rows(rows: Array) -> bool:
 	if rows.size() != _rows_cache.size():
@@ -123,6 +126,7 @@ func _build(reset_fog: bool) -> void:
 	var rows: Array = _lvl._map
 	_rows_cache = rows.duplicate()
 	_walls = (_lvl._wall_cells as Dictionary).duplicate()
+	_dig_n = (_lvl._dig_cells as Dictionary).size()
 	var cols: int = (rows[0] as String).length()
 	var nrows := rows.size()
 	var resized := cols != _cols or nrows != _nrows

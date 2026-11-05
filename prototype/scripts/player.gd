@@ -206,6 +206,7 @@ var _invuln := 0.0
 var _kick := 0.0
 var _ff_cd := 0.0
 var _coyote := 0.0
+var _wedge_y := 0.0                  ## y z poprzedniej klatki (wykrywanie zaklinowania w szczelinie)
 var _drop_t := 0.0
 var _run_vx := 0.0              ## składowa ruchu z wejścia (bez odrzutu)
 ## Skala ciała: rozciąganie przy wybiciu, przysiad przy lądowaniu (każdy peer
@@ -802,6 +803,17 @@ func _physics_process(delta: float) -> void:
 		return
 	_local_brain(delta)
 
+## Czy postać wisi rogami w szczelinie „V” (ostatni move_and_slide: ściany po obu stronach, obie nachylone do góry).
+func _in_wedge() -> bool:
+	var l := false
+	var r := false
+	for k in get_slide_collision_count():
+		var n := get_slide_collision(k).get_normal()
+		if n.y < -0.3:
+			l = l or n.x > 0.3
+			r = r or n.x < -0.3
+	return l and r
+
 ## Strzelnica FPP: postać stoi w miejscu, celuje tam, gdzie patrzy kamera (pochylenie), broń działa jak zwykle (podrzut, przeładowania,
 ## zacięcia); ruch, skok i celowanie 2D należą do fp_mode.gd.
 func _range_brain(delta: float) -> void:
@@ -873,10 +885,14 @@ func _local_brain(delta: float) -> void:
 
 	# --- skok: coyote time + jump buffer + zmienna wysokość (GDD §23)
 	var on_floor := is_on_floor()
-	if on_floor:
+	# zaklinowanie: prostokąt postaci wisi rogami na dwóch stromych ścianach szczeliny (wykop w strefie wydobycia, D5) — leci w dół,
+	# a stoi w miejscu i nie jest „na ziemi”, więc nie mógłby skoczyć. Liczy się jak ziemia.
+	# Tylko „V”: dwie kolizje z normalnymi w przeciwne strony i w górę (nie zwykła ściana w szczycie skoku). Grawitacja zostaje.
+	if on_floor or (velocity.y > 0.0 and absf(global_position.y - _wedge_y) < 0.05 and _in_wedge()):
 		_coyote = COYOTE_TIME
 	else:
 		_coyote = maxf(0.0, _coyote - delta)
+	_wedge_y = global_position.y
 	_jump_buf = maxf(0.0, _jump_buf - delta)
 	if Input.is_action_just_pressed("jump"):
 		_jump_buf = JUMP_BUFFER

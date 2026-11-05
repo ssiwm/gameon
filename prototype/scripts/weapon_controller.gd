@@ -17,6 +17,7 @@ extends Node
 const Weapons := preload("res://scripts/weapons.gd")
 const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Combat := preload("res://scripts/combat.gd")
+const DigMats := preload("res://scripts/dig_materials.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Projectile := preload("res://scripts/projectile.gd")
@@ -1622,11 +1623,17 @@ func melee_for_target() -> int:
 	var have := "pick" if Weapons.def(melee_id).breaks_walls else "blade"
 	var space := player.get_world_2d().direct_space_state
 	var wall := false
-	for t in Combat.in_cone(get_tree(), space, player.global_position + Vector2(0, -9), player.aim_dir, td.reach, td.arc_deg):
+	var origin := player.global_position + Vector2(0, -9)
+	for t in Combat.in_cone(get_tree(), space, origin, player.aim_dir, td.reach, td.arc_deg):
 		if not (t as Object).has_method("mat_def"):
 			return melee_id                                    # wróg (albo rekwizyt) w zasięgu: szybka broń biała, nie wolny kilof
 		var br: Array = t.call("mat_def")["breaks"]
 		wall = wall or (br.has("pick") and not br.has(have))
+	if not wall and have == "blade":
+		for z in get_tree().get_nodes_in_group("dig_zones"):   # strefa wydobycia (D5): skała i żyła tylko kilofem; ziemię broń biała bierze sama
+			if bool((z.cut_needs(origin, player.aim_dir) as Array)[1]):
+				wall = true
+				break
 	return Weapons.TOOL if wall else melee_id
 
 func _melee_resolve() -> void:
@@ -1676,6 +1683,16 @@ func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int, e: float
 		var res := Combat.apply(t, info)
 		Combat.report(info, res)
 		hit_any = hit_any or bool(res["hit"])
+	if not hit_any:
+		# strefa wydobycia (dig_zone.gd, D5): kilof kopie każdy materiał, broń biała tylko ziemię i żwir (wolniej i ciszej)
+		var tool: int = DigMats.Tool.PICK if d.breaks_walls else DigMats.Tool.BLADE
+		for z in get_tree().get_nodes_in_group("dig_zones"):
+			var dug: Dictionary = z.melee_dig(space, origin, dir, d.reach, tool)
+			if not dug.is_empty():
+				var hard: bool = String(DigMats.MATS[String(dug["mat"])]["hit"]) == "world"
+				Arsenal.broadcast_hit(dug["at"], -dir, Arsenal.Mat.WORLD if hard else Arsenal.Mat.DUST, false, tool == DigMats.Tool.PICK)
+				hit_any = true
+				break
 	if not hit_any:
 		var q := PhysicsRayQueryParameters2D.create(origin, origin + dir * d.reach, Combat.LAYER_WORLD)
 		var wall := space.intersect_ray(q)

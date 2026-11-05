@@ -513,6 +513,7 @@ func _tick(delta: float) -> void:
 	tp = _tp("projectiles", tp)
 	_sync_props()
 	tp = _tp("props", tp)
+	_sync_dig_zones()
 	_sync_items()
 	tp = _tp("items", tp)
 	if warm == 1:
@@ -7299,6 +7300,61 @@ func _make_item(sp: ItemsHd.ItemMark) -> void:
 			(c as Sprite2D).visible = false
 			hidden.append(c)
 	_items[sp.get_instance_id()] = [sp, mi, m, -1.25 if ITEM_BACK.has(name) else -0.12, hidden, false]
+
+# ---------------------------------------------------------------- strefy wydobycia (dig_zone.gd, DESTRUCTION_PLAN.md D5)
+
+var _dig3d := {}                          ## id strefy → {"zone", "mis": [MeshInstance3D na fragment], "ver": PackedInt32Array}
+var _dig_mat: StandardMaterial3D
+const DIG_MESH_PER_FRAME := 4             ## siatek fragmentów strefy na klatkę (1,0–1,4 ms każda); wybuch i reset kończą się w następnych klatkach
+
+## Skała stref wydobycia: siatka z konturu strefy (przód + ściany wykopu do tyłu bryły), przebudowywana tylko dla fragmentów, których wersja
+## się zmieniła (najwyżej DIG_MESH_PER_FRAME na klatkę); za strefą tylna ściana wykopu. Materiał jak grunt mapy (`#`, triplanarny w metrach
+## świata — bez szwów z sąsiednimi kaflami), z kolorem wierzchołków: odcień materiału komórki, ściany wykopu ciemnieją w głąb.
+func _sync_dig_zones() -> void:
+	if _geo_key == "":
+		return
+	var budget := DIG_MESH_PER_FRAME
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		var id: int = z.get_instance_id()
+		var st: Dictionary = _dig3d.get(id, {})
+		if st.is_empty() or (st["mis"] as Array).is_empty() or not is_instance_valid((st["mis"] as Array)[0]):
+			if _dig_mat == null:
+				_dig_mat = (Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")).duplicate() as StandardMaterial3D
+				_dig_mat.vertex_color_use_as_albedo = true
+			var mis: Array = []
+			for ci in int(z.chunk_count()):
+				var mi := MeshInstance3D.new()
+				mi.name = "DigChunk"
+				mi.material_override = _dig_mat
+				mi.layers = LAYER_WORLD
+				_geo.add_child(mi)
+				mis.append(mi)
+			var rc: Rect2 = z.rect_px()
+			var back := MeshInstance3D.new()
+			back.name = "DigBack"
+			var bm := BoxMesh.new()
+			bm.size = Vector3(rc.size.x * PX, rc.size.y * PX, 0.3)
+			back.mesh = bm
+			back.material_override = Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone")
+			back.layers = LAYER_WORLD
+			back.position = Level3D.px_to_m(rc.get_center()) + Vector3(0.0, 0.0, -Level3D.DEPTH_BACK + 0.15)
+			_geo.add_child(back)
+			var ver := PackedInt32Array()
+			ver.resize(mis.size())
+			ver.fill(-1)
+			st = {"zone": z, "mis": mis, "ver": ver}
+			_dig3d[id] = st
+		var vers: PackedInt32Array = st["ver"]
+		for ci in vers.size():
+			if budget > 0 and vers[ci] != int(z.chunk_ver[ci]):
+				budget -= 1
+				vers[ci] = int(z.chunk_ver[ci])
+				((st["mis"] as Array)[ci] as MeshInstance3D).mesh = z.chunk_mesh(ci, Level3D.PX, Level3D.DEPTH_FRONT, -Level3D.DEPTH_BACK)
+		st["ver"] = vers
+	for id in _dig3d.keys():
+		var z = (_dig3d[id] as Dictionary)["zone"]
+		if not is_instance_valid(z) or (z as Node).is_queued_for_deletion():
+			_dig3d.erase(id)
 
 # ---------------------------------------------------------------- obiekty fizyczne (skrzynie, beczki)
 

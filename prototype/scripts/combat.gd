@@ -318,6 +318,8 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 			space = (sb as Node2D).get_world_2d().direct_space_state
 		if clear_line(space, pos, qs):                            # stempel (D3): ściana zasłania go przed wybuchem
 			apply(sb, make_info(w, damage, qs, (qs - pos).normalized() if qs.distance_to(pos) > 0.5 else Vector2.UP, shooter, "blast"))
+	for dz in tree.get_nodes_in_group("dig_zones"):
+		dz.blast_dig(pos, radius)                                 # strefa wydobycia (D5): okrągła wyrwa, każdy materiał
 	for ml in tree.get_nodes_in_group("mission_lamps"):
 		if ml.lit and (ml.bulb_pos() as Vector2).distance_to(pos) <= radius:
 			apply(ml, make_info(w, damage, ml.bulb_pos(), Vector2.UP, shooter, "blast"))   # lampa misji: wybuch ją tłucze (lamp.gd)
