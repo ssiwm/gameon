@@ -32,6 +32,7 @@ const FUN_TEST := preload("res://scripts/fun_test.gd")
 const BATTERY_TEST := preload("res://scripts/battery_test.gd")
 const DESTRUCTION_TEST := preload("res://scripts/destruction_test.gd")
 const FOG_SHADOW_TEST := preload("res://scripts/fog_shadow_test.gd")
+const FX_TEST := preload("res://scripts/fx_test.gd")
 const RESULT_TEST := preload("res://scripts/result_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
 const FP_RANGE := preload("res://scripts/range3d/fp_mode.gd")
@@ -811,6 +812,7 @@ func _handle_cmdline() -> void:
 	var batterytest := false
 	var destructiontest := false
 	var fogshadowtest := false
+	var fxtest := false
 	var resulttest := false
 	var rangetest := false
 	var range3d := false
@@ -940,6 +942,8 @@ func _handle_cmdline() -> void:
 			destructiontest = true
 		elif a == "--fogshadowtest":
 			fogshadowtest = true
+		elif a == "--fxtest":
+			fxtest = true
 		elif a == "--resulttest":
 			resulttest = true
 		elif a == "--rangetest":
@@ -1118,6 +1122,11 @@ func _handle_cmdline() -> void:
 		fst.name = "FogShadowTest"
 		add_child(fst)
 		fst.run(self)
+	if fxtest:
+		var fxt := FX_TEST.new()
+		fxt.name = "FxTest"
+		add_child(fxt)
+		fxt.run(self)
 	if enemytest:
 		var et := ENEMY_TEST.new()
 		et.name = "EnemyTest"

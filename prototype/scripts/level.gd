@@ -1753,6 +1753,7 @@ func _cave_rpc(id: String, wall_name: String, fx: bool) -> void:
 		var p := Vector2(rc.position.x + randf() * rc.size.x, rc.position.y + randf() * rc.size.y * 0.5)
 		Vfx.chip(self, p, Vector2(randf_range(-90.0, 90.0), randf_range(-40.0, 40.0)), 4.0, Color(0.42, 0.36, 0.3), "rubble", 0.1, 3.0)
 	Vfx.dust(self, rc.get_center(), 3.5)
+	Vfx.quake(rc.get_center(), maxf(rc.size.x, 48.0), 1.5)          # pył ze stropu obok i rozbujane lampy (D4, tylko obraz)
 	Audio.play_at("collapse", rc.get_center(), Audio.BUS_WORLD, 0.0, 1.1)
 	for pl in get_tree().get_nodes_in_group("players"):       # wstrząs u gracza tego peera, jeśli stoi blisko
 		if int(pl.get("player_id")) == NoiseMgr.local_id():

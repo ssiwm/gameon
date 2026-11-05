@@ -592,6 +592,7 @@ func _tick(delta: float) -> void:
 	_sync_lights()
 	_atlas_warm_sync()
 	tp = _tp("lights", tp)
+	_sway_lamps(delta)
 
 ## `_atlas_warm` znika po ATLAS_WARM_FRAMES klatkach, w których kamera świata ma już środowisko (mgła powstała przy istniejącym atlasie).
 func _atlas_warm_sync() -> void:
@@ -829,6 +830,7 @@ func _sync_geometry() -> void:
 	_span_map = ""
 	for ch in _geo.get_children():
 		ch.queue_free()
+	_warm_destruction("hitfx")                            # odpryski i ślady po kulach (D4) pod planszą, nie przy pierwszym strzale
 	if _geo_alt != null and is_instance_valid(_geo_alt) and key == _geo_alt_key:
 		# zawał (finał 1.1): gotowa geometria „po zawale” przechodzi do sceny; środowisko i kamery zostają
 		for ch in _geo_alt.get_children():
@@ -1575,13 +1577,68 @@ func _sync_projectiles() -> void:
 		px.position = Level3D.px_to_m(s2.global_position) + Vector3(0.0, -drop, 0.3)
 		px.rotation = Vector3(0.0, 0.0, -s2.global_rotation)
 
+## Pula emiterów obłoczków (DESTRUCTION_PLAN.md D4): do 1.7.496 każde trafienie tworzyło nowy `CPUParticles3D` (węzeł, siatka, bufor
+## instancji, minutnik do zwolnienia) — przy serii z M-83 w ścianę kilkadziesiąt węzłów na sekundę. Teraz emiter wraca do puli, gdy jego
+## cząstki zgasną, a następny obłoczek przestawia mu parametry i `restart()`. Ponad `BURST_POOL` naraz najstarszy jest urywany.
+const BURST_POOL := 96
+var _burst_busy: Array = []                 ## [CPUParticles3D, koniec w ms] — w kolejności użycia
+var _burst_free: Array = []                 ## zgaszone emitery gotowe do ponownego użycia
+static var stat_burst_new := 0              ## test / dev: emitery utworzone od startu
+static var stat_burst_reuse := 0            ## …i obłoczki puszczone na emiterze z puli
+static var stat_burst_seq := 0              ## numer ostatniego obłoczka (meta „seq” emitera — test rozpoznaje po nim świeże obłoczki)
+var _burst_quads := {}                      ## rodzaj siatki → wspólna siatka (billboard / bryłka / drzazga)
+var _fade_ramp: Gradient                    ## zanikanie pyłu (`fade`): pełny kolor → przezroczysty
+var _chip_curve: Curve                      ## bryłki i drzazgi maleją pod koniec życia zamiast znikać naraz
+
+## Emiter z puli (albo nowy, gdy wszystkie są zajęte i jest jeszcze miejsce).
+func _burst_node() -> CPUParticles3D:
+	var now := Time.get_ticks_msec()
+	var i := 0
+	while i < _burst_busy.size():
+		var e: Array = _burst_busy[i]
+		if not is_instance_valid(e[0]):
+			_burst_busy.remove_at(i)
+		elif int(e[1]) <= now:
+			(e[0] as CPUParticles3D).visible = false
+			_burst_free.append(e[0])
+			_burst_busy.remove_at(i)
+		else:
+			i += 1
+	while not _burst_free.is_empty():
+		var fp = _burst_free.pop_back()
+		if is_instance_valid(fp):
+			stat_burst_reuse += 1
+			return fp
+	if _burst_busy.size() >= BURST_POOL:
+		var old: Array = _burst_busy.pop_front()            # urwany najstarszy obłoczek
+		stat_burst_reuse += 1
+		return old[0]
+	var p := CPUParticles3D.new()
+	p.one_shot = true
+	p.layers = LAYER_ACTORS
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.emitting = false
+	_world.add_child(p)
+	stat_burst_new += 1
+	return p
+
+## Liczba emiterów obłoczków w scenie (test: pula nie rośnie z liczbą trafień).
+func burst_nodes() -> int:
+	return _burst_busy.size() + _burst_free.size()
+
 ## Wołane z `Vfx.burst_fx`: jednorazowy wybuch cząsteczek w scenie (billboardy, rozrzut w płaszczyźnie gry); opis w `cfg` — patrz vfx.gd.
+## Poza polami z vfx.gd: `mesh` — "chip" (kanciasta bryłka) / "splinter" (drzazga): cieniowane bryły koziołkujące w płaszczyźnie gry,
+## `smin`/`smax` to wtedy mnożnik ich rozmiaru; `fade` — kolor gaśnie do przezroczystego przez całe życie (pył); `box` — pół wymiarów
+## prostokąta emisji w px (pył z pasa stropu).
 func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
+	if _world == null or not is_instance_valid(_world):
+		return
 	var life := float(cfg.get("life", 0.5))
 	var dir: Vector2 = cfg.get("dir", Vector2.UP)
 	var grav: Vector2 = cfg.get("gravity", Vector2(0.0, 500.0))
-	var p := CPUParticles3D.new()
-	p.one_shot = true
+	var kind := String(cfg.get("mesh", ""))
+	var solid := kind == "chip" or kind == "splinter"
+	var p := _burst_node()
 	p.explosiveness = float(cfg.get("explosiveness", 0.95))
 	p.amount = maxi(1, int(cfg.get("amount", 8)))
 	p.lifetime = life
@@ -1590,25 +1647,78 @@ func spawn_burst(pos: Vector2, cfg: Dictionary) -> void:
 	p.initial_velocity_min = float(cfg.get("vmin", 20.0)) * PX
 	p.initial_velocity_max = float(cfg.get("vmax", 60.0)) * PX
 	p.gravity = Vector3(grav.x * PX, -grav.y * PX, 0.0)
-	p.scale_amount_min = float(cfg.get("smin", 1.0)) * Vfx.BLOB_SCALE
-	p.scale_amount_max = float(cfg.get("smax", 1.0)) * Vfx.BLOB_SCALE
+	var sk := 1.0 if solid else Vfx.BLOB_SCALE
+	p.scale_amount_min = float(cfg.get("smin", 1.0)) * sk
+	p.scale_amount_max = float(cfg.get("smax", 1.0)) * sk
 	p.color = cfg.get("color", Color.WHITE)
-	p.layers = LAYER_ACTORS
-	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var q := QuadMesh.new()
-	q.size = Vector2(8.0, 8.0) * PX
+	p.particle_flag_disable_z = solid
+	p.angle_min = 0.0
+	p.angle_max = 360.0 if solid else 0.0
+	p.angular_velocity_min = -900.0 if solid else 0.0
+	p.angular_velocity_max = 900.0 if solid else 0.0
+	p.scale_amount_curve = _chip_scale_curve() if solid else null
+	p.color_ramp = _fade_gradient() if bool(cfg.get("fade", false)) else null
+	if cfg.has("box"):
+		var bx: Vector2 = cfg["box"]
+		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		p.emission_box_extents = Vector3(bx.x * PX, bx.y * PX, 0.25)
+	else:
+		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_POINT
 	if cfg.has("floor_px"):                  # krople cieczy (`Vfx.splash`): nikną na tafli w `floor_px` zamiast spadać metrami pod grunt
 		var fm := _drop_material(true, bool(cfg.get("shaded", false)), Level3D.px_to_m(Vector2(0.0, float(cfg["floor_px"]))).y - Level3D.LIQUID_SINK)
 		fm.set_shader_parameter("tex", Vfx.blob_texture())
 		fm.set_shader_parameter("roughness", 1.0)        # jak domyślny StandardMaterial3D pozostałych wybuchów
+		var q := QuadMesh.new()
+		q.size = Vector2(8.0, 8.0) * PX
 		q.material = fm
+		p.mesh = q
 	else:
-		q.material = _burst_material(cfg)
-	p.mesh = q
+		p.mesh = _burst_mesh(kind if solid else ("shaded" if bool(cfg.get("shaded", false)) else "flat"), cfg)
 	p.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, 0.2)
-	_world.add_child(p)
-	p.emitting = true
-	get_tree().create_timer(life + 0.6).timeout.connect(p.queue_free)
+	p.visible = true
+	stat_burst_seq += 1
+	p.set_meta("seq", stat_burst_seq)
+	p.restart()
+	# emisja trwa (1 − explosiveness) życia, każda cząstka żyje `life`
+	_burst_busy.append([p, Time.get_ticks_msec() + int((life * (2.0 - p.explosiveness) + 0.1) * 1000.0)])
+
+## Wspólna siatka obłoczka danego rodzaju: billboard z miękką plamką (cieniowany / nie) albo bryłka / drzazga.
+func _burst_mesh(kind: String, cfg: Dictionary) -> Mesh:
+	if _burst_quads.has(kind):
+		return _burst_quads[kind]
+	var m: Mesh
+	if kind == "chip" or kind == "splinter":
+		var bm := BoxMesh.new()
+		# przesadzone jak reszta obłoczków (plamka ok. 10–20 cm): prawdziwy okruch 2–3 cm z kamery gry to jeden piksel
+		bm.size = Vector3(0.07, 0.05, 0.06) if kind == "chip" else Vector3(0.16, 0.025, 0.03)
+		var mat := StandardMaterial3D.new()
+		mat.vertex_color_use_as_albedo = true
+		mat.roughness = 0.92
+		bm.material = mat
+		m = bm
+	else:
+		var q := QuadMesh.new()
+		q.size = Vector2(8.0, 8.0) * PX
+		q.material = _burst_material(cfg)
+		m = q
+	_burst_quads[kind] = m
+	return m
+
+func _fade_gradient() -> Gradient:
+	if _fade_ramp == null:
+		_fade_ramp = Gradient.new()
+		_fade_ramp.set_color(0, Color(1, 1, 1, 0.0))
+		_fade_ramp.add_point(0.1, Color(1, 1, 1, 1.0))
+		_fade_ramp.set_color(_fade_ramp.get_point_count() - 1, Color(1, 1, 1, 0.0))
+	return _fade_ramp
+
+func _chip_scale_curve() -> Curve:
+	if _chip_curve == null:
+		_chip_curve = Curve.new()
+		_chip_curve.add_point(Vector2(0.0, 1.0))
+		_chip_curve.add_point(Vector2(0.65, 1.0))
+		_chip_curve.add_point(Vector2(1.0, 0.0))
+	return _chip_curve
 
 var _burst_mats := {}                       ## cieniowany? → wspólny materiał cząstek (`_burst_material`)
 
@@ -3905,7 +4015,6 @@ var _destr_warm_key := ""
 ## i w `MultiMesh`) i gruz narysowane raz tuż przed kamerą świata, w rozmiarze kilku milimetrów — potoki GPU ich materiałów kompilują
 ## się pod planszą wczytywania. Raz na mapę i materiał; znika z planszą (bez planszy — po kilku klatkach).
 func _warm_destruction(mat_id: String) -> void:
-	var meshes := _fracture_meshes(mat_id)
 	var key := "%s|%s" % [_geo_key, mat_id]
 	if _destr_warm_key.contains(key):
 		return
@@ -3917,6 +4026,32 @@ func _warm_destruction(mat_id: String) -> void:
 		_cam_a.add_child(_destr_warm)
 		_destr_warm_frames = 0
 	var tiny := Basis.from_scale(Vector3.ONE * 0.004)
+	if mat_id == "hitfx":
+		# D4: bryłki i drzazgi trafień (cieniowany materiał z kolorem wierzchołków), cieniowany obłoczek pyłu i tekstury śladów po kulach
+		# (liczone w GDScript, ok. 2–4 ms każda; w atlasie dekali) — inaczej pierwszy strzał w daną powierzchnię przycina
+		for kind in ["chip", "splinter", "shaded"]:               # ten sam rodzaj węzła co obłoczek (instancje z kolorem), nie zwykła siatka
+			var wp := CPUParticles3D.new()
+			wp.mesh = _burst_mesh(kind, {"shaded": true})
+			wp.amount = 1
+			wp.lifetime = 0.5
+			wp.initial_velocity_min = 0.0
+			wp.initial_velocity_max = 0.0
+			wp.gravity = Vector3.ZERO
+			wp.scale_amount_min = 0.05
+			wp.scale_amount_max = 0.05
+			wp.particle_flag_disable_z = kind != "shaded"
+			wp.color_ramp = _fade_gradient() if kind == "shaded" else null
+			wp.scale_amount_curve = _chip_scale_curve() if kind != "shaded" else null
+			wp.layers = LAYER_ACTORS
+			wp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_destr_warm.add_child(wp)
+		for srf in ["concrete", "dirt", "wood", "metal"]:
+			var dcl := Decal.new()
+			dcl.texture_albedo = _hole_tex_for(srf)
+			dcl.size = Vector3(0.002, 0.002, 0.002)
+			_destr_warm.add_child(dcl)
+		return
+	var meshes := _fracture_meshes(mat_id)
 	if not meshes.is_empty():
 		var mi := MeshInstance3D.new()
 		mi.mesh = meshes[0]
@@ -4598,6 +4733,60 @@ static func _make_mark_tex(scorch: bool) -> Texture2D:
 			img.set_pixel(x, y, c)
 	return ImageTexture.create_from_image(img)
 
+const HOLE_SIZE := {"dirt": 1.5, "snow": 1.6, "metal": 0.7, "wood": 0.9}   ## mnożnik średnicy śladu po kuli wg powierzchni
+static var _hole_texs := {}                 ## rodzaj śladu → tekstura (`_hole_tex_for`)
+
+## Tekstura śladu po kuli dla powierzchni kafla (surfaces.gd); beton i nieznane — dawny krater (`_make_mark_tex`).
+static func _hole_tex_for(surface: String) -> Texture2D:
+	var kind := surface if surface in ["dirt", "wood", "metal", "snow"] else "concrete"
+	if kind == "snow":
+		kind = "dirt"
+	if _hole_texs.has(kind):
+		return _hole_texs[kind]
+	var tex: Texture2D
+	if kind == "concrete":
+		if _hole_tex == null:
+			_hole_tex = _make_mark_tex(false)
+		tex = _hole_tex
+	else:
+		var n := 64
+		var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash(kind)
+		var lobes := 24 if kind == "wood" else 16          # drewno: bardziej poszarpany brzeg
+		var bumps: Array = []
+		for i in lobes:
+			bumps.append(rng.randf_range(0.7, 1.3) if kind == "wood" else rng.randf_range(0.85, 1.15))
+		for y in n:
+			for x in n:
+				var v := Vector2((x + 0.5) / n - 0.5, (y + 0.5) / n - 0.5) * 2.0
+				var a := fposmod(v.angle() / TAU, 1.0) * float(lobes)
+				var j := lerpf(bumps[int(a) % lobes], bumps[(int(a) + 1) % lobes], a - floorf(a))
+				var rr := v.length() / j
+				var c := Color(0, 0, 0, 0)
+				match kind:
+					"dirt":                                   # wbita kula: miękka, ciemna, wilgotna plama bez jasnego pierścienia
+						if rr < 1.0:
+							c = Color(0.06, 0.045, 0.03, clampf(pow(1.0 - rr, 0.6) * 0.9, 0.0, 0.9) * (0.85 + 0.15 * rng.randf()))
+					"wood":                                   # dziura z jasnym przełomem drewna
+						if rr < 0.3:
+							c = Color(0.03, 0.02, 0.015, 1.0)
+						elif rr < 0.66:
+							c = Color(0.66, 0.5, 0.32, (1.0 - (rr - 0.3) / 0.36) * 0.8)
+						elif rr < 1.0:
+							c = Color(0.12, 0.08, 0.05, (1.0 - rr) / 0.34 * 0.3)
+					"metal":                                  # wgniecina: ciemny środek, goły metal, rdzawa obwódka
+						if rr < 0.22:
+							c = Color(0.05, 0.05, 0.055, 1.0)
+						elif rr < 0.5:
+							c = Color(0.78, 0.77, 0.74, 0.85 - (rr - 0.22) / 0.28 * 0.35)
+						elif rr < 1.0:
+							c = Color(0.32, 0.16, 0.07, (1.0 - rr) / 0.5 * 0.4)
+				img.set_pixel(x, y, c)
+		tex = ImageTexture.create_from_image(img)
+	_hole_texs[kind] = tex
+	return tex
+
 ## Decal 3D w punkcie `pos` (px) na powierzchni o normalnej `normal` (2D): rzut wzdłuż −normalnej, tylko na geometrię świata.
 func _mark(pos: Vector2, normal: Vector2, size_m: float, tex: Texture2D, depth: float) -> Decal:
 	var dcl := Decal.new()
@@ -4614,10 +4803,11 @@ func _mark(pos: Vector2, normal: Vector2, size_m: float, tex: Texture2D, depth: 
 	return dcl
 
 ## Wołane z `Vfx.impact`: ślad po kuli w murze, gruncie, blasze (ciecze bez śladu — Vfx tego pilnuje).
-func mark_hit(pos: Vector2, normal: Vector2, _surface: String) -> void:
-	if _hole_tex == null:
-		_hole_tex = _make_mark_tex(false)
-	_holes.append(_mark(pos, normal, HOLE_M * randf_range(0.8, 1.2), _hole_tex, 0.12))
+## Od D4 ślad zależy od powierzchni (`_hole_tex_for`): beton — krater z jasnym pyłem, ziemia — większa, miękka ciemna plama,
+## drewno — ciemna dziura z jasnym, poszarpanym przełomem, blacha — mała wgniecina z gołym metalem i rdzawą obwódką.
+func mark_hit(pos: Vector2, normal: Vector2, surface: String) -> void:
+	var tex := _hole_tex_for(surface)
+	_holes.append(_mark(pos, normal, HOLE_M * float(HOLE_SIZE.get(surface, 1.0)) * randf_range(0.8, 1.2), tex, 0.12))
 	while _holes.size() > MAX_HOLES:
 		var old = _holes.pop_front()
 		if is_instance_valid(old):
@@ -4923,6 +5113,140 @@ func mirror_explosion(pos: Vector2, radius: float) -> void:
 	_world.add_child(fire)
 	fire.emitting = true
 	get_tree().create_timer(1.4).timeout.connect(fire.queue_free)
+	ceiling_dust(pos, radius)
+	kick_lamps(pos, radius)
+
+# ---------------------------------------------------------------- D4: pył ze stropu, chwiejące się lampy (tylko obraz, bez stanu)
+
+const TILE_PX := Level3D.TILE        ## kafel mapy [px]
+const CEIL_DUST_ROWS := 7                ## strop najwyżej tyle kafli nad wybuchem; wyżej (hala, niebo) pył nie sypie
+const CEIL_DUST_SPAN := 5                ## najwyżej tyle kolumn w każdą stronę od wybuchu
+
+## Pył i kamyki ze stropu po wybuchu (DESTRUCTION_PLAN.md D4): spód litych kafli nad miejscem wybuchu (z mapy, jak pył finału kopalni) —
+## pod gołym niebem i w wysokich halach nic, spod dachu szopy z blachy tylko słabszy, rdzawy pył bez kamyków. Pył jest cieniowany (widać go
+## w latarce), sypie się z lekkim opóźnieniem po fali, kamyki lecą tylko do podłogi. `strength` — mnożnik (zawał stempla: 1,5).
+func ceiling_dust(pos: Vector2, radius: float, strength := 1.0) -> void:
+	if _rows.is_empty() or Settings.vfx_mult() <= 0.0 or _world == null:
+		return
+	var c0 := int(floor(pos.x / TILE_PX))
+	var r0 := int(floor(pos.y / TILE_PX))
+	var span := clampi(int(ceil(radius * 1.2 / TILE_PX)), 1, CEIL_DUST_SPAN)
+	var k := clampf(radius / 48.0, 0.5, 2.0) * strength
+	var runs: Array = []                                  # [pierwsza kolumna, ostatnia, wiersz pod stropem, wysokość do podłogi px, dach z blachy]
+	for c in range(c0 - span, c0 + span + 1):
+		var ceil_r := -1
+		var roof := false
+		for r in range(r0 - 1, r0 - CEIL_DUST_ROWS - 1, -1):
+			if r < 0:
+				break                                     # nad mapą jest niebo
+			var ch := Level3D._ch(_rows, c, r)
+			if Level3D.is_solid_ch(ch):
+				ceil_r = r + 1
+				roof = Level3D.is_roof_cell(_rows, c, r)
+				break
+		if ceil_r < 0:
+			continue
+		var floor_r := ceil_r
+		while floor_r < _rows.size() and floor_r < ceil_r + 12 and not Level3D.is_solid_ch(Level3D._ch(_rows, c, floor_r)) \
+				and not Level3D.is_platform_ch(Level3D._ch(_rows, c, floor_r)):
+			floor_r += 1
+		var h := float((floor_r - ceil_r) * TILE_PX)
+		if not runs.is_empty() and int(runs[-1][1]) == c - 1 and int(runs[-1][2]) == ceil_r and bool(runs[-1][4]) == roof:
+			runs[-1][1] = c
+			runs[-1][3] = minf(float(runs[-1][3]), h)
+		else:
+			runs.append([c, c, ceil_r, h, roof])
+	var q := Settings.vfx_mult()
+	for run in runs:
+		var cols := int(run[1]) - int(run[0]) + 1
+		var mid := Vector2((float(run[0]) + float(run[1]) + 1.0) * 0.5 * TILE_PX, float(run[2]) * TILE_PX + 1.0)
+		var near := 1.0 - clampf(absf(mid.x - pos.x) / (float(span + 1) * TILE_PX), 0.0, 0.85)
+		var hh := float(run[3])
+		var roof := bool(run[4])
+		var dust := {"color": Color(0.5, 0.36, 0.26, 0.4) if roof else Color(0.64, 0.61, 0.55, 0.5),
+			"amount": maxi(2, int(round((2.0 if roof else 5.0) * cols * k * near * q))), "life": clampf(hh / 28.0, 0.7, 2.0),
+			"dir": Vector2.DOWN, "spread": 14.0, "vmin": 3.0, "vmax": 14.0, "gravity": Vector2(0.0, 18.0), "smin": 1.4, "smax": 3.4,
+			"shaded": true, "fade": true, "explosiveness": 0.55, "box": Vector2(cols * TILE_PX * 0.5, 1.0)}
+		var g := 480.0
+		var pebbles := {"color": Color(0.36, 0.33, 0.3), "amount": maxi(1, int(round(1.5 * cols * k * near * q))), "life": clampf(sqrt(2.0 * hh / g) * 0.95, 0.25, 0.9),
+			"dir": Vector2.DOWN, "spread": 10.0, "vmin": 0.0, "vmax": 12.0, "gravity": Vector2(0.0, g), "smin": 0.5, "smax": 1.1,
+			"mesh": "chip", "explosiveness": 0.6, "box": Vector2(cols * TILE_PX * 0.5, 1.0)}
+		var delay := 0.12 + 0.25 * (1.0 - near)
+		get_tree().create_timer(delay).timeout.connect(_ceiling_dust_fire.bind(mid, dust, {} if roof else pebbles))
+
+## Opóźniona część `ceiling_dust` (metoda, nie lambda: sygnał minutnika odłącza się sam, gdy widok 3D zniknie w międzyczasie).
+func _ceiling_dust_fire(at: Vector2, dust: Dictionary, pebbles: Dictionary) -> void:
+	spawn_burst(at, dust)
+	if not pebbles.is_empty():
+		spawn_burst(at, pebbles)
+
+const LAMP_SWAY_W := 3.3                 ## częstość wahadła lampy na kablu ok. 0,9 m: √(g / l) [rad/s]
+const LAMP_SWAY_DAMP := 1.0              ## tłumienie wahań [1/s] — po granacie obok lampa buja się ok. 5–6 s
+const LAMP_SWAY_MAX := 0.55              ## największe wychylenie [rad] (ok. 30°)
+var _lamp_sway := {}                     ## id lampy → [lampa (Node2D), kąt, prędkość kątowa]
+
+## Wybuch (albo zawał) w pobliżu rozbuja wiszące lampy (`lamp.gd`: kryjówka `l` i lampy misji `I`): od strony wybuchu, słabiej z odległością.
+## Tylko obraz — model, poświata i światło 3D obracają się wokół punktu pod sufitem; światło 2D (Stalker, ćmy) zostaje na miejscu.
+func kick_lamps(pos: Vector2, radius: float, strength := 1.0) -> void:
+	if Settings.fx_mult() <= 0.0:
+		return
+	var reach := radius * 4.0 + 120.0
+	for n in get_tree().get_nodes_in_group("lamps"):
+		if not (n is Node2D) or (n as Node).is_queued_for_deletion():
+			continue
+		var d := (n as Node2D).global_position - pos
+		var dist := d.length()
+		if dist > reach:
+			continue
+		var kick := (1.0 - dist / reach) * clampf(radius / 48.0, 0.5, 2.0) * 1.6 * strength
+		var side := signf(d.x) if absf(d.x) > 1.0 else (1.0 if randf() < 0.5 else -1.0)
+		var id := (n as Node).get_instance_id()
+		var s: Array = _lamp_sway.get(id, [n, 0.0, 0.0])
+		s[2] = float(s[2]) + side * kick            # obrót wokół osi Z: dodatni kąt wychyla dół lampy w prawo — wybuch z lewej pcha ją w prawo
+		_lamp_sway[id] = s
+
+## Wahadło lamp (po `_sync_items`, `_sync_lamps` i `_sync_lights`, które co klatkę stawiają model, poświatę i światło w pozycji spoczynku).
+func _sway_lamps(delta: float) -> void:
+	if _lamp_sway.is_empty():
+		return
+	var dt := minf(delta, 0.05)
+	for id in _lamp_sway.keys():
+		var s: Array = _lamp_sway[id]
+		var lamp = s[0]
+		if not is_instance_valid(lamp) or (lamp as Node).is_queued_for_deletion():
+			_lamp_sway.erase(id)
+			continue
+		var a := float(s[1])
+		var v := float(s[2])
+		v += (-LAMP_SWAY_W * LAMP_SWAY_W * sin(a) - LAMP_SWAY_DAMP * v) * dt
+		a = clampf(a + v * dt, -LAMP_SWAY_MAX, LAMP_SWAY_MAX)
+		if absf(a) < 0.008 and absf(v) < 0.04:          # ok. 7 mm na dole lampy: spoczynek
+			_lamp_sway.erase(id)
+			a = 0.0
+		else:
+			s[1] = a
+			s[2] = v
+		var piv := Level3D.px_to_m((lamp as Node2D).global_position)
+		var rot := Basis(Vector3(0.0, 0.0, 1.0), a)
+		var swing := func(n3: Node3D) -> void:
+			var off := n3.position - Vector3(piv.x, piv.y, n3.position.z)
+			n3.position = Vector3(piv.x, piv.y, n3.position.z) + rot * off
+			n3.rotation.z += a
+		for ch in (lamp as Node).get_children():
+			if ch is ItemsHd.ItemMark and _items.has(ch.get_instance_id()):
+				swing.call(_items[ch.get_instance_id()][1] as Node3D)
+		if _lampfx.has(id) and is_instance_valid(_lampfx[id][1]):
+			swing.call(_lampfx[id][1] as Node3D)
+		var gl = lamp.get("_light")
+		if gl != null and is_instance_valid(gl) and _lights.has((gl as Object).get_instance_id()):
+			var pair: Array = _lights[(gl as Object).get_instance_id()]
+			for li in [pair[1], pair[2]]:
+				if li != null and is_instance_valid(li):
+					swing.call(li as Node3D)
+
+## Liczba rozbujanych lamp (test).
+func swaying_lamps() -> int:
+	return _lamp_sway.size()
 
 ## Wołane z `Vfx.debris`: odłamek / szczątek jako nieregularna bryłka 3D w kolorze 2D, podążająca za ciałem fizycznym.
 func mirror_debris(body: RigidBody2D, size: Vector2, color: Color) -> void:

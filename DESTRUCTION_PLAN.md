@@ -3,10 +3,10 @@
 Stan wyjścia planu: main 1.7.477 (2026-11-02), plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
 spike'i przed D0).
 
-**Stan wdrożenia (2026-11-04, main 1.7.493):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
-1.7.493. Zostaje: playtest z raportem (`tools/session_progress.py`, sekcja „Niszczenie”), odsłuch A/B tymczasowych dźwięków (drewno
-skrzyni, młotek, zawał), D4 z pulą cząsteczek, spadająca kładka (D3), blacha `sheet` (D2, brak na mapach), misje „przetrzymaj” (D2b,
-po strefie 2) i D5. Kod spike'u S2 tylko lokalnie (gałąź robocza `spike/dig-zone`).
+**Stan wdrożenia (2026-11-05, 1.7.500):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
+1.7.493, D4 z pulą cząsteczek w 1.7.500. Zostaje: playtest z raportem (`tools/session_progress.py`, sekcja „Niszczenie”), odsłuch A/B
+tymczasowych dźwięków (drewno skrzyni, młotek, zawał — `BARRIER_FIX_PLAN.md` B3), spadająca kładka (D3), blacha `sheet` (D2, brak na
+mapach), misje „przetrzymaj” (D2b, po strefie 2) i D5. Kod spike'u S2 tylko lokalnie (gałąź robocza `spike/dig-zone`).
 
 ## Cel
 
@@ -302,8 +302,8 @@ jako dzielnik ciosu.
   **Zrobione w 1.7.484 (rozgrzanie):** przy budowie ściany pod planszą `view3d._warm_destruction` stawia przed kamerą na kilka klatek
   bryłę, `MultiMesh` gruzu i model `rubble` (raz na mapę i materiał), a rzut mapy w HUD-zie przemalowuje po rozbiciu / odbudowie tylko
   zmienione kafle (`hud_minimap._repaint_walls`). Pomiar `--hitchtest --hitchwall` (okno, 1.2): pierwsze rozbicie 104–150 → 30–45 ms,
-  odbudowa 67–90 → ok. 30 ms. Sam `crumble` to 2,5–4,4 ms CPU, lokalna nawigacja 1,3–2 ms. **Pula cząsteczek jeszcze nie:** przy
-  rozbiciu nie wyszła w pomiarze jako koszt (kilka emiterów na zdarzenie) — wraca z D1, gdy skrzynie, szkło i lampy dołożą emiterów.
+  odbudowa 67–90 → ok. 30 ms. Sam `crumble` to 2,5–4,4 ms CPU, lokalna nawigacja 1,3–2 ms. Pula cząsteczek przy rozbiciu nie wyszła
+  w pomiarze jako koszt (kilka emiterów na zdarzenie) — weszła razem z D4 (1.7.500), gdzie trafienia w świat dokładają obłoczków.
 - `--maptest`: osiągalność celów **przy wszystkim całym i wszystkim zniszczonym** (rozszerzenie `open_all_walls_for_test`).
   **Zrobione (PR bez numeru wersji, same testy):** na mapach ze zniszczalnymi elementami najpierw wszystko całe — starty, wyjścia,
   generatory, nieśmiertelniki, gniazda, drezyna, stanowiska i dom Stalkera osiągalne bez rozbijania (przejście to skrót albo skrytka,
@@ -478,6 +478,35 @@ wygenerować zestawy 2–3 rzędy.
   ziemia — grudki).
 - Po wybuchu: sypiący się pył ze stropu w podziemiach, chwianie lamp kryjówki (tylko 3D, bez stanu).
 - Ślady trwałe w obiektach do zniszczenia daje już maska uszkodzeń z D0 (dziury z prześwitem); tu tylko dekale na niezniszczalnym świecie.
+
+**Zrobione w 1.7.500 (D4 + pula cząsteczek):**
+
+- **Pula obłoczków** (`view3d.spawn_burst`): emiter `CPUParticles3D` po zgaśnięciu wraca do puli i następny obłoczek przestawia mu parametry
+  (`restart()`), zamiast tworzyć węzeł, siatkę, bufor instancji i minutnik na każde trafienie; najwyżej `BURST_POOL` = 96 naraz, ponad to
+  urywany jest najstarszy; siatki obłoczków wspólne na rodzaj. Pomiar (`--fxtest`, okno, 1.2): seria 600 trafień po 12 na klatkę — 94
+  emitery na całą serię i 0 nowych w następnej; widok 3D ok. 1,55 ms na klatkę w czasie serii. Samo wywołanie z puli jest tylko trochę
+  tańsze (mediana 14–20 µs wobec 22–37 µs nowego emitera; pojedyncze wywołania potrafią czekać ok. 29 ms na wątek renderu, więc średnia
+  myli) — zysk to brak węzłów, buforów i minutników tworzonych i zwalnianych przy każdym trafieniu.
+- **Odpryski wg powierzchni** (`Vfx.impact`, nowe `Vfx.chips` i `Vfx.puff`): beton — szary obłok pyłu, kanciaste odłamki i trzy iskry;
+  ziemia — grudki i brązowy kurz; drewno — drzazgi i jasny pył; blacha — snop iskier, część spada; lód — białe okruchy, śnieg — biały
+  obłok. Odłamki i drzazgi to cieniowane bryły 3D w obłoczku (`mesh: chip / splinter`), koziołkują w płaszczyźnie gry i maleją pod koniec
+  życia — bez ciał fizyki 2D. Rozmiar przesadzony (bryłka ok. 6 cm, drzazga 16 cm) jak reszta obłoczków: prawdziwy okruch z kamery gry
+  to piksel. Pył i okruchy są od teraz **cieniowane** — nocą widać je w latarce, a nie świecą same; świecą tylko iskry. Drewno celu
+  (`Vfx.hit`, materiał `WOOD`) też sypie drzazgami.
+- **Ślady po kulach wg powierzchni** (`view3d.mark_hit`, `_hole_tex_for`): beton — dawny krater, ziemia — większa, miękka, ciemna plama,
+  drewno — dziura z jasnym przełomem, blacha — mała wgniecina z gołym metalem i rdzawą obwódką (`HOLE_SIZE`).
+- **Pył ze stropu po wybuchu** (`view3d.ceiling_dust`, z `mirror_explosion` i z zawału stempla przez `Vfx.quake`): spód litych kafli do
+  `CEIL_DUST_ROWS` = 7 nad wybuchem, pasami kolumn; cieniowany pył (`fade`, emisja z prostokąta stropu) i kamyki lecące tylko do podłogi,
+  z opóźnieniem 0,12–0,37 s po fali. Pod dachem szopy z blachy słabszy, rdzawy pył bez kamyków, pod gołym niebem i w wysokich halach nic.
+- **Chwiejące się lampy** (`view3d.kick_lamps`, `_sway_lamps`): wybuch albo zawał w zasięgu (4 × promień + 120 px) rozbuja wiszące lampy
+  `lamp.gd` — kryjówki `l` i lampy misji `I` — od strony wybuchu; wahadło ok. 0,9 m z tłumieniem, spoczynek po ok. 5–6 s. Obracają się
+  model, poświata i światło 3D wokół punktu pod sufitem; światło 2D (Stalker, ćmy) zostaje w miejscu — bez stanu i bez sieci.
+- **Bez przycięcia przy pierwszym strzale:** `_warm_destruction("hitfx")` przy budowie mapy (pod planszą) — bryłki, drzazgi, pył i tekstury
+  śladów (liczone w GDScript, potem w atlasie dekali). Pomiar: pierwsza seria trafień na mapie bez rozgrzania — 2 kompilacje potoków
+  zatrzymujące klatkę (najdłuższa 32–40 ms), z nim 0 (16,7 ms; zostaje jedna specjalizacja, którą silnik kompiluje w tle). Test liczy
+  kompilacje, nie czas klatki: ten jest skwantowany do synchronizacji pionowej i zależy od obciążenia. Wybuch pod stropem z pyłem i lampą —
+  najdłuższa klatka 16,7 ms, jak pod gołym niebem.
+- Test w oknie `--fxtest` (28 sprawdzeń, `--fxshots=KATALOG` — zrzuty powierzchni, pyłu i lampy w `C:\deadair87\shots_fx`).
 
 ### D5 — strefy wydobycia z wokseli (znajdźki i ukryte przedmioty)
 
