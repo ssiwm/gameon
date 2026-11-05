@@ -58,6 +58,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Combat := preload("res://scripts/combat.gd")
 const BREAKABLE := preload("res://scripts/breakable.gd")
+const DIG_ZONE := preload("res://scripts/dig_zone.gd")
 const GRENADE := preload("res://scripts/grenade.gd")
 const ACID := preload("res://scripts/acid_spit.gd")
 const BOULDER := preload("res://scripts/boulder.gd")
@@ -98,6 +99,7 @@ const MAPS := {
 	"z1_b1": preload("res://scripts/maps/z1_b1.gd"),
 	"z1_hub": preload("res://scripts/maps/z1_hub.gd"),     # kryjówka między misjami (nie należy do CAMPAIGN)
 	"t_mine": preload("res://scripts/maps/t_mine.gd"),     # mapa testowa zawału D3 (nie należy do CAMPAIGN ani SHIFT_POOL): --destructiontest, --maptest, test sieci
+	"t_dig": preload("res://scripts/maps/t_dig.gd"),       # mapa testowa stref wydobycia D5 (nie należy do CAMPAIGN ani SHIFT_POOL): --digtest, --maptest, test sieci
 }
 ## Kolejność kampanii Strefy I: 1.1 → 1.2 → 1.3 → boss B1 (Pijawka); po bossie kampania wraca przez kryjówkę do 1.1.
 const CAMPAIGN := ["z1_m1", "z1_m2", "z1_m3", "z1_b1"]
@@ -171,6 +173,8 @@ var _nav_after_rows: Array = []
 var _nav_after_walls := 0                ## skrót zamurowanych przejść w chwili budowy (rozbita ściana = graf nieaktualny, budujemy od nowa)
 var _wall_cells: Dictionary = {}  ## Vector2i → nazwa przegrody: kafle zajęte przez zamurowania, deski i kratki (znaczniki „q", „%", „+")
 var _window_cells: Dictionary = {}  ## Vector2i → nazwa okna (marker „|"): dla nawigacji zawsze bryła, dla dźwięku tylko cała szyba
+var _dig_cells: Dictionary = {}   ## Vector2i → true: kafle skały w strefach wydobycia (dig_zone.gd; w `_map` są powietrzem), których jeszcze nie wykopano
+var _dig_defs: Array = []         ## wpisy DIG_ZONES tej mapy ([c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?]; testy dokładają `--digzone=`)
 var _opened_walls: Array = []    ## nazwy już rozbitych ścian (synchronizacja dołączających)
 
 var _solid: TileMapLayer
@@ -256,6 +260,7 @@ func _load(id: String) -> void:
 	underground_y = float(m.UNDERGROUND_ROW * TILE)
 	_orig_map = m.MAP
 	_map = (m.MAP as Array).duplicate()          # kopia: zawał (collapse) zmienia wiersze w trakcie misji
+	_carve_dig_zones(m)
 	collapse_rects = ((m as GDScript).get_script_constant_map().get("COLLAPSE", []) as Array).duplicate()
 	finale_spawns = ((m as GDScript).get_script_constant_map().get("FINALE_SPAWNS", []) as Array).duplicate()
 	backdrop = ((m as GDScript).get_script_constant_map().get("BACKDROP", []) as Array).duplicate()
@@ -276,6 +281,7 @@ func _load(id: String) -> void:
 	_map_items = {}
 	_build_map()
 	_register_walls()
+	_spawn_dig_zones()
 	nav = Nav.new()
 	nav.build((_map[0] as String).length(), _map.size(), _is_solid, _is_platform_cell)
 	_prepare_collapse_nav()
@@ -615,6 +621,8 @@ func _is_solid(c: int, r: int) -> bool:
 		return true
 	if _wall_cells.has(Vector2i(c, r)):
 		return true                       # przegroda (breakable.gd: zamurowanie, deski, kratka) — dla nawigacji i krawędzi kafli to bryła
+	if _dig_cells.has(Vector2i(c, r)):
+		return true                       # strefa wydobycia (dig_zone.gd): kafel z resztką skały — dla nawigacji, dźwięku i rzutu mapy bryła
 	var ch := _ch(c, r)
 	if ch == "|":
 		return true                       # okno (window_glass.gd): rama zatrzymuje ruch
@@ -1212,6 +1220,70 @@ func _register_supports() -> void:
 				wall = String(wd["name"])
 		_support_defs.append({"name": "Support%d" % (i + 1), "pos": feet, "rows": rows, "wall": wall})
 
+## Strefy wydobycia (DESTRUCTION_PLAN.md D5): kafle skały w prostokątach `DIG_ZONES` przechodzą z mapy do stref — w `_map` stają się
+## powietrzem (bez kafla kolizji i bez bryły widoku 3D), a skałę rysuje i zderza `dig_zone.gd`. Dla nawigacji, dźwięku i rzutu mapy kafel
+## zostaje bryłą (`_dig_cells`), dopóki ktoś go nie wykopie (`_dig_tiles_changed`). Testy dokładają strefę flagą
+## `--digzone=MAPA:c0,r0,c1,r1[,materiał[,ziarno[,udział wtrąceń]]]` (np. `--digzone=z1_m1:2,23,11,30,dirt,7,0`).
+func _carve_dig_zones(m) -> void:
+	_dig_cells.clear()
+	_dig_defs = ((m as GDScript).get_script_constant_map().get("DIG_ZONES", []) as Array).duplicate(true)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--digzone=%s:" % map_id):
+			var v := a.trim_prefix("--digzone=%s:" % map_id).split(",")
+			if v.size() >= 4:
+				var z: Array = [int(v[0]), int(v[1]), int(v[2]), int(v[3]), v[4] if v.size() > 4 else "dirt", int(v[5]) if v.size() > 5 else 0]
+				if v.size() > 6:
+					z.append(float(v[6]))
+				_dig_defs.append(z)
+	for z in _dig_defs:
+		for r in range(int(z[1]), int(z[3]) + 1):
+			var row: String = _map[r]
+			for c in range(int(z[0]), int(z[2]) + 1):
+				if KINDS.has(row[c]) and KINDS[row[c]][2] == 0:
+					_dig_cells[Vector2i(c, r)] = true
+					row = row.substr(0, c) + "." + row.substr(c + 1)
+			_map[r] = row
+	if not _dig_defs.is_empty():
+		_orig_map = _map.duplicate()                         # reset zawału wraca do mapy już bez kafli stref
+
+func _spawn_dig_zones() -> void:
+	var cells := _dig_cells.duplicate()                       # kafle skały z danych mapy (setup stref patrzy na stan przed kopaniem)
+	for i in _dig_defs.size():
+		var z: Array = _dig_defs[i]
+		var dz: Node2D = DIG_ZONE.new()
+		dz.name = "DigZone%d" % (i + 1)
+		dz.map_key = map_id
+		add_child(dz)
+		var solid := func(c: int, r: int) -> bool: return _is_solid(c, r)
+		var zone_solid := func(c: int, r: int) -> bool: return cells.has(Vector2i(c, r))
+		dz.setup(z, solid, zone_solid)
+		dz.on_tiles = _dig_tiles_changed
+
+## Każdy peer: w strefie wydobycia zmienił się stan kafli w `rc` (wykop opróżnił kafel albo reset go zasypał) — kafle wychodzą z `_dig_cells`
+## albo do niego wracają, potem nawigacja (`rebuild_region`), siatka dźwięku i kafle mapy w okolicy od nowa.
+func _dig_tiles_changed(rc: Rect2i) -> void:
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if z.get_parent() != self or z.is_queued_for_deletion():
+			continue
+		var zr: Rect2i = z.rect_tiles()
+		var ov := zr.intersection(rc)
+		for r in range(ov.position.y, ov.end.y):
+			for c in range(ov.position.x, ov.end.x):
+				var cell := Vector2i(c, r)
+				if z.tile_open(c, r):
+					_dig_cells.erase(cell)
+				elif z.solid_in_data(c, r):
+					_dig_cells[cell] = true
+	_refresh_region(rc)
+
+## Strefy wydobycia tej mapy.
+func dig_zones() -> Array:
+	var out: Array = []
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if z.get_parent() == self and not z.is_queued_for_deletion():
+			out.append(z)
+	return out
+
 func _spawn_walls() -> void:
 	for wd in _wall_defs:
 		if String(wd["material"]) == "planks":
@@ -1306,7 +1378,12 @@ func breakables_state() -> Dictionary:
 		var w := get_node_or_null(n)
 		if w != null and not _opened_walls.has(n) and not w.is_queued_for_deletion() and (not (w.splats as PackedFloat32Array).is_empty() or float(w.hp) < float(w.max_hp())):
 			dmg[n] = [(w.splats as PackedFloat32Array).duplicate(), float(w.hp) / float(w.max_hp())]
-	return {"opened": PackedStringArray(_opened_walls), "damage": dmg, "planks": plank_stock, "supports": PackedStringArray(_supports_down)}
+	var dig := {}
+	for z in dig_zones():
+		var st: PackedByteArray = z.state()
+		if not st.is_empty():
+			dig[String(z.name)] = st                          # strefy wydobycia (D5): skompresowana gęstość, tylko ruszone
+	return {"opened": PackedStringArray(_opened_walls), "damage": dmg, "planks": plank_stock, "supports": PackedStringArray(_supports_down), "dig": dig}
 
 ## Serwer, przebudzenie bossa (mission._save_checkpoint): wipe w tej walce wróci do zniszczeń z tej chwili — jak łup od 1.7.424.
 func save_breakables_checkpoint() -> void:
@@ -1335,6 +1412,9 @@ func reset_breakables(state := {}) -> void:
 		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock, down)
 	else:
 		_reset_breakables_rpc(map_id, opened, dmg, stock, down)
+	var dig: Dictionary = state.get("dig", {})
+	for z in dig_zones():
+		z.reset_to(dig.get(String(z.name), PackedByteArray()))   # strefy wydobycia (D5): wykopy wracają do stanu z mapy albo z migawki
 
 @rpc("authority", "call_local", "reliable")
 func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0, down := PackedStringArray()) -> void:
@@ -1410,6 +1490,8 @@ func send_walls_to(peer_id: int) -> void:
 			ml.send_state_to(peer_id)                        # stłuczone lampy (lamp.gd)
 		for win in get_tree().get_nodes_in_group("windows"):
 			win.send_state_to(peer_id)                       # stłuczone okna (window_glass.gd)
+		for z in dig_zones():
+			z.send_state_to(peer_id)                         # wykopy w strefach wydobycia (dig_zone.gd)
 
 # ---------------------------------------------------------------- barykadowanie (DESTRUCTION_PLAN.md D2b)
 

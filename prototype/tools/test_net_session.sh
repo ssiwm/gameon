@@ -8,7 +8,8 @@
 # 6. Bateria 4,5 V (BATTERY_PLAN.md): klient z 20% baterii bierze baterię z ziemi — rozstrzyga serwer, dolicza właściciel.
 # 7. Ładowarka (BATTERY_PLAN.md B3): klient przy ładowarce B1 ładuje się u siebie, serwer widzi, że ładowarka pracuje.
 # 8. Zniszczenia (DESTRUCTION_PLAN.md D0–D3): rany ściany, rozbicie, powrót do migawki z przebudzenia bossa i wipe na 1.2, a złamany stempel
-#    i zawał na mapie testowej t_mine — u klienta obecnego od początku (RPC na żywo) i u dołączającego później (`send_walls_to`) stan taki sam jak u hosta.
+#    i zawał na mapie testowej t_mine, wykopy i wybuch w strefach wydobycia (D5) na mapie testowej t_dig — u klienta obecnego od początku
+#    (RPC na żywo) i u dołączającego później (`send_walls_to`) stan taki sam jak u hosta.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
@@ -187,6 +188,33 @@ else
 	[ "$A" = "$H" ] && ok "klient od początku: złamany stempel, zawał, migawka i wipe jak u hosta" || fail "klient A: $A (host: $H)"
 	B=$(cnet client "$LOG/cnet_b.log")
 	[ "$B" = "$CSV;$CS0;$CSV;$CS0;" ] && ok "dołączający po zawale: złamany stempel i gruz z synchronizacji, potem wipe, migawka i wipe jak u hosta" || fail "klient B: $B (host: $H)"
+fi
+
+echo "== strefy wydobycia (t_dig) =="
+# host: po 8 s trzy ciosy kilofem w DigZone1 i wybuch w DigZone2 (DS); gdy są obaj klienci: wipe (strefy z danych mapy = D0), migawka
+# (wykopy wracają = DS) i wipe (D0). Klient A od początku (operacje kopania na żywo), klient B dołącza po wykopach — gęstość stref dostaje
+# z `send_walls_to`. Stan = skrót gęstości każdej strefy, więc zgodność znaczy: te same komórki u wszystkich.
+godot --headless --path . -- --host --mission=t_dig --port=8971 --dignet=8 --autoquit=50 >"$LOG/gnet_host.log" 2>&1 &
+HOST=$!
+sleep 3
+godot --headless --path . -- --join=127.0.0.1 --port=8971 --dignet=0 --autoquit=50 >"$LOG/gnet_a.log" 2>&1 &
+GA=$!
+for _ in $(seq 120); do [ "$(grep -a -c "\[DESTRUCTION-NET\] host map=t_dig " "$LOG/gnet_host.log")" -ge 2 ] && break; sleep 0.25; done
+godot --headless --path . -- --join=127.0.0.1 --port=8971 --dignet=0 --autoquit=40 >"$LOG/gnet_b.log" 2>&1 &
+GB=$!
+wait $GB $GA $HOST
+gnet() { grep -a "\[DESTRUCTION-NET\] $1 map=t_dig " "$2" | sed "s/.*\] $1 map=t_dig //" | tr '\n' ';'; }
+H=$(gnet host "$LOG/gnet_host.log")
+D0=$(echo "$H" | cut -d';' -f1)
+DS=$(echo "$H" | cut -d';' -f2)
+if [ -z "$D0" ] || [ "$D0" = "$DS" ] || [ "$H" != "$D0;$DS;$D0;$DS;$D0;" ]; then
+	fail "host: zły przebieg stref wydobycia ($H)"
+else
+	ok "host: strefy całe → wykopy i wybuch → wipe (całe) → migawka (wykopy wracają) → wipe"
+	A=$(gnet client "$LOG/gnet_a.log")
+	[ "$A" = "$H" ] && ok "klient od początku: te same komórki stref po wykopach, wybuchu, migawce i wipe'ie" || fail "klient A: $A (host: $H)"
+	B=$(gnet client "$LOG/gnet_b.log")
+	[ "$B" = "$DS;$D0;$DS;$D0;" ] && ok "dołączający po wykopach: gęstość stref z synchronizacji, potem wipe, migawka i wipe jak u hosta" || fail "klient B: $B (host: $H)"
 fi
 
 # Błąd GDScript może przerwać pojedynczą korutynę bez niezerowego kodu procesu.

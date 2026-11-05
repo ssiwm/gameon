@@ -3,10 +3,11 @@
 Stan wyjścia planu: main 1.7.477 (2026-11-02), plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
 spike'i przed D0).
 
-**Stan wdrożenia (2026-11-05, 1.7.500):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
-1.7.493, D4 z pulą cząsteczek w 1.7.500. Zostaje: playtest z raportem (`tools/session_progress.py`, sekcja „Niszczenie”), odsłuch A/B
-tymczasowych dźwięków (drewno skrzyni, młotek, zawał — `BARRIER_FIX_PLAN.md` B3), spadająca kładka (D3), blacha `sheet` (D2, brak na
-mapach), misje „przetrzymaj” (D2b, po strefie 2) i D5. Kod spike'u S2 tylko lokalnie (gałąź robocza `spike/dig-zone`).
+**Stan wdrożenia (2026-11-05, 1.7.502):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
+1.7.493, D4 z pulą cząsteczek w 1.7.500, dźwięki drewna i młotka z odsłuchu A/B w 1.7.501 (`BARRIER_FIX_PLAN.md` B3), D5 część 1
+(dane, siatka, kolizja) w 1.7.502. Zostaje: playtest z raportem (`tools/session_progress.py`, sekcja „Niszczenie”), spadająca kładka (D3),
+blacha `sheet` (D2, brak na mapach), misje „przetrzymaj” (D2b, po strefie 2), D5 część 2 (znajdźki, skaner, osypywanie, wyspy) i część 3
+(strefy na mapach, ekonomia).
 
 ## Cel
 
@@ -576,6 +577,32 @@ nie leżą na trasie do celu).
 - **Kiedy kopalnia wejdzie:** samorodki T1 / T2 z §5C nie leżą już na mapach, tylko są w pulach stref (te same ilości na mapę); do tego
   czasu w pulach ich nie ma, bo nie byłoby ich na co wydać.
 - Do zrobienia przy scalaniu: poprawić §5C w `MINING_PLAN.md` (PR #360) — samorodki ze stref D5 zamiast leżących.
+
+**Zrobione w 1.7.502 (część 1 z 3: dane, siatka, kolizja).** Kod spike'u S2 przeniesiony do gry i domknięty:
+
+- Dane: `DIG_ZONES` w mapie (`[c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?]`), kafle gruntu strefy wycięte z `_map` (bez kafla kolizji
+  i bryły widoku 3D), dla nawigacji, siatki dźwięku i rzutu mapy bryła w `level._dig_cells`, dopóki kafel nie zostanie wykopany (żaden z 3 × 3
+  narożników wnętrza kafla nie jest już skałą — niedokończony tunel zostaje bryłą). Flaga testów `--digzone=MAPA:c0,r0,c1,r1[,materiał[,ziarno[,udział]]]`.
+- Materiały: `dig_materials.gd` (wspólna tabela na później z kopalnią) — siła ciosu na narzędzie [kilof, broń biała, wybuch] jako gęstość zabrana
+  z narożnika: ziemia i żwir 255 / 96 / 255 (kilof 1 cios na wyrwę, maczeta 2), skała 56 / 0 / 255 (3 ciosy, tylko kilof), żyła 40 / 0 / 255 (4).
+  Wtrącenia z `FastNoiseLite` o ziarnie strefy (głazy w ziemi, żyła w skale, ziemia w żwirze) — ten sam wynik u każdego peera.
+  Odcień materiału w kolorach wierzchołków siatki 3D. Żwir na razie bez osypywania (część 2).
+- Narzędzie: cios bez celu w stożku kopie w strefie (`weapon_controller.gd` `_server_melee`), maczeta tylko ziemię i żwir z połową hałasu;
+  `melee_for_target` bierze kilof, gdy w wyrwie jest skała, której broń biała nie bierze (jak mur z B1). Efekt trafienia: pył (ziemia, żwir) albo
+  odprysk skały (skała, żyła).
+- Wybuch: `Combat.explode` → `blast_dig` (koło o połowie promienia fali, każdy materiał).
+- Stan: `breakables_state` niesie skompresowaną gęstość ruszonych stref (49 B po jednym ciosie, strefa 10 × 8 kafli surowo 1,5 kB) — migawka
+  z przebudzenia bossa i wipe przywracają wykopy; gracz w zasypanym wykopie wychodzi na wierzch strefy (`_unstick_players`); dołączający dostaje
+  gęstość z `send_walls_to`. Operacje kopania z innej mapy są pomijane (`map_key`).
+- Widok 3D: najwyżej 4 siatki fragmentów na klatkę (`DIG_MESH_PER_FRAME`); kolizja przebudowuje się od razu.
+- Testy: mapa testowa `t_dig` (DigZone1 — ziemia 10 × 8 kafli pod podłogą hali, DigZone2 — skała z żyłą), `--digtest` 29 sprawdzeń (ruch
+  i kopanie z S2, nawigacja i dźwięk, materiały i narzędzia, hałas, wybuch, migawka, wipe, stan dla dołączającego, czasy), `--maptest` (strefa
+  w mapie, bez znaczników w środku, materiał z tabeli, reguła anty-pułapki: głębiej niż 3 kafle pod najniższym wejściem tylko przy szerokości ≥ 3),
+  `test_net_session.sh` (wykopy i wybuch u hosta, klient od początku, dołączający po wykopach, migawka i wipe — skrót gęstości identyczny).
+- Pomiary (headless): przebudowa konturu i kolizji po ciosie 0,8 ms, siatka 3D 0,9 ms na fragment.
+- Nie zrobione w części 1 (zostaje na 2 i 3): znajdźki i pule, skaner „Sowa”, błysk przedmiotu, osypywanie żwiru, spadające wyspy, grudki
+  i dekal świeżego wykopu, natychmiastowa odpowiedź u klienta (iskry i pył przed deltą — dziś efekt przychodzi z serwera), test „z każdej komórki,
+  w której da się stać, jest droga na zewnątrz” na losowych wykopach, strefy na mapach kampanii i ekonomia, notatka w dzienniku sesji (`dig`).
 
 ## Kolejność i rozmiar
 
