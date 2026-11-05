@@ -339,7 +339,7 @@ static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String,
 			chips(parent, pos, out, Color(0.62, 0.47, 0.3), 4 + hk, "splinter", 120.0, Vector2(0.6, 1.3))
 			puff(parent, pos, out, Color(0.55, 0.45, 0.32, 0.25), 0.5)
 			if snd:
-				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -14.0, 0.62)
+				Audio.play_variant_at("wood_hit", 3, pos, Audio.BUS_WORLD, -11.0, 1.1)     # kula w deskę (B3)
 		"concrete":
 			burst(parent, pos, Color(0.6, 0.6, 0.62, 0.9), 5, 30.0, 90.0, out, 55.0, 420.0, 0.3, Vector2(0.8, 1.6), false, true)
 			chips(parent, pos, out, Color(0.52, 0.51, 0.49), 4 + hk, "chip", 120.0, Vector2(0.5, 1.1))

@@ -643,6 +643,48 @@ def build_world() -> None:
             parts.append((crack, 1.4 - 0.5 * i))
         x = d.mix(parts, n)
         finalize("thunder_%d" % (i + 1), d.reverb(x, ir("hall"), wet=0.35), lufs=-17.0, fade_out_ms=900)
+
+    # Głośność: chwilowa (okno 400 ms) równa wersji z nagrań (bake_hybrid) — trafienie ok. −20, rozbicie ok. −14,6, młotek ok. −26,6 LUFS.
+    # Drewno (BARRIER_FIX_PLAN.md B3): przegrody z desek, skrzynie i przybijanie desek — dawniej grały je metalowe `door`,
+    # `amb_creak` i `amb_thud`. Trafienie: suchy stuk deski (krótkie mody drewna, trzask, głuchy korpus).
+    for i in range(3):
+        r = Rng(0xDD00 + i * 1709)
+        n = ms(450)
+        f0 = vary(r, 210.0 + 25 * i, .06)
+        body = ring(r, [f0, f0 * 2.4, f0 * 5.1, f0 * 9.3], [.16, .09, .05, .03], [1.0, .55, .3, .15], dur=.45, jitter=.02)
+        crack = burst(ms(90), r, 6500.0, 1500.0, .012, color=.3)
+        x = d.mix([(body, 1.0), (crack, .8), (thump(.18, vary(r, 140, .1), 70, .02, .04), .7)], n)
+        finalize("wood_hit_%d" % (i + 1), d.limiter(d.reverb(x / (d.peak(x) + 1e-9), ir("room"), wet=.15), -7.0), lufs=-15.8)
+
+    # Rozbicie drewna: seria pęknięć (trzaski coraz rzadsze), głuchy korpus i opadające drzazgi.
+    for i in range(3):
+        r = Rng(0xDE00 + i * 2311)
+        n = ms(1250)
+        x = np.zeros(n)
+        tt = 0.0
+        while tt < 0.35:
+            k = ms(tt * 1000)
+            snap = burst(ms(70), r, r.uniform(4000, 8000), 1200.0, r.uniform(.006, .015), color=.2)
+            x[k:k + len(snap)] += snap[:n - k] * r.uniform(.4, 1.0)
+            tt += r.uniform(.012, .06) * (1 + 4 * tt)
+        tail = np.zeros(n)
+        for _ in range(9):                                     # drzazgi i kawałki desek spadające na ziemię
+            k = ms(r.uniform(250, 1000))
+            tap = d.mix([(tick(r, r.uniform(900, 2600), 2.0, 20, .004), 1.0), (thump(.06, r.uniform(160, 260), 90, .01, .02), .5)])
+            tail[k:k + len(tap)] += tap[:n - k] * r.uniform(.15, .45)
+        f0 = vary(r, 180.0, .08)
+        body = ring(r, [f0, f0 * 2.3, f0 * 4.9], [.22, .12, .06], [1.0, .5, .25], dur=.6, jitter=.03)
+        x = d.mix([(x / (d.peak(x) + 1e-9), 1.0), (body, .7), (thump(.3, 120, 45, .05, .08), .9), (tail, .6)], n)
+        finalize("wood_break_%d" % (i + 1), d.limiter(d.reverb(x / (d.peak(x) + 1e-9), ir("room"), wet=.2), -4.0), lufs=-13.6, fade_out_ms=150)
+
+    # Młotek: stalowa główka w gwóźdź (ostry klik i krótki dźwięk metalu), deska pod spodem odpowiada głuchym stukiem.
+    for i in range(3):
+        r = Rng(0xDF00 + i * 997)
+        n = ms(260)
+        clink = ring(r, [vary(r, 2400, .05), vary(r, 4900, .05), vary(r, 7300, .05)], [.05, .03, .02], [1.0, .6, .3], dur=.2, jitter=.005)
+        knock = ring(r, [vary(r, 330, .08), vary(r, 820, .08)], [.07, .04], [1.0, .5], dur=.25, jitter=.02)
+        x = d.mix([(tick(r, 3200, 1.2, 10, .002), 1.0), (clink, .45), (knock, .8), (thump(.12, 160, 80, .015, .03), .6)], n)
+        finalize("hammer_nail_%d" % (i + 1), d.reverb(x, ir("room"), wet=.12), lufs=-20.4)
     bake_hybrid.world()                                     # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 

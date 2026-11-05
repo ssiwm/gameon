@@ -97,6 +97,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | monster_growls_4 | nagranie | Sonniss GDC 2018 — Monsters | Olivier Girardot | sonniss-gdc-2.0 | Monster Growls 4.wav |
 | monster_roar_growl_009 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Monsters | SoundBits | sonniss-gdc-2.0 | Monster_Roar_Growl_009.wav |
 | mower_motor | nagranie | Sonniss GDC 2020 — Electric Lawn Mower | Matt Script | sonniss-gdc-2.0 | Electric_Mower_Engine_Isolated_running_turn_on_off_blade_spinning_machine_hum_03.wav |
+| nail_hammering_03 | nagranie | Sonniss GDC 2020 — Construction & Tools | The Sound Pack Tree | sonniss-gdc-2.0 | 176403 - Nail Hammering 03.wav |
 | object_grab_04 | nagranie | Sonniss GDC 2018 — Punch and Combat Sounds | Gamemaster Audio | sonniss-gdc-2.0 | foley_object_grab_pickup_04.wav |
 | orc_grunt_003 | nagranie | Sonniss GDC 2020 — Mountain Dweller - Orc Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0261_mountain_dweller_creature_orc_grunt_003.wav |
 | organic_texture_041 | nagranie | Sonniss GDC 2023 — Biohazard - Organic Textures and Ambiences | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0280_biohazard_creature_organic_texture_041.wav |
@@ -136,6 +137,8 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | whoosh_wind_gust_11 | nagranie | Sonniss GDC 2024 — Distinct Whooshes | Rescopic Sound | sonniss-gdc-2.0 | WHSH_Airy-Whoosh Wind Gust 11_RSCPC_DW.wav |
 | wind_howl_gust | nagranie | Sonniss GDC 2016 — Howling Winds - Interior | Hzandbits | sonniss-gdc-2.0 | Wind,Int,Howl,Forceful,Tonal,Vocal,Gust.wav |
 | wind_mountain_loop | nagranie | Sonniss GDC 2018 — Wind | Soundrangers | sonniss-gdc-2.0 | wind_harsh_mountain_02_30_loop.wav |
+| wood_crash_13 | nagranie | Sonniss GDC 2024 — Explosion SFX Pack | DavidDumais | sonniss-gdc-2.0 | WOODCrsh_Designed Wood Crash And Debris 13_DDUMAIS_NONE.wav |
+| wood_impact_23 | nagranie | Sonniss GDC 2023 — Melee Weapons Sound Effects Pack 1 | David Dumais Audio | sonniss-gdc-2.0 | WOODImpt_Impact Wood 23_DDUMAIS_NONE.wav |
 | yeti_grumble_02 | nagranie | Sonniss GDC 2018 — Yeti Monster | Articulated Sounds | sonniss-gdc-2.0 | MONSTER Yeti grumble 02.wav |
 | zipper_smallbag | nagranie | Sonniss GDC 2017 — Open & Close | SoundBits | sonniss-gdc-2.0 | Zipper_SmallBag_01_04.wav |
 | zombie_b_hiss_1 | nagranie | Sonniss GDC 2019 — Zombie | Glitchedtones | sonniss-gdc-2.0 | Zombie Subject B Hiss (1).wav |

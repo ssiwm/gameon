@@ -175,6 +175,18 @@
   "sfx/weapons/gniew4_shot_2",
   0
  ],
+ "hammer_nail_1": [
+  "sfx/world/hammer_nail_1",
+  0
+ ],
+ "hammer_nail_2": [
+  "sfx/world/hammer_nail_2",
+  0
+ ],
+ "hammer_nail_3": [
+  "sfx/world/hammer_nail_3",
+  0
+ ],
  "heart_fast_loop": [
   "sfx/player/heart_fast_loop",
   1
@@ -921,6 +933,30 @@
  ],
  "wolek_death_2": [
   "sfx/enemies/wolek_death_2",
+  0
+ ],
+ "wood_break_1": [
+  "sfx/world/wood_break_1",
+  0
+ ],
+ "wood_break_2": [
+  "sfx/world/wood_break_2",
+  0
+ ],
+ "wood_break_3": [
+  "sfx/world/wood_break_3",
+  0
+ ],
+ "wood_hit_1": [
+  "sfx/world/wood_hit_1",
+  0
+ ],
+ "wood_hit_2": [
+  "sfx/world/wood_hit_2",
+  0
+ ],
+ "wood_hit_3": [
+  "sfx/world/wood_hit_3",
   0
  ],
  "zerca_grab_1": [

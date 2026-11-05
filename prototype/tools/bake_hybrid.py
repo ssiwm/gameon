@@ -1104,8 +1104,41 @@ def _generator_bake() -> None:
     finalize("generator_loop", d.seam_xfade(x, d.sec(1.0)), loop=True, lufs=-15.2)
 
 
+# --- Drewno i młotek (BARRIER_FIX_PLAN.md B3, odsłuch A/B 2026-11-05: wybór autora). Trafienie w deski / skrzynię: David Dumais
+# „Impact Wood 23”, rozbicie: „Designed Wood Crash And Debris 13”, oba w trzech wysokościach (−1 / 0 / +1,2 półtonu, jak na
+# odsłuchu ×0,94 / 1,0 / ×1,07); młotek: trzy uderzenia z „Nail Hammering 03” (The Sound Pack Tree). Zawał i trzeszczenie
+# stropu przed nim zostały bez zmian (werdykt: obecne). Głośność chwilowa (okno 400 ms) = synteza z bake_sfx; poziom w grze
+# dobrany tak, żeby grały jak na odsłuchu (trafienie −8 dB, rozbicie −2 dB, młotek 0 dB w wywołaniach).
+WOOD_HIT_NEEDS = ["wood_impact_23"]
+WOOD_BREAK_NEEDS = ["wood_crash_13"]
+HAMMER_NEEDS = ["nail_hammering_03"]
+_WOOD_SEMIS = (-1.0, 0.0, 1.2)
+_NAIL_HITS = (1.285, 1.795, 2.055)                                   # uderzenia w nail_hammering_03 [s] (ostatnie trzy przed dobiciem)
+
+
+def _wood_hit_bake() -> None:
+    for i, semis in enumerate(_WOOD_SEMIS):
+        x = _clip("wood_impact_23", 0.0, 0.85, semis, 0.8, tail=.3)
+        finalize("wood_hit_%d" % (i + 1), d.filt(x, "hp", 50.0, order=2), lufs=-21.0)
+
+
+def _wood_break_bake() -> None:
+    for i, semis in enumerate(_WOOD_SEMIS):
+        x = _clip("wood_crash_13", 0.0, 1.3, semis, 1.2, tail=.4)
+        finalize("wood_break_%d" % (i + 1), d.filt(x, "hp", 40.0, order=2), lufs=-16.5, fade_out_ms=150)
+
+
+def _hammer_bake() -> None:
+    for i, t0 in enumerate(_NAIL_HITS):
+        x = _clip("nail_hammering_03", t0 - 0.01, 0.27, 0.0, 0.25, tail=.08)
+        finalize("hammer_nail_%d" % (i + 1), d.limiter(_unit(d.filt(x, "hp", 80.0, order=2)), -9.0, release_ms=8.0), lufs=-17.4)
+
+
 def world() -> None:
     """Wersje z nagrań dla dźwięków świata — wołane na końcu bake_sfx.build_world()."""
+    bc.hybrid(_keys("wood_hit", 3), _wood_hit_bake, WOOD_HIT_NEEDS)
+    bc.hybrid(_keys("wood_break", 3), _wood_break_bake, WOOD_BREAK_NEEDS)
+    bc.hybrid(_keys("hammer_nail", 3), _hammer_bake, HAMMER_NEEDS)
     bc.hybrid(["tape_stop"], _tape_stop_bake, TAPE_NEEDS)
     bc.hybrid(["quake"], _quake_bake, QUAKE_NEEDS)
     bc.hybrid(["collapse"], _collapse_bake, COLLAPSE_NEEDS)

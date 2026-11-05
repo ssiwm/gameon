@@ -45,7 +45,7 @@ const MATERIALS := {
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
 		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)]},
 	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood", "label": "Boards",
-		"hit_snd": ["amb_creak", 3, -6.0, 1.2], "break_snd": ["amb_creak", 3, 0.0, 0.8],
+		"hit_snd": ["wood_hit", 3, -8.0, 1.0], "break_snd": ["wood_break", 3, -2.0, 1.0],
 		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 	"sheet": {"hp": 150.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.5, "n_break": 6.0,
 		"hit_snd": ["impact_hard", 3, -3.0, 0.9], "break_snd": ["impact_hard", 3, 2.0, 0.6],

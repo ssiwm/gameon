@@ -1499,7 +1499,7 @@ func _nail_rpc(id: String, wall_name: String, frac: float, stock: int, with_fx: 
 			w.set_hp_frac(frac)
 	if with_fx:
 		var at := Vector2(wd["pos"]) + Vector2(0, -TILE * float(wd["rows"]) * 0.5)
-		Audio.play_variant_at("amb_thud", 2, at, Audio.BUS_WORLD, -3.0, 1.5)      # tymczasowo: stuk z istniejących próbek (młotek po odsłuchu A/B)
+		Audio.play_variant_at("hammer_nail", 3, at, Audio.BUS_WORLD, 3.0, 0.92)   # deska dobita: mocniejsze, niższe uderzenie młotka (B3)
 		Vfx.dust(self, at, 0.4)
 
 ## Serwer: sekundy od ostatniej przybitej deski w przegrodzie `wall_name` (ile wytrzymała barykada); -1, gdy w tej próbie nikt jej nie przybijał.

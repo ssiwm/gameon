@@ -657,6 +657,14 @@
    "supplier": "Matt Script",
    "license": "sonniss-gdc-2.0"
   },
+  "nail_hammering_03": {
+   "kind": "lib",
+   "file": "sonniss/2020/The Sound Pack Tree - Construction & Tools/176403 - Nail Hammering 03.wav",
+   "sha256": "84c8fd2666d3091c4511fe0420df6be741403a79c3de342cf916f90270b5113e",
+   "pack": "Sonniss GDC 2020 — Construction & Tools",
+   "supplier": "The Sound Pack Tree",
+   "license": "sonniss-gdc-2.0"
+  },
   "object_grab_04": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Punch and Combat Sounds/foley_object_grab_pickup_04.wav",
@@ -967,6 +975,22 @@
    "sha256": "df2c0f7af4e6158f93b31fb1d9eb432c043d4d7a223ca9be95c786fff647afdb",
    "pack": "Sonniss GDC 2018 — Wind",
    "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
+  "wood_crash_13": {
+   "kind": "lib",
+   "file": "sonniss/2024/DavidDumais - Explosion SFX Pack/WOODCrsh_Designed Wood Crash And Debris 13_DDUMAIS_NONE.wav",
+   "sha256": "6e03c323dd0f56c1b20bf327f2d1f4d693caf35e91951f68a2173b8e5e4635c3",
+   "pack": "Sonniss GDC 2024 — Explosion SFX Pack",
+   "supplier": "DavidDumais",
+   "license": "sonniss-gdc-2.0"
+  },
+  "wood_impact_23": {
+   "kind": "lib",
+   "file": "sonniss/2023/David Dumais Audio - Melee Weapons Sound Effects Pack 1/WOODImpt_Impact Wood 23_DDUMAIS_NONE.wav",
+   "sha256": "faf7b8ae2b6e9df6a7a0dceb1988c1e822acab44c3995cbb3254919b72811acd",
+   "pack": "Sonniss GDC 2023 — Melee Weapons Sound Effects Pack 1",
+   "supplier": "David Dumais Audio",
    "license": "sonniss-gdc-2.0"
   },
   "yeti_grumble_02": {

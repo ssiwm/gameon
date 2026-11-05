@@ -128,6 +128,16 @@ Warstwy na materiał (uderzenie, pęknięcie przy zmianie stopnia, rozpad, ogon 
 
 Odsłuch: 3–4 kandydatów na rodzinę w katalogu `C:\deadair87\odsluch\barriers`, wybór autora, potem podmiana w `audio_manifest.gd`.
 
+**Zrobione w 1.7.501 (drewno, młotek; odsłuch 2026-11-05):** strona `odsluch\barriers\index.html` (`render.py`: wersja z gry —
+te same pliki, wysokość i dB z wywołań — obok kandydatów wyrównanych do jej głośności chwilowej, okno 400 ms). Wybór autora:
+trafienie w drewno — David Dumais „Impact Wood 23”, rozbicie — „Designed Wood Crash And Debris 13”, młotek — The Sound Pack Tree
+„Nail Hammering 03”; zawał i trzeszczenie stropu przed nim — **obecne** (bez zmian). Nowe klucze `wood_hit`, `wood_break`,
+`hammer_nail` (po 3 warianty; synteza w `bake_sfx.build_world`, nagrania w `bake_hybrid.world`, głośność chwilowa obu wersji równa):
+deski `%` (trafienie −8 dB, rozbicie −2 dB), kula w deskę (`Vfx.impact`, −11 dB, ×1,1), skrzynia — rozbicie (−2 dB) i upadek
+(`wood_hit` ×0,8), stukanie przy barykadowaniu (0 dB co 0,4 s) i dobita deska (+3 dB, ×0,92). Skrzynia i deski grały wcześniej
+**metal**: `door` to nagranie metalowych drzwi, `amb_creak` skrzypienie metalu. Napisy: „[Wood splinters]”, „[Hammering]”.
+Zostają: kratka (`impact_hard`), gruz (`amb_thud`) i stempel (`amb_creak`) — nie było ich w tym odsłuchu.
+
 ### B4 — sens przegród na mapach (1–2 PR, decyzja 3)
 
 - Przegląd każdej przegrody na 1.1, 1.2, 1.3: co daje, ile kosztuje (hałas, czas), czy klucz jest w zasięgu. Przegrody bez powodu

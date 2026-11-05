@@ -90,7 +90,7 @@ func _process(delta: float) -> void:
 		_knock_t -= delta
 		if _knock_t <= 0.0:
 			_knock_t = KNOCK_EVERY
-			Audio.play_variant_at("amb_thud", 2, global_position + Vector2(0, -14), Audio.BUS_WORLD, -9.0, 1.8)   # tymczasowo (młotek po odsłuchu A/B)
+			Audio.play_variant_at("hammer_nail", 3, global_position + Vector2(0, -14), Audio.BUS_WORLD, 0.0)   # młotek w gwóźdź (B3)
 	else:
 		_knock_t = 0.0
 
