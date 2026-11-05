@@ -2280,6 +2280,14 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				for k in 5:
 					var at := Vector2(rc.get_center().x + float(k - 2) * 3.0, rc.position.y + rc.size.y * (0.18 + 0.16 * float(k)))
 					Combat.apply(sw, Combat.make_info(Weapons.SRUT8, 10.0, at, Vector2.LEFT, 1, "bullet")))
+		for a in OS.get_cmdline_user_args():                   # …i po 1 s N ciosów kilofem po 35 (--shotpick=N): stany kratki i desek (B2)
+			if sw != null and a.begins_with("--shotpick="):
+				var picks := int(a.substr("--shotpick=".length()))
+				get_tree().create_timer(1.0).timeout.connect(func() -> void:
+					for k in picks:
+						if is_instance_valid(sw) and not sw.is_queued_for_deletion() and sw.has_method("hit_rect"):
+							var rc: Rect2 = sw.call("hit_rect")
+							Combat.apply(sw, Combat.make_info(Weapons.KILOF, 35.0, rc.get_center() + Vector2(0.0, rc.size.y * (0.1 - 0.2 * float(k))), Vector2.RIGHT, 1, "melee")))
 		var cave_arg := ""
 		for a in OS.get_cmdline_user_args():
 			if a == "--shotcave" or a.begins_with("--shotcave="):

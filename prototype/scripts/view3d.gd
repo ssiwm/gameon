@@ -689,6 +689,12 @@ func _sync_camera() -> void:
 	# oka, a obraz świata wyższy o pas nad kadrem (`_fog_rows`); sprite pokazuje tylko kadr gry — w kadrze ten sam obraz co z „shiftem”.
 	# Pas rośnie skokami po 32 wiersze (zmiana zoomu nie przebudowuje viewportu co klatkę); resztę (< 0,5 px) wyrównuje szczątkowe przesunięcie.
 	# Warstwa graczy nie ma mgły wolumetrycznej — zostaje przy „shifcie” i rozmiarze kadru (pas kosztowałby ją tyle samo co świat).
+	var orb := _shot_orbit()
+	if orb != Vector2.INF:                                      # dev `--shotorbit=YAW,PITCH`: kamera z ukosa na środek kadru (zrzuty konstrukcji)
+		var tgt := Vector3(ctr.x * PX, -ctr.y * PX, -0.6)
+		var eye := tgt + Basis(Vector3.UP, deg_to_rad(orb.x)) * Basis(Vector3.RIGHT, -deg_to_rad(orb.y)) * Vector3(0.0, 0.0, 8.0)
+		xf = Transform3D(Basis.looking_at(tgt - eye, Vector3.UP), eye)
+		foff = Vector2.ZERO
 	_cam_b.set_frustum(fsize, foff, near, 160.0)
 	if _vp_fg.size != sz:
 		_vp_fg.size = sz
@@ -2304,6 +2310,7 @@ func _sync_drawn() -> void:
 			continue
 		var h := float(n.get("rows")) * Level3D.T
 		var mat_id := String(n.get("mat_id"))
+		var thin := mat_id in ["planks", "grate"]                  # deski i kratka: konstrukcja w poprzek korytarza na przezroczystej bryle (B2)
 		var bm := BoxMesh.new()
 		var core_back := RUBBLE_CORE_BACK if mat_id == "rubble" else 0.0      # gruz: bryła cofnięta, kupa leży przed nią
 		bm.size = Vector3(Level3D.T, h, Level3D.DEPTH_BACK + 0.5 - core_back)
@@ -2312,17 +2319,21 @@ func _sync_drawn() -> void:
 		mi.material_override = _barrier_mat(mat_id)
 		mi.layers = LAYER_WORLD
 		mi.position = Level3D.px_to_m((n as Node2D).global_position) + Vector3(0.0, h * 0.5, (0.5 - Level3D.DEPTH_BACK) * 0.5 - core_back * 0.5)
+		if thin or mat_id == "brick":                              # przegroda zamyka korytarz: od ściany tła do przodu brył, jak sąsiednie kafle (B2)
+			bm.size.z = Level3D.DEPTH_BACK + Level3D.DEPTH_FRONT
+			mi.position.z = (Level3D.DEPTH_FRONT - Level3D.DEPTH_BACK) * 0.5
+		if thin:
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_world.add_child(mi)
 		if mat_id == "planks":
-			_barricade_boards(mi, h, bm.size.z * 0.5, absi(String(n.name).hash()))
+			_barricade(mi, h, n as Node2D)
 		elif mat_id == "grate":
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			_grate_bars(mi, h, bm.size.z * 0.5)
+			_grate(mi, h)
 		elif mat_id == "rubble":
 			_rubble_heap(mi, h, bm.size.z * 0.5 + core_back, _cave_seed(mi.position.x), _cave_set((n as Node2D).global_position, int(n.get("rows"))),
 				_cave_variant(n as Node2D))
 		var dmg := _damage_overlay(n, mi, Level3D.T, h)
-		_overlay_parts(mi, mat_id != "grate")
+		_overlay_parts(mi, not thin)
 		(n as CanvasItem).modulate = Color(1, 1, 1, 0)
 		_warm_destruction(String(n.get("mat_id")))                # bryły, gruz i ich potoki GPU razem z mapą (pod planszą), nie przy pierwszym rozbiciu
 		_clear_rubble_near(mi.position.x, Level3D.T)
@@ -2352,7 +2363,9 @@ func _sync_drawn() -> void:
 		if dw.size() > 5 and is_instance_valid(dw[0]):
 			_stamp_damage(dw[0], dw[5])
 			if String(dw[0].get("mat_id")) == "planks":
-				_sync_boards(dw[0], dw[1], float(dw[4]))
+				_sync_barricade(dw[0], dw[1], float(dw[4]))
+			elif String(dw[0].get("mat_id")) == "grate":
+				_sync_grate(dw[0], dw[1], float(dw[4]))
 		elif dw.size() > 2 and String(dw[2]) == "support" and is_instance_valid(dw[0]) and is_instance_valid(dw[1]):
 			var up := bool(dw[0].get("intact"))
 			var sn := dw[1] as Node3D
@@ -2368,6 +2381,10 @@ func _sync_drawn() -> void:
 				# rozbite zamurowane przejście (ta sama mapa): na podłodze zostaje gruz, a przy stropie wyszczerbione resztki muru
 				if pr.size() > 3 and String(pr[2]) == "wall" and String(pr[3]) == String(_level.get("map_id")):
 					_spawn_rubble((pr[1] as Node3D).position - Vector3(0.0, float(pr[4]) * 0.5, 0.0), float(pr[4]))
+				elif pr.size() > 3 and String(pr[2]) == "barrier" and (pr[1] as Node).has_meta("boards") and String(pr[3]) == String(_level.get("map_id")):
+					_spawn_board_remains(pr[1] as MeshInstance3D, float(pr[4]))     # rozbita barykada: słupki i wiszące deski zostają (B2)
+				elif pr.size() > 3 and String(pr[2]) == "barrier" and (pr[1] as Node).has_meta("grate_size") and String(pr[3]) == String(_level.get("map_id")):
+					_spawn_grate_remains(pr[1] as MeshInstance3D, float(pr[4]), pr[0] if is_instance_valid(pr[0]) else null)   # rama w otworze, skrzydło na podłodze (B2)
 				elif pr.size() > 3 and String(pr[2]) == "cave" and String(pr[3]) == String(_level.get("map_id")):
 					var cp := (pr[1] as Node3D).position
 					_spawn_cave_remains(Vector3(cp.x, cp.y - float(pr[4]) * 0.5, 0.0), float(pr[4]), _cave_seed(cp.x),
@@ -3030,20 +3047,16 @@ func _stamp_damage(n: Node, d: Dictionary) -> void:
 	d["done"] = total
 	d["holes_done"] = holes_total
 
-## Bryła przegrody wg materiału (`breakable.gd`): zamurowanie — beton ściany; deski — ciemne tło szpar za deskami (`_barricade_boards`);
-## kratka — sama bryła niewidoczna (przezroczysta, bez cienia), widać pręty z `_grate_bars` i korytarz za nimi.
+## Bryła przegrody wg materiału (`breakable.gd`): zamurowanie — beton ściany; deski i kratka — sama bryła niewidoczna (przezroczysta,
+## bez cienia), widać konstrukcję w poprzek korytarza (`_barricade`, `_grate`) i korytarz za nią.
 func _barrier_mat(mat_id: String) -> Material:
 	match mat_id:
-		"planks":
-			var dark := Level3D.make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic").duplicate() as StandardMaterial3D
-			dark.albedo_color = dark.albedo_color * Color(0.22, 0.2, 0.18)
-			return dark
 		"rubble":
 			# zawał: rozbity mur z betonu — tekstura muru (Bricks097) robiła z zawału ścianę z cegieł (playtest 1.1, BARRIER_FIX_PLAN.md B0)
 			var soil := Level3D.make_pbr("concrete", 0.7, Color(0.24, 0.23, 0.22), 0.95, 1.0, 1.0, false, "stone").duplicate() as StandardMaterial3D
 			soil.albedo_color = soil.albedo_color * Color(0.74, 0.72, 0.68)      # rozbity mur za kupą: zwietrzały beton z brudem
 			return soil
-		"grate":
+		"grate", "planks":
 			var clear := StandardMaterial3D.new()
 			clear.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 			clear.albedo_color = Color(0, 0, 0, 0)
@@ -3375,47 +3388,173 @@ func _support_model(h: float, away: float, reach := 0.0) -> Node3D:
 	root.add_child(fallen)
 	return root
 
-## Barykada: poziome deski przybite w poprzek przejścia (słoje tekstury idą wzdłuż deski), każda trochę inna — szerokość, odcień, skos,
-## wystają za ościeżnicę na różną długość; między nimi wąskie szpary na ciemne tło bryły. Ciąg z nazwy przegrody (`seed`), więc u wszystkich
-## i po każdej przebudowie geometrii ten sam. `front` — przód bryły w jej układzie. Deski dostają nakładkę uszkodzeń (`_overlay_parts`).
-func _barricade_boards(mi: MeshInstance3D, h: float, front: float, seed: int) -> void:
+## Przegrody w poprzek korytarza (BARRIER_FIX_PLAN.md B2): deski `%` / `:` i kratka `+` zamykają drogę, więc stoją w płaszczyźnie poprzecznej
+## do niej (y–z) na środku kafla, na całą głębokość od ściany tła (−DEPTH_BACK) do przodu brył (DEPTH_FRONT) i od podłogi do stropu; bryła
+## pod spodem jest przezroczysta. Kamera widzi przód konstrukcji i, z perspektywy, lico od strony gracza. Stany liczy każdy peer z HP
+## i plam, które przychodzą z serwera; zerwane deski, odgięte skrzydło i wypadające śruby są tylko w widoku (bez fizyki symulacji).
+const BARRICADE_BOARDS := 3                 ## części wytrzymałości barykady (`breakable.boards`): tyle desek przybija się w otworze `:`
+const BAR_POST := 0.12                      ## m: przekrój słupka barykady
+const BAR_BOARD_T := 0.04                   ## m: grubość deski
+const BAR_POST_MID := 0.36                  ## środkowy słupek: ułamek głębokości od ściany tła (świat z ≈ −1,1 — za drogą postaci)
+const GRATE_CELL := 0.1                     ## m: oczko kratki
+const GRATE_FW := 0.06                      ## m: kątownik ramy kratki
+const GRATE_SWING := 0.55                   ## rad: skrzydło wyrwane z przodu, odgięte na zawiasach ku stronie ciosów
+const GRATE_DROOP := 0.07                   ## rad: opadnięcie przedniego brzegu wyrwanego skrzydła
+const GRATE_DENT := 0.15                    ## m: wgięcie płaskowników w miejscu ciosu (od stanu „wgięta”)
+const GRATE_SPRUNG := 0.08                  ## rad: skrzydło wgięte — przedni brzeg po wypadnięciu rygla lekko odstaje od ramy
+
+var _orbit_arg := Vector2(NAN, NAN)
+## Dev `--shotorbit=YAW,PITCH` (stopnie): kamera świata z ukosa na środek kadru — zrzuty konstrukcji w głąb sceny (`_sync_camera`).
+func _shot_orbit() -> Vector2:
+	if is_nan(_orbit_arg.x):
+		_orbit_arg = Vector2.INF
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--shotorbit="):
+				var p := a.substr("--shotorbit=".length()).split(",")
+				_orbit_arg = Vector2(float(p[0]), float(p[1]) if p.size() > 1 else 15.0)
+	return _orbit_arg
+
+## Połowa głębokości korytarza: przegroda sięga od −tyle do +tyle w układzie swojej bryły.
+static func _bar_half() -> float:
+	return (Level3D.DEPTH_BACK + Level3D.DEPTH_FRONT) * 0.5
+
+## Strona (−1 / +1 w x), z której idą ciosy albo przybito deski: najbliższy gracz w widoku; bez graczy — z nazwy przegrody.
+func _bar_side(n: Node2D) -> float:
+	var best := INF
+	var s := 0.0
+	if _players != null:
+		for p in _players.get_children():
+			if p is Node2D and (p as Node2D).visible:
+				var dx := (p as Node2D).global_position.x - n.global_position.x
+				if absf(dx) < best and absf(dx) > 0.5:
+					best = absf(dx)
+					s = signf(dx)
+	if s != 0.0 and best < 400.0:
+		return s
+	return -1.0 if absi(String(n.name).hash()) % 2 == 0 else 1.0
+
+var _nail_m: StandardMaterial3D = null
+func _nail_mat() -> StandardMaterial3D:
+	if _nail_m == null:
+		_nail_m = StandardMaterial3D.new()
+		_nail_m.albedo_color = Color(0.2, 0.18, 0.16)
+		_nail_m.metallic = 0.8
+		_nail_m.roughness = 0.55
+	return _nail_m
+
+## Deska wzdłuż korytarza (oś z): BoxMesh długością w x, obrócony o 90° wokół y — słoje idą wzdłuż deski, lico deski patrzy w ±x.
+func _bar_board(parent: Node3D, nm: String, len: float, bh: float, at: Vector3, tilt: float, mat: Material) -> MeshInstance3D:
+	var b := BoxMesh.new()
+	b.size = Vector3(len, bh, BAR_BOARD_T)
+	var bi := _prop_part(parent, b, at, mat)
+	bi.name = nm
+	bi.basis = Basis(Vector3.RIGHT, tilt) * Basis(Vector3.UP, PI * 0.5)
+	bi.set_meta("rest", bi.transform)
+	return bi
+
+## Gwoździe deski w miejscach słupków (`post_z` w układzie przegrody), po dwa łebki na słupek, na licu od strony `side`.
+## Meta „post” — numer słupka (0 przedni): zerwana deska zostaje na gwoździach przedniego.
+func _bar_nails(bi: MeshInstance3D, bh: float, post_z: Array, side: float, rng: RandomNumberGenerator) -> void:
+	var nm := CylinderMesh.new()
+	nm.top_radius = 0.012
+	nm.bottom_radius = 0.012
+	nm.height = 0.006
+	nm.radial_segments = 8
+	nm.rings = 1
+	for i in post_z.size():
+		for j in 2:
+			var lx := -(float(post_z[i]) - bi.position.z)              # z przegrody → x deski (obrót o +90° wokół y: x → −z)
+			var nl := _prop_part(bi, nm, Vector3(lx + rng.randf_range(-0.02, 0.02), (float(j) - 0.5) * bh * 0.45, side * (BAR_BOARD_T * 0.5 + 0.002)), _nail_mat())
+			nl.name = "Nail%d_%d" % [i, j]
+			nl.rotation.x = PI * 0.5
+			nl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			nl.set_meta("post", i)
+
+## Barykada: trzy słupki zaklinowane między podłogą a stropem (przód, środek za drogą postaci, przy ścianie tła), deski wzdłuż korytarza
+## przybite do nich od strony `side` (lico; w otworze `:` od strony gracza, który przybija), gwoździe na każdym słupku, w zabitej barykadzie
+## `%` dwa zastrzały „Z” na licu. Każda deska trochę inna (wysokość, odcień, skos, długość) — ciąg z nazwy, u wszystkich ten sam.
+## Deski dostają nakładkę uszkodzeń na lico (`_overlay_parts`: maska 2D na pasie wokół drogi postaci — dziury na wylot z D2).
+func _barricade(mi: MeshInstance3D, h: float, n: Node2D) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = seed
-	var w := Level3D.T
-	var y := -h * 0.5 + rng.randf_range(0.02, 0.08)
+	rng.seed = absi(String(n.name).hash())
+	var side := _bar_side(n)
+	var zf := _bar_half()
+	var zb := -zf
+	var post_z := [zf - 0.09, zb + (zf - zb) * BAR_POST_MID, zb + 0.08]
+	var post_m := _prop_mat("post", 1.4, Color(0.55, 0.46, 0.36))
+	for i in post_z.size():
+		var pm := BoxMesh.new()
+		pm.size = Vector3(BAR_POST, h, BAR_POST)
+		_prop_part(mi, pm, Vector3(0.0, 0.0, float(post_z[i])), post_m).name = "Stud%d" % i
+	var x := side * (BAR_POST * 0.5 + BAR_BOARD_T * 0.5)
+	var y := -h * 0.5 + rng.randf_range(0.03, 0.08)
 	var k := 0
-	while y < h * 0.5 - 0.1:
+	while y < h * 0.5 - 0.12:
 		var bh := minf(rng.randf_range(0.17, 0.26), h * 0.5 - y)
-		var tilt := rng.randf_range(-0.05, 0.05)
-		var b := BoxMesh.new()
-		b.size = Vector3(w + rng.randf_range(0.08, 0.3), bh, rng.randf_range(0.035, 0.05))
-		var bi := MeshInstance3D.new()
-		bi.name = "Board%d" % k
-		bi.mesh = b
-		bi.material_override = _prop_mat("plank", 0.9, Color(0.62, 0.52, 0.4).lerp(Color(0.85, 0.72, 0.55), rng.randf()))
-		bi.layers = LAYER_WORLD
-		bi.position = Vector3(rng.randf_range(-0.06, 0.06), y + bh * 0.5, front + b.size.z * 0.5)
-		bi.rotation.z = tilt
+		var len := zf * 2.0 - rng.randf_range(0.0, 0.18)
+		var bi := _bar_board(mi, "Board%d" % k, len, bh, Vector3(x, y + bh * 0.5, rng.randf_range(-0.06, 0.06)), rng.randf_range(-0.03, 0.03),
+			_prop_mat("plank", 0.9, Color(0.62, 0.52, 0.4).lerp(Color(0.85, 0.72, 0.55), rng.randf())))
 		bi.set_meta("dmg_part", true)
-		mi.add_child(bi)
+		_bar_nails(bi, bh, post_z, side, rng)
 		y += bh + rng.randf_range(0.025, 0.07)
 		k += 1
+	if String(n.name).begins_with("Planks"):                     # zastrzały w każdym przęśle: od dołu przy przodzie ku górze w głąb
+		for b in 2:
+			var z0 := float(post_z[b])
+			var z1 := float(post_z[b + 1])
+			var dy := h - 0.3
+			var br := _bar_board(mi, "Brace%d" % b, sqrt((z1 - z0) * (z1 - z0) + dy * dy), 0.15,
+				Vector3(side * (BAR_POST * 0.5 + BAR_BOARD_T + 0.02), 0.0, (z0 + z1) * 0.5), 0.0, _prop_mat("plank", 0.9, Color(0.5, 0.42, 0.32)))
+			br.basis = Basis(Vector3.RIGHT, atan2(dy, z0 - z1)) * Basis(Vector3.UP, PI * 0.5)
+			br.set_meta("rest", br.transform)
+	mi.set_meta("post_z", post_z)
+	mi.set_meta("bar_side", side)
 
-## Barykada (DESTRUCTION_PLAN.md D2b): widać tyle desek, ile przegroda ma wytrzymałości (`breakable.boards`, BARRICADE_BOARDS części) —
-## przybita deska się pojawia, odłupana spada drzazgą. Kolejność desek z nazwy przegrody, przemieszana (u wszystkich ta sama), więc jedna
-## przybita deska z trzech to kilka krzywych desek przez cały otwór, a nie zabity dół.
-const BARRICADE_BOARDS := 3
+## Zerwana deska: połowa desek (z nazwy, u wszystkich ta sama) zostaje na gwoździach przedniego słupka i wisi tylnym końcem w dół (nie schodzi
+## pod podłogę — kąt z wysokości gwoździa), reszta odpada. Zwraca, czy deska wisi.
+func _tear_board(bi: MeshInstance3D, h: float, front_z: float) -> bool:
+	var hs := absi((String(bi.get_parent().name) + String(bi.name)).hash())
+	if hs % 5 >= 3:
+		return false
+	var rest: Transform3D = bi.get_meta("rest")
+	var len := (bi.mesh as BoxMesh).size.x
+	var p := Vector3(rest.origin.x, rest.origin.y, front_z)
+	var a := minf(1.3, asin(clampf((p.y + h * 0.5 - 0.05) / maxf(len - 0.1, 0.1), 0.0, 1.0)))
+	var r := Basis(Vector3.RIGHT, -a) * Basis(Vector3.FORWARD, float(hs % 7 - 3) * 0.02)
+	bi.transform = Transform3D(r * rest.basis, p + r * (rest.origin - p))
+	bi.set_meta("hang", true)
+	for c in bi.get_children():
+		if c.has_meta("post"):
+			(c as Node3D).visible = int(c.get_meta("post")) == 0          # gwoździe środkowego i tylnego słupka wyrwane razem z deską
+	return true
 
-func _sync_boards(n: Node2D, mi: MeshInstance3D, h: float) -> void:
+func _untear_board(bi: MeshInstance3D) -> void:
+	if bi.has_meta("hang"):
+		bi.transform = bi.get_meta("rest")
+		bi.remove_meta("hang")
+		for c in bi.get_children():
+			(c as Node3D).visible = true
+
+## Barykada (DESTRUCTION_PLAN.md D2b, B2): widać tyle desek, ile przegroda ma wytrzymałości (`breakable.boards`, BARRICADE_BOARDS części).
+## Kolejność desek z nazwy, przemieszana (u wszystkich ta sama), więc jedna przybita deska z trzech to kilka desek przez cały otwór.
+## Odłupana deska sypie drzazgą i w połowie przypadków wisi na przednim słupku; zastrzały odpadają przy pierwszej utraconej części.
+## Przybita na nowo (punkt kontrolny, wipe, barykadowanie) wraca na miejsce.
+func _sync_barricade(n: Node2D, mi: MeshInstance3D, h: float) -> void:
 	var want := int(n.call("boards", BARRICADE_BOARDS))
 	var had := int(mi.get_meta("boards", -1))
 	if want == had:
 		return
 	mi.set_meta("boards", want)
+	var front_z := float((mi.get_meta("post_z") as Array)[0])
 	var parts: Array = []
 	for c in mi.get_children():
 		if String(c.name).begins_with("Board"):
 			parts.append(c)
+		elif String(c.name).begins_with("Brace"):
+			var up := want >= BARRICADE_BOARDS
+			if (c as Node3D).visible and not up and had > want:
+				_board_splinter(n, c as Node3D, h)
+			(c as Node3D).visible = up
 	var order: Array = range(parts.size())
 	var rng := RandomNumberGenerator.new()
 	rng.seed = absi(String(n.name).hash()) + 7
@@ -3427,43 +3566,203 @@ func _sync_boards(n: Node2D, mi: MeshInstance3D, h: float) -> void:
 	var show := int(ceil(float(parts.size()) * float(want) / float(BARRICADE_BOARDS)))
 	for k in order.size():
 		var bi := parts[order[k]] as MeshInstance3D
-		var vis := k < show
-		if bi.visible and not vis and had > want:
-			# deska odłupana: spada drzazgą z miejsca, gdzie wisiała
-			var at := Vector2(n.global_position.x + bi.position.x / Level3D.PX, n.global_position.y - (h * 0.5 + bi.position.y) / Level3D.PX)
-			var b := Vfx.debris(_level, at, Vector2(randf_range(-40.0, 40.0), randf_range(-60.0, -10.0)), Vector2(6, 4), Color(0.42, 0.3, 0.18), 0.1, 3.0)
-			if b != null:
-				mirror_chunk(b, "planks", 6.0, randi())
-		bi.visible = vis
+		if k < show:
+			_untear_board(bi)
+			bi.visible = true
+		elif bi.visible and not bi.has_meta("hang"):
+			if had > want:
+				_board_splinter(n, bi, h)
+				bi.visible = _tear_board(bi, h, front_z)
+			else:
+				bi.visible = false
 
-## Zardzewiała kratka: rama z kątowników, pionowe pręty co ~13 cm i płaskowniki w poprzek, na przodzie bryły (`front`), jak deski barykady.
-## Przez oczka widać korytarz i światło (bryła pod spodem jest przezroczysta — `_barrier_mat`), cień pada w paski.
-func _grate_bars(mi: MeshInstance3D, h: float, front: float) -> void:
-	var mat := _prop_mat("metal", 1.2, Color(0.62, 0.42, 0.3))
-	var w := Level3D.T
-	var z := front - 0.04
-	var parts: Array = [[Vector3(0.08, h, 0.06), Vector3(-w * 0.5 + 0.04, 0.0, z)], [Vector3(0.08, h, 0.06), Vector3(w * 0.5 - 0.04, 0.0, z)],
-		[Vector3(w, 0.08, 0.06), Vector3(0.0, -h * 0.5 + 0.04, z)], [Vector3(w, 0.08, 0.06), Vector3(0.0, h * 0.5 - 0.04, z)]]
-	var n := int(round((w - 0.16) / 0.13))
-	for i in n - 1:
-		parts.append([Vector3(0.03, h - 0.12, 0.03), Vector3(-w * 0.5 + 0.08 + (w - 0.16) * float(i + 1) / float(n), 0.0, z)])
-	var rows := maxi(2, int(round(h / 0.65)))
-	for j in rows - 1:
-		parts.append([Vector3(w - 0.12, 0.045, 0.02), Vector3(0.0, -h * 0.5 + h * float(j + 1) / float(rows), z + 0.02)])
-	for i in parts.size():
-		var b := BoxMesh.new()
-		b.size = parts[i][0]
-		var bi := MeshInstance3D.new()
-		bi.name = "Bar%d" % i
-		bi.mesh = b
-		bi.material_override = mat
-		bi.layers = LAYER_WORLD
-		bi.position = parts[i][1]
-		bi.set_meta("dmg_part", true)
-		mi.add_child(bi)
+## Drzazga 2D (z modelem pre-fraktury desek) z miejsca odłupanej deski — na drodze postaci, na wysokości deski.
+func _board_splinter(n: Node2D, part: Node3D, h: float) -> void:
+	var at := Vector2(n.global_position.x, n.global_position.y - (h * 0.5 + part.position.y) / Level3D.PX)
+	var b := Vfx.debris(_level, at, Vector2(randf_range(-40.0, 40.0), randf_range(-60.0, -10.0)), Vector2(6, 4), Color(0.42, 0.3, 0.18), 0.1, 3.0)
+	if b != null:
+		mirror_chunk(b, "planks", 6.0, randi())
 
-## Nakładka uszkodzeń bryły (`_damage_overlay`) także na jej części z przodu (deski, pręty): ta sama maska, przesunięta o położenie części
-## (`offset`), więc plama trafienia leży na desce tam, gdzie padł strzał. `keep_own = false` — sama bryła bez nakładki (kratka jest przezroczysta).
+## Rozbita barykada: słupki i wiszące deski zostają (węzeł „RubbleBoards” w `_geo`, sprzątany przy odbudowie przegrody jak gruz).
+func _spawn_board_remains(mi: MeshInstance3D, h: float) -> void:
+	var root := Node3D.new()
+	root.name = "RubbleBoards"
+	root.position = mi.position - Vector3(0.0, h * 0.5, 0.0)
+	_geo.add_child(root)
+	var front_z := float((mi.get_meta("post_z", [0.0]) as Array)[0])
+	for c in mi.get_children():
+		var bi := c as MeshInstance3D
+		if bi == null or not bi.visible:
+			continue
+		if String(c.name).begins_with("Stud"):
+			bi.reparent(root, true)
+		elif String(c.name).begins_with("Board") and (bi.has_meta("hang") or _tear_board(bi, h, front_z)):
+			bi.material_overlay = null
+			bi.reparent(root, true)
+
+## Materiały kratki: zardzewiała stal skrzydła (metal + brud „rust”, w układzie części — skrzydło się rusza), ciemniejsze kątowniki, śruby.
+func _grate_mats() -> Array:
+	var steel := Level3D.make_pbr("metal", 1.6, Color(0.36, 0.3, 0.26), 0.6, 1.0, 0.7, false, "rust").duplicate() as StandardMaterial3D
+	steel.uv1_world_triplanar = false
+	steel.albedo_color = Color(0.72, 0.5, 0.36)
+	var frame := steel.duplicate() as StandardMaterial3D
+	frame.albedo_color = Color(0.42, 0.34, 0.3)
+	var bolt := steel.duplicate() as StandardMaterial3D
+	bolt.albedo_color = Color(0.55, 0.5, 0.46)
+	return [steel, frame, bolt]
+
+func _grate_box(parent: Node3D, nm: String, size: Vector3, at: Vector3, mat: Material) -> MeshInstance3D:
+	var b := BoxMesh.new()
+	b.size = size
+	var bi := _prop_part(parent, b, at, mat)
+	bi.name = nm
+	return bi
+
+func _grate_bolt_mesh() -> Mesh:
+	var c := CylinderMesh.new()
+	c.top_radius = 0.016
+	c.bottom_radius = 0.016
+	c.height = 0.022
+	c.radial_segments = 6                               # łeb sześciokątny
+	c.rings = 1
+	return c
+
+## Skrzydło kratki `pw` (wzdłuż z) × `ph`: oś zawiasów w początku układu (przy ścianie tła), skrzydło w +z. Obrzeże, płaskowniki na sztorc
+## w kratkę (oczko GRATE_CELL), trzy zawiasy, śruby: „BoltF*” przy przednim brzegu (rygle do ramy), „BoltT*” u góry, „BoltS*” u dołu.
+func _grate_leaf(pw: float, ph: float, mats: Array) -> Node3D:
+	var leaf := Node3D.new()
+	leaf.name = "Leaf"
+	var steel: Material = mats[0]
+	var rim := 0.045
+	var c := pw * 0.5
+	for spec in [["RimB", Vector3(0.012, ph, rim), Vector3(0.0, 0.0, rim * 0.5)], ["RimF", Vector3(0.012, ph, rim), Vector3(0.0, 0.0, pw - rim * 0.5)],
+			["RimT", Vector3(0.012, rim, pw), Vector3(0.0, ph * 0.5 - rim * 0.5, c)], ["RimS", Vector3(0.012, rim, pw), Vector3(0.0, -ph * 0.5 + rim * 0.5, c)]]:
+		_grate_box(leaf, String(spec[0]), spec[1], spec[2], steel)
+	var iw := pw - rim * 2.0
+	var ih := ph - rim * 2.0
+	var nv := int(round(iw / GRATE_CELL))
+	for i in nv - 1:
+		_grate_box(leaf, "BarV%d" % i, Vector3(0.032, ih, 0.007), Vector3(0.0, 0.0, rim + iw * float(i + 1) / float(nv)), steel)
+	var nh := int(round(ih / GRATE_CELL))
+	for j in nh - 1:
+		_grate_box(leaf, "BarH%d" % j, Vector3(0.03, 0.007, iw), Vector3(0.0, -ih * 0.5 + ih * float(j + 1) / float(nh), c), steel)
+	var bm := _grate_bolt_mesh()
+	for k in 3:
+		var yy := (float(k) - 1.0) * ph * 0.4
+		var hg := _grate_box(leaf, "Hinge%d" % k, Vector3(0.05, 0.12, 0.05), Vector3(0.0, yy, -0.02), mats[1])
+		hg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var bf := _prop_part(leaf, bm, Vector3(0.0, yy, pw - rim * 0.5), mats[2])
+		bf.name = "BoltF%d" % k
+		bf.scale = Vector3(1.0, 1.8, 1.0)                         # śruba przez obrzeże: łeb z obu stron skrzydła
+		bf.rotation.z = PI * 0.5
+	for k in 2:
+		for spec in [["BoltT%d", ph * 0.5 - rim * 0.5], ["BoltS%d", -ph * 0.5 + rim * 0.5]]:
+			var b := _prop_part(leaf, bm, Vector3(0.0, float(spec[1]), pw * (0.3 + 0.4 * float(k))), mats[2])
+			b.name = String(spec[0]) % k
+			b.scale = Vector3(1.0, 1.8, 1.0)
+			b.rotation.z = PI * 0.5
+	return leaf
+
+## Kratka w niskim otworze kanału: rama z kątowników (przód, tył przy ścianie tła, nadproże, próg) na całą głębokość korytarza, a w niej
+## skrzydło na zawiasach przy ścianie tła, przykręcone ryglami z przodu. Za kratką ciemny korytarz kanału; bryła przezroczysta, cień w kratkę.
+func _grate(mi: MeshInstance3D, h: float) -> void:
+	var mats := _grate_mats()
+	var zf := _bar_half()
+	var zb := -zf
+	var frame := Node3D.new()
+	frame.name = "Frame"
+	mi.add_child(frame)
+	var fw := GRATE_FW
+	for spec in [["FrameF", Vector3(0.05, h, fw), Vector3(0.0, 0.0, zf - fw * 0.5)], ["FrameB", Vector3(0.05, h, fw), Vector3(0.0, 0.0, zb + fw * 0.5)],
+			["FrameT", Vector3(0.05, fw, zf * 2.0), Vector3(0.0, h * 0.5 - fw * 0.5, 0.0)], ["FrameS", Vector3(0.05, 0.035, zf * 2.0), Vector3(0.0, -h * 0.5 + 0.0175, 0.0)]]:
+		_grate_box(frame, String(spec[0]), spec[1], spec[2], mats[1])
+	var pw := zf * 2.0 - fw * 1.2
+	var ph := h - fw * 1.2
+	var leaf := _grate_leaf(pw, ph, mats)
+	leaf.position = Vector3(0.0, 0.0, zb + fw * 0.6)
+	mi.add_child(leaf)
+	mi.set_meta("grate_state", 0)
+	mi.set_meta("grate_size", Vector2(pw, ph))
+
+## Stan kratki z HP: 0 cała, 1 wgięta (> 55% HP; płaskowniki wgniecione w miejscu ostatniego ciosu, wypada rygiel najbliżej niego),
+## 2 przedni brzeg wyrwany — skrzydło odgięte na zawiasach ku stronie ciosów (`_bar_side`) i opadnięte, rygle i górne śruby wypadły.
+## Wypadające śruby spadają na podłogę (`_grate_bolt_fall`). Powrót HP (wipe, punkt kontrolny) prostuje skrzydło i wkręca śruby.
+func _sync_grate(n: Node2D, mi: MeshInstance3D, h: float) -> void:
+	var frac := float(n.get("hp")) / maxf(float(n.call("max_hp")), 0.001)
+	var want := 0 if frac > 0.995 else (1 if frac > 0.55 else 2)
+	var had := int(mi.get_meta("grate_state", 0))
+	if want == had:
+		return
+	mi.set_meta("grate_state", want)
+	var leaf := mi.get_node_or_null("Leaf") as Node3D
+	if leaf == null:
+		return
+	if want > 0 and not mi.has_meta("grate_side"):
+		mi.set_meta("grate_side", _bar_side(n))
+	var sx := float(mi.get_meta("grate_side", 1.0))
+	leaf.basis = Basis(Vector3.UP, sx * GRATE_SWING) * Basis(Vector3.RIGHT, GRATE_DROOP) if want >= 2 else Basis(Vector3.UP, sx * GRATE_SPRUNG * float(want))
+	var dent := Vector2(INF, INF)                                   # miejsce ostatniego ciosu w układzie skrzydła: (z, y), z na drodze postaci
+	var sp: PackedFloat32Array = n.get("splats")
+	if sp.size() >= 4:
+		dent = Vector2(-mi.position.z - leaf.position.z + (sp[sp.size() - 4] - 0.5) * Level3D.T, (0.5 - sp[sp.size() - 3]) * h)
+	var near_bolt := "BoltF%d" % (0 if dent.y > 0.4 else (2 if dent.y < -0.4 else 1))
+	for c in leaf.get_children():
+		var part := c as Node3D
+		if not part.has_meta("rest"):
+			part.set_meta("rest", part.position)
+		var rest: Vector3 = part.get_meta("rest")
+		var nm := String(c.name)
+		var k := 0.0
+		if nm.begins_with("BarV") and want >= 1 and dent.x != INF:      # pionowe płaskowniki najbliżej ciosu wgniecione (wybrzuszenie)
+			k = clampf(1.0 - absf(rest.z - dent.x) / 0.6, 0.0, 1.0)
+		part.position = rest + Vector3(-sx * GRATE_DENT * k * k, 0.0, 0.0)     # od strony ciosów w głąb kanału
+		var out := (want >= 2 and (nm.begins_with("BoltF") or nm.begins_with("BoltT"))) or (want >= 1 and nm == near_bolt)
+		if out and part.visible and want > had:
+			part.visible = false
+			_grate_bolt_fall(part.global_position, mi.global_position.y - h * 0.5)
+		elif not out:
+			part.visible = true
+
+## Śruba wyrwana z kratki: spada na podłogę i leży kilka sekund (sama geometria 3D, bez fizyki symulacji).
+func _grate_bolt_fall(at: Vector3, floor_y: float) -> void:
+	var b := MeshInstance3D.new()
+	b.mesh = _grate_bolt_mesh()
+	b.material_override = _grate_mats()[2]
+	b.layers = LAYER_WORLD
+	b.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_world.add_child(b)
+	b.global_position = at
+	var land := Vector3(at.x + randf_range(-0.25, 0.25), floor_y + 0.012, at.z + randf_range(-0.2, 0.2))
+	var tw := b.create_tween()
+	tw.tween_property(b, "global_position", land, sqrt(maxf(at.y - floor_y, 0.05) / 4.9)).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tw.parallel().tween_property(b, "rotation", Vector3(randf_range(1.0, 2.0), randf() * TAU, randf_range(-1.0, 1.0)), 0.4)
+	tw.tween_interval(8.0)
+	tw.tween_callback(b.queue_free)
+
+## Rozbita kratka: rama zostaje w otworze, skrzydło wyrwane z zawiasów leży płasko na podłodze obok niej, po stronie ciosów.
+## Węzeł „RubbleGrate” w `_geo`: odbudowa przegrody (wipe, punkt kontrolny) sprząta go razem z gruzem (`_sync_drawn`).
+func _spawn_grate_remains(mi: MeshInstance3D, h: float, n: Node2D) -> void:
+	var sx := float(mi.get_meta("grate_side", _bar_side(n) if n != null else 1.0))
+	var sz: Vector2 = mi.get_meta("grate_size", Vector2(_bar_half() * 2.0, h))
+	var root := Node3D.new()
+	root.name = "RubbleGrate"
+	root.position = mi.position - Vector3(0.0, h * 0.5, 0.0)
+	_geo.add_child(root)
+	var fr := mi.get_node_or_null("Frame") as Node3D
+	if fr != null:
+		fr.reparent(root, true)
+	var leaf := _grate_leaf(sz.x, sz.y, _grate_mats())
+	for c in leaf.get_children():
+		if String(c.name).begins_with("BoltF") or String(c.name).begins_with("BoltT"):
+			(c as Node3D).visible = false
+	root.add_child(leaf)
+	# na boku (normalna skrzydła ku górze), wysokość skrzydła wzdłuż x po stronie ciosów, lekko skośnie
+	leaf.basis = Basis(Vector3.UP, sx * 0.12) * Basis(Vector3.BACK, -sx * PI * 0.5)
+	leaf.position = Vector3(sx * (sz.y * 0.5 + 0.15), 0.03, -_bar_half() + 0.15)
+
+## Nakładka uszkodzeń bryły (`_damage_overlay`) także na jej częściach (deski barykady): ta sama maska, przesunięta o położenie części
+## (`offset`), więc plama trafienia leży na desce tam, gdzie padł strzał. Deska w poprzek korytarza (B2) bierze maskę na oba lica: szerokość
+## kafla 2D wypada na pasie lica wokół drogi postaci (z = 0), wysokość bez zmian. `keep_own = false` — sama bryła bez nakładki (przezroczysta).
 func _overlay_parts(mi: MeshInstance3D, keep_own: bool) -> void:
 	var sm := mi.material_overlay as ShaderMaterial
 	if sm == null:
@@ -3471,7 +3770,9 @@ func _overlay_parts(mi: MeshInstance3D, keep_own: bool) -> void:
 	for c in mi.get_children():
 		if c is MeshInstance3D and c.has_meta("dmg_part"):
 			var part := sm.duplicate() as ShaderMaterial
-			part.set_shader_parameter("offset", Vector2(c.position.x, c.position.y))
+			part.set_shader_parameter("offset", Vector2(c.position.z + mi.position.z, c.position.y))   # x maski = z deski względem drogi postaci
+			part.set_shader_parameter("flip", -1.0)                                                       # oś deski: x → −z przegrody
+			part.set_shader_parameter("two_sided", 1.0)
 			(c as MeshInstance3D).material_overlay = part
 	if not keep_own:
 		mi.material_overlay = null

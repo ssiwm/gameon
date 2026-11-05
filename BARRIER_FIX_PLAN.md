@@ -3,7 +3,7 @@
 Stan wyjścia: main 1.7.492 + PR #595 (build 1.7.493+b594644), 2026-11-04. Kontynuacja `DESTRUCTION_PLAN.md` (D0–D3 wdrożone).
 Źródło: pierwszy ludzki przebieg 1.1 z niszczeniem (dziennik `2026-11-04_12-10-30.jsonl`, solo, NORMAL, bez bota) i uwagi autora.
 
-**Stan (2026-11-04):** B0 scalone (#597, 1.7.494). B1 (kilof u każdego) w 1.7.495 — bez rozgarniania gruzu (czeka na mapę z zawałem, decyzja 5). W trakcie B0 zapadła decyzja 5 — **zawał zdjęty z 1.1, 1.2 i 1.3**;
+**Stan (2026-11-04):** B0 scalone (#597, 1.7.494). B1 (kilof u każdego) scalone (#598, 1.7.495) — bez rozgarniania gruzu (czeka na mapę z zawałem, decyzja 5). B2 (kratka, deski i mur w poprzek korytarza) w 1.7.496 — bez gruzu (decyzja 5). W trakcie B0 zapadła decyzja 5 — **zawał zdjęty z 1.1, 1.2 i 1.3**;
 mechanika zostaje na przyszłe mapy w podziemiach z niskimi przejściami i jest testowana na mapie testowej `t_mine`.
 Punkty planu o gruzie i stemplach na mapach kampanii (B1 rozgarnianie, B2 gruz, B4 zawał) czekają przez to na pierwszą taką mapę.
 
@@ -103,6 +103,15 @@ w stanie zniszczeń (wipe, punkt kontrolny, dołączający).
 - Gruz: zasada 4 — skała, ziemia i złamana belka, szczelina u góry kupy; przy rozgarnianiu [E] kupa maleje etapami (razem z rozgarnianiem,
   po decyzji 5). Modele `rubble_pile_*` są dziś dla stref 4 i 5 rzędów — dla niskich przejść wygenerować 2–3 rzędy.
 - Zrzuty przed / po (`--shotwall=Grate1 --view3dlit`) w `C:\deadair87\shots_barrier_v2`.
+
+*Wykonanie (1.7.496):* po pierwszej wersji (deski i krata na przednim licu bryły) autor zwrócił uwagę, że przegroda narysowana na przekroju
+jest ścianą wzdłuż drogi i niczego nie zamyka, a bryła nie sięga do przodu sąsiednich kafli. Zaakceptowana wersja v3: deski i kratka w poprzek
+korytarza, od ściany tła (−2,4 m) do przodu brył (+1,1 m) i od podłogi do stropu, mur `q` do przodu brył. Niski otwór na 1.2 i 1.3 — nadproże `C`
+nad kratką. Kratka: rama, skrzydło na zawiasach przy ścianie tła, rygle z przodu; stany z HP — cała → wgięta (> 55%) → skrzydło odgięte ku stronie
+ciosów → rama zostaje, skrzydło na podłodze; śruby wypadają po kolei. Deski: trzy słupki, gwoździe, zastrzały w `%`, lico od strony gracza w `:`;
+połowa odłupanych desek wisi na przednim słupku, po rozbiciu zostają słupki i wiszące deski; dziury z D2 na licach desek. Rdza z materiału `metal`
+z brudem `rust` (bez nowych tekstur ambientCG). Gruz bez zmian (decyzja 5). Dev: `--shotpick=N`, `--shotorbit=YAW,PITCH`. Kolizja bez zmian
+(cały kafel), więc gracz staje ok. 0,6 m przed deskami.
 
 ### B3 — dźwięk (1 PR, odsłuch A/B przed podmianą)
 
