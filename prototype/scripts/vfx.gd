@@ -319,7 +319,7 @@ static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String,
 		"wood":                                                   # deski przegrody: drzazgi i głuchy stuk, bez iskier i rykoszetu
 			burst(parent, pos, Color(0.46, 0.33, 0.2, 0.9), 6, 25.0, 80.0, out, 55.0, 420.0, 0.35, Vector2(0.7, 2.2))
 			if snd:
-				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -14.0, 0.62)
+				Audio.play_variant_at("wood_hit", 3, pos, Audio.BUS_WORLD, -11.0, 1.1)     # kula w deskę (B3)
 		"concrete":
 			burst(parent, pos, Color(0.6, 0.6, 0.62, 0.9), 5, 30.0, 90.0, out, 55.0, 420.0, 0.3, Vector2(0.8, 1.6))
 			sparks(parent, pos, -out)

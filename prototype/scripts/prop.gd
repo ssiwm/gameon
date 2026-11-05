@@ -237,7 +237,7 @@ func _on_body_entered(_body: Node) -> void:
 @rpc("authority", "call_local", "unreliable")
 func _impact_fx(pos: Vector2, k: float) -> void:
 	if kind == "crate":
-		Audio.play_variant_at("door", 2, pos, Audio.BUS_WORLD, lerpf(-14.0, -4.0, k), 0.55)
+		Audio.play_variant_at("wood_hit", 3, pos, Audio.BUS_WORLD, lerpf(-12.0, -2.0, k), 0.8)      # skrzynia spada: cięższy stuk drewna (B3)
 	else:
 		Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, lerpf(-10.0, 0.0, k), 0.6)
 	Vfx.dust(get_parent(), pos, k)
@@ -328,8 +328,7 @@ func shatter(from_pos := Vector2.INF) -> void:
 func _shatter_fx(pos: Vector2, rot: float, away: float) -> void:
 	_gone()
 	var parent := get_parent()
-	Audio.play_variant_at("door", 2, pos, Audio.BUS_WORLD, 0.0, 0.7)
-	Audio.play_variant_at("amb_creak", 3, pos, Audio.BUS_WORLD, -4.0, 1.4)
+	Audio.play_variant_at("wood_break", 3, pos, Audio.BUS_WORLD, -2.0)       # B3: trzask drewna (dawniej metalowe drzwi i skrzypienie)
 	for ch in chunk_plan(_seed(), away):
 		var at: Vector2 = pos + (ch[0] as Vector2).rotated(rot)
 		var sz: float = ch[2]

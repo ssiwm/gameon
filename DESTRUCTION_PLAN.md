@@ -327,7 +327,7 @@ jako dzielnik ciosu.
   prostopadłe, krępe kawałki) z planu z ziarna, lecące od uderzenia, potem gruz w `MultiMesh`; 8 wiórów i kurz. Widok 3D: drewno
   skrzyni na zewnątrz, jasny przełom; rozgrzanie desek przy pierwszej skrzyni pod planszą; drzazgi znikają, gdy skrzynia wraca (wipe) — także te jeszcze w ruchu, przed przejściem do gruzu (dotyczy też brył cegły przy odbudowie ściany).
   Dołączający dostaje rozbite skrzynie i — przy okazji — wybuchłe beczki (`send_state_to`; beczki dotąd stały u niego całe).
-  Dźwięk: na razie `door` + `amb_creak` — porządne nagranie pękającego drewna do odsłuchu A/B. Zrzuty: `C:\deadair87\shots_crate`.
+  Dźwięk: od 1.7.499 `wood_break` (rozbicie) i `wood_hit` (upadek) z odsłuchu A/B (`BARRIER_FIX_PLAN.md` B3); wcześniej metalowe `door` + `amb_creak`. Zrzuty: `C:\deadair87\shots_crate`.
 - **Beczka `o`**: zostaje wrak z osmaleniem zamiast znikania.
   **Zrobione w 1.7.486:** `prop.gd` — po wybuchu `wreck` (beczka osiada na podłożu pod sobą, `_floor_below`; dołączający dostaje punkt
   z `_gone_rpc`), `view3d._set_wreck` — model przysiadły (×1,12 / 0,68), przekrzywiony, nakładka sadzy (`_wreck_mat`, mnożenie),
@@ -425,7 +425,7 @@ serwer): wolny otwór — `_close_wall` z 1/3 HP (nowy węzeł jak po wipe'ie, n
 powstaje, ale sieć i reset są te same), stojąca przegroda — `set_hp_frac` na kolejną pełną deskę; u wszystkich przez `_nail_rpc`.
 Miejsce przybijania `barricade_spot.gd` (węzeł na całą misję przy każdej przegrodzie z desek, jak generator): peer zgłasza tylko
 „trzymam / puściłem”, serwer sprawdza zasięg (30 × 20 px, ×1,4 przy walidacji), życie i koszt; puszczenie przerywa deskę. Hałas: 1,2/s
-stukania porcjami + 1,5 przy przybiciu; stuk z próbek `amb_thud` tymczasowo. Wróg w kaflach otworu blokuje (`blocked`), gracza
+stukania porcjami + 1,5 przy przybiciu; od 1.7.499 młotek w gwóźdź `hammer_nail` (B3; wcześniej tymczasowo `amb_thud`). Wróg w kaflach otworu blokuje (`blocked`), gracza
 `_push_players_out` wypycha teraz na bliższą stronę. Zapas desek (`plank_stock`) w `breakables_state` — wipe zeruje, punkt kontrolny
 przywraca; dołączający dostaje zapas, zabite otwory (`_nail_rpc` bez efektów) i HP stojących przegród (`send_state_to` także bez plam).
 Stalker (`stalker.gd`): gdy do hałasu nie ma drogi, szuka barykady z desek, przez którą ona wiedzie (`_barricade_blocking`: ścieżka pod
@@ -434,7 +434,7 @@ jedną stronę i z drugiej do celu), podchodzi i bije trafieniem `claw` 20 co 1,
 Mapy: 1.1 kol. 270 wiersze 29–33 (tunel między szybami), 1.2 kol. 243 wiersze 23–25 (dolny korytarz budynku z generatorem, skrzynia `k`
 tuż za otworem), 1.3 kol. 46 wiersze 36–39 (chodnik między szybem a galerią z gniazdami). Testy: `--destructiontest` sekcja 13, `--maptest`
 (otwory zabite i znów wolne — graf jak pełna budowa), `test_net_session.sh` (otwór zabity dwiema deskami u klienta i dołączającego).
-Zostaje: miejsca w misjach „przetrzymaj” (2.3 Dzwon), strojenie po playteście (czy gracze barykadują, koszt, czas), dźwięk młotka po A/B.
+Zostaje: miejsca w misjach „przetrzymaj” (2.3 Dzwon), strojenie po playteście (czy gracze barykadują, koszt, czas).
 
 ### D3 — zawalanie za sobą (ryzyko / nagroda)
 
