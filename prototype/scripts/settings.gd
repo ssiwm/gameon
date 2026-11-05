@@ -69,6 +69,7 @@ var hints_on := true
 ## AI towarzysz (NOBOT_PLAN.md): host może grać bez bota — sam (upadek = wykrwawienie i powrót na start, druga śmierć w próbie = wipe)
 ## albo w dwie osoby. Decyduje host; zmiana tylko w lobby i w kryjówce (`Main.companion_editable`). Dev: `--nobot` (bez zapisu).
 var ai_companion := true
+var _ai_saved: Variant = null          ## wartość z pliku ustawień, gdy `ai_companion` nadpisano na czas przebiegu (`--nobot`); null — bez nadpisania
 var res_idx := 0                       ## rozmiar okna z RES_LIST (tylko tryb okienkowy)
 var vsync_idx := 0
 var fps_idx := 0
@@ -296,10 +297,18 @@ func toggle_hints() -> void:
 	_commit()
 
 func set_ai_companion(on: bool) -> void:
+	_ai_saved = null                                     # wybór gracza zastępuje nadpisanie z `--nobot`
 	if on == ai_companion:
 		return
 	ai_companion = on
 	_commit()
+
+## Dev / testy (`--nobot`): AI towarzysz na czas przebiegu, bez zapisu. Do 1.7.502 flaga zmieniała samo pole, więc każdy inny zapis ustawień
+## w przebiegu (np. `mark_tip` po podpowiedzi) utrwalał „bez bota” w profilu — a w CI następny test z botem (`--bottest`) go nie miał.
+func override_ai_companion(on: bool) -> void:
+	if _ai_saved == null:
+		_ai_saved = ai_companion
+	ai_companion = on
 
 ## Zasoby HD (modele, tekstury) są używane zawsze poza trybem headless — testy liczą wariant bez grafiki.
 func hd_active() -> bool:
@@ -510,7 +519,7 @@ func _save() -> void:
 	cf.set_value("game", "ui", ui_idx)
 	cf.set_value("game", "cam", cam_idx)
 	cf.set_value("game", "hints", hints_on)
-	cf.set_value("game", "ai_companion", ai_companion)
+	cf.set_value("game", "ai_companion", ai_companion if _ai_saved == null else bool(_ai_saved))
 	cf.set_value("game", "fullscreen", fullscreen)
 	if _res_dirty:
 		cf.set_value("game", "res", res_idx)

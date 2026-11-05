@@ -926,7 +926,7 @@ func _handle_cmdline() -> void:
 			SessionLog.enabled = true
 			SessionLog.dir = a.substr("--sessionlog=".length())
 		if a == "--nobot":
-			Settings.ai_companion = false                 # dev / testy: gra bez AI towarzysza, bez zapisu ustawień (NOBOT_PLAN.md); przed --host
+			Settings.override_ai_companion(false)         # dev / testy: gra bez AI towarzysza, bez zapisu ustawień (NOBOT_PLAN.md); przed --host
 		if a.begins_with("--fakebuild="):                 # dev: inna wersja przy łączeniu (test sprawdzenia wersji, tools/test_net_session.sh)
 			_fake_build = a.substr("--fakebuild=".length())
 		if a.begins_with("--port="):
