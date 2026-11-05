@@ -3,8 +3,8 @@
 Stan wyjścia planu: main 1.7.477 (2026-11-02), plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
 spike'i przed D0).
 
-**Stan wdrożenia (2026-11-05, 1.7.497):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
-1.7.493, D4 z pulą cząsteczek w 1.7.497. Zostaje: playtest z raportem (`tools/session_progress.py`, sekcja „Niszczenie”), odsłuch A/B
+**Stan wdrożenia (2026-11-05, 1.7.500):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
+1.7.493, D4 z pulą cząsteczek w 1.7.500. Zostaje: playtest z raportem (`tools/session_progress.py`, sekcja „Niszczenie”), odsłuch A/B
 tymczasowych dźwięków (drewno skrzyni, młotek, zawał — `BARRIER_FIX_PLAN.md` B3), spadająca kładka (D3), blacha `sheet` (D2, brak na
 mapach), misje „przetrzymaj” (D2b, po strefie 2) i D5. Kod spike'u S2 tylko lokalnie (gałąź robocza `spike/dig-zone`).
 
@@ -303,7 +303,7 @@ jako dzielnik ciosu.
   bryłę, `MultiMesh` gruzu i model `rubble` (raz na mapę i materiał), a rzut mapy w HUD-zie przemalowuje po rozbiciu / odbudowie tylko
   zmienione kafle (`hud_minimap._repaint_walls`). Pomiar `--hitchtest --hitchwall` (okno, 1.2): pierwsze rozbicie 104–150 → 30–45 ms,
   odbudowa 67–90 → ok. 30 ms. Sam `crumble` to 2,5–4,4 ms CPU, lokalna nawigacja 1,3–2 ms. Pula cząsteczek przy rozbiciu nie wyszła
-  w pomiarze jako koszt (kilka emiterów na zdarzenie) — weszła razem z D4 (1.7.497), gdzie trafienia w świat dokładają obłoczków.
+  w pomiarze jako koszt (kilka emiterów na zdarzenie) — weszła razem z D4 (1.7.500), gdzie trafienia w świat dokładają obłoczków.
 - `--maptest`: osiągalność celów **przy wszystkim całym i wszystkim zniszczonym** (rozszerzenie `open_all_walls_for_test`).
   **Zrobione (PR bez numeru wersji, same testy):** na mapach ze zniszczalnymi elementami najpierw wszystko całe — starty, wyjścia,
   generatory, nieśmiertelniki, gniazda, drezyna, stanowiska i dom Stalkera osiągalne bez rozbijania (przejście to skrót albo skrytka,
@@ -479,7 +479,7 @@ wygenerować zestawy 2–3 rzędy.
 - Po wybuchu: sypiący się pył ze stropu w podziemiach, chwianie lamp kryjówki (tylko 3D, bez stanu).
 - Ślady trwałe w obiektach do zniszczenia daje już maska uszkodzeń z D0 (dziury z prześwitem); tu tylko dekale na niezniszczalnym świecie.
 
-**Zrobione w 1.7.497 (D4 + pula cząsteczek):**
+**Zrobione w 1.7.500 (D4 + pula cząsteczek):**
 
 - **Pula obłoczków** (`view3d.spawn_burst`): emiter `CPUParticles3D` po zgaśnięciu wraca do puli i następny obłoczek przestawia mu parametry
   (`restart()`), zamiast tworzyć węzeł, siatkę, bufor instancji i minutnik na każde trafienie; najwyżej `BURST_POOL` = 96 naraz, ponad to

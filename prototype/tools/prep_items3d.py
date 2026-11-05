@@ -147,6 +147,9 @@ TRIPO_MODELS = {
     "gas_mask": ("../polyhaven/old_gas_mask.glb", "-Y", 2.6, 5000, 13.8),                     # maska z wężem i filtrem (1,13 m): wisi na ścianie za głowicę
 }
 # modele z Tripo ze świecącymi elementami (diody, ekrany, żarówka): emisja = jasne, nasycone piksele koloru (żarówka: jasne, blade)
+# podłoga chropowatości rekwizytów z Tripo: ich ORM bywa gładki jak lakier (beczka 0,24, flara 0,16, fosfor 0,05) — w snopie latarki
+# z mapą normalnych dawało to migające „światełka” (aliasing odblasku); r' = lo + r·(1 − lo) zachowuje wzór, podnosi dół skali
+ROUGH_FLOOR = {"barrel": 0.5, "ammo": 0.4, "flare": 0.35, "phos": 0.35}
 EMISSIVE = {"mine": "led", "charge": "led", "defib": "led", "scanner": "led", "lamp": "bulb", "stake": "led"}
 # przedmioty proceduralne o większej teksturze (duże bryły blisko kamery)
 BIG = {"generator", "handcar", "shelf", "locker", "table", "cot", "results_board", "board", "rack", "tools_wall"}
@@ -878,6 +881,30 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
     for img in bpy.data.images:
         if img.size[0] > TEX:
             img.scale(TEX, TEX)
+    if name in ROUGH_FLOOR:
+        lo = ROUGH_FLOOR[name]
+        done = set()
+        for m in bpy.data.materials:
+            if not m.node_tree:
+                continue
+            for bsdf in (nd for nd in m.node_tree.nodes if nd.type == "BSDF_PRINCIPLED"):
+                inp = bsdf.inputs["Roughness"]
+                if not inp.links:
+                    inp.default_value = lo + inp.default_value * (1.0 - lo)
+                    continue
+                sep = inp.links[0].from_node                     # glTF: obraz → Separate Color (Green) → Roughness
+                tex = sep.inputs[0].links[0].from_node if sep.inputs and sep.inputs[0].links else sep
+                img = getattr(tex, "image", None)
+                if img is None or img.name in done:
+                    continue
+                done.add(img.name)
+                w, h = img.size
+                px = np.array(img.pixels[:], dtype=np.float32).reshape(-1, 4)
+                r0 = float(np.median(px[:, 1]))
+                px[:, 1] = lo + px[:, 1] * (1.0 - lo)
+                img.pixels[:] = px.reshape(-1)
+                img.pack()
+                print("ROUGH", name, img.name, "%.2f -> %.2f" % (r0, float(np.median(px[:, 1]))))
     if name in EMISSIVE:
         for m in bpy.data.materials:
             if not m.node_tree:
