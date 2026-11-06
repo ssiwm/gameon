@@ -116,13 +116,17 @@ Bańki wiszą 1 m pod nadprożem, bo w kadrze kamery nadproże zasłaniało blis
 - **Przy graczu +3–3,6% (kryterium ±2% przekroczone) to bloom, nie światło.** Z `--nofx` ta sama strefa zmienia się o +0,4%.
   Bloom `horror_fx` rozmywa ekran (mipy) i odcina próg 0,16, więc jaśniejsze tło obok żółtego kombinezonu podbija poświatę na postaci.
   Ciemność przy graczu (GDD §8.3) się nie zmienia, zmienia się aureola. Słabsza bańka (`BULB_GLOW`) tego nie zbiła.
-- **Próg sylwetek:** otwór 0,009 — poniżej progu 0,02 i poniżej ściany przy lampie `I` (0,0129). Zrzutu z Trzoskiem przed wnęką
-  nie ma: `--shotmon` stawia wrogów przy starcie mapy, nie w kadrze wnęki.
+- **Próg sylwetek:** otwór 0,009 — poniżej progu 0,02 i poniżej ściany przy lampie `I` (0,0129). Trzosek w kolumnie 89 przed wnęką
+  (zrzut z tymczasową flagą, niecommitowaną) nie robi się ciemną sylwetką: jest nawet nieco jaśniejszy od tła (0,0023 przy tle 0,0003–0,0009;
+  bez wnęki 0,0012 przy 0,0001–0,0002), bo za nogami wroga dolna część otworu zostaje ciemna. Sylwetki są słabe, jak w decyzji 2.
 - **Wydajność (debug, 4K HIGH, dwa przebiegi A/B):** GPU 7,73 → 7,83 ms i 7,86 → 7,99 ms (+0,10 / +0,13 ms; p95 +0,2 / +0,9 ms),
-  render_cpu +0,05–0,09 ms, draw calls 319 → 378. W budżecie (+0,5 ms). Pomiaru na release i nagrania przejścia jeszcze nie ma.
+  render_cpu +0,05–0,09 ms, draw calls 319 → 378. **Release** (eksport z gałęzi, A/B flagą `--noniches`, 3 + 3 przebiegi na zmianę):
+  z wnęką 7,10 / 7,44 / 7,91 ms (śr. 7,48), bez 7,00 / 7,76 / 7,89 ms (śr. 7,55) — różnica w szumie, 60 kl./s we wszystkich. W budżecie (+0,5 ms).
+- **Nagranie przejścia przez halę** (Movie Maker, 1920×1080, `--shotrun` od kolumny 74, z wnęką i bez): w ruchu kamery wnęka czyta się
+  jako oświetlony korytarz w głąb, bez migotania i szwów.
 - **Cień (decyzja 3):** w korytarzu nie ma ruchomych brył, a rekwizyty stoją blisko ścian, więc brak cienia nie razi na zrzutach.
   Rekomendacja: zostać bez cienia.
-- Zrzuty i arkusz porównania: `C:\deadair87\shots_depth\n2\` (`n2_porownanie.jpg`).
+- Zrzuty, arkusze i nagranie: `C:\deadair87\shots_depth\n2\` (`n2_porownanie.jpg`, `n2_sylwetka.jpg`, `n2_przejscie_hali.mp4`).
 
 ### N3 — katalog wnęk i rozmieszczenie (po bramce)
 
