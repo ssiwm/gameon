@@ -98,11 +98,21 @@ var _delivery_snapshot: Dictionary = {}
 var _delivery_checkpointed := false
 var _delivery_committed := false
 
+## Pule znajdziek w strefach wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505). Klucz puli: „mapa/DigZoneN” (dig_zone.gd `pool_key`).
+## Cenna znajdźka (każda poza amunicją) wykopana w misji czeka w `dig_loot` jak znaleziona część: po ekstrakcji trafia do puli na stałe,
+## wipe ją oddaje (strefa i tak wraca do danych mapy, więc znajdźka znów leży w ziemi). Wykopane miejsce daje potem tylko drobnicę („small”).
+## Pula mapy odnawia się po DIG_REFRESH udanych misjach na innych mapach — nowe ziarno (`round`), więc i nowe miejsca. Liczby do strojenia
+## po playteście (`tools/session_progress.py`).
+const DIG_REFRESH := 3
+var dig_pools: Dictionary = {}        ## klucz → {"round": int, "taken": Array[int] (indeksy znajdziek)} — zapis u hosta, sync do klientów
+var dig_since: Dictionary = {}        ## id mapy → udanych misji gdzie indziej od ostatniego wykopania tam cennej znajdźki (zapis u hosta)
+var dig_loot: Dictionary = {}         ## klucz → Array[int]: cenne znajdźki wykopane w tej misji (serwer; do puli po ekstrakcji)
+
 func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys()))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys(), dig_pools))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -211,6 +221,8 @@ func bank_loot(bonus: int) -> int:
 	_action_at.clear()
 	_delivery_snapshot = deliveries.duplicate()       # sukces zatwierdza również zwroty nabojów z tej misji
 	_delivery_committed = true
+	var lv := get_tree().get_first_node_in_group("level") if is_inside_tree() else null
+	dig_commit(String(lv.map_id) if lv != null else "")
 	save_progress()
 	_push()
 	if not newp.is_empty():
@@ -235,11 +247,85 @@ func bank_loot(bonus: int) -> int:
 			_machined_rpc(machined)
 	return gain
 
+# ---------------------------------------------------------------- pule stref wydobycia (D5 część 3)
+
+## Numer odnowienia puli strefy (ziarno rozmieszczenia znajdziek, dig_zone.gd `find_round`).
+func dig_round(key: String) -> int:
+	return int((dig_pools.get(key, {}) as Dictionary).get("round", 0))
+
+## Indeksy znajdziek strefy, które już wykopano (po udanej misji) — dają tylko drobnicę.
+func dig_taken(key: String) -> Array:
+	return (dig_pools.get(key, {}) as Dictionary).get("taken", []) as Array
+
+## Serwer: cenna znajdźka `idx` strefy `key` wykopana w tej misji — do puli po ekstrakcji (dig_commit), wipe ją oddaje (reset_loot).
+func dig_take(key: String, idx: int) -> void:
+	if not NoiseMgr.is_server() or not enabled() or key == "":
+		return
+	var a: Array = dig_loot.get(key, [])
+	if not a.has(idx):
+		a.append(idx)
+	dig_loot[key] = a
+
+## Serwer, udana misja na mapie `map_id` (bank_loot): wykopane cenne znajdźki trafiają do pul na stałe, a mapy z wykopanymi pulami liczą
+## udaną misję gdzie indziej — po DIG_REFRESH pula mapy się odnawia (nowe ziarno, nic nie wykopane). Zwraca odnowione mapy.
+func dig_commit(map_id: String) -> Array:
+	var renewed: Array = []
+	if not NoiseMgr.is_server() or not enabled():
+		return renewed
+	for key in dig_loot:
+		var pool: Dictionary = (dig_pools.get(key, {"round": 0, "taken": []}) as Dictionary).duplicate(true)
+		var taken: Array = pool.get("taken", [])
+		for idx in dig_loot[key]:
+			if not taken.has(int(idx)):
+				taken.append(int(idx))
+		pool["taken"] = taken
+		dig_pools[key] = pool
+		dig_since[String(key).get_slice("/", 0)] = 0
+	dig_loot.clear()
+	var maps := {}
+	for key in dig_pools:
+		if not (dig_pools[key]["taken"] as Array).is_empty():
+			maps[String(key).get_slice("/", 0)] = true
+	for m in maps:
+		if m == map_id:
+			continue
+		dig_since[m] = int(dig_since.get(m, 0)) + 1
+		if int(dig_since[m]) < DIG_REFRESH:
+			continue
+		dig_since.erase(m)
+		renewed.append(m)
+		for key in dig_pools:
+			if String(key).get_slice("/", 0) == m:
+				dig_pools[key] = {"round": int(dig_pools[key]["round"]) + 1, "taken": []}
+		SessionLog.event("dig_refresh", {"map": m, "round": dig_round(_first_key(m))})
+	return renewed
+
+func _first_key(map_id: String) -> String:
+	for key in dig_pools:
+		if String(key).get_slice("/", 0) == map_id:
+			return String(key)
+	return ""
+
+## Pule z zapisu albo z sync: same liczby całkowite, bez śmieci.
+func _clean_pools(src: Dictionary) -> Dictionary:
+	var out := {}
+	for key in src:
+		var p = src[key]
+		if typeof(p) != TYPE_DICTIONARY or not String(key).contains("/"):
+			continue
+		var taken: Array = []
+		for idx in Array((p as Dictionary).get("taken", [])):
+			if int(idx) >= 0 and not taken.has(int(idx)):
+				taken.append(int(idx))
+		out[String(key)] = {"round": maxi(0, int((p as Dictionary).get("round", 0))), "taken": taken}
+	return out
+
 ## Wipe / restart: łup i znalezione części przepadają, bank zostaje.
 func reset_loot() -> void:
 	if not NoiseMgr.is_server():
 		return
 	_checkpoint_loot.clear()
+	dig_loot.clear()                                       # cenne znajdźki z tej próby wracają do puli (strefa wraca do danych mapy)
 	if loot != 0 or not found.is_empty() or samples_loot != 0:
 		loot = 0
 		found.clear()
@@ -254,7 +340,7 @@ var _checkpoint_loot := {}
 func save_checkpoint_loot() -> void:
 	if not NoiseMgr.is_server():
 		return
-	_checkpoint_loot = {"loot": loot, "found": found.keys(), "samples": samples_loot}
+	_checkpoint_loot = {"loot": loot, "found": found.keys(), "samples": samples_loot, "dig": dig_loot.duplicate(true)}
 
 ## Wipe w walce z bossem (main._restart_from_checkpoint): łup z samej walki przepada, sprzed niej zostaje. Bez zapisu = reset_loot().
 func restore_checkpoint_loot() -> void:
@@ -268,6 +354,7 @@ func restore_checkpoint_loot() -> void:
 	for id in _checkpoint_loot["found"]:
 		found[String(id)] = true
 	samples_loot = int(_checkpoint_loot["samples"])
+	dig_loot = (_checkpoint_loot.get("dig", {}) as Dictionary).duplicate(true)    # strefy wracają do stanu z przebudzenia bossa
 	_push()
 
 ## Część do znalezienia: losowa część z modelem (leży na ziemi albo w skrytce) dla broni, którą drużyna ma, jeszcze nieodblokowana
@@ -862,11 +949,12 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys())
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys(), dig_pools)
 
 @rpc("authority", "call_remote", "reliable")
 func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = [], fz: Dictionary = {},
-		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = [], rdy: Dictionary = {}, clr: Array = []) -> void:
+		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = [], rdy: Dictionary = {}, clr: Array = [], dig: Dictionary = {}) -> void:
+	dig_pools = _clean_pools(dig)
 	cleared.clear()
 	for m in clr:
 		cleared[String(m)] = true
@@ -1009,7 +1097,14 @@ func load_progress(path := "") -> void:
 	job_paid.clear()
 	samples = 0
 	samples_loot = 0
+	dig_pools.clear()
+	dig_since.clear()
+	dig_loot.clear()
 	if ok:
+		dig_pools = _clean_pools(cfg.get_value("dig", "pools", {}) as Dictionary)
+		var since_in := cfg.get_value("dig", "since", {}) as Dictionary
+		for k in since_in:
+			dig_since[String(k)] = maxi(0, int(since_in[k]))
 		for id in Array(cfg.get_value("workshop", "schematics", [])):
 			if Parts.is_valid(String(id)):
 				schematics[String(id)] = true
@@ -1084,6 +1179,8 @@ func save_progress(path := "") -> void:
 	cfg.set_value("workshop", "schematics", schematics.keys())
 	cfg.set_value("workshop", "lathe", lathe)
 	cfg.set_value("workshop", "job_paid", job_paid)
+	cfg.set_value("dig", "pools", dig_pools)
+	cfg.set_value("dig", "since", dig_since)
 	if cfg.has_section_key("workshop", "levels"):
 		cfg.erase_section_key("workshop", "levels")             # przeniesione do części (migracja w load_progress)
 	cfg.save(path)

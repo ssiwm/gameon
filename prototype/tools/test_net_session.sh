@@ -8,7 +8,7 @@
 # 6. Bateria 4,5 V (BATTERY_PLAN.md): klient z 20% baterii bierze baterię z ziemi — rozstrzyga serwer, dolicza właściciel.
 # 7. Ładowarka (BATTERY_PLAN.md B3): klient przy ładowarce B1 ładuje się u siebie, serwer widzi, że ładowarka pracuje.
 # 8. Zniszczenia (DESTRUCTION_PLAN.md D0–D3): rany ściany, rozbicie, powrót do migawki z przebudzenia bossa i wipe na 1.2, a złamany stempel
-#    i zawał na mapie testowej t_mine, wykopy, wybuch, wykopana znajdźka, osypany żwir i spadła wyspa w strefach wydobycia (D5) na mapie testowej t_dig — u klienta obecnego od początku
+#    i zawał na mapie testowej t_mine, wykopy, wybuch, wykopana znajdźka, osypany żwir, spadła wyspa i pula znajdziek hosta w strefach wydobycia (D5) na mapie testowej t_dig — u klienta obecnego od początku
 #    (RPC na żywo) i u dołączającego później (`send_walls_to`) stan taki sam jak u hosta.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
@@ -145,7 +145,8 @@ godot --headless --path . -- --join=127.0.0.1 --port=8969 --destructionnet=0 --a
 CB=$!
 wait $CB $CA $HOST
 # stany na mapie misji jako „S;S;…” (przed dołączeniem i po utracie hosta klient jest w lobby — pomijane)
-dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //" | tr '\n' ';'; }
+# strefa wydobycia 1.2 (D5 część 3) nie należy do tej sekcji — skrót stref („ dig1=…” na końcu stanu) odcięty, strefy sprawdza sekcja t_dig
+dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //; s/ dig[0-9]*=.*$//" | tr '\n' ';'; }
 H=$(dnet host "$LOG/dnet_host.log")
 IFS=';' read -r S0 SC S1 S2 S3 S4 _ <<<"$H"
 S0X="${S0% bar=0 crate=ok lamp=lit win=ok}"          # stan bez desek, skrzyni, lampy i okna
@@ -195,6 +196,7 @@ echo "== strefy wydobycia (t_dig) =="
 # (wykopy wracają = DS) i wipe (D0). Klient A od początku (operacje kopania na żywo), klient B dołącza po wykopach — gęstość stref dostaje
 # z `send_walls_to`. Stan = skrót gęstości i materiału każdej strefy, więc zgodność znaczy: te same komórki u wszystkich. Host przed
 # klientem B kopie też dół w żwirze (DigZone3, osypuje się) i odcina blok w skale (DigZone2, spada jako wyspa) — oba idą deltą z serwera.
+# Pula znajdziek DigZone1 jest u hosta odnowiona raz i z jednym miejscem wykopanym — skrót znajdziek u klientów zgadza się tylko po sync Scrap.
 godot --headless --path . -- --host --mission=t_dig --port=8971 --dignet=8 --autoquit=50 >"$LOG/gnet_host.log" 2>&1 &
 HOST=$!
 sleep 3

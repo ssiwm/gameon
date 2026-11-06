@@ -61,6 +61,10 @@ const STREAMS := [[18, 26]]
 
 ## Tło 3D (`backdrop3d.gd`, kosmetyka): wieża przeciwpożarowa za obozem z tlącym się oknem i daleki maszt radiostacji z 1.2 nad lasem.
 const BACKDROP := [{"kind": "tower", "col": 64, "lit": true}, {"kind": "mast", "col": 215}]
+## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505) [c0, r0, c1, r1, materiał, ziarno, udział wtrąceń]: skała z żyłą we wschodniej
+## ślepej ścianie dolnej galerii kopalni (za przegrodą z desek i złomem) — z boku drogi, w ciemności, z dala od szybu wyjściowego.
+const DIG_ZONES := [[296, 36, 305, 44, "rock", 1101, 0.3]]
+
 const MAP := [
 	"##................................................................................................................................................................................................................................................................................................................##",
 	"##................................................................................................................................................................................................................................................................................................................##",

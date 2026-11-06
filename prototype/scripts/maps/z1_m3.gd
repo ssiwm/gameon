@@ -24,6 +24,10 @@ const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(1432,
 
 ## Tło 3D (`backdrop3d.gd`, kosmetyka): ta sama linia energetyczna co w 1.2 i daleki maszt radiostacji za lasem.
 const BACKDROP := [{"kind": "power", "c0": -20, "c1": 215, "z": -82.0}, {"kind": "mast", "col": 30, "z": -170.0, "h": 110.0}]
+## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): ziemia w zachodniej ślepej ścianie pierwszej podziemnej sali —
+## z boku drogi, pod lasem przy starcie.
+const DIG_ZONES := [[1, 31, 5, 39, "dirt", 1301]]
+
 const MAP := [
 	"##............................................................................................................................................................................................##",
 	"##............................................................................................................................................................................................##",
