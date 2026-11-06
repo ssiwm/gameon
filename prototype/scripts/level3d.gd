@@ -686,9 +686,19 @@ static func interior_ribs(rows: Array) -> Array:
 			c = c1 + 1
 	return out
 
+## Czy pilaster w kolumnie `c` (kafle top..bot−1) dotyka otworu wnęki albo jego ościeża (kolumna obok).
+static func _rib_in_niche(c: int, top: int, bot: int) -> bool:
+	for dc in [-1, 0, 1]:
+		for r in range(top, bot):
+			if niche_cells.has(Vector2i(c + dc, r)):
+				return true
+	return false
+
 static func _build_ribs(parent: Node3D, rows: Array, mat: Material) -> void:
 	var xf: Array = []
 	for rb in interior_ribs(rows):
+		if _rib_in_niche(int(rb["c"]), int(rb["top"]), int(rb["bot"])):
+			continue                                            # pilaster wszedłby w otwór wnęki
 		var x := (float(int(rb["c"])) + 0.5) * T
 		var y_top := -float(int(rb["top"])) * T
 		var y_bot := -float(int(rb["bot"])) * T
@@ -770,7 +780,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, (T - TRENCH_D) / T, bed_d / full)), p + Vector3(0.0, -TRENCH_D * 0.5, TRENCH_Z0 + bed_d * 0.5)))
 					continue
 				groups[ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))
-			if ch == "b" or _wall_behind(rows, c, r):
+			if back_wall_at(rows, c, r):
 				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
 				pass
@@ -1358,6 +1368,8 @@ static func _decal_fits(k: Vector2i, wt: int, ht: int, kind: String, surf: Dicti
 			var p := Vector2i(k.x + dx, k.y + dy)
 			if used.has(p) or not surf.has(p) or String(surf[p]) != kind:
 				return false
+			if kind == "b" and niche_cells.has(p):
+				return false                                    # w otworze wnęki nie ma ściany, na której wisiałby dekal
 	return true
 
 ## Czy komórka (c, r) cieczy / błota jest pod powierzchnią ciągu, który rysuje `build_liquids` (nad kolumną aż do pierwszej innej komórki nie ma bryły).
@@ -1426,6 +1438,32 @@ static func set_streams(list: Array) -> void:
 		var c0 := int(e[0])
 		var c1 := int(e[1])
 		streams.append({"x": float(c0 + c1 + 1) * 0.5 * T, "hw": float(c1 - c0 + 1) * T * 0.5, "ph": float(c0) * 0.37})
+
+## Wnęki w tylnej ścianie (`niches3d.gd`, NICHES z danych mapy): kafle otworów (bez płyt ściany tła, pilastrów i dekali) i prostokąty x–z,
+## w których las nie stawia drzew. Ustawia widok przed budową (`set_niches`, krok „level”); pusta lista = mapa bez wnęk.
+static var niche_cells := {}
+static var niche_holes: Array = []
+
+static func set_niches(cells: Dictionary, holes: Array) -> void:
+	niche_cells = cells
+	niche_holes = holes
+
+## Czy kafel (c, r) dostaje płytę ściany tła (`build_level`): tło `b` albo wnętrze przed nim, poza otworami wnęk (`niches3d.gd`).
+static func back_wall_at(rows: Array, c: int, r: int) -> bool:
+	var ch := _ch(rows, c, r)
+	return (ch == "b" or _wall_behind(rows, c, r)) and not niche_cells.has(Vector2i(c, r))
+
+## Test (`tools/test_niches.gd`): przy `forest_probe` `build_forest` zapisuje podstawy wszystkich drzew po filtrze wnęk — w trybie headless
+## MultiMesh nie przechowuje przekształceń egzemplarzy, więc test nie odczyta ich ze sceny.
+static var forest_probe := false
+static var forest_origins := PackedVector3Array()
+
+## Czy punkt (x, z) leży w prostokącie wnęki (las go omija).
+static func in_niche_hole(x: float, z: float) -> bool:
+	for h in niche_holes:
+		if x >= float(h[0]) and x <= float(h[1]) and z <= float(h[2]) and z >= float(h[3]):
+			return true
+	return false
 
 ## Środek koryta (x, m) na głębokości `d` (m w głąb od płaszczyzny gry, ≥ DEPTH_BACK): przy bryle prosto, dalej meandruje.
 static func stream_x(st: Dictionary, d: float) -> float:
@@ -2726,6 +2764,18 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 					card_kind = "birch_a"
 				var b := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(w, h, w))
 				(xf[card_kind] as Array).append([Transform3D(b, Vector3(x, y - 0.3, z)), tint])
+	if not niche_holes.is_empty():                       # korytarze wnęk (`niches3d.gd`): bez drzew w środku; filtr po losowaniu — reszta lasu bez zmian
+		for lists in [trees, xf]:
+			for k in lists:
+				(lists as Dictionary)[k] = ((lists as Dictionary)[k] as Array).filter(func(e: Array) -> bool:
+					var o := (e[0] as Transform3D).origin
+					return not in_niche_hole(o.x, o.z))
+	if forest_probe:
+		forest_origins.clear()
+		for lists in [trees, xf]:
+			for k in lists:
+				for e in (lists as Dictionary)[k]:
+					forest_origins.append((e[0] as Transform3D).origin)
 	for tk in trees:
 		var mdl := model_mesh(tk)
 		if not mdl.is_empty():

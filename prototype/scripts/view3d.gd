@@ -29,6 +29,7 @@ const Parts := preload("res://scripts/parts.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
+const Niches3D := preload("res://scripts/niches3d.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 const WorldBars := preload("res://scripts/world_bars.gd")
@@ -940,8 +941,14 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 	var trench := {}
 	if not span.is_empty():
 		trench = {"row": int(float(span[2]) / 16.0), "c0": int(float(span[0]) / 16.0), "c1": int(float(span[1]) / 16.0)}
+	var niches: Array = _level.get("niches") if _level != null and _level.get("niches") != null else []
+	if "--noniches" in OS.get_cmdline_user_args():
+		niches = []                                         # dev: mapa bez wnęk (porównanie A/B, `DEPTH_PLAN.md`)
 	var steps := [
-		["level", func() -> void: Level3D.build_level(root, rows, trench)],
+		["level", func() -> void:
+			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches))
+			Level3D.build_level(root, rows, trench)],
+		["niches", func() -> void: Niches3D.build(root, rows, niches, Settings.quality_idx)],
 		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
 		["liquids", func() -> void:
 			Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
