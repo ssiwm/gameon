@@ -47,8 +47,7 @@ Wnęka ma więc nieregularny brzeg (futryna, wykruszony tynk, rury wchodzące w 
 - Wybór kolumn pilota na zrzucie (propozycja niżej).
 
 **Wyniki N0 (2026-11-06, `main` b7c11e3, ze źródeł w oknie, 4K HIGH, gracz w kolumnie 89 na parterze hali).**
-Zrzuty, arkusz i strefy pomiaru: `C:\deadair87\shots_depth
-0\` (`n0_sheet.jpg`, `n0_strefy.png`); seria `shots_depth\series.sh`,
+Zrzuty, arkusz i strefy pomiaru: `C:\deadair87\shots_depth\n0\` (`n0_sheet.jpg`, `n0_strefy.png`); seria `shots_depth\series.sh`,
 pomiar `shots_depth\lum.py` (`--shotat=89 --shotrow=23`, ok. 192 px na kafel).
 
 - Hala nie jest cała czarna: lampa `I` (kolumna 82) oświetla ceglaną ścianę do ok. kolumny 89. Dalej w prawo, za skrzynią
