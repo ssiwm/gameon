@@ -39,6 +39,7 @@ extends RefCounted
 ##   cave           zone, crushed (zasypani wrogowie) — strefa `^` zawalona (D3, od 1.7.492)
 ##   dig_find       zone, find (indeks znajdźki w strefie), kind (rodzaj z ziarna), item (co wypadło: scrap / ammo / supply / battery / part,
 ##                  "" — nic), by (pick / blade / blast), pos, noise — znajdźka odkopana w strefie wydobycia (D5 część 2, od 1.7.503)
+##   dig_fall       zone, cells (narożniki bryły), drop (spadek w px), pos, noise — wyspa w strefie wydobycia spadła i wylądowała (od 1.7.504)
 ##                  Raport: sekcja „Niszczenie” w tools/session_progress.py (próby od 1.7.485)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
 ##   xp             who, mission (XP za wynik misji), rows (etykiety bonusów), xp (łącznie w profilu po misji), level — po udanej misji,

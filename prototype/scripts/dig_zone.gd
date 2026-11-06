@@ -20,12 +20,19 @@ extends Node2D
 ## przy powietrzu mapy. Stan znajdźki wynika z gęstości wokół niej (`_find_state`): zakopana → odkopana do połowy (powietrze blisko: błysk
 ## w latarce, widok 3D) → odkopana (wypada jako przedmiot: rozstrzyga serwer w `apply_dig`, zawartość dobiera dopiero wtedy). Cios tuż
 ## przy zakopanej znajdźce dzwoni w metal (`melee_dig` → "metal"), skaner „Sowa” pokazuje zakopane w zasięgu (`buried_finds`).
+##
+## Osypywanie i wyspy (D5, po części 2): serwer co SIM_DT liczy krok — luźny materiał (żwir, dig_materials.gd `loose`) bez podparcia spada
+## i zsuwa się po skosie do kąta 45° (reguła piasku, tylko w aktywnych kolumnach), a bryła odcięta od skały mapy (wyspa — zalewanie od
+## narożników pierścienia, które są pełną skałą mapy) spada w całości, aż na czymś oprze się. Wynik idzie do wszystkich jako delta narożników
+## (gęstość i materiał, `_cells_rpc`) — materiał się przesuwa, więc stan dla dołączających niesie i gęstość, i materiał. Gracz zasypany
+## osypiskiem wychodzi na wierzch usypiska z krótkim ogłuszeniem (przygniecenie, nie śmierć), wróg — na wierzch (serwer).
 
 const Mats := preload("res://scripts/dig_materials.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 
 const TILE := 16.0
 const CELL := 4.0                     ## px komórki
@@ -58,6 +65,15 @@ const FIND_CLINK := 6.0               ## px: zakopana znajdźka tak blisko wyrwy
 const FIND_BLAST_PUSH := 10.0         ## px: wybuch odrzuca odkopaną znajdźkę od środka
 const FIND_SCRAP := Vector2i(1, 3)    ## złom ze znajdźki (min, max)
 enum Find { BURIED, NEAR, OUT }
+# osypywanie i wyspy (serwer); liczby do strojenia po playteście
+const SIM_DT := 0.05                  ## s: krok symulacji (20 Hz)
+const GRAIN_FALL := 2                 ## narożników na krok w dół dla luźnego materiału (2 × 4 px × 20 Hz = 160 px/s)
+const ISLAND_VMAX := 4                ## narożników na krok dla spadającej wyspy (przyspiesza od 1)
+const CRUSH_STUN := 0.6               ## s ogłuszenia gracza zasypanego osypiskiem albo wyspą
+const CRUSH_MIN := 8.0                ## px: wyciągnięcie o więcej = zasypanie (ogłusza); mniej — osypisko tylko podniosło stopy
+const N_POUR := 0.4                   ## hałas osypującego się żwiru (najwyżej co POUR_EVERY s)
+const POUR_EVERY := 0.5
+const N_ISLAND := 2.0                 ## hałas upadku wyspy (× rozmiar: 0,5–2)
 
 var c0 := 0                           ## kafel lewego górnego rogu strefy
 var r0 := 0
@@ -86,6 +102,18 @@ var find_round := 0                   ## numer odnowienia puli (część 3: nowe
 ## Znajdźki: {"i", "j" (narożnik), "pos" (px świata), "kind" (FIND_KINDS), "state" (Find)}; kolejność z ziarna — indeks = id znajdźki.
 var finds: Array[Dictionary] = []
 var finds_out := 0                    ## serwer: ile znajdziek wypadło od wczytania / resetu (test, dziennik)
+var _m0 := PackedByteArray()          ## materiał z danych mapy (reset; materiał osypiska się przesuwa)
+var _in_isl := PackedByteArray()      ## 1 = narożnik spadającej wyspy (osypywanie go nie rusza)
+var _islands: Array[Dictionary] = []  ## spadające wyspy: {"cells": PackedInt32Array, "v": narożników na krok, "drop": narożników łącznie}
+var _cols := Vector2i(-1, -1)         ## aktywne kolumny osypywania [od, do] (narożniki; -1 — spokój)
+var _check_islands := false           ## po operacji kopania: sprawdzić spójność w następnym kroku
+var _sim_t := 0.0
+var _parity := 0                      ## kolejność zsuwania w lewo / w prawo (symetria usypiska)
+var _pour_t := 0.0                    ## s do następnego hałasu osypywania
+var _pour_fx_t := 0.0                 ## u każdego peera: s do następnego dźwięku osypywania
+var sim_steps := 0                    ## kroków z ruchem od wczytania (test, pomiar)
+var sim_usec := 0                     ## czas ostatniego kroku z ruchem (µs)
+var islands_fallen := 0               ## serwer: wysp, które spadły od wczytania / resetu
 
 ## Ustawia strefę z wpisu `DIG_ZONES` ([c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?], kafle włącznie). `solid_at(c, r) -> bool` — czy
 ## kafel mapy (poza strefą) jest bryłą; `zone_solid(c, r) -> bool` — czy kafel strefy był skałą w danych mapy (przed wycięciem).
@@ -145,6 +173,8 @@ func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 					air_out = true
 			_d[k] = (ISO if air_out else 255) if solid_in else 0
 	_d0 = _d.duplicate()
+	_m0 = _m.duplicate()
+	_in_isl.resize(_w * _h)
 	_open.resize(tiles.x * tiles.y)
 	_rock0.resize(tiles.x * tiles.y)
 	for ty in tiles.y:
@@ -363,20 +393,30 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 			if nd == int(_d[k]):
 				continue
 			_d[k] = nd
-			for oy: int in [-1, 0]:                            # narożnik należy do czterech komórek
-				for ox: int in [-1, 0]:
-					var ci := i + ox
-					var cj := j + oy
-					if ci >= 0 and cj >= 0 and ci < _w - 1 and cj < _h - 1:
-						touched[(cj / CHUNK) * _ccx + (ci / CHUNK)] = true
+			_touch(touched, i, j)
 	var t0 := Time.get_ticks_usec()
 	for ci in touched:
 		_rebuild(int(ci))
 	rebuild_usec = Time.get_ticks_usec() - t0
 	if not touched.is_empty():
 		_update_finds(Rect2i(i0, j0, i1 - i0 + 1, j1 - j0 + 1).grow(FIND_NEAR), pos, tool)
-		_update_tiles(Rect2i(floori(float(i0 - 1) / PER_TILE) - 1, floori(float(j0 - 1) / PER_TILE) - 1,
-			(i1 - i0) / PER_TILE + 3, (j1 - j0) / PER_TILE + 3))
+		_update_tiles(_tile_rect(i0, i1, j0, j1))
+		if NoiseMgr.is_server():
+			_wake(i0 - 1, i1 + 1)
+			_check_islands = true
+
+## Narożnik (i, j) należy do czterech komórek — ich fragmenty do przebudowy.
+func _touch(touched: Dictionary, i: int, j: int) -> void:
+	for oy: int in [-1, 0]:
+		for ox: int in [-1, 0]:
+			var ci := i + ox
+			var cj := j + oy
+			if ci >= 0 and cj >= 0 and ci < _w - 1 and cj < _h - 1:
+				touched[(cj / CHUNK) * _ccx + (ci / CHUNK)] = true
+
+## Kafle strefy (względem strefy) wokół prostokąta narożników [i0, i1] × [j0, j1].
+func _tile_rect(i0: int, i1: int, j0: int, j1: int) -> Rect2i:
+	return Rect2i(floori(float(i0 - 1) / PER_TILE) - 1, floori(float(j0 - 1) / PER_TILE) - 1, (i1 - i0) / PER_TILE + 3, (j1 - j0) / PER_TILE + 3)
 
 ## Przelicza „kafel wolny” w prostokącie kafli strefy `rt` i zgłasza zmienione kafle poziomowi (nawigacja, siatka dźwięku, rzut mapy).
 func _update_tiles(rt: Rect2i) -> void:
@@ -396,11 +436,11 @@ func _update_tiles(rt: Rect2i) -> void:
 
 # ---------------------------------------------------------------- stan: dołączający, wipe, punkt kontrolny
 
-## Gęstość strefy (skompresowana) — pusta, gdy strefa jest jak w danych mapy.
+## Gęstość i materiał strefy (skompresowane, jedno za drugim) — puste, gdy strefa jest jak w danych mapy. Materiał, bo osypisko go przesuwa.
 func state() -> PackedByteArray:
-	if _d == _d0:
+	if _d == _d0 and _m == _m0:
 		return PackedByteArray()
-	return _d.compress(FileAccess.COMPRESSION_ZSTD)
+	return (_d + _m).compress(FileAccess.COMPRESSION_ZSTD)
 
 ## Serwer: dołączający gracz dostaje stan strefy (jeśli ktoś już kopał).
 func send_state_to(peer_id: int) -> void:
@@ -420,13 +460,22 @@ func reset_to(s: PackedByteArray) -> void:
 func _state_rpc(key: String, s: PackedByteArray) -> void:
 	if key != map_key:
 		return
-	var d := _d0.duplicate() if s.is_empty() else s.decompress(_w * _h, FileAccess.COMPRESSION_ZSTD)
-	if d.size() != _w * _h:
-		push_warning("dig_zone: zły rozmiar stanu %s (%d zamiast %d)" % [name, d.size(), _w * _h])
+	var dm := (_d0 + _m0) if s.is_empty() else s.decompress(_w * _h * 2, FileAccess.COMPRESSION_ZSTD)
+	if dm.size() != _w * _h * 2:
+		push_warning("dig_zone: zły rozmiar stanu %s (%d zamiast %d)" % [name, dm.size(), _w * _h * 2])
 		return
-	if d == _d:
+	_islands.clear()                                             # symulacja od nowa: nic nie spada, nic się nie osypuje
+	_in_isl.fill(0)
+	_cols = Vector2i(-1, -1)
+	_check_islands = false
+	if s.is_empty():
+		islands_fallen = 0
+	var d := dm.slice(0, _w * _h)
+	var m := dm.slice(_w * _h)
+	if d == _d and m == _m:
 		return
 	_d = d
+	_m = m
 	digs = 0 if s.is_empty() else maxi(digs, 1)
 	for ci in _ccx * _ccy:
 		_rebuild(ci)
@@ -437,18 +486,295 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 	_update_tiles(Rect2i(0, 0, tiles.x, tiles.y))
 	_unstick_players()
 
-## Po zasypaniu wykopu (reset): gracz tego peera, który stoi w skale, wychodzi na wierzch strefy nad sobą — jak `_push_players_out` przy
-## odbudowanej ścianie (level.gd). Ruch postaci należy do właściciela, więc każdy peer przesuwa tylko swoje.
-func _unstick_players() -> void:
-	var rc := rect_px()
+## Po zasypaniu wykopu (reset) albo osypisku: gracz tego peera, który stoi w skale, wychodzi w górę na pierwsze wolne miejsce nad sobą
+## (najdalej na wierzch strefy) — jak `_push_players_out` przy odbudowanej ścianie (level.gd). Ruch postaci należy do właściciela, więc każdy
+## peer przesuwa tylko swoje. `stun` — ogłuszenie (przygniecenie przez osypisko lub wyspę; reset bez niego).
+func _unstick_players(stun := 0.0) -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.is_queued_for_deletion() or not p.is_multiplayer_authority():
 			continue
-		var gp: Vector2 = p.global_position
-		if gp.x < rc.position.x or gp.x > rc.end.x or not (solid_at_px(gp + Vector2(0, -10)) or solid_at_px(gp + Vector2(0, -2))):
+		if _push_up(p) > CRUSH_MIN and stun > 0.0:              # przysypane stopy tylko podnoszą; ogłusza dopiero zasypanie
+			p.stun_t = maxf(float(p.stun_t), stun)
+
+## Serwer: wróg w skale strefy (osypisko, wyspa) wychodzi na wierzch jak gracz.
+func _unstick_enemies() -> void:
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e is Node2D and not e.is_queued_for_deletion() and not e.is_in_group("props") and not e.is_in_group("breakables") and e.get("alive") != false:
+			_push_up(e)
+
+## Postać `n` (stopy w `global_position`) w skale strefy → w górę o 4 px do pierwszego miejsca, gdzie stopy i głowa są w powietrzu
+## (najdalej nad wierzch strefy). Zwraca, o ile px (0 — nie była w skale).
+func _push_up(n: Node2D) -> float:
+	var rc := rect_px()
+	var gp: Vector2 = n.global_position
+	if gp.x < rc.position.x or gp.x > rc.end.x or gp.y < rc.position.y - 1.0 or gp.y > rc.end.y + 24.0:
+		return 0.0
+	if not (solid_at_px(gp + Vector2(0, -10)) or solid_at_px(gp + Vector2(0, -2))):
+		return 0.0
+	var y := gp.y
+	while y > rc.position.y - 0.5:
+		y -= CELL
+		if not solid_at_px(Vector2(gp.x, y - 2.0)) and not solid_at_px(Vector2(gp.x, y - 12.0)) and not solid_at_px(Vector2(gp.x, y - 20.0)):
+			break
+	n.global_position = Vector2(gp.x, maxf(y, rc.position.y - 0.5))
+	if "velocity" in n:
+		n.velocity = Vector2.ZERO
+	return gp.y - n.global_position.y
+
+# ---------------------------------------------------------------- osypywanie i wyspy (serwer liczy, wszyscy stosują deltę)
+
+## Serwer: kolumny narożników [a, b] do sprawdzenia w następnych krokach osypywania.
+func _wake(a: int, b: int) -> void:
+	a = maxi(a, 1)
+	b = mini(b, _w - 2)
+	_cols = Vector2i(a, b) if _cols.x < 0 else Vector2i(mini(_cols.x, a), maxi(_cols.y, b))
+
+## Czy strefa jest w spoczynku (nic się nie osypuje, nic nie spada) — test i pomiar.
+func is_settled() -> bool:
+	return _cols.x < 0 and _islands.is_empty() and not _check_islands
+
+func _physics_process(delta: float) -> void:
+	_pour_fx_t = maxf(0.0, _pour_fx_t - delta)
+	if not NoiseMgr.is_server():
+		return
+	_pour_t = maxf(0.0, _pour_t - delta)
+	if is_settled():
+		_sim_t = 0.0
+		return
+	_sim_t += delta
+	while _sim_t >= SIM_DT:
+		_sim_t -= SIM_DT
+		_step()
+
+## Serwer: jeden krok — wykrycie nowych wysp, ruch wysp, osypywanie luźnego materiału; zmiany idą do wszystkich jedną deltą.
+func _step() -> void:
+	var t0 := Time.get_ticks_usec()
+	var changed := {}
+	var fx := PackedVector3Array()                               # (x, y, siła): siła 0 — osypywanie, > 0 — upadek wyspy
+	if _check_islands:
+		_check_islands = false
+		_detect_islands()
+	for isl in _islands.duplicate():
+		if _move_island(isl, changed):
+			_islands.erase(isl)
+			_land(isl, fx)
+	if _cols.x >= 0:
+		var pour := _settle(changed)
+		if pour != Vector2.INF and _pour_t <= 0.0:
+			_pour_t = POUR_EVERY
+			NoiseMgr.add_noise(N_POUR, pour, "dig")
+			fx.append(Vector3(pour.x, pour.y, 0.0))
+	if changed.is_empty():
+		return
+	sim_steps += 1
+	sim_usec = Time.get_ticks_usec() - t0
+	var idx := PackedInt32Array(changed.keys())
+	var d := PackedByteArray()
+	var m := PackedByteArray()
+	for k in idx:
+		d.append(_d[k])
+		m.append(_m[k])
+	if NoiseMgr.has_network():
+		_cells_rpc.rpc(map_key, idx, d, m, fx)
+	else:
+		_cells_rpc(map_key, idx, d, m, fx)
+
+## Czy narożnik `k` jest wolny dla spadającego materiału (w strefie, powietrze, nie spadająca wyspa).
+func _free(k: int) -> bool:
+	return k >= 0 and k < _w * _h and _fixed[k] == 0 and _d[k] < ISO and _in_isl[k] == 0
+
+## Przeniesienie narożnika skały `a` → `b` (gęstość i materiał); `a` zostaje powietrzem.
+func _move(a: int, b: int, changed: Dictionary) -> void:
+	_d[b] = _d[a]
+	_m[b] = _m[a]
+	_d[a] = 0
+	changed[a] = true
+	changed[b] = true
+
+## Luźny materiał w aktywnych kolumnach, od dołu: spada (do GRAIN_FALL narożników), a oparty — zsuwa się po skosie, gdy obok i po skosie
+## jest powietrze (kąt usypiska 45°). Zwraca środek ruchu (hałas, efekt) albo Vector2.INF; bez ruchu kolumny gasną.
+func _settle(changed: Dictionary) -> Vector2:
+	_parity ^= 1
+	var lo := _w
+	var hi := -1
+	var sum := Vector2.ZERO
+	var n := 0
+	var dirs := PackedInt32Array([-1, 1] if _parity == 0 else [1, -1])
+	for j in range(_h - 2, 0, -1):
+		for ii in range(_cols.x, _cols.y + 1):
+			var i := ii if _parity == 0 else _cols.y - (ii - _cols.x)
+			var k := j * _w + i
+			if _fixed[k] == 1 or _d[k] < ISO or _in_isl[k] == 1 or not Mats.loose(_m[k]):
+				continue
+			var to := -1
+			if _free(k + _w):
+				to = k + _w
+				for _s in GRAIN_FALL - 1:
+					if _free(to + _w):
+						to += _w
+			else:
+				for dx in dirs:
+					if _free(k + dx) and _free(k + _w + dx):
+						to = k + _w + dx
+						break
+			if to < 0:
+				continue
+			_move(k, to, changed)
+			lo = mini(lo, mini(i, to % _w))
+			hi = maxi(hi, maxi(i, to % _w))
+			sum += _corner_px(to % _w, to / _w)
+			n += 1
+	if n == 0:
+		_cols = Vector2i(-1, -1)
+		return Vector2.INF
+	_cols = Vector2i(maxi(1, lo - 1), mini(_w - 2, hi + 1))
+	return global_position + sum / float(n)
+
+## Spójność: skała strefy połączona (po bokach narożników) z narożnikiem pierścienia, który jest pełną skałą mapy, stoi; reszta to wyspy —
+## każda spada w całości. Zalewanie po całej strefie (kilka tysięcy narożników — znikomy koszt), tylko po operacji kopania.
+func _detect_islands() -> void:
+	var n := _w * _h
+	var seen := PackedByteArray()
+	seen.resize(n)
+	var q := PackedInt32Array()
+	for k in n:
+		if _fixed[k] == 1 and _d[k] == 255:
+			seen[k] = 1
+			q.append(k)
+	_flood(q, seen)
+	for k in n:
+		if seen[k] == 1 or _fixed[k] == 1 or _d[k] < ISO or _in_isl[k] == 1:
 			continue
-		p.global_position = Vector2(gp.x, rc.position.y - 0.5)
-		p.velocity = Vector2.ZERO
+		var start := PackedInt32Array([k])
+		seen[k] = 1
+		var cells := _flood(start, seen)
+		for c in cells:
+			_in_isl[c] = 1
+		_islands.append({"cells": cells, "v": 1, "drop": 0})
+
+## Zalewanie od `q` po narożnikach skały strefy (nie pierścienia, nie spadających wysp); zwraca odwiedzone (z `q`).
+func _flood(q: PackedInt32Array, seen: PackedByteArray) -> PackedInt32Array:
+	var h := 0
+	while h < q.size():
+		var k := q[h]
+		h += 1
+		for nb in [k - 1, k + 1, k - _w, k + _w]:
+			if nb >= 0 and nb < _w * _h and seen[nb] == 0 and _fixed[nb] == 0 and _d[nb] >= ISO and _in_isl[nb] == 0:
+				seen[nb] = 1
+				q.append(nb)
+	return q
+
+## Wyspa spada o `v` narożników (przyspiesza do ISLAND_VMAX), dopóki pod każdym jej narożnikiem jest powietrze albo ona sama. true — oparła się.
+func _move_island(isl: Dictionary, changed: Dictionary) -> bool:
+	var cells: PackedInt32Array = isl["cells"]
+	var steps := int(isl["v"])
+	var moved := 0
+	for _s in steps:
+		var own := {}
+		for k in cells:
+			own[k] = true
+		var ok := true
+		for k in cells:
+			var b := k + _w
+			if not own.has(b) and not _free(b):
+				ok = false
+				break
+		if not ok:
+			break
+		var vd := PackedByteArray()
+		var vm := PackedByteArray()
+		for k in cells:
+			vd.append(_d[k])
+			vm.append(_m[k])
+			_d[k] = 0
+			_in_isl[k] = 0
+			changed[k] = true
+		for c in cells.size():
+			var b := cells[c] + _w
+			_d[b] = vd[c]
+			_m[b] = vm[c]
+			_in_isl[b] = 1
+			changed[b] = true
+			cells[c] = b
+		moved += 1
+	isl["cells"] = cells
+	isl["drop"] = int(isl["drop"]) + moved
+	if moved < steps:
+		for k in cells:
+			_in_isl[k] = 0
+		return true
+	isl["v"] = mini(steps + 1, ISLAND_VMAX)
+	return false
+
+## Serwer: wyspa oparła się — hałas, dziennik, efekt (przez deltę), a luźny materiał na niej może się dalej osypywać.
+func _land(isl: Dictionary, fx: PackedVector3Array) -> void:
+	var cells: PackedInt32Array = isl["cells"]
+	var c := Vector2.ZERO
+	var lo := _w
+	var hi := -1
+	for k in cells:
+		c += _corner_px(k % _w, k / _w)
+		lo = mini(lo, k % _w)
+		hi = maxi(hi, k % _w)
+	c = global_position + c / float(maxi(cells.size(), 1))
+	if int(isl["drop"]) == 0:                                    # nie ruszyła się (oparta o pierścień bez skały mapy) — bez pętli sprawdzeń
+		return
+	islands_fallen += 1
+	var size_k := clampf(float(cells.size()) / 40.0, 0.5, 2.0)
+	NoiseMgr.add_noise(N_ISLAND * size_k, c, "dig")
+	fx.append(Vector3(c.x, c.y, size_k))
+	_wake(lo - 1, hi + 1)
+	_check_islands = true                                        # oparła się o coś, co też może wisieć
+	SessionLog.event("dig_fall", {"zone": String(name), "cells": cells.size(), "drop": int(isl["drop"]) * int(CELL), "pos": SessionLog.xy(c),
+		"noise": roundi(NoiseMgr.level)})
+
+## Każdy peer: delta z kroku serwera — narożniki `idx` dostają gęstość `d` i materiał `m`; przebudowa fragmentów, kafli, znajdziek (serwer
+## wyrzuca odkopane osypiskiem), wyciągnięcie zasypanych postaci, efekty (`fx`: siła 0 — szmer osypiska, > 0 — upadek wyspy).
+@rpc("authority", "call_local", "reliable")
+func _cells_rpc(key: String, idx: PackedInt32Array, d: PackedByteArray, m: PackedByteArray, fx: PackedVector3Array) -> void:
+	if key != map_key or idx.size() != d.size() or idx.size() != m.size():
+		return
+	var touched := {}
+	var i0 := _w
+	var i1 := 0
+	var j0 := _h
+	var j1 := 0
+	for c in idx.size():
+		var k := idx[c]
+		if k < 0 or k >= _w * _h or _fixed[k] == 1:
+			continue
+		_d[k] = d[c]
+		_m[k] = m[c]
+		var i := k % _w
+		var j := k / _w
+		_touch(touched, i, j)
+		i0 = mini(i0, i)
+		i1 = maxi(i1, i)
+		j0 = mini(j0, j)
+		j1 = maxi(j1, j)
+	for ci in touched:
+		_rebuild(int(ci))
+	if touched.is_empty():
+		return
+	_update_finds(Rect2i(i0, j0, i1 - i0 + 1, j1 - j0 + 1).grow(FIND_NEAR), Vector2.ZERO, -1)
+	_update_tiles(_tile_rect(i0, i1, j0, j1))
+	_unstick_players(CRUSH_STUN)
+	if NoiseMgr.is_server():
+		_unstick_enemies()
+	var lvl := get_parent()
+	for e in fx:
+		var at := Vector2(e.x, e.y)
+		if e.z <= 0.0:
+			if _pour_fx_t <= 0.0:
+				_pour_fx_t = 0.35
+				Audio.play_at("collapse", at, Audio.BUS_WORLD, -16.0, 1.7)
+				if lvl != null:
+					Vfx.dust(lvl, at, 0.4)
+		else:
+			Audio.play_at("collapse", at, Audio.BUS_WORLD, -6.0 + 3.0 * e.z, 1.25)
+			if lvl != null:
+				Vfx.dust(lvl, at, 0.8 * e.z)
+				Vfx.quake(at, 48.0 * e.z, 0.6)
 
 # ---------------------------------------------------------------- znajdźki
 
@@ -554,7 +880,7 @@ func _spawn_find(k: int, from: Vector2, tool: int) -> void:
 	if not item.is_empty() and lvl != null and lvl.has_method("spawn_item"):
 		lvl.spawn_item(String(item[0]), int(item[1]), at, int(item[2]))
 	SessionLog.event("dig_find", {"zone": String(name), "find": k, "kind": kind, "item": String(item[0]) if not item.is_empty() else "",
-		"by": ["pick", "blade", "blast"][clampi(tool, 0, 2)], "pos": SessionLog.xy(at), "noise": roundi(NoiseMgr.level)})
+		"by": "fall" if tool < 0 else ["pick", "blade", "blast"][clampi(tool, 0, 2)], "pos": SessionLog.xy(at), "noise": roundi(NoiseMgr.level)})
 
 ## [rodzaj pickup.gd, arg, rounds] albo pusta tablica (nic — Nocny Dyżur bez potrzebnej amunicji).
 func _resolve_find(kind: String) -> Array:

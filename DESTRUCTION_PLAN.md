@@ -3,11 +3,11 @@
 Stan wyjścia planu: main 1.7.477 (2026-11-02), plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
 spike'i przed D0).
 
-**Stan wdrożenia (2026-11-06, 1.7.503):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
+**Stan wdrożenia (2026-11-06, 1.7.504):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
 1.7.493, D4 z pulą cząsteczek w 1.7.500, dźwięki drewna i młotka z odsłuchu A/B w 1.7.501 (`BARRIER_FIX_PLAN.md` B3), D5 część 1
-(dane, siatka, kolizja) w 1.7.502, część 2 (znajdźki, skaner, błysk, dźwięk metalu) w 1.7.503. Zostaje: playtest z raportem
+(dane, siatka, kolizja) w 1.7.502, część 2 (znajdźki, skaner, błysk, dźwięk metalu) w 1.7.503, osypywanie żwiru i spadające wyspy w 1.7.504. Zostaje: playtest z raportem
 (`tools/session_progress.py`, sekcja „Niszczenie”), spadająca kładka (D3), blacha `sheet` (D2, brak na mapach), misje „przetrzymaj”
-(D2b, po strefie 2), osypywanie żwiru i spadające wyspy (osobny PR po części 2) i D5 część 3 (strefy na mapach, pule, ekonomia).
+(D2b, po strefie 2) i D5 część 3 (strefy na mapach, pule, ekonomia).
 
 ## Cel
 
@@ -631,6 +631,34 @@ nie leżą na trasie do celu).
   wipe zakopuje); `test_net_session.sh` — host wykopuje znajdźkę, skrót stref u każdego peera obejmuje miejsca, rodzaje i stan znajdziek.
 - Nie zrobione w części 2: osypywanie żwiru i spadające wyspy (osobny PR), pule w `progress.cfg` z odnowieniem po 3 misjach, notatki
   fabularne i skrzynka z czymś cennym, samorodki (z kopalnią), strefy na mapach kampanii (część 3).
+
+**Zrobione w 1.7.504 (osypywanie żwiru i spadające wyspy).**
+
+- Decyzja: luźny jest tylko żwir (`dig_materials.gd` `loose`). Ziemia stoi jak w części 1 — inaczej każdy tunel w ziemi zasypywałby się
+  sam, a strefy w ziemi są tymi, w których się chodzi.
+- Krok symulacji (`dig_zone.gd` `_physics_process` → `_step`): tylko serwer, co `SIM_DT` 0,05 s (20 Hz), tylko w pasie kolumn ruszonych
+  ostatnio (`_wake` po każdej operacji kopania i po wylądowaniu wyspy; pas gaśnie, gdy krok nic nie ruszył). Narożniki luźne skanowane
+  od dołu, z naprzemiennym kierunkiem w poziomie: narożnik spada do `GRAIN_FALL` 2 narożników, a gdy pod nim skała — zsuwa się po skosie,
+  jeśli wolne są bok i skos (stok 45°). Przenoszona jest gęstość i materiał, więc masa się nie zmienia.
+- Wyspy (`_detect_islands`, po operacji kopania i po wylądowaniu, które coś przesunęło): zalewanie od narożników pierścienia, które
+  są skałą mapy, po skale strefy; to, czego zalewanie nie dosięgło, to wyspa. Wyspa spada w całości (prędkość 1 → `ISLAND_VMAX`
+  4 narożniki na krok), aż coś ją zatrzyma; po wylądowaniu hałas `N_ISLAND` 2 × rozmiar (0,5–2), dźwięk zawału, pył i wstrząs.
+- Sieć: wynik kroku idzie jako bezwzględna delta (`_cells_rpc`: indeksy, gęstość, materiał, efekty) — niezawodnie i w kolejności
+  z ciosami (`_dig_rpc`), więc u klienta i dołączającego to samo co u hosta bez liczenia symulacji u siebie. `state()` niesie gęstość
+  i materiał (wyspa przenosi żyłę), reset wraca do obu.
+- Przygniecenie: każdy peer wypycha swoich graczy w górę z bryły (`_push_up`, krok 4 px, aż wolne stopy, pas i głowa); gdy przesunięcie
+  > `CRUSH_MIN` 8 px — ogłuszenie `CRUSH_STUN` 0,6 s, bez obrażeń. Osypujący się żwir podnosi tylko stopy, więc nie ogłusza; ogłusza
+  zasypanie z góry. Wrogów wypycha serwer.
+- Efekty: osypywanie — cichy szelest (`collapse` wysoko i cicho, najwyżej co 0,35 s) i pył, hałas 0,4 co 0,5 s; wyspa — patrz wyżej.
+- Dziennik sesji: `dig_fall` (zone, cells, drop w px, pos, noise) przy wylądowaniu wyspy; raport `session_progress.py`, sekcja „Niszczenie”.
+- Testy: `t_dig` ma strefę żwiru (DigZone3, 8 × 6 kafli); `--digtest` sekcja 10 (dół w żwirze staje w < 3 s w stabilnym stoku, masa
+  zachowana, stożek zamiast pionowych ścian, ziemia się nie osypuje, gracz w osypującym się dole wychodzi bez ogłuszenia, zasypany
+  30 px — na wierzch z ogłuszeniem, wyspa w skale stoi, dopóki trzyma się reszty, odcięta spada w całości i ląduje, masa zachowana,
+  słychać upadek, stan z materiałem, wipe i powrót); `test_net_session.sh` — host kopie dół w żwirze i odcina wyspę, skrót stref
+  (gęstość i materiał) taki sam u hosta, klienta i dołączającego.
+- Pomiary (headless): dół 20 × 32 px w żwirze staje w 0,65 s (12 kroków), krok 0,65–1,0 ms.
+- Nie zrobione: zasypywanie wrogów jako cel (wrogowie są tylko wypychani), grudki toczące się w 3D (osypywanie widać jako zmianę
+  siatki i pył), wyspy w żwirze rozsypujące się w ziarna (spadają w całości jak skała).
 
 ## Kolejność i rozmiar
 
