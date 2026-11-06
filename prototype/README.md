@@ -429,7 +429,7 @@ scripts/
   sprites.gd        # SpriteFrames z arkusza + manifestu (warstwy ciało / glow)
   # misje i kryjówka:
   generator.gd      # generator radiostacji (misja 1.2), handcar.gd — drezyna ucieczki po generatorach
-  dig_zone.gd       # strefa wydobycia (D5): grunt z `DIG_ZONES` mapy w siatce 4 × 4 komórki na kafel — gęstość, marching squares → kolizja (odcinki) i siatka 3D, wyrwa z kierunku ciosu, materiały, wybuch, stan dla dołączających, reset, zakopane znajdźki (miejsca z ziarna, stan z gęstości, wypadanie, skaner, dźwięk metalu); dig_materials.gd — tabela materiałów (ziemia, żwir, skała, żyła: siła narzędzi, hałas, odcień)
+  dig_zone.gd       # strefa wydobycia (D5): grunt z `DIG_ZONES` mapy w siatce 4 × 4 komórki na kafel — gęstość, marching squares → kolizja (odcinki) i siatka 3D, wyrwa z kierunku ciosu, materiały, wybuch, stan dla dołączających, reset, zakopane znajdźki (miejsca z ziarna, stan z gęstości, wypadanie, skaner, dźwięk metalu), osypywanie żwiru i spadające wyspy (krok na serwerze, delta komórek, przygniecenie); dig_materials.gd — tabela materiałów (ziemia, żwir, skała, żyła: siła narzędzi, hałas, odcień, luźny)
   breakable.gd      # zniszczalna przegroda z tabelą materiałów: zamurowanie `q`, deski `%`, kratka `+` (skrót albo skrytka), dziury na wylot w deskach; board.gd, results_wall.gd, run_log.gd — tablica odprawy i ściana wyników w kryjówce
   barricade_spot.gd # przybijanie desek przy przegrodzie z desek (rozbite `%`, pusty otwór `:`): trzymanie [E], postęp i koszt na serwerze (level.gd `nail_board`)
   support_beam.gd   # stempel `!` nad strefą zawału `^` (D3): cel dla kul i ciosów, granat tylko z ~1 m (`Combat.SUPPORT_BLAST_R`), ładunek burzący całym promieniem; złamany — po 0,8 s strefa zapada się gruzem (level.gd `cave_in`); od 1.7.494 tylko na mapie testowej `t_mine` — kampania 1.1–1.3 nie ma stref, zawał czeka na mapy w podziemiach z niskimi przejściami
@@ -441,7 +441,7 @@ scripts/
   throwables.gd     # granaty, miny, ładunki; smoke_cloud.gd — dym, fire_patch.gd — ogień HKM-9
   # Pijawka (boss B1): leech.gd (symulacja i animacje; po zasadzce z brzegu 5 s odpoczynku od brzegu — SHORE_REST, od 1.7.425; od 1.7.467 kwas leci w miejsce ustalone na początku zapowiedzi, a znacznik `spit_mark` pokazuje, gdzie spadnie), acid_spit.gd — kwas, tide_water.gd — fala przypływu
   # grafika i postacie: char3d.gd (postać 3D w czasie rzeczywistym, patrz CHAR3D_SPIKE.md), gib_art.gd — szczątki HD, horror_fx.gd — gradacja, winieta, ziarno
-  maps/             # dane map (siatka ASCII): z1_hub (kryjówka), z1_m1 „Zaginiony Patrol”, z1_m2 „Przerwa w Nadawaniu”, z1_m3 „Gniazdo”, z1_b1 „Pijawka”, t_mine (mapa testowa zawału: niskie przejście ze stemplem, poza kampanią), t_dig (mapa testowa stref wydobycia D5: ziemia i skała z żyłą pod halą, poza kampanią)
+  maps/             # dane map (siatka ASCII): z1_hub (kryjówka), z1_m1 „Zaginiony Patrol”, z1_m2 „Przerwa w Nadawaniu”, z1_m3 „Gniazdo”, z1_b1 „Pijawka”, t_mine (mapa testowa zawału: niskie przejście ze stemplem, poza kampanią), t_dig (mapa testowa stref wydobycia D5: ziemia, skała z żyłą i żwir pod halą, poza kampanią)
 scenes/
   main.tscn  player.tscn  bot_companion.tscn  stalker.tscn  enemy.tscn  nest.tscn  boss.tscn
 tools/

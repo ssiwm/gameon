@@ -15,7 +15,9 @@ extends "res://scripts/stalker_test.gd"
 ## 7. stan: migawka z punktu kontrolnego i wipe przywracają strefę (gęstość, kafle, nawigacja), gracz w zasypanym wykopie wychodzi na wierzch;
 ## 8. czasy przebudowy fragmentu (kontur + kolizja) i siatki 3D;
 ## 9. znajdźki (część 2): liczba i miejsca z ziarna (w głębi skały, odstęp), determinizm, skaner, odkopanie do połowy i błysk w latarce,
-##    dźwięk ciosu w metal, przedmiot wypada i spada, wybuch odrzuca przedmiot, Nocny Dyżur, dziennik `dig_find`, wipe zakopuje.
+##    dźwięk ciosu w metal, przedmiot wypada i spada, wybuch odrzuca przedmiot, Nocny Dyżur, dziennik `dig_find`, wipe zakopuje;
+## 10. osypywanie i wyspy (DigZone3 — żwir): dół osypuje się do stożka, masa zachowana, ziemia stoi, zasypany gracz wychodzi na wierzch
+##    z ogłuszeniem, odcięty blok skały spada w całości i ląduje, stan dla dołączającego z materiałem, wipe i powrót do stanu.
 ## Wynik: linie [DIG-TEST] (PASS / FAIL / INFO) i kod wyjścia.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -67,7 +69,7 @@ func run(m: Node2D) -> void:
 	blade = Weapons.index_of("maczeta")
 	NoiseMgr.noise_added.connect(_on_noise)
 	var dig0: int = (level._dig_cells as Dictionary).size()
-	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48)" % dig0, dig0 == 128 and level._is_solid(5, 12) and level._is_solid(33, 12))
+	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48)" % dig0, dig0 == 176 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
 	await _tunnel()
@@ -76,6 +78,7 @@ func run(m: Node2D) -> void:
 	await _blast()
 	await _state(dig0)
 	await _finds()
+	await _gravel()
 	_timings()
 	_finish()
 
@@ -441,9 +444,9 @@ func _state(dig0: int) -> void:
 	await _frames(0.3)
 	await _swing(Vector2.DOWN)
 	var st: PackedByteArray = zone.state()
-	var raw: PackedByteArray = st.decompress(zone._w * zone._h, FileAccess.COMPRESSION_ZSTD)
+	var raw: PackedByteArray = st.decompress(zone._w * zone._h * 2, FileAccess.COMPRESSION_ZSTD)
 	info("stan strefy dla dołączającego: %d B (surowo %d B)" % [st.size(), raw.size()])
-	check("stan strefy: kompresja bez strat i mały (< 1 kB po jednym ciosie)", raw == zone._d and st.size() < 1024)
+	check("stan strefy: kompresja bez strat i mały (< 1 kB po jednym ciosie)", raw == zone._d + zone._m and st.size() < 1024)
 	level.reset_breakables()
 	await _frames(0.1)
 
@@ -636,6 +639,135 @@ func _finds() -> void:
 	await _frames(0.1)
 	check("wipe: znajdźki znów zakopane w tych samych miejscach, licznik od zera", _find_sig(zone) == sig0 and zone.finds_out == 0
 		and (zone.finds + rock.finds).all(func(q: Dictionary) -> bool: return int(q["state"]) == DigZone.Find.BURIED))
+
+# ---------------------------------------------------------------- 10. osypywanie żwiru i spadające wyspy
+
+## Narożników skały strefy (bez pierścienia) — masa materiału.
+func _solid_count(z: Node2D) -> int:
+	var n := 0
+	for k in (z._d as PackedByteArray).size():
+		if z._fixed[k] == 0 and z._d[k] >= DigZone.ISO:
+			n += 1
+	return n
+
+## Czy luźny materiał strefy leży stabilnie: żaden narożnik nie ma wolnego miejsca pod sobą ani skosu do zsunięcia.
+func _stable(z: Node2D) -> bool:
+	var w: int = z._w
+	for k in (z._d as PackedByteArray).size():
+		if z._fixed[k] == 1 or z._d[k] < DigZone.ISO or not DigMats.loose(z._m[k]):
+			continue
+		if z._free(k + w) or (z._free(k - 1) and z._free(k + w - 1)) or (z._free(k + 1) and z._free(k + w + 1)):
+			return false
+	return true
+
+## Pierwszy y skały pod `x` od wierzchu strefy w dół (px świata), INF — nic.
+func _surface_y(z: Node2D, x: float) -> float:
+	var y: float = z.rect_px().position.y - 4.0
+	while y < z.rect_px().end.y:
+		if z.solid_at_px(Vector2(x, y)):
+			return y
+		y += 1.0
+	return INF
+
+## Czeka, aż strefa się uspokoi (najdłużej `secs`); zwraca czas w s.
+func _settle_wait(z: Node2D, secs: float, each := Callable()) -> float:
+	var t := 0.0
+	while t < secs and not z.is_settled():
+		await _frames(0.05, each)
+		t += 0.05
+	return t
+
+func _gravel() -> void:
+	var gz: Node2D = level.get_node_or_null("DigZone3")
+	check("mapa t_dig ma strefę żwiru (DigZone3, %s)" % (gz.mat_key if gz else "—"), gz != null and gz.mat_key == "gravel")
+	if gz == null:
+		return
+	# 1. dół w żwirze osypuje się do kąta usypiska; masa zachowana; skała i ziemia się nie osypują
+	var cx := 688.0
+	var n0 := _solid_count(gz)
+	gz._send(Vector2(cx, TOP + 16.0), Vector2(10.0, 16.0), 0.0, DigMats.Tool.PICK)
+	var n1 := _solid_count(gz)
+	var depth0 := _surface_y(gz, cx)
+	var s0: int = gz.sim_steps
+	var secs: float = await _settle_wait(gz, 4.0)
+	var n2 := _solid_count(gz)
+	var depth1 := _surface_y(gz, cx)
+	info("dół 20 × 32 px w żwirze: zabrano %d narożników, osypało się w %.2f s (%d kroków, ostatni %.2f ms); dno pod środkiem y %.0f → %.0f, obok (±20 px) %.0f / %.0f" % [
+		n0 - n1, secs, gz.sim_steps - s0, gz.sim_usec / 1000.0, depth0, depth1, _surface_y(gz, cx - 20.0), _surface_y(gz, cx + 20.0)])
+	check("dół w żwirze osypuje się i staje (w < 3 s), stok stabilny", gz.is_settled() and secs < 3.0 and _stable(gz))
+	check("osypywanie nie gubi ani nie dodaje materiału (%d → %d narożników)" % [n1, n2], n2 == n1 and n1 < n0)
+	check("dno dołu podsypane, brzegi obniżone (stożek zamiast pionowych ścian)", depth1 < depth0 - 3.0 and _surface_y(gz, cx - 20.0) > TOP + 1.0 and _surface_y(gz, cx + 20.0) > TOP + 1.0)
+	_place_player(Vector2(cx + 40.0, TOP - 2.0))               # kamera przy usypisku
+	await _shot("d5_10_gravel")
+	level.reset_breakables()
+	await _frames(0.1)
+	var pz: int = zone.sim_steps
+	_place_player(Vector2(6.5 * 16.0, TOP - 2.0))
+	await _frames(0.3)
+	await _swing(Vector2.DOWN)
+	await _frames(0.5)
+	check("ziemia się nie osypuje (krok symulacji bez ruchu)", zone.sim_steps == pz and zone.is_settled())
+	level.reset_breakables()
+	await _frames(0.1)
+	# 2. gracz w wąskim dole w żwirze: osypisko sypie się pod stopy i podnosi go na wierzch usypiska (bez ogłuszenia — nie został zasypany)
+	gz._send(Vector2(cx, TOP + 22.0), Vector2(8.0, 22.0), 0.0, DigMats.Tool.PICK)
+	_place_player(Vector2(cx, TOP + 44.0))
+	player.stun_t = 0.0
+	var max_stun := [0.0]
+	var buried := [false]
+	await _settle_wait(gz, 4.0, func(_t: float, _dt: float) -> void:
+		max_stun[0] = maxf(max_stun[0], float(player.stun_t))
+		buried[0] = buried[0] or gz.solid_at_px(player.global_position + Vector2(0, -10)))
+	await _frames(0.3)
+	var pp: Vector2 = player.global_position
+	info("gracz w dole 16 × 44 px: po osypaniu stopy y %.1f (dno %.0f), ogłuszenie do %.2f s, głowa w skale w trakcie: %s" % [pp.y, TOP + 44.0, max_stun[0], buried[0]])
+	check("osypisko podnosi gracza z dna dołu na wierzch usypiska (nie w skale, żywy, bez ogłuszenia)", pp.y < TOP + 36.0 and not gz.solid_at_px(pp + Vector2(0, -10))
+		and not gz.solid_at_px(pp + Vector2(0, -2)) and max_stun[0] == 0.0 and not player.dead)
+	# gracz zasypany głęboko (np. przez spadającą wyspę): wychodzi na wierzch strefy z krótkim ogłuszeniem
+	_place_player(Vector2(730.0, TOP + 30.0))
+	player.stun_t = 0.0
+	gz._unstick_players(DigZone.CRUSH_STUN)
+	var bp: Vector2 = player.global_position
+	check("zasypany 30 px w żwirze wychodzi na wierzch (y %.1f) z ogłuszeniem %.2f s" % [bp.y, float(player.stun_t)], bp.y <= TOP + 0.5
+		and is_equal_approx(float(player.stun_t), DigZone.CRUSH_STUN) and not gz.solid_at_px(bp + Vector2(0, -10)))
+	player.stun_t = 0.0
+	_place_player(Vector2(20.0 * 16.0, TOP - 2.0))
+	level.reset_breakables()
+	await _frames(0.1)
+	# 3. wyspa w skale: blok odcięty z czterech stron spada w całości i staje na dnie szczeliny
+	var r0: int = rock.islands_fallen
+	var rn0 := _solid_count(rock)
+	var cuts := [[Vector2(544.0, 196.0), Vector2(14.0, 4.0)], [Vector2(544.0, 228.0), Vector2(14.0, 6.0)], [Vector2(532.0, 212.0), Vector2(4.0, 18.0)],
+		[Vector2(556.0, 212.0), Vector2(4.0, 18.0)]]
+	var top_solid := false
+	for c in cuts.size():
+		if c == 3:
+			await _frames(0.3)
+			top_solid = rock.solid_at_px(Vector2(544.0, 203.0)) and rock.islands_fallen == r0 and rock.is_settled()
+			_noise.clear()
+		rock._send(cuts[c][0], cuts[c][1], 0.0, DigMats.Tool.BLAST)
+	var rn1 := _solid_count(rock)
+	await _settle_wait(rock, 3.0)
+	var loud := _noise.filter(func(e: Array) -> bool: return float(e[0]) > 0.3)           # mnożnik trudności zmienia głośność (EASY w oknie)
+	info("wyspa w skale: przed ostatnim cięciem stoi (%s), spadło wysp %d, wierzch bloku y 203 %s, dno szczeliny y 231 %s, hałas upadku %s" % [
+		top_solid, rock.islands_fallen - r0, "skała" if rock.solid_at_px(Vector2(544.0, 203.0)) else "pusto",
+		"skała" if rock.solid_at_px(Vector2(544.0, 231.0)) else "pusto", str(loud.map(func(e: Array) -> String: return "%.1f" % e[0]))])
+	check("blok połączony z resztą stoi; odcięty z czterech stron spada w całości", top_solid and rock.islands_fallen == r0 + 1 and rock.is_settled())
+	check("wyspa ląduje na dnie szczeliny (wierzch bloku zszedł, dno zajęte), masa zachowana, upadek słychać",
+		not rock.solid_at_px(Vector2(544.0, 203.0)) and rock.solid_at_px(Vector2(544.0, 231.0)) and _solid_count(rock) == rn1 and rn1 < rn0 and not loud.is_empty())
+	# 4. stan dla dołączającego niesie materiał (wyspa przesunęła żyłę i skałę); migawka wraca do tego samego
+	var st: PackedByteArray = rock.state()
+	var raw: PackedByteArray = st.decompress(rock._w * rock._h * 2, FileAccess.COMPRESSION_ZSTD)
+	var dm: PackedByteArray = rock._d + rock._m
+	check("stan strefy: gęstość i materiał, bez strat (%d B)" % st.size(), raw == dm and raw.size() == rock._w * rock._h * 2)
+	level.reset_breakables()
+	await _frames(0.1)
+	var wiped: bool = rock.state().is_empty() and rock.is_settled()
+	rock.reset_to(st)
+	await _frames(0.1)
+	check("wipe czyści strefę, powrót do stanu przywraca gęstość i materiał", wiped and rock._d + rock._m == dm and rock.is_settled())
+	level.reset_breakables()
+	await _frames(0.1)
 
 # ---------------------------------------------------------------- 8. czasy
 

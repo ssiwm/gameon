@@ -719,7 +719,8 @@ func _destruction_sig() -> String:
 	if sb != null:
 		st += " sup=%s" % ("ok" if bool(sb.get("intact")) else "down")   # stempel nad strefą zawału (D3); zawał widać po Rubble1 w `opened`
 	for z in level.dig_zones():
-		st += " %s=%s" % [String(z.name).replace("DigZone", "dig"), (z._d as PackedByteArray).hex_encode().md5_text().substr(0, 8)]   # gęstość strefy (D5)
+		st += " %s=%s/%s" % [String(z.name).replace("DigZone", "dig"), (z._d as PackedByteArray).hex_encode().md5_text().substr(0, 8),
+			(z._m as PackedByteArray).hex_encode().md5_text().substr(0, 6)]   # gęstość i materiał strefy (D5; materiał przesuwa osypisko i wyspa)
 		var fs := ""
 		for f in z.finds:                                         # znajdźki: miejsca z ziarna i stan z gęstości (D5 część 2) — ten sam u każdego peera
 			fs += "%d,%d,%s,%d;" % [int(f["i"]), int(f["j"]), String(f["kind"]), int(f["state"])]
@@ -780,7 +781,17 @@ func _dig_net_host() -> void:
 	Combat.explode(get_tree(), Vector2(35.0 * 16.0, 13.0 * 16.0), 48.0, 50.0, 1, Weapons.KILOF)
 	if not (z1.finds as Array).is_empty():                         # znajdźka wypada (D5 część 2): stan znajdziek w sygnaturze u każdego peera
 		z1._send(z1.finds[0]["pos"], Vector2(8.0, 8.0), 0.0, DigMats.Tool.PICK)
+	var z3: Node2D = level.get_node_or_null("DigZone3")           # osypywanie żwiru i spadająca wyspa: delta z serwera u każdego peera
+	if z3 != null:
+		z3._send(Vector2(688.0, top + 16.0), Vector2(10.0, 16.0), 0.0, DigMats.Tool.PICK)
+	# blok odcięty z czterech stron w lewej części strefy skały — z dala od wybuchu wyżej (x 536–584), który rozsadziłby go zanim spadnie
+	for cut in [[Vector2(500.0, 196.0), Vector2(14.0, 4.0)], [Vector2(500.0, 228.0), Vector2(14.0, 6.0)], [Vector2(488.0, 212.0), Vector2(4.0, 18.0)],
+			[Vector2(512.0, 212.0), Vector2(4.0, 18.0)]]:
+		z2._send(cut[0], cut[1], 0.0, DigMats.Tool.BLAST)
 	var t0 := Time.get_ticks_msec()
+	while not (z2.is_settled() and (z3 == null or z3.is_settled())) and Time.get_ticks_msec() - t0 < 5000:
+		await get_tree().create_timer(0.1).timeout
+	print("[DIG-NET] host islands=%d settled=%s" % [int(z2.islands_fallen), z2.is_settled() and (z3 == null or z3.is_settled())])   # wyspa spadła (licznik tylko na serwerze)
 	while multiplayer.get_peers().size() < 2 and Time.get_ticks_msec() - t0 < 30000:
 		await get_tree().create_timer(0.25).timeout
 	print("[DESTRUCTION-NET] host peers=%d" % multiplayer.get_peers().size())

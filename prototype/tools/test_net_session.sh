@@ -8,7 +8,7 @@
 # 6. Bateria 4,5 V (BATTERY_PLAN.md): klient z 20% baterii bierze baterię z ziemi — rozstrzyga serwer, dolicza właściciel.
 # 7. Ładowarka (BATTERY_PLAN.md B3): klient przy ładowarce B1 ładuje się u siebie, serwer widzi, że ładowarka pracuje.
 # 8. Zniszczenia (DESTRUCTION_PLAN.md D0–D3): rany ściany, rozbicie, powrót do migawki z przebudzenia bossa i wipe na 1.2, a złamany stempel
-#    i zawał na mapie testowej t_mine, wykopy, wybuch i wykopana znajdźka w strefach wydobycia (D5) na mapie testowej t_dig — u klienta obecnego od początku
+#    i zawał na mapie testowej t_mine, wykopy, wybuch, wykopana znajdźka, osypany żwir i spadła wyspa w strefach wydobycia (D5) na mapie testowej t_dig — u klienta obecnego od początku
 #    (RPC na żywo) i u dołączającego później (`send_walls_to`) stan taki sam jak u hosta.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
@@ -193,7 +193,8 @@ fi
 echo "== strefy wydobycia (t_dig) =="
 # host: po 8 s trzy ciosy kilofem w DigZone1 i wybuch w DigZone2 (DS); gdy są obaj klienci: wipe (strefy z danych mapy = D0), migawka
 # (wykopy wracają = DS) i wipe (D0). Klient A od początku (operacje kopania na żywo), klient B dołącza po wykopach — gęstość stref dostaje
-# z `send_walls_to`. Stan = skrót gęstości każdej strefy, więc zgodność znaczy: te same komórki u wszystkich.
+# z `send_walls_to`. Stan = skrót gęstości i materiału każdej strefy, więc zgodność znaczy: te same komórki u wszystkich. Host przed
+# klientem B kopie też dół w żwirze (DigZone3, osypuje się) i odcina blok w skale (DigZone2, spada jako wyspa) — oba idą deltą z serwera.
 godot --headless --path . -- --host --mission=t_dig --port=8971 --dignet=8 --autoquit=50 >"$LOG/gnet_host.log" 2>&1 &
 HOST=$!
 sleep 3
@@ -211,6 +212,8 @@ if [ -z "$D0" ] || [ "$D0" = "$DS" ] || [ "$H" != "$D0;$DS;$D0;$DS;$D0;" ]; then
 	fail "host: zły przebieg stref wydobycia ($H)"
 else
 	ok "host: strefy całe → wykopy i wybuch → wipe (całe) → migawka (wykopy wracają) → wipe"
+	grep -a -q -E "\[DIG-NET\] host islands=[1-9][0-9]* settled=true" "$LOG/gnet_host.log" && ok "host: dół w żwirze osypał się, odcięta wyspa w skale spadła, strefy stoją" \
+		|| fail "host: wyspa / osypisko ($(grep -a "\[DIG-NET\]" "$LOG/gnet_host.log"))"
 	A=$(gnet client "$LOG/gnet_a.log")
 	[ "$A" = "$H" ] && ok "klient od początku: te same komórki stref po wykopach, wybuchu, migawce i wipe'ie" || fail "klient A: $A (host: $H)"
 	B=$(gnet client "$LOG/gnet_b.log")
