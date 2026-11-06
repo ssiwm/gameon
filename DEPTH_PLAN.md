@@ -1,6 +1,6 @@
 # Plan: światło w głębi i wnęki w ścianach wnętrz
 
-Status: **plan z 2026-11-06, nic nie wdrożone.** Etap po analizie głębi świata
+Status: **plan z 2026-11-06, decyzje 1–3 podjęte tego samego dnia; nic nie wdrożone.** Etap po analizie głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`, punkty 1 i 3 tego raportu robione razem).
 Stan odniesienia: `main` 1.7.506 (b7c11e3).
 
@@ -106,9 +106,8 @@ Zasada 1 obowiązuje tak samo.
   Strop musi mieć detal, nie pustą płytę.
 - **Zniszczenia D1–D5** dokładają elementy przy ścianie (gruz, dziury w deskach). Test z N1 pilnuje, że wnęka ich nie przecina.
 
-## Decyzje do podjęcia
+## Decyzje (2026-11-06)
 
-1. Miejsce pilota: **hala stacji 1.2 (propozycja)** czy tunel drezyny 1.2.
-2. Sylwetki wrogów na tle wnęki: **słabe, z progiem jasności (propozycja)**, całkiem wykluczone (wnęki tylko nad głową)
-   czy świadoma mechanika („oświetlone tło zdradza wroga”).
-3. Cień światła wnęki na HIGH: dopiero po pomiarze w N2 (propozycja) czy od razu.
+1. Pilot w **hali stacji 1.2** (kolumny 85–88, wiersze 23–25). Tunel drezyny dopiero w N3.
+2. Sylwetki wrogów na tle wnęki **słabe, z progiem jasności** wnętrza wnęki (zasada 4). Próg ustala pomiar w N0/N2.
+3. Cień światła wnęki **dopiero po pomiarze w N2**; pilot startuje bez cienia.
