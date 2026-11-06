@@ -190,7 +190,7 @@ const GEAR_TEXT := {
 		"A dirty gun jams. One kit is issued every mission — use it in a quiet moment, not in the middle of a fight."],
 	"defib": ["Hold the item key for 1.5 s: revives a downed teammate up to 10 m away in line of sight. One is issued every mission and it cannot be bought.",
 		"Faster and safer than walking to a downed friend under fire. The AI companion uses it on you."],
-	"scanner": ["The Owl motion scanner: for 10 s you see enemy silhouettes through walls within 15 m (red = awake). It emits 1 noise per second.",
+	"scanner": ["The Owl motion scanner: for 10 s you see enemy silhouettes through walls within 15 m (red = awake) and metal buried in dig sites (blue diamonds). It emits 1 noise per second.",
 		"Use it briefly before entering a dark room. A Stalker is not a threat on the scanner — it is just noise."],
 }
 

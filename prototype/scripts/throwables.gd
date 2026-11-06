@@ -123,7 +123,7 @@ const KINDS := {
 	"scanner": {
 		"mode": "use", "name": "OWL", "full": "Motion scanner (Owl)", "issue": 0, "price": 120, "max": 3, "time": 10.0, "range": 240.0, "noise": 1.0,
 		"color": Color(0.9, 0.9, 0.5),
-		"note": "10 s: shows enemy silhouettes through walls within 15 m. Emits 1 noise per second.",
+		"note": "10 s: shows enemy silhouettes through walls and metal buried in dig sites within 15 m. Emits 1 noise per second.",
 	},
 }
 

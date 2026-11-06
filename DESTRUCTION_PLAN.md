@@ -3,9 +3,9 @@
 Stan wyjścia planu: main 1.7.477 (2026-11-02), plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
 spike'i przed D0).
 
-**Stan wdrożenia (2026-11-06, 1.7.505):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
+**Stan wdrożenia (2026-11-06, 1.7.506):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
 1.7.493, D4 z pulą cząsteczek w 1.7.500, dźwięki drewna i młotka z odsłuchu A/B w 1.7.501 (`BARRIER_FIX_PLAN.md` B3), D5 część 1
-(dane, siatka, kolizja) w 1.7.502, część 2 (znajdźki, skaner, błysk, dźwięk metalu) w 1.7.503, osypywanie żwiru i spadające wyspy w 1.7.504, część 3 (strefy na mapach 1.1–1.3, pule znajdziek) w 1.7.505. Zostaje: playtest z raportem
+(dane, siatka, kolizja) w 1.7.502, część 2 (znajdźki, skaner, błysk, dźwięk metalu) w 1.7.503, osypywanie żwiru i spadające wyspy w 1.7.504, część 3 (strefy na mapach 1.1–1.3, pule znajdziek) w 1.7.505, oznaczenie stref (znak, podpowiedź, porada na 1.1) w 1.7.506. Zostaje: playtest z raportem
 (`tools/session_progress.py`, sekcja „Niszczenie”), spadająca kładka (D3), blacha `sheet` (D2, brak na mapach), misje „przetrzymaj”
 (D2b, po strefie 2), notatki fabularne i skrzynka w strefach, strojenie pul po playteście.
 
@@ -689,6 +689,24 @@ nie leżą na trasie do celu).
   w `C:\deadair87\shots_dig3`.
 - Nie zrobione: notatki fabularne i skrzynka z czymś cennym (potrzebują treści), samorodki (z kopalnią), bot pilnujący kopiącego,
   wielkość pul i próg odnowienia do strojenia po playteście (`session_progress.py`: `dig_find`, `dig_refresh`).
+
+**Zrobione w 1.7.506 (oznaczenie stref).** Pytanie z 2026-11-06: czy gracz wie, że w danym miejscu da się kopać? Dotąd tylko inny
+odcień skały strefy w świetle latarki — bez znaku w świecie, podpowiedzi i porady, a strefy celowo leżą w ciemnych ślepych końcach.
+
+- Znak w 3D (`view3d.gd` `_build_dig_sign`) przy wejściu strefy (`dig_zone.gd` `entrance`: najniższy kafel powietrza z gruntem pod
+  spodem tuż przy skale strefy z danych mapy, z boku albo na wierzchu): kilof (model broni w skali 1,25 — 0,9 m) wbity w skałę na
+  wysokości piersi przy przedniej krawędzi, kupka urobku (`rubble`) pod ścianą i dwa odłamki (`rock_b`, `rock_c`). Bez własnego
+  światła. Próby z zrzutów: kilof oparty o ścianę przy ziemi i głębiej w scenie nie łapał snopu, a przy ścianie zasłaniał go gracz;
+  przy przedniej krawędzi trzonek świeci w snopie z daleka.
+- Pasek akcji (`hud.gd` `_dig_prompt`): gdy cios z miejsca gracza trafiłby w skałę strefy (`cut_needs` w kierunku celowania albo w bok,
+  w stronę patrzenia) — „[V] Kop (kilof · głośno)” przy skale i żyle, „[V] Kop” przy ziemi i żwirze. Po 3 ciosach przy widocznej
+  podpowiedzi milknie dla tej strefy do końca sesji gry (`_dig_learned`, klucz puli strefy), żeby nie wisiała przez cały tunel.
+- Porada `dig_scanner` (`hints.gd`, tylko 1.1, w promieniu 96 px od strefy, raz na profil): w tej skale da się kopać, cios bierze kilof,
+  a zakopany metal pokazuje skaner „Sowa” (warsztat) — z klawiszami wyboru i użycia. Opisy skanera w kodeksie, warsztacie i pasku
+  akcji mówią o metalu w skale.
+- Testy: `--maptest` wypisuje wejście każdej strefy i zgłasza strefę bez wejścia; `--digtest` sekcja 12 (wejście stref pod podłogą,
+  podpowiedź na skale, ziemi i z dala, milknięcie po 3 ciosach osobno dla stref, porada tylko na 1.1 i przy strefie). Zrzuty znaku
+  i podpowiedzi w `C:\deadair87\shots_dig4` (dev `--shotaimleft` — gracz celuje w lewo, dla wejść od wschodu na 1.2 i 1.3).
 
 ## Kolejność i rozmiar
 

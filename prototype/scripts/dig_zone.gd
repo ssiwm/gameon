@@ -961,6 +961,31 @@ func find_face(f: Dictionary) -> Vector2:
 					best = global_position + _corner_px(i, j)
 	return best
 
+## Wejście do strefy (znak w 3D, view3d.gd `_build_dig_sign`): najniższy kafel powietrza z gruntem pod spodem tuż obok skały strefy
+## z danych mapy — z boku (lewa albo prawa kolumna za strefą) albo na wierzchu. Zwraca {"wall_x": krawędź skały [px], "floor_y": grunt [px],
+## "dir": +1 skała w prawo, −1 w lewo, 0 skała pod stopami} albo pusty słownik. Liczone z danych mapy, więc stałe przez całą misję.
+func entrance() -> Dictionary:
+	var air := func(c: int, r: int) -> bool:
+		if c >= c0 and r >= r0 and c < c0 + tiles.x and r < r0 + tiles.y:
+			return _rock0[(r - r0) * tiles.x + (c - c0)] == 0
+		return not bool(_solid_at.call(c, r))
+	var ground := func(c: int, r: int) -> bool:
+		return not bool(air.call(c, r))
+	var best := {}
+	var best_r := -1
+	for side in [-1, 1]:
+		var c := c0 - 1 if side < 0 else c0 + tiles.x
+		var wall_c := c0 if side < 0 else c0 + tiles.x - 1
+		for r in range(r0, r0 + tiles.y):
+			if r > best_r and bool(air.call(c, r)) and bool(ground.call(c, r + 1)) and solid_in_data(wall_c, r):
+				best_r = r
+				best = {"wall_x": float(c0 if side < 0 else c0 + tiles.x) * TILE, "floor_y": float(r + 1) * TILE, "dir": -side}
+	if best.is_empty():
+		for c in range(c0, c0 + tiles.x):
+			if bool(air.call(c, r0 - 1)) and solid_in_data(c, r0):
+				return {"wall_x": (float(c) + 0.5) * TILE, "floor_y": float(r0) * TILE, "dir": 0}
+	return best
+
 # ---------------------------------------------------------------- marching squares
 
 ## Wielokąt skały w komórce (i, j) (narożniki TL, TR, BR, BL zgodnie z ruchem wskazówek na ekranie) i odcinki konturu.
