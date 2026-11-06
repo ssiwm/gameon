@@ -1,6 +1,6 @@
 # Plan: światło w głębi i wnęki w ścianach wnętrz
 
-Status: **plan z 2026-11-06, decyzje 1–3 podjęte tego samego dnia; nic nie wdrożone.** Etap po analizie głębi świata
+Status: **plan z 2026-11-06, decyzje 1–3 podjęte tego samego dnia, N0 zrobione; w grze nic nie wdrożone.** Etap po analizie głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`, punkty 1 i 3 tego raportu robione razem).
 Stan odniesienia: `main` 1.7.506 (b7c11e3).
 
@@ -46,9 +46,35 @@ Wnęka ma więc nieregularny brzeg (futryna, wykruszony tynk, rury wchodzące w 
 - Luminancja ekranu przy graczu i 6–9 m od niego (jak przy strojeniu ciemności, GDD §8.3). Te liczby nie mogą się zmienić po N2.
 - Wybór kolumn pilota na zrzucie (propozycja niżej).
 
+**Wyniki N0 (2026-11-06, `main` b7c11e3, ze źródeł w oknie, 4K HIGH, gracz w kolumnie 89 na parterze hali).**
+Zrzuty, arkusz i strefy pomiaru: `C:\deadair87\shots_depth
+0\` (`n0_sheet.jpg`, `n0_strefy.png`); seria `shots_depth\series.sh`,
+pomiar `shots_depth\lum.py` (`--shotat=89 --shotrow=23`, ok. 192 px na kafel).
+
+- Hala nie jest cała czarna: lampa `I` (kolumna 82) oświetla ceglaną ścianę do ok. kolumny 89. Dalej w prawo, za skrzynią
+  i generatorem, ściana jest czysto czarna (luminancja 0,0000). Wnęka 88–91 stoi na granicy: z lewej słabe światło lampy, z prawej czerń.
+- Pogoda prawie nie zmienia wnętrza (deszcz pada tylko pod niebem). WIDE pokazuje więcej ściany, CLOSE mniej, układ ten sam.
+- Luminancja liniowa (średnia w strefie):
+
+| wariant | przy graczu | 6–9 m w lewo | podłoga przed wnęką | ściana w miejscu wnęki | ściana na prawo od wnęki |
+|---|---|---|---|---|---|
+| noc bez pogody | 0,0107 | 0,0060 | 0,0293 | 0,0040 | 0,0000 |
+| burza | 0,0102 | 0,0049 | 0,0279 | 0,0036 | 0,0000 |
+| mgła | 0,0103 | 0,0050 | 0,0276 | 0,0038 | 0,0000 |
+| deszcz | 0,0104 | 0,0060 | 0,0285 | 0,0038 | 0,0000 |
+| MEDIUM | 0,0102 | 0,0057 | 0,0283 | 0,0038 | 0,0000 |
+| LOW | 0,0092 | 0,0047 | 0,0265 | 0,0034 | 0,0000 |
+
+  Po N2 strefy „przy graczu”, „6–9 m” i „podłoga przed wnęką” mogą zmienić się najwyżej o ±2%.
+- **Próg sylwetek (decyzja 2):** średnia luminancja otworu wnęki najwyżej ok. 0,02, czyli tyle, ile ma dziś podłoga przy graczu
+  (0,029 na samym przodzie podłogi). Wróg na takim tle jest ciemniejszy od tła, ale tło nie jest jaśniejsze od miejsca, gdzie stoi gracz.
+  Do potwierdzenia na zrzucie z Trzoskiem przed wnęką.
+- Wydajność (ze źródeł, debug): 60 kl./s, GPU 7,95 ms (p95 9,65), view3d 4,72 ms, `_process` 7,84 ms. Budżet pilota: GPU ≤ 8,45 ms
+  w tym samym pomiarze (`--shotat=89 --perfrow=23 --perf=15 --perfreport`).
+
 ### N1 — mechanizm wnęki (`scripts/niches3d.gd`)
 
-- Dane w pliku mapy, obok `BACKDROP`: `const NICHES := [{"kind": "doorway", "c0": 85, "c1": 88, "r0": 23, "r1": 25, "d": 8.0, "lit": "bulb"}]`.
+- Dane w pliku mapy, obok `BACKDROP`: `const NICHES := [{"kind": "doorway", "c0": 88, "c1": 91, "r0": 23, "r1": 25, "d": 8.0, "lit": "bulb"}]`.
   Ręczne wpisy, nie generator: pilot potrzebuje kontroli kadru.
 - `Level3D.build_level` pomija płyty `walls` w prostokącie wnęki. `niches3d.gd` buduje otwór z futryną, podłogę, strop, boki
   i tylną ścianę wnęki z materiałów ściany i betonu, z cieniowaniem w głąb (jak `shade` w lesie).
@@ -60,9 +86,9 @@ Wnęka ma więc nieregularny brzeg (futryna, wykruszony tynk, rury wchodzące w 
 
 ### N2 — pilot: jedna wnęka w hali stacji 1.2
 
-- **Miejsce (propozycja): kolumny 85–88, wiersze 23–25** (podłoga w wierszu 25). To parter hali pod kratą `=` z wiersza 22,
-  między znacznikiem `L` (kolumna 83) a skrzynią `k` (kolumna 92). Gracz widzi halę w pierwszej minucie misji,
-  a zrzut `cave_z1_m2_0` pokazuje tu czarną ścianę. Otwór ma 5,2 × 3,9 m.
+- **Miejsce: kolumny 88–91, wiersze 23–25** (podłoga w wierszu 25; przesunięte z 85–88 po zrzutach N0). To parter hali pod kratą `=`
+  z wiersza 22, między kałużą oleju (kolumny 84–87) a skrzynią `k` (kolumna 92), na granicy światła lampy `I` (kolumna 82). Gracz widzi halę w pierwszej minucie misji,
+  a zrzuty N0 pokazują tu prawie czarną ścianę. Otwór ma 5,2 × 3,9 m. Malowana strzałka na ścianie (kolumny 89–90) przenosi się obok otworu.
 - **Treść:** korytarz zaplecza 8 m w głąb z dwiema żarówkami (na 3 i 7 m), drzwi uchylone na końcu, rura i kable
   wzdłuż stropu. Daleka żarówka słabsza i chłodniejsza, bliska cieplejsza: dwa punkty światła dają oku skalę odległości.
 - **A/B:** te same kadry co w N0 (noc, burza, mgła; WIDE / NORMAL / CLOSE; HIGH / MEDIUM / LOW), krótkie nagranie przejścia
@@ -108,6 +134,6 @@ Zasada 1 obowiązuje tak samo.
 
 ## Decyzje (2026-11-06)
 
-1. Pilot w **hali stacji 1.2** (kolumny 85–88, wiersze 23–25). Tunel drezyny dopiero w N3.
+1. Pilot w **hali stacji 1.2** (kolumny 88–91, wiersze 23–25). Tunel drezyny dopiero w N3.
 2. Sylwetki wrogów na tle wnęki **słabe, z progiem jasności** wnętrza wnęki (zasada 4). Próg ustala pomiar w N0/N2.
 3. Cień światła wnęki **dopiero po pomiarze w N2**; pilot startuje bez cienia.
