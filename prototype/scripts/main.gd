@@ -679,10 +679,18 @@ func _destruction_net(n: float, want := "z1_m2") -> void:
 	var prev := ""
 	var joined := false
 	var broke := false
+	var pooled := false
 	if role == "host":
 		var step := _destruction_net_host if want == "z1_m2" else (_dig_net_host if want == "t_dig" else _cave_net_host)
 		get_tree().create_timer(n).timeout.connect(step)
 	while is_inside_tree():
+		if role == "host" and want == "t_dig" and not pooled and level.map_id == want:
+			# pula znajdziek z zapisu hosta (D5 część 3): odnowiona raz i z jednym miejscem wykopanym — skrót znajdziek (miejsca i rodzaje)
+			# zgadza się u klienta i dołączającego tylko wtedy, gdy pula doszła do nich przez sync Scrap. Dopiero na wczytanej mapie:
+			# start hostowania wczytuje zapis (Scrap.load_progress) i wcześniej ustawioną pulę by wyczyścił
+			pooled = true
+			Scrap.dig_pools["t_dig/DigZone1"] = {"round": 1, "taken": [0]}
+			Scrap._push()
 		var sig := _destruction_sig()
 		# stan wypisany dopiero, gdy trzyma się przez dwie próbki: HP ściany idzie od razu, plamy w paczkach co 0,1 s, więc chwilowe
 		# „hp=10 splats=0” między nimi to nie krok testu (CI #596); najkrótszy prawdziwy krok — trzeszczenie stempla — trwa CAVE_DELAY 0,8 s
@@ -4266,6 +4274,11 @@ func _map_test() -> void:
 		if not shape_ok:
 			fails += 1
 		var dig_bad := _map_test_dig_zones(rows)
+		for z in level.dig_zones():                              # strefy wydobycia (D5): rozmiar, materiał i znajdźki z ziarna
+			var zk: Array = []
+			for f in z.finds:
+				zk.append(String(f["kind0"]))
+			print("[MAPTEST] %s: %s %s %d × %d kafli, znajdziek %d %s" % [id, z.name, z.mat_key, z.tiles.x, z.tiles.y, (z.finds as Array).size(), str(zk)])
 		for msg in dig_bad:
 			print("[MAPTEST] %s: BŁĄD strefy wydobycia: %s" % [id, msg])
 		fails += dig_bad.size()

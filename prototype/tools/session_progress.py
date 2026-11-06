@@ -9,7 +9,7 @@ Sekcja „Niszczenie” (DESTRUCTION_PLAN.md „Pomiar po wdrożeniu”): zdarze
 i `cave` (od 1.7.485–1.7.492; `break` od 1.7.493) — ile prób w ogóle coś niszczy, czym i kto (gracze / wrogowie), łup ze skrzyń,
 barykady (ile przybitych, ile sekund wytrzymały, kto je rozbił), zawały i czy po zniszczeniu budzą się Stalker albo elity;
 od 1.7.503 także `dig_find` — znajdźki wykopane w strefach wydobycia (D5): ile, czym, co wypadło; od 1.7.504 `dig_fall` —
-spadające wyspy w strefach (ile, jak duże).
+spadające wyspy w strefach (ile, jak duże); od 1.7.505 drobnica z wykopanych pul (`dig_find` z rodzajem „small”).
 
 Pola XP / poziomu / perków (`xp`, `level`, `perks` w `mission_start.equipment`, wiersz `xp`, `players[id].kinds` i `xp_kills`)
 oraz `hub_buy` są w dzienniku od 1.7.391 — starsze pliki dają tylko część raportu (wyniki, czasy, złom od 1.7.347).
@@ -235,6 +235,7 @@ def destruction(attempts):
     support_by, lamp_by, window_by = Counter(), Counter(), Counter()
     dig_by, dig_item = Counter(), Counter()
     dig_fall = []
+    dig_small = 0
     noise_at_break = []
     loud, woke = 0, 0
     for a in attempts:
@@ -277,6 +278,7 @@ def destruction(attempts):
                 window_by[e.get("by") or "?"] += 1
             elif ev == "dig_find":
                 dig_by[e.get("by", "?")] += 1
+                dig_small += 1 if e.get("kind") == "small" else 0
                 dig_item[e.get("item") or "nic"] += 1
             elif ev == "dig_fall":
                 dig_fall.append(int(e.get("cells", 0)))
@@ -305,7 +307,7 @@ def destruction(attempts):
         "cave": {"n": caves, "crushed_total": sum(crushed), "crushed_median": med(crushed), "support_by": dict(support_by.most_common())},
         "lamp_by": dict(lamp_by.most_common()),
         "window_by": dict(window_by.most_common()),
-        "dig_find": {"n": sum(dig_by.values()), "by": dict(dig_by.most_common()), "item": dict(dig_item.most_common())},
+        "dig_find": {"n": sum(dig_by.values()), "by": dict(dig_by.most_common()), "item": dict(dig_item.most_common()), "small": dig_small},
         "dig_fall": {"n": len(dig_fall), "cells_median": med(dig_fall)},
         "wake_after": {"events": loud, "woke": woke, "rate": round(woke / loud, 2) if loud else None, "window_s": WAKE_WINDOW_S},
     }
@@ -425,7 +427,7 @@ def print_destruction(d):
     print("   zawały: %d, zasypanych wrogów %d (mediana %s);  stemple łamane: %s" % (cv["n"], cv["crushed_total"], cv["crushed_median"], cv["support_by"]))
     print("   lampy: %s;  okna: %s" % (d["lamp_by"], d["window_by"]))
     df = d["dig_find"]
-    print("   znajdźki wykopane w strefach: %d, czym: %s, co wypadło: %s" % (df["n"], df["by"], df["item"]))
+    print("   znajdźki wykopane w strefach: %d (drobnica z wykopanych pul: %d), czym: %s, co wypadło: %s" % (df["n"], df["small"], df["by"], df["item"]))
     print("   spadłe wyspy w strefach: %d (narożników, mediana %s)" % (d["dig_fall"]["n"], d["dig_fall"]["cells_median"]))
     w = d["wake_after"]
     print("   pobudki Stalkera / elit do %.0f s po zniszczeniu: %d z %d (%s)" % (w["window_s"], w["woke"], w["events"], w["rate"]))

@@ -18,6 +18,8 @@ extends "res://scripts/stalker_test.gd"
 ##    dźwięk ciosu w metal, przedmiot wypada i spada, wybuch odrzuca przedmiot, Nocny Dyżur, dziennik `dig_find`, wipe zakopuje;
 ## 10. osypywanie i wyspy (DigZone3 — żwir): dół osypuje się do stożka, masa zachowana, ziemia stoi, zasypany gracz wychodzi na wierzch
 ##    z ogłuszeniem, odcięty blok skały spada w całości i ląduje, stan dla dołączającego z materiałem, wipe i powrót do stanu.
+## 11. pule znajdziek (część 3): cenna znajdźka czeka w łupie puli, wipe ją oddaje, udana misja zabiera ją z puli (potem drobnica),
+##    odnowienie po 3 udanych misjach na innych mapach (nowe miejsca), Nocny Dyżur nie rusza puli, zapis w progress.cfg.
 ## Wynik: linie [DIG-TEST] (PASS / FAIL / INFO) i kod wyjścia.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -79,6 +81,7 @@ func run(m: Node2D) -> void:
 	await _state(dig0)
 	await _finds()
 	await _gravel()
+	await _pools()
 	_timings()
 	_finish()
 
@@ -768,6 +771,132 @@ func _gravel() -> void:
 	check("wipe czyści strefę, powrót do stanu przywraca gęstość i materiał", wiped and rock._d + rock._m == dm and rock.is_settled())
 	level.reset_breakables()
 	await _frames(0.1)
+
+# ---------------------------------------------------------------- 11. pule znajdziek (część 3)
+
+## Miejsca znajdziek strefy (bez rodzajów) — czy odnowienie puli przestawiło znajdźki.
+func _pos_sig(z: Node2D) -> String:
+	var s := ""
+	for f in z.finds:
+		s += "%d,%d;" % [int(f["i"]), int(f["j"])]
+	return s
+
+## Nowe przedmioty na ziemi od `before` (lista z _items()).
+func _new_items(before: Array) -> Array:
+	return _items().filter(func(n: Node) -> bool: return not before.has(n))
+
+func _pools() -> void:
+	var key: String = zone.pool_key
+	Scrap.dig_pools.clear()
+	Scrap.dig_since.clear()
+	Scrap.dig_loot.clear()
+	Scrap._push()
+	level.reset_breakables()
+	await _frames(0.1)
+	var plain := true
+	for f in zone.finds:
+		plain = plain and String(f["kind"]) == String(f["kind0"])
+	check("strefa zna klucz puli (%s); pula pusta — odnowienie 0, rodzaje z ziarna" % key, key == "t_dig/DigZone1" and zone.find_round == 0 and plain)
+	var k := -1
+	for i in zone.finds.size():
+		if String(zone.finds[i]["kind0"]) != "ammo":
+			k = i
+			break
+	check("strefa ma cenną znajdźkę do prób (indeks %d)" % k, k >= 0)
+	if k < 0:
+		return
+	var f: Dictionary = zone.finds[k]
+	var fp: Vector2 = f["pos"]
+	# 1. wykopana cenna znajdźka czeka w łupie puli (jak znaleziona część); wipe ją oddaje
+	zone._send(fp, Vector2(8.0, 8.0), 0.0, DigMats.Tool.PICK)
+	await _frames(0.05)
+	var pend := (Scrap.dig_loot.get(key, []) as Array).has(k) and int(f["state"]) == DigZone.Find.OUT
+	Scrap.reset_loot()
+	level.reset_breakables()
+	await _frames(0.1)
+	f = zone.finds[k]
+	check("cenna znajdźka (%s) po wykopaniu czeka w łupie puli; wipe oddaje ją do puli — znów zakopana i cenna" % f["kind0"],
+		pend and Scrap.dig_loot.is_empty() and int(f["state"]) == DigZone.Find.BURIED and String(f["kind"]) == String(f["kind0"]))
+	# 2. udana misja: do puli na stałe; w następnej próbie to miejsce daje drobnicę i nic nie zabiera z puli
+	zone._send(fp, Vector2(8.0, 8.0), 0.0, DigMats.Tool.PICK)
+	await _frames(0.05)
+	Scrap.bank_loot(0)
+	await _frames(0.05)
+	f = zone.finds[k]
+	check("po udanej misji znajdźka trafia do puli (wykopane %s), miejsce daje drobnicę" % str(Scrap.dig_taken(key)),
+		Scrap.dig_taken(key) == [k] and String(f["kind"]) == "small" and Scrap.dig_loot.is_empty() and int(Scrap.dig_since.get("t_dig", -1)) == 0)
+	level.reset_breakables()
+	await _frames(0.1)
+	var before := _items()
+	zone._send(fp, Vector2(8.0, 8.0), 0.0, DigMats.Tool.PICK)
+	await _frames(0.1)
+	var got := _new_items(before)
+	var it: Node = got[0] if got.size() == 1 else null
+	var small_ok: bool = it != null and ((String(it.kind) == "scrap" and int(it.rounds) == 1) or (String(it.kind) == "ammo" and int(it.rounds) >= 1))
+	info("drobnica z wykopanego miejsca: %s" % ("%s × %d" % [it.kind, it.rounds] if it != null else "%d przedmiotów" % got.size()))
+	check("następna misja: z wykopanego miejsca wypada drobnica (amunicja albo 1 złom), pula bez zmian", small_ok and Scrap.dig_loot.is_empty()
+		and Scrap.dig_taken(key) == [k])
+	# 3. odnowienie: 3 udane misje na innych mapach (ta sama mapa się nie liczy) → nowe ziarno, nowe miejsca, nic nie wykopane
+	level.reset_breakables()
+	await _frames(0.1)
+	var pos0 := _pos_sig(zone)
+	Scrap.dig_commit("t_dig")
+	var same_map := int(Scrap.dig_since.get("t_dig", -1))
+	Scrap.dig_commit("z1_m1")
+	Scrap.dig_commit("z1_m2")
+	var r_before := Scrap.dig_round(key)
+	var renewed: Array = Scrap.dig_commit("z1_m3")
+	Scrap._push()
+	await _frames(0.05)
+	var fresh := true
+	for g in zone.finds:
+		fresh = fresh and String(g["kind"]) == String(g["kind0"]) and int(g["state"]) == DigZone.Find.BURIED
+	info("odnowienie: licznik po misji na tej samej mapie %d, przed trzecią odnowienie %d, odnowione %s, znajdziek %d" % [same_map, r_before, str(renewed), zone.finds.size()])
+	check("pula odnawia się po 3 udanych misjach na innych mapach: nowe ziarno i miejsca, nic nie wykopane, wszystko zakopane",
+		same_map == 0 and r_before == 0 and renewed == ["t_dig"] and zone.find_round == 1 and Scrap.dig_taken(key).is_empty()
+		and _pos_sig(zone) != pos0 and fresh and not zone.finds.is_empty() and not Scrap.dig_since.has("t_dig"))
+	# 4. Nocny Dyżur: kopanie nie rusza puli
+	var ns0: bool = NightShift.active
+	NightShift.active = true
+	var nf: Dictionary = {}
+	for g in zone.finds:
+		if String(g["kind0"]) != "ammo":
+			nf = g
+			break
+	if not nf.is_empty():
+		zone._send(nf["pos"], Vector2(8.0, 8.0), 0.0, DigMats.Tool.PICK)
+		await _frames(0.05)
+	NightShift.active = ns0
+	check("Nocny Dyżur: wykopana znajdźka nie trafia do łupu puli", not nf.is_empty() and int(nf["state"]) == DigZone.Find.OUT and Scrap.dig_loot.is_empty())
+	level.reset_breakables()
+	await _frames(0.1)
+	# 5. zapis: pule i licznik w progress.cfg u hosta wracają przy wczytaniu (z nimi miejsca i drobnica)
+	Scrap.dig_pools[key] = {"round": 2, "taken": [0, 1]}
+	Scrap.dig_since["t_dig"] = 1
+	var saved: Dictionary = Scrap.dig_pools.duplicate(true)
+	var path := "user://dig_pool_test.cfg"
+	var persist0: bool = Scrap.persist
+	Scrap.persist = true
+	Scrap.save_progress(path)
+	Scrap.dig_pools.clear()
+	Scrap.dig_since.clear()
+	Scrap.load_progress(path)
+	Scrap.persist = persist0
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	await _frames(0.05)
+	var kinds_ok := true
+	for i in zone.finds.size():
+		var want := "small" if (i == 0 or i == 1) and String(zone.finds[i]["kind0"]) != "ammo" else String(zone.finds[i]["kind0"])
+		kinds_ok = kinds_ok and String(zone.finds[i]["kind"]) == want
+	check("pule i licznik odnowienia zapisują się w progress.cfg i wracają (odnowienie 2, wykopane 0 i 1 — drobnica)", Scrap.dig_pools == saved
+		and int(Scrap.dig_since.get("t_dig", -1)) == 1 and zone.find_round == 2 and kinds_ok)
+	Scrap.dig_pools.clear()
+	Scrap.dig_since.clear()
+	Scrap.dig_loot.clear()
+	Scrap._push()
+	level.reset_breakables()
+	await _frames(0.1)
+
 
 # ---------------------------------------------------------------- 8. czasy
 

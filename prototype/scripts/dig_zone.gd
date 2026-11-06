@@ -98,8 +98,11 @@ var _shapes: Array[ConcavePolygonShape2D] = []
 var chunk_ver := PackedInt32Array()   ## wersja fragmentu (widok 3D przebudowuje siatkę po zmianie)
 var digs := 0                         ## operacji kopania od wczytania / resetu (test, pomiar, stan dla dołączających)
 var rebuild_usec := 0                 ## czas ostatniej przebudowy fragmentów (kontur + kolizja) w mikrosekundach
-var find_round := 0                   ## numer odnowienia puli (część 3: nowe ziarno = nowe miejsca; dziś zawsze 0)
-## Znajdźki: {"i", "j" (narożnik), "pos" (px świata), "kind" (FIND_KINDS), "state" (Find)}; kolejność z ziarna — indeks = id znajdźki.
+var find_round := 0                   ## numer odnowienia puli (Scrap.dig_round): nowe ziarno = nowe miejsca
+var pool_key := ""                    ## klucz puli znajdziek w Scrap („mapa/DigZoneN”, część 3)
+var _solid_at: Callable               ## kafle mapy poza strefą (z setup) — nowe rozmieszczenie po odnowieniu puli
+## Znajdźki: {"i", "j" (narożnik), "pos" (px świata), "kind" (FIND_KINDS albo „small” — miejsce wykopane w puli: drobnica), "kind0" (rodzaj
+## z ziarna), "state" (Find)}; kolejność z ziarna — indeks = id znajdźki (też w puli).
 var finds: Array[Dictionary] = []
 var finds_out := 0                    ## serwer: ile znajdziek wypadło od wczytania / resetu (test, dziennik)
 var _m0 := PackedByteArray()          ## materiał z danych mapy (reset; materiał osypiska się przesuwa)
@@ -181,7 +184,12 @@ func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 		for tx in tiles.x:
 			_open[ty * tiles.x + tx] = 1 if _tile_clear(tx, ty) else 0
 			_rock0[ty * tiles.x + tx] = 1 if bool(zone_solid.call(tx + c0, ty + r0)) else 0
+	_solid_at = solid_at
+	pool_key = "%s/%s" % [map_key, name]
+	find_round = Scrap.dig_round(pool_key)
 	_plan_finds(solid_at)
+	_apply_pool()
+	Scrap.changed.connect(_apply_pool)                         # pula z zapisu hosta albo z sync (klient), odnowienie po misji
 	_ccx = ceili(float(nx + 2) / CHUNK)
 	_ccy = ceili(float(ny + 2) / CHUNK)
 	chunk_ver.resize(_ccx * _ccy)
@@ -833,7 +841,23 @@ func _plan_finds(solid_at: Callable) -> void:
 			if roll < 0:
 				kind = String(e[0])
 				break
-		finds.append({"i": i, "j": j, "pos": global_position + _corner_px(i, j), "kind": kind, "state": Find.BURIED})
+		finds.append({"i": i, "j": j, "pos": global_position + _corner_px(i, j), "kind": kind, "kind0": kind, "state": Find.BURIED})
+
+## Każdy peer: pula strefy (Scrap) — nowe ziarno po odnowieniu (nowe miejsca, stan z gęstości bez wypadania) i drobnica w miejscach
+## już wykopanych. Amunicja nie jest cenna, więc nie znika z puli.
+func _apply_pool() -> void:
+	if pool_key == "":
+		return
+	var r := Scrap.dig_round(pool_key)
+	if r != find_round:
+		find_round = r
+		_plan_finds(_solid_at)
+		for f in finds:
+			f["state"] = _find_state(f)
+	var taken := Scrap.dig_taken(pool_key)
+	for k in finds.size():
+		var f: Dictionary = finds[k]
+		f["kind"] = "small" if taken.has(k) and String(f["kind0"]) != "ammo" else String(f["kind0"])
 
 ## Stan znajdźki z gęstości wokół niej: odkopana, gdy co najmniej FIND_OUT z 3 × 3 najbliższych narożników jest powietrzem; do połowy, gdy
 ## powietrze jest w promieniu FIND_NEAR narożników (ściana wykopu tuż przy niej); inaczej zakopana.
@@ -867,7 +891,7 @@ func _update_finds(rc: Rect2i, from: Vector2, tool: int) -> void:
 
 ## Serwer: odkopana znajdźka wypada jako przedmiot (level.gd `spawn_item`). Zawartość dobiera się teraz: amunicja do broni, której drużynie
 ## brakuje (jak z wrogów), część broni z puli znalezisk (Scrap.pick_find), a gdy nie ma czego — złom. Nocny Dyżur: tylko amunicja.
-## Wybuch odrzuca przedmiot od środka.
+## Wybuch odrzuca przedmiot od środka. Cenna znajdźka idzie do łupu puli (Scrap.dig_take), miejsce wykopane w puli daje drobnicę.
 func _spawn_find(k: int, from: Vector2, tool: int) -> void:
 	var f: Dictionary = finds[k]
 	var kind := String(f["kind"])
@@ -876,6 +900,8 @@ func _spawn_find(k: int, from: Vector2, tool: int) -> void:
 	if tool == Mats.Tool.BLAST and (at - from).length() > 0.5:
 		at += (at - from).normalized() * FIND_BLAST_PUSH
 	finds_out += 1
+	if kind != "ammo" and kind != "small" and not NightShift.active:
+		Scrap.dig_take(pool_key, k)                              # cenna: znika z puli po ekstrakcji
 	var lvl := get_parent()
 	if not item.is_empty() and lvl != null and lvl.has_method("spawn_item"):
 		lvl.spawn_item(String(item[0]), int(item[1]), at, int(item[2]))
@@ -890,6 +916,11 @@ func _resolve_find(kind: String) -> Array:
 			return ["ammo", w, maxi(1, int(Weapons.def(w).pickup_rounds * 0.5))]
 		if NightShift.active:
 			return []
+	elif kind == "small":                                        # pusta pula: drobnica — trochę amunicji albo jeden złom
+		var ws: int = Arsenal.pick_drop_weapon()
+		if ws >= 0:
+			return ["ammo", ws, maxi(1, int(Weapons.def(ws).pickup_rounds * 0.25))]
+		return ["scrap", 0, 1] if Scrap.enabled() else []
 	elif kind == "supply":
 		return ["supply", Throwables.ORDER.find(Throwables.drop_kind()), -1]
 	elif kind == "battery":

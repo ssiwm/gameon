@@ -3,11 +3,11 @@
 Stan wyjścia planu: main 1.7.477 (2026-11-02), plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
 spike'i przed D0).
 
-**Stan wdrożenia (2026-11-06, 1.7.504):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
+**Stan wdrożenia (2026-11-06, 1.7.505):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
 1.7.493, D4 z pulą cząsteczek w 1.7.500, dźwięki drewna i młotka z odsłuchu A/B w 1.7.501 (`BARRIER_FIX_PLAN.md` B3), D5 część 1
-(dane, siatka, kolizja) w 1.7.502, część 2 (znajdźki, skaner, błysk, dźwięk metalu) w 1.7.503, osypywanie żwiru i spadające wyspy w 1.7.504. Zostaje: playtest z raportem
+(dane, siatka, kolizja) w 1.7.502, część 2 (znajdźki, skaner, błysk, dźwięk metalu) w 1.7.503, osypywanie żwiru i spadające wyspy w 1.7.504, część 3 (strefy na mapach 1.1–1.3, pule znajdziek) w 1.7.505. Zostaje: playtest z raportem
 (`tools/session_progress.py`, sekcja „Niszczenie”), spadająca kładka (D3), blacha `sheet` (D2, brak na mapach), misje „przetrzymaj”
-(D2b, po strefie 2) i D5 część 3 (strefy na mapach, pule, ekonomia).
+(D2b, po strefie 2), notatki fabularne i skrzynka w strefach, strojenie pul po playteście.
 
 ## Cel
 
@@ -659,6 +659,36 @@ nie leżą na trasie do celu).
 - Pomiary (headless): dół 20 × 32 px w żwirze staje w 0,65 s (12 kroków), krok 0,65–1,0 ms.
 - Nie zrobione: zasypywanie wrogów jako cel (wrogowie są tylko wypychani), grudki toczące się w 3D (osypywanie widać jako zmianę
   siatki i pył), wyspy w żwirze rozsypujące się w ziarna (spadają w całości jak skała).
+
+**Zrobione w 1.7.505 (część 3 z 3: strefy na mapach, pule znajdziek).**
+
+- Strefy (`DIG_ZONES` w danych map), po jednej na misję, zawsze w ślepym końcu z boku drogi i w ciemności:
+  - 1.1 — skała z żyłą (udział 0,3) we wschodniej ścianie dolnej galerii kopalni, kafle 296–305 × 36–44, 5 znajdziek; ślepy koniec
+    za przegrodą z desek, z dala od szybu wyjściowego;
+  - 1.2 — zasypana piwnica ze żwirem za zamurowaną skrytką `q` na zachód od podziemnej hali, kafle 133–142 × 36–39, 2 znajdźki;
+    wchodzi się tylko przez rozbite przejście;
+  - 1.3 — ziemia w zachodniej ślepej ścianie pierwszej podziemnej sali, kafle 1–5 × 31–39, 2 znajdźki;
+  - B1 (arena bossa) bez strefy.
+  Miejsca wybrane z rzutu map; `--maptest` sprawdza regułę anty-pułapki i osiągalność (kafle stref są na starcie bryłą, więc żadna
+  trasa przez nie nie biegnie) i wypisuje strefy z rodzajami znajdziek.
+- Pule (`scrap.gd`, `dig_pools` / `dig_since` / `dig_loot`, klucz „mapa/DigZoneN”): cenna znajdźka (każda poza amunicją) wykopana
+  w misji czeka w `dig_loot` jak znaleziona część. Udana ekstrakcja (`bank_loot` → `dig_commit`) zapisuje ją w puli na stałe, wipe
+  (`reset_loot`) oddaje — strefa i tak wraca do danych mapy, więc znajdźka znów leży w ziemi; punkt kontrolny bossa wraca do stanu
+  z przebudzenia. Wykopane miejsce zostaje w rozmieszczeniu, ale daje drobnicę (rodzaj `small`: ćwierć przydziału amunicji, której
+  drużynie brakuje, albo 1 złom; na skanerze mniejszy, bledszy romb), więc kopanie zawsze coś daje, ale nie da się go farmić.
+- Odnowienie: każda udana misja na innej mapie liczy się mapom z wykopanymi pulami (`dig_since`; misja na tej samej mapie się nie
+  liczy, wykopanie czegoś cennego zeruje licznik). Po `DIG_REFRESH` = 3 pule mapy dostają nowe ziarno (`round`, w strefie `find_round`)
+  — znajdźki leżą gdzie indziej, nic nie jest wykopane. Strefy bez wykopanych znajdziek zostają przy starym ziarnie.
+- Zapis i sieć: `progress.cfg` aktywnej postaci, sekcja `[dig]` (`pools`, `since`); klienci dostają pule w `Scrap._sync`, a strefa
+  przelicza rozmieszczenie i rodzaje na `Scrap.changed` (także gdy sync przyjdzie po zbudowaniu mapy). Nowa kampania zeruje pule razem
+  z `progress.cfg`. Nocny Dyżur nie rusza pul (jak złom).
+- Dziennik sesji: `dig_refresh` (mapa, odnowienie); w `dig_find` rodzaj `small` dla drobnicy.
+- Testy: `--digtest` sekcja 11 (łup puli i wipe, udana misja i drobnica, odnowienie po 3 misjach i brak liczenia tej samej mapy,
+  Nocny Dyżur, zapis i wczytanie `progress.cfg`); `test_net_session.sh` — host zaraz po wczytaniu `t_dig` ustawia pulę odnowioną raz
+  i z jednym miejscem wykopanym, skrót znajdziek (miejsca i rodzaje) zgadza się u klienta i dołączającego. Zrzuty stref na mapach
+  w `C:\deadair87\shots_dig3`.
+- Nie zrobione: notatki fabularne i skrzynka z czymś cennym (potrzebują treści), samorodki (z kopalnią), bot pilnujący kopiącego,
+  wielkość pul i próg odnowienia do strojenia po playteście (`session_progress.py`: `dig_find`, `dig_refresh`).
 
 ## Kolejność i rozmiar
 

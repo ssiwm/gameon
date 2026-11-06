@@ -32,8 +32,10 @@ func _draw() -> void:
 		for f in z.buried_finds(c, r):
 			var fp := to_local(f["pos"])
 			var hit := 1.0 - clampf(absf((f["pos"] as Vector2).distance_to(c) - r * pulse) / 24.0, 0.0, 1.0)
-			var fc := Color(0.45, 0.95, 1.0, (0.55 + 0.4 * hit) * fade)
-			var dm := PackedVector2Array([fp + Vector2(0, -4), fp + Vector2(4, 0), fp + Vector2(0, 4), fp + Vector2(-4, 0), fp + Vector2(0, -4)])
+			var small := String(f["kind"]) == "small"                   # miejsce wykopane w puli (część 3): drobnica — mniejszy, bledszy romb
+			var fc := Color(0.45, 0.95, 1.0, (0.55 + 0.4 * hit) * fade * (0.5 if small else 1.0))
+			var rs := 2.5 if small else 4.0
+			var dm := PackedVector2Array([fp + Vector2(0, -rs), fp + Vector2(rs, 0), fp + Vector2(0, rs), fp + Vector2(-rs, 0), fp + Vector2(0, -rs)])
 			draw_colored_polygon(dm.slice(0, 4), Color(fc.r, fc.g, fc.b, fc.a * 0.3))
 			draw_polyline(dm, fc, 1.0)
 	for e in get_tree().get_nodes_in_group("enemies"):
