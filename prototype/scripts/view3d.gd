@@ -7311,6 +7311,8 @@ const DIG_GLINT_M := 0.2                  ## m: jasny środek błysku znajdźki 
 const DIG_GLINT_STREAK := Vector2(0.7, 0.045)   ## m: smugi gwiazdki (długość, grubość) — odblask metalu, nie plamka światła
 const DIG_GLINT_COL := Color(1.0, 0.95, 0.8)
 const DIG_GLINT_TOWARD := 0.6             ## błysk leży między znajdźką a najbliższym powietrzem (0 — w znajdźce, 1 — na ścianie wykopu)
+const DIG_SIGN_PICK := "res://art/char3d/gun_kilof.glb"   ## znak strefy: kilof wbity w skałę przy wejściu (model broni, długość 0,72 m)
+const DIG_SIGN_PICK_K := 1.25            ## skala kilofa w znaku: 0,9 m jak prawdziwy (model broni jest mniejszy, bo siedzi w dłoni postaci)
 
 ## Skała stref wydobycia: siatka z konturu strefy (przód + ściany wykopu do tyłu bryły), przebudowywana tylko dla fragmentów, których wersja
 ## się zmieniła (najwyżej DIG_MESH_PER_FRAME na klatkę); za strefą tylna ściana wykopu. Materiał jak grunt mapy (`#`, triplanarny w metrach
@@ -7344,6 +7346,7 @@ func _sync_dig_zones() -> void:
 			back.layers = LAYER_WORLD
 			back.position = Level3D.px_to_m(rc.get_center()) + Vector3(0.0, 0.0, -Level3D.DEPTH_BACK + 0.15)
 			_geo.add_child(back)
+			_build_dig_sign(z)
 			var ver := PackedInt32Array()
 			ver.resize(mis.size())
 			ver.fill(-1)
@@ -7361,6 +7364,42 @@ func _sync_dig_zones() -> void:
 		var z = (_dig3d[id] as Dictionary)["zone"]
 		if not is_instance_valid(z) or (z as Node).is_queued_for_deletion():
 			_dig3d.erase(id)
+
+## Znak strefy wydobycia przy jej wejściu (dig_zone.gd `entrance`, po pytaniu z 2026-11-06 „czy sygnalizujemy możliwość kopania”):
+## kilof wbity w skałę na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień), kupka
+## urobku pod ścianą i dwa odłamki na ziemi — w świetle latarki widać, że ktoś tu kopał.
+## Bez własnego światła: strefy celowo leżą w ciemności, metal kilofa łapie snop jak każda bryła.
+func _build_dig_sign(z: Node2D) -> void:
+	var e: Dictionary = z.entrance()
+	if e.is_empty():
+		return
+	var dir := int(e["dir"])
+	var root := Node3D.new()
+	root.name = "DigSign"
+	_geo.add_child(root)
+	var at := Level3D.px_to_m(Vector2(float(e["wall_x"]), float(e["floor_y"])))
+	var out := float(-dir) if dir != 0 else 1.0                 # od skały w stronę wejścia
+	var pick_ps := load(DIG_SIGN_PICK) as PackedScene if ResourceLoader.exists(DIG_SIGN_PICK) else null
+	if pick_ps != null:
+		var pick := pick_ps.instantiate() as Node3D
+		if dir != 0:
+			# ostrze w modelu leży na końcu +x: obrót w płaszczyźnie kadru unosi głowicę, odbicie (yaw π) kieruje ją w lewo
+			pick.transform = Transform3D(Basis(Vector3.UP, PI if dir < 0 else 0.0) * Basis(Vector3.BACK, 0.45).scaled(Vector3.ONE * DIG_SIGN_PICK_K),
+				at + Vector3(-float(dir) * 0.55, 1.0, 0.75))         # przy przedniej krawędzi skały, w snopie latarki
+		else:
+			pick.transform = Transform3D(Basis(Vector3.BACK, -1.15).scaled(Vector3.ONE * DIG_SIGN_PICK_K), at + Vector3(0.0, 0.42, -0.35))   # skała pod stopami: wbity w grunt
+		root.add_child(pick)
+	var parts := [["rubble", 0.35, 0.6, -0.95, 0.2], ["rock_b", 0.25, 1.1, 0.25, 1.3], ["rock_c", 0.18, 0.8, -0.2, 2.4]]
+	for q in parts:
+		var ps := _item_scene(String(q[0]))
+		if ps == null:
+			continue
+		var n := ps.instantiate() as Node3D
+		var k := PX * float(q[1])
+		n.transform = Transform3D(Basis(Vector3.UP, float(q[4])).scaled(Vector3(k, k, k)), at + Vector3(out * float(q[2]), 0.0, float(q[3])))
+		root.add_child(n)
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).layers = LAYER_WORLD
 
 ## Znajdźki odkopane do połowy (dig_zone.gd `Find.NEAR`): metal w ścianie wykopu błyska, gdy pada na niego snop latarki
 ## (Lights.flashlight_on do najbliższego pustego narożnika — jak widzi go latarka, tak widzi błysk); poza snopem gaśnie. Bez skanera to jedyny

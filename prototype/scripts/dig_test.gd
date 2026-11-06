@@ -20,6 +20,8 @@ extends "res://scripts/stalker_test.gd"
 ##    z ogłuszeniem, odcięty blok skały spada w całości i ląduje, stan dla dołączającego z materiałem, wipe i powrót do stanu.
 ## 11. pule znajdziek (część 3): cenna znajdźka czeka w łupie puli, wipe ją oddaje, udana misja zabiera ją z puli (potem drobnica),
 ##    odnowienie po 3 udanych misjach na innych mapach (nowe miejsca), Nocny Dyżur nie rusza puli, zapis w progress.cfg.
+## 12. sygnał strefy: wejście (miejsce znaku 3D), podpowiedź „Kop” w pasku akcji (skała z kilofem, ziemia, z dala nic, milknie po
+##    3 ciosach przy niej, osobno dla każdej strefy), porada o kopaniu i skanerze tylko na 1.1.
 ## Wynik: linie [DIG-TEST] (PASS / FAIL / INFO) i kod wyjścia.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -32,6 +34,8 @@ const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Hints := preload("res://scripts/hints.gd")
+const Actions := preload("res://scripts/actions.gd")
 const LOG_DIR := "user://test_dig_sessions"
 
 var zone: Node2D
@@ -82,6 +86,7 @@ func run(m: Node2D) -> void:
 	await _finds()
 	await _gravel()
 	await _pools()
+	await _signals()
 	_timings()
 	_finish()
 
@@ -897,6 +902,85 @@ func _pools() -> void:
 	level.reset_breakables()
 	await _frames(0.1)
 
+
+# ---------------------------------------------------------------- 12. sygnał strefy (pytanie z 2026-11-06)
+
+func _hud() -> Node:
+	for n in get_tree().root.find_children("*", "", true, false):
+		if n.has_method("_dig_prompt"):
+			return n
+	return null
+
+## Gracz na wierzchu strefy w kafelku `col` (podłoga hali), celuje w `aim`.
+func _stand(col: float, aim: Vector2) -> void:
+	player.global_position = Vector2(col * 16.0, TOP)
+	player.velocity = Vector2.ZERO
+	await _frames(0.15)
+	player.aim_dir = aim
+
+func _signals() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	var e1: Dictionary = zone.entrance()
+	var e2: Dictionary = rock.entrance()
+	check("wejście stref pod podłogą hali: skała pod stopami, grunt na wierzchu, x nad strefą (%s; %s)" % [str(e1), str(e2)],
+		not e1.is_empty() and int(e1["dir"]) == 0 and is_equal_approx(float(e1["floor_y"]), TOP)
+		and (zone.rect_px() as Rect2).has_point(Vector2(float(e1["wall_x"]), TOP + 1.0))
+		and not e2.is_empty() and int(e2["dir"]) == 0 and (rock.rect_px() as Rect2).has_point(Vector2(float(e2["wall_x"]), TOP + 1.0)))
+	var hud := _hud()
+	check("HUD ma podpowiedź strefy wydobycia", hud != null)
+	if hud == null:
+		return
+	(hud._dig_learned as Dictionary).clear()
+	var want_pick := Actions.fmt(tr("[{melee}]  Dig  (pickaxe · loud)"))
+	var want_soft := Actions.fmt(tr("[{melee}]  Dig"))
+	await _stand(33.5, Vector2.DOWN)
+	var on_rock: String = hud._dig_prompt()
+	var in_bar: bool = (hud._prompt_candidates() as Array).any(func(c: Dictionary) -> bool: return String(c["text"]) == want_pick)
+	await _stand(33.5, Vector2.RIGHT)
+	var side_rock: String = hud._dig_prompt()                 # celuje w bok, ale stoi na skale: w bok nic, w dół skała — podpowiedź nie
+	await _stand(6.5, Vector2.DOWN)
+	var on_dirt: String = hud._dig_prompt()
+	await _stand(24.5, Vector2.DOWN)
+	var away: String = hud._dig_prompt()
+	info("podpowiedź: na skale „%s”, na ziemi „%s”, celując w bok na skale „%s”, w hali „%s”" % [on_rock, on_dirt, side_rock, away])
+	check("pasek akcji: nad skałą „Kop (kilof · głośno)”, nad ziemią samo „Kop”, w hali bez strefy nic", on_rock == want_pick and in_bar
+		and on_dirt == want_soft and away == "")
+	# po 3 ciosach przy widocznej podpowiedzi gracz zna mechanikę — podpowiedź tej strefy milknie, innej nie
+	await _stand(33.5, Vector2.DOWN)
+	hud._dig_prompt()
+	player.weapons.melee_swung.emit(pick)                     # ta sama droga co prawdziwy cios (sygnał broni → licznik HUD)
+	var after_one := int((hud._dig_learned as Dictionary).get(String(rock.pool_key), 0))
+	hud._on_dig_swing(pick)
+	hud._on_dig_swing(pick)
+	var learned: String = hud._dig_prompt()
+	await _stand(6.5, Vector2.DOWN)
+	var other: String = hud._dig_prompt()
+	check("podpowiedź milknie po 3 ciosach przy niej (po pierwszym %d), w drugiej strefie zostaje" % after_one, after_one == 1 and learned == ""
+		and other == want_soft)
+	(hud._dig_learned as Dictionary).clear()
+	# porada o kopaniu i skanerze („Sowa” widzi metal w skale) — tylko na 1.1, przy strefie
+	var tips := Hints.new()
+	Settings.seen_tips.erase("dig_scanner")
+	await _stand(33.5, Vector2.DOWN)
+	tips._collect(player)
+	var on_test := tips._queued.has("dig_scanner")
+	var mid: String = level.map_id
+	level.map_id = "z1_m1"
+	tips._collect(player)
+	var on_11 := tips._queued.has("dig_scanner")
+	player.global_position = Vector2(20.0 * 16.0, TOP - 3.0 * 16.0)         # 2 kafle poza zasięgiem porady od obu stref
+	tips._collect(player)
+	var far := tips._queued.has("dig_scanner")
+	level.map_id = mid
+	var tip_text := ""
+	for t in Hints.TIPS:
+		if t[0] == "dig_scanner":
+			tip_text = Actions.fmt(tr(String(t[1])))
+	info("porada: %s" % tip_text)
+	check("porada o kopaniu i skanerze tylko na 1.1 i przy strefie (t_dig %s, „1.1” %s, z dala %s), klawisze podstawione" % [on_test, on_11, far],
+		not on_test and on_11 and not far and tip_text != "" and not "{" in tip_text)
+	await _stand(24.5, Vector2.RIGHT)
 
 # ---------------------------------------------------------------- 8. czasy
 

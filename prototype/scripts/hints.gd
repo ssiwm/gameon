@@ -12,6 +12,7 @@ const SessionLog := preload("res://scripts/session_log.gd")
 const SHOW_S := 7.0                  ## ile sekund wisi podpowiedź
 const GAP_S := 2.5                   ## przerwa między podpowiedziami
 const FADE_S := 0.5
+const DIG_TIP_PX := 96.0             ## porada o kopaniu i skanerze (1.1): tak blisko strefy wydobycia
 
 ## [id, tekst]; kolejność = priorytet, gdy kilka warunków spełnia się naraz
 const TIPS := [
@@ -38,6 +39,7 @@ const TIPS := [
 	["scream_mic", "The microphone is on: scream for real (or press {scream}) and everything nearby comes running. Whispering is safe"],
 	["grenade", "{throw} uses the selected item (grenades, mine, charge, medkit, defibrillator, scanner), {throw_next} switches. A frag or a charge hurts the squad too"],
 	["pickaxe", "Melee ({melee}) at a wall, grate or rubble swings the pickaxe — everyone carries one ({tool} any time). It is loud"],
+	["dig_scanner", "This rock face can be dug: melee ({melee}) swings the pickaxe. Metal buried in it shows on the OWL scanner (workshop) — pick it with {throw_next}, use it with {throw}"],
 	["firemode", "{firemode} switches the M-83 between full auto and a quiet 3-round burst"],
 	["jam", "Jammed! Tap {reload} to clear it. A dirty gun jams more often — clean it at the maintenance table in the safe room"],
 	["samples", "SAMPLES (from elites, bosses and side goals) go to the LAB bench here in the safe room ({interact}): they research parts for special weapons"],
@@ -119,6 +121,14 @@ func _collect(p: Node) -> void:
 			wall_near = true
 	_queue("grenade", _session > 120.0, true)
 	_queue("pickaxe", wall_near, false)                     # kilof ma każdy (B1) — podpowiedź dla każdego przy pierwszej przegrodzie
+	# strefa wydobycia (D5) tylko na 1.1 (prośba z 2026-11-06): przy ścianie strefy — że da się kopać i że skaner „Sowa” widzi metal w skale
+	var dig_near := false
+	if lvl_n != null and String(lvl_n.get("map_id")) == "z1_m1":
+		for z in p.get_tree().get_nodes_in_group("dig_zones"):
+			if (z.rect_px() as Rect2).grow(DIG_TIP_PX).has_point(p.global_position):
+				dig_near = true
+				break
+	_queue("dig_scanner", dig_near, false)
 	_queue("firemode", _session > 90.0 and p.weapons != null and p.weapons.cur().burst_size > 0, true)
 	_queue("jam", p.weapons != null and int(p.weapons.jam_count) > 0, true)                  # pierwsze zacięcie (etap 4a)
 	_queue("magdrop", p.weapons != null and int(p.weapons.dropped_mags) > 0, true)          # szybkie przeładowanie upuściło magazynek z nabojami (etap 3c)

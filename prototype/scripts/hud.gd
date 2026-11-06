@@ -2174,6 +2174,38 @@ func _grab_boss() -> Node:
 		return b
 	return null
 
+const DIG_HINT_SWINGS := 3       ## tyle ciosów w strefę przy widocznej podpowiedzi „Kop” — potem gracz zna mechanikę i pasek milknie
+static var _dig_learned := {}     ## klucz puli strefy (dig_zone.gd `pool_key`) → ciosy przy podpowiedzi; przez całą sesję gry
+var _dig_hint_key := ""           ## strefa, której podpowiedź jest w tej chwili w pasku akcji
+
+## Skała strefy wydobycia w zasięgu ciosu przed lokalnym graczem (D5, pytanie z 2026-11-06 „czy sygnalizujemy możliwość kopania”):
+## podpowiedź „Kop” w pasku akcji — w kierunku celowania albo w bok, w stronę, w którą gracz patrzy (ten sam prostokąt wyrwy co cios,
+## dig_zone.gd `cut_needs`). Skała i żyła: kilof wyjmuje się sam i jest głośny; ziemia i żwir: broń biała, ciszej.
+func _dig_prompt() -> String:
+	_dig_hint_key = ""
+	if _player == null or _player.dead or _player.weapons == null:
+		return ""
+	var origin: Vector2 = _player.global_position + Vector2(0, -9)
+	var aim: Vector2 = _player.aim_dir
+	var side := Vector2(-1.0 if aim.x < 0.0 else 1.0, 0.0)
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if int(_dig_learned.get(String(z.pool_key), 0)) >= DIG_HINT_SWINGS or not (z.rect_px() as Rect2).grow(48.0).has_point(origin):
+			continue
+		var need: Array = z.cut_needs(origin, aim)
+		if not bool(need[0]):
+			need = z.cut_needs(origin, side)
+		if not bool(need[0]):
+			continue
+		_dig_hint_key = String(z.pool_key)
+		if not _player.weapons.melee_swung.is_connected(_on_dig_swing):
+			_player.weapons.melee_swung.connect(_on_dig_swing)
+		return Actions.fmt(tr("[{melee}]  Dig  (pickaxe · loud)")) if bool(need[1]) else Actions.fmt(tr("[{melee}]  Dig"))
+	return ""
+
+func _on_dig_swing(_w: int) -> void:
+	if _dig_hint_key != "":
+		_dig_learned[_dig_hint_key] = int(_dig_learned.get(_dig_hint_key, 0)) + 1
+
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
 func _near_strongbox() -> Node:
 	for sb in get_tree().get_nodes_in_group("strongboxes"):
@@ -2314,6 +2346,9 @@ func _prompt_candidates() -> Array:
 			var take_key := Actions.key("interact")
 			var look_key := Actions.key("inspect_weapon")
 			add.call(tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key], -1.0, UiTheme.ACCENT)
+	var dig := _dig_prompt()
+	if dig != "":
+		add.call(dig, -1.0, UiTheme.ACCENT)
 	if m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()
 		if st.get("inside", false):

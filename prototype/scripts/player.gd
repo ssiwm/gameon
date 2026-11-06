@@ -1042,7 +1042,7 @@ func _gear_tick(delta: float) -> bool:
 					if Input.is_action_just_pressed("throw"):
 						_start_scan()
 					elif scan_left <= 0.0 and Arsenal.get_throwable("scanner") > 0:
-						gear_text = tr("[%s]  Owl scanner — %d s, shows enemies through walls (emits noise)") % [Throwables.key_name(), int(Throwables.KINDS["scanner"]["time"])]
+						gear_text = tr("[%s]  Owl scanner — %d s, shows enemies through walls and metal in the rock (emits noise)") % [Throwables.key_name(), int(Throwables.KINDS["scanner"]["time"])]
 	return false
 
 ## Rzut i podłożenie idą przy PUSZCZENIU klawisza (opinia testera 2026-10-29): lewy Alt to też pół skrótu systemu — Alt+Tab

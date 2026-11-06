@@ -2640,6 +2640,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			tp.set("battery", 999.0)
 			if tp.get("aim_dir") != null and "--shotaimup" in OS.get_cmdline_user_args():
 				tp.set("aim_dir", Vector2(0.8, -0.6))
+			elif tp.get("aim_dir") != null and "--shotaimleft" in OS.get_cmdline_user_args():
+				tp.set("aim_dir", Vector2.LEFT)                 # zrzut w lewo, np. znak strefy wydobycia z wejściem od wschodu (1.2, 1.3)
 	if "--shotshoot" in OS.get_cmdline_user_args():                 # dev: gracz 1 strzela serią w prawo przez cały czas zrzutu (podgląd pocisków i efektów)
 		var sp1: Node2D = _players.get_node_or_null("1")
 		if sp1 != null:
@@ -4279,6 +4281,12 @@ func _map_test() -> void:
 			for f in z.finds:
 				zk.append(String(f["kind0"]))
 			print("[MAPTEST] %s: %s %s %d × %d kafli, znajdziek %d %s" % [id, z.name, z.mat_key, z.tiles.x, z.tiles.y, (z.finds as Array).size(), str(zk)])
+			var ent: Dictionary = z.entrance()                   # znak strefy w 3D (kilof, urobek) stoi przy wejściu — strefa bez wejścia to błąd
+			if ent.is_empty():
+				dig_bad.append("%s bez wejścia (kafla powietrza z gruntem obok skały strefy) — znak strefy nie ma gdzie stanąć" % z.name)
+			else:
+				print("[MAPTEST] %s: %s wejście x %.0f, grunt y %.0f, skała %s" % [id, z.name, float(ent["wall_x"]), float(ent["floor_y"]),
+					["pod stopami", "w prawo", "w lewo"][0 if int(ent["dir"]) == 0 else (1 if int(ent["dir"]) > 0 else 2)]])
 		for msg in dig_bad:
 			print("[MAPTEST] %s: BŁĄD strefy wydobycia: %s" % [id, msg])
 		fails += dig_bad.size()
