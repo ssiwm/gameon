@@ -17,8 +17,8 @@ Zapas jest: release 1.7.505 na 1.2 (4K, HIGH, RTX 3080) to 60 kl./s przy GPU 8,8
 ## Zasady (obowiązują każdą wnękę)
 
 1. **Światło wnęki oświetla tylko wnękę.** Bryła wnęki leży na warstwie świata i nowej warstwie `LAYER_NICHE` (128).
-   Światło wnęki ma `light_cull_mask = LAYER_NICHE`, a jego zasięg kończy się co najmniej 1 m za tylną ścianą
-   (z ≤ −DEPTH_BACK − 1). Ten sam wzór działa już w lesie: `MoonRim` świeci tylko na `LAYER_FOREST`.
+   Światło wnęki ma `light_cull_mask = LAYER_NICHE`, a jego zasięg kończy się najpóźniej na płaszczyźnie tylnej ściany
+   (z ≤ −DEPTH_BACK; w N1 `LIGHT_EDGE = 0`, bo maska i tak odcina wszystko poza bryłą wnęki). Ten sam wzór działa już w lesie: `MoonRim` świeci tylko na `LAYER_FOREST`.
    Wrogowie, gracze, podłoga i ściana przy płaszczyźnie gry nie dostają z wnęki ani odrobiny światła.
 2. **Bez wpływu na symulację.** Wnęka to czysta oprawa: nie ma kolizji, nie zmienia wzroku wrogów, nie jest `GameLight`,
    nie budzi ćm i nie liczy się do Uwagi. Mapa ASCII i nawigacja się nie zmieniają.
@@ -79,8 +79,8 @@ pomiar `shots_depth\lum.py` (`--shotat=89 --shotrow=23`, ok. 192 px na kafel).
   i tylną ścianę wnęki z materiałów ściany i betonu, z cieniowaniem w głąb (jak `shade` w lesie).
 - Światło: `OmniLight3D` (albo `SpotLight3D` z żarówki w dół) na `LAYER_NICHE`, zasięg w obrębie wnęki, plus żarówka
   z emisją (`unshaded`, jak lampki `backdrop3d.gd`). Cień światła wnęki tylko na HIGH i tylko, jeśli pomiar w N2 go uzasadni.
-- Kamera świata dostaje `LAYER_NICHE` w `cull_mask` (`view3d.gd` obok `LAYER_FOREST`).
-- Test `--nichetest` (headless, dopisany do CLAUDE.md i CI): wnęka nie zachodzi na zasady z punktu 5, światło nie sięga z > −DEPTH_BACK,
+- Kamera świata nie potrzebuje `LAYER_NICHE` w `cull_mask`: bryła wnęki leży też na warstwie świata (1), więc ją widzi i oświetlają ją światła mapy.
+- Test `tools/test_niches.gd` (headless, dopisany do CLAUDE.md i CI; w planie `--nichetest`): wnęka nie zachodzi na zasady z punktu 5, światło nie sięga z > −DEPTH_BACK,
   maska światła to tylko `LAYER_NICHE`, płyty ściany w otworze usunięte, a poza nim nietknięte. `--maptest` bez zmian (PASS).
 
 ### N2 — pilot: jedna wnęka w hali stacji 1.2
@@ -96,6 +96,33 @@ pomiar `shots_depth\lum.py` (`--shotat=89 --shotrow=23`, ok. 192 px na kafel).
 - **Kryteria przyjęcia:** wnęka czytelnie „idzie w głąb” w ruchu kamery; luminancja przy graczach bez zmian (±2%);
   GPU ≤ +0,5 ms; brak migotania, szwów i prostokątnych krawędzi; sylwetka wroga zauważalna dopiero z bliska.
 - **Bramka:** decyzja użytkownika po obejrzeniu. Bez niej nie ma N3.
+
+### Wyniki N1–N2 (2026-11-07, `feat/depth-niches`, 1.7.507)
+
+Wnęka: korytarz 8 m, ościeża z wyszczerbioną krawędzią i nadproże z betonu, rura i korytko pod stropem, beczka i skrzynia,
+uchylone drzwi w ścianie końcowej, dwie żarówki (bliska ciepła na 3 m, 1,8; daleka chłodna na 7 m, 1,0; zasięg 3 m).
+Bańki wiszą 1 m pod nadprożem, bo w kadrze kamery nadproże zasłaniało bliską żarówkę. Luminancja liniowa (te same kadry co N0, 4K):
+
+| Kadr | przy graczu N0 → N2 | 6–9 m | podłoga przed wnęką | otwór wnęki |
+|------|------|------|------|------|
+| noc bez pogody | 0,0649 → 0,0672 (+3,5%) | 0,0060 → 0,0061 | 0,0293 → 0,0294 | 0,0040 → 0,0090 |
+| burza | 0,0637 → 0,0657 (+3,1%) | 0,0049 → 0,0054 | 0,0279 → 0,0279 | 0,0036 → 0,0091 |
+| mgła | 0,0646 → 0,0655 (+1,4%) | 0,0050 → 0,0053 | 0,0276 → 0,0276 | 0,0038 → 0,0056 |
+| deszcz | 0,0642 → 0,0665 (+3,6%) | 0,0060 → 0,0057 | 0,0285 → 0,0286 | 0,0038 → 0,0092 |
+| MEDIUM | 0,0617 → 0,0625 (+1,3%) | 0,0057 → 0,0055 | 0,0283 → 0,0284 | 0,0038 → 0,0081 |
+| LOW (same bańki) | 0,0540 → 0,0542 (+0,4%) | 0,0047 → 0,0050 | 0,0265 → 0,0265 | 0,0034 → 0,0041 |
+
+- **Światło nie wychodzi z wnęki:** podłoga przed wnęką bez zmian w każdym kadrze; 6–9 m w szumie (burza i mgła mają losowe błyski).
+- **Przy graczu +3–3,6% (kryterium ±2% przekroczone) to bloom, nie światło.** Z `--nofx` ta sama strefa zmienia się o +0,4%.
+  Bloom `horror_fx` rozmywa ekran (mipy) i odcina próg 0,16, więc jaśniejsze tło obok żółtego kombinezonu podbija poświatę na postaci.
+  Ciemność przy graczu (GDD §8.3) się nie zmienia, zmienia się aureola. Słabsza bańka (`BULB_GLOW`) tego nie zbiła.
+- **Próg sylwetek:** otwór 0,009 — poniżej progu 0,02 i poniżej ściany przy lampie `I` (0,0129). Zrzutu z Trzoskiem przed wnęką
+  nie ma: `--shotmon` stawia wrogów przy starcie mapy, nie w kadrze wnęki.
+- **Wydajność (debug, 4K HIGH, dwa przebiegi A/B):** GPU 7,73 → 7,83 ms i 7,86 → 7,99 ms (+0,10 / +0,13 ms; p95 +0,2 / +0,9 ms),
+  render_cpu +0,05–0,09 ms, draw calls 319 → 378. W budżecie (+0,5 ms). Pomiaru na release i nagrania przejścia jeszcze nie ma.
+- **Cień (decyzja 3):** w korytarzu nie ma ruchomych brył, a rekwizyty stoją blisko ścian, więc brak cienia nie razi na zrzutach.
+  Rekomendacja: zostać bez cienia.
+- Zrzuty i arkusz porównania: `C:\deadair87\shots_depth\n2\` (`n2_porownanie.jpg`).
 
 ### N3 — katalog wnęk i rozmieszczenie (po bramce)
 
