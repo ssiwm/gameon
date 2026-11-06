@@ -13,7 +13,9 @@ extends "res://scripts/stalker_test.gd"
 ## 5. materiały i narzędzia: skała 3 ciosy, żyła 4, maczeta nie bierze skały (kilof wybiera się sam), ziemię maczetą 2 ciosy i ciszej;
 ## 6. wybuch (combat.gd `explode`) wycina koło w skale;
 ## 7. stan: migawka z punktu kontrolnego i wipe przywracają strefę (gęstość, kafle, nawigacja), gracz w zasypanym wykopie wychodzi na wierzch;
-## 8. czasy przebudowy fragmentu (kontur + kolizja) i siatki 3D.
+## 8. czasy przebudowy fragmentu (kontur + kolizja) i siatki 3D;
+## 9. znajdźki (część 2): liczba i miejsca z ziarna (w głębi skały, odstęp), determinizm, skaner, odkopanie do połowy i błysk w latarce,
+##    dźwięk ciosu w metal, przedmiot wypada i spada, wybuch odrzuca przedmiot, Nocny Dyżur, dziennik `dig_find`, wipe zakopuje.
 ## Wynik: linie [DIG-TEST] (PASS / FAIL / INFO) i kod wyjścia.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -21,6 +23,12 @@ const Level3D := preload("res://scripts/level3d.gd")
 
 const DigMats := preload("res://scripts/dig_materials.gd")
 const Combat := preload("res://scripts/combat.gd")
+const DigZone := preload("res://scripts/dig_zone.gd")
+const Lights := preload("res://scripts/lights.gd")
+const Throwables := preload("res://scripts/throwables.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
+const LOG_DIR := "user://test_dig_sessions"
 
 var zone: Node2D
 var rock: Node2D
@@ -67,6 +75,7 @@ func run(m: Node2D) -> void:
 	await _materials()
 	await _blast()
 	await _state(dig0)
+	await _finds()
 	_timings()
 	_finish()
 
@@ -75,14 +84,14 @@ func _on_noise(amount: float, pos: Vector2, tag: String) -> void:
 		_noise.append([amount, pos])
 
 ## Zrzut okna do `--digshots=KATALOG` (w oknie; headless nic nie robi).
-func _shot(name: String) -> void:
+func _shot(name: String, each := Callable()) -> void:
 	var dir := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--digshots="):
 			dir = a.substr("--digshots=".length())
 	if dir == "" or DisplayServer.get_name() == "headless":
 		return
-	await _frames(0.6)
+	await _frames(0.6, each)
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(dir.path_join(name + ".png"))
 	info("zrzut %s" % dir.path_join(name + ".png"))
@@ -437,6 +446,196 @@ func _state(dig0: int) -> void:
 	check("stan strefy: kompresja bez strat i mały (< 1 kB po jednym ciosie)", raw == zone._d and st.size() < 1024)
 	level.reset_breakables()
 	await _frames(0.1)
+
+# ---------------------------------------------------------------- 9. znajdźki (część 2)
+
+## Przedmioty leżące na mapie (pickup.gd, węzły „Item%d” poziomu).
+func _items() -> Array:
+	var out: Array = []
+	for n in level.get_children():
+		if String(n.name).begins_with("Item") and not n.is_queued_for_deletion():
+			out.append(n)
+	return out
+
+## Miejsca i rodzaje znajdziek strefy jako tekst (determinizm).
+func _find_sig(z: Node2D) -> String:
+	var s := ""
+	for f in z.finds:
+		s += "%d,%d,%s;" % [int(f["i"]), int(f["j"]), String(f["kind"])]
+	return s
+
+func _finds() -> void:
+	SessionLog.enabled = true                      # dziennik w headless: osobny katalog testu, kasowany na końcu sekcji
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "dig"})
+	var fz: Array = zone.finds
+	var fr: Array = rock.finds
+	var desc := ""
+	for f in fz:
+		desc += "%s (%.0f, %.0f)  " % [f["kind"], (f["pos"] as Vector2).x, (f["pos"] as Vector2).y]
+	info("znajdźki DigZone1: %d — %s; DigZone2: %d" % [fz.size(), desc, fr.size()])
+	var all_buried := (fz + fr).all(func(f: Dictionary) -> bool: return int(f["state"]) == DigZone.Find.BURIED)
+	check("znajdźki z danych mapy: ziemia 80 kafli → 5, skała 48 → 3, po wipe wszystkie zakopane", fz.size() == 5 and fr.size() == 3 and all_buried)
+	# rozmieszczenie: w głębi skały — nie w wierzchnim rzędzie, bez powietrza w sąsiednich kaflach, odstęp ≥ 3 kafli
+	var placed := true
+	for z: Node2D in [zone, rock]:
+		var tl: Array[Vector2i] = []
+		for f in z.finds:
+			var t := Vector2i(floori(((f["pos"] as Vector2).x - 0.01) / 16.0), floori(((f["pos"] as Vector2).y - 0.01) / 16.0))
+			placed = placed and t.y > z.r0 and z.solid_in_data(t.x, t.y)
+			for oy in range(-1, 2):
+				for ox in range(-1, 2):
+					var q := t + Vector2i(ox, oy)
+					placed = placed and (z.solid_in_data(q.x, q.y) or (not z.rect_tiles().has_point(q) and level._is_solid(q.x, q.y)))
+			for o in tl:
+				placed = placed and maxi(absi(o.x - t.x), absi(o.y - t.y)) >= 3
+			tl.append(t)
+	check("znajdźki w głębi skały: nie w wierzchu strefy, bez powietrza obok, odstęp ≥ 3 kafli", placed)
+	# determinizm: to samo ziarno → te same miejsca i rodzaje, inne ziarno → inne
+	var sig0 := _find_sig(zone)
+	var solid := func(c: int, r: int) -> bool: return level._is_solid(c, r)
+	zone._plan_finds(solid)
+	var same := _find_sig(zone) == sig0
+	zone.seed_v += 1
+	zone._plan_finds(solid)
+	var other := _find_sig(zone) != sig0
+	zone.seed_v -= 1
+	zone._plan_finds(solid)
+	check("znajdźki z ziarna strefy: to samo ziarno — te same miejsca, inne — inne", same and other and _find_sig(zone) == sig0)
+	# skaner „Sowa”: zakopane w zasięgu, poza zasięgiem nic
+	# znajdźka do prób: szyb obok niej (od strony środka strefy) nie przechodzi przez żadną inną
+	var cx: float = zone.rect_px().get_center().x
+	var f: Dictionary = {}
+	for c: Dictionary in zone.finds:
+		var cp: Vector2 = c["pos"]
+		var csx: float = cp.x + (16.0 if cp.x < cx else -16.0)
+		var clear := true
+		for o: Dictionary in zone.finds:
+			var op: Vector2 = o["pos"]
+			if o != c and absf(op.x - csx) < 22.0 and op.y < cp.y + 14.0:
+				clear = false
+		if clear:
+			f = c
+			break
+	check("jest znajdźka, przy której da się wykopać szyb bez ruszania innych", not f.is_empty())
+	if f.is_empty():
+		return
+	var fp: Vector2 = f["pos"]
+	var sr: float = float(Throwables.KINDS["scanner"]["range"])
+	check("skaner widzi zakopaną znajdźkę w zasięgu, poza zasięgiem nie", zone.buried_finds(fp + Vector2(0, -sr + 8.0), sr).has(f)
+		and not zone.buried_finds(fp + Vector2(0, -sr - 8.0), sr).has(f))
+	# cios w wierzch strefy daleko od znajdziek nie dzwoni
+	var space := zone.get_world_2d().direct_space_state
+	var dx := 1.0 if fp.x < cx else -1.0
+	var far_x: float = zone.rect_px().end.x - 12.0 if dx > 0.0 else zone.rect_px().position.x + 12.0
+	var plain: Dictionary = zone.melee_dig(space, Vector2(far_x, TOP - 9.0), Vector2.DOWN, 24.0, DigMats.Tool.PICK)
+	# szyb z wierzchu tuż obok znajdźki (ściana 10 px od niej): odkopana do połowy — skaner nadal ją widzi, nic nie wypada
+	var items0 := _items().size()
+	var sx := fp.x + dx * 16.0
+	var bottom := fp.y + 6.0
+	zone._send(Vector2(sx, (TOP - 4.0 + bottom) * 0.5), Vector2(6.0, (bottom - TOP + 4.0) * 0.5), 0.0, DigMats.Tool.PICK)
+	await _frames(0.05)
+	var face: Vector2 = zone.find_face(f)
+	info("szyb obok znajdźki %s: stan %d, ściana przy (%.0f, %.0f)" % [f["kind"], int(f["state"]), face.x, face.y])
+	check("szyb obok: znajdźka odkopana do połowy, skaner ją widzi, nic nie wypadło", int(f["state"]) == DigZone.Find.NEAR
+		and face != Vector2.INF and zone.buried_finds(fp, 4.0).has(f) and _items().size() == items0 and zone.finds_out == 0)
+	# błysk w latarce: latarka z szybu na ścianę przy znajdźce — błyska; odwrócona — nie (ta sama droga co view3d.gd `_sync_dig_glints`);
+	# gracz w szybie 40 px nad ścianą (snop sięga 8 m = 128 px), bez klatki fizyki — nie zdąży spaść
+	var pp0: Vector2 = player.global_position
+	_place_player(Vector2(sx, face.y - 31.0))
+	var fl0: bool = player.flashlight
+	player.flashlight = true
+	var from: Vector2 = player.global_position + Vector2(0, -9)
+	player.aim_dir = (face - from).normalized()
+	var lit := Lights.flashlight_on(face, get_tree(), space) == player
+	player.aim_dir = -player.aim_dir
+	var dark := Lights.flashlight_on(face, get_tree(), space) == null
+	player.flashlight = fl0
+	# zrzut w oknie: gracz na dnie szybu świeci w ścianę przy znajdźce (błysk), skaner pokazuje pozostałe zakopane
+	if DisplayServer.get_name() != "headless":
+		_place_player(Vector2(sx, bottom))
+		player.flashlight = true
+		if player._scan_view == null:
+			player._scan_view = (load("res://scripts/scanner_view.gd") as GDScript).new()
+			player._scan_view.player = player
+			player.add_child(player._scan_view)
+		player.scan_left = 4.0
+		var ma0: bool = player.mouse_aim
+		player.mouse_aim = false                 # kursor myszy w oknie nadpisałby kierunek snopu
+		var aim := func(_t: float, _dt: float) -> void: player.aim_dir = (face - player.global_position - Vector2(0, -9)).normalized()
+		await _frames(0.4, aim)
+		await _shot("d5_9_glint", aim)
+		player.flashlight = fl0
+		player.mouse_aim = ma0
+	_place_player(pp0)
+	check("błysk: latarka skierowana w ścianę przy znajdźce ją oświetla, odwrócona nie", lit and dark)
+	# cios z dna szybu w bok, w znajdźkę: dzwoni w metal, aż znajdźka wypada jako przedmiot (podskakuje — pozycja w poziomie)
+	var origin := Vector2(sx, bottom - 9.0)
+	var clinks := 0
+	var swings := 0
+	while swings < 6 and zone.finds_out == 0:
+		var dug: Dictionary = zone.melee_dig(space, origin, Vector2(-dx, 0.0), 24.0, DigMats.Tool.PICK)
+		swings += 1
+		if bool(dug.get("metal", false)):
+			clinks += 1
+		await _frames(0.05)
+	var items: Array = _items()
+	var item: Node2D = items.back() if items.size() > items0 else null
+	var ik := String(item.kind) if item != null else "—"
+	info("cios w bok: %d ciosów, %d w metal, cios w wierzch daleko: metal %s; wypadło %s (znajdźka %s) przy (%.0f, %.0f)" % [swings, clinks,
+		str(plain.get("metal", "—")), ik, f["kind"], item.global_position.x if item else 0.0, item.global_position.y if item else 0.0])
+	check("cios przy zakopanej znajdźce dzwoni w metal, w wierzch daleko od znajdziek nie", clinks >= 1 and not plain.is_empty() and not bool(plain["metal"]))
+	var kind_ok := ik == String(f["kind"]) or (ik == "scrap" and ["ammo", "part"].has(String(f["kind"])))
+	check("odkopana znajdźka wypada jako przedmiot jej rodzaju (amunicja i część — albo złom, gdy nie ma czego)", item != null and zone.finds_out == 1
+		and int(f["state"]) == DigZone.Find.OUT and kind_ok and absf(item.global_position.x - fp.x) < 8.0 and not zone.buried_finds(fp, 4.0).has(f))
+	await _frames(1.0)
+	if item != null and is_instance_valid(item):
+		var ip: Vector2 = item.global_position
+		check("przedmiot ze znajdźki spada na dno wykopu (nie w skale, nie w powietrzu)", not zone.solid_at_px(ip + Vector2(0, -2)) and zone.solid_at_px(ip + Vector2(0, 3)))
+	# wybuch w skale: odkopuje znajdźkę i odrzuca przedmiot od środka
+	var g: Dictionary = rock.finds[0]
+	var gp: Vector2 = g["pos"]
+	var bc := gp + Vector2(12.0, -6.0)
+	var items1 := _items().size()
+	Combat.explode(get_tree(), bc, 48.0, 50.0, player.player_id, pick)
+	var items2: Array = _items()
+	var bi: Node2D = items2.back() if items2.size() > items1 else null
+	var push := (bi.global_position - gp).dot((gp - bc).normalized()) if bi != null else 0.0
+	info("wybuch obok znajdźki %s w skale: wypadło %s, odrzut od środka %.1f px" % [g["kind"], String(bi.kind) if bi else "nic", push])
+	check("wybuch odkopuje znajdźkę i odrzuca przedmiot od środka", int(g["state"]) == DigZone.Find.OUT and bi != null and push > 5.0)
+	# Nocny Dyżur: tylko amunicja (albo nic); poza nim złom nigdy nie jest pusty
+	var ns0: bool = NightShift.active
+	NightShift.active = true
+	var night: Array = [zone._resolve_find("scrap"), zone._resolve_find("battery"), zone._resolve_find("part")]
+	NightShift.active = ns0
+	check("Nocny Dyżur: znajdźka daje tylko amunicję albo nic", night.all(func(r: Array) -> bool: return r.is_empty() or String(r[0]) == "ammo"))
+	check("znajdźki poza Nocnym Dyżurem: złom 1–3, bateria, zaopatrzenie", zone._resolve_find("scrap")[0] == "scrap" and zone._resolve_find("battery")[0] == "battery"
+		and zone._resolve_find("supply")[0] == "supply" and int(zone._resolve_find("scrap")[2]) >= 1)
+	# dziennik sesji
+	var rows: Array = []
+	if SessionLog.path != "" and FileAccess.file_exists(SessionLog.path):
+		for line in FileAccess.get_file_as_string(SessionLog.path).split("\n", false):
+			var v: Variant = JSON.parse_string(line)
+			if v is Dictionary and (v as Dictionary).get("ev") == "mission_start":
+				rows.clear()                       # w oknie dziennik jest włączony od startu — liczą się wiersze od startu tej sekcji
+			elif v is Dictionary and (v as Dictionary).get("ev") == "dig_find":
+				rows.append(v)
+	check("dziennik: `dig_find` ze strefą, rodzajem, przedmiotem i narzędziem (%d)" % rows.size(), rows.size() == 2
+		and rows.all(func(r: Dictionary) -> bool: return r.has("zone") and r.has("kind") and r.has("item") and r.has("pos"))
+		and rows[0]["by"] == "pick" and rows[1]["by"] == "blast")
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	var d := DirAccess.open(LOG_DIR)
+	if d != null:
+		for fn in d.get_files():
+			d.remove(fn)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(LOG_DIR))
+	# wipe: znajdźki znów zakopane, licznik od zera; przedmioty sprząta poziom
+	level.reset_breakables()
+	level.clear_pickups()
+	await _frames(0.1)
+	check("wipe: znajdźki znów zakopane w tych samych miejscach, licznik od zera", _find_sig(zone) == sig0 and zone.finds_out == 0
+		and (zone.finds + rock.finds).all(func(q: Dictionary) -> bool: return int(q["state"]) == DigZone.Find.BURIED))
 
 # ---------------------------------------------------------------- 8. czasy
 

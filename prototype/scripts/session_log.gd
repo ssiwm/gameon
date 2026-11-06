@@ -37,6 +37,8 @@ extends RefCounted
 ##   barricade      wall, boards (stojące deski po przybiciu), planks (zapas desek), noise — przybita deska (D2b, od 1.7.491)
 ##   support        name, zone, by, shooter — złamany stempel `!` (D3, od 1.7.492)
 ##   cave           zone, crushed (zasypani wrogowie) — strefa `^` zawalona (D3, od 1.7.492)
+##   dig_find       zone, find (indeks znajdźki w strefie), kind (rodzaj z ziarna), item (co wypadło: scrap / ammo / supply / battery / part,
+##                  "" — nic), by (pick / blade / blast), pos, noise — znajdźka odkopana w strefie wydobycia (D5 część 2, od 1.7.503)
 ##                  Raport: sekcja „Niszczenie” w tools/session_progress.py (próby od 1.7.485)
 ##   mission_end    result (success / failed / wipe), time, downs, attempts, peak_noise, side, players, weapons, noise, scrap
 ##   xp             who, mission (XP za wynik misji), rows (etykiety bonusów), xp (łącznie w profilu po misji), level — po udanej misji,

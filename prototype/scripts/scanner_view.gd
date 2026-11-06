@@ -1,6 +1,6 @@
 extends Node2D
-## Skaner „Sowa” (A2): nakładka lokalnego gracza — sylwetki wrogów w promieniu skanera, także za ścianami. Rysowana unshaded,
-## więc widać ją w ciemności. Zasięg i czas bierze z throwables.gd; stan (`_scan_left`) trzyma player.gd.
+## Skaner „Sowa” (A2): nakładka lokalnego gracza — sylwetki wrogów w promieniu skanera, także za ścianami, i zakopane znajdźki
+## stref wydobycia (D5). Rysowana unshaded, więc widać ją w ciemności. Zasięg i czas bierze z throwables.gd; stan (`_scan_left`) trzyma player.gd.
 
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
@@ -27,6 +27,15 @@ func _draw() -> void:
 	var pulse := fmod(_t * 0.9, 1.0)
 	draw_arc(to_local(c), r * pulse, 0.0, TAU, 48, Color(0.9, 0.9, 0.5, 0.35 * (1.0 - pulse) * fade), 1.0)
 	draw_arc(to_local(c), r, 0.0, TAU, 64, Color(0.9, 0.9, 0.5, 0.12 * fade), 1.0)
+	# zakopane znajdźki w strefach wydobycia (dig_zone.gd, D5): metal w ziemi jako romb — miga, gdy fala skanu go mija
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		for f in z.buried_finds(c, r):
+			var fp := to_local(f["pos"])
+			var hit := 1.0 - clampf(absf((f["pos"] as Vector2).distance_to(c) - r * pulse) / 24.0, 0.0, 1.0)
+			var fc := Color(0.45, 0.95, 1.0, (0.55 + 0.4 * hit) * fade)
+			var dm := PackedVector2Array([fp + Vector2(0, -4), fp + Vector2(4, 0), fp + Vector2(0, 4), fp + Vector2(-4, 0), fp + Vector2(0, -4)])
+			draw_colored_polygon(dm.slice(0, 4), Color(fc.r, fc.g, fc.b, fc.a * 0.3))
+			draw_polyline(dm, fc, 1.0)
 	for e in get_tree().get_nodes_in_group("enemies"):
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n) or n.is_in_group("props") or n.is_in_group("breakables"):

@@ -720,6 +720,10 @@ func _destruction_sig() -> String:
 		st += " sup=%s" % ("ok" if bool(sb.get("intact")) else "down")   # stempel nad strefą zawału (D3); zawał widać po Rubble1 w `opened`
 	for z in level.dig_zones():
 		st += " %s=%s" % [String(z.name).replace("DigZone", "dig"), (z._d as PackedByteArray).hex_encode().md5_text().substr(0, 8)]   # gęstość strefy (D5)
+		var fs := ""
+		for f in z.finds:                                         # znajdźki: miejsca z ziarna i stan z gęstości (D5 część 2) — ten sam u każdego peera
+			fs += "%d,%d,%s,%d;" % [int(f["i"]), int(f["j"]), String(f["kind"]), int(f["state"])]
+		st += " finds=%d/%s" % [(z.finds as Array).size(), fs.md5_text().substr(0, 8)]
 	return st
 
 func _destruction_net_host() -> void:
@@ -774,6 +778,8 @@ func _dig_net_host() -> void:
 	z1.melee_dig(space, Vector2(104.0, top + 3.0), Vector2.DOWN, 24.0, DigMats.Tool.PICK)
 	z1.melee_dig(space, Vector2(104.0, top + 3.0), Vector2.RIGHT, 24.0, DigMats.Tool.PICK)
 	Combat.explode(get_tree(), Vector2(35.0 * 16.0, 13.0 * 16.0), 48.0, 50.0, 1, Weapons.KILOF)
+	if not (z1.finds as Array).is_empty():                         # znajdźka wypada (D5 część 2): stan znajdziek w sygnaturze u każdego peera
+		z1._send(z1.finds[0]["pos"], Vector2(8.0, 8.0), 0.0, DigMats.Tool.PICK)
 	var t0 := Time.get_ticks_msec()
 	while multiplayer.get_peers().size() < 2 and Time.get_ticks_msec() - t0 < 30000:
 		await get_tree().create_timer(0.25).timeout

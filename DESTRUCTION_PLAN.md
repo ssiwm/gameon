@@ -3,11 +3,11 @@
 Stan wyjścia planu: main 1.7.477 (2026-11-02), plan v4 (weryfikacja silnika pomiarami, research gier gatunku, wrażenie i dźwięk,
 spike'i przed D0).
 
-**Stan wdrożenia (2026-11-05, 1.7.502):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
+**Stan wdrożenia (2026-11-06, 1.7.503):** D0, D1, D2, D2b i D3 w main (1.7.479–1.7.492, PR #580–#594), pomiar w dzienniku sesji
 1.7.493, D4 z pulą cząsteczek w 1.7.500, dźwięki drewna i młotka z odsłuchu A/B w 1.7.501 (`BARRIER_FIX_PLAN.md` B3), D5 część 1
-(dane, siatka, kolizja) w 1.7.502. Zostaje: playtest z raportem (`tools/session_progress.py`, sekcja „Niszczenie”), spadająca kładka (D3),
-blacha `sheet` (D2, brak na mapach), misje „przetrzymaj” (D2b, po strefie 2), D5 część 2 (znajdźki, skaner, osypywanie, wyspy) i część 3
-(strefy na mapach, ekonomia).
+(dane, siatka, kolizja) w 1.7.502, część 2 (znajdźki, skaner, błysk, dźwięk metalu) w 1.7.503. Zostaje: playtest z raportem
+(`tools/session_progress.py`, sekcja „Niszczenie”), spadająca kładka (D3), blacha `sheet` (D2, brak na mapach), misje „przetrzymaj”
+(D2b, po strefie 2), osypywanie żwiru i spadające wyspy (osobny PR po części 2) i D5 część 3 (strefy na mapach, pule, ekonomia).
 
 ## Cel
 
@@ -603,6 +603,34 @@ nie leżą na trasie do celu).
 - Nie zrobione w części 1 (zostaje na 2 i 3): znajdźki i pule, skaner „Sowa”, błysk przedmiotu, osypywanie żwiru, spadające wyspy, grudki
   i dekal świeżego wykopu, natychmiastowa odpowiedź u klienta (iskry i pył przed deltą — dziś efekt przychodzi z serwera), test „z każdej komórki,
   w której da się stać, jest droga na zewnątrz” na losowych wykopach, strefy na mapach kampanii i ekonomia, notatka w dzienniku sesji (`dig`).
+
+**Zrobione w 1.7.503 (część 2 z 3: znajdźki, skaner, błysk, dźwięk metalu).**
+
+- Rozmieszczenie (`dig_zone.gd` `_plan_finds`): z ziarna strefy i numeru odnowienia (`find_round`, dziś 0 — w części 3 nowe ziarno po
+  odnowieniu puli), `RandomNumberGenerator` z ustalonym ziarnem, więc każdy peer liczy to samo z danych mapy. Kandydaci: kafle skały z danych
+  mapy poza wierzchnim rzędem strefy, bez powietrza w 8 sąsiednich kaflach — znajdźka jest „w bok i w głąb ściany”, nie pod wejściem.
+  Jedna na 16 kafli skały, najwyżej 6, odstęp ≥ 3 kafli; punkt to losowy narożnik we wnętrzu kafla. Rodzaj z wag: złom 40, amunicja 20,
+  zaopatrzenie 15, bateria 15, część broni 10 (do strojenia).
+- Stan z gęstości (`_find_state`): odkopana, gdy ≥ 5 z 3 × 3 narożników wokół niej to powietrze; do połowy, gdy powietrze jest w promieniu
+  3 narożników (12 px); inaczej zakopana. Liczy każdy peer po każdej operacji kopania (tylko znajdźki w okolicy wyrwy) i po resecie.
+- Wypadanie: serwer w `apply_dig`, gdy znajdźka przechodzi w „odkopaną” — `level.spawn_item`; zawartość dobiera się dopiero wtedy
+  (amunicja: `Arsenal.pick_drop_weapon` jak z wrogów, połowa przydziału; część: `Scrap.pick_find`; bez potrzeby — złom 1–3; Nocny Dyżur tylko
+  amunicja albo nic). Wybuch odrzuca przedmiot 10 px od środka. Wipe i punkt kontrolny bossa przeliczają stan bez wypadania (przedmioty
+  sprząta `clear_pickups`), więc znajdźka zasypana razem z wykopem znów leży w ziemi. Pul na stałe jeszcze nie ma — część 3.
+- Szukanie: skaner „Sowa” (`scanner_view.gd`) rysuje zakopane i odkopane do połowy znajdźki w zasięgu jako romb, który miga, gdy mija go
+  fala skanu. Cios, którego wyrwa (powiększona o 6 px) obejmuje zakopaną znajdźkę, dzwoni w metal (`melee_dig` → `metal`, efekt
+  `Arsenal.Mat.METAL`: iskry, uderzenie i rykoszet zamiast pyłu). Znajdźka odkopana do połowy błyska w 3D (`view3d.gd` `_sync_dig_glints`:
+  jasny środek i dwie smugi między znajdźką a ścianą wykopu), tylko gdy pada na nią snop latarki — `Lights.flashlight_on` do najbliższego
+  pustego narożnika (zasięg, stożek, brak ściany po drodze), u każdego peera z replikowanego stanu latarek.
+- Dziennik sesji: `dig_find` (zone, find, kind, item — co naprawdę wypadło, by — pick / blade / blast, pos, noise); raport
+  `session_progress.py` w sekcji „Niszczenie” (ile, czym, co wypadło).
+- Poprawka przy okazji: `pickup.gd` — podskok przedmiotu zatrzymuje się na stropie (w niskim wykopie przedmiot wchodził w skałę
+  i „lądował” na spodzie stropu).
+- Testy: `--digtest` sekcja 9 (liczba i miejsca, determinizm i inne ziarno, skaner, szyb obok — do połowy, błysk w latarce i brak błysku
+  odwróconym snopem, cios w metal i brak dzwonienia daleko, przedmiot wypada i spada na dno wykopu, wybuch odrzuca, Nocny Dyżur, dziennik,
+  wipe zakopuje); `test_net_session.sh` — host wykopuje znajdźkę, skrót stref u każdego peera obejmuje miejsca, rodzaje i stan znajdziek.
+- Nie zrobione w części 2: osypywanie żwiru i spadające wyspy (osobny PR), pule w `progress.cfg` z odnowieniem po 3 misjach, notatki
+  fabularne i skrzynka z czymś cennym, samorodki (z kopalnią), strefy na mapach kampanii (część 3).
 
 ## Kolejność i rozmiar
 

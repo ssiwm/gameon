@@ -15,8 +15,17 @@ extends Node2D
 ## peerów; każdy stosuje ją sam — wynik jest ten sam, a wiadomość ma kilkanaście bajtów zamiast listy komórek. Dołączający dostaje całą
 ## gęstość strefy (skompresowaną, `send_state_to`); wipe i punkt kontrolny bossa przywracają stan (`reset_to`, level.gd `reset_breakables`).
 ## Kafel strefy, w którym nie została już skała, przestaje być bryłą dla nawigacji i siatki dźwięku (`on_tiles` → level.gd `_dig_tiles_changed`).
+##
+## Znajdźki (część 2 D5): miejsca z ziarna strefy (`_plan_finds`, ten sam wynik u każdego peera), w głębi skały — nie na wierzchu i nie
+## przy powietrzu mapy. Stan znajdźki wynika z gęstości wokół niej (`_find_state`): zakopana → odkopana do połowy (powietrze blisko: błysk
+## w latarce, widok 3D) → odkopana (wypada jako przedmiot: rozstrzyga serwer w `apply_dig`, zawartość dobiera dopiero wtedy). Cios tuż
+## przy zakopanej znajdźce dzwoni w metal (`melee_dig` → "metal"), skaner „Sowa” pokazuje zakopane w zasięgu (`buried_finds`).
 
 const Mats := preload("res://scripts/dig_materials.gd")
+const Weapons := preload("res://scripts/weapons.gd")
+const Throwables := preload("res://scripts/throwables.gd")
+const NightShift := preload("res://scripts/night_shift.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 const TILE := 16.0
 const CELL := 4.0                     ## px komórki
@@ -38,6 +47,17 @@ const DIAG_DROP := 8.0                ## px: stopień przy ciosie po skosie (w d
 const N_DIG := 1.5                    ## hałas ciosu kilofem w grunt (jak w ścianę, breakable.gd); materiał mnoży (dig_materials.gd `noise`)
 const BLADE_NOISE := 0.5              ## broń biała w ziemi: wolniej, ale ciszej
 const BLAST_DIG := 0.5                ## promień wyrwy po wybuchu = połowa promienia fali
+# znajdźki (część 2): liczby do strojenia po playteście; pule z odnowieniem po 3 misjach — część 3
+const FIND_EVERY := 16                ## kafli skały strefy na jedną znajdźkę
+const FIND_MAX := 6
+const FIND_SPACING := 3               ## kafle: najmniejszy odstęp znajdziek (Czebyszew)
+const FIND_KINDS := [["scrap", 40], ["ammo", 20], ["supply", 15], ["battery", 15], ["part", 10]]   ## rodzaj → waga losowania
+const FIND_NEAR := 3                  ## narożniki (12 px): powietrze tak blisko = odkopana do połowy (błysk w latarce)
+const FIND_OUT := 5                   ## z 3 × 3 narożników wokół znajdźki tyle powietrzem = odkopana, wypada
+const FIND_CLINK := 6.0               ## px: zakopana znajdźka tak blisko wyrwy ciosu = cios dzwoni w metal
+const FIND_BLAST_PUSH := 10.0         ## px: wybuch odrzuca odkopaną znajdźkę od środka
+const FIND_SCRAP := Vector2i(1, 3)    ## złom ze znajdźki (min, max)
+enum Find { BURIED, NEAR, OUT }
 
 var c0 := 0                           ## kafel lewego górnego rogu strefy
 var r0 := 0
@@ -62,6 +82,10 @@ var _shapes: Array[ConcavePolygonShape2D] = []
 var chunk_ver := PackedInt32Array()   ## wersja fragmentu (widok 3D przebudowuje siatkę po zmianie)
 var digs := 0                         ## operacji kopania od wczytania / resetu (test, pomiar, stan dla dołączających)
 var rebuild_usec := 0                 ## czas ostatniej przebudowy fragmentów (kontur + kolizja) w mikrosekundach
+var find_round := 0                   ## numer odnowienia puli (część 3: nowe ziarno = nowe miejsca; dziś zawsze 0)
+## Znajdźki: {"i", "j" (narożnik), "pos" (px świata), "kind" (FIND_KINDS), "state" (Find)}; kolejność z ziarna — indeks = id znajdźki.
+var finds: Array[Dictionary] = []
+var finds_out := 0                    ## serwer: ile znajdziek wypadło od wczytania / resetu (test, dziennik)
 
 ## Ustawia strefę z wpisu `DIG_ZONES` ([c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?], kafle włącznie). `solid_at(c, r) -> bool` — czy
 ## kafel mapy (poza strefą) jest bryłą; `zone_solid(c, r) -> bool` — czy kafel strefy był skałą w danych mapy (przed wycięciem).
@@ -127,6 +151,7 @@ func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 		for tx in tiles.x:
 			_open[ty * tiles.x + tx] = 1 if _tile_clear(tx, ty) else 0
 			_rock0[ty * tiles.x + tx] = 1 if bool(zone_solid.call(tx + c0, ty + r0)) else 0
+	_plan_finds(solid_at)
 	_ccx = ceili(float(nx + 2) / CHUNK)
 	_ccy = ceili(float(ny + 2) / CHUNK)
 	chunk_ver.resize(_ccx * _ccy)
@@ -229,8 +254,9 @@ func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, 
 		at = hit["position"]
 	var key := Mats.key_of(mat)
 	NoiseMgr.add_noise(N_DIG * float(Mats.MATS[key]["noise"]) * (BLADE_NOISE if tool == Mats.Tool.BLADE else 1.0), at, "dig")
+	var metal := find_near_rect(r.grow(FIND_CLINK)) >= 0          # przed cięciem: znajdźka, która tym ciosem wypadnie, też dzwoni
 	_send(r.get_center(), r.size * 0.5, 0.0, tool)
-	return {"at": at, "mat": key}
+	return {"at": at, "mat": key, "metal": metal}
 
 ## Czy w zasięgu ciosu z `origin` w kierunku `dir` jest skała strefy (dowolne narzędzie) i której nie bierze broń biała — wybór kilofa
 ## (weapon_controller.gd `melee_for_target`). Zwraca [jest skała, broń biała jej nie bierze].
@@ -348,6 +374,7 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 		_rebuild(int(ci))
 	rebuild_usec = Time.get_ticks_usec() - t0
 	if not touched.is_empty():
+		_update_finds(Rect2i(i0, j0, i1 - i0 + 1, j1 - j0 + 1).grow(FIND_NEAR), pos, tool)
 		_update_tiles(Rect2i(floori(float(i0 - 1) / PER_TILE) - 1, floori(float(j0 - 1) / PER_TILE) - 1,
 			(i1 - i0) / PER_TILE + 3, (j1 - j0) / PER_TILE + 3))
 
@@ -403,6 +430,10 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 	digs = 0 if s.is_empty() else maxi(digs, 1)
 	for ci in _ccx * _ccy:
 		_rebuild(ci)
+	for f in finds:                                              # bez wypadania: przedmioty z wykopanych znajdziek sprząta level.gd (wipe, punkt kontrolny)
+		f["state"] = _find_state(f)
+	if s.is_empty():
+		finds_out = 0
 	_update_tiles(Rect2i(0, 0, tiles.x, tiles.y))
 	_unstick_players()
 
@@ -418,6 +449,160 @@ func _unstick_players() -> void:
 			continue
 		p.global_position = Vector2(gp.x, rc.position.y - 0.5)
 		p.velocity = Vector2.ZERO
+
+# ---------------------------------------------------------------- znajdźki
+
+## Rozmieszczenie znajdziek z ziarna strefy (i numeru odnowienia): kafle skały z danych mapy, które nie stykają się z powietrzem (także po
+## skosie) i nie leżą w wierzchnim rzędzie strefy — znajdźka jest w głębi ściany, nie na wierzchu ani pod samym wejściem. Losowa kolejność
+## kandydatów (Fisher-Yates z `RandomNumberGenerator` o ustalonym ziarnie), odstęp FIND_SPACING kafli, jedna na FIND_EVERY kafli skały.
+func _plan_finds(solid_at: Callable) -> void:
+	finds.clear()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([seed_v, find_round, c0, r0, "finds"])
+	var cands: Array[Vector2i] = []
+	var rock_n := 0
+	for ty in tiles.y:
+		for tx in tiles.x:
+			if _rock0[ty * tiles.x + tx] == 0:
+				continue
+			rock_n += 1
+			if ty < 1:
+				continue
+			var deep := true
+			for oy in range(-1, 2):
+				for ox in range(-1, 2):
+					var t := Vector2i(tx + ox, ty + oy)
+					var inside := t.x >= 0 and t.y >= 0 and t.x < tiles.x and t.y < tiles.y
+					if (inside and _rock0[t.y * tiles.x + t.x] == 0) or (not inside and not bool(solid_at.call(t.x + c0, t.y + r0))):
+						deep = false
+			if deep:
+				cands.append(Vector2i(tx, ty))
+	for k in range(cands.size() - 1, 0, -1):
+		var o := rng.randi_range(0, k)
+		var tmp := cands[k]
+		cands[k] = cands[o]
+		cands[o] = tmp
+	var total := 0
+	for e in FIND_KINDS:
+		total += int(e[1])
+	var want := mini(FIND_MAX, rock_n / FIND_EVERY)
+	var taken: Array[Vector2i] = []
+	for t in cands:
+		if taken.size() >= want:
+			break
+		var ok := true
+		for q in taken:
+			if maxi(absi(q.x - t.x), absi(q.y - t.y)) < FIND_SPACING:
+				ok = false
+				break
+		if not ok:
+			continue
+		taken.append(t)
+		var i := t.x * PER_TILE + rng.randi_range(2, PER_TILE)       # narożnik we wnętrzu kafla
+		var j := t.y * PER_TILE + rng.randi_range(2, PER_TILE)
+		var roll := rng.randi_range(0, total - 1)
+		var kind := "scrap"
+		for e in FIND_KINDS:
+			roll -= int(e[1])
+			if roll < 0:
+				kind = String(e[0])
+				break
+		finds.append({"i": i, "j": j, "pos": global_position + _corner_px(i, j), "kind": kind, "state": Find.BURIED})
+
+## Stan znajdźki z gęstości wokół niej: odkopana, gdy co najmniej FIND_OUT z 3 × 3 najbliższych narożników jest powietrzem; do połowy, gdy
+## powietrze jest w promieniu FIND_NEAR narożników (ściana wykopu tuż przy niej); inaczej zakopana.
+func _find_state(f: Dictionary) -> int:
+	var fi: int = f["i"]
+	var fj: int = f["j"]
+	var air := 0
+	for j in range(fj - 1, fj + 2):
+		for i in range(fi - 1, fi + 2):
+			if _d[j * _w + i] < ISO:
+				air += 1
+	if air >= FIND_OUT:
+		return Find.OUT
+	if air > 0:
+		return Find.NEAR
+	for j in range(maxi(0, fj - FIND_NEAR), mini(_h, fj + FIND_NEAR + 1)):
+		for i in range(maxi(0, fi - FIND_NEAR), mini(_w, fi + FIND_NEAR + 1)):
+			if _d[j * _w + i] < ISO and _fixed[j * _w + i] == 0:
+				return Find.NEAR
+	return Find.BURIED
+
+## Po operacji kopania: przelicza znajdźki w prostokącie narożników `rc`; serwer wyrzuca te, które właśnie zostały odkopane.
+func _update_finds(rc: Rect2i, from: Vector2, tool: int) -> void:
+	for k in finds.size():
+		var f: Dictionary = finds[k]
+		if int(f["state"]) == Find.OUT or not rc.has_point(Vector2i(int(f["i"]), int(f["j"]))):
+			continue
+		f["state"] = _find_state(f)
+		if int(f["state"]) == Find.OUT and NoiseMgr.is_server():
+			_spawn_find(k, from, tool)
+
+## Serwer: odkopana znajdźka wypada jako przedmiot (level.gd `spawn_item`). Zawartość dobiera się teraz: amunicja do broni, której drużynie
+## brakuje (jak z wrogów), część broni z puli znalezisk (Scrap.pick_find), a gdy nie ma czego — złom. Nocny Dyżur: tylko amunicja.
+## Wybuch odrzuca przedmiot od środka.
+func _spawn_find(k: int, from: Vector2, tool: int) -> void:
+	var f: Dictionary = finds[k]
+	var kind := String(f["kind"])
+	var item := _resolve_find(kind)
+	var at: Vector2 = f["pos"] + Vector2(0, -2)
+	if tool == Mats.Tool.BLAST and (at - from).length() > 0.5:
+		at += (at - from).normalized() * FIND_BLAST_PUSH
+	finds_out += 1
+	var lvl := get_parent()
+	if not item.is_empty() and lvl != null and lvl.has_method("spawn_item"):
+		lvl.spawn_item(String(item[0]), int(item[1]), at, int(item[2]))
+	SessionLog.event("dig_find", {"zone": String(name), "find": k, "kind": kind, "item": String(item[0]) if not item.is_empty() else "",
+		"by": ["pick", "blade", "blast"][clampi(tool, 0, 2)], "pos": SessionLog.xy(at), "noise": roundi(NoiseMgr.level)})
+
+## [rodzaj pickup.gd, arg, rounds] albo pusta tablica (nic — Nocny Dyżur bez potrzebnej amunicji).
+func _resolve_find(kind: String) -> Array:
+	if kind == "ammo" or NightShift.active:
+		var w: int = Arsenal.pick_drop_weapon()
+		if w >= 0:
+			return ["ammo", w, maxi(1, int(Weapons.def(w).pickup_rounds * 0.5))]
+		if NightShift.active:
+			return []
+	elif kind == "supply":
+		return ["supply", Throwables.ORDER.find(Throwables.drop_kind()), -1]
+	elif kind == "battery":
+		return ["battery", 0, -1]
+	elif kind == "part":
+		var pid: String = Scrap.pick_find()
+		if pid != "":
+			return ["part", Scrap.part_index(pid), -1]
+	return ["scrap", 0, randi_range(FIND_SCRAP.x, FIND_SCRAP.y)] if Scrap.enabled() else []
+
+## Indeks zakopanej (nie odkopanej) znajdźki w prostokącie px świata albo -1 — dźwięk ciosu w metal.
+func find_near_rect(r: Rect2) -> int:
+	for k in finds.size():
+		if int(finds[k]["state"]) != Find.OUT and r.has_point(finds[k]["pos"]):
+			return k
+	return -1
+
+## Znajdźki jeszcze w ziemi (zakopane i odkopane do połowy) w promieniu `radius` od `from` — skaner „Sowa” (scanner_view.gd).
+func buried_finds(from: Vector2, radius: float) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for f in finds:
+		if int(f["state"]) != Find.OUT and (f["pos"] as Vector2).distance_to(from) <= radius:
+			out.append(f)
+	return out
+
+## Punkt w powietrzu przy znajdźce odkopanej do połowy (najbliższy pusty narożnik) albo Vector2.INF — tam celuje latarka, żeby błysnęła.
+func find_face(f: Dictionary) -> Vector2:
+	var fi: int = f["i"]
+	var fj: int = f["j"]
+	var best := Vector2.INF
+	var bd := INF
+	for j in range(maxi(0, fj - FIND_NEAR), mini(_h, fj + FIND_NEAR + 1)):
+		for i in range(maxi(0, fi - FIND_NEAR), mini(_w, fi + FIND_NEAR + 1)):
+			if _d[j * _w + i] < ISO:
+				var dd := float(Vector2(i - fi, j - fj).length_squared())
+				if dd < bd:
+					bd = dd
+					best = global_position + _corner_px(i, j)
+	return best
 
 # ---------------------------------------------------------------- marching squares
 

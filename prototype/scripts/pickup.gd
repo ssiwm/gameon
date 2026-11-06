@@ -142,6 +142,12 @@ func _physics_process(delta: float) -> void:
 			if not hh.is_empty():
 				next.x = from.x
 				_vel.x = 0.0
+		# strop nad podskokiem (niski tunel w strefie wydobycia, D5): bez tego przedmiot wchodził w skałę i „lądował” na spodzie stropu
+		if _vel.y < 0.0:
+			var cq := PhysicsRayQueryParameters2D.create(Vector2(next.x, from.y - 6.0), Vector2(next.x, next.y - 7.0), 1)
+			if not space.intersect_ray(cq).is_empty():
+				next.y = from.y
+				_vel.y = 0.0
 		# podłoga pod nowym punktem (przy dryfie bywa inna niż pod punktem startu)
 		if _vel.y > 0.0:
 			var fq := PhysicsRayQueryParameters2D.create(Vector2(next.x, from.y - 4.0), Vector2(next.x, next.y + 1.0), 1 | 16)
