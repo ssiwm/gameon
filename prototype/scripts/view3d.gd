@@ -16,6 +16,7 @@ extends Node2D
 const Level3D := preload("res://scripts/level3d.gd")
 const DamageMask := preload("res://scripts/damage_mask.gd")
 const Lights := preload("res://scripts/lights.gd")
+const DigZone := preload("res://scripts/dig_zone.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
@@ -7306,6 +7307,10 @@ func _make_item(sp: ItemsHd.ItemMark) -> void:
 var _dig3d := {}                          ## id strefy → {"zone", "mis": [MeshInstance3D na fragment], "ver": PackedInt32Array}
 var _dig_mat: StandardMaterial3D
 const DIG_MESH_PER_FRAME := 4             ## siatek fragmentów strefy na klatkę (1,0–1,4 ms każda); wybuch i reset kończą się w następnych klatkach
+const DIG_GLINT_M := 0.2                  ## m: jasny środek błysku znajdźki odkopanej do połowy
+const DIG_GLINT_STREAK := Vector2(0.7, 0.045)   ## m: smugi gwiazdki (długość, grubość) — odblask metalu, nie plamka światła
+const DIG_GLINT_COL := Color(1.0, 0.95, 0.8)
+const DIG_GLINT_TOWARD := 0.6             ## błysk leży między znajdźką a najbliższym powietrzem (0 — w znajdźce, 1 — na ścianie wykopu)
 
 ## Skała stref wydobycia: siatka z konturu strefy (przód + ściany wykopu do tyłu bryły), przebudowywana tylko dla fragmentów, których wersja
 ## się zmieniła (najwyżej DIG_MESH_PER_FRAME na klatkę); za strefą tylna ściana wykopu. Materiał jak grunt mapy (`#`, triplanarny w metrach
@@ -7351,10 +7356,60 @@ func _sync_dig_zones() -> void:
 				vers[ci] = int(z.chunk_ver[ci])
 				((st["mis"] as Array)[ci] as MeshInstance3D).mesh = z.chunk_mesh(ci, Level3D.PX, Level3D.DEPTH_FRONT, -Level3D.DEPTH_BACK)
 		st["ver"] = vers
+		_sync_dig_glints(st, z)
 	for id in _dig3d.keys():
 		var z = (_dig3d[id] as Dictionary)["zone"]
 		if not is_instance_valid(z) or (z as Node).is_queued_for_deletion():
 			_dig3d.erase(id)
+
+## Znajdźki odkopane do połowy (dig_zone.gd `Find.NEAR`): metal w ścianie wykopu błyska, gdy pada na niego snop latarki
+## (Lights.flashlight_on do najbliższego pustego narożnika — jak widzi go latarka, tak widzi błysk); poza snopem gaśnie. Bez skanera to jedyny
+## znak oprócz dźwięku ciosu w metal (DESTRUCTION_PLAN.md D5).
+func _sync_dig_glints(st: Dictionary, z: Node2D) -> void:
+	var finds: Array = z.finds
+	if not st.has("glint"):
+		var gl: Array = []
+		for _k in finds.size():
+			var root := Node3D.new()                             # środek (billboard) + smuga pozioma i pionowa w płaszczyźnie kadru
+			root.visible = false
+			var parts: Array = []
+			for q in 3:
+				var mi := _glow_quad(Color(DIG_GLINT_COL, 0.0))
+				if q == 0:
+					(mi.material_override as StandardMaterial3D).billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+				root.add_child(mi)
+				parts.append(mi)
+			_geo.add_child(root)
+			gl.append([root, 0.0, parts])
+		st["glint"] = gl
+	var gl: Array = st["glint"]
+	var space := z.get_world_2d().direct_space_state
+	var dt := get_process_delta_time()
+	var t := Time.get_ticks_msec() * 0.001
+	for k in mini(gl.size(), finds.size()):
+		var f: Dictionary = finds[k]
+		var e: Array = gl[k]
+		var root: Node3D = e[0]
+		var want := 0.0
+		var at: Vector2 = f["pos"]
+		if int(f["state"]) == DigZone.Find.NEAR:
+			var face: Vector2 = z.find_face(f)
+			if face != Vector2.INF:
+				at = (f["pos"] as Vector2).lerp(face, DIG_GLINT_TOWARD)
+				if Lights.flashlight_on(face, get_tree(), space) != null:
+					want = 1.0
+		e[1] = move_toward(float(e[1]), want, dt * 6.0)
+		var a := float(e[1])
+		root.visible = a > 0.01
+		if root.visible:
+			var tw := 0.6 + 0.4 * sin(t * 9.0 + float(k) * 1.7)      # migotanie: drobny ruch snopu daje odblask, a nie stałą kropkę
+			root.position = Level3D.px_to_m(at) + Vector3(0.0, 0.0, Level3D.DEPTH_FRONT + 0.04)
+			var parts: Array = e[2]
+			(parts[0] as MeshInstance3D).scale = Vector3.ONE * DIG_GLINT_M * (0.8 + 0.4 * tw)
+			(parts[1] as MeshInstance3D).scale = Vector3(DIG_GLINT_STREAK.x * (0.5 + 0.5 * tw), DIG_GLINT_STREAK.y, 1.0)
+			(parts[2] as MeshInstance3D).scale = Vector3(DIG_GLINT_STREAK.y, DIG_GLINT_STREAK.x * 0.7 * (0.5 + 0.5 * tw), 1.0)
+			for q in 3:
+				((parts[q] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(DIG_GLINT_COL, a * (1.0 if q == 0 else tw))
 
 # ---------------------------------------------------------------- obiekty fizyczne (skrzynie, beczki)
 

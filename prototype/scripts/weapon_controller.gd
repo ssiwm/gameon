@@ -1690,7 +1690,10 @@ func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int, e: float
 			var dug: Dictionary = z.melee_dig(space, origin, dir, d.reach, tool)
 			if not dug.is_empty():
 				var hard: bool = String(DigMats.MATS[String(dug["mat"])]["hit"]) == "world"
-				Arsenal.broadcast_hit(dug["at"], -dir, Arsenal.Mat.WORLD if hard else Arsenal.Mat.DUST, false, tool == DigMats.Tool.PICK)
+				var fx: int = Arsenal.Mat.WORLD if hard else Arsenal.Mat.DUST
+				if bool(dug.get("metal", false)):
+					fx = Arsenal.Mat.METAL                          # zakopana znajdźka tuż przy wyrwie: cios dzwoni w metal (podpowiedź bez skanera)
+				Arsenal.broadcast_hit(dug["at"], -dir, fx, false, tool == DigMats.Tool.PICK)
 				hit_any = true
 				break
 	if not hit_any:
