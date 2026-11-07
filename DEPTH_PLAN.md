@@ -116,13 +116,17 @@ Bańki wiszą 1 m pod nadprożem, bo w kadrze kamery nadproże zasłaniało blis
 - **Przy graczu +3–3,6% (kryterium ±2% przekroczone) to bloom, nie światło.** Z `--nofx` ta sama strefa zmienia się o +0,4%.
   Bloom `horror_fx` rozmywa ekran (mipy) i odcina próg 0,16, więc jaśniejsze tło obok żółtego kombinezonu podbija poświatę na postaci.
   Ciemność przy graczu (GDD §8.3) się nie zmienia, zmienia się aureola. Słabsza bańka (`BULB_GLOW`) tego nie zbiła.
-- **Próg sylwetek:** otwór 0,009 — poniżej progu 0,02 i poniżej ściany przy lampie `I` (0,0129). Zrzutu z Trzoskiem przed wnęką
-  nie ma: `--shotmon` stawia wrogów przy starcie mapy, nie w kadrze wnęki.
+- **Próg sylwetek:** otwór 0,009 — poniżej progu 0,02 i poniżej ściany przy lampie `I` (0,0129). Trzosek w kolumnie 89 przed wnęką
+  (zrzut z tymczasową flagą, niecommitowaną) nie robi się ciemną sylwetką: jest nawet nieco jaśniejszy od tła (0,0023 przy tle 0,0003–0,0009;
+  bez wnęki 0,0012 przy 0,0001–0,0002), bo za nogami wroga dolna część otworu zostaje ciemna. Sylwetki są słabe, jak w decyzji 2.
 - **Wydajność (debug, 4K HIGH, dwa przebiegi A/B):** GPU 7,73 → 7,83 ms i 7,86 → 7,99 ms (+0,10 / +0,13 ms; p95 +0,2 / +0,9 ms),
-  render_cpu +0,05–0,09 ms, draw calls 319 → 378. W budżecie (+0,5 ms). Pomiaru na release i nagrania przejścia jeszcze nie ma.
+  render_cpu +0,05–0,09 ms, draw calls 319 → 378. **Release** (eksport z gałęzi, A/B flagą `--noniches`, 3 + 3 przebiegi na zmianę):
+  z wnęką 7,10 / 7,44 / 7,91 ms (śr. 7,48), bez 7,00 / 7,76 / 7,89 ms (śr. 7,55) — różnica w szumie, 60 kl./s we wszystkich. W budżecie (+0,5 ms).
+- **Nagranie przejścia przez halę** (Movie Maker, 1920×1080, `--shotrun` od kolumny 74, z wnęką i bez): w ruchu kamery wnęka czyta się
+  jako oświetlony korytarz w głąb, bez migotania i szwów.
 - **Cień (decyzja 3):** w korytarzu nie ma ruchomych brył, a rekwizyty stoją blisko ścian, więc brak cienia nie razi na zrzutach.
   Rekomendacja: zostać bez cienia.
-- Zrzuty i arkusz porównania: `C:\deadair87\shots_depth\n2\` (`n2_porownanie.jpg`).
+- Zrzuty, arkusze i nagranie: `C:\deadair87\shots_depth\n2\` (`n2_porownanie.jpg`, `n2_sylwetka.jpg`, `n2_przejscie_hali.mp4`).
 
 ### N3 — katalog wnęk i rozmieszczenie (po bramce)
 
@@ -132,6 +136,25 @@ Rodzaje: `doorway` (zaplecze z żarówką), `corridor` (korytarz 10–15 m z lam
 Rozmieszczenie: 1.2 hala i tunel (np. między słupami `w` w kolumnach 187–193), podziemia 1.1, 1.3, B1, kryjówka.
 Najwyżej 1–2 oświetlone wnęki w jednym kadrze i odstęp ok. 30 m, żeby nie powstał rytm „co kafel to wnęka”.
 Każda mapa: zrzuty, `--perfreport`, luminancja, `--nichetest`.
+
+### Wyniki N3 na 1.2 (2026-11-07, `feat/niches-catalog`, 1.7.508)
+
+- Katalog w `niches3d.gd` (`KINDS`): `doorway` (d 8 m, „bulb”), `corridor` (12 m, „cage”: lampy w koszach co 4 m na zmianę po bokach,
+  boczne przejście w połowie, zamknięte drzwi na końcu), `grate` (4,5 m, „bulb”: pręty co 0,14 m w jednym `MultiMesh`, szafka, regał,
+  kanister, zimna świetlówka na 70% głębokości), `shelf` (1,2 m, bez światła: regały pod ścianą końcową, kanister, opona),
+  `drift` (10 m, „mine”: odrzwia co 2 m, skalne ściany i strop z odcinków o losowym wcięciu, tory na podkładach w `MultiMesh`,
+  lampa górnicza 1,6 m przed czołem). Walidacja sprawdza rodzaj, dozwolone światło i najmniejszą głębokość rodzaju.
+- Rozmieszczenie na 1.2 (6 wnęk): zaplecze w hali stacji (88–91, pilot), w tunelu drezyny (wiersze 48–50) sztolnie 107–109 i 195–197,
+  korytarz 155–157 i regał 259–261, w dolnej hali krata 211–213 (wiersze 37–39). Odstęp ≥ 40 kolumn między oświetlonymi wnękami,
+  ≥ 10 kolumn od Ślepców `L` i gniazd ćm `Z` (zasada 4). Uwaga: pilot w hali stoi 6–7 kolumn od dwóch Ślepców — zostawiony, bo przyjęty w bramce N2.
+- **Lekcja kadru:** kamera patrzy z oka nad środkiem kadru, więc we wnęce widać więcej podłogi niż stropu. Lampy zawieszone pod stropem
+  chowają się za nadprożem (korytarz) albo za stropnicami bliższych odrzwi (sztolnia) — wszystkie wiszą ok. 1 m pod stropem
+  (w sztolni na 60% wysokości odrzwi, na długim haku).
+- Pomiar (debug, 4K HIGH, z wnękami i z `--noniches`): podłoga przed korytarzem 0,0021 → 0,0021, przed sztolnią 0,0017 → 0,0018;
+  przy graczu w kadrze korytarza 0,0648 → 0,0649; otwór korytarza 0,0003 → 0,0097 (próg 0,02), otwór sztolni 0,0003 → 0,0016
+  (świeci tylko jej koniec). GPU w kadrze korytarza 6,67 / 7,33 ms z wnękami i 6,77 / 7,68 ms bez (szum), render_cpu +0,06–0,13 ms,
+  wywołania rysowania 199 → 295.
+- Zrzuty: `shots_depth/n3/`.
 
 ### N4 — światło w głębi poza wnękami (opcjonalnie)
 
@@ -163,3 +186,9 @@ Zasada 1 obowiązuje tak samo.
 1. Pilot w **hali stacji 1.2** (kolumny 88–91, wiersze 23–25). Tunel drezyny dopiero w N3.
 2. Sylwetki wrogów na tle wnęki **słabe, z progiem jasności** wnętrza wnęki (zasada 4). Próg ustala pomiar w N0/N2.
 3. Cień światła wnęki **dopiero po pomiarze w N2**; pilot startuje bez cienia.
+
+## Decyzje (2026-11-07, bramka N2)
+
+4. Pilot przyjęty. Poświata przy graczu (+3–3,6% przy wnęce, bloom `horror_fx`, a nie światło wnęki) zostaje jako efekt optyczny.
+5. Wnęki zostają **bez cienia**.
+6. Przechodzimy do N3: katalog rodzajów i rozmieszczenie, po jednym PR na mapę (pierwszy: 1.2).
