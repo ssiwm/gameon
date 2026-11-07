@@ -1,7 +1,7 @@
 # Plan: światło w głębi i wnęki w ścianach wnętrz
 
 Status: **N0–N3 w `main` (do 1.7.512, 19 wnęk na pięciu mapach); N4 — pilot okien i kratek w `main` (1.7.513), bramka przyjęta
-2026-11-07: okna i kratki idą na inne mapy; scalone bryły i 1.2 w 1.7.514, 1.3 w 1.7.516, 1.1 w 1.7.517, dalej kryjówka.** Etap po analizie głębi świata
+2026-11-07: okna i kratki idą na inne mapy; scalone bryły i 1.2 w 1.7.514, 1.3 w 1.7.516, 1.1 w 1.7.517, kryjówka w 1.7.518 — N4 zamknięte.** Etap po analizie głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`, punkty 1 i 3 tego raportu robione razem).
 Stan odniesienia: `main` 1.7.506 (b7c11e3).
 
@@ -316,6 +316,24 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
   szumu.
 - Zrzuty: `shots_depth/n4_z1m1/` (`m1_sheet.jpg`).
 
+### Wyniki N4 w kryjówce (2026-11-07, `feat/n4-hub`, 1.7.518)
+
+- **Miejsce:** na górze i w środku tylną ścianę zajmują meble z `hub_decor.gd`, tablice i gabloty, więc rodzaje ścienne wiszą
+  nad nimi: dwa okna sterowni nadajnika na górze (`window` 38–41 w. 10–11 `tube` i 46–49 `bulb`, nad szafkami i stołem
+  pracowni, z dala od radiostacji i okna pogody), kratka wysoko w świetlicy (`vent` 41 w. 16) i kratka pod stropem magazynu
+  na dole (`vent` 42 w. 24). Dwa świecące otwory w kadrze góry, jeden w kadrze środka.
+- **Pułapka: żebra stropu.** Długie hale kryjówki mają żebra co 8 kafli (`Level3D.interior_ribs`), a `_rib_in_niche` zdejmuje
+  żebro, gdy otwór stoi ±1 kolumnę od niego. Pierwsze miejsca (okna 33–36 i 49–52, kratka 35) zabrały trzy pilastry —
+  przesunięte w środek przęseł (żebra góry 36 / 43 / 52, środka 35 / 44). Kolumny żeber liczy `shots_depth/rib_cols.py MAPA.gd`.
+- Pomiar (debug, 4K HIGH, `lumbox.py`): kryjówka jest jasna, więc mur wokół otworów ma już 0,03–0,08. Okno `tube` 0,042 → 0,062,
+  okno `bulb` 0,033 → 0,036, kratki na poziomie muru obok (0,083 → 0,091 i 0,053 → 0,052) — żaden otwór nie odstaje od
+  oświetlonej ściany, pas pod nimi bez zmian.
+- Wydajność (trzy rundy naprzemiennie): kadr góry z oknami 10,06 / 10,05 / 9,57 ms, bez okien (podmiana mapy) 9,83 / 9,65 /
+  10,17 ms — w szumie, +28 wywołań rysowania (201 → 229); kadr środka 10,06 / 10,13 / 10,32 ms, z `--noniches` 10,05 / 11,24 /
+  9,81 ms — mediana +0,08 ms, +25 wywołań.
+- Zrzuty: `shots_depth/n4_hub/` (`hub_sheet.jpg`).
+- **N4 zamknięte:** 18 otworów ściennych na pięciu mapach (B1 2, 1.2 5, 1.3 5, 1.1 2, kryjówka 4 — razem z pilotem 1.3).
+
 ## Kolejność i rozmiar
 
 | Etap | Co | Rozmiar | Wersja |
@@ -324,7 +342,7 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
 | N1 | `niches3d.gd`, dane mapy, wycięcie ściany, `--nichetest` | 1 d | PR, podbicie wersji |
 | N2 | pilot w hali 1.2 + A/B | 0,5–1 d | ten sam PR albo następny |
 | N3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
-| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3; dalej 1.2, Skład 1.3, szyby, kryjówka) | 1 d pilot + po 0,5 d na mapę | 1.7.513 pilot, 1.7.514 scalenie i 1.2, 1.7.516 1.3, 1.7.517 1.1, dalej kryjówka |
+| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3; dalej 1.2, Skład 1.3, szyby, kryjówka) | 1 d pilot + po 0,5 d na mapę | 1.7.513 pilot, 1.7.514 scalenie i 1.2, 1.7.516 1.3, 1.7.517 1.1, 1.7.518 kryjówka |
 
 ## Ryzyka
 
