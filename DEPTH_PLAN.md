@@ -183,6 +183,20 @@ Każda mapa: zrzuty, `--perfreport`, luminancja, `--nichetest`.
   GPU w kadrze korytarza 6,57 / 6,87 ms z wnękami, 6,55 / 6,91 ms bez (szum); render_cpu +0,07–0,09 ms; wywołania rysowania 228 → 320.
 - Zrzuty: `shots_depth/n3_z1m3/`.
 
+### Wyniki N3 na B1 (2026-11-07, `feat/niches-z1b1`, 1.7.511)
+
+- Hala B1 ma tło `b` od stropu do podłogi, ale lita podłoga jest tylko na brzegach — basen (kolumny 28–110) to woda `~`, a kładki
+  nad nim to `=` i `-`. Do tego fala przypływu Pijawki zalewa basen ± `SURGE_PAD` (56 px, 3,5 kafla), więc wnęki stoją poza
+  kolumnami ok. 24–114. Trzy wnęki (wiersze 28–30, podłoga w wierszu 31): `doorway` 10–12 na zachodnim brzegu między miejscami
+  startu (pierwszy kadr misji), `grate` 116–118 i `shelf` 132–134 (wiersze 29–30) na wschodnim brzegu przy ewakuacji.
+  Ślepców i gniazd ćm na B1 nie ma.
+- Pomiar (debug, 4K HIGH, z wnękami i z `--noniches`). Przy zapleczu i regale kamera opiera się o brzeg mapy i gracz nie stoi
+  w środku kadru, więc strefy wzięte z obrysu różnicy obu zrzutów. Otwór zaplecza 0,0000 → 0,0137, kraty 0,0001 → 0,0052,
+  regału 0,0036 → 0,0038 (próg 0,02); podłoga przed kratą 0,0030 → 0,0030, przed regałem 0,0052 → 0,0052, pod zapleczem
+  0,0009 → 0,0012 (próg otworu z podłogą wnęki w pasie pomiaru). Przy graczu w kadrze kraty 0,0576 → 0,0577.
+  GPU w kadrze startu 7,21 / 8,00 ms z wnękami, 8,05 / 8,04 ms bez (szum); render_cpu +0,15 ms; wywołania rysowania 263 → 325.
+- Zrzuty: `shots_depth/n3_z1b1/`.
+
 ### N4 — światło w głębi poza wnękami (opcjonalnie)
 
 Tylko jeśli N3 się sprawdzi: dalekie okna i lampy za kratami w ścianach szybów, poświata z głębi tunelu na końcu kadru.
