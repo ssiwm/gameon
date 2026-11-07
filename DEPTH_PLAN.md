@@ -1,7 +1,7 @@
 # Plan: światło w głębi i wnęki w ścianach wnętrz
 
 Status: **N0–N3 w `main` (do 1.7.512, 19 wnęk na pięciu mapach); N4 — pilot okien i kratek w `main` (1.7.513), bramka przyjęta
-2026-11-07: okna i kratki idą na inne mapy; scalone bryły i 1.2 w 1.7.514, 1.3 w 1.7.516, dalej po jednym PR na mapę.** Etap po analizie głębi świata
+2026-11-07: okna i kratki idą na inne mapy; scalone bryły i 1.2 w 1.7.514, 1.3 w 1.7.516, 1.1 w 1.7.517, dalej kryjówka.** Etap po analizie głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`, punkty 1 i 3 tego raportu robione razem).
 Stan odniesienia: `main` 1.7.506 (b7c11e3).
 
@@ -300,6 +300,22 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
   w szumie, +14 wywołań. Zegar GPU w ciągu godziny pomiarów pływał o ok. 0,5 ms — porównywać tylko rundy naprzemienne.
 - Zrzuty: `shots_depth/n4_z1m3/` (`m3_sheet.jpg`).
 
+### Wyniki N4 na 1.1 (2026-11-07, `feat/n4-z1m1`, 1.7.517)
+
+- **Miejsce:** kopalnia 1.1 jest ciasna — prawie każdy kandydat stoi bliżej niż 10 kolumn od gniazd ćm `Z` (wiszą pod stropem
+  galerii) i Ślepców `L`, a w górnej galerii okno albo kratka obok korytarza 268–270 dałyby trzy świecące otwory w kadrze.
+  Szyb serwisowy (276–279) jest za wąski i co dwa wiersze ma podest. Zostały dwa wpisy: `vent` 258 w. 27 (`lamp`, pod stropem
+  rampy w dół do kopalni — dotąd bez żadnego światła; Skoczek `J` wisi 2 kolumny obok, nie przed kratką) i `window` 290–293
+  w. 40–41 (`bulb`, okno dyspozytorni na ślepym wschodnim końcu dolnej galerii, obok sztolni 285–287, 18 kolumn od gniazda ćm;
+  przerwa 1 kafel — głowa gracza wchodzi w dolną krawędź okna).
+- Pomiar (debug, 4K HIGH, `lumbox.py`): kratka 0,0000 → 0,065, okno 0,0000 → 0,0074, pas pod nimi bez zmian (≤ 0,0011).
+- Wydajność: kadr rampy z wnękami 8,64 / 8,83 / 8,71 ms, z `--noniches` 8,38 / 8,62 / 8,36 ms — +0,27 ms dla kratki i korytarza
+  268–270 razem, +34 wywołania rysowania. Samo okno (sześć rund naprzemiennie z wpisem i bez): 8,60 / 8,50 / 8,61 / 8,94 / 8,45 /
+  8,67 ms z oknem, 8,20 / 7,16 / 8,28 / 8,42 / 8,63 / 8,61 ms bez — mediana +0,25 ms (bez odstającej rundy 7,16: +0,20 ms),
+  +15 wywołań rysowania; w budżecie 0,5 ms. W kadrze dolnej galerii liczba wrogów różni się między przebiegami (7–8), co dokłada
+  szumu.
+- Zrzuty: `shots_depth/n4_z1m1/` (`m1_sheet.jpg`).
+
 ## Kolejność i rozmiar
 
 | Etap | Co | Rozmiar | Wersja |
@@ -308,7 +324,7 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
 | N1 | `niches3d.gd`, dane mapy, wycięcie ściany, `--nichetest` | 1 d | PR, podbicie wersji |
 | N2 | pilot w hali 1.2 + A/B | 0,5–1 d | ten sam PR albo następny |
 | N3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
-| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3; dalej 1.2, Skład 1.3, szyby, kryjówka) | 1 d pilot + po 0,5 d na mapę | 1.7.513 pilot, 1.7.514 scalenie i 1.2, 1.7.516 1.3, dalej po jednym PR na mapę |
+| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3; dalej 1.2, Skład 1.3, szyby, kryjówka) | 1 d pilot + po 0,5 d na mapę | 1.7.513 pilot, 1.7.514 scalenie i 1.2, 1.7.516 1.3, 1.7.517 1.1, dalej kryjówka |
 
 ## Ryzyka
 
