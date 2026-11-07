@@ -168,6 +168,21 @@ Każda mapa: zrzuty, `--perfreport`, luminancja, `--nichetest`.
   GPU w kadrze korytarza 7,01 / 7,24 ms z wnękami, 7,16 / 7,04 ms bez (szum); render_cpu +0,07–0,12 ms; wywołania rysowania 241 → 332.
 - Zrzuty: `shots_depth/n3_z1m1/`.
 
+### Wyniki N3 na 1.3 (2026-11-07, `feat/niches-z1m3`, 1.7.510)
+
+- Pięć wnęk: `doorway` 19–21 (wiersze 23–25, zaplecze posterunku przy starcie), `grate` 134–136 (wiersze 23–25, parter Składu),
+  a w niskim tunelu podziemi (wiersze 37–39, podłoga w wierszu 40) `drift` 51–53 (d 8 m, 14 kolumn od Ślepca), `shelf` 100–102
+  (wiersze 38–39, u dołu środkowego szybu) i `corridor` 160–162 (tuż za trzecim szybem, ponad 17 kolumn od gniazd ćm).
+  Oświetlone wnęki w tunelu stoją ponad 100 kolumn od siebie, strefa wydobycia (kolumny 1–5) daleko.
+- Antresola Składu (wiersz 22) to kładka `=`, a walidacja wymaga litej podłogi pod otworem — na antresoli wnęki nie ma.
+  Z tego samego powodu odpadają górne poziomy sal podziemi (kładki), a dno trzech z czterech sal leży bliżej niż 10 kolumn od gniazd ćm
+  albo Ślepców.
+- Pomiar (debug, 4K HIGH, z wnękami i z `--noniches`): podłoga przed wnęką bez zmian przy wszystkich pięciu (0,0018–0,0073);
+  otwór zaplecza 0,0002 → 0,0056, kraty 0,0005 → 0,0037, sztolni 0,0001 → 0,0024, regału 0,0006 → 0,0008, korytarza 0,0002 → 0,0096
+  (próg 0,02). Przy graczu ±1%, poza kratą (−6%): w tym kadrze Rzeźnik i Trzosek stoją na graczu i ruszają się między przebiegami.
+  GPU w kadrze korytarza 6,57 / 6,87 ms z wnękami, 6,55 / 6,91 ms bez (szum); render_cpu +0,07–0,09 ms; wywołania rysowania 228 → 320.
+- Zrzuty: `shots_depth/n3_z1m3/`.
+
 ### N4 — światło w głębi poza wnękami (opcjonalnie)
 
 Tylko jeśli N3 się sprawdzi: dalekie okna i lampy za kratami w ścianach szybów, poświata z głębi tunelu na końcu kadru.

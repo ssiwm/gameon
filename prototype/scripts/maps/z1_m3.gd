@@ -27,6 +27,17 @@ const BACKDROP := [{"kind": "power", "c0": -20, "c1": 215, "z": -82.0}, {"kind":
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): ziemia w zachodniej ślepej ścianie pierwszej podziemnej sali —
 ## z boku drogi, pod lasem przy starcie.
 const DIG_ZONES := [[1, 31, 5, 39, "dirt", 1301]]
+## Wnęki w tylnej ścianie wnętrz (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
+## Posterunek: zaplecze z żarówką. Skład: magazyn za kratą na parterze (antresola to kładka `=`, nie podłoga — tam wnęk nie ma).
+## Podziemia (niski tunel między salami): sztolnia, regał u dołu środkowego szybu i korytarz techniczny,
+## co najmniej 10 kolumn od Ślepców i gniazd ćm i z dala od strefy wydobycia.
+const NICHES := [
+	{"kind": "doorway", "c0": 19, "c1": 21, "r0": 23, "r1": 25, "lit": "bulb"},
+	{"kind": "grate", "c0": 134, "c1": 136, "r0": 23, "r1": 25, "lit": "bulb"},
+	{"kind": "drift", "c0": 51, "c1": 53, "r0": 37, "r1": 39, "d": 8.0, "lit": "mine"},
+	{"kind": "shelf", "c0": 100, "c1": 102, "r0": 38, "r1": 39, "lit": ""},
+	{"kind": "corridor", "c0": 160, "c1": 162, "r0": 37, "r1": 39, "lit": "cage"},
+]
 
 const MAP := [
 	"##............................................................................................................................................................................................##",
