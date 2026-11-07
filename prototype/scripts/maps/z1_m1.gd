@@ -64,6 +64,14 @@ const BACKDROP := [{"kind": "tower", "col": 64, "lit": true}, {"kind": "mast", "
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505) [c0, r0, c1, r1, materiał, ziarno, udział wtrąceń]: skała z żyłą we wschodniej
 ## ślepej ścianie dolnej galerii kopalni (za przegrodą z desek i złomem) — z boku drogi, w ciemności, z dala od szybu wyjściowego.
 const DIG_ZONES := [[296, 36, 305, 44, "rock", 1101, 0.3]]
+## Wnęki w tylnej ścianie kopalni (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
+## Górna galeria: korytarz techniczny ponad 20 kolumn od gniazd ćm. Dolna galeria: regał bez światła obok lampy misji `I`
+## (widać go w jej świetle) i boczna sztolnia przed przegrodą z desek, 14 kolumn od gniazda i z dala od strefy wydobycia.
+const NICHES := [
+	{"kind": "corridor", "c0": 268, "c1": 270, "r0": 31, "r1": 33, "lit": "cage"},
+	{"kind": "shelf", "c0": 246, "c1": 248, "r0": 41, "r1": 42, "lit": ""},
+	{"kind": "drift", "c0": 285, "c1": 287, "r0": 40, "r1": 42, "d": 8.0, "lit": "mine"},
+]
 
 const MAP := [
 	"##................................................................................................................................................................................................................................................................................................................##",

@@ -156,6 +156,18 @@ Każda mapa: zrzuty, `--perfreport`, luminancja, `--nichetest`.
   wywołania rysowania 199 → 295.
 - Zrzuty: `shots_depth/n3/`.
 
+### Wyniki N3 na 1.1 (2026-11-07, `feat/niches-z1m1`, 1.7.509)
+
+- Tylna ściana galerii kopalni 1.1 to ten sam mur co w budynkach, więc pasuje cały katalog. Trzy wnęki: `corridor` 268–270
+  (wiersze 31–33, górna galeria, 22 kolumny od gniazda ćm), `shelf` 246–248 (wiersze 41–42, dolna galeria, 5 kolumn od lampy misji `I` —
+  regał widać w jej świetle, bo bryła wnęki leży też na warstwie świata), `drift` 285–287 (wiersze 40–42, d 8 m, 14 kolumn od gniazda,
+  dwie kolumny przed przegrodą z desek `%`, z dala od strefy wydobycia 296–305). Powierzchnia 1.1 nie ma tła `b` — tam wnęk nie ma.
+- Pomiar (debug, 4K HIGH, z wnękami i z `--noniches`): podłoga przed korytarzem 0,0002 → 0,0002, przed sztolnią 0,0005 → 0,0005,
+  przed regałem 0,0216 → 0,0202 (głębia zamiast oświetlonej ściany); otwór korytarza 0,0003 → 0,0112 (próg 0,02), sztolni 0,0001 → 0,0013,
+  regału 0,0143 → 0,0122 (wnęka ciemniejsza od ściany przy lampie). Przy graczu ±3% — wrogowie poruszają się tuż obok w obu wariantach.
+  GPU w kadrze korytarza 7,01 / 7,24 ms z wnękami, 7,16 / 7,04 ms bez (szum); render_cpu +0,07–0,12 ms; wywołania rysowania 241 → 332.
+- Zrzuty: `shots_depth/n3_z1m1/`.
+
 ### N4 — światło w głębi poza wnękami (opcjonalnie)
 
 Tylko jeśli N3 się sprawdzi: dalekie okna i lampy za kratami w ścianach szybów, poświata z głębi tunelu na końcu kadru.
