@@ -35,11 +35,17 @@ const HUB_PROPS := [
 ## drużyny na ścianie obok (view3d.gd). [E] przy drzwiach przenosi gracza do tunelu strzelnicy.
 const RANGE_DOOR := [54, 30]
 ## Wnęki w tylnej ścianie (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
-## Tylko na dole: na górze i w środku tylną ścianę zajmują meble z hub_decor.gd, tablice, gabloty i szyby.
+## Wnęki na podłodze tylko na dole: na górze i w środku tylną ścianę zajmują meble z hub_decor.gd, tablice, gabloty i szyby.
+## Rodzaje ścienne (N4) wiszą nad meblami: okna sterowni na górze, kratki w świetlicy i w magazynie — w przęsłach między żebrami
+## stropu (`Level3D.interior_ribs`), bo żebro przy otworze znika (`_rib_in_niche`).
 ## Maszynownia: korytarz techniczny między generatorem a sprężarką (rury biegną nad otworem); magazyn: krata obok drzwi strzelnicy.
 const NICHES := [
 	{"kind": "corridor", "c0": 16, "c1": 18, "r0": 27, "r1": 29, "lit": "cage"},
 	{"kind": "grate", "c0": 49, "c1": 51, "r0": 27, "r1": 29, "lit": "bulb"},
+	{"kind": "window", "c0": 38, "c1": 41, "r0": 10, "r1": 11, "lit": "tube"},     # N4: okna sterowni nadajnika wysoko na górze, w przęsłach
+	{"kind": "window", "c0": 46, "c1": 49, "r0": 10, "r1": 11, "lit": "bulb"},     #     między żebrami stropu 36–43–52 (z dala od pracowni i radiostacji)
+	{"kind": "vent", "c0": 41, "c1": 41, "r0": 16, "r1": 16, "lit": "lamp"},       # N4: kratka wentylacji wysoko w świetlicy (między żebrami 35 i 44)
+	{"kind": "vent", "c0": 42, "c1": 42, "r0": 24, "r1": 24, "lit": "lamp"},       # N4: kratka pod stropem magazynu na dole
 ]
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
