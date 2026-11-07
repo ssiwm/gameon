@@ -143,6 +143,12 @@ func _floor_at(c: int, r: int) -> bool:
 func standable(c: int, r: int) -> bool:
 	return _free(c, r) and _free(c, r - 1) and r + 1 < rows and _floor_at(c, r)
 
+## Węzeł grafu w (c, r). Przy łączeniu krawędzi (`build` po dodaniu wszystkich węzłów, krok 3 `rebuild_region` po kroku 2) węzły leżą
+## dokładnie tam, gdzie `standable`, więc to ten sam wynik bez trzech odczytów kafli w GDScript. Skoki pytają o ok. 40 celów na węzeł —
+## na wysokich mapach (1.3) to była większość czasu lokalnej przebudowy (`--maptest`, 2026-11-07).
+func _node(c: int, r: int) -> bool:
+	return c >= 0 and c < cols and r >= 0 and r < rows and has_point(r * cols + c)
+
 ## Punkt na podłodze danego kafla (stopy postaci).
 func cell_floor(cell: Vector2i) -> Vector2:
 	return Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE)
@@ -175,18 +181,18 @@ func _estimate_cost(from_id: int, to_id: int) -> float:
 
 func _link_walk(c: int, r: int) -> void:
 	for dc in [-1, 1]:
-		if standable(c + dc, r):
+		if _node(c + dc, r):
 			_connect(Vector2i(c, r), Vector2i(c + dc, r), Edge.WALK)
 
 ## Zejście z krawędzi: kolumna obok jest wolna, ale bez podłogi — spadamy.
 func _link_fall(c: int, r: int) -> void:
 	for dc in [-1, 1]:
 		var cc: int = c + dc
-		if not (_free(cc, r) and _free(cc, r - 1)) or standable(cc, r):
+		if not (_free(cc, r) and _free(cc, r - 1)) or _node(cc, r):
 			continue
 		var rr := r + 1
 		while rr < rows and _free(cc, rr):
-			if standable(cc, rr):
+			if _node(cc, rr):
 				_connect(Vector2i(c, r), Vector2i(cc, rr), Edge.FALL)
 				break
 			rr += 1
@@ -197,7 +203,7 @@ func _link_drop(c: int, r: int) -> void:
 		return
 	var rr := r + 2
 	while rr < rows and _free(c, rr):
-		if standable(c, rr):
+		if _node(c, rr):
 			_connect(Vector2i(c, r), Vector2i(c, rr), Edge.DROP)
 			return
 		rr += 1
@@ -218,7 +224,7 @@ func _link_jumps(c: int, r: int) -> void:
 				continue
 			var tc: int = c + dc
 			var tr: int = r + dr
-			if not standable(tc, tr):
+			if not _node(tc, tr):
 				continue
 			if not _jump_clear(c, r, tc, tr):
 				continue
@@ -227,9 +233,11 @@ func _link_jumps(c: int, r: int) -> void:
 func _jump_clear(c: int, r: int, tc: int, tr: int) -> bool:
 	# wysokość szczytu: 1 kafel nad wyższym z punktów (start / cel)
 	var peak := mini(r, tr) - 2
-	# pion nad startem do szczytu
+	if peak < 0:
+		return false              # szczyt nad mapą (pion nad startem zawsze sięga szczytu: peak < r)
+	# pion nad startem do szczytu; kafle czytane wprost — start i cel to węzły, więc kolumny i wiersze leżą w mapie
 	for rr in range(peak, r):
-		if not _free(c, rr):
+		if _cell[rr * cols + c] & 1 != 0:
 			return false
 	# korytarz nad trasą (kolumny pośrednie i cel) na wysokości szczytu..lądowania
 	var step := 1 if tc > c else -1
@@ -237,7 +245,7 @@ func _jump_clear(c: int, r: int, tc: int, tr: int) -> bool:
 	while cc != tc:
 		cc += step
 		for rr in range(peak, tr + 1 if cc == tc else mini(r, tr)):
-			if not _free(cc, rr):
+			if _cell[rr * cols + cc] & 1 != 0:
 				return false
 	return true
 
