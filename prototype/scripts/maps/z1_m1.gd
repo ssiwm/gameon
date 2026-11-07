@@ -71,6 +71,8 @@ const NICHES := [
 	{"kind": "corridor", "c0": 268, "c1": 270, "r0": 31, "r1": 33, "lit": "cage"},
 	{"kind": "shelf", "c0": 246, "c1": 248, "r0": 41, "r1": 42, "lit": ""},
 	{"kind": "drift", "c0": 285, "c1": 287, "r0": 40, "r1": 42, "d": 8.0, "lit": "mine"},
+	{"kind": "vent", "c0": 258, "c1": 258, "r0": 27, "r1": 27, "lit": "lamp"},     # N4: kratka pod stropem rampy w dół do kopalni
+	{"kind": "window", "c0": 290, "c1": 293, "r0": 40, "r1": 41, "lit": "bulb"},   # N4: okno dyspozytorni na ślepym wschodnim końcu dolnej galerii
 ]
 
 const MAP := [
