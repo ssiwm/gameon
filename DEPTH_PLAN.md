@@ -197,6 +197,21 @@ Każda mapa: zrzuty, `--perfreport`, luminancja, `--nichetest`.
   GPU w kadrze startu 7,21 / 8,00 ms z wnękami, 8,05 / 8,04 ms bez (szum); render_cpu +0,15 ms; wywołania rysowania 263 → 325.
 - Zrzuty: `shots_depth/n3_z1b1/`.
 
+### Wyniki N3 w kryjówce (2026-11-07, `feat/niches-hub`, 1.7.512)
+
+- Kryjówka ma tło `b` na wszystkich trzech poziomach, ale górny i środkowy zajmują meble z `hub_decor.gd` (grupy co ok. 6 kafli
+  w odstępach między znacznikami stanowisk), tablice wyników i odprawy, gabloty, okno radiostacji i szyby z kratami `=` — tam wnęki
+  nie ma. Dolny poziom nie ma losowych mebli (tylko rekwizyty `HUB_PROPS`), więc dwie wnęki stoją na dole (wiersze 27–29, podłoga
+  w wierszu 30): `corridor` 16–18 w maszynowni między generatorem a sprężarką (rury z `HUB_PROPS` biegną nad otworem) i `grate` 49–51
+  w magazynie obok drzwi strzelnicy (54) — 34 kolumny od siebie, nigdy w jednym kadrze.
+- Pomiar (debug, 4K HIGH, z wnękami i z `--noniches`): krata — otwór 0,0004 → 0,0054, podłoga 0,0060 → 0,0060, gracz 0,1260 → 0,1265.
+  Korytarz — podłoga przed nim 0,0530 → 0,0581 (+10%), gracz 0,1938 → 0,2101 (+8%): w ciepło oświetlonej kryjówce oświetlony korytarz
+  odbija się w SSIL na podłodze i dokłada poświaty (por. decyzja 4); ciemnej sylwetki nie ma, bo ściana wokół otworu jest jasna.
+  GPU w kadrze maszynowni 9,92 / 9,96 ms z wnękami, 9,89 / 9,89 ms bez (+0,05 ms, szum); render_cpu +0,17 ms; wywołania rysowania
+  300 → 444 — więcej niż na misjach, bo lampy kryjówki rzucają cień i bryła wnęki (warstwa świata) trafia też do przebiegów cienia.
+- Etap N3 zamknięty: 19 wnęk na pięciu mapach (1.1: 3, 1.2: 6, 1.3: 5, B1: 3, kryjówka: 2).
+- Zrzuty: `shots_depth/n3_hub/`.
+
 ### N4 — światło w głębi poza wnękami (opcjonalnie)
 
 Tylko jeśli N3 się sprawdzi: dalekie okna i lampy za kratami w ścianach szybów, poświata z głębi tunelu na końcu kadru.
