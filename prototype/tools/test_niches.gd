@@ -1,6 +1,6 @@
 extends SceneTree
 ## Test wnęk w tylnej ścianie wnętrz (`scripts/niches3d.gd`, `DEPTH_PLAN.md`) na wszystkich mapach z scripts/maps:
-## (1) dane: otwór leży na samym tle `b` z podłogą pod spodem (bez okien, lamp, stempli, zawału i znaczników), poza strefami wydobycia,
+## (1) dane: otwór leży na samym tle `b` z podłogą pod spodem (okno i kratka z N4: z murem tła pod spodem; przypadki na sztucznej mapie) (bez okien, lamp, stempli, zawału i znaczników), poza strefami wydobycia,
 ## (2) światło: tylko na warstwę wnęk (`LAYER_NICHE`), bez cienia i bez mgły wolumetrycznej, zasięg kończy się przed ścianą tła; na LOW świateł nie ma,
 ##     a od MEDIUM ma je każda wnęka z „lit” i żadna bez (wszystkie rodzaje z `Niches3D.KINDS`),
 ## (3) bryła wnęki jest na warstwie świata i wnęk (oświetlają ją światła mapy i wnęki),
@@ -36,11 +36,26 @@ func _process(_dt: float) -> bool:
 		total += entries.size()
 		_check_map(f.get_basename(), consts.get("MAP", []), entries, consts.get("DIG_ZONES", []))
 	_check(total > 0, "żadna mapa nie ma wnęki (pilot na z1_m2)")
+	_check_wall_kinds()
 	Level3D.set_niches({}, [])
 	print("wnęk: %d" % total)
 	print("PASS" if _fail == 0 else "FAIL (%d)" % _fail)
 	quit(0 if _fail == 0 else 1)
 	return true
+
+## Rodzaje ścienne (N4) na sztucznej mapie: okno i kratka wiszą w murze tła (pod spodem `b`, nie podłoga), kratka mieści się w jednym kaflu,
+## okno potrzebuje muru wokół (pokój za nim jest większy od otworu), a zwykła wnęka dalej wymaga podłogi i otworu 2 × 2.
+func _check_wall_kinds() -> void:
+	var rows := ["##########", "#bbbbbbbb#", "#bbbbbbbb#", "#bbbbbbbb#", "#bbbbbbbb#", "#bbbbbbbb#", "##########"]
+	var ok := func(e: Dictionary) -> bool: return Niches3D.validate(rows, [e]).is_empty()
+	_check(ok.call({"kind": "window", "c0": 3, "c1": 5, "r0": 2, "r1": 3, "lit": "tube"}), "N4: okno w murze tła odrzucone")
+	_check(not ok.call({"kind": "window", "c0": 3, "c1": 5, "r0": 4, "r1": 5, "lit": "tube"}), "N4: okno nad podłogą przyjęte (to rodzaj ścienny)")
+	_check(not ok.call({"kind": "window", "c0": 1, "c1": 3, "r0": 2, "r1": 3, "lit": "tube"}), "N4: okno przy skale przyjęte (pokój wyjdzie zza muru)")
+	_check(not ok.call({"kind": "window", "c0": 3, "c1": 5, "r0": 2, "r1": 2, "lit": "tube"}), "N4: okno niższe niż 2 kafle przyjęte")
+	_check(ok.call({"kind": "vent", "c0": 4, "c1": 4, "r0": 2, "r1": 2, "lit": "lamp"}), "N4: kratka w jednym kaflu odrzucona")
+	_check(not ok.call({"kind": "vent", "c0": 4, "c1": 4, "r0": 2, "r1": 2, "lit": "bulb"}), "N4: kratka ze światłem „bulb” przyjęta")
+	_check(not ok.call({"kind": "doorway", "c0": 3, "c1": 5, "r0": 2, "r1": 3, "lit": "bulb"}), "N4: zaplecze bez podłogi przyjęte")
+	_check(ok.call({"kind": "doorway", "c0": 3, "c1": 5, "r0": 4, "r1": 5, "lit": "bulb"}), "N4: zaplecze na podłodze odrzucone")
 
 func _check_map(id: String, rows: Array, entries: Array, dig: Array) -> void:
 	for e in Niches3D.validate(rows, entries, dig):

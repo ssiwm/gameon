@@ -25,7 +25,11 @@ const POOL := [28, 110]                    ## kolumny basenu (od, do włącznie)
 ## Wnęki w tylnej ścianie hali (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
 ## Tylko na suchych brzegach (pod otworem musi być lita podłoga) i poza zasięgiem fali przypływu (basen ± `SURGE_PAD`):
 ## zachodni brzeg — zaplecze z żarówką między miejscami startu; wschodni — magazyn za kratą i regał bez światła przy ewakuacji.
+## N4: dwa wysokie okna dyspozytorni pomp nad basenem (wiersze 24–25), nad lukami między wysokimi kładkami — głowy graczy na kładkach
+## nie wchodzą w okno; pod oknami mur tła do kładek.
 const NICHES := [
+	{"kind": "window", "c0": 50, "c1": 53, "r0": 24, "r1": 25, "lit": "tube"},
+	{"kind": "window", "c0": 78, "c1": 81, "r0": 24, "r1": 25, "lit": "bulb"},
 	{"kind": "doorway", "c0": 10, "c1": 12, "r0": 28, "r1": 30, "lit": "bulb"},
 	{"kind": "grate", "c0": 116, "c1": 118, "r0": 28, "r1": 30, "lit": "bulb"},
 	{"kind": "shelf", "c0": 132, "c1": 134, "r0": 29, "r1": 30, "lit": ""},

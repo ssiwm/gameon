@@ -1,6 +1,6 @@
 # Plan: światło w głębi i wnęki w ścianach wnętrz
 
-Status: **plan z 2026-11-06, decyzje 1–3 podjęte tego samego dnia, N0 zrobione; w grze nic nie wdrożone.** Etap po analizie głębi świata
+Status: **N0–N3 w `main` (do 1.7.512, 19 wnęk na pięciu mapach); N4 — pilot okien i kratek (1.7.513), czeka na bramkę.** Etap po analizie głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`, punkty 1 i 3 tego raportu robione razem).
 Stan odniesienia: `main` 1.7.506 (b7c11e3).
 
@@ -212,10 +212,40 @@ Każda mapa: zrzuty, `--perfreport`, luminancja, `--nichetest`.
 - Etap N3 zamknięty: 19 wnęk na pięciu mapach (1.1: 3, 1.2: 6, 1.3: 5, B1: 3, kryjówka: 2).
 - Zrzuty: `shots_depth/n3_hub/`.
 
-### N4 — światło w głębi poza wnękami (opcjonalnie)
+### N4 — światło w głębi poza wnękami
 
-Tylko jeśli N3 się sprawdzi: dalekie okna i lampy za kratami w ścianach szybów, poświata z głębi tunelu na końcu kadru.
-Zasada 1 obowiązuje tak samo.
+Zaczęte 2026-11-07 po N3. Wnęki z N1–N3 stoją na podłodze, więc zostawiają puste wysokie ściany (hala B1 ma mur od wiersza 12
+do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaje ścienne** w tym samym `niches3d.gd` (ta sama warstwa
+`LAYER_NICHE`, te same zasady 1–7, ten sam test):
+
+- `window` — wysokie okno do oświetlonego pokoju za ścianą: rama ze szczeblami co ≤ 0,9 m i ślemieniem, szyby tylko w części pól
+  (reszta wybita), parapet; pokój szerszy od okna o 0,9 m z każdej strony, podłoga 1 m pod parapetem, strop 0,7 m nad nadprożem
+  (boki i strop chowają się za murem tła); szafa sterownicza z lampkami (świecą też na LOW), szafka, rura; lampa `tube` (zimna)
+  albo `bulb` (ciepła) w 3/4 głębokości pokoju, tuż pod nadprożem.
+- `vent` — kratka wentylacyjna w jednym kaflu: mur wokół kratki 0,9 × 0,62 m, rama, ukośne żaluzje, blaszany kanał w głąb,
+  wentylator (łopatki rysują się na tle lampy) i lampa `lamp` na końcu kanału.
+- Walidacja: pod otworem ściennym leży mur tła `b` (nie podłoga ani kładka), wokół okna i nad nim też `b` (pokój jest większy od otworu),
+  kratka może mieć 1 × 1 kafel, okno najmniej 2 × 2.
+- „Poświata z głębi tunelu na końcu kadru” z pierwotnego szkicu jest już w N3: `corridor` i `drift` mają światło tylko w głębi.
+
+### Wyniki pilota N4 (2026-11-07, `feat/depth-n4`, 1.7.513)
+
+- Pilot: dwa okna dyspozytorni pomp wysoko nad basenem B1 — `window` 50–53 (`tube`) i 78–81 (`bulb`), wiersze 24–25, nad lukami
+  między wysokimi kładkami (głowy graczy na kładkach nie wchodzą w okno) — i `vent` w kolumnie 150, wiersz 36, pod stropem niskiego
+  tunelu 1.3 przed trzecim szybem (11 kolumn od gniazda ćm). Okna widać z niskich kładek i z brzegu, kratkę z tunelu.
+- **Lekcja:** pierwsza wersja lampy okna wisiała w połowie głębokości pod stropem pokoju — zasięg (do ściany tła) kończył się
+  dokładnie na tylnej ścianie, więc była czarna, a lampę zasłaniało nadproże (oko kamery jest niżej niż wysokie okno). Lampa stoi
+  teraz w 3/4 głębokości (zasięg 3 m, tylna ściana metr od lampy), 0,55 m pod górną krawędzią otworu.
+- Pomiar (debug, 4K HIGH, z wnękami i z `--noniches`): okno ze świetlówką 0,0000 → 0,0142, z żarówką 0,0000 → 0,0131 luminancji
+  liniowej (próg 0,02; energię zbito z 2,0 do 1,2 i 0,9, bo przy 2,0 wychodziło 0,030 i 0,040), gracz na kładce 0,0522 → 0,0534
+  i 0,0581 → 0,0584; kratka — otwór 0,0031 → 0,0041, podłoga tunelu bez zmian.
+- Wydajność w kadrze pierwszego okna (cztery rundy): GPU 7,42 / 7,18 / 7,15 / 7,12 ms z oknem, 7,12 / 6,81 / 7,05 / 6,69 ms bez —
+  średnio +0,30 ms (zasada 6: < 0,5 ms); render_cpu +0,12 ms; wywołania rysowania 182 → 276. Okno kosztuje więcej niż wnęka
+  na podłodze (szyby przezroczyste, ok. 40 brył ramy, lampek i pokoju). Jeśli N4 pójdzie na inne mapy: szczeble i lampki
+  w `MultiMesh`, szyby w jednej siatce.
+- Zrzuty: `shots_depth/n4/`.
+- **Bramka N4 (do decyzji):** czy okna i kratki zostają i idą na inne mapy (hala stacji 1.2, Skład 1.3, szyby 1.1 i 1.3, kryjówka),
+  czy wystarczy pilot; czy koszt ok. 0,3 ms na okno jest do przyjęcia, czy najpierw scalić bryły okna.
 
 ## Kolejność i rozmiar
 
@@ -225,7 +255,7 @@ Zasada 1 obowiązuje tak samo.
 | N1 | `niches3d.gd`, dane mapy, wycięcie ściany, `--nichetest` | 1 d | PR, podbicie wersji |
 | N2 | pilot w hali 1.2 + A/B | 0,5–1 d | ten sam PR albo następny |
 | N3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
-| N4 | światło w głębi poza wnękami | do oceny | — |
+| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3) | 1 d pilot | 1.7.513, dalej po bramce |
 
 ## Ryzyka
 
