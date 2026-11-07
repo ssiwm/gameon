@@ -34,6 +34,13 @@ const HUB_PROPS := [
 ## Drzwi strzelnicy FPP (RANGE_FPS_PLAN.md, range_door.gd): [kolumna, wiersz podłogi] w tylnej ścianie magazynu na dole, tablica rekordów
 ## drużyny na ścianie obok (view3d.gd). [E] przy drzwiach przenosi gracza do tunelu strzelnicy.
 const RANGE_DOOR := [54, 30]
+## Wnęki w tylnej ścianie (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
+## Tylko na dole: na górze i w środku tylną ścianę zajmują meble z hub_decor.gd, tablice, gabloty i szyby.
+## Maszynownia: korytarz techniczny między generatorem a sprężarką (rury biegną nad otworem); magazyn: krata obok drzwi strzelnicy.
+const NICHES := [
+	{"kind": "corridor", "c0": 16, "c1": 18, "r0": 27, "r1": 29, "lit": "cage"},
+	{"kind": "grate", "c0": 49, "c1": 51, "r0": 27, "r1": 29, "lit": "bulb"},
+]
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)
