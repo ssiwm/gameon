@@ -37,6 +37,7 @@ const NICHES := [
 	{"kind": "drift", "c0": 51, "c1": 53, "r0": 37, "r1": 39, "d": 8.0, "lit": "mine"},
 	{"kind": "shelf", "c0": 100, "c1": 102, "r0": 38, "r1": 39, "lit": ""},
 	{"kind": "corridor", "c0": 160, "c1": 162, "r0": 37, "r1": 39, "lit": "cage"},
+	{"kind": "vent", "c0": 150, "c1": 150, "r0": 36, "r1": 36, "lit": "lamp"},     # N4: kratka pod stropem niskiego tunelu przed trzecim szybem
 ]
 
 const MAP := [

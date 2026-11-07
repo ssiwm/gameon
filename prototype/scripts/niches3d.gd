@@ -24,12 +24,18 @@ const BULB_GLOW := 2.2                      ## jasność bańki (emisja bez cien
 ## doorway — zaplecze z żarówkami i uchylonymi drzwiami; corridor — długi korytarz techniczny z lampami w koszach co 4 m (najmocniejsza głębia);
 ## grate — pomieszczenie za kratą (pręty sylwetką na tle oświetlonego wnętrza); shelf — płytka wnęka z regałami, bez światła;
 ## drift — boczna sztolnia w tunelu: obudowa z drewnianych odrzwi, skalne ściany, tory i daleka lampa górnicza.
+## Rodzaje ścienne (N4, `"floor": false`): otwór wisi w ścianie, pod nim ciągnie się dalej ściana tła `b` (nie podłoga).
+## window — wysokie okno do oświetlonego pomieszczenia za ścianą (pulpit, szafa, rury; podłoga pokoju niżej niż parapet);
+## vent — kratka wentylacyjna w jednym kaflu z kanałem w głąb, wentylatorem i lampą na końcu (światło przez żaluzje).
+## `w_min` / `h_min` — najmniejszy otwór w kaflach (domyślnie 2 × 2).
 const KINDS := {
 	"doorway": {"d": 8.0, "d_min": 2.0, "lit": ["bulb", ""]},
 	"corridor": {"d": 12.0, "d_min": 8.0, "lit": ["cage", ""]},
 	"grate": {"d": 4.5, "d_min": 2.5, "lit": ["bulb", ""]},
 	"shelf": {"d": 1.2, "d_min": 0.8, "lit": [""]},
 	"drift": {"d": 10.0, "d_min": 4.0, "lit": ["mine", ""]},
+	"window": {"d": 4.0, "d_min": 2.5, "lit": ["tube", "bulb", ""], "floor": false},
+	"vent": {"d": 1.8, "d_min": 1.2, "lit": ["lamp", ""], "floor": false, "w_min": 1, "h_min": 1},
 }
 ## Żarówki zaplecza: [głębokość od ściany tła (m), energia, kolor]. Bliska cieplejsza i jaśniejsza, daleka słabsza i chłodniejsza —
 ## dwa punkty światła dają oku skalę odległości. Energię stroi próg jasności otworu (≤ ok. 0,02 luminancji liniowej, `DEPTH_PLAN.md` N0).
@@ -38,6 +44,19 @@ const BULBS := [[3.0, 1.8, Color(1.0, 0.72, 0.42)], [7.0, 1.0, Color(0.86, 0.80,
 const CAGES := [[2.5, 1.5, Color(1.0, 0.74, 0.46)], [6.5, 1.1, Color(0.95, 0.80, 0.62)], [10.5, 0.8, Color(0.82, 0.80, 0.74)], [14.5, 0.6, Color(0.74, 0.76, 0.76)]]
 const GRATE_LAMP := [0.7, 1.2, Color(0.78, 0.88, 0.84)]    ## za kratą: [ułamek głębokości, energia, kolor] — zimna świetlówka magazynu
 const MINE_LAMP := [1.6, 1.3, Color(1.0, 0.78, 0.45)]      ## sztolnia: [m przed czołem, energia, kolor] — daleka lampa górnicza
+## Okno: lampa pokoju za oknem — [ułamek głębokości, energia, kolor] dla „tube” (zimna świetlówka dyspozytorni) i „bulb” (ciepła żarówka).
+## Lampa stoi w 3/4 głębokości: zasięg (do ściany tła) to wtedy 3 m, a tylna ściana pokoju jest metr od lampy — jasna; w połowie
+## głębokości tylna ściana leżała na samym końcu zasięgu i zostawała czarna.
+const WINDOW_LAMPS := {"tube": [0.75, 1.2, Color(0.74, 0.86, 0.84)], "bulb": [0.75, 0.9, Color(1.0, 0.74, 0.46)]}
+const WINDOW_LAMP_Y := 0.55                 ## m: lampa wisi tyle pod górną krawędzią otworu — tuż pod nadprożem, z dołu widać ją w oknie
+const ROOM_DROP := 1.0                      ## m: podłoga pokoju za oknem leży tyle pod parapetem
+const ROOM_RISE := 0.7                      ## m: strop pokoju tyle nad nadprożem (z oka nad kadrem widać głębiej w pokój)
+const ROOM_SIDE := 0.9                      ## m: pokój szerszy od okna o tyle z każdej strony (boki chowają się za murem)
+const MULLION := 0.9                        ## m: najdalszy rozstaw szczebli ramy okna
+const VENT_LAMP := [1.0, Color(1.0, 0.80, 0.56)]          ## kratka: [energia, kolor] — lampa na końcu kanału
+const VENT_W := 0.9                         ## m: szerokość kratki (wysokość VENT_H); reszta kafla to mur
+const VENT_H := 0.62
+const SLAT_STEP := 0.09                     ## m: rozstaw żaluzji kratki
 const BAR_STEP := 0.14                      ## m: rozstaw prętów kraty
 const SET_STEP := 2.0                       ## m: rozstaw odrzwi obudowy w sztolni
 
@@ -65,8 +84,9 @@ static func forest_holes(entries: Array) -> Array:
 				WALL_Z + 0.5, WALL_Z - depth_of(d) - TREE_MARGIN])
 	return out
 
-## Błędy wpisów względem mapy (pusta tablica = w porządku): otwór na samym tle `b`, z podłogą pod spodem, bez okien `|`, lamp `I`,
-## stempli `!`, stref zawału `^` ani znaczników w kaflach otworu, poza strefami wydobycia; rodzaj, światło i głębokość z `KINDS`.
+## Błędy wpisów względem mapy (pusta tablica = w porządku): otwór na samym tle `b`, z podłogą pod spodem (rodzaje ścienne: ze ścianą
+## tła `b` pod spodem), bez okien `|`, lamp `I`, stempli `!`, stref zawału `^` ani znaczników w kaflach otworu, poza strefami wydobycia;
+## rodzaj, światło, głębokość i najmniejszy otwór z `KINDS`.
 static func validate(rows: Array, entries: Array, dig_zones: Array = []) -> Array:
 	var errs: Array = []
 	for i in entries.size():
@@ -88,15 +108,29 @@ static func validate(rows: Array, entries: Array, dig_zones: Array = []) -> Arra
 			errs.append(tag + ": światło „%s” niedozwolone dla rodzaju %s" % [d.get("lit", ""), kind])
 		if depth_of(d) < float(k["d_min"]):
 			errs.append(tag + ": za płytka (d < %.1f m dla rodzaju %s)" % [float(k["d_min"]), kind])
-		if c1 - c0 < 1 or r1 - r0 < 1:
-			errs.append(tag + ": otwór węższy lub niższy niż 2 kafle")
+		var w_min := int(k.get("w_min", 2))
+		var h_min := int(k.get("h_min", 2))
+		if c1 - c0 + 1 < w_min or r1 - r0 + 1 < h_min:
+			errs.append(tag + ": otwór mniejszy niż %d × %d kafli dla rodzaju %s" % [w_min, h_min, kind])
+		var on_floor := bool(k.get("floor", true))
 		for c in range(c0, c1 + 1):
 			for r in range(r0, r1 + 1):
 				var ch := Level3D._ch(rows, c, r)
 				if ch != "b":
 					errs.append(tag + ": kafel (%d, %d) to „%s”, nie samo tło `b`" % [c, r, ch])
-			if not Level3D.is_solid_ch(Level3D._ch(rows, c, r1 + 1)):
+			var below := Level3D._ch(rows, c, r1 + 1)
+			if on_floor and not Level3D.is_solid_ch(below):
 				errs.append(tag + ": pod kolumną %d nie ma podłogi" % c)
+			elif not on_floor and below != "b":
+				errs.append(tag + ": pod kolumną %d jest „%s”, a rodzaj %s wisi w ścianie tła `b`" % [c, below, kind])
+		if kind == "window":                                  # pokój za oknem jest szerszy i wyższy od otworu: wokół musi stać mur tła
+			for r in range(r0 - 1, r1 + 1):
+				for c in [c0 - 1, c1 + 1]:
+					if Level3D._ch(rows, c, r) != "b":
+						errs.append(tag + ": obok okna kafel (%d, %d) to „%s”, a pokój chowa się za murem tła `b`" % [c, r, Level3D._ch(rows, c, r)])
+			for c in range(c0, c1 + 1):
+				if Level3D._ch(rows, c, r0 - 1) != "b":
+					errs.append(tag + ": nad oknem kafel (%d, %d) to „%s”, nie mur tła `b`" % [c, r0 - 1, Level3D._ch(rows, c, r0 - 1)])
 		for z in dig_zones:
 			var zr := Rect2i(int(z[0]), int(z[1]), int(z[2]) - int(z[0]) + 1, int(z[3]) - int(z[1]) + 1)
 			if zr.intersects(Rect2i(c0 - 1, r0 - 1, c1 - c0 + 3, r1 - r0 + 3)):
@@ -124,6 +158,10 @@ static func build(parent: Node3D, rows: Array, entries: Array, quality := 2) -> 
 				_build_shelf(root, g, rng)
 			"drift":
 				_build_drift(root, d, g, rng, quality)
+			"window":
+				_build_window(root, d, g, rng, quality)
+			"vent":
+				_build_vent(root, d, g, rng, quality)
 			_:
 				_build_doorway(root, d, g, rng, quality)
 		for n in root.find_children("*", "GeometryInstance3D", true, false):
@@ -415,6 +453,141 @@ static func _build_drift(root: Node3D, d: Dictionary, g: Dictionary, rng: Random
 	_box(root, "LampHook", Vector3(at.x - 0.005, at.y + 0.05, lz - 0.005), Vector3(at.x + 0.005, g.y_floor + post_h, lz + 0.005), m.metal)
 	_box(root, "LampHood", at + Vector3(-0.05, 0.03, -0.05), at + Vector3(0.05, 0.08, 0.05), m.metal)
 	_lamp(root, at, float(MINE_LAMP[1]), MINE_LAMP[2], quality, 0.045, 2.4)
+
+## window (N4): wysokie okno w ramie ze szczeblami i resztkami szyb, za nim pokój szerszy od okna (boki chowają się za murem),
+## z podłogą pod parapetem: szafa sterownicza z lampkami pod tylną ścianą, szafka, rura pod stropem i lampa („tube” albo „bulb”).
+static func _build_window(root: Node3D, d: Dictionary, g: Dictionary, rng: RandomNumberGenerator, quality: int) -> void:
+	var m := _mats()
+	_frame(root, g, rng, m.wall, m.conc)
+	_box(root, "Sill", Vector3(g.ix0 - 0.08, g.y_floor - 0.07, WALL_Z - 0.05), Vector3(g.ix1 + 0.08, g.y_floor + 0.06, g.front + 0.07), m.conc)
+	# rama: obwód, szczeble co ≤ MULLION i ślemię na 55% wysokości; szyby tylko w części pól (reszta wybita)
+	var fz: float = WALL_Z + 0.10
+	var w: float = g.ix1 - g.ix0
+	var h: float = g.iy1 - g.y_floor
+	var n := maxi(2, int(ceil(w / MULLION)))
+	var ty: float = g.y_floor + h * 0.55
+	_box(root, "FrameB", Vector3(g.ix0, g.y_floor + 0.06, fz - 0.03), Vector3(g.ix1, g.y_floor + 0.11, fz + 0.03), m.metal)
+	_box(root, "FrameT", Vector3(g.ix0, g.iy1 - 0.05, fz - 0.03), Vector3(g.ix1, g.iy1, fz + 0.03), m.metal)
+	_box(root, "Transom", Vector3(g.ix0, ty - 0.025, fz - 0.03), Vector3(g.ix1, ty + 0.025, fz + 0.03), m.metal)
+	for i in n + 1:
+		var mx: float = g.ix0 + w * float(i) / float(n)
+		_box(root, "Mullion%d" % i, Vector3(mx - 0.025, g.y_floor + 0.06, fz - 0.03), Vector3(mx + 0.025, g.iy1, fz + 0.03), m.metal)
+	var glass := StandardMaterial3D.new()
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass.albedo_color = Color(0.50, 0.56, 0.55, 0.16)
+	glass.roughness = 0.25
+	glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for i in n:
+		for j in 2:
+			if rng.randf() < 0.35:
+				continue                                      # wybita szyba
+			var px0: float = g.ix0 + w * float(i) / float(n) + 0.025
+			var px1: float = g.ix0 + w * float(i + 1) / float(n) - 0.025
+			var py0: float = (g.y_floor + 0.11) if j == 0 else (ty + 0.025)
+			var py1: float = (ty - 0.025) if j == 0 else (g.iy1 - 0.05)
+			_box(root, "Pane%d_%d" % [i, j], Vector3(px0, py0, fz - 0.004), Vector3(px1, py1, fz + 0.004), glass)
+	# pokój: szerszy od okna i wyższy (strop nad nadprożem, podłoga pod parapetem), od tylnej płaszczyzny ściany tła w głąb
+	var rx0: float = g.x0 - ROOM_SIDE
+	var rx1: float = g.x1 + ROOM_SIDE
+	var ry0: float = g.y_floor - ROOM_DROP
+	var ry1: float = g.y_top + ROOM_RISE
+	_box(root, "Floor", Vector3(rx0 - SKIN, ry0 - SKIN, g.z_back - SKIN), Vector3(rx1 + SKIN, ry0, WALL_Z), m.conc)
+	_box(root, "Ceiling", Vector3(rx0 - SKIN, ry1, g.z_back - SKIN), Vector3(rx1 + SKIN, ry1 + SKIN, WALL_Z), m.conc)
+	_box(root, "SideL", Vector3(rx0 - SKIN, ry0, g.z_back - SKIN), Vector3(rx0, ry1, WALL_Z), m.wall)
+	_box(root, "SideR", Vector3(rx1, ry0, g.z_back - SKIN), Vector3(rx1 + SKIN, ry1, WALL_Z), m.wall)
+	_box(root, "Back", Vector3(rx0, ry0, g.z_back - SKIN), Vector3(rx1, ry1, g.z_back), m.wall)
+	# szafa sterownicza pod tylną ścianą: korpus, pulpit i lampki (świecą też na LOW)
+	var cx: float = (g.ix0 + g.ix1) * 0.5 + rng.randf_range(-0.3, 0.3)
+	var cw := minf(2.2, rx1 - rx0 - 1.4)
+	_box(root, "Console", Vector3(cx - cw * 0.5, ry0, g.z_back + 0.05), Vector3(cx + cw * 0.5, ry0 + 1.9, g.z_back + 0.55), m.metal)
+	_box(root, "Desk", Vector3(cx - cw * 0.5, ry0 + 0.85, g.z_back + 0.55), Vector3(cx + cw * 0.5, ry0 + 0.95, g.z_back + 0.95), m.metal)
+	var cols := [Color(0.3, 1.0, 0.45), Color(1.0, 0.25, 0.2), Color(1.0, 0.75, 0.3)]
+	for k in 7:
+		var lm := StandardMaterial3D.new()
+		lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		lm.albedo_color = (cols[rng.randi_range(0, cols.size() - 1)] as Color) * 1.6
+		var lx := cx - cw * 0.4 + cw * 0.8 * rng.randf()
+		var ly := ry0 + 1.15 + 0.6 * rng.randf()
+		_box(root, "Led%d" % k, Vector3(lx - 0.025, ly - 0.02, g.z_back + 0.55), Vector3(lx + 0.025, ly + 0.02, g.z_back + 0.57), lm)
+	_prop(root, "locker", Vector3(rx0 + 0.55, ry0, g.z_back + 0.4), 1.9, rng.randf_range(-0.05, 0.05))
+	var pipe := CylinderMesh.new()                            # rura w poprzek pokoju pod stropem
+	pipe.top_radius = 0.08
+	pipe.bottom_radius = 0.08
+	pipe.height = rx1 - rx0
+	pipe.radial_segments = 10
+	var pm := MeshInstance3D.new()
+	pm.name = "RoomPipe"
+	pm.mesh = pipe
+	pm.material_override = m.metal
+	pm.rotation.z = PI * 0.5
+	pm.position = Vector3((rx0 + rx1) * 0.5, ry1 - 0.25, g.z_back + 0.3)
+	root.add_child(pm)
+	var lit := String(d.get("lit", ""))
+	if not WINDOW_LAMPS.has(lit):
+		return
+	var wl: Array = WINDOW_LAMPS[lit]
+	var at := Vector3((g.ix0 + g.ix1) * 0.5 - 0.4, g.y_top - WINDOW_LAMP_Y, WALL_Z - g.depth * float(wl[0]))
+	if lit == "tube":
+		_box(root, "Tube", at + Vector3(-0.5, -0.02, -0.04), at + Vector3(0.5, 0.03, 0.04), m.metal)
+		for sx in [-0.45, 0.45]:
+			_box(root, "TubeChain", at + Vector3(sx - 0.004, 0.03, -0.004), Vector3(at.x + sx + 0.004, ry1, at.z + 0.004), m.metal)
+		_lamp(root, at + Vector3(0.0, -0.05, 0.0), float(wl[1]), wl[2], quality, 0.04)
+	else:
+		_box(root, "Cord", at + Vector3(-0.006, 0.08, -0.006), Vector3(at.x + 0.006, ry1, at.z + 0.006), m.metal)
+		_lamp(root, at, float(wl[1]), wl[2], quality)
+
+## vent (N4): kratka w jednym kaflu — mur wokół kratki, rama i ukośne żaluzje, za nimi blaszany kanał w głąb z wentylatorem
+## i lampą na końcu („lamp”): światło widać w szczelinach żaluzji, łopatki wentylatora rysują się na jego tle.
+static func _build_vent(root: Node3D, d: Dictionary, g: Dictionary, rng: RandomNumberGenerator, quality: int) -> void:
+	var m := _mats()
+	var cx: float = (g.x0 + g.x1) * 0.5
+	var cy: float = (g.y_floor + g.y_top) * 0.5 + rng.randf_range(-0.1, 0.1)
+	var gw := minf(VENT_W, g.x1 - g.x0 - 0.3)
+	var gh := minf(VENT_H, g.y_top - g.y_floor - 0.3)
+	var gx0 := cx - gw * 0.5
+	var gx1 := cx + gw * 0.5
+	var gy0 := cy - gh * 0.5
+	var gy1 := cy + gh * 0.5
+	# mur w kaflu wokół kratki (płyta ściany tła w tym kaflu jest wycięta)
+	_box(root, "WallL", Vector3(g.x0, g.y_floor, WALL_Z), Vector3(gx0, g.y_top, g.front), m.wall)
+	_box(root, "WallR", Vector3(gx1, g.y_floor, WALL_Z), Vector3(g.x1, g.y_top, g.front), m.wall)
+	_box(root, "WallB", Vector3(gx0, g.y_floor, WALL_Z), Vector3(gx1, gy0, g.front), m.wall)
+	_box(root, "WallT", Vector3(gx0, gy1, WALL_Z), Vector3(gx1, g.y_top, g.front), m.wall)
+	# rama kratki wystająca z lica i żaluzje pochylone w dół (od kamery widać szczeliny ze światłem)
+	var fz: float = g.front + 0.03
+	_box(root, "RimB", Vector3(gx0 - 0.05, gy0 - 0.05, g.front - 0.02), Vector3(gx1 + 0.05, gy0, fz), m.metal)
+	_box(root, "RimT", Vector3(gx0 - 0.05, gy1, g.front - 0.02), Vector3(gx1 + 0.05, gy1 + 0.05, fz), m.metal)
+	_box(root, "RimL", Vector3(gx0 - 0.05, gy0, g.front - 0.02), Vector3(gx0, gy1, fz), m.metal)
+	_box(root, "RimR", Vector3(gx1, gy0, g.front - 0.02), Vector3(gx1 + 0.05, gy1, fz), m.metal)
+	var ns := int(floor(gh / SLAT_STEP))
+	for i in ns:
+		var sy := gy0 + SLAT_STEP * (float(i) + 0.5)
+		var sl := _box(root, "Slat%d" % i, Vector3(gx0, sy - 0.006, g.front - 0.09), Vector3(gx1, sy + 0.006, g.front - 0.01), m.metal)
+		sl.rotation.x = deg_to_rad(-32.0)
+	# kanał: blaszane ścianki od lica w głąb i zaślepka na końcu
+	var e := 0.04
+	_box(root, "DuctB", Vector3(gx0 - e, gy0 - e - 0.03, g.z_back), Vector3(gx1 + e, gy0 - e, g.front - 0.1), m.metal)
+	_box(root, "DuctT", Vector3(gx0 - e, gy1 + e, g.z_back), Vector3(gx1 + e, gy1 + e + 0.03, g.front - 0.1), m.metal)
+	_box(root, "DuctL", Vector3(gx0 - e - 0.03, gy0 - e, g.z_back), Vector3(gx0 - e, gy1 + e, g.front - 0.1), m.metal)
+	_box(root, "DuctR", Vector3(gx1 + e, gy0 - e, g.z_back), Vector3(gx1 + e + 0.03, gy1 + e, g.front - 0.1), m.metal)
+	_box(root, "DuctEnd", Vector3(gx0 - e, gy0 - e, g.z_back - 0.03), Vector3(gx1 + e, gy1 + e, g.z_back), m.metal)
+	# wentylator w połowie kanału: piasta i trzy łopatki (sylwetka na tle lampy)
+	var fan := Node3D.new()
+	fan.name = "Fan"
+	fan.position = Vector3(cx, cy, WALL_Z - g.depth * 0.45)
+	fan.rotation.z = rng.randf_range(0.0, TAU)
+	root.add_child(fan)
+	_box(fan, "FanHub", Vector3(-0.05, -0.05, -0.03), Vector3(0.05, 0.05, 0.03), m.metal)
+	var blade_r := minf(gw, gh) * 0.46
+	for k in 3:
+		var arm := Node3D.new()
+		arm.rotation.z = float(k) * TAU / 3.0
+		fan.add_child(arm)
+		var bl := _box(arm, "Blade%d" % k, Vector3(0.04, -0.06, -0.01), Vector3(blade_r, 0.06, 0.01), m.metal)
+		bl.rotation.x = deg_to_rad(25.0)
+	if String(d.get("lit", "")) != "lamp":
+		return
+	_lamp(root, Vector3(cx, cy, g.z_back + 0.3), float(VENT_LAMP[0]), VENT_LAMP[1], quality, 0.05)
 
 ## Pudło między dwoma narożnikami (dowolna kolejność współrzędnych).
 static func _box(root: Node3D, nm: String, a: Vector3, b: Vector3, mat: Material) -> MeshInstance3D:
