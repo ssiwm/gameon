@@ -46,6 +46,11 @@ const NICHES := [
 	{"kind": "drift", "c0": 195, "c1": 197, "r0": 48, "r1": 50, "d": 8.0, "lit": "mine"},
 	{"kind": "grate", "c0": 211, "c1": 213, "r0": 37, "r1": 39, "lit": "bulb"},
 	{"kind": "shelf", "c0": 259, "c1": 261, "r0": 49, "r1": 50, "lit": ""},
+	{"kind": "window", "c0": 93, "c1": 96, "r0": 20, "r1": 21, "lit": "tube"},     # N4: okno zaplecza nad drzwiami hali stacji
+	{"kind": "window", "c0": 190, "c1": 193, "r0": 32, "r1": 33, "lit": "tube"},   # N4: okno sterowni nad prawą kładką podziemnej hali
+	{"kind": "window", "c0": 223, "c1": 226, "r0": 18, "r1": 19, "lit": "bulb"},   # N4: okno na piętrze pompowni
+	{"kind": "vent", "c0": 124, "c1": 124, "r0": 46, "r1": 46, "lit": "lamp"},     # N4: kratki pod stropem tunelu, w środku przęseł
+	{"kind": "vent", "c0": 228, "c1": 228, "r0": 46, "r1": 46, "lit": "lamp"},
 ]
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od
 ## podziemnej hali — wchodzi się tylko przez rozbite przejście, z boku drogi do generatorów.

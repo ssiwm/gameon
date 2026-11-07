@@ -118,11 +118,12 @@ func _check_map(id: String, rows: Array, entries: Array, dig: Array) -> void:
 	var fr := Node3D.new()
 	Level3D.build_forest(fr, rows)
 	fr.free()
-	var before := 0
-	for h in holes:
-		for o in Level3D.forest_origins:
+	var before := 0                                  # każde drzewo raz — korytarze sąsiednich wnęk z zapasem `TREE_MARGIN` nachodzą na siebie
+	for o in Level3D.forest_origins:
+		for h in holes:
 			if o.x >= float(h[0]) and o.x <= float(h[1]) and o.z <= float(h[2]) and o.z >= float(h[3]):
 				before += 1
+				break
 	var all_before := Level3D.forest_origins.size()
 	Level3D.set_niches(cells, holes)
 	fr = Node3D.new()

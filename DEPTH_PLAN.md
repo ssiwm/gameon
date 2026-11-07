@@ -1,6 +1,7 @@
 # Plan: światło w głębi i wnęki w ścianach wnętrz
 
-Status: **N0–N3 w `main` (do 1.7.512, 19 wnęk na pięciu mapach); N4 — pilot okien i kratek (1.7.513), czeka na bramkę.** Etap po analizie głębi świata
+Status: **N0–N3 w `main` (do 1.7.512, 19 wnęk na pięciu mapach); N4 — pilot okien i kratek w `main` (1.7.513), bramka przyjęta
+2026-11-07: okna i kratki idą na inne mapy; scalone bryły i 1.2 w 1.7.514, dalej po jednym PR na mapę.** Etap po analizie głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`, punkty 1 i 3 tego raportu robione razem).
 Stan odniesienia: `main` 1.7.506 (b7c11e3).
 
@@ -238,14 +239,44 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
   teraz w 3/4 głębokości (zasięg 3 m, tylna ściana metr od lampy), 0,55 m pod górną krawędzią otworu.
 - Pomiar (debug, 4K HIGH, z wnękami i z `--noniches`): okno ze świetlówką 0,0000 → 0,0142, z żarówką 0,0000 → 0,0131 luminancji
   liniowej (próg 0,02; energię zbito z 2,0 do 1,2 i 0,9, bo przy 2,0 wychodziło 0,030 i 0,040), gracz na kładce 0,0522 → 0,0534
-  i 0,0581 → 0,0584; kratka — otwór 0,0031 → 0,0041, podłoga tunelu bez zmian.
+  i 0,0581 → 0,0584; kratka — otwór 0,0031 → 0,0041, podłoga tunelu bez zmian. **Poprawka (1.7.514):** 0,0041 to średnia
+  strefy pomiaru znacznie większej od kratki; w samym otworze kratki (ok. 115 × 80 px w 4K, obrys różnicy zrzutów) wychodzi
+  0,0000 → 0,085. Kratka czyta się więc jak mała lampa pod stropem — próg 0,02 pilnuje sylwetek przed otworami na wysokości
+  postaci, a kratka wisi 3–4 kafle nad podłogą tunelu, poza głowami.
 - Wydajność w kadrze pierwszego okna (cztery rundy): GPU 7,42 / 7,18 / 7,15 / 7,12 ms z oknem, 7,12 / 6,81 / 7,05 / 6,69 ms bez —
   średnio +0,30 ms (zasada 6: < 0,5 ms); render_cpu +0,12 ms; wywołania rysowania 182 → 276. Okno kosztuje więcej niż wnęka
   na podłodze (szyby przezroczyste, ok. 40 brył ramy, lampek i pokoju). Jeśli N4 pójdzie na inne mapy: szczeble i lampki
   w `MultiMesh`, szyby w jednej siatce.
 - Zrzuty: `shots_depth/n4/`.
-- **Bramka N4 (do decyzji):** czy okna i kratki zostają i idą na inne mapy (hala stacji 1.2, Skład 1.3, szyby 1.1 i 1.3, kryjówka),
-  czy wystarczy pilot; czy koszt ok. 0,3 ms na okno jest do przyjęcia, czy najpierw scalić bryły okna.
+- **Bramka N4 (przyjęta 2026-11-07):** okna i kratki idą na inne mapy (hala stacji 1.2, Skład 1.3, szyby 1.1 i 1.3, kryjówka),
+  po jednym PR na mapę; najpierw scalenie brył, żeby koszt okna nie rósł z liczbą okien.
+
+### Wyniki N4 na 1.2 i scalenie brył (2026-11-07, `feat/n4-merge-z1m2`, 1.7.514)
+
+- **Scalenie:** `Niches3D._merge_boxes` po zbudowaniu wnęki łączy wszystkie bryły `BoxMesh` z tym samym materiałem w jedną siatkę
+  (`SurfaceTool.append_from` z transformacją względem korzenia wnęki); walce, szyby z przezroczystością i lampy zostają osobno,
+  lampki szafy sterowniczej biorą trzy wspólne materiały zamiast siedmiu. Materiały PBR są triplanarne w przestrzeni świata, więc
+  obraz się nie zmienia (zrzuty kontrolne B1, 1.3, 1.2 i kryjówki: średnia różnica 0,01–0,8 / 255 — deszcz i cząsteczki).
+  Okno na B1: wywołania rysowania 276 → 195 (bez wnęk 183), GPU 7,32 / 7,33 ms z oknem i 7,37 / 7,30 ms bez — w szumie
+  (wcześniej +0,30 ms). Kryjówka w kadrze maszynowni: 444 → 334 (bez wnęk 300). MultiMesh niepotrzebny.
+- **1.2:** trzy okna i dwie kratki —
+  `window` 93–96 w. 20–21 (`tube`, zaplecze nad drzwiami hali stacji, obok pilota N2 `doorway` 88–91; 10 kolumn od Ślepca),
+  `window` 190–193 w. 32–33 (`tube`, sterownia nad prawą kładką podziemnej hali, z kładki przerwa 2 kafle),
+  `window` 223–226 w. 18–19 (`bulb`, piętro pompowni, przerwa 2 kafle nad podłogą piętra),
+  `vent` 124 i 228 w. 46 (`lamp`, pod stropem tunelu drezyny w środku przęseł między słupami `w` co 8 kolumn, 15–16 kolumn od `Z`).
+  Kandydaci: `shots_depth/window_spots.py` i nowy `shots_depth/vent_spots.py` (kafel `b` z pierścieniem `b`, 1–2 wiersze pod
+  stropem, z dala od L/Z i od stojących wnęk).
+- Pomiar (debug, 4K HIGH, obrys różnicy zrzutów w stałym prostokącie wokół otworu — `lumbox.py`, bo deszcz i przestawione napisy
+  na ścianie psują obrys z całego kadru): okna 0,0069 → 0,0175 (hala stacji), 0,0056 → 0,0168 (podziemna hala), 0,0003 → 0,0143
+  (pompownia); pas pod oknem bez zmian (±0,001). Kratki 0,0000 → 0,081 i 0,086 — jak kratka pilota na 1.3.
+- Wydajność (dwie i cztery rundy): kadr hali stacji (okno + drzwi) GPU 7,59 / 7,71 ms z wnękami, 7,58 / 7,54 ms bez — +0,09 ms,
+  wywołania 320 → 348; kadr pompowni 8,35 / 8,65 / 8,02 / 8,25 ms z wnękami, 8,12 / 8,19 / 8,28 / 8,25 ms bez — +0,11 ms,
+  439 → 459.
+- Uwaga: napisy na ścianie tła (`Level3D.build_decals`) losują miejsca z pominięciem otworów wnęk, więc z wnękami i z `--noniches`
+  stoją gdzie indziej (np. SILENCE nad oknem pompowni) — to nie błąd, ale psuje obrys różnicy z całego kadru.
+- `tools/test_niches.gd`: korytarze sąsiednich wnęk z zapasem `TREE_MARGIN` nachodzą na siebie (okno 93–96 i drzwi 88–91), więc
+  liczenie drzew w korytarzach liczy teraz każde drzewo raz.
+- Zrzuty: `shots_depth/n4_z1m2/` (`m2_sheet.jpg`, `m2_zoom.jpg`, kontrolne po scaleniu w `scalenie/`).
 
 ## Kolejność i rozmiar
 
@@ -255,7 +286,7 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
 | N1 | `niches3d.gd`, dane mapy, wycięcie ściany, `--nichetest` | 1 d | PR, podbicie wersji |
 | N2 | pilot w hali 1.2 + A/B | 0,5–1 d | ten sam PR albo następny |
 | N3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
-| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3) | 1 d pilot | 1.7.513, dalej po bramce |
+| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3; dalej 1.2, Skład 1.3, szyby, kryjówka) | 1 d pilot + po 0,5 d na mapę | 1.7.513 pilot, 1.7.514 scalenie i 1.2, dalej po jednym PR na mapę |
 
 ## Ryzyka
 
