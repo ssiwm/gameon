@@ -44,13 +44,22 @@ func _process(_dt: float) -> bool:
 	return true
 
 ## Rodzaje ścienne (N4) na sztucznej mapie: okno i kratka wiszą w murze tła (pod spodem `b`, nie podłoga), kratka mieści się w jednym kaflu,
-## okno potrzebuje muru wokół (pokój za nim jest większy od otworu), a zwykła wnęka dalej wymaga podłogi i otworu 2 × 2.
+## okno potrzebuje wokół muru albo litego kafla (pokój za nim jest większy od otworu; powietrze i kładka odpadają), a zwykła wnęka
+## dalej wymaga podłogi i otworu 2 × 2.
 func _check_wall_kinds() -> void:
 	var rows := ["##########", "#bbbbbbbb#", "#bbbbbbbb#", "#bbbbbbbb#", "#bbbbbbbb#", "#bbbbbbbb#", "##########"]
 	var ok := func(e: Dictionary) -> bool: return Niches3D.validate(rows, [e]).is_empty()
 	_check(ok.call({"kind": "window", "c0": 3, "c1": 5, "r0": 2, "r1": 3, "lit": "tube"}), "N4: okno w murze tła odrzucone")
 	_check(not ok.call({"kind": "window", "c0": 3, "c1": 5, "r0": 4, "r1": 5, "lit": "tube"}), "N4: okno nad podłogą przyjęte (to rodzaj ścienny)")
-	_check(not ok.call({"kind": "window", "c0": 1, "c1": 3, "r0": 2, "r1": 3, "lit": "tube"}), "N4: okno przy skale przyjęte (pokój wyjdzie zza muru)")
+	_check(ok.call({"kind": "window", "c0": 1, "c1": 3, "r0": 1, "r1": 2, "lit": "tube"}), "N4: okno pod stropem i przy skale odrzucone (lity kafel zasłania pokój)")
+	var open := rows.duplicate()
+	open[1] = ".bbbbbbbb#"
+	open[2] = ".bbbbbbbb#"
+	open[3] = ".bbbbbbbb#"
+	_check(not Niches3D.validate(open, [{"kind": "window", "c0": 1, "c1": 3, "r0": 2, "r1": 3, "lit": "tube"}]).is_empty(), "N4: okno przy otwartym powietrzu przyjęte (pokój wyjdzie zza muru)")
+	var deck := rows.duplicate()
+	deck[1] = "#b====bbb#"
+	_check(not Niches3D.validate(deck, [{"kind": "window", "c0": 3, "c1": 5, "r0": 2, "r1": 3, "lit": "tube"}]).is_empty(), "N4: okno pod kładką przyjęte")
 	_check(not ok.call({"kind": "window", "c0": 3, "c1": 5, "r0": 2, "r1": 2, "lit": "tube"}), "N4: okno niższe niż 2 kafle przyjęte")
 	_check(ok.call({"kind": "vent", "c0": 4, "c1": 4, "r0": 2, "r1": 2, "lit": "lamp"}), "N4: kratka w jednym kaflu odrzucona")
 	_check(not ok.call({"kind": "vent", "c0": 4, "c1": 4, "r0": 2, "r1": 2, "lit": "bulb"}), "N4: kratka ze światłem „bulb” przyjęta")
