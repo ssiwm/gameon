@@ -35,9 +35,18 @@ const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(648, 
 
 ## Tło 3D (`backdrop3d.gd`, kosmetyka): maszty stacji nad wschodnią częścią mapy i linia energetyczna, która ją zasila.
 const BACKDROP := [{"kind": "power", "c0": -20, "c1": 300, "z": -78.0}, {"kind": "mast", "col": 248, "z": -100.0, "h": 85.0}, {"kind": "mast", "col": 214, "z": -150.0}]
-## Wnęki ze światłem w tylnej ścianie wnętrz (`niches3d.gd`, `DEPTH_PLAN.md` N2): korytarz zaplecza w hali stacji, parter pod kratą,
-## między kałużą oleju (kolumny 84–87) a skrzynią `k` (kolumna 92). Czysta oprawa: bez kolizji i bez światła na planie gry.
-const NICHES := [{"kind": "doorway", "c0": 88, "c1": 91, "r0": 23, "r1": 25, "d": 8.0, "lit": "bulb"}]
+## Wnęki ze światłem w tylnej ścianie wnętrz (`niches3d.gd`, `DEPTH_PLAN.md` N2–N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
+## Hala stacji: zaplecze (pilot N2) na parterze pod kratą, między kałużą oleju (kolumny 84–87) a skrzynią `k` (kolumna 92).
+## Tunel drezyny (wiersze 45–50): sztolnie i korytarz techniczny między stemplami `w`, co najmniej 40 kolumn od siebie i 10 od Ślepców
+## i gniazd ćm (zasada 4); regał bez światła przy końcu tunelu. Dolna hala: magazyn za kratą przy prawym końcu.
+const NICHES := [
+	{"kind": "doorway", "c0": 88, "c1": 91, "r0": 23, "r1": 25, "d": 8.0, "lit": "bulb"},
+	{"kind": "drift", "c0": 107, "c1": 109, "r0": 48, "r1": 50, "lit": "mine"},
+	{"kind": "corridor", "c0": 155, "c1": 157, "r0": 48, "r1": 50, "lit": "cage"},
+	{"kind": "drift", "c0": 195, "c1": 197, "r0": 48, "r1": 50, "d": 8.0, "lit": "mine"},
+	{"kind": "grate", "c0": 211, "c1": 213, "r0": 37, "r1": 39, "lit": "bulb"},
+	{"kind": "shelf", "c0": 259, "c1": 261, "r0": 49, "r1": 50, "lit": ""},
+]
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od
 ## podziemnej hali — wchodzi się tylko przez rozbite przejście, z boku drogi do generatorów.
 const DIG_ZONES := [[133, 36, 142, 39, "gravel", 1201]]

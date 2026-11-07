@@ -137,6 +137,25 @@ Rozmieszczenie: 1.2 hala i tunel (np. między słupami `w` w kolumnach 187–193
 Najwyżej 1–2 oświetlone wnęki w jednym kadrze i odstęp ok. 30 m, żeby nie powstał rytm „co kafel to wnęka”.
 Każda mapa: zrzuty, `--perfreport`, luminancja, `--nichetest`.
 
+### Wyniki N3 na 1.2 (2026-11-07, `feat/niches-catalog`, 1.7.508)
+
+- Katalog w `niches3d.gd` (`KINDS`): `doorway` (d 8 m, „bulb”), `corridor` (12 m, „cage”: lampy w koszach co 4 m na zmianę po bokach,
+  boczne przejście w połowie, zamknięte drzwi na końcu), `grate` (4,5 m, „bulb”: pręty co 0,14 m w jednym `MultiMesh`, szafka, regał,
+  kanister, zimna świetlówka na 70% głębokości), `shelf` (1,2 m, bez światła: regały pod ścianą końcową, kanister, opona),
+  `drift` (10 m, „mine”: odrzwia co 2 m, skalne ściany i strop z odcinków o losowym wcięciu, tory na podkładach w `MultiMesh`,
+  lampa górnicza 1,6 m przed czołem). Walidacja sprawdza rodzaj, dozwolone światło i najmniejszą głębokość rodzaju.
+- Rozmieszczenie na 1.2 (6 wnęk): zaplecze w hali stacji (88–91, pilot), w tunelu drezyny (wiersze 48–50) sztolnie 107–109 i 195–197,
+  korytarz 155–157 i regał 259–261, w dolnej hali krata 211–213 (wiersze 37–39). Odstęp ≥ 40 kolumn między oświetlonymi wnękami,
+  ≥ 10 kolumn od Ślepców `L` i gniazd ćm `Z` (zasada 4). Uwaga: pilot w hali stoi 6–7 kolumn od dwóch Ślepców — zostawiony, bo przyjęty w bramce N2.
+- **Lekcja kadru:** kamera patrzy z oka nad środkiem kadru, więc we wnęce widać więcej podłogi niż stropu. Lampy zawieszone pod stropem
+  chowają się za nadprożem (korytarz) albo za stropnicami bliższych odrzwi (sztolnia) — wszystkie wiszą ok. 1 m pod stropem
+  (w sztolni na 60% wysokości odrzwi, na długim haku).
+- Pomiar (debug, 4K HIGH, z wnękami i z `--noniches`): podłoga przed korytarzem 0,0021 → 0,0021, przed sztolnią 0,0017 → 0,0018;
+  przy graczu w kadrze korytarza 0,0648 → 0,0649; otwór korytarza 0,0003 → 0,0097 (próg 0,02), otwór sztolni 0,0003 → 0,0016
+  (świeci tylko jej koniec). GPU w kadrze korytarza 6,67 / 7,33 ms z wnękami i 6,77 / 7,68 ms bez (szum), render_cpu +0,06–0,13 ms,
+  wywołania rysowania 199 → 295.
+- Zrzuty: `shots_depth/n3/`.
+
 ### N4 — światło w głębi poza wnękami (opcjonalnie)
 
 Tylko jeśli N3 się sprawdzi: dalekie okna i lampy za kratami w ścianach szybów, poświata z głębi tunelu na końcu kadru.
@@ -167,3 +186,9 @@ Zasada 1 obowiązuje tak samo.
 1. Pilot w **hali stacji 1.2** (kolumny 88–91, wiersze 23–25). Tunel drezyny dopiero w N3.
 2. Sylwetki wrogów na tle wnęki **słabe, z progiem jasności** wnętrza wnęki (zasada 4). Próg ustala pomiar w N0/N2.
 3. Cień światła wnęki **dopiero po pomiarze w N2**; pilot startuje bez cienia.
+
+## Decyzje (2026-11-07, bramka N2)
+
+4. Pilot przyjęty. Poświata przy graczu (+3–3,6% przy wnęce, bloom `horror_fx`, a nie światło wnęki) zostaje jako efekt optyczny.
+5. Wnęki zostają **bez cienia**.
+6. Przechodzimy do N3: katalog rodzajów i rozmieszczenie, po jednym PR na mapę (pierwszy: 1.2).

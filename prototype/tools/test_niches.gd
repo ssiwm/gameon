@@ -2,6 +2,7 @@ extends SceneTree
 ## Test wnęk w tylnej ścianie wnętrz (`scripts/niches3d.gd`, `DEPTH_PLAN.md`) na wszystkich mapach z scripts/maps:
 ## (1) dane: otwór leży na samym tle `b` z podłogą pod spodem (bez okien, lamp, stempli, zawału i znaczników), poza strefami wydobycia,
 ## (2) światło: tylko na warstwę wnęk (`LAYER_NICHE`), bez cienia i bez mgły wolumetrycznej, zasięg kończy się przed ścianą tła; na LOW świateł nie ma,
+##     a od MEDIUM ma je każda wnęka z „lit” i żadna bez (wszystkie rodzaje z `Niches3D.KINDS`),
 ## (3) bryła wnęki jest na warstwie świata i wnęk (oświetlają ją światła mapy i wnęki),
 ## (4) płyty ściany tła: w otworze ich nie ma, poza nim są te same co bez wnęki,
 ## (5) las: żadne drzewo nie stoi w korytarzu wnęki (z zapasem `TREE_MARGIN`).
@@ -54,7 +55,10 @@ func _check_map(id: String, rows: Array, entries: Array, dig: Array) -> void:
 		if q == 0:
 			_check(lights.is_empty(), "%s: na LOW są światła wnęk (%d)" % [id, lights.size()])
 		else:
-			_check(not lights.is_empty(), "%s: wnęka „bulb” bez świateł" % id)
+			for i in entries.size():
+				var lit := String((entries[i] as Dictionary).get("lit", ""))
+				var nl := root.get_node("Niche%d" % i).find_children("*", "Light3D", true, false).size()
+				_check((nl > 0) == (lit != ""), "%s: wnęka %d (%s, światło „%s”) ma %d świateł" % [id, i, (entries[i] as Dictionary).get("kind", ""), lit, nl])
 		for l in lights:
 			var o := l as OmniLight3D
 			_check(o != null, "%s: światło wnęki inne niż OmniLight3D" % id)
