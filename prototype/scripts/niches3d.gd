@@ -164,8 +164,46 @@ static func build(parent: Node3D, rows: Array, entries: Array, quality := 2) -> 
 				_build_vent(root, d, g, rng, quality)
 			_:
 				_build_doorway(root, d, g, rng, quality)
+		_merge_boxes(root)
 		for n in root.find_children("*", "GeometryInstance3D", true, false):
 			(n as VisualInstance3D).layers = 1 | LAYER_NICHE     # warstwa świata (kamera świata) + wnęki (światła wnęk)
+
+## Scala pudła wnęki (BoxMesh) w jedną siatkę na materiał: okno ma ok. 40 brył, a każda to osobne wywołanie rysowania (N4: +0,3 ms GPU).
+## Materiały mapują tekstury triplanarnie we współrzędnych świata (`Level3D.make_pbr`), więc scalona siatka wygląda tak samo.
+## Obroty rodziców (skrzydło drzwi na zawiasie, łopatki wentylatora, żaluzje) wchodzą w transformację wierzchołków.
+static func _merge_boxes(root: Node3D) -> void:
+	var groups := {}
+	for n in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if not (mi.mesh is BoxMesh) or mi.material_override == null:
+			continue
+		var xf := mi.transform
+		var p := mi.get_parent()
+		while p != root and p is Node3D:
+			xf = (p as Node3D).transform * xf
+			p = p.get_parent()
+		if not groups.has(mi.material_override):
+			groups[mi.material_override] = []
+		(groups[mi.material_override] as Array).append([mi, xf])
+	var k := 0
+	for mat in groups:
+		var items: Array = groups[mat]
+		if items.size() < 2:
+			continue
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for it in items:
+			st.append_from((it[0] as MeshInstance3D).mesh, 0, it[1])
+		var merged := MeshInstance3D.new()
+		merged.name = "Merged%d" % k
+		merged.mesh = st.commit()
+		merged.material_override = mat
+		root.add_child(merged)
+		k += 1
+		for it in items:
+			var mi := it[0] as MeshInstance3D
+			mi.get_parent().remove_child(mi)
+			mi.free()
 
 ## Wymiary otworu i wnęki (m, układ widoku 3D): brzegi otworu, światło otworu w ościeżach, spód nadproża, lico ściany i tył wnęki.
 static func _geom(d: Dictionary) -> Dictionary:
@@ -501,11 +539,14 @@ static func _build_window(root: Node3D, d: Dictionary, g: Dictionary, rng: Rando
 	var cw := minf(2.2, rx1 - rx0 - 1.4)
 	_box(root, "Console", Vector3(cx - cw * 0.5, ry0, g.z_back + 0.05), Vector3(cx + cw * 0.5, ry0 + 1.9, g.z_back + 0.55), m.metal)
 	_box(root, "Desk", Vector3(cx - cw * 0.5, ry0 + 0.85, g.z_back + 0.55), Vector3(cx + cw * 0.5, ry0 + 0.95, g.z_back + 0.95), m.metal)
-	var cols := [Color(0.3, 1.0, 0.45), Color(1.0, 0.25, 0.2), Color(1.0, 0.75, 0.3)]
+	var leds: Array = []                                      # trzy wspólne materiały lampek: scalanie łączy lampki jednego koloru
+	for c in [Color(0.3, 1.0, 0.45), Color(1.0, 0.25, 0.2), Color(1.0, 0.75, 0.3)]:
+		var lmc := StandardMaterial3D.new()
+		lmc.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		lmc.albedo_color = c * 1.6
+		leds.append(lmc)
 	for k in 7:
-		var lm := StandardMaterial3D.new()
-		lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		lm.albedo_color = (cols[rng.randi_range(0, cols.size() - 1)] as Color) * 1.6
+		var lm: Material = leds[rng.randi_range(0, leds.size() - 1)]
 		var lx := cx - cw * 0.4 + cw * 0.8 * rng.randf()
 		var ly := ry0 + 1.15 + 0.6 * rng.randf()
 		_box(root, "Led%d" % k, Vector3(lx - 0.025, ly - 0.02, g.z_back + 0.55), Vector3(lx + 0.025, ly + 0.02, g.z_back + 0.57), lm)
