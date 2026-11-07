@@ -1,7 +1,7 @@
 # Plan: światło w głębi i wnęki w ścianach wnętrz
 
 Status: **N0–N3 w `main` (do 1.7.512, 19 wnęk na pięciu mapach); N4 — pilot okien i kratek w `main` (1.7.513), bramka przyjęta
-2026-11-07: okna i kratki idą na inne mapy; scalone bryły i 1.2 w 1.7.514, dalej po jednym PR na mapę.** Etap po analizie głębi świata
+2026-11-07: okna i kratki idą na inne mapy; scalone bryły i 1.2 w 1.7.514, 1.3 w 1.7.516, dalej po jednym PR na mapę.** Etap po analizie głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`, punkty 1 i 3 tego raportu robione razem).
 Stan odniesienia: `main` 1.7.506 (b7c11e3).
 
@@ -225,8 +225,9 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
   albo `bulb` (ciepła) w 3/4 głębokości pokoju, tuż pod nadprożem.
 - `vent` — kratka wentylacyjna w jednym kaflu: mur wokół kratki 0,9 × 0,62 m, rama, ukośne żaluzje, blaszany kanał w głąb,
   wentylator (łopatki rysują się na tle lampy) i lampa `lamp` na końcu kanału.
-- Walidacja: pod otworem ściennym leży mur tła `b` (nie podłoga ani kładka), wokół okna i nad nim też `b` (pokój jest większy od otworu),
-  kratka może mieć 1 × 1 kafel, okno najmniej 2 × 2.
+- Walidacja: pod otworem ściennym leży mur tła `b` (nie podłoga ani kładka), wokół okna i nad nim też `b` (pokój jest większy od otworu;
+  od 1.7.516 także lity kafel — beton, skała — bo jego bryła sięga do ściany tła i tak samo zasłania pokój; powietrze, kładka i ciecz
+  odpadają), kratka może mieć 1 × 1 kafel, okno najmniej 2 × 2.
 - „Poświata z głębi tunelu na końcu kadru” z pierwotnego szkicu jest już w N3: `corridor` i `drift` mają światło tylko w głębi.
 
 ### Wyniki pilota N4 (2026-11-07, `feat/depth-n4`, 1.7.513)
@@ -278,6 +279,27 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
   liczenie drzew w korytarzach liczy teraz każde drzewo raz.
 - Zrzuty: `shots_depth/n4_z1m2/` (`m2_sheet.jpg`, `m2_zoom.jpg`, kontrolne po scaleniu w `scalenie/`).
 
+### Wyniki N4 na 1.3 (2026-11-07, `feat/n4-z1m3`, 1.7.516)
+
+- **Reguła okna:** piętro Składu ma 3 kafle wysokości i beton tuż nad nim, więc okno z murem `b` także nad otworem się nie mieści.
+  Bryła litego kafla sięga do ściany tła (`DEPTH_FRONT + DEPTH_BACK`), więc zasłania pokój tak samo jak mur:
+  `Niches3D._hides_room` przyjmuje obok okna i nad nim `b` albo lity kafel. Test na sztucznej mapie: okno pod stropem i przy
+  skale przechodzi, przy otwartym powietrzu i pod kładką — nie. `window_spots.py` liczy tak samo i pomija stojące wnęki,
+  `vent_spots.py` dopuszcza strop nad kratką (jak walidacja i pilot w kolumnie 150).
+- **Wpisy:** `window` 117–120 w. 19–20 (`tube`, pod stropem piętra Składu, nad antresolą — głowy graczy na antresoli wchodzą
+  w dolne pół metra okna), `window` 173–176 w. 32–33 (`bulb`, `d` 5 m, górny poziom wschodniej sali podziemi, 11 kolumn od
+  korytarza 160–162), `vent` 32 w. 22 (pod stropem posterunku, 11 kolumn od zaplecza), `vent` 36 w. 36 (pod skalnym stropem
+  na zachodnim końcu niskiego tunelu). Szyby 1.3 bez kratek: ich ściany co dwa wiersze przecinają podesty `=`, a rodzaj ścienny
+  potrzebuje muru pod spodem.
+- Pomiar (debug, 4K HIGH, `lumbox.py`): okno Składu 0,0000 → 0,0187, okno wschodniej sali 0,0000 → 0,0234 przy głębokości 4 m —
+  ponad progiem, więc pokój pogłębiony do 5 m (lampa w 3/4 głębokości stoi dalej od otworu): 0,0172; pas pod oknami bez zmian
+  (≤ 0,0014). Kratki 0,110 i 0,093 w samym otworze (jak pozostałe kratki, ok. 0,08–0,11).
+- Wydajność: kadr Składu 9,20 / 8,33 / 8,57 ms z wnękami, 9,04 / 8,71 / 8,56 ms bez — w szumie, +15 wywołań rysowania.
+  Kadr wschodniej sali z wnękami +0,35 ms względem `--noniches` (sześć rund), ale `--noniches` gasi też korytarz 160–162 i kratkę
+  150. Samo okno (naprzemiennie bez wpisu okna i z nim, trzy rundy): 7,75 / 7,85 / 7,80 ms bez, 7,73 / 7,74 / 6,87 ms z oknem —
+  w szumie, +14 wywołań. Zegar GPU w ciągu godziny pomiarów pływał o ok. 0,5 ms — porównywać tylko rundy naprzemienne.
+- Zrzuty: `shots_depth/n4_z1m3/` (`m3_sheet.jpg`).
+
 ## Kolejność i rozmiar
 
 | Etap | Co | Rozmiar | Wersja |
@@ -286,7 +308,7 @@ do 30, szyby i niskie tunele 1.3 — ściany przy stropie). N4 dokłada **rodzaj
 | N1 | `niches3d.gd`, dane mapy, wycięcie ściany, `--nichetest` | 1 d | PR, podbicie wersji |
 | N2 | pilot w hali 1.2 + A/B | 0,5–1 d | ten sam PR albo następny |
 | N3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
-| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3; dalej 1.2, Skład 1.3, szyby, kryjówka) | 1 d pilot + po 0,5 d na mapę | 1.7.513 pilot, 1.7.514 scalenie i 1.2, dalej po jednym PR na mapę |
+| N4 | okna i kratki w ścianie tła (pilot: B1, 1.3; dalej 1.2, Skład 1.3, szyby, kryjówka) | 1 d pilot + po 0,5 d na mapę | 1.7.513 pilot, 1.7.514 scalenie i 1.2, 1.7.516 1.3, dalej po jednym PR na mapę |
 
 ## Ryzyka
 

@@ -38,6 +38,10 @@ const NICHES := [
 	{"kind": "shelf", "c0": 100, "c1": 102, "r0": 38, "r1": 39, "lit": ""},
 	{"kind": "corridor", "c0": 160, "c1": 162, "r0": 37, "r1": 39, "lit": "cage"},
 	{"kind": "vent", "c0": 150, "c1": 150, "r0": 36, "r1": 36, "lit": "lamp"},     # N4: kratka pod stropem niskiego tunelu przed trzecim szybem
+	{"kind": "window", "c0": 117, "c1": 120, "r0": 19, "r1": 20, "lit": "tube"},   # N4: okno pod stropem piętra Składu, nad antresolą
+	{"kind": "window", "c0": 173, "c1": 176, "r0": 32, "r1": 33, "d": 5.0, "lit": "bulb"}, # N4: okno na górnym poziomie wschodniej sali podziemi
+	{"kind": "vent", "c0": 32, "c1": 32, "r0": 22, "r1": 22, "lit": "lamp"},       # N4: kratka pod stropem posterunku
+	{"kind": "vent", "c0": 36, "c1": 36, "r0": 36, "r1": 36, "lit": "lamp"},       # N4: kratka pod skalnym stropem na zachodnim końcu niskiego tunelu
 ]
 
 const MAP := [

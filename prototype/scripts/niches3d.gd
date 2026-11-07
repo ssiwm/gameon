@@ -87,6 +87,10 @@ static func forest_holes(entries: Array) -> Array:
 ## Błędy wpisów względem mapy (pusta tablica = w porządku): otwór na samym tle `b`, z podłogą pod spodem (rodzaje ścienne: ze ścianą
 ## tła `b` pod spodem), bez okien `|`, lamp `I`, stempli `!`, stref zawału `^` ani znaczników w kaflach otworu, poza strefami wydobycia;
 ## rodzaj, światło, głębokość i najmniejszy otwór z `KINDS`.
+## Czy kafel obok okna zasłania pokój za nim: mur tła `b` albo lity kafel (beton, skała), nie powietrze, kładka ani ciecz.
+static func _hides_room(ch: String) -> bool:
+	return ch == "b" or (Level3D.is_solid_ch(ch) and ch != "~")
+
 static func validate(rows: Array, entries: Array, dig_zones: Array = []) -> Array:
 	var errs: Array = []
 	for i in entries.size():
@@ -123,14 +127,14 @@ static func validate(rows: Array, entries: Array, dig_zones: Array = []) -> Arra
 				errs.append(tag + ": pod kolumną %d nie ma podłogi" % c)
 			elif not on_floor and below != "b":
 				errs.append(tag + ": pod kolumną %d jest „%s”, a rodzaj %s wisi w ścianie tła `b`" % [c, below, kind])
-		if kind == "window":                                  # pokój za oknem jest szerszy i wyższy od otworu: wokół musi stać mur tła
-			for r in range(r0 - 1, r1 + 1):
+		if kind == "window":                                  # pokój za oknem jest szerszy i wyższy od otworu: wokół musi stać mur tła albo lity kafel
+			for r in range(r0 - 1, r1 + 1):                   # (bryła litego kafla sięga do ściany tła, `Level3D` DEPTH_FRONT + DEPTH_BACK)
 				for c in [c0 - 1, c1 + 1]:
-					if Level3D._ch(rows, c, r) != "b":
-						errs.append(tag + ": obok okna kafel (%d, %d) to „%s”, a pokój chowa się za murem tła `b`" % [c, r, Level3D._ch(rows, c, r)])
+					if not _hides_room(Level3D._ch(rows, c, r)):
+						errs.append(tag + ": obok okna kafel (%d, %d) to „%s”, a pokój chowa się za murem tła `b` albo litym kaflem" % [c, r, Level3D._ch(rows, c, r)])
 			for c in range(c0, c1 + 1):
-				if Level3D._ch(rows, c, r0 - 1) != "b":
-					errs.append(tag + ": nad oknem kafel (%d, %d) to „%s”, nie mur tła `b`" % [c, r0 - 1, Level3D._ch(rows, c, r0 - 1)])
+				if not _hides_room(Level3D._ch(rows, c, r0 - 1)):
+					errs.append(tag + ": nad oknem kafel (%d, %d) to „%s”, nie mur tła `b` ani lity kafel" % [c, r0 - 1, Level3D._ch(rows, c, r0 - 1)])
 		for z in dig_zones:
 			var zr := Rect2i(int(z[0]), int(z[1]), int(z[2]) - int(z[0]) + 1, int(z[3]) - int(z[1]) + 1)
 			if zr.intersects(Rect2i(c0 - 1, r0 - 1, c1 - c0 + 3, r1 - r0 + 3)):
