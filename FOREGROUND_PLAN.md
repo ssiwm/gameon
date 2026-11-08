@@ -2,7 +2,7 @@
 
 Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A); F1 + F2 (pilot: hala stacji i tunel 1.2) w 1.7.519; po pierwszej
 ocenie w grze poprawki rur w 1.7.520 (rury z Poly Haven, półprzezroczyste wygaszanie, lampy w tunelu) — czeka na bramkę F2 (wyniki
-niżej). Po drugiej uwadze („nie ma tam świata”) F2b: przekrój budynku przesunięty do warstwy pierwszego planu — mechanizm w 1.7.521 (hala i tunel 1.2), czeka na ocenę w grze.** Punkt 2 raportu o głębi świata
+niżej). Po drugiej uwadze („nie ma tam świata”) F2b: przekrój budynku przesunięty do warstwy pierwszego planu — mechanizm w 1.7.521 (hala i tunel 1.2), luki pilota (drezyna, górny pomost, wstrząs) sprawdzone i poprawione w tym samym PR — czeka na ocenę w grze.** Punkt 2 raportu o głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`); punkty 1 i 3 (wnętrza) zamknął `DEPTH_PLAN.md` (1.7.507–1.7.518).
 Stan odniesienia: `main` 1.7.518 (473eee6).
 
@@ -362,6 +362,33 @@ w strefach z przekrojem: podstawa jest widoczna i właśnie ona sprzedaje głęb
   - `sheet.jpg` (bez | z: hala, olej, z zewnątrz, tunel ×3, koniec tunelu), `z_oil.jpg`, `z_left.jpg`;
   - `cmp_hall.mp4`, `cmp_tun.mp4`, `strip_tun.jpg`;
   - `perf_*.txt` (przed scaleniem), `perf2_*.txt`, skrypty `run.sh`, `perf2.sh`.
+
+**Luki pilota sprawdzone** (2026-11-08, 1.7.521, ten sam PR #627):
+
+- **Drezyna (błąd, poprawiony).** Tunel drezyny to cały wpis `tunnel`, a tor leży w korycie przed peronem (`Level3D.TRENCH_Z0`–
+  `DEPTH_FRONT`, szyny na z 0,38 i 0,98 m, dno o `TRENCH_D` niżej). Pełna płyta przekroju od z = 1,1 m zasłaniała szyny, podkłady
+  i koła — drezyna sunęła po betonie. Z rachunku: przy oku 2,2 m nad stopami i 20,2 m od płaszczyzny gry szynę na dnie koryta
+  zasłoni każda pełna płyta zaczynająca się bliżej niż ok. 4,5 m, więc nie wystarczy ją cofnąć. Poprawka: w wierszu torowiska
+  (`Level3D.in_trench`, pas z `_rail_span`) płyta przekroju leży na wysokości dna koryta aż do `SHELL_Z` — torowisko z podsypką
+  biegnie do przodu przekroju, a element nad nim stoi kołnierzem na podsypce (dolna granica `ywin` o `TRENCH_D` niżej).
+  Na nagraniu jazdy (`cmp_ride.mp4`) szyny przed drezyną widać tak samo jak bez przekroju.
+- **Górny pomost hali (błąd, poprawiony).** Z kładki (wiersz 22) widać górę elementu. Hala nie ma stropu z płyty, tylko blachę
+  na płatwiach i wiązarach, więc płytka pod „spodem stropu” (spód kafla dachu) wisiała w powietrzu pod wiązarami. Poprawka: pod
+  dachem (`Level3D.roof_purlins`) element stoi na głębokości płatwi (z = 3,7 m — jedyna w `Z_RANGE` z kołnierzem przed przodem
+  przekroju; ×1,22) i kończy się na jej spodzie, płytka to obejma pod płatwią. Płatew bliżej kamery (z 5,15) rzutuje się wyżej, więc
+  rury nie przecina. Z podłogi hali dach jest poza kadrem, obraz bez zmian.
+- **Wstrząs kamery:** wybuch tuż przed graczem (`Feel.shake(5)`) przesuwa kamerę o ok. 30 px w 4K, a rura na z 3,7–5 m przesuwa
+  się o ok. 7 px więcej niż plan gry — na nagraniu (`cmp_boom.mp4`, `cmp_boomtun.mp4`) niezauważalne. Słabszy wstrząs dla pierwszego
+  planu niepotrzebny (ryzyko z planu zamknięte). Uniform błysku nadal nie zrobiony: rura kilka metrów od wybuchu nie zmienia jasności,
+  na nagraniu tego nie widać.
+- **Nie sprawdzone:** co-op na dwóch klientach (punkty wygaszania), wydajność po poprawkach (ta sama liczba brył, inne wymiary).
+- **Test** `test_front.gd`: element nad torowiskiem stoi na podsypce, obok torowiska na płycie; w hali 1.2 każdy element pod dachem
+  ma górę na spodzie płatwi i z płatwi. `--maptest`, `test_structures.gd`, `test_niches.gd` przechodzą.
+- **Flagi dev** (`main.gd`): `--shotride` (drezyna zasilona, gracz 1 pompuje), `--shotplat` (z `--shotrow`: kładka jest podłogą),
+  `--shotboom=S` (wybuch bez obrażeń przed graczem co S s).
+- Zrzuty i nagrania: `shots_front/f2b3/` — `z_ride.jpg` (błąd: z | bez), `z_ride_fix.jpg` (po poprawce: z | bez), `z_plat3.jpg`
+  i `z_roof.jpg` (płytka w powietrzu | pod płatwią), `sheet2.jpg` (hala, drezyna, kładka po poprawkach), `cmp_ride.mp4`,
+  `cmp_run_hall.mp4`, `cmp_run_plat.mp4` (pierwsze 6 s), `cmp_boom.mp4`, `cmp_boomtun.mp4`; skrypty w `f2b3_*.sh`.
 
 **Odrzucone warianty:**
 - **Same płyty podłogi i stropu bez przekroju pod nimi:** wyglądałyby jak balkony wysunięte nad cofniętą skałą, bo dolny przekrój

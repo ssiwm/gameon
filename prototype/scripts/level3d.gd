@@ -362,7 +362,7 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 			key = ch
 		if not mats.has(key):
 			continue
-		var rk := "%d|%s" % [k.y, key]
+		var rk := "%d|%s|%d" % [k.y, key, int(in_trench(k.x, k.y))]
 		if not by_row.has(rk):
 			by_row[rk] = []
 		(by_row[rk] as Array).append(k.x)
@@ -372,6 +372,7 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 	for rk: String in by_row:
 		var r := int(rk.get_slice("|", 0))
 		var key := rk.get_slice("|", 1)
+		var low := rk.get_slice("|", 2) == "1"                 # torowisko: płyta na wysokości dna koryta
 		var cs: Array = by_row[rk]
 		cs.sort()
 		var i := 0
@@ -381,10 +382,10 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 				j += 1
 			var n := j - i + 1
 			var ctr := (cell_pos(int(cs[i]), r) + cell_pos(int(cs[j]), r)) * 0.5
-			var sc := Basis().scaled(Vector3(float(n), 1.0, d / (DEPTH_FRONT + DEPTH_BACK)))
+			var sc := Basis().scaled(Vector3(float(n), (T - TRENCH_D) / T if low else 1.0, d / (DEPTH_FRONT + DEPTH_BACK)))
 			if not out.has(key):
 				out[key] = []
-			(out[key] as Array).append(Transform3D(sc, Vector3(ctr.x, ctr.y, DEPTH_FRONT + d * 0.5)))
+			(out[key] as Array).append(Transform3D(sc, Vector3(ctr.x, ctr.y - (TRENCH_D * 0.5 if low else 0.0), DEPTH_FRONT + d * 0.5)))
 			i = j + 1
 	for k in out:
 		_multimesh(parent, box, out[k], mats[k], false)
@@ -427,6 +428,7 @@ static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
 const ROOF_SHEET := 0.05                   ## m: grubość arkusza blachy (góra arkusza = góra kafla, po której się chodzi)
 const ROOF_EAVE := 0.35                    ## m: okap ku kamerze przed przednią krawędzią bryły; z boków (wolne końce szopy) — tyle samo
 const ROOF_PURLIN_Z := [-2.05, -0.65, 0.8] ## m: płatwie pod blachą wzdłuż dachu
+const ROOF_PURLIN_STEP := 1.45             ## m: kolejne płatwie przed ROOF_PURLIN_Z, gdy przekrój (F2b) wysuwa dach ku kamerze
 const ROOF_TRUSS := 2                      ## co tyle kafli wiązar (pas dolny w poprzek dachu + słupki pod płatwiami)
 const ROOF_SPAN := 5                       ## szopa: najwyżej tyle kafli między podporami
 const ROOF_POST := 0.26                    ## m: przekrój drewnianego słupa szopy
@@ -524,6 +526,21 @@ static func _strut(a: Vector3, b2: Vector3, w: float) -> Transform3D:
 ## (pas dolny na dolnej krawędzi kafla — Skoczek dalej wisi „pod sufitem", słupki pod płatwiami). W budynkach ze ścianami `C` konstrukcja
 ## stalowa, a tylna ściana sięga pod blachę (bez niej przez wiązary prześwitywał las); w szopie drewniana, z podporami z tyłu (POST_Z) i z przodu
 ## (ROOF_POST_FRONT) i zastrzałami pod wiązarem. Tylko widok — kolizja to nadal pełny kafel.
+## Płatwie dachu nad kolumną `c` w wierszu dachu `r`: [y spodu płatwi (m), głębokości z płatwi]; puste, gdy (c, r) nie leży w dachu.
+## Pod dachem z blachy nie ma stropu, więc pierwszy plan w przekroju (`front3d.gd`) wisi pod płatwią zamiast kończyć się w powietrzu.
+static func roof_purlins(rows: Array, c: int, r: int) -> Array:
+	for run in roof_runs(rows):
+		if int(run["r"]) != r or c < int(run["c0"]) or c > int(run["c1"]):
+			continue
+		var zs: Array = ROOF_PURLIN_Z.duplicate()
+		var zf := front_z(int(run["c0"]), r)
+		var pz: float = ROOF_PURLIN_Z[-1] + ROOF_PURLIN_STEP
+		while pz < zf:
+			zs.append(pz)
+			pz += ROOF_PURLIN_STEP
+		return [-float(r) * T - ROOF_SHEET - (0.16 if bool(run["steel"]) else 0.18), zs]
+	return []
+
 static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel_mat: Material, wood_mat: Material, wall_mat: Material) -> void:
 	var sheets: Array = []
 	var boards: Array = []
@@ -554,10 +571,10 @@ static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel
 		var under := y_top - ROOF_SHEET
 		var fr: Array = frame[steel]
 		var purlins: Array = ROOF_PURLIN_Z.duplicate()
-		var pz_add: float = ROOF_PURLIN_Z[-1] + 1.45
+		var pz_add: float = ROOF_PURLIN_Z[-1] + ROOF_PURLIN_STEP
 		while pz_add < zf:
 			purlins.append(pz_add)
-			pz_add += 1.45
+			pz_add += ROOF_PURLIN_STEP
 		for pz in purlins:
 			fr.append(_span_box(Vector3(x0 + 0.05, under - bar, float(pz) - bar * 0.5), Vector3(x1 - 0.05, under, float(pz) + bar * 0.5)))
 		var trusses: Array = []
@@ -787,6 +804,7 @@ static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
 	return true
 
 static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary:
+	rail_trench = trench
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var box := BoxMesh.new()
@@ -827,7 +845,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				var p := cell_pos(c, r)
 				if (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, c, r, ch) and not "--noliquids" in OS.get_cmdline_user_args():
 					continue                                    # ciecz / błoto: siatkę niecki i taflę rysuje `build_liquids`
-				if not trench.is_empty() and r == int(trench["row"]) and c >= int(trench["c0"]) and c <= int(trench["c1"]):
+				if in_trench(c, r):
 					var full := DEPTH_FRONT + DEPTH_BACK
 					var back_d := TRENCH_Z0 + DEPTH_BACK
 					var bed_d := DEPTH_FRONT - TRENCH_Z0
@@ -1533,6 +1551,14 @@ static func set_shells(front: Array, rows: Array) -> void:
 			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH:
 				shell_cells[Vector2i(c, r)] = "C" if concrete else ""
 				r += 1
+
+## Torowisko drezyny z ostatniego `build_level` ({"row", "c0", "c1"}; puste bez drezyny).
+static var rail_trench := {}
+
+## Kafel podłogi w pasie torowiska: z przodu ma obniżone koryto (`TRENCH_D`). W strefie przekroju płyta biegnie na wysokości dna koryta
+## aż do `SHELL_Z` — pełna płyta przed korytem zasłoniłaby szyny i koła drezyny (z każdej kamery, gdy zaczyna się bliżej niż ok. 4,5 m).
+static func in_trench(c: int, r: int) -> bool:
+	return not rail_trench.is_empty() and r == int(rail_trench["row"]) and c >= int(rail_trench["c0"]) and c <= int(rail_trench["c1"])
 
 static func in_shell(c: int, r: int) -> bool:
 	return shell_cells.has(Vector2i(c, r))

@@ -2439,6 +2439,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			var hp1: Node2D = _players.get_node_or_null("1")
 			if hp1 != null and not _has_arg_prefix("--shotat"):            # bez --shotat: gracz 1 staje obok drezyny
 				hp1.global_position = hc.global_position + Vector2(-64.0, -4.0)
+	if "--shotride" in OS.get_cmdline_user_args():
+		_dev_ride()
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shotboom="):
+			_dev_boom(float(sa.substr("--shotboom=".length())))
 	if _has_arg_prefix("--shotbreak"):                 # dev: gracz 1 przy pierwszym zamurowanym przejściu; `--shotbreak=1` rozbija je po 1,5 s
 		var bw := get_tree().get_first_node_in_group("breakables") as Node2D
 		var bp: Node2D = _players.get_node_or_null("1")
@@ -2799,8 +2804,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			for sa in OS.get_cmdline_user_args():
 				if sa.begins_with("--shotrow="):
 					shot_row0 = int(sa.substr("--shotrow=".length()))          # piętro zrzutu: pierwsza podłoga od tego wiersza w dół
+			var on_plat := "--shotplat" in OS.get_cmdline_user_args()      # dev: --shotplat — kładka `=` / `-` też jest podłogą (zrzut z górnego pomostu)
 			for r in range(shot_row0, level._map.size()):
-				if level._is_solid(col, r) and not level._is_solid(col, r - 1):
+				if (level._is_solid(col, r) or (on_plat and level._is_platform_cell(col, r))) and not level._is_solid(col, r - 1):
 					fy = float(r * 16)
 					break
 			p.global_position = Vector2(float(col) * 16.0 + 8.0, fy - 2.0)
@@ -4123,6 +4129,28 @@ func _nav_len(nav: AStar2D, from: Vector2, to: Vector2) -> float:
 	for i in range(1, path.size()):
 		d += path[i].distance_to(path[i - 1])
 	return d
+
+## Dev (--shotride, z1_m2): drezyna zasilona, gracz 1 na pokładzie pompuje przez cały podgląd (nagranie jazdy tunelem — FOREGROUND_PLAN.md).
+func _dev_ride() -> void:
+	var car := get_tree().get_first_node_in_group("handcar")
+	var p: Node2D = _players.get_node_or_null("1")
+	if car == null or p == null:
+		return
+	car.enabled = true
+	p.global_position = car.global_position + Vector2(0, -8)
+	p.velocity = Vector2.ZERO
+	print("[SHOT-RIDE] drezyna x=%.0f (kolumna %d), koniec toru x=%.0f" % [car.global_position.x, int(car.global_position.x / 16.0), car.end_x])
+	await get_tree().create_timer(0.6).timeout
+	Input.action_press("interact")
+
+## Dev (--shotboom=S): co S sekund wybuch bez obrażeń 90 px przed graczem 1 — sam obraz, wstrząs i błysk (ocena pierwszego planu przy wstrząsie kamery).
+func _dev_boom(every: float) -> void:
+	var vfx := load("res://scripts/vfx.gd")
+	while is_inside_tree():
+		await get_tree().create_timer(maxf(every, 0.5)).timeout
+		var p: Node2D = _players.get_node_or_null("1")
+		if p != null:
+			vfx.explosion(level, p.global_position + Vector2(90.0, -10.0), 64.0)
 
 ## Test drezyny (--host --mission=z1_m2 --ridetest): generatory → zasilenie, wejście na pokład, pompowanie (gracz jedzie
 ## razem z platformą), dojazd do końca toru, wyjście → SUCCESS. Wrogowie zamrożeni.

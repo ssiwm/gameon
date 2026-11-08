@@ -8,7 +8,8 @@ extends SceneTree
 ##     części rur z `pipe_parts.glb` (odcinek, zawór, trójnik, cienka rura) i tekstury zestawu, każda powierzchnia z materiałem
 ##     pierwszego planu (półprzezroczysty, z wygaszaniem), pas przycięcia w parametrze instancji; OFF chowa całość,
 ## (4) przekrój budynku (F2b): kafle strefy tylko w stropie i podłodze z fundamentem (nigdy ściany w pasie gry ani strefy wydobycia),
-##     element na płycie (nie w cieczy), kołnierz przed przodem przekroju, ≥ 1 m od belki pod stropem; plama okluzji i płytka,
+##     element na płycie (nie w cieczy), kołnierz przed przodem przekroju, ≥ 1 m od belki pod stropem; plama okluzji i płytka;
+##     nad torowiskiem drezyny element stoi na podsypce (płyta na wysokości dna koryta), pod dachem z blachy wisi pod płatwią,
 ## (5) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
 ##     waga 0 nie wygasza wcale.
 ## godot --headless --path prototype -s tools/test_front.gd       → ma wypisać PASS
@@ -48,6 +49,8 @@ func _process(_dt: float) -> bool:
 	_check(total > 0, "żadna mapa nie ma pierwszego planu (pilot na z1_m2)")
 	_check_skip()
 	_check_layers()
+	_check_trench()
+	_check_roof()
 	_check_fade()
 	print("PASS" if _fail == 0 else "FAIL (%d)" % _fail)
 	quit(0 if _fail == 0 else 1)
@@ -186,6 +189,61 @@ func _check_layers() -> void:
 	_check(Front3D.build(root, [], [], false) == 0, "pusty FRONT coś zbudował")
 	root.queue_free()
 
+
+## Torowisko drezyny w strefie przekroju (`Level3D.in_trench`): płyta leży na wysokości dna koryta (pełna płyta zasłoniłaby szyny i koła),
+## więc element nad torowiskiem stoi na podsypce — dolna granica `ywin` o `TRENCH_D` niżej niż obok torowiska.
+func _check_trench() -> void:
+	var root := Node3D.new()
+	get_root().add_child(root)
+	var T := Level3D.T
+	Level3D.rail_trench = {"row": 10, "c0": 0, "c1": 60}
+	Front3D.build(root, [{"set": "tunnel", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}], [], false)
+	Level3D.rail_trench = {}
+	var fr := root.get_node_or_null("Front")
+	var seen := [0, 0]
+	if fr != null:
+		for c in fr.get_children():
+			var mi := c as MeshInstance3D
+			var yw: Variant = mi.get_instance_shader_parameter("ywin")
+			if not (yw is Vector2):
+				continue
+			var inside := int(floorf(mi.position.x / T)) <= 60
+			var want := -10.0 * T - (Level3D.TRENCH_D if inside else 0.0)
+			_check(absf((yw as Vector2).x - want) < 0.001, "%s x %.1f: podstawa %.3f m zamiast %.3f (%s torowiska)" % [mi.name, mi.position.x, (yw as Vector2).x, want, "nad dnem" if inside else "obok"])
+			seen[0 if inside else 1] += 1
+	_check(seen[0] > 0 and seen[1] > 0, "torowisko: brak elementów nad torowiskiem albo obok (%d / %d)" % seen)
+	root.queue_free()
+
+## Dach z blachy w strefie przekroju (hala stacji 1.2, `Level3D.roof_purlins`): pod dachem nie ma stropu, więc element wisi pod płatwią —
+## stoi na jej głębokości i kończy się na jej spodzie (górna granica `ywin`), a nie płytką w powietrzu pod wiązarami.
+func _check_roof() -> void:
+	var consts: Dictionary = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()
+	var rows: Array = consts["MAP"]
+	var front: Array = (consts["FRONT"] as Array).filter(func(e: Dictionary) -> bool: return String(e["set"]) == "station")
+	_check(not front.is_empty(), "z1_m2: brak wpisu hali stacji")
+	if front.is_empty():
+		return
+	var e: Dictionary = front[0]
+	Level3D.set_shells(front, rows)
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Front3D.build(root, front, [], false, rows)
+	var fr := root.get_node_or_null("Front")
+	var n := 0
+	if fr != null:
+		for c in fr.get_children():
+			var mi := c as MeshInstance3D
+			var rp := Level3D.roof_purlins(rows, int(floorf(mi.position.x / Level3D.T)), int(e["r0"]))
+			var yw: Variant = mi.get_instance_shader_parameter("ywin")
+			if rp.is_empty() or not (yw is Vector2):
+				continue
+			n += 1
+			_check(absf((yw as Vector2).y - float(rp[0])) < 0.001, "%s: góra %.3f m zamiast spodu płatwi %.3f" % [mi.name, (yw as Vector2).y, float(rp[0])])
+			_check((rp[1] as Array).any(func(pz: float) -> bool: return absf(pz - mi.position.z) < 0.001), "%s: z %.2f nie pod płatwią" % [mi.name, mi.position.z])
+			_check(mi.position.z + 0.45 < Level3D.SHELL_Z, "%s: kołnierz przed przekrojem (z %.2f)" % [mi.name, mi.position.z])
+	_check(n > 0, "hala stacji: żaden element nie wisi pod dachem")
+	Level3D.set_shells([], rows)
+	root.queue_free()
 
 func _check_fade() -> void:
 	_check(is_equal_approx(Front3D.fade(0.0), Front3D.MIN_A), "fade na sylwetce ≠ MIN_A")

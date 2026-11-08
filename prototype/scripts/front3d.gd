@@ -416,6 +416,22 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 		rng.seed = int(float(it["x"]) * 100.0)
 		var bulbs := []
 		var phys := bool(it.get("shell", false))
+		if phys and Level3D.in_trench(int(floorf(float(it["x"]) / Level3D.T)), roundi(-clip.z / Level3D.T)):
+			clip.z -= Level3D.TRENCH_D                      # torowisko: płyta przekroju leży na wysokości dna koryta — element stoi na podsypce
+		if phys and not rows.is_empty():
+			# dach z blachy (hala stacji): stropu nie ma — element wisi pod płatwią, na jej głębokości (najbliższa w Z_RANGE z kołnierzem
+			# przed przodem przekroju), i dochodzi do jej spodu; płatew bliżej kamery rzutuje się wyżej, więc rury nie przecina
+			var rp := Level3D.roof_purlins(rows, int(floorf(float(it["x"]) / Level3D.T)), roundi(-clip.w / Level3D.T) - 1)
+			if not rp.is_empty():
+				var best := float(it["z"])
+				var dmin := INF
+				for pz: float in rp[1]:
+					if pz >= Z_RANGE.x - 0.3 and pz + 0.45 < Level3D.SHELL_Z and absf(pz - float(it["z"])) < dmin:
+						dmin = absf(pz - float(it["z"]))
+						best = pz
+				if dmin < INF:
+					it["z"] = best
+					clip.w = float(rp[0])
 		var res := _element_mesh(String(it["kind"]), clip.w + (0.0 if phys else ABOVE), clip.z - (0.0 if phys else ABOVE), Vector2(clip.z, clip.w), rng, bulbs, phys)
 		var mi := MeshInstance3D.new()
 		mi.name = "%s_%d" % [it["kind"], roundi(float(it["x"]))]
