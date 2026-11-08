@@ -1,6 +1,6 @@
 # Plan: pierwszy plan przed płaszczyzną gry
 
-Status: **plan z 2026-11-07, nic nie wdrożone.** Punkt 2 raportu o głębi świata
+Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A, wyniki niżej), w grze nic nie zmienione.** Punkt 2 raportu o głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`); punkty 1 i 3 (wnętrza) zamknął `DEPTH_PLAN.md` (1.7.507–1.7.518).
 Stan odniesienia: `main` 1.7.518 (473eee6).
 
@@ -37,7 +37,7 @@ Trzy rzeczy, przez które to nie jest „dorzucić pnie przed kamerę”:
    Mapa ASCII się nie zmienia.
 3. **Warstwa graczy, nie świata.** Element leży na nowej warstwie `LAYER_FRONT` (256), którą widzi tylko kamera graczy (`_cam_b`).
    W `VpActors` ma test głębi z graczami (gracz przy z ≈ 0 jest zawsze za nim) i razem z graczami ląduje nad światem i wrogami.
-   Trzeci SubViewport nad graczami to wariant zapasowy — F0 mierzy oba.
+   Trzeci SubViewport nad graczami odpadł w F0 (+0,4–0,7 ms za ten sam obraz).
 4. **Kształt nieregularny.** Igliwie, liście, kable, łańcuchy i pręty z miękką krawędzią alfa. Żadnych prostych bloków ani
    gołych prostokątnych brzegów, żadnych mebli. Duży element (pień, słup) jest zawsze ucięty brzegiem kadru u góry i u dołu —
    nie widać jego podstawy ani końca.
@@ -67,6 +67,42 @@ Trzy rzeczy, przez które to nie jest „dorzucić pnie przed kamerę”:
   osobny viewport ma stały narzut przebiegu.
 - Wynik: wybór A albo B, zrzuty w `shots_front/f0/` i liczby w tym pliku.
 
+### Wyniki F0 (2026-11-08, spike lokalnie na `spike/front-f0`, poza `main`)
+
+- **Spike:** `scripts/front3d.gd` i flaga `--frontspike=A|B` (`--frontbright` rozjaśnia elementy, żeby było je widać na zrzucie).
+  Co ok. 24 m stoi jeden element, 3,5–5 m przed płaszczyzną gry: pod gołym niebem pień sosny z gałęziami, we wnętrzu rura z trzema
+  kablami. Shader bez oświetlenia sceny (`unshaded`): ciemny odcień, cienka kontra, wygaszanie ditheringiem Bayera 4 × 4 wokół
+  punktów rzutowanych na płaszczyznę gry (z = 0) promieniem z kamery. Przy `--shotat` pierwszy element stoi 2 m na prawo od gracza.
+- **Kadry** (4K, HIGH, debug): las na powierzchni 1.2 (kolumna 44, `--shotrow=20`), powierzchnia 1.1 (46, 18), hala stacji 1.2
+  (89, 19), środek kryjówki (40, 15).
+- **Wydajność** (GPU, trzy rundy naprzemiennie; mediana):
+
+| Kadr | bez | A (warstwa graczy) | B (trzeci SubViewport) |
+|---|---|---|---|
+| las 1.2 | 9,14 ms | 9,23 ms (+0,09) | 9,56 ms (+0,42) |
+| powierzchnia 1.1 | 9,83 ms | 10,11 ms (+0,28) | 10,37 ms (+0,54) |
+| hala stacji 1.2 | 7,63 ms | 7,48 ms (−0,15) | 8,37 ms (+0,74) |
+| kryjówka | 10,07 ms | 10,08 ms (0,00) | 10,47 ms (+0,40) |
+
+  A kosztuje tyle co szum (średnio +0,06 ms), +1–5 wywołań rysowania. B dokłada stały narzut osobnego przebiegu (+0,4–0,7 ms),
+  a obraz ma ten sam. **Wybór: wariant A** — `LAYER_FRONT` w `VpActors`; B odpada.
+- **Skala renderu:** na MEDIUM (75%) i LOW (50%, dwuliniowo) krawędzie pnia są czyste, bez schodków ani obwódki na przezroczystym
+  tle warstwy graczy.
+- **Światło:** materiał `unshaded` nie bierze jaśniejszego otoczenia środowiska graczy (`env_b`) — własne światło w shaderze działa.
+- **Najważniejsze: ciemna sylwetka znika w nocnym lesie.** Na 1.2 i 1.1 pień widać tylko na tle nieba i plam światła (ognisko,
+  latarka), a gałęzi prawie wcale — tło lasu jest równie ciemne. We wnętrzach jest odwrotnie: rura z kablami na tle oświetlonego
+  muru kryjówki czyta się wyraźnie, w hali stacji na tle okna i zaplecza. Paralaksa w lesie wymaga więc mocniejszej kontry
+  od księżyca (kierunek `Level3D.MOON_DIR`, tylko krawędź zwrócona ku niebu) albo sylwetki odrobinę jaśniejszej od czerni
+  i chłodnej — do sprawdzenia w F1. Wnętrza działają już z samą sylwetką.
+- **Wygaszanie:** na zrzucie z `--frontbright` pień przechodzący przez gracza jest wokół niego przerzedzony do 15%; wzór ditheringu
+  widać jako drobną siatkę. Czy migocze w ruchu, okaże się dopiero na nagraniu (F2).
+- **Nie sprawdzone:** drezyna (gracze wysunięci ku kamerze), nagranie w ruchu, WIDE i CLOSE.
+- Zrzuty i pomiary: `shots_front/f0/` (`f0_sheet.jpg`: bez / A / B / A rozjaśnione dla czterech kadrów; `f0_zoom.jpg`,
+  `f0_lowzoom.jpg`; skrypt serii `f0.sh`).
+- **Wniosek dla decyzji 1 (pilot):** w lesie pierwszy plan zadziała dopiero po dodaniu kontry. Pilot we wnętrzu (hala stacji 1.2
+  albo kryjówka) pokaże efekt od razu, ale bez biegu przez długi odcinek. Rekomendacja zmienia się na: **pilot w hali stacji 1.2
+  i jej tunelu** (wnętrze, walka, bieg w poziomie), las jako drugi krok F2 z kontrą księżyca.
+
 ### F1 — mechanizm (`scripts/front3d.gd`)
 
 - Dane: rozmieszczenie proceduralne z kafli mapy (las pod gołym niebem, wnętrze pod `C`/`b`, jak `build_forest` i
@@ -79,7 +115,7 @@ Trzy rzeczy, przez które to nie jest „dorzucić pnie przed kamerę”:
   kolizji, brak cienia, `FRONT_SKIP` szanowany, gęstość (≤ 1 duży element na okno kadru NORMAL), funkcja wygaszania (krycie ≤ 0,15
   w punkcie i promieniu, liczona tą samą funkcją co w shaderze).
 
-### F2 — pilot: las na powierzchni 1.2
+### F2 — pilot (po F0: hala stacji 1.2 z tunelem, potem las 1.2 z kontrą — decyzja 1)
 
 - Pnie sosen i świerków (proste, ciemne, ucięte brzegiem kadru) i zwisające gałęzie z igliwiem przy górnej krawędzi, z modeli lasu
   (`prep_items3d.py: build_pine`, `world_forest_gen.py`) — w pierwszym planie bez szczegółu kory, sylwetka wystarcza.
@@ -104,7 +140,7 @@ Trzy rzeczy, przez które to nie jest „dorzucić pnie przed kamerę”:
 
 | Etap | Co | Rozmiar | Wersja |
 |---|---|---|---|
-| F0 | zrzuty, nagranie, pomiar, spike A / B | 0,5–1 d | bez wersji (wyniki w tym pliku) |
+| F0 | zrzuty, nagranie, pomiar, spike A / B | 0,5–1 d | zrobione 2026-11-08, bez wersji: wariant A |
 | F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | PR, podbicie wersji |
 | F2 | pilot: las na powierzchni 1.2 + A/B + bramka | 0,5–1 d | ten sam PR albo następny |
 | F3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
@@ -125,7 +161,8 @@ Trzy rzeczy, przez które to nie jest „dorzucić pnie przed kamerę”:
 
 ## Do decyzji (przed F1)
 
-1. **Pilot:** las na powierzchni 1.2 (polecam: najwięcej ruchu w poziomie, prosty zestaw) czy kryjówka (bez walki, łatwa ocena).
+1. **Pilot:** po F0 polecam halę stacji 1.2 z tunelem (wnętrze — sylwetka czyta się od razu; walka i bieg w poziomie), las 1.2
+   jako drugi krok z kontrą księżyca. Alternatywy: las od razu (więcej pracy nad światłem) albo kryjówka (bez walki).
 2. **Wygaszanie przy postaciach** (polecam: element może przejść przez środek kadru) czy zakaz stawiania w pasie gry
    (tylko górny i dolny brzeg kadru, prościej, ale słabsza paralaksa).
 3. **Ustawienie „Foreground”** ON / REDUCED / OFF, domyślnie ON (polecam) czy domyślnie REDUCED.
