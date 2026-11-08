@@ -30,6 +30,12 @@ Większość modeli w tym katalogu powstaje z Tripo albo z brył proceduralnych 
 | stool_metal | metal_stool_02 | taboret przy prasie elaboracyjnej, stole pirotechnicznym, w pracowni i przy stole konserwacji (kryjówka) |
 | pyro_ext | korean_fire_extinguisher_01 | gaśnica przy stole pirotechnicznym (kryjówka) |
 
+## Bloki `M` (`tools/mblock_bake.py`)
+
+Modele `mblock_a0`, `mblock_a1`, `mblock_ah` (betonowe bloki z czopami) i `mblock_c` (obudowa transformatora) są budowane
+proceduralnie; ich tekstury wypalane są z tekstur Poly Haven (CC0) zapisanych w `art_src/world/polyhaven/tex/`:
+`concrete_wall_006` (beton), `green_metal_rust` (farba obudowy), `rusty_metal_02` (rdza, pręt uchwytu) — kolor, chropowatość, wysokość.
+
 ## Modele z Meshy (image-to-3D)
 
 Maszyny, których nie ma w bibliotekach CC0: obraz wejściowy z FLUX.1 schnell (lokalnie, `tools/comfy_gen.py image --flux`), model z Meshy

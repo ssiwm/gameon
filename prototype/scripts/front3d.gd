@@ -19,6 +19,7 @@ extends RefCounted
 const Level3D := preload("res://scripts/level3d.gd")
 
 const LAYER_FRONT := 256                   ## warstwa wizualna pierwszego planu (bit 9); kamera świata jej nie widzi
+const LAYER_WALL := 512                    ## ściany przekroju (`build_walls`): widzi je kamera graczy, oświetlają lampy i latarka, ale nie kontra postaci (jasny pas boku ściany w ciemności)
 const MAX_PTS := 16
 const MIN_A := 0.3                         ## krycie elementu na sylwetce postaci
 const FADE_M := 0.6                        ## m: miękki brzeg wygaszania wokół prostokąta sylwetki
@@ -58,6 +59,10 @@ uniform sampler2D arm_tex : hint_default_white, filter_linear_mipmap_anisotropic
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D emit_tex : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
 uniform bool use_tex = true;
+uniform bool world_uv = false;             // ściany przekroju (`build_walls`): tekstura świata w rzucie trójpłaszczyznowym jak `Level3D.make_pbr`
+uniform float uv_per_m = 0.33;
+uniform sampler2D grime_tex : source_color, hint_default_transparent, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float grime_a = 0.0;               // brud wielkoskalowy jak `next_pass` materiału świata (kafel ok. 14 m)
 uniform vec3 base_col : source_color = vec3(0.05);
 uniform float base_rough = 0.55;
 uniform float base_metal = 0.5;
@@ -75,9 +80,11 @@ instance uniform vec4 tint = vec4(1.0);
 instance uniform vec2 ywin = vec2(-1e6, 1e6);  // F2b: fizyczny pas y [m] (podłoga, strop) we wpisach z przekrojem
 instance uniform vec4 occ = vec4(1e6, -1e6, 0.0, 0.0);   // F2b: y spodu stropu (dachu), y wierzchu podłogi, z przodu stropu, z przodu podłogi
 varying vec3 wpos;
+varying vec3 wnrm;
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wnrm = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
 }
 
 void fragment() {
@@ -96,13 +103,27 @@ void fragment() {
 		vec2 d = max(abs(q - pts[i].xy) - pts[i].zw, vec2(0.0));
 		a = min(a, mix(1.0, mix(min_a, 1.0, smoothstep(0.0, fade_m, length(d))), wts[i]));
 	}
+	vec2 uv = UV;
+	vec2 guv = UV;
+	if (world_uv) {
+		vec3 an = abs(normalize(wnrm));
+		vec3 p = wpos * vec3(1.0, -1.0, 1.0);
+		vec2 pp = an.x > 0.5 ? p.zy : (an.y > 0.5 ? p.xz : p.xy);
+		uv = pp * uv_per_m;
+		guv = pp * 0.07;
+	}
 	if (use_tex) {
-		ALBEDO = texture(albedo_tex, UV).rgb * tint.rgb;
-		vec3 arm = texture(arm_tex, UV).rgb;
+		vec3 alb = texture(albedo_tex, uv).rgb;
+		if (grime_a > 0.0) {
+			vec4 g = texture(grime_tex, guv);
+			alb = mix(alb, g.rgb, g.a * grime_a);
+		}
+		ALBEDO = alb * tint.rgb;
+		vec3 arm = texture(arm_tex, uv).rgb;
 		AO = arm.r * ambient_k;
 		ROUGHNESS = arm.g;
 		METALLIC = arm.b;
-		NORMAL_MAP = texture(normal_tex, UV).rgb;
+		NORMAL_MAP = texture(normal_tex, uv).rgb;
 	} else {
 		ALBEDO = base_col * tint.rgb;
 		AO = ambient_k;
@@ -116,6 +137,7 @@ void fragment() {
 """
 
 static var _mats: Dictionary = {}
+static var _wall_mats: Dictionary = {}
 static var _parts: Dictionary = {}
 static var _lamp_mesh: Mesh
 static var _root: Node3D
@@ -313,6 +335,10 @@ static func blocked_x(front: Array, rows: Array) -> Array:
 	for sp: Dictionary in Level3D.oil_spills(rows):
 		var xr: Vector2 = sp["xr"]
 		out.append(Vector2(xr.x - 0.3, xr.y + 0.3))
+	# plama błota na płycie przekroju (`Level3D.mud_spills`): rura nie stoi w błocie
+	for sp: Dictionary in Level3D.mud_spills(rows):
+		if (sp["zr"] as Vector2).y > Level3D.DEPTH_FRONT:
+			out.append(Vector2(float(sp["x0"]) - 1.2, float(sp["x1"]) + 1.2))
 	return out
 
 
@@ -590,3 +616,94 @@ static func update(points: Array, mid_y: float, frame_h: float, reduced: bool) -
 		m.set_shader_parameter("npts", n)
 		m.set_shader_parameter("mid_y", mid_y)
 		m.set_shader_parameter("band", frame_h * REDUCED_BAND if reduced else 0.0)
+	for m: ShaderMaterial in _wall_mats.values():           # ściany przekroju: wygaszanie tak samo, ale bez pasa REDUCED (to bryła budynku)
+		m.set_shader_parameter("pts", arr)
+		m.set_shader_parameter("wts", wts)
+		m.set_shader_parameter("npts", n)
+
+
+# ---------------------------------------------------------------- ściany przekroju (F3, uwaga z gry 2026-11-08)
+
+## Tekstury ścian przekroju jak materiały świata (`Level3D.build_level`: `mats["C"]`, `mats["#"]`): nazwa, kafli na metr, brud.
+const WALL_TEX := {"C": ["concrete", 0.33, "stone"], "#": ["terrain", 0.30, "organic"]}
+
+## Materiał ściany przekroju: shader pierwszego planu (wygaszanie na sylwetkach, `occ`) z teksturą świata w rzucie trójpłaszczyznowym.
+static func wall_material(key: String) -> ShaderMaterial:
+	if _wall_mats.has(key):
+		return _wall_mats[key]
+	var spec: Array = WALL_TEX.get(key, WALL_TEX["#"])
+	var m := ShaderMaterial.new()
+	m.shader = _shader()
+	m.set_shader_parameter("min_a", MIN_A)
+	m.set_shader_parameter("fade_m", FADE_M)
+	m.set_shader_parameter("world_uv", true)
+	m.set_shader_parameter("uv_per_m", float(spec[1]))
+	m.set_shader_parameter("ambient_k", 0.5)
+	var dir := Level3D.PBR_DIR + String(spec[0])
+	m.set_shader_parameter("albedo_tex", _tex(dir + "_albedo.png"))
+	m.set_shader_parameter("arm_tex", _tex(dir + "_orm.png"))
+	m.set_shader_parameter("normal_tex", _tex(dir + "_normal.png"))
+	var gp := Level3D.PBR_DIR + "grime_%s.png" % String(spec[2])
+	if ResourceLoader.exists(gp) and not "--nograime" in OS.get_cmdline_user_args():
+		m.set_shader_parameter("grime_tex", _tex(gp))
+		m.set_shader_parameter("grime_a", float(Level3D.GRIME_ALPHA.get(String(spec[2]), 1.0)))
+	_wall_mats[key] = m
+	return m
+
+
+## Ściany przekroju (`Level3D.shell_walls`) od DEPTH_FRONT do SHELL_Z: poziome ciągi kafli o tym samym materiale i `occ` jako jedna skrzynka,
+## jeden MultiMesh na parę (materiał, occ). Warstwa pierwszego planu (wygaszanie na sylwetkach graczy i wrogów), bez cienia; poza `_root`,
+## więc ustawienie „Foreground” OFF ich nie chowa (to bryła budynku, nie dekoracja). Zwraca liczbę skrzynek.
+static func build_walls(parent: Node3D) -> int:
+	if Level3D.shell_walls.is_empty():
+		return 0
+	var T := Level3D.T
+	var d := Level3D.SHELL_Z - Level3D.DEPTH_FRONT
+	var groups := {}                                         # "occ|klucz" → {wiersz: [kolumny]}
+	var occs := {}
+	for k: Vector2i in Level3D.shell_walls:
+		var v: Array = Level3D.shell_walls[k]
+		var key := String(v[0]) if WALL_TEX.has(String(v[0])) else "#"
+		var gk := "%s|%s" % [str(v[1]), key]
+		occs[gk] = v[1]
+		if not groups.has(gk):
+			groups[gk] = {}
+		var g: Dictionary = groups[gk]
+		if not g.has(k.y):
+			g[k.y] = []
+		(g[k.y] as Array).append(k.x)
+	var box := BoxMesh.new()
+	box.size = Vector3(T, T, d)
+	var n_boxes := 0
+	for gk: String in groups:
+		var xfs := []
+		var g: Dictionary = groups[gk]
+		for r: int in g:
+			var cs: Array = g[r]
+			cs.sort()
+			var i := 0
+			while i < cs.size():
+				var j := i
+				while j + 1 < cs.size() and int(cs[j + 1]) == int(cs[j]) + 1:
+					j += 1
+				var n := j - i + 1
+				var ctr := (Level3D.cell_pos(int(cs[i]), r) + Level3D.cell_pos(int(cs[j]), r)) * 0.5
+				xfs.append(Transform3D(Basis().scaled(Vector3(float(n), 1.0, 1.0)), Vector3(ctr.x, ctr.y, Level3D.DEPTH_FRONT + d * 0.5)))
+				i = j + 1
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = box
+		mm.instance_count = xfs.size()
+		for i in xfs.size():
+			mm.set_instance_transform(i, xfs[i])
+		var mi := MultiMeshInstance3D.new()
+		mi.name = "ShellWalls"
+		mi.multimesh = mm
+		mi.material_override = wall_material(gk.get_slice("|", 1))
+		mi.layers = LAYER_WALL
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+		mi.set_instance_shader_parameter("occ", occs[gk])
+		parent.add_child(mi)
+		n_boxes += xfs.size()
+	return n_boxes

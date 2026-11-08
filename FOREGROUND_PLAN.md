@@ -494,6 +494,68 @@ z których olej wyciekł; źródło światła drezyny jest w złym miejscu”.
 - Zrzuty: `shots_front/f3_m3/` — `sheet1.jpg` (gra), `sheetL.jpg` (`--view3dlit`), `sheet3.jpg` (niecki po poprawce),
   `s_N_mid80_c.jpg` (plama w normalnym świetle, rozjaśniony).
 
+### Poprawki po playteście 1.3 (2026-11-08, 1.7.525)
+
+Uwagi użytkownika po zagraniu 1.3: kierunek dobry („gra zyskała głębię, poczucie przestrzeni”), ale (1) ściany i stropy czasem stoją na
+innym planie niż podłoga — w wielu miejscach, (2) błoto powinno mieć kształt jak plamy oleju, (3) początek misji nie jest spójny:
+dwie struktury podłoża, przeszkody bez sensu.
+
+- **Ściany na planie podłogi.** Przyczyna: przekrój F2b wysuwał tylko płyty stropu i podłogi; ściany w pasie wpisu zostawały na 1,1 m,
+  bo wysunięte w warstwie świata zasłaniały wrogów i pierścień Stalkera (rzut ×1,38). Teraz `Level3D.set_shells` zbiera
+  `shell_walls`: lite kafle ścian (`WALL_CH` = `#C`) w pasie wpisu z przekrojem (bez kafli płyt i stref wydobycia) oraz nadproża —
+  kafle między stropem wyższego wpisu a stropem sąsiedniego niższego (sala → niski tunel). `Front3D.build_walls` stawia je jako
+  bryły od 1,1 do 5,6 m (scalone poziome ciągi, MultiMesh na klucz materiału) na nowej warstwie `LAYER_WALL` = 512, którą widzi
+  kamera graczy: shader pierwszego planu z wygaszaniem nad sylwetkami, tekstura w układzie świata (`world_uv`: beton albo skała,
+  z brudem), `occ` odcina część za płytą stropu i podłogi (z kamery nad stropem). Kontra postaci (`LAYER_ACTORS|LAYER_FRONT`)
+  ich nie oświetla — na pierwszej próbie boki ścian świeciły na niebiesko; lampy `l3a` dostały `LAYER_WALL` w maskę. Ściany są poza
+  węzłem `Front`, więc „Foreground” OFF i REDUCED ich nie ruszają (to geometria świata, nie dekoracja).
+- **Strefa wydobycia.** Kopana ściana przy zachodniej sali stała na 1,1 m przed płytą 5,6 m. `Level3D.zone_front_z` daje strefie
+  dotykającej pasa przekroju przód na `SHELL_Z` (`view3d._sync_dig_zones` → `chunk_mesh`). Wpisy 1.3: zachodnia sala od kolumny 0,
+  sala ewakuacji do 191 — końcowe ściany mapy też w płaszczyźnie podłogi.
+- **Kształt błota.** `OIL_STAIN_SHADER` ma tryb błota (`mode` 1): metakule w kolorach tafli nad brzegami niecki (wsunięte 0,4 m,
+  `MUD_INSET`), rozbryzgi obok i — w przekroju — plamy na płycie przed niecką. `Level3D.mud_spills` dla każdej niecki błota;
+  `Front3D.blocked_x` nie stawia rury w plamie na płycie.
+- **Start 1.3.** Usunięte pnie `w` i kładki w lesie przy starcie, płot i zapora betonowa (`ACCENTS`) — stały bez związku z drogą;
+  posterunek dostał lewą ścianę `C` z drzwiami, skrzynie przeniesione do środka, błoto przed posterunek (kol. 14–16). Dwie
+  struktury podłoża (grunt lasu i beton posterunku) zostają celowo: beton to podłoga budynku z przekrojem, granica wypada na ścianie.
+- Test `tools/test_front.gd`: ściany przekroju tylko na kaflach ścian, nigdy na płycie ani w strefie wydobycia, z teksturą i
+  niepustym `occ`; `LAYER_WALL` rozłączna z innymi; `build_walls` na 1.3 i w kryjówce coś buduje, bez cienia; przód strefy przy
+  zachodniej sali 1.3 na `SHELL_Z`; plamy błota z `OIL_BLOBS` metakul na płycie.
+- Koszt GPU nie mierzony osobno (kilka MultiMeshy prostopadłościanów na mapę).
+
+**Druga runda (gra na 3d0e261):** „podłoże w budynku nie jest spójne, powinien być beton; zamień powiększone skrzynie; ściany do
+kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepoprawnie”.
+- **Dziura w stropie** — nadproże nad niskim tunelem leżało na `LAYER_WALL`, którą kamera graczy rysuje nad światem; `occ` (bez
+  kolumn) z kamery w sali poniżej stropu tunelu wycinał dół nadproża i jego bok. Teraz nadproże to `shell_cells` (płyta świata, głębia
+  jak strop); w rzucie oddala się od środka kadru, w skałę, więc nie zasłania sali ani tunelu.
+- **Okna i bloki nad drzwiami** — ściana wysuwała się też w kolumnie z otworem: okno `|` zostawało w płaszczyźnie gry w głębi za
+  murem, a kawałek ściany pod oknem albo nad drzwiami wisiał 4,5 m przed nimi jak skrzynia. Wysuwa się tylko kolumna lita na całą
+  wysokość pasa (lub strefa wydobycia); boki Składu, posterunku i hali 1.2 z oknami i drzwiami zostają w płaszczyźnie gry.
+- **Ściana do kopania** — `dig_zone.chunk_mesh` pomijał komórki pierścienia, a kontur brzegu strefy przy powietrzu mapy leży właśnie
+  tam: strefa na końcu sali nie miała boku i przez niego widać było mur tła. Komórki pierścienia przy powietrzu dostają ścianę konturu.
+- **Beton** — podłoga posterunku 1.3 (wiersz 26, kol. 18–37) z `#` na `C`.
+- **Skrzynie `M`** — zamiast jednego modelu `crate` rozciągniętego na blok (2×2 kafle = 2,6 m) stos skrzyń zwykłej wielkości.
+  Po grze: „wygląda jeszcze gorzej” → warianty A–D na wizualizacji, wybrane A (bloki betonowe) i C (obudowa maszyny) „w dużo lepszej
+  jakości”. Teraz `tools/mblock_bake.py` (Blender):
+  - **A** — blok 1,31 × 0,65 × 0,65 m z dwoma czopami i prętem uchwytu (`mblock_a0`, `mblock_a1` — dwa układy ubytków i odcień) oraz
+    pół bloku (`mblock_ah`). Bryła wysoka z siatki wokselowej: ubytki tylko przy krawędziach, inna gęstość na każdej z 12 krawędzi,
+    większe w narożach, strome ścianki i nierówne dno, drobne szczerby i pory. Siatka gry (ok. 3,3 tys. ścian) to uproszczona bryła
+    z samymi dużymi ubytkami; normalne, AO, kolor i chropowatość wypalane z wysokiej na niską. UV: rzut ścian na boki bloku (Smart UV
+    na zaszczerbionej siatce dawał setki wysp i czarne plamy).
+  - **C** — obudowa transformatora 2×2 kafle: cokół, zbiornik z okapem i śrubami, drzwi z żaluzjami, zawiasami, klamką z kłódką,
+    znakiem wysokiego napięcia i tabliczką znamionową, radiator z kolektorami, rura osłonowa, kabel, uziemienie, napis „T-2 15 kV”
+    (ok. 7,2 tys. ścian, tekstury 2048).
+  - Materiały: skany CC0 z Poly Haven (`art_src/world/polyhaven/tex/`: concrete_wall_006, green_metal_rust, rusty_metal_02) rzutowane
+    pudełkowo + maski: odpryski (świeży beton), krawędzie (węzeł Bevel), brud w zagłębieniach, błoto przy ziemi, zacieki wody i rdzy.
+  - W grze (`Level3D._build_crates`): mur mijankowy, rząd co pół kafla (czopy wchodzą w gniazda wyższego rzędu, czopy górnego rzędu
+    kończą się na górze kafla), w głąb do CRATE_DEPTH w modułach pół kafla, bloki schowane w środku pominięte, losowo obrót o 180°
+    i wariant. Blok 2×2 przy tle hali (`b`) to transformator. Na 1.1 kafle `M` to płyty wieży, bez zmian.
+  - Zrzuty: `shots_front/f3_m3/m_*.png` (`crop_r17.jpg` — bloki na dachu Składu, `crop_b75.jpg` — transformator w hali).
+- Test: kolumna ściany przekroju lita w całym pasie, nadproże 1.3 w `shell_cells`; `--digtest` 68/68.
+- Zrzuty: `shots_front/f3_m3/s_c_*.jpg` (Skład, przejścia sala–tunel, posterunek, ściana do kopania), `s_a_crate17l.jpg` (stos skrzyń).
+- Zrzuty: `shots_front/f3_m3/` — `s_y_start10l.jpg`, `s_y_post30l.jpg` (start i posterunek), `s_x_mud22l.jpg` (błoto w zachodniej
+  sali), `s_x_east183.jpg` (końcowa ściana), `s_z_hub4l.jpg`, `s_z_hub67l.jpg` (kryjówka), `s_z_m2hall98l.jpg` (hala 1.2).
+
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
 - Rozmycie głębi ostrości tylko dla bliskiego planu na kamerze graczy (`CameraAttributesPractical.dof_blur_near_*`): gracze

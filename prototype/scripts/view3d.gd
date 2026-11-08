@@ -258,7 +258,7 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_cam_b.fov = FOV
 	_cam_b.near = 0.3
 	_cam_b.far = 160.0
-	_cam_b.cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT          # pierwszy plan (front3d.gd) w obrazie graczy: przed nimi z testem głębi
+	_cam_b.cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT | Front3D.LAYER_WALL          # pierwszy plan (front3d.gd) w obrazie graczy: przed nimi z testem głębi
 	_cam_b.current = true
 	_vp_fg.add_child(_cam_b)
 	_geo = Node3D.new()
@@ -1032,6 +1032,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 		["fog_volumes", func() -> void: Level3D.build_fog_volumes(root, rows, 0.02 if hub else 0.035)],
 		["front", func() -> void:
 			Front3D.build(root, front, front_skip, Settings.quality_idx == 0, rows)
+			Front3D.build_walls(root)                      # ściany przekroju do SHELL_Z (F3; poza ustawieniem „Foreground”)
 			Front3D.apply_settings(Settings.front_idx, Settings.quality_idx == 0)],
 	]
 	if not hub:
@@ -1941,6 +1942,7 @@ void fragment() {
 func _build_oil_spills(root: Node3D, rows: Array) -> void:
 	var spills := Level3D.oil_spills(rows)
 	Level3D.build_oil_stains(root, spills)
+	Level3D.build_oil_stains(root, Level3D.mud_spills(rows))     # kształt błota: plama w kolorach tafli nad bokami niecki
 	var ps := _item_scene("barrel_n")
 	if ps == null or spills.is_empty():
 		return
@@ -7554,14 +7556,16 @@ func _sync_dig_zones() -> void:
 			var ver := PackedInt32Array()
 			ver.resize(mis.size())
 			ver.fill(-1)
-			st = {"zone": z, "mis": mis, "ver": ver}
+			# strefa przy przekroju (koniec sali podziemi 1.3) sięga przodu przekroju — w jednym planie z podłogą i stropem
+			var zf := Level3D.zone_front_z(int(rc.position.x / 16.0), int(rc.position.y / 16.0), int(rc.end.x / 16.0) - 1, int(rc.end.y / 16.0) - 1)
+			st = {"zone": z, "mis": mis, "ver": ver, "zf": zf}
 			_dig3d[id] = st
 		var vers: PackedInt32Array = st["ver"]
 		for ci in vers.size():
 			if budget > 0 and vers[ci] != int(z.chunk_ver[ci]):
 				budget -= 1
 				vers[ci] = int(z.chunk_ver[ci])
-				((st["mis"] as Array)[ci] as MeshInstance3D).mesh = z.chunk_mesh(ci, Level3D.PX, Level3D.DEPTH_FRONT, -Level3D.DEPTH_BACK)
+				((st["mis"] as Array)[ci] as MeshInstance3D).mesh = z.chunk_mesh(ci, Level3D.PX, float(st.get("zf", Level3D.DEPTH_FRONT)), -Level3D.DEPTH_BACK)
 		st["ver"] = vers
 		_sync_dig_glints(st, z)
 	for id in _dig3d.keys():
@@ -7880,7 +7884,7 @@ func _scan_lights() -> void:
 				l3.light_cull_mask = LAYER_WORLD
 				l3a = OmniLight3D.new()
 				l3a.light_color = li.color
-				l3a.light_cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT   # lampy oświetlają też pierwszy plan (front3d.gd)
+				l3a.light_cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT | Front3D.LAYER_WALL   # lampy oświetlają też pierwszy plan (front3d.gd)
 				l3a.shadow_enabled = false
 				l3a.light_volumetric_fog_energy = 0.0
 				l3a.layers = LAYER_WORLD | LAYER_ACTORS

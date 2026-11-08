@@ -656,8 +656,10 @@ static func _build_wall_feet(parent: Node3D, rows: Array, mat: Material) -> void
 	_multimesh(parent, BoxMesh.new(), xf, mat)
 
 ## Skrzynie `M` poza konstrukcjami (na gruncie, na dachu Składu, w podziemnych halach 1.3): prostokątne bloki sąsiednich kafli `M`, które nie leżą
-## w ciągu nad nogami wieży (`tower_slabs`) — [{"c0", "c1", "r0", "r1"} (włącznie)]. W 3D były pudłami głębokimi na całą bryłę (3,5 m), teraz to
-## skrzynie z modelu `crate` (ta sama co skrzynie fizyczne `k`), głębokie jak szerokie (najwyżej CRATE_DEPTH).
+## w ciągu nad nogami wieży (`tower_slabs`) — [{"c0", "c1", "r0", "r1"} (włącznie)]. W 3D były pudłami głębokimi na całą bryłę (3,5 m), potem
+## powiększoną skrzynią i stosem skrzyń (obce w scenie, uwagi z gry 2026-11-08); od 1.7.525 to mur z betonowych bloków prefabrykowanych
+## z czopami (`mblock_a0`/`a1`/`ah`), a w podziemnej hali blok 2 × 2 kafle to obudowa transformatora (`mblock_c`) — modele z
+## `tools/mblock_bake.py`. Głębokość jak szerokość, najwyżej CRATE_DEPTH (w modułach bloku, pół kafla).
 const CRATE_DEPTH := 2.4
 static func crate_blocks(rows: Array) -> Array:
 	var skip := {}
@@ -690,33 +692,90 @@ static func crate_blocks(rows: Array) -> Array:
 			out.append({"c0": c, "c1": c1, "r0": r, "r1": r1})
 	return out
 
+## Modele bloków (`tools/mblock_bake.py`, jednostka = piksel świata): pełny blok MB_U × 2 długości, MB_U głębokości, korpus MB_BODY + czopy
+## do MB_U. W stosie rzędy stoją co wysokość korpusu (czopy wchodzą w gniazda bloku wyżej), czopy najwyższego rzędu kończą się na górze kafla.
+const MB_U := 8.0
+const MB_BODY := 7.3
+const MB_GAP := 0.012                       ## m: szczelina między sąsiednimi blokami (bez migotania stykających się ścian)
+
 static func _build_crates(parent: Node3D, rows: Array) -> bool:
-	var mm := model_mesh("crate")
-	if mm.is_empty():
+	var full := [model_mesh("mblock_a0"), model_mesh("mblock_a1")]
+	var half := model_mesh("mblock_ah")
+	var trafo := model_mesh("mblock_c")
+	if (full[0] as Array).is_empty() or (full[1] as Array).is_empty() or half.is_empty():
 		return false
-	var bb: AABB = (mm[1] as Transform3D) * (mm[0] as Mesh).get_aabb()
-	var xf: Array = []
+	var xf_full: Array = [[], []]
+	var xf_half: Array = []
+	var xf_trafo: Array = []
 	var walls: Array = []
+	var u := T * 0.5                                        # moduł bloku: pół kafla (0,65 m; bloki 1,31 × 0,65 × 0,65 m)
 	for g in crate_blocks(rows):
-		var inside := _ch(rows, int(g["c0"]) - 1, int(g["r0"])) == "b" or _ch(rows, int(g["c1"]) + 1, int(g["r0"])) == "b" or _ch(rows, int(g["c0"]), int(g["r0"]) - 1) == "b"
-		if inside:                                          # w hali skrzynia jest płytsza niż dawne pudło — za nią musi stać ściana tła
-			for k in range(int(g["c0"]), int(g["c1"]) + 1):
+		var c0 := int(g["c0"])
+		var inside := _ch(rows, c0 - 1, int(g["r0"])) == "b" or _ch(rows, int(g["c1"]) + 1, int(g["r0"])) == "b" or _ch(rows, c0, int(g["r0"]) - 1) == "b"
+		if inside:                                          # w hali blok jest płytszy niż dawne pudło — za nim musi stać ściana tła
+			for k in range(c0, int(g["c1"]) + 1):
 				for q in range(int(g["r0"]), int(g["r1"]) + 1):
 					walls.append(Transform3D(Basis().scaled(Vector3(T, T, 0.3)), cell_pos(k, q) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
-		var w := float(int(g["c1"]) - int(g["c0"]) + 1) * T
-		var h := float(int(g["r1"]) - int(g["r0"]) + 1) * T
-		var d := minf(w, CRATE_DEPTH)
-		var s := Vector3(w / bb.size.x, h / bb.size.y, d / bb.size.z)
-		var centre := Vector3(float(int(g["c0"])) * T + w * 0.5, -float(int(g["r1"]) + 1) * T, -0.15)
-		var off := Vector3((bb.position.x + bb.size.x * 0.5) * s.x, bb.position.y * s.y, (bb.position.z + bb.size.z * 0.5) * s.z)
-		xf.append(Transform3D(Basis().scaled(s), centre - off))
+		var nw := int(g["c1"]) - c0 + 1
+		var nh := int(g["r1"]) - int(g["r0"]) + 1
+		var w := float(nw) * T
+		var h := float(nh) * T
+		var x0 := float(c0) * T
+		var y0 := -float(int(g["r1"]) + 1) * T
+		var depth := minf(w, CRATE_DEPTH)
+		# podziemna hala, blok 2 × 2 kafle: obudowa transformatora (płaska pokrywa na wysokości bloku)
+		if inside and nw == 2 and nh == 2 and not trafo.is_empty():
+			var bt: AABB = (trafo[1] as Transform3D) * (trafo[0] as Mesh).get_aabb()
+			var st := Vector3(w / bt.size.x, h / bt.size.y, depth / bt.size.z)
+			var bot := Vector3((bt.position.x + bt.size.x * 0.5) * st.x, bt.position.y * st.y, (bt.position.z + bt.size.z * 0.5) * st.z)
+			xf_trafo.append(Transform3D(Basis().scaled(st), Vector3(x0 + w * 0.5, y0, -0.15) - bot))
+			continue
+		# betonowe bloki z czopami, wiązanie mijankowe: rząd co pół kafla, w rzędzie bloki długości kafla, co drugi rząd (i co druga warstwa
+		# w głąb) zaczyna się i kończy połówką. Bloki całkiem schowane w środku stosu pomijamy.
+		var nd := maxi(1, floori(depth / u + 0.01))
+		var dz := float(nd) * u
+		var nr := nh * 2
+		var units := nw * 2
+		var sy := h / (float(nr) * MB_BODY + (MB_U - MB_BODY))
+		var pitch := MB_BODY * sy
+		for row in nr:
+			for layer in nd:
+				var pos_u := 0
+				var slots: Array = []                           # [początek w modułach, długość 1 | 2]
+				if (row + layer + c0) % 2 == 1:
+					slots.append([0, 1])
+					pos_u = 1
+				while pos_u + 2 <= units:
+					slots.append([pos_u, 2])
+					pos_u += 2
+				if pos_u < units:
+					slots.append([pos_u, 1])
+				for sl in slots:
+					var a := int(sl[0])
+					var n := int(sl[1])
+					var edge := a == 0 or a + n == units
+					if layer > 0 and layer < nd - 1 and row < nr - 1 and not edge:
+						continue
+					var hsh := absi(hash(Vector3i(c0 * 4 + a, int(g["r0"]) * 4 + row, layer)))
+					var s := Vector3((float(n) * u - MB_GAP) / (float(n) * MB_U), sy, (u - MB_GAP) / MB_U)
+					var rot := Basis(Vector3.UP, (PI if hsh % 2 == 1 else 0.0) + deg_to_rad(float((hsh / 2) % 7 - 3) * 0.25))
+					var pos := Vector3(x0 + (float(a) + float(n) * 0.5) * u + float((hsh / 14) % 5 - 2) * 0.004, y0 + float(row) * pitch,
+							-0.15 + dz * 0.5 - (float(layer) + 0.5) * u)
+					var mm: Array = half if n == 1 else full[(hsh / 70) % 2]
+					var t := Transform3D(rot * Basis().scaled(s), pos) * (mm[1] as Transform3D)
+					if n == 1:
+						xf_half.append(t)
+					else:
+						(xf_full[(hsh / 70) % 2] as Array).append(t)
 	_multimesh(parent, BoxMesh.new(), walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
-	if xf.is_empty():
-		return true
-	var out: Array = []
-	for x in xf:
-		out.append((x as Transform3D) * (mm[1] as Transform3D))
-	_multimesh(parent, mm[0], out, null)
+	for i in 2:
+		_multimesh(parent, (full[i] as Array)[0], xf_full[i], null)
+	_multimesh(parent, half[0], xf_half, null)
+	if not xf_trafo.is_empty():
+		var out: Array = []
+		for x in xf_trafo:
+			out.append((x as Transform3D) * (trafo[1] as Transform3D))
+		_multimesh(parent, trafo[0], out, null)
 	return true
 
 ## Żebra długich hal (kryjówka): pilaster przy ścianie tła i belka pod stropem w poprzek, co RIB_EVERY kafli — strop z betonu na 50–70 m
@@ -1537,20 +1596,32 @@ static func set_niches(cells: Dictionary, holes: Array) -> void:
 ## Przekrój budynku wysunięty do pierwszego planu (`FOREGROUND_PLAN.md` F2b): w strefie wpisu `FRONT` z `"shell": true` strop i podłoga
 ## sięgają do SHELL_Z zamiast DEPTH_FRONT, więc rury pierwszego planu (`front3d.gd`, z 3,5–5 m) stoją na płycie podłogi i dochodzą do stropu.
 ## Kafle strefy: wiersz stropu r0 i podłoga r1 z fundamentem w dół (ciągły lity grunt pod każdą kolumną, najwyżej SHELL_DOWN wierszy — poza
-## dolną krawędź kadru, ale nie w głąb sąsiedniego wnętrza). Ściany w pasie gry zostają na DEPTH_FRONT: wysunięte ku kamerze rozrastają się
-## w rzucie (×1,38) i zasłaniałyby wrogów i znaczniki z warstwy świata obok siebie (spike: pierścień Stalkera przy ścianie hali).
+## dolną krawędź kadru, ale nie w głąb sąsiedniego wnętrza). Ściany w pasie gry zostają w warstwie świata na DEPTH_FRONT: wysunięte ku kamerze
+## rozrastają się w rzucie (×1,38) i zasłaniałyby wrogów i znaczniki z warstwy świata obok siebie (spike: pierścień Stalkera przy ścianie
+## hali) — ich przedłużenie do SHELL_Z rysuje pierwszy plan z wygaszaniem (`shell_walls`).
 ## Poziomy wierzch płyty przed płaszczyzną gry rzutuje się zawsze poniżej linii podłogi, a spód stropu powyżej linii stropu — przekrój
 ## nie wchodzi w pas gry przy żadnej kamerze.
 const SHELL_Z := 5.6
 const SHELL_DOWN := 8
 const SHELL_CH := "#CMmO~"                 ## znaki litych kafli, które przekrój przedłuża (bez niszczalnych: okien, desek, kratek, skrzyń)
 static var shell_cells := {}               ## Vector2i → klucz materiału przedłużenia ("" = jak kafel; "C" = beton fundamentu budynku)
+## Ściany przekroju (F3, uwaga z gry 2026-11-08: „ściany i sufity są na innym planie niż podłoże”): lite kolumny `WALL_CH` na całą wysokość
+## pasa wpisu z przekrojem (końce sal, ściana do kopania; kolumna z oknem lub drzwiami zostaje w płaszczyźnie gry). Nadproża między wpisem
+## o niższym stropie a sąsiednim o wyższym (skała nad stropem niskiego tunelu) idą do `shell_cells`. Ściany sięgają do SHELL_Z w warstwie pierwszego planu
+## z wygaszaniem (`Front3D.build_walls`): ściana wysunięta ku kamerze rozrasta się w rzucie i bez wygaszania zasłaniałaby wrogów
+## i znaczniki obok siebie (wynik spike'a F2b). Vector2i → [klucz materiału ("C" / "#"), occ: Vector4 jak u elementów pierwszego planu].
+static var shell_walls := {}
+static var shell_bands: Array = []         ## wpisy FRONT z przekrojem z ostatniego `set_shells` (strefy wydobycia obok sięgają SHELL_Z)
+const WALL_CH := "#C"
 
-static func set_shells(front: Array, rows: Array) -> void:
+static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	shell_cells = {}
+	shell_walls = {}
+	shell_bands = []
 	if "--noshell" in OS.get_cmdline_user_args():
 		return                                                  # dev: bez przekroju (porównanie A/B)
 	var bands: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
+	shell_bands = bands
 	# fundament schodzi w dół najwyżej do pasa gry innego wpisu (piętra kryjówki: pod podłogą środkowego piętra są ściany dolnego)
 	var in_band := func(c: int, r: int) -> bool:
 		for b: Dictionary in bands:
@@ -1568,6 +1639,55 @@ static func set_shells(front: Array, rows: Array) -> void:
 			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH and not in_band.call(c, r):
 				shell_cells[Vector2i(c, r)] = "C" if concrete else ""
 				r += 1
+	var in_dig := func(c: int, r: int) -> bool:
+		for z in digs:
+			if c >= int(z[0]) and c <= int(z[2]) and r >= int(z[1]) and r <= int(z[3]):
+				return true
+		return false
+	var wall_key := func(e: Dictionary, c: int, r: int) -> String:
+		return "C" if String(e.get("set", "")) in ["station", "bunker"] else _ch(rows, c, r)
+	for e: Dictionary in bands:
+		# occ: z kamery nad stropem albo pod podłogą wpisu płyta przekroju zasłania ścianę (warstwa pierwszego planu rysuje się nad światem)
+		var occ := Vector4(-float(int(e["r0"]) + 1) * T + 0.02, -float(e["r1"]) * T - 0.02, SHELL_Z, SHELL_Z)
+		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			# tylko ściana na całą wysokość pasa (koniec sali, ściana do kopania): kolumna z oknem, drzwiami albo przejściem zostaje
+			# w płaszczyźnie gry razem z otworem — wysunięty kawałek nad drzwiami albo pod oknem wisiał jak skrzynia, a okno stało
+			# w głębi za nim (uwaga z gry 2026-11-08)
+			var full := true
+			for r in range(int(e["r0"]) + 1, int(e["r1"])):
+				if not (_ch(rows, c, r) in WALL_CH or in_dig.call(c, r)):
+					full = false
+			if not full:
+				continue
+			for r in range(int(e["r0"]) + 1, int(e["r1"])):
+				if _ch(rows, c, r) in WALL_CH and not shell_cells.has(Vector2i(c, r)) and not in_dig.call(c, r):
+					shell_walls[Vector2i(c, r)] = [wall_key.call(e, c, r), occ]
+	# nadproża: wpis o niższym stropie (a) obok wpisu o wyższym (b), pasy na wspólnej wysokości — skała nad stropem a do wiersza stropu b.
+	# W warstwie świata, jak płyta stropu (`shell_cells`): w warstwie pierwszego planu (rysowanej nad światem) `occ` nie zna kolumn —
+	# z kamery w sali pod wysokością stropu tunelu wycinał dół nadproża i w stropie podziemi była dziura (uwaga z gry 2026-11-08).
+	# Nadproże nie wchodzi w pas gry: leży nad stropem niskiego tunelu, a w rzucie oddala się od środka kadru (w skałę, nie w salę).
+	for a: Dictionary in bands:
+		for b: Dictionary in bands:
+			if a == b or int(b["r0"]) >= int(a["r0"]):
+				continue
+			if int(b["c0"]) != int(a["c1"]) + 1 and int(a["c0"]) != int(b["c1"]) + 1:
+				continue
+			if int(a["r0"]) >= int(b["r1"]) or int(b["r0"]) >= int(a["r1"]):
+				continue
+			var concrete := String(a.get("set", "")) in ["station", "bunker"]
+			for c in range(int(a["c0"]), int(a["c1"]) + 1):
+				for r in range(int(b["r0"]), int(a["r0"])):
+					var k := Vector2i(c, r)
+					if _ch(rows, c, r) in SHELL_CH and not shell_cells.has(k) and not shell_walls.has(k) and not in_band.call(c, r) and not in_dig.call(c, r):
+						shell_cells[k] = "C" if concrete else ""
+
+## Przód strefy wydobycia (`dig_zone.chunk_mesh`): SHELL_Z, gdy strefa styka się z pasem wpisu z przekrojem (koniec sali podziemi 1.3 —
+## ściana do kopania stoi w jednym planie z podłogą i stropem przekroju), inaczej DEPTH_FRONT. Prostokąt w kaflach.
+static func zone_front_z(c0: int, r0: int, c1: int, r1: int) -> float:
+	for e: Dictionary in shell_bands:
+		if c1 >= int(e["c0"]) - 1 and c0 <= int(e["c1"]) + 1 and r1 > int(e["r0"]) and r0 < int(e["r1"]):
+			return SHELL_Z
+	return DEPTH_FRONT
 
 ## Torowisko drezyny z ostatniego `build_level` ({"row", "c0", "c1"}; puste bez drezyny).
 static var rail_trench := {}
@@ -2241,6 +2361,8 @@ render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
 uniform vec4 blobs[14];
 uniform vec3 pit = vec3(0.0);
 uniform float seed = 0.0;
+uniform int mode = 0;                      // 0 = olej, 1 = błoto (`mud_spills`: plama zachodzi na boki niecki, w środku zostaje tafla)
+uniform float inset = 0.0;                 // błoto: pas przy bokach niecki, w którym plama leży na tafli i łamie prostokąt [m]
 varying vec3 wp;
 //COMMON
 void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
@@ -2255,7 +2377,14 @@ void fragment() {
 	float wet = smoothstep(0.40, 0.56, g);         // świeża warstwa: czarne lustro (szeroki próg: kamera patrzy na płytę pod ostrym kątem)
 	// nad niecką gry plama zachodzi tylko przez przednią krawędź (poszarpany pas do ok. 0,4 m): niecka i plama na płycie są jedną kałużą,
 	// a reszta niecki zostaje żywą taflą (fale, brodzenie). Pas przy bokach i z tyłu rysował ciemną ramkę wokół niecki (zrzut f2b6/oil3).
-	if (wp.x > pit.x && wp.x < pit.y && wp.z < pit.z) {
+	if (mode == 1) {
+		float e = min(wp.x - pit.x, pit.y - wp.x) + (fbm(wp.xz * 2.1 + seed * 1.3) - 0.5) * 0.5;
+		if (wp.x > pit.x && wp.x < pit.y && wp.z < pit.z) {
+			float k = 1.0 - smoothstep(inset * 0.5, inset, e);
+			soak *= k;
+			wet *= k;
+		}
+	} else if (wp.x > pit.x && wp.x < pit.y && wp.z < pit.z) {
 		float k = 1.0 - smoothstep(0.1, 0.35, pit.z - wp.z + (fbm(wp.xz * 2.3 + seed * 1.7) - 0.5) * 0.4);
 		soak *= k;
 		wet *= k;
@@ -2270,10 +2399,62 @@ void fragment() {
 	ROUGHNESS = mix(mix(0.85, 0.55, deep), 0.035, wet);
 	SPECULAR = mix(0.25, 1.0, wet);
 	ALPHA = soak * mix(mix(0.55, 0.8, deep), 0.96, wet);
+	if (mode == 1) {
+		// błoto w kolorach tafli (`LIQUID_SURF`, kind 0): brzeg rozmazany po gruncie, środek mokry i ciemny, bez tęczowej błony
+		vec3 dry = mix(vec3(0.060, 0.045, 0.031), vec3(0.042, 0.032, 0.022), deep);
+		ALBEDO = mix(dry, vec3(0.022, 0.017, 0.012), wet) * (0.85 + 0.3 * vn(wp.xz * 22.0 + seed));
+		ROUGHNESS = mix(0.88, 0.5, wet);
+		SPECULAR = 0.32;
+		ALPHA = soak * mix(0.75, 0.97, max(deep, wet));
+	}
 }
 """
 
-## Plamy oleju z `oil_spills` (warstwa świata, bez cienia): jeden czworokąt na wyciek tuż nad posadzką.
+## Kształt błota (uwaga z gry 2026-11-08: „błoto powinno mieć kształt — podobnie jak plamy oleju”): niecka błota zostaje (brodzenie bez zmian),
+## a nad jej bokami i obok na gruncie leży plama z metakul w kolorach tafli — pas `inset` przy bokach niecki przykrywa prosty brzeg,
+## kilka rozbryzgów leży na gruncie obok, a w strefie przekroju plama wychodzi też na płytę przed niecką. Każdy ciąg błota z wolnym
+## powietrzem nad sobą, także na zewnątrz. Wynik w formacie `oil_spills` (bez beczek) z "mode": 1 dla `build_oil_stains`.
+const MUD_INSET := 0.4
+
+static func mud_spills(rows: Array) -> Array:
+	var out: Array = []
+	for run in _liquid_runs(rows):
+		if int(run["kd"]) != 0:
+			continue
+		var c: int = run["c"]
+		var r: int = run["r"]
+		var x0: float = run["x0"]
+		var x1: float = x0 + float(run["w"])
+		var w := x1 - x0
+		var y: float = run["y_top"]
+		var rng := RandomNumberGenerator.new()
+		rng.seed = c * 6007 + r * 7741
+		var shell := in_shell(c, r) and in_shell(int(run["c1"]) - 1, r)
+		var zf := DEPTH_FRONT
+		var zmax := (SHELL_Z - 0.12) if shell else (DEPTH_FRONT - 0.02)
+		var blobs: Array = []
+		for side in [0, 1]:                                     # boki niecki: poszarpany brzeg zamiast prostej krawędzi
+			var ex := x0 if side == 0 else x1
+			for k in 3:
+				var z := lerpf(-DEPTH_BACK + 0.6, zf - 0.2, (float(k) + rng.randf_range(0.2, 0.8)) / 3.0)
+				blobs.append(Vector4(ex + rng.randf_range(-0.15, 0.2) * (1.0 if side == 0 else -1.0), z, rng.randf_range(0.45, 0.7), rng.randf_range(0.5, 0.8)))
+		for k in 3:                                             # rozbryzgi na gruncie obok niecki
+			var side := rng.randi() % 2
+			var ex := (x0 - rng.randf_range(0.4, 1.1)) if side == 0 else (x1 + rng.randf_range(0.4, 1.1))
+			blobs.append(Vector4(ex, rng.randf_range(-DEPTH_BACK + 0.6, zf - 0.3), rng.randf_range(0.2, 0.35), rng.randf_range(0.2, 0.35)))
+		if shell:                                               # przekrój: plama wychodzi na płytę przed niecką
+			for k in 3:
+				blobs.append(Vector4(x0 + w * (float(k) + 0.5) / 3.0 + rng.randf_range(-0.3, 0.3), zf + rng.randf_range(0.4, 1.2), w / 3.0 + 0.3, rng.randf_range(0.5, 0.8)))
+		while blobs.size() < OIL_BLOBS:
+			blobs.append(Vector4(rng.randf_range(x0 - 0.6, x1 + 0.6), rng.randf_range(-DEPTH_BACK + 0.6, zmax), rng.randf_range(0.12, 0.22), rng.randf_range(0.12, 0.2)))
+		blobs.resize(OIL_BLOBS)
+		var xr := Vector2(x0 - 1.8, x1 + 1.8)
+		var zr := Vector2(-DEPTH_BACK + 0.3, zmax)
+		out.append({"x0": x0, "x1": x1, "y": y, "pit": Vector3(x0, x1, zf + 0.01), "blobs": blobs, "xr": xr, "zr": zr, "barrels": [],
+			"seed": float(run["seed"]), "mode": 1, "inset": MUD_INSET})
+	return out
+
+## Plamy oleju z `oil_spills` i błota z `mud_spills` (warstwa świata, bez cienia): jeden czworokąt na plamę tuż nad posadzką.
 static func build_oil_stains(parent: Node3D, spills: Array) -> void:
 	if spills.is_empty():
 		return
@@ -2290,8 +2471,10 @@ static func build_oil_stains(parent: Node3D, spills: Array) -> void:
 		mat.set_shader_parameter("blobs", PackedVector4Array(sp["blobs"]))
 		mat.set_shader_parameter("pit", sp["pit"])
 		mat.set_shader_parameter("seed", float(sp["seed"]))
+		mat.set_shader_parameter("mode", int(sp.get("mode", 0)))
+		mat.set_shader_parameter("inset", float(sp.get("inset", 0.0)))
 		var mi := MeshInstance3D.new()
-		mi.name = "OilStain_%d" % i
+		mi.name = ("MudStain_%d" if int(sp.get("mode", 0)) == 1 else "OilStain_%d") % i
 		mi.mesh = pm
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
