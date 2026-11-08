@@ -22,6 +22,8 @@ const VOLUME_BUSES := {"master": ["Master"], "music": ["Music"], "ambience": ["A
 const SHAKE_NAMES := ["FULL", "HALF", "OFF"]
 ## Efekty pogody (weather_fx.gd): FULL — pełny błysk błyskawic; REDUCED — miękka poświata zamiast błysku i mniej cząsteczek (fotowrażliwość); OFF — bez efektów.
 const WEATHER_FX_NAMES := ["FULL", "REDUCED", "OFF"]
+## Pierwszy plan przed płaszczyzną gry (front3d.gd, FOREGROUND_PLAN.md): ON; REDUCED — bez elementów w pasie wokół środka kadru; OFF — bez pierwszego planu.
+const FRONT_NAMES := ["ON", "REDUCED", "OFF"]
 const WEATHER_FX_FULL := 0
 const WEATHER_FX_REDUCED := 1
 const WEATHER_FX_OFF := 2
@@ -63,6 +65,7 @@ const Actions := preload("res://scripts/actions.gd")
 var volume := {"master": 1.0, "music": 1.0, "ambience": 1.0, "sfx": 1.0}
 var shake_idx := 0
 var weather_fx_idx := WEATHER_FX_REDUCED
+var front_idx := 0                         ## indeks FRONT_NAMES (domyślnie ON)
 var ui_idx := 1
 var cam_idx := 1                       ## zbliżenie kamery: WIDE / NORMAL / CLOSE (CAM_ZOOM) — większe postacie kosztem pola widzenia
 var hints_on := true
@@ -175,6 +178,10 @@ func set_volume(kind: String, v: float) -> void:
 
 func cycle_shake() -> void:
 	shake_idx = (shake_idx + 1) % SHAKE_NAMES.size()
+	_commit()
+
+func cycle_front() -> void:
+	front_idx = (front_idx + 1) % FRONT_NAMES.size()
 	_commit()
 
 func cycle_weather_fx() -> void:
@@ -475,6 +482,7 @@ func _load_global() -> void:
 		volume[kind] = clampf(float(cf.get_value("game", "vol_" + kind, fallback)), 0.0, 1.0)
 	shake_idx = clampi(int(cf.get_value("game", "shake", 0)), 0, SHAKE_NAMES.size() - 1)
 	weather_fx_idx = clampi(int(cf.get_value("game", "weather_fx", WEATHER_FX_REDUCED)), 0, WEATHER_FX_NAMES.size() - 1)
+	front_idx = clampi(int(cf.get_value("game", "foreground", 0)), 0, FRONT_NAMES.size() - 1)
 	ui_idx = clampi(int(cf.get_value("game", "ui", 1)), 0, UI_NAMES.size() - 1)
 	cam_idx = clampi(int(cf.get_value("game", "cam", 1)), 0, CAM_NAMES.size() - 1)
 	hints_on = bool(cf.get_value("game", "hints", true))
@@ -516,6 +524,7 @@ func _save() -> void:
 		cf.set_value("game", "vol_" + kind, volume[kind])
 	cf.set_value("game", "shake", shake_idx)
 	cf.set_value("game", "weather_fx", weather_fx_idx)
+	cf.set_value("game", "foreground", front_idx)
 	cf.set_value("game", "ui", ui_idx)
 	cf.set_value("game", "cam", cam_idx)
 	cf.set_value("game", "hints", hints_on)

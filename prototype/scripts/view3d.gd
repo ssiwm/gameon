@@ -30,6 +30,7 @@ const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
+const Front3D := preload("res://scripts/front3d.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 const WorldBars := preload("res://scripts/world_bars.gd")
@@ -255,13 +256,14 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_cam_b.fov = FOV
 	_cam_b.near = 0.3
 	_cam_b.far = 160.0
-	_cam_b.cull_mask = LAYER_ACTORS
+	_cam_b.cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT          # pierwszy plan (front3d.gd) w obrazie graczy: przed nimi z testem głębi
 	_cam_b.current = true
 	_vp_fg.add_child(_cam_b)
 	_geo = Node3D.new()
 	_geo.name = "Geometry"
 	_world.add_child(_geo)
 	Settings.changed.connect(_apply_brightness)
+	Settings.changed.connect(func() -> void: Front3D.apply_settings(Settings.front_idx, Settings.quality_idx == 0))
 	# szczątki wczytane z góry: przy pierwszym zabójstwie w sesji modele (z teksturami) wczytywały się synchronicznie — przestój ok. 0,3–0,4 s
 	for names in GIB_MODELS:
 		for gn in names:
@@ -482,6 +484,7 @@ func _tick(delta: float) -> void:
 	_destr_warm_sync()
 	var tp := Time.get_ticks_usec()
 	_sync_camera()
+	_front_tick()
 	tp = _tp("camera", tp)
 	_geo_t -= delta
 	var pre := _curtain_key == PRE_CURTAIN_KEY and _curtain != null and _curtain.visible
@@ -935,6 +938,39 @@ func _build_world(root: Node3D, rows: Array, hub: bool, spread := false) -> Dict
 	var reeds := root.get_node_or_null("ShoreReeds") as MeshInstance3D
 	return {"rows": rows, "reeds": reeds.material_override as ShaderMaterial if reeds != null else null, "mud": mud}
 
+## Pierwszy plan (front3d.gd): punkty wygaszania co klatkę — wszyscy gracze (także w co-op), celownik lokalnego gracza, potem wrogowie
+## od najbliższego środka kadru; środek i wysokość kadru dla REDUCED.
+func _front_tick() -> void:
+	if _level == null or (_level.get("front") as Array).is_empty() or Settings.front_idx == 2:
+		return
+	var c2 := get_viewport().get_camera_2d()
+	if c2 == null:
+		return
+	var ctr := c2.get_screen_center_position()
+	var pts := []
+	if _players != null:
+		for p in _players.get_children():
+			if p is Node2D:
+				var g := (p as Node2D).global_position
+				pts.append(Vector3(g.x * PX, -(g.y - 10.0) * PX, Front3D.R_PLAYER))
+	var np := pts.size()
+	var m := get_global_mouse_position()
+	pts.append(Vector3(m.x * PX, -m.y * PX, Front3D.R_AIM))
+	var en := []
+	for n in get_tree().get_nodes_in_group("enemies"):
+		if n is Node2D and (n as Node2D).is_visible_in_tree():
+			var g2 := (n as Node2D).global_position
+			en.append([g2.distance_squared_to(ctr), g2])
+	en.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	for e in en:
+		if pts.size() >= Front3D.MAX_PTS:
+			break
+		var g3: Vector2 = e[1]
+		pts.append(Vector3(g3.x * PX, -(g3.y - 8.0) * PX, Front3D.R_ENEMY))
+	var vis := get_viewport().get_visible_rect().size
+	var frame_h := vis.y / maxf(c2.zoom.y, 0.01) * PX
+	Front3D.update(pts, np, -ctr.y * PX, frame_h, Settings.front_idx == 1)
+
 ## Kroki `_build_world` w kolejności (nazwa do pomiaru, wywołanie). Kolejność ma znaczenie: ciecze potrzebują strumieni, las — dna lasu itd.
 func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 	var span := _rail_span()
@@ -944,6 +980,10 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 	var niches: Array = _level.get("niches") if _level != null and _level.get("niches") != null else []
 	if "--noniches" in OS.get_cmdline_user_args():
 		niches = []                                         # dev: mapa bez wnęk (porównanie A/B, `DEPTH_PLAN.md`)
+	var front: Array = _level.get("front") if _level != null and _level.get("front") != null else []
+	var front_skip: Array = _level.get("front_skip") if _level != null and _level.get("front_skip") != null else []
+	if "--nofront" in OS.get_cmdline_user_args():
+		front = []                                          # dev: mapa bez pierwszego planu (porównanie A/B, `FOREGROUND_PLAN.md`)
 	var steps := [
 		["level", func() -> void:
 			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches))
@@ -960,6 +1000,9 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 		["front_edge", func() -> void: Level3D.build_front_edge(root, rows)],
 		["deco", func() -> void: _build_deco(root)],
 		["fog_volumes", func() -> void: Level3D.build_fog_volumes(root, rows, 0.02 if hub else 0.035)],
+		["front", func() -> void:
+			Front3D.build(root, front, front_skip, Settings.quality_idx == 0)
+			Front3D.apply_settings(Settings.front_idx, Settings.quality_idx == 0)],
 	]
 	if not hub:
 		steps.append_array([

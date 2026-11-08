@@ -52,6 +52,13 @@ const NICHES := [
 	{"kind": "vent", "c0": 124, "c1": 124, "r0": 46, "r1": 46, "lit": "lamp"},     # N4: kratki pod stropem tunelu, w środku przęseł
 	{"kind": "vent", "c0": 228, "c1": 228, "r0": 46, "r1": 46, "lit": "lamp"},
 ]
+## Pierwszy plan przed płaszczyzną gry (`front3d.gd`, `FOREGROUND_PLAN.md` F2 — pilot): rury, kable i łańcuchy 3,5–5 m przed kamerą
+## w hali stacji i w tunelu drezyny; pas wpisu od stropu (r0) do podłogi (r1), elementy przycięte do niego w rzucie na płaszczyznę gry.
+const FRONT := [
+	{"set": "station", "c0": 66, "c1": 100, "r0": 18, "r1": 26},     # hala stacji
+	{"set": "tunnel", "c0": 8, "c1": 282, "r0": 44, "r1": 51},      # tunel drezyny
+]
+const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od
 ## podziemnej hali — wchodzi się tylko przez rozbite przejście, z boku drogi do generatorów.
 const DIG_ZONES := [[133, 36, 142, 39, "gravel", 1201]]
