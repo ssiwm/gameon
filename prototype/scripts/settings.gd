@@ -485,6 +485,9 @@ func _load_global() -> void:
 	front_idx = clampi(int(cf.get_value("game", "foreground", 0)), 0, FRONT_NAMES.size() - 1)
 	ui_idx = clampi(int(cf.get_value("game", "ui", 1)), 0, UI_NAMES.size() - 1)
 	cam_idx = clampi(int(cf.get_value("game", "cam", 1)), 0, CAM_NAMES.size() - 1)
+	for a in OS.get_cmdline_user_args():                    # dev (spike F2b): --camidx=N wymusza WIDE / NORMAL / CLOSE na zrzucie
+		if a.begins_with("--camidx="):
+			cam_idx = clampi(int(a.get_slice("=", 1)), 0, CAM_NAMES.size() - 1)
 	hints_on = bool(cf.get_value("game", "hints", true))
 	ai_companion = bool(cf.get_value("game", "ai_companion", true))
 	fullscreen = bool(cf.get_value("game", "fullscreen", false))

@@ -1013,6 +1013,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 	var steps := [
 		["level", func() -> void:
 			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches))
+			Level3D.set_shells(front, rows)
 			Level3D.build_level(root, rows, trench)],
 		["niches", func() -> void: Niches3D.build(root, rows, niches, Settings.quality_idx)],
 		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
@@ -1025,9 +1026,10 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 		["undergrowth", func() -> void: Level3D.build_undergrowth(root, rows)],
 		["front_edge", func() -> void: Level3D.build_front_edge(root, rows)],
 		["deco", func() -> void: _build_deco(root)],
+		["oil_spills", func() -> void: _build_oil_spills(root, rows)],
 		["fog_volumes", func() -> void: Level3D.build_fog_volumes(root, rows, 0.02 if hub else 0.035)],
 		["front", func() -> void:
-			Front3D.build(root, front, front_skip, Settings.quality_idx == 0)
+			Front3D.build(root, front, front_skip, Settings.quality_idx == 0, rows)
 			Front3D.apply_settings(Settings.front_idx, Settings.quality_idx == 0)],
 	]
 	if not hub:
@@ -1890,6 +1892,121 @@ func _local_xf(n: Node3D, root: Node) -> Transform3D:
 	if p == root and root is Node3D:
 		xf = (root as Node3D).transform * xf
 	return xf
+
+# ---------------------------------------------------------------- wyciek oleju w przekroju budynku (FOREGROUND_PLAN.md F2b)
+
+## Zaciek oleju na beczce (nakładka na materiał modelu): w układzie modelu pas od otworu w dół z kroplami i ciemna plama wokół otworu;
+## przewrócona beczka — zalany wylot (górny koniec modelu).
+const OIL_BARREL_OVERLAY := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, specular_schlick_ggx;
+uniform vec4 leak = vec4(0.0, 0.3, 0.22, 1.0);     // kąt, wysokość otworu 0–1, szerokość (rad), 1 = jest
+uniform float lying = 0.0;
+uniform float h_px = 11.4;
+varying vec3 op;
+float h1(float x) { return fract(sin(x * 127.1) * 43758.5); }
+void vertex() { op = VERTEX; }
+void fragment() {
+	float yh = op.y / h_px;
+	float a = 0.0;
+	if (lying > 0.5) {
+		a = smoothstep(0.80, 0.93, yh);
+	} else {
+		float ang = atan(op.x, op.z);
+		float da = abs(mod(ang - leak.x + 3.14159, 6.28318) - 3.14159);
+		float drip = h1(floor(ang * 18.0)) * 0.25;
+		float stripe = 1.0 - smoothstep(leak.z * 0.6, leak.z, da);
+		float below = step(yh, leak.y) * smoothstep(-0.05 - drip, 0.12, yh - (leak.y - 0.55 - drip));
+		float hole = 1.0 - smoothstep(0.03, 0.07, length(vec2(da * 0.6, yh - leak.y)));
+		a = max(stripe * below, hole) * leak.w;
+	}
+	if (a < 0.02) { discard; }
+	ALBEDO = vec3(0.012, 0.011, 0.010);
+	ROUGHNESS = 0.06;
+	SPECULAR = 1.0;
+	ALPHA = a * 0.92;
+}
+"""
+
+## Plamy i beczki wycieku (`Level3D.oil_spills`): plama w `Level3D.build_oil_stains`, beczki tu (model barrel_n z wgnieceniami w siatce
+## i zaciekiem w nakładce). Warstwa świata — postacie i tak rysują się nad nią (warstwa graczy bez testu głębi).
+func _build_oil_spills(root: Node3D, rows: Array) -> void:
+	var spills := Level3D.oil_spills(rows)
+	Level3D.build_oil_stains(root, spills)
+	var ps := _item_scene("barrel_n")
+	if ps == null or spills.is_empty():
+		return
+	var inst := ps.instantiate()
+	var src := inst.find_children("*", "MeshInstance3D", true, false)
+	if src.is_empty():
+		inst.free()
+		return
+	var smi := src[0] as MeshInstance3D
+	var base := _local_xf(smi, inst)
+	var sh := Shader.new()
+	sh.code = OIL_BARREL_OVERLAY
+	var n := 0
+	for sp: Dictionary in spills:
+		for b: Dictionary in sp["barrels"]:
+			var mi := MeshInstance3D.new()
+			mi.name = "OilBarrel_%d" % n
+			n += 1
+			mi.mesh = _dent_mesh(smi.mesh, b["dents"])
+			mi.layers = LAYER_WORLD
+			if smi.material_override != null:
+				mi.material_override = smi.material_override
+			var ov := ShaderMaterial.new()
+			ov.shader = sh
+			ov.set_shader_parameter("leak", b["leak"])
+			ov.set_shader_parameter("lying", 1.0 if bool(b["lying"]) else 0.0)
+			ov.set_shader_parameter("h_px", Level3D.OIL_BARREL_H / PX)
+			mi.material_overlay = ov
+			mi.transform = Transform3D((b["basis"] as Basis).scaled(Vector3(PX, PX, PX)), b["pos"]) * base
+			root.add_child(mi)
+	inst.free()
+
+## Kopia siatki beczki z wgnieceniami: wierzchołki boku przesunięte do osi (gauss wokół punktu kąt × wysokość), normalne przeliczone
+## ze ścian wokół przesuniętych wierzchołków. `dents`: [Vector4 kąt, wysokość 0–1, promień px, głębokość px].
+func _dent_mesh(src: Mesh, dents: Array) -> ArrayMesh:
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, src.surface_get_arrays(0))
+	am.surface_set_material(0, src.surface_get_material(0))
+	var mdt := MeshDataTool.new()
+	if mdt.create_from_surface(am, 0) != OK:
+		return am
+	var aabb := src.get_aabb()
+	var h := aabb.size.y
+	var rad := aabb.size.x * 0.5
+	var moved := {}
+	for i in mdt.get_vertex_count():
+		var v := mdt.get_vertex(i)
+		var rxz := Vector2(v.x, v.z)
+		if rxz.length() < rad * 0.75:
+			continue
+		var ang := atan2(v.x, v.z)
+		var disp := 0.0
+		for d: Vector4 in dents:
+			var da := absf(fposmod(ang - d.x + PI, TAU) - PI) * rad
+			var dy := v.y - d.y * h
+			disp += d.w * exp(-(da * da + dy * dy) / (d.z * d.z))
+		if disp > 0.01:
+			var dir := rxz.normalized()
+			mdt.set_vertex(i, v - Vector3(dir.x, 0.0, dir.y) * disp)
+			moved[i] = true
+	for i: int in moved:
+		var nsum := Vector3.ZERO
+		for f in mdt.get_vertex_faces(i):
+			var a := mdt.get_vertex(mdt.get_face_vertex(f, 0))
+			var b := mdt.get_vertex(mdt.get_face_vertex(f, 1))
+			var c := mdt.get_vertex(mdt.get_face_vertex(f, 2))
+			nsum += (c - a).cross(b - a)
+		if nsum.length() > 1e-6:
+			var nn := nsum.normalized()
+			mdt.set_vertex_normal(i, nn if nn.dot(mdt.get_vertex_normal(i)) >= 0.0 else -nn)
+	am.clear_surfaces()
+	mdt.commit_to_surface(am)
+	am.surface_set_material(0, src.surface_get_material(0))
+	return am
 
 # ---------------------------------------------------------------- drzwi wyjścia z kryjówki
 
@@ -6093,8 +6210,8 @@ func _sync_world_fx(delta: float) -> void:
 			continue
 		var on: bool = hc.get("enabled") == true
 		var hcol := Color(1.0, 0.85, 0.5) if on else Color(0.5, 0.15, 0.12)
-		var hpos := Level3D.px_to_m((hc as Node2D).global_position + Vector2(-float(hc.HALF_W) + 3.0, -17.7)) + Vector3(0.0, -Level3D.TRENCH_D, 0.45)
-		_dot(im, hpos, (5.5 if on else 2.4) * PX, Color(hcol.r, hcol.g, hcol.b, 0.4 if on else 0.25))
+		var hpos := Level3D.px_to_m((hc as Node2D).global_position + (hc.LANTERN as Vector2)) + Vector3(0.0, -Level3D.TRENCH_D, TRACK_ZC + 0.15)      # przed szkłem latarni modelu (drezyna stoi w korycie)
+		_dot(im, hpos, (3.8 if on else 2.4) * PX, Color(hcol.r, hcol.g, hcol.b, 0.38 if on else 0.25))      # mniejsza niż obudowa latarni (8 px)
 		_dot(im, hpos + Vector3(0.0, 0.0, 0.01), 1.3 * PX, hcol)
 	# --- miny i ładunki: dioda
 	for pl in get_tree().get_nodes_in_group("placed"):
@@ -7789,6 +7906,8 @@ func _sync_lights() -> void:
 		var gp := li.global_position
 		var pick := pair.size() > 4 and bool(pair[4])
 		var lz := PICKUP_GLOW_Z if pick else 1.0
+		if li.get_parent() != null and (li.get_parent() as Node).is_in_group("handcar"):
+			gp.y += Level3D.TRENCH_D / PX                      # latarnia drezyny zjeżdża z nią do koryta toru (jak model)
 		var lrange := clampf(rng_px * PX, PICKUP_GLOW_RANGE.x, PICKUP_GLOW_RANGE.y) if pick else clampf(rng_px * PX, 3.0, 24.0)
 		l3.light_color = li.color
 		if l3a != null and is_instance_valid(l3a):

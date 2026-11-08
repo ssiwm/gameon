@@ -340,6 +340,53 @@ static func post_runs(rows: Array, radius := -1.0) -> Array:
 			r = r1
 	return out
 
+## Przedłużenie kafli strefy przekroju (`shell_cells`) od DEPTH_FRONT do SHELL_Z jako skrzynki MultiMesh: wierzch płyty podłogi, spód stropu,
+## przekrój na SHELL_Z i boczne ściany na końcach strefy (ściany skrzynek na brzegu). Bez dachu z blachy (`_build_roofs` wysuwa okap).
+## Kafel cieczy dostaje litą płytę od DEPTH_FRONT (niecka zostaje w pasie gry, rozlany olej rysuje `build_oil_stains`).
+static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictionary, crate_cells: Dictionary, slabs: Dictionary) -> void:
+	if shell_cells.is_empty():
+		return
+	var d := SHELL_Z - DEPTH_FRONT
+	var by_row := {}                                            # "wiersz|materiał" → [kolumny]
+	for k: Vector2i in shell_cells:
+		var ch := _ch(rows, k.x, k.y)
+		if ch == "C" and is_roof_cell(rows, k.x, k.y):
+			continue
+		if crate_cells.has(k) or slabs.has(k):
+			continue
+		var key: String = shell_cells[k]
+		if key == "":
+			key = "#" if ch in "O~m" else ch                   # ciecz: niecka kończy się na DEPTH_FRONT, przed nią lita płyta (plama oleju — `oil_spills`)
+		if not mats.has(key):
+			continue
+		var rk := "%d|%s|%d" % [k.y, key, int(in_trench(k.x, k.y))]
+		if not by_row.has(rk):
+			by_row[rk] = []
+		(by_row[rk] as Array).append(k.x)
+	# ciągi sąsiednich kafli w wierszu jako jedna skrzynka (tekstura w projekcji świata przechodzi bez szwu): w tunelu kilkadziesiąt skrzynek
+	# zamiast kilku tysięcy; bez cienia (płyta przed płaszczyzną gry niczego nie zacienia, a cienie świateł tunelu liczyłyby tysiące brył)
+	var out := {}
+	for rk: String in by_row:
+		var r := int(rk.get_slice("|", 0))
+		var key := rk.get_slice("|", 1)
+		var low := rk.get_slice("|", 2) == "1"                 # torowisko: płyta na wysokości dna koryta
+		var cs: Array = by_row[rk]
+		cs.sort()
+		var i := 0
+		while i < cs.size():
+			var j := i
+			while j + 1 < cs.size() and int(cs[j + 1]) == int(cs[j]) + 1:
+				j += 1
+			var n := j - i + 1
+			var ctr := (cell_pos(int(cs[i]), r) + cell_pos(int(cs[j]), r)) * 0.5
+			var sc := Basis().scaled(Vector3(float(n), (T - TRENCH_D) / T if low else 1.0, d / (DEPTH_FRONT + DEPTH_BACK)))
+			if not out.has(key):
+				out[key] = []
+			(out[key] as Array).append(Transform3D(sc, Vector3(ctr.x, ctr.y - (TRENCH_D * 0.5 if low else 0.0), DEPTH_FRONT + d * 0.5)))
+			i = j + 1
+	for k in out:
+		_multimesh(parent, box, out[k], mats[k], false)
+
 ## Przekrój wnętrza bryły od frontu (z = DEPTH_FRONT): poziome ciągi niewidocznych z boku kafli jako jeden czworokąt na ciąg; materiał jak bryła
 ## (projekcja w świecie — tekstura przechodzi bez szwu przez front sąsiednich brył). Nocą czarny jak dotąd, ale światła mają na czym się położyć.
 static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
@@ -378,6 +425,7 @@ static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
 const ROOF_SHEET := 0.05                   ## m: grubość arkusza blachy (góra arkusza = góra kafla, po której się chodzi)
 const ROOF_EAVE := 0.35                    ## m: okap ku kamerze przed przednią krawędzią bryły; z boków (wolne końce szopy) — tyle samo
 const ROOF_PURLIN_Z := [-2.05, -0.65, 0.8] ## m: płatwie pod blachą wzdłuż dachu
+const ROOF_PURLIN_STEP := 1.45             ## m: kolejne płatwie przed ROOF_PURLIN_Z, gdy przekrój (F2b) wysuwa dach ku kamerze
 const ROOF_TRUSS := 2                      ## co tyle kafli wiązar (pas dolny w poprzek dachu + słupki pod płatwiami)
 const ROOF_SPAN := 5                       ## szopa: najwyżej tyle kafli między podporami
 const ROOF_POST := 0.26                    ## m: przekrój drewnianego słupa szopy
@@ -475,6 +523,21 @@ static func _strut(a: Vector3, b2: Vector3, w: float) -> Transform3D:
 ## (pas dolny na dolnej krawędzi kafla — Skoczek dalej wisi „pod sufitem", słupki pod płatwiami). W budynkach ze ścianami `C` konstrukcja
 ## stalowa, a tylna ściana sięga pod blachę (bez niej przez wiązary prześwitywał las); w szopie drewniana, z podporami z tyłu (POST_Z) i z przodu
 ## (ROOF_POST_FRONT) i zastrzałami pod wiązarem. Tylko widok — kolizja to nadal pełny kafel.
+## Płatwie dachu nad kolumną `c` w wierszu dachu `r`: [y spodu płatwi (m), głębokości z płatwi]; puste, gdy (c, r) nie leży w dachu.
+## Pod dachem z blachy nie ma stropu, więc pierwszy plan w przekroju (`front3d.gd`) wisi pod płatwią zamiast kończyć się w powietrzu.
+static func roof_purlins(rows: Array, c: int, r: int) -> Array:
+	for run in roof_runs(rows):
+		if int(run["r"]) != r or c < int(run["c0"]) or c > int(run["c1"]):
+			continue
+		var zs: Array = ROOF_PURLIN_Z.duplicate()
+		var zf := front_z(int(run["c0"]), r)
+		var pz: float = ROOF_PURLIN_Z[-1] + ROOF_PURLIN_STEP
+		while pz < zf:
+			zs.append(pz)
+			pz += ROOF_PURLIN_STEP
+		return [-float(r) * T - ROOF_SHEET - (0.16 if bool(run["steel"]) else 0.18), zs]
+	return []
+
 static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel_mat: Material, wood_mat: Material, wall_mat: Material) -> void:
 	var sheets: Array = []
 	var boards: Array = []
@@ -495,7 +558,8 @@ static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel
 		var x0 := float(c0) * T - (0.0 if is_solid_ch(lo) or is_platform_ch(lo) else ROOF_EAVE)
 		var x1 := float(c1 + 1) * T + (0.0 if is_solid_ch(hi) or is_platform_ch(hi) else ROOF_EAVE)
 		var z0 := -DEPTH_BACK
-		var z1 := DEPTH_FRONT + ROOF_EAVE
+		var zf := front_z(c0, r)                                # przekrój (F2b): blacha i pas dolny wiązarów do przodu strefy
+		var z1 := zf + ROOF_EAVE
 		var is_boards := bool(run.get("boards", false))
 		var top_list: Array = boards if is_boards else sheets
 		top_list.append(_span_box(Vector3(x0, y_top - ROOF_SHEET * (2.4 if is_boards else 1.0), z0), Vector3(x1, y_top, z1)))
@@ -503,20 +567,30 @@ static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel
 		var bar := 0.16 if steel else 0.18
 		var under := y_top - ROOF_SHEET
 		var fr: Array = frame[steel]
-		for pz in ROOF_PURLIN_Z:
+		var purlins: Array = ROOF_PURLIN_Z.duplicate()
+		var pz_add: float = ROOF_PURLIN_Z[-1] + ROOF_PURLIN_STEP
+		while pz_add < zf:
+			purlins.append(pz_add)
+			pz_add += ROOF_PURLIN_STEP
+		for pz in purlins:
 			fr.append(_span_box(Vector3(x0 + 0.05, under - bar, float(pz) - bar * 0.5), Vector3(x1 - 0.05, under, float(pz) + bar * 0.5)))
 		var trusses: Array = []
 		for k in range(c0, c1 + 1, ROOF_TRUSS):
 			trusses.append(float(k) * T + 0.15)
 		trusses.append(float(c1 + 1) * T - 0.15)
 		for tx in trusses:
-			fr.append(_span_box(Vector3(tx - bar * 0.5, y_bot, z0 + 0.05), Vector3(tx + bar * 0.5, y_bot + bar * 1.4, DEPTH_FRONT)))   # pas dolny
-			for pz in ROOF_PURLIN_Z:
+			fr.append(_span_box(Vector3(tx - bar * 0.5, y_bot, z0 + 0.05), Vector3(tx + bar * 0.5, y_bot + bar * 1.4, zf)))   # pas dolny
+			for pz in purlins:
 				fr.append(_span_box(Vector3(tx - bar * 0.4, y_bot + bar, float(pz) - bar * 0.4), Vector3(tx + bar * 0.4, under - bar, float(pz) + bar * 0.4)))
 		if steel:
 			for k in range(c0, c1 + 1):                         # tylna ściana budynku pod samą blachę
 				if _ch(rows, k, r + 1) == "b":
 					walls.append(_span_box(Vector3(float(k) * T, y_bot, -DEPTH_BACK), Vector3(float(k + 1) * T, under, -DEPTH_BACK + 0.3)))
+		if not (run["posts"] as Array).is_empty():
+			# oczep: belka wzdłuż wiaty na słupach (przednich i tylnych) — opierają się na niej słupy, zastrzały i pasy dolne wiązarów;
+			# bez niej słup kończył się w powietrzu pod dachem, bo wiązary stoją co 2 kafle, a słupy co ≤ ROOF_SPAN
+			for pz in [POST_Z, ROOF_POST_FRONT]:
+				fr.append(_span_box(Vector3(x0 + 0.05, y_bot, float(pz) - ROOF_POST * 0.5), Vector3(x1 - 0.05, y_bot + bar * 1.4, float(pz) + ROOF_POST * 0.5)))
 		for k in run["posts"]:
 			var g := roof_ground(rows, int(k), r)
 			if g < 0:
@@ -703,7 +777,7 @@ static func _build_ribs(parent: Node3D, rows: Array, mat: Material) -> void:
 		var y_top := -float(int(rb["top"])) * T
 		var y_bot := -float(int(rb["bot"])) * T
 		xf.append(_span_box(Vector3(x - 0.3, y_bot, -DEPTH_BACK + 0.3), Vector3(x + 0.3, y_top, RIB_Z)))               # pilaster przy ścianie
-		xf.append(_span_box(Vector3(x - 0.25, y_top - 0.42, -DEPTH_BACK + 0.3), Vector3(x + 0.25, y_top, DEPTH_FRONT)))  # belka pod stropem
+		xf.append(_span_box(Vector3(x - 0.25, y_top - 0.42, -DEPTH_BACK + 0.3), Vector3(x + 0.25, y_top, front_z(int(rb["c"]), int(rb["top"]) - 1))))  # belka pod stropem (do przodu przekroju)
 		for sx in [-1.0, 1.0]:                                  # skosy (wuty) między pilastrem a belką
 			xf.append(_strut(Vector3(x + sx * 0.3, y_top - 1.0, (-DEPTH_BACK + 0.3 + RIB_Z) * 0.5), Vector3(x + sx * 0.75, y_top - 0.42, (-DEPTH_BACK + 0.3 + RIB_Z) * 0.5), 0.22))
 	_multimesh(parent, BoxMesh.new(), xf, mat)
@@ -732,6 +806,7 @@ static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
 	return true
 
 static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary:
+	rail_trench = trench
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var box := BoxMesh.new()
@@ -772,7 +847,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				var p := cell_pos(c, r)
 				if (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, c, r, ch) and not "--noliquids" in OS.get_cmdline_user_args():
 					continue                                    # ciecz / błoto: siatkę niecki i taflę rysuje `build_liquids`
-				if not trench.is_empty() and r == int(trench["row"]) and c >= int(trench["c0"]) and c <= int(trench["c1"]):
+				if in_trench(c, r):
 					var full := DEPTH_FRONT + DEPTH_BACK
 					var back_d := TRENCH_Z0 + DEPTH_BACK
 					var bed_d := DEPTH_FRONT - TRENCH_Z0
@@ -804,6 +879,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	for k in groups:
 		_multimesh(parent, box, groups[k], mats[k])
 		_build_caps(parent, caps[k], mats[k])
+	_build_shell(parent, rows, box, mats, crate_cells, slabs)
 	var wbox := BoxMesh.new()
 	wbox.size = Vector3(T, T, 0.3)
 	_multimesh(parent, wbox, walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
@@ -1448,6 +1524,51 @@ static func set_niches(cells: Dictionary, holes: Array) -> void:
 	niche_cells = cells
 	niche_holes = holes
 
+## Przekrój budynku wysunięty do pierwszego planu (`FOREGROUND_PLAN.md` F2b): w strefie wpisu `FRONT` z `"shell": true` strop i podłoga
+## sięgają do SHELL_Z zamiast DEPTH_FRONT, więc rury pierwszego planu (`front3d.gd`, z 3,5–5 m) stoją na płycie podłogi i dochodzą do stropu.
+## Kafle strefy: wiersz stropu r0 i podłoga r1 z fundamentem w dół (ciągły lity grunt pod każdą kolumną, najwyżej SHELL_DOWN wierszy — poza
+## dolną krawędź kadru, ale nie w głąb sąsiedniego wnętrza). Ściany w pasie gry zostają na DEPTH_FRONT: wysunięte ku kamerze rozrastają się
+## w rzucie (×1,38) i zasłaniałyby wrogów i znaczniki z warstwy świata obok siebie (spike: pierścień Stalkera przy ścianie hali).
+## Poziomy wierzch płyty przed płaszczyzną gry rzutuje się zawsze poniżej linii podłogi, a spód stropu powyżej linii stropu — przekrój
+## nie wchodzi w pas gry przy żadnej kamerze.
+const SHELL_Z := 5.6
+const SHELL_DOWN := 8
+const SHELL_CH := "#CMmO~"                 ## znaki litych kafli, które przekrój przedłuża (bez niszczalnych: okien, desek, kratek, skrzyń)
+static var shell_cells := {}               ## Vector2i → klucz materiału przedłużenia ("" = jak kafel; "C" = beton fundamentu budynku)
+
+static func set_shells(front: Array, rows: Array) -> void:
+	shell_cells = {}
+	if "--noshell" in OS.get_cmdline_user_args():
+		return                                                  # dev: bez przekroju (porównanie A/B)
+	for e: Dictionary in front:
+		if not bool(e.get("shell", false)):
+			continue
+		var concrete := String(e.get("set", "")) == "station"   # budynek stacji: fundament z betonu; tunel: przekrój skały
+		var r0 := int(e["r0"])
+		var r1 := int(e["r1"])
+		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			if _ch(rows, c, r0) in SHELL_CH:
+				shell_cells[Vector2i(c, r0)] = "C" if concrete else ""
+			var r := r1
+			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH:
+				shell_cells[Vector2i(c, r)] = "C" if concrete else ""
+				r += 1
+
+## Torowisko drezyny z ostatniego `build_level` ({"row", "c0", "c1"}; puste bez drezyny).
+static var rail_trench := {}
+
+## Kafel podłogi w pasie torowiska: z przodu ma obniżone koryto (`TRENCH_D`). W strefie przekroju płyta biegnie na wysokości dna koryta
+## aż do `SHELL_Z` — pełna płyta przed korytem zasłoniłaby szyny i koła drezyny (z każdej kamery, gdy zaczyna się bliżej niż ok. 4,5 m).
+static func in_trench(c: int, r: int) -> bool:
+	return not rail_trench.is_empty() and r == int(rail_trench["row"]) and c >= int(rail_trench["c0"]) and c <= int(rail_trench["c1"])
+
+static func in_shell(c: int, r: int) -> bool:
+	return shell_cells.has(Vector2i(c, r))
+
+## Przód bryły kafla (z): SHELL_Z w strefie przekroju, inaczej DEPTH_FRONT.
+static func front_z(c: int, r: int) -> float:
+	return SHELL_Z if in_shell(c, r) else DEPTH_FRONT
+
 ## Czy kafel (c, r) dostaje płytę ściany tła (`build_level`): tło `b` albo wnętrze przed nim, poza otworami wnęk (`niches3d.gd`).
 static func back_wall_at(rows: Array, c: int, r: int) -> bool:
 	var ch := _ch(rows, c, r)
@@ -1678,6 +1799,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 				c1 += 1
 			var kd: int = kinds[ch]
 			var n := c1 - c
+			zf = DEPTH_FRONT                                   # przekrój (F2b): niecka w pasie gry, przed nią płyta z plamą (`oil_spills`)
 			var x0 := float(c) * T
 			var w := float(n) * T
 			var y_top := -float(r) * T                         # krawędź gruntu
@@ -1997,6 +2119,169 @@ static func _liquid_runs(rows: Array) -> Array:
 				"y_top": -float(r) * T, "seed": float((c * 31 + r * 17) % 97), "stack": stack})
 			c = c1
 	return out
+
+## Wyciek oleju w strefie przekroju (F2b, uwaga z gry 2026-11-08: prostokątna tafla do przodu płyty nie wyglądała jak rozlany olej).
+## Niecka oleju w pasie gry zostaje (rozgrywka bez zmian), a przed nią na betonie przekroju i po bokach niecki leży nieregularna plama:
+## metakule (`blobs`: x, z, promień x, promień z) z poszarpanym brzegiem w shaderze — czarne lustro świeżego oleju i ciemna, matowa obwódka
+## wsiąkniętego w beton. Przy plamie stoją uszkodzone beczki, z których olej wyciekł (stawia je `view3d.gd`): przewrócona na płycie przed
+## płaszczyzną gry, wylotem ku niecce (leży niżej niż linia podłogi w rzucie — nie wchodzi w pas gry), i stojące za płaszczyzną gry przy
+## tylnej ścianie. Tylko ciągi oleju, których powierzchnia jest w strefie przekroju. Wynik: [{x0, x1, y, pit, blobs, xr, zr, barrels, seed}],
+## beczka: {pos (środek podstawy modelu), basis (bez skali), dents: [Vector4 kąt, wysokość 0–1, promień px, głębokość px], leak: Vector4
+## (kąt, wysokość otworu 0–1, szerokość rad, 1 = jest), lying}.
+const OIL_BARREL_R := 0.363                ## promień beczki barrel_n (m; model 7,75 × 11,4 px)
+const OIL_BARREL_H := 1.066                ## wysokość beczki barrel_n (m)
+const OIL_BARREL_Z := -1.25                ## stojące beczki: za płaszczyzną gry, przy tylnej ścianie (jak dekoracje Pompowni)
+const OIL_LYING_Z := 3.1                   ## przewrócona beczka na płycie przekroju
+const OIL_BLOBS := 14
+
+static func oil_spills(rows: Array) -> Array:
+	var out: Array = []
+	if shell_cells.is_empty():
+		return out
+	for run in _liquid_runs(rows):
+		var c: int = run["c"]
+		var c1: int = run["c1"]
+		var r: int = run["r"]
+		if int(run["kd"]) != 1 or not in_shell(c, r) or not in_shell(c1 - 1, r):
+			continue
+		var x0: float = run["x0"]
+		var x1: float = x0 + float(run["w"])
+		var w := x1 - x0
+		var xc := (x0 + x1) * 0.5
+		var y: float = run["y_top"]
+		var rng := RandomNumberGenerator.new()
+		rng.seed = c * 7919 + r * 104729
+		# strona przewróconej beczki: tam, gdzie posadzka przekroju (lita, bez cieczy, wolna nad sobą) ciągnie się dalej
+		var room := func(dir: int) -> int:
+			var k := 0
+			var cc := c1 if dir > 0 else c - 1
+			while k < 6 and in_shell(cc, r) and not _ch(rows, cc, r) in "O~m" and not is_solid_ch(_ch(rows, cc, r - 1)):
+				k += 1
+				cc += dir
+			return k
+		var rr: int = room.call(1)
+		var rl: int = room.call(-1)
+		if maxi(rr, rl) < 2:
+			continue
+		var s := 1.0 if rr > rl else -1.0                     # przy równym miejscu w lewo (w hali 1.2 ku lampie — beczkę widać)
+		var barrels: Array = []
+		# przewrócona: oś wzdłuż x, dno daleko od niecki, wylot (góra modelu) ku niecce
+		var lx := (x1 + 1.35) if s > 0.0 else (x0 - 1.35)
+		var yaw := s * rng.randf_range(0.12, 0.32)
+		var lb := Basis(Vector3.UP, yaw) * Basis(Vector3.BACK, s * PI * 0.5) * Basis(Vector3.UP, rng.randf_range(0.0, TAU))
+		var axis := lb * Vector3.UP
+		var centre := Vector3(lx, y + OIL_BARREL_R * 0.96, OIL_LYING_Z)
+		var mouth := centre + axis * OIL_BARREL_H * 0.5
+		barrels.append({"pos": centre - axis * OIL_BARREL_H * 0.5, "basis": lb, "lying": true, "leak": Vector4(0.0, 0.97, 0.0, 1.0),
+			"dents": [Vector4(rng.randf_range(0.0, TAU), 0.55, 3.2, 1.0), Vector4(rng.randf_range(0.0, TAU), 0.9, 2.2, 0.8)]})
+		# stojące przy tylnej ścianie: dwie po stronie przeciwnej (jedna mocno wgnieciona, druga przechylona ku niej), jedna po stronie przewróconej
+		var back: Array = [[x0 - 0.55 if s > 0.0 else x1 + 0.55, 0.0], [x0 - 1.35 if s > 0.0 else x1 + 1.35, -s * 0.07], [x1 + 0.55 if s > 0.0 else x0 - 0.55, 0.0]]
+		for i in back.size():
+			var bx: float = back[i][0]
+			var cc := int(floorf(bx / T))
+			if not is_solid_ch(_ch(rows, cc, r)) or is_solid_ch(_ch(rows, cc, r - 1)):
+				continue
+			var spin := rng.randf_range(0.0, TAU)
+			var bb := Basis(Vector3.BACK, float(back[i][1])) * Basis(Vector3.UP, spin)
+			var bz := OIL_BARREL_Z + rng.randf_range(-0.12, 0.12)
+			# kąt w układzie modelu, który po obrocie `spin` patrzy w kamerę (+z): −spin (wgniecenia i otwór wycieku widać)
+			var dents: Array = [Vector4(-spin + rng.randf_range(-0.9, 0.9), rng.randf_range(0.35, 0.7), rng.randf_range(2.2, 3.4), rng.randf_range(0.7, 1.1) * (1.4 if i == 0 else 1.0))]
+			if i == 0:
+				dents.append(Vector4(-spin + rng.randf_range(0.6, 1.4), 0.93, 2.6, 1.0))
+			barrels.append({"pos": Vector3(bx, y, bz), "basis": bb, "lying": false, "dents": dents,
+				"leak": Vector4(-spin + rng.randf_range(-0.5, 0.5), rng.randf_range(0.2, 0.4), 0.22, 1.0 if i != 1 else 0.0)})
+		# plama: od przodu niecki ku kamerze, płat w stronę przewróconej beczki, smuga do jej wylotu, kałuża pod wylotem, boki niecki w pasie gry
+		var zf := DEPTH_FRONT
+		var blobs: Array = [Vector4(xc + rng.randf_range(-0.3, 0.3), zf + 0.75, w * 0.5 + 0.5, 1.0), Vector4(xc, zf + 0.1, w * 0.55, 0.45),
+			Vector4(xc + s * w * 0.4, zf + 1.35, w * 0.32 + 0.3, 0.75),
+			Vector4(mouth.x - s * 0.15, mouth.z, 0.75, 0.6)]
+		for k in 3:
+			var t := (float(k) + 1.0) / 4.0
+			var p := Vector2(xc + s * w * 0.4, zf + 1.35).lerp(Vector2(mouth.x, mouth.z), t)
+			blobs.append(Vector4(p.x, p.y + rng.randf_range(-0.15, 0.15), 0.5, 0.4))
+		blobs.append(Vector4(x0 - 0.35, rng.randf_range(-0.4, 0.4), 0.6, 0.95))
+		blobs.append(Vector4(x1 + 0.35, rng.randf_range(-0.6, 0.2), 0.55, 0.8))
+		for b in barrels:
+			if not bool(b["lying"]) and float((b["leak"] as Vector4).w) > 0.5:
+				blobs.append(Vector4((b["pos"] as Vector3).x + rng.randf_range(-0.1, 0.1), (b["pos"] as Vector3).z + 0.45, 0.5, 0.45))
+		while blobs.size() < OIL_BLOBS:
+			var a := rng.randf_range(0.0, TAU)
+			var d := rng.randf_range(1.2, 1.9)
+			blobs.append(Vector4(xc + cos(a) * d * w * 0.45, clampf(zf + 1.2 + sin(a) * d, zf + 0.3, SHELL_Z - 0.5), rng.randf_range(0.12, 0.25), rng.randf_range(0.1, 0.2)))
+		blobs.resize(OIL_BLOBS)
+		var xr := Vector2(1e9, -1e9)
+		var zr := Vector2(1e9, -1e9)
+		for b: Vector4 in blobs:
+			xr = Vector2(minf(xr.x, b.x - b.z * 1.7), maxf(xr.y, b.x + b.z * 1.7))
+			zr = Vector2(minf(zr.x, b.y - b.w * 1.7), maxf(zr.y, b.y + b.w * 1.7))
+		zr = Vector2(maxf(zr.x, -DEPTH_BACK + 0.5), minf(zr.y, SHELL_Z - 0.12))
+		out.append({"x0": x0, "x1": x1, "y": y, "pit": Vector3(x0, x1, zf), "blobs": blobs, "xr": xr, "zr": zr, "barrels": barrels,
+			"seed": float(run["seed"])})
+	return out
+
+## Plama oleju na betonie (`oil_spills`): pole metakul z poszarpanym brzegiem; nad niecką gry (prostokąt `pit`) nic nie rysuje.
+const OIL_STAIN_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+uniform vec4 blobs[14];
+uniform vec3 pit = vec3(0.0);
+uniform float seed = 0.0;
+varying vec3 wp;
+//COMMON
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	float f = 0.0;
+	for (int i = 0; i < 14; i++) {
+		vec2 d = (wp.xz - blobs[i].xy) / max(blobs[i].zw, vec2(0.01));
+		f += exp(-dot(d, d) * 1.6);
+	}
+	float g = f + (fbm(wp.xz * 1.6 + seed) - 0.5) * 0.5 + (vn(wp.xz * 6.0 + seed) - 0.5) * 0.06;
+	float soak = smoothstep(0.10, 0.32, g);        // wsiąknięty w beton: ciemny, matowy, ku brzegowi coraz jaśniejszy
+	float wet = smoothstep(0.40, 0.56, g);         // świeża warstwa: czarne lustro (szeroki próg: kamera patrzy na płytę pod ostrym kątem)
+	// nad niecką gry plama zachodzi tylko przez przednią krawędź (poszarpany pas do ok. 0,4 m): niecka i plama na płycie są jedną kałużą,
+	// a reszta niecki zostaje żywą taflą (fale, brodzenie). Pas przy bokach i z tyłu rysował ciemną ramkę wokół niecki (zrzut f2b6/oil3).
+	if (wp.x > pit.x && wp.x < pit.y && wp.z < pit.z) {
+		float k = 1.0 - smoothstep(0.1, 0.35, pit.z - wp.z + (fbm(wp.xz * 2.3 + seed * 1.7) - 0.5) * 0.4);
+		soak *= k;
+		wet *= k;
+	}
+	if (soak < 0.01) { discard; }
+	float t = TIME * 0.05;
+	vec3 n = normalize(vec3((vn(wp.xz * 3.0 + vec2(t, 0.0)) - 0.5) * 0.05, 1.0, (vn(wp.xz * 3.4 - vec2(0.0, t)) - 0.5) * 0.05));
+	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+	vec3 film = 0.5 + 0.5 * cos(6.2832 * (fbm(wp.xz * 0.9 - seed) * 2.0 + vec3(0.0, 0.33, 0.67)));
+	float deep = smoothstep(0.32, 0.46, g);
+	ALBEDO = mix(mix(vec3(0.075, 0.068, 0.058), vec3(0.030, 0.027, 0.023), deep), mix(vec3(0.009, 0.009, 0.010), film * 0.03, 0.35), wet);
+	ROUGHNESS = mix(mix(0.85, 0.55, deep), 0.035, wet);
+	SPECULAR = mix(0.25, 1.0, wet);
+	ALPHA = soak * mix(mix(0.55, 0.8, deep), 0.96, wet);
+}
+"""
+
+## Plamy oleju z `oil_spills` (warstwa świata, bez cienia): jeden czworokąt na wyciek tuż nad posadzką.
+static func build_oil_stains(parent: Node3D, spills: Array) -> void:
+	if spills.is_empty():
+		return
+	var sh := Shader.new()
+	sh.code = OIL_STAIN_SHADER.replace("//COMMON", PROP_COMMON)
+	for i in spills.size():
+		var sp: Dictionary = spills[i]
+		var xr: Vector2 = sp["xr"]
+		var zr: Vector2 = sp["zr"]
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(xr.y - xr.x, zr.y - zr.x)
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mat.set_shader_parameter("blobs", PackedVector4Array(sp["blobs"]))
+		mat.set_shader_parameter("pit", sp["pit"])
+		mat.set_shader_parameter("seed", float(sp["seed"]))
+		var mi := MeshInstance3D.new()
+		mi.name = "OilStain_%d" % i
+		mi.mesh = pm
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.position = Vector3((xr.x + xr.y) * 0.5, float(sp["y"]) + 0.008, (zr.x + zr.y) * 0.5)
+		parent.add_child(mi)
 
 ## Profil niecki ciągu (jak w `build_liquids`): `[próbki co 0,131 m od początku ciągu]`.
 static func _run_profile(run: Dictionary) -> PackedFloat32Array:
