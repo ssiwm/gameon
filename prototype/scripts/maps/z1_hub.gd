@@ -47,6 +47,15 @@ const NICHES := [
 	{"kind": "vent", "c0": 41, "c1": 41, "r0": 16, "r1": 16, "lit": "lamp"},       # N4: kratka wentylacji wysoko w świetlicy (między żebrami 35 i 44)
 	{"kind": "vent", "c0": 42, "c1": 42, "r0": 24, "r1": 24, "lit": "lamp"},       # N4: kratka pod stropem magazynu na dole
 ]
+## Pierwszy plan z przekrojem (`front3d.gd`, `FOREGROUND_PLAN.md` F3): rury, kable i lampy na przewodzie 3,5–5 m przed płaszczyzną gry
+## na trzech piętrach; strop i podłoga z betonu wysunięte do `Level3D.SHELL_Z`, rury omijają otwory schodów i żebra stropu
+## (`Front3D.blocked_x`). Piętra mieszczą się razem w kadrze, więc na całą kryjówkę wypada kilka dużych elementów (`Front3D.layout`).
+const FRONT := [
+	{"set": "bunker", "c0": 20, "c1": 71, "r0": 6, "r1": 14, "shell": true},       # sterownia nadajnika (góra)
+	{"set": "bunker", "c0": 0, "c1": 71, "r0": 14, "r1": 22, "shell": true},       # świetlica i warsztat (środek)
+	{"set": "bunker", "c0": 3, "c1": 68, "r0": 22, "r1": 30, "shell": true},       # maszynownia i magazyn (dół)
+]
+const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)
