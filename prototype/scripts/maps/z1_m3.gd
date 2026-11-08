@@ -44,6 +44,24 @@ const NICHES := [
 	{"kind": "vent", "c0": 36, "c1": 36, "r0": 36, "r1": 36, "lit": "lamp"},       # N4: kratka pod skalnym stropem na zachodnim końcu niskiego tunelu
 ]
 
+## Pierwszy plan przed płaszczyzną gry (`front3d.gd`, `FOREGROUND_PLAN.md` F3): wszystkie wnętrza z przekrojem (F2b). Posterunek
+## i Skład — zestaw stacji (Skład z plamą oleju i beczkami przy niecce w podłodze, `Level3D.oil_spills`); piwniczka pod posterunkiem
+## tylko przekrój (za wąska na element). Podziemia osobno dla sal (strop w wierszu 30) i niskich tuneli między nimi (strop w wierszu 35,
+## razem z szybami — pod otworem szybu element nie staje): jeden wpis na cały poziom wysunąłby strop sal nad skałą tuneli jak balkon.
+const FRONT := [
+	{"set": "station", "c0": 18, "c1": 36, "r0": 21, "r1": 26, "shell": true},     # posterunek
+	{"set": "station", "c0": 32, "c1": 37, "r0": 26, "r1": 30, "shell": true},     # piwniczka pod posterunkiem (kratka do szybu)
+	{"set": "station", "c0": 112, "c1": 142, "r0": 18, "r1": 26, "shell": true},   # Skład (antresola, niecka oleju)
+	{"set": "tunnel", "c0": 6, "c1": 30, "r0": 30, "r1": 40, "shell": true},       # zachodnia sala podziemi (gniazda)
+	{"set": "tunnel", "c0": 31, "c1": 62, "r0": 35, "r1": 40, "shell": true},      # niski tunel z pierwszym szybem
+	{"set": "tunnel", "c0": 63, "c1": 90, "r0": 30, "r1": 40, "shell": true},      # środkowa sala
+	{"set": "tunnel", "c0": 91, "c1": 108, "r0": 35, "r1": 40, "shell": true},     # tunel ze środkowym szybem
+	{"set": "tunnel", "c0": 109, "c1": 143, "r0": 30, "r1": 40, "shell": true},    # wschodnia sala (niecka oleju)
+	{"set": "tunnel", "c0": 144, "c1": 170, "r0": 35, "r1": 40, "shell": true},    # tunel z trzecim szybem
+	{"set": "tunnel", "c0": 171, "c1": 186, "r0": 30, "r1": 40, "shell": true},    # sala ewakuacji
+]
+const FRONT_SKIP := []
+
 const MAP := [
 	"##............................................................................................................................................................................................##",
 	"##............................................................................................................................................................................................##",
