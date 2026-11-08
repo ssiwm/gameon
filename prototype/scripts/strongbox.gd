@@ -52,6 +52,7 @@ func _ready() -> void:
 		_hd_open.visible = false
 	_light = Lights.make_light(Lights.radial(), 1.8, Color(1.0, 0.72, 0.3), 0.5, false)
 	_light.position = Vector2(0, -10)
+	_light.no_shadow = true                               # poświata tuż nad sejfem: z cieniem kładłaby jego powiększony cień na ścianę
 	add_child(_light)
 
 func _in_reach(p: Vector2, mult := 1.0) -> bool:
