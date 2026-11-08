@@ -2,7 +2,7 @@
 
 Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A); F1 + F2 (pilot: hala stacji i tunel 1.2) w 1.7.519; po pierwszej
 ocenie w grze poprawki rur w 1.7.520 (rury z Poly Haven, półprzezroczyste wygaszanie, lampy w tunelu) — czeka na bramkę F2 (wyniki
-niżej).** Punkt 2 raportu o głębi świata
+niżej). Po drugiej uwadze („nie ma tam świata”) plan F2b: przekrój budynku przesunięty do warstwy pierwszego planu (decyzje 5–7).** Punkt 2 raportu o głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`); punkty 1 i 3 (wnętrza) zamknął `DEPTH_PLAN.md` (1.7.507–1.7.518).
 Stan odniesienia: `main` 1.7.518 (473eee6).
 
@@ -208,6 +208,100 @@ Zmiany (decyzja użytkownika: kroki 1 i 2 naraz):
   skrypty `f3full.sh`, `f3.sh`.
 - **Nie sprawdzone:** drezyna, co-op, WIDE i CLOSE, wstrząs kamery.
 
+### F2b — przekrój budynku: świat sięga do pierwszego planu (plan 2026-11-08, przed F3)
+
+Druga uwaga użytkownika po 1.7.520: „rury są teraz na pierwszym planie, ale nie mamy tam świata, dlatego wyglądają nienaturalnie”.
+
+**Przyczyna.** Świat kończy się przekrojem na z = `DEPTH_FRONT` = 1,1 m. Rura stoi na z = 3,5–5 m, więc między nią a światem
+jest 2,4–3,9 m pustki. Shader ucina rurę w rzucie na linii podłogi, dlatego na nieruchomym kadrze wygląda, jakby na niej stała.
+Fizycznie wisi jednak w powietrzu, a w ruchu to widać: paralaksa rury (×1,25) i podłogi (×1,0) się różni i podstawa
+ślizga się po podłodze jak naklejka. Tego oko nie wybacza.
+
+Rachunek dla NORMAL. Oko stoi `EYE_UP_M` = 2,2 m nad środkiem kadru, a środek kadru leży mniej więcej na stopach gracza.
+- **Podłoga:** dziś jej wierzch widać tylko jako pasek 0,13 m (z od 0 do 1,1). Niżej, do dolnej krawędzi kadru, jest przekrój bryły
+  na z = 1,1, czyli prawie połowa dolnej części kadru.
+- **Strop:** hala ma go 8,3 m nad okiem, tunel 5,7 m, a górna krawędź kadru wypada 5,2 m nad okiem. Gdy gracz stoi na podłodze,
+  stropu nie widać w ogóle.
+- **Wniosek:** problem leży prawie wyłącznie u dołu rury, przy styku z podłogą. Strop wchodzi w kadr tylko z górnych pomostów hali.
+
+**Rozwiązanie: przesunąć przekrój do przodu.** W prostokącie strefy wpisu `FRONT` lite kafle świata (`#`, `C`, `M`, …) sięgają
+do z = `SHELL_Z` = 5,6 m zamiast 1,1 m. Przekrój staje się jedną płaszczyzną cięcia na 5,6 m. Wnętrza zostają otwarte, a kamera
+zagląda do nich przez brakującą przednią ścianę, jak w domku dla lalek. Elementy pierwszego planu (z 3,5–5 m, kołnierz
+z ≤ 5,42 m) stoją wtedy fizycznie na płycie podłogi i dochodzą do stropu.
+
+- **Zostaje w warstwie świata:** podłoga, strop i przekrój leżą w `LAYER_WORLD`, z jego światłem (lampy, latarka), mgłą i cieniami.
+  Nie zasłaniają gry, bo poziomy wierzch podłogi przed płaszczyzną gry rzutuje się zawsze *poniżej* linii podłogi, a spód stropu
+  zawsze *powyżej* linii stropu. Pas gry jest bezpieczny geometrycznie, nie dzięki wygaszaniu.
+- **Pas podłogi w kadrze** (gracz na podłodze, wierzch płyty od z 1,1 do 5,6 m):
+  - WIDE: 0,53 m, 2,9% wysokości kadru;
+  - NORMAL: 0,72 m, 4,9%;
+  - CLOSE: 0,94 m, 7,7%.
+
+  Niżej leży przekrój na z = 5,6 m zamiast na 1,1 m, tej samej wielkości co dziś.
+- **Pas stropu** pojawia się tylko z górnych pomostów hali: około 0,6 m, 4% kadru NORMAL.
+- **Rura dostaje fizyczne końce.** Podstawa (kołnierz) stoi na wierzchu płyty, a górny kołnierz dochodzi do spodu stropu.
+  Przycięcie w rzucie do pasa wpisu zostaje tylko dla wpisów bez przekroju. REDUCED tnie dalej względem środka kadru.
+- **Kontakt z płytą:** pod kołnierzem leży ciemna plama okluzji (kalka w warstwie świata), a w miejscu wejścia rury w strop płytka
+  mocująca. Pierwszy plan nie rzuca cienia, więc plama zastępuje cień kontaktowy.
+- **Hala:** płyta peronu z kątownikiem na przedniej krawędzi; materiał wierzchu ten sam co podłoga hali (beton). Belki pod stropem
+  (`_build_ribs`, dziś do z 1,1) przedłużone do `SHELL_Z`, a elementy pierwszego planu trzymają się co najmniej 1 m od belek w osi x.
+  Belki są w warstwie świata, więc rura za belką rysowałaby się na niej. Okap dachu hali (`roof_runs`, `ROOF_EAVE`) przesuwa się
+  razem z przodem bryły.
+- **Tunel:** przekrój skały na 5,6 m i podsypka z betonem na wierzchu. Strop poza kadrem nie wymaga dziś niczego.
+- **Bez zmian w symulacji:** mapa ASCII, kolizje i nawigacja to nadal 2D. Głębokość brył to tylko obraz (zasada 2).
+
+**Prostokąt strefy i jej końce.** Strefa to pas wpisu z zapasem kafli w pionie i poziomie, w danych jako opcjonalne pole
+`"shell": [c0, c1, r0, r1]` we wpisie `FRONT`, domyślnie wyliczane. Przy granicy strefy przekrój ma uskok 4,5 m w głąb, który
+zamyka boczna ściana przekroju (ten sam materiał co przekrój).
+- **Pod ziemią** (tunel): zapas 12 kolumn i 8 wierszy wystarcza, żeby uskok nie trafiał do kadru, gdy środek kadru jest we wpisie.
+- **Na powierzchni** (hala to budynek stacji na gruncie): grunt obok ma krawędź z trawą na 1,1 m (`build_front_edge`), a przed
+  gruntem jest las i niebo. Polecam wysunąć tylko bryłę budynku i grunt pod nią, z boczną ścianą fundamentu z betonu. Z zewnątrz
+  stacja stoi wtedy na wysuniętym cokole, który jest głębszy niż sąsiedni grunt. Do decyzji 5.
+
+**Co jeszcze używa `DEPTH_FRONT`.** Każde z tych miejsc musi znać przód strefy albo ją omijać:
+- skrzynki brył niszczalnych (`view3d.gd` ok. 2511);
+- bryły stref wydobycia (`chunk_mesh`, `view3d.gd` ok. 7436);
+- kalki trafień (`level3d.gd` ok. 1315, `view3d.gd` ok. 7521);
+- wnęki (`niches3d.gd` ok. 131);
+- przekrój (`_build_caps`).
+
+Zasada: **strefa nie obejmuje kafli, które mogą się zmienić** (`DIG_ZONES`, okna `|`, deski `%`, kratki `+`, podpory i cała reszta
+z `DESTRUCTION_PLAN.md`). Te kafle zostają na 1,1 m, a przekrój wokół nich zamyka się bocznymi ścianami. Na 1.2 strefa wydobycia
+(kolumny 133–142, wiersze 36–39) leży w zapasie tunelu, więc wypada ze strefy.
+
+**Zmiana zasad.** Zasada 4 („duży element ucięty brzegiem kadru u góry i u dołu, nie widać podstawy”) przestaje obowiązywać
+w strefach z przekrojem: podstawa jest widoczna i właśnie ona sprzedaje głębię. Poza strefami (las w F3) zasada zostaje.
+
+**Etapy F2b:**
+
+1. **Spike** (lokalnie, bez PR; 0,5 d): tylko hala 1.2, prostokąt na sztywno, głębsze bryły i przekrój, rury z fizycznymi końcami,
+   plama pod kołnierzem. Do obejrzenia:
+   - zrzuty z | bez przekroju (gracz na podłodze, na górnym pomoście, przy ścianie bocznej hali od zewnątrz);
+   - nagranie biegu w obie strony (`cmp_hall.mp4` jak w F2);
+   - WIDE i CLOSE, pomiar GPU.
+
+   Oczekiwany koszt: kilkaset głębszych skrzynek MultiMesh i jeden czworokąt przekroju na ciąg, około +0,05–0,1 ms.
+   **Bramka:** użytkownik ogląda nagranie i decyduje, czy dalej.
+2. **Mechanizm** (1 d):
+   - `level3d.gd`: głębokość przodu per kafel (`front_z(c, r)`), boczne ściany uskoku, przekrój, belki, okap, kalki;
+   - dane `shell` we wpisie `FRONT`;
+   - `front3d.gd`: końce fizyczne, plama i płytka;
+   - `test_front.gd`:
+     - strefa bez kafli niszczalnych i stref wydobycia;
+     - podstawa każdego elementu na wierzchu płyty i z < `SHELL_Z`;
+     - element ≥ 1 m od belki;
+     - rzut wierzchu płyty i spodu stropu poza pasem gry przy WIDE, NORMAL i CLOSE.
+3. **Hala i tunel 1.2** (0,5 d): zrzuty, nagrania, pomiar, `--maptest` całe i rozbite, test sieci. Bramka F2 obejmuje wtedy
+   rury razem z przekrojem.
+
+**Odrzucone warianty:**
+- **Same płyty podłogi i stropu bez przekroju pod nimi:** wyglądałyby jak balkony wysunięte nad cofniętą skałą, bo dolny przekrój
+  zostałby na 1,1 m.
+- **Nadproże (belka) z przodu nad pasem gry w warstwie świata:** rura za nim rysowałaby się na nim (kanapka warstw). Nadproże tylko
+  w `LAYER_FRONT`, a i tak niewidoczne, bo strop wypada poza kadrem.
+- **Przekrój na 5,6 m w całej mapie:** zmienia krawędź gruntu z trawą, las, wody i niszczenie na każdej mapie. Za duży zakres
+  jak na pilota. Wrócić do tego, jeśli strefy się sprawdzą.
+
 ### F3 — katalog i mapy (po bramce)
 
 - Las: pień sosny, pień brzozy, martwy pień, zwisająca gałąź, wysoka paproć i trawa przy dolnej krawędzi.
@@ -215,6 +309,8 @@ Zmiany (decyzja użytkownika: kroki 1 i 2 naraz):
   budynku”, jak w grach z przekrojem.
 - Zabudowania i stacja: słup energetyczny z przewodami, płot, siatka.
 - Po jednym PR na mapę: 1.2, 1.1, 1.3, B1, kryjówka. Każda mapa: zrzuty, nagranie, pokrycie, GPU, `test_front.gd`.
+- Wnętrza i podziemia dostają przekrój z F2b (strefa `shell` przy każdym wpisie). W katalogu dochodzą elementy, które opierają się
+  o płytę: filar hali, pierścień tubingu w tunelu, pion rur z kołnierzem w podłodze.
 
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
@@ -229,6 +325,7 @@ Zmiany (decyzja użytkownika: kroki 1 i 2 naraz):
 | F0 | zrzuty, nagranie, pomiar, spike A / B | 0,5–1 d | zrobione 2026-11-08, bez wersji: wariant A |
 | F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | 1.7.519 |
 | F2 | pilot: hala stacji i tunel 1.2 + A/B + bramka; las 1.2 z kontrą po bramce | 0,5–1 d | 1.7.519 (ten sam PR) |
+| F2b | przekrój budynku: spike w hali, mechanizm, hala i tunel 1.2 | 2 d | spike bez wersji; potem jeden PR |
 | F3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
 | F4 | rozmycie bliskiego planu | 0,5 d | natywne DOF nie działa w `VpActors` (1.7.520); tylko własny przebieg, jeśli bramka zażąda |
 
@@ -253,3 +350,14 @@ Zmiany (decyzja użytkownika: kroki 1 i 2 naraz):
    (tylko górny i dolny brzeg kadru, prościej, ale słabsza paralaksa).
 3. **Ustawienie „Foreground”** ON / REDUCED / OFF, domyślnie ON (polecam) czy domyślnie REDUCED.
 4. **Rozmycie (F4):** sprawdzone w 1.7.520 — natywne rozmycie nie działa w warstwie graczy; własny przebieg tylko na żądanie bramki.
+
+Przed spike'iem F2b:
+
+5. **Uskok przekroju na powierzchni** (hala to budynek na gruncie):
+   - polecam wysunąć tylko budynek z fundamentem (betonowy cokół, widoczna ściana boczna);
+   - alternatywa: wysunąć także grunt z trawą o zapas kolumn; uskok wtedy w trawie, ale zmienia się `build_front_edge`;
+   - alternatywa: bez przekroju na powierzchni, tylko pod ziemią.
+6. **Głębokość przekroju:**
+   - polecam `SHELL_Z` = 5,6 m przy obecnych z 3,5–5 m rur;
+   - alternatywa: rury bliżej (z 2,5–3,5 m, paralaksa ×1,14–1,21) i przekrój na 4 m. Pas płyty o około 30% węższy, ale słabszy efekt.
+7. **Filar hali w katalogu teraz** (w spike'u obok rur) **czy w F3:** polecam w F3 — spike ma sprawdzić samo zakotwienie.
