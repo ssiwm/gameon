@@ -162,6 +162,8 @@ var collapse_rects: Array = []
 var finale_spawns: Array = []
 var backdrop: Array = []                  ## BACKDROP z danych mapy: dalekie punkty orientacyjne tła 3D (`backdrop3d.gd`); czysta kosmetyka
 var niches: Array = []                    ## NICHES z danych mapy: wnęki ze światłem w tylnej ścianie wnętrz (`niches3d.gd`); czysta kosmetyka
+var front: Array = []                     ## FRONT z danych mapy: zakresy pierwszego planu przed płaszczyzną gry (`front3d.gd`); czysta kosmetyka
+var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
 var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
 var _power_crates: Array = []             ## POWER_CRATES z danych mapy: [kolumna, rząd, broń, naboje] — skrzynie mocy (FUN_PLAN.md P1.3, pickup „power”)
 var streams: Array = []                   ## STREAMS z danych mapy: [kolumna od, kolumna do] — strumień z lasu przez ciąg wody (`Level3D.build_streams`); kosmetyka
@@ -266,6 +268,8 @@ func _load(id: String) -> void:
 	finale_spawns = ((m as GDScript).get_script_constant_map().get("FINALE_SPAWNS", []) as Array).duplicate()
 	backdrop = ((m as GDScript).get_script_constant_map().get("BACKDROP", []) as Array).duplicate()
 	niches = ((m as GDScript).get_script_constant_map().get("NICHES", []) as Array).duplicate()
+	front = ((m as GDScript).get_script_constant_map().get("FRONT", []) as Array).duplicate()
+	front_skip = ((m as GDScript).get_script_constant_map().get("FRONT_SKIP", []) as Array).duplicate()
 	streams = ((m as GDScript).get_script_constant_map().get("STREAMS", []) as Array).duplicate()
 	_power_crates = ((m as GDScript).get_script_constant_map().get("POWER_CRATES", []) as Array).duplicate()
 	_strongboxes = ((m as GDScript).get_script_constant_map().get("STRONGBOXES", []) as Array).duplicate()

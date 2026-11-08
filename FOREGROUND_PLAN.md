@@ -1,6 +1,7 @@
 # Plan: pierwszy plan przed płaszczyzną gry
 
-Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A, wyniki niżej), w grze nic nie zmienione.** Punkt 2 raportu o głębi świata
+Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A); F1 + F2 (pilot: hala stacji i tunel 1.2) w 1.7.519 — czeka
+na bramkę F2 (wyniki niżej).** Punkt 2 raportu o głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`); punkty 1 i 3 (wnętrza) zamknął `DEPTH_PLAN.md` (1.7.507–1.7.518).
 Stan odniesienia: `main` 1.7.518 (473eee6).
 
@@ -122,6 +123,49 @@ Trzy rzeczy, przez które to nie jest „dorzucić pnie przed kamerę”:
 - A/B: zrzuty, nagranie w ruchu (bieg w obie strony, walka z kilkoma wrogami, co-op na dwóch klientach), pomiar GPU, pokrycie kadru.
 - **Bramka F2:** użytkownik ogląda nagranie i gra (nie tylko zrzuty — lekcja F4) i decyduje: dalej, poprawki albo wycofanie.
 
+### Wyniki F1 + F2 (2026-11-08, 1.7.519)
+
+Decyzje przed F1 (użytkownik, 2026-11-08): pilot w hali stacji 1.2 z tunelem; element może przejść przez środek kadru
+(wygaszanie przy postaciach); „Foreground” domyślnie ON. Rozmycie (decyzja 4) — po bramce F2.
+
+- **Mechanizm** (`scripts/front3d.gd`, wariant A z F0):
+  - Dane: ręczne wpisy `FRONT` w mapie (`{"set", "c0", "c1", "r0", "r1"}` — zestaw i pas wejścia w kaflach) i `FRONT_SKIP`
+    (zakresy kolumn bez pierwszego planu). Reguła z kafli (las, wnętrza z `C`/`b`) zostaje na F3, po bramce — pilot obejmuje
+    dwa wpisy w `z1_m2.gd`: hala stacji (kolumny 66–100, wiersze 18–26) i tunel drezyny (8–282, 44–51).
+  - Rozmieszczenie stałym ziarnem z wpisu: duży element (rura, para rur z obejmami) co 21–28 m, mały (wiązka kabli, łańcuch na haku)
+    w połowie odstępu z prawdopodobieństwem 0,6; z 3,5–5 m przed płaszczyzną gry; 2 m zapasu od brzegów wpisu.
+  - Bryły scalone z części (`SurfaceTool`), jeden `MeshInstance3D` na element zamiast MultiMesh na rodzaj: elementów jest kilka
+    na wpis, a każdy ma własny pas przycięcia w parametrze instancji.
+  - **Przycięcie do pasa wejścia:** shader rzutuje fragment na płaszczyznę gry promieniem z kamery i odrzuca wszystko poza pasem
+    wpisu. Rura kończy się więc dokładnie na linii stropu i podłogi korytarza (w rzucie), także przy zmianie zoomu, i nie wystaje
+    w niebo ani do sąsiedniej kondygnacji. Brzeg kadru tnie ją tylko wtedy, gdy pas jest wyższy od kadru.
+  - Shader `unshaded`: odcień zestawu, kontra od kierunku klucza, **poświata od graczy** (strona zwrócona do graczy rozjaśnia się
+    ciepło, słabnąc z odległością w skali 7 m — bez tego w tunelu elementów prawie nie widać). Światła gry go nie oświetlają (materiał
+    bez oświetlenia), cienia nie rzuca.
+  - Wygaszanie: ditheringiem Bayera 4 × 4 do 0,15 w kołach wokół graczy (1,8 m), celownika (1,0 m) i wrogów w kadrze (1,6 m,
+    od najbliższego środka kadru), pełne krycie od promienia × 1,7; najwyżej 16 punktów. `Front3D.fade` liczy to samo co shader.
+  - LOW: bez małych elementów i twarde koło zamiast ditheringu. REDUCED: bez pasa ±30% wysokości kadru wokół jego środka —
+    zostają tylko końce przy górnym i dolnym brzegu. OFF chowa węzeł. `--nofront` nie buduje nic.
+- **Ustawienie** „Foreground” / „Pierwszy plan” ON / REDUCED / OFF w DISPLAY menu pauzy, zapis `foreground` w `[game]`.
+- **Test** `tools/test_front.gd` (w CI): dane wszystkich map, rozmieszczenie (z, zapas, odstępy dużych ≥ 21 m także między wpisami
+  w jednym kadrze NORMAL, mały ≥ 6 m od dużego, LOW bez małych, determinizm), `FRONT_SKIP`, warstwy rozłączne ze światem, lasem,
+  dnem lasu i wnękami, bryły (tylko `LAYER_FRONT`, bez cienia, bez kolizji, `unshaded`, pas przycięcia), ON/OFF, funkcja wygaszania.
+- **Wydajność** (GPU, 4K HIGH, debug, trzy rundy naprzemiennie, mediana): hala stacji (89, 19) bez 7,90 ms / z 7,79 ms — szum;
+  tunel (120, 45) 6,96 ms / 7,19 ms (+0,23 ms). +2 wywołania rysowania. Oba w budżecie 0,4 ms (zasada 7).
+- **Pokrycie** (różnica zrzutów z / bez, górna granica — wlicza też ruchomy pył i cząsteczki): hala 4,8% i 0,9%, tunel 0,4% i 3,6%
+  kadru — w limicie 8% (zasada 6).
+- **Obraz:**
+  - hala: para rur przed oświetlonym murem to wyraźna ciemna sylwetka, a przy wolnym biegu widać, że przesuwa się szybciej niż
+    plan gry; rura przechodząca przez wroga przerzedza się wokół niego (na zrzucie wygląda jak ucięta nad podłogą — to wygaszanie);
+  - tunel: elementy są ciemnymi, cienkimi pionami, widać je głównie przy latarce gracza, lampach i poświacie. Na tle ciemnego
+    tunelu sylwetka czyta się słabo — jeśli bramka zażąda mocniejszego efektu, w tunelu lepiej sprawdzi się jaśniejszy odcień
+    albo element z własnym źródłem (lampa na kablu) niż ciemny pion;
+  - LOW: twarde koło przy postaciach, krawędzie bez schodków; REDUCED: rury tylko przy brzegach kadru.
+- **Nie sprawdzone:** drezyna (gracze wysunięci ku kamerze), co-op na dwóch klientach, WIDE i CLOSE, wstrząs kamery przy wybuchu,
+  uniform błysku (nie zrobiony — pilot nie ma wybuchów przed rurą), znaczniki ataków jako punkty wygaszania.
+- Zrzuty, nagrania i pomiary: `shots_front/f2/` — `f2_sheet.jpg` (hala, hala w lewo, REDUCED, LOW, tunel, tunel LOW),
+  `cmp_hall.mp4` i `cmp_tun.mp4` (z | bez, 22 s biegu z `--shotrun`), pełne `run_*_on/off.mp4`, `perf_*.txt`, skrypt `f2.sh`.
+
 ### F3 — katalog i mapy (po bramce)
 
 - Las: pień sosny, pień brzozy, martwy pień, zwisająca gałąź, wysoka paproć i trawa przy dolnej krawędzi.
@@ -141,8 +185,8 @@ Trzy rzeczy, przez które to nie jest „dorzucić pnie przed kamerę”:
 | Etap | Co | Rozmiar | Wersja |
 |---|---|---|---|
 | F0 | zrzuty, nagranie, pomiar, spike A / B | 0,5–1 d | zrobione 2026-11-08, bez wersji: wariant A |
-| F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | PR, podbicie wersji |
-| F2 | pilot: las na powierzchni 1.2 + A/B + bramka | 0,5–1 d | ten sam PR albo następny |
+| F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | 1.7.519 |
+| F2 | pilot: hala stacji i tunel 1.2 + A/B + bramka; las 1.2 z kontrą po bramce | 0,5–1 d | 1.7.519 (ten sam PR) |
 | F3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
 | F4 | rozmycie bliskiego planu | 0,5 d | po F3, jeśli bramka F2 tego zażąda |
 
@@ -159,7 +203,7 @@ Trzy rzeczy, przez które to nie jest „dorzucić pnie przed kamerę”:
 - **Choroba lokomocyjna i migotanie** przy szybkim biegu: przesuw ×1,17–1,33 jest umiarkowany, ale pnie co kilka metrów dałyby
   stroboskop. Stąd jeden duży element na kadr.
 
-## Do decyzji (przed F1)
+## Do decyzji (przed F1 — 1–3 rozstrzygnięte 2026-11-08 zgodnie z rekomendacją)
 
 1. **Pilot:** po F0 polecam halę stacji 1.2 z tunelem (wnętrze — sylwetka czyta się od razu; walka i bieg w poziomie), las 1.2
    jako drugi krok z kontrą księżyca. Alternatywy: las od razu (więcej pracy nad światłem) albo kryjówka (bez walki).

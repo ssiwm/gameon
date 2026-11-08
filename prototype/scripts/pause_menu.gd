@@ -319,6 +319,8 @@ func _build_settings(scroll: ScrollContainer) -> void:
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.ui_idx, Settings.cycle_ui, i, 3))
 	_seg(right, tr("Camera zoom"), Settings.CAM_NAMES, func() -> int: return Settings.cam_idx,
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.cam_idx, Settings.cycle_cam, i, 3))
+	_seg(right, tr("Foreground"), Settings.FRONT_NAMES, func() -> int: return Settings.front_idx,
+		func(i: int) -> void: _to_idx(func() -> int: return Settings.front_idx, Settings.cycle_front, i, 3))
 	_drop(right, tr("Brightness"), func() -> String:
 			var ev := Settings.brightness_ev()
 			return "0 EV" if is_zero_approx(ev) else "%+.2f EV" % ev,
