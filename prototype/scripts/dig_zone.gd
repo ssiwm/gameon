@@ -1096,35 +1096,33 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 				for _q in 3:
 					norms.append(Vector3(0, 0, 1))
 					cols.append(tint)
-			for k in range(0, segs.size(), 2):
-				# normalna ściany: od środka skały w komórce na zewnątrz (w płaszczyźnie xy)
-				var e := segs[k + 1] - segs[k]
-				var n2 := Vector2(-e.y, e.x).normalized()
-				if n2.dot((segs[k] + segs[k + 1]) * 0.5 - cen) < 0.0:
-					n2 = -n2
-				var n3 := Vector3(n2.x, -n2.y, 0.0)
-				var a2 := (gp + segs[k]) * px
-				var b2 := (gp + segs[k + 1]) * px
-				var af := Vector3(a2.x, -a2.y, front)
-				var bf := Vector3(b2.x, -b2.y, front)
-				var ab := Vector3(a2.x, -a2.y, back)
-				var bb := Vector3(b2.x, -b2.y, back)
-				if (bf - af).cross(bb - af).dot(n3) > 0.0:     # przód (zgodnie z ruchem wskazówek) od strony normalnej
-					var t := af
-					af = bf
-					bf = t
-					t = ab
-					ab = bb
-					bb = t
-				verts.append(af)
-				verts.append(bf)
-				verts.append(bb)
-				verts.append(af)
-				verts.append(bb)
-				verts.append(ab)
-				for c in [tint, tint, deep, tint, deep, deep]:
-					norms.append(n3)
-					cols.append(c)
+			_walls(verts, norms, cols, segs, cen, gp, px, front, back, tint, deep)
+	# komórki pierścienia przy powietrzu mapy (strefa na końcu sali, nie w litej skale): kontur leży dokładnie na brzegu strefy, w komórce
+	# pierścienia, której nie wypełniamy (tam jest zwykła mapa) — bez tej ściany przez bok strefy widać tło (uwaga z gry 2026-11-08)
+	for j in range(jy, mini(jy + CHUNK, _h - 1)):
+		for i in range(ix, mini(ix + CHUNK, _w - 1)):
+			if i != 0 and j != 0 and i != _w - 2 and j != _h - 2:
+				continue
+			var k0 := j * _w + i
+			var air := true
+			for k in [k0, k0 + 1, k0 + _w + 1, k0 + _w]:
+				if _fixed[k] == 1 and _d[k] != 0:
+					air = false
+			if not air:
+				continue
+			poly.clear()
+			segs.clear()
+			var mask := _cell(i, j, poly, segs)
+			if mask == 0 or mask == 15 or segs.is_empty():
+				continue
+			var cm := _cell_mat(i, j)
+			var cen := Vector2.ZERO
+			for q in poly:
+				cen += q
+			cen /= float(poly.size())
+			# kontur na samym brzegu: wielokąt bez pola — środek skały leży po stronie strefy
+			cen = cen.lerp(_corner_px(nx / 2 + 1, ny / 2 + 1), 0.01)
+			_walls(verts, norms, cols, segs, cen, gp, px, front, back, Mats.tint(cm), Mats.tint(cm).darkened(0.65))
 	var mesh := ArrayMesh.new()
 	if verts.is_empty():
 		return mesh
@@ -1135,6 +1133,37 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 	arr[Mesh.ARRAY_COLOR] = cols
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return mesh
+
+## Ściany konturu (odcinki `segs` komórki) od przodu do tyłu strefy; normalna od środka skały `cen` na zewnątrz (w płaszczyźnie xy).
+func _walls(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, segs: PackedVector2Array, cen: Vector2, gp: Vector2, px: float, front: float, back: float, tint: Color, deep: Color) -> void:
+	for k in range(0, segs.size(), 2):
+		var e := segs[k + 1] - segs[k]
+		var n2 := Vector2(-e.y, e.x).normalized()
+		if n2.dot((segs[k] + segs[k + 1]) * 0.5 - cen) < 0.0:
+			n2 = -n2
+		var n3 := Vector3(n2.x, -n2.y, 0.0)
+		var a2 := (gp + segs[k]) * px
+		var b2 := (gp + segs[k + 1]) * px
+		var af := Vector3(a2.x, -a2.y, front)
+		var bf := Vector3(b2.x, -b2.y, front)
+		var ab := Vector3(a2.x, -a2.y, back)
+		var bb := Vector3(b2.x, -b2.y, back)
+		if (bf - af).cross(bb - af).dot(n3) > 0.0:     # przód (zgodnie z ruchem wskazówek) od strony normalnej
+			var t := af
+			af = bf
+			bf = t
+			t = ab
+			ab = bb
+			bb = t
+		verts.append(af)
+		verts.append(bf)
+		verts.append(bb)
+		verts.append(af)
+		verts.append(bb)
+		verts.append(ab)
+		for c in [tint, tint, deep, tint, deep, deep]:
+			norms.append(n3)
+			cols.append(c)
 
 ## Prostokąt przodu skały (a, b, c, d zgodnie z ruchem wskazówek na ekranie i w 3D), normalna +z.
 static func _quad(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, col: Color, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:

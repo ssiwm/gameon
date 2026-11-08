@@ -522,6 +522,22 @@ dwie struktury podłoża, przeszkody bez sensu.
   niepustym `occ`; `LAYER_WALL` rozłączna z innymi; `build_walls` na 1.3 i w kryjówce coś buduje, bez cienia; przód strefy przy
   zachodniej sali 1.3 na `SHELL_Z`; plamy błota z `OIL_BLOBS` metakul na płycie.
 - Koszt GPU nie mierzony osobno (kilka MultiMeshy prostopadłościanów na mapę).
+
+**Druga runda (gra na 3d0e261):** „podłoże w budynku nie jest spójne, powinien być beton; zamień powiększone skrzynie; ściany do
+kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepoprawnie”.
+- **Dziura w stropie** — nadproże nad niskim tunelem leżało na `LAYER_WALL`, którą kamera graczy rysuje nad światem; `occ` (bez
+  kolumn) z kamery w sali poniżej stropu tunelu wycinał dół nadproża i jego bok. Teraz nadproże to `shell_cells` (płyta świata, głębia
+  jak strop); w rzucie oddala się od środka kadru, w skałę, więc nie zasłania sali ani tunelu.
+- **Okna i bloki nad drzwiami** — ściana wysuwała się też w kolumnie z otworem: okno `|` zostawało w płaszczyźnie gry w głębi za
+  murem, a kawałek ściany pod oknem albo nad drzwiami wisiał 4,5 m przed nimi jak skrzynia. Wysuwa się tylko kolumna lita na całą
+  wysokość pasa (lub strefa wydobycia); boki Składu, posterunku i hali 1.2 z oknami i drzwiami zostają w płaszczyźnie gry.
+- **Ściana do kopania** — `dig_zone.chunk_mesh` pomijał komórki pierścienia, a kontur brzegu strefy przy powietrzu mapy leży właśnie
+  tam: strefa na końcu sali nie miała boku i przez niego widać było mur tła. Komórki pierścienia przy powietrzu dostają ścianę konturu.
+- **Beton** — podłoga posterunku 1.3 (wiersz 26, kol. 18–37) z `#` na `C`.
+- **Skrzynie `M`** — zamiast jednego modelu `crate` rozciągniętego na blok (2×2 kafle = 2,6 m) stos skrzyń zwykłej wielkości: kafel na
+  skrzynię, dwie w głąb, lekki obrót i przesunięcie z pozycji, wyżej trochę mniejsze. Dotyczy wszystkich map.
+- Test: kolumna ściany przekroju lita w całym pasie, nadproże 1.3 w `shell_cells`; `--digtest` 68/68.
+- Zrzuty: `shots_front/f3_m3/s_c_*.jpg` (Skład, przejścia sala–tunel, posterunek, ściana do kopania), `s_a_crate17l.jpg` (stos skrzyń).
 - Zrzuty: `shots_front/f3_m3/` — `s_y_start10l.jpg`, `s_y_post30l.jpg` (start i posterunek), `s_x_mud22l.jpg` (błoto w zachodniej
   sali), `s_x_east183.jpg` (końcowa ściana), `s_z_hub4l.jpg`, `s_z_hub67l.jpg` (kryjówka), `s_z_m2hall98l.jpg` (hala 1.2).
 

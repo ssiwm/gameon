@@ -657,7 +657,8 @@ static func _build_wall_feet(parent: Node3D, rows: Array, mat: Material) -> void
 
 ## Skrzynie `M` poza konstrukcjami (na gruncie, na dachu Składu, w podziemnych halach 1.3): prostokątne bloki sąsiednich kafli `M`, które nie leżą
 ## w ciągu nad nogami wieży (`tower_slabs`) — [{"c0", "c1", "r0", "r1"} (włącznie)]. W 3D były pudłami głębokimi na całą bryłę (3,5 m), teraz to
-## skrzynie z modelu `crate` (ta sama co skrzynie fizyczne `k`), głębokie jak szerokie (najwyżej CRATE_DEPTH).
+## stosy skrzyń z modelu `crate` (ta sama co skrzynie fizyczne `k`): od 1.7.526 skrzynia zwykłej wielkości na kafel, kilka w głąb, razem
+## głębokie jak szerokie (najwyżej CRATE_DEPTH) — wcześniej jedna skrzynia rozciągnięta na cały blok wyglądała na powiększoną.
 const CRATE_DEPTH := 2.4
 static func crate_blocks(rows: Array) -> Array:
 	var skip := {}
@@ -703,13 +704,25 @@ static func _build_crates(parent: Node3D, rows: Array) -> bool:
 			for k in range(int(g["c0"]), int(g["c1"]) + 1):
 				for q in range(int(g["r0"]), int(g["r1"]) + 1):
 					walls.append(Transform3D(Basis().scaled(Vector3(T, T, 0.3)), cell_pos(k, q) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
-		var w := float(int(g["c1"]) - int(g["c0"]) + 1) * T
-		var h := float(int(g["r1"]) - int(g["r0"]) + 1) * T
+		# stos skrzyń zwykłej wielkości (kafel na skrzynię, dwie w głąb), a nie jedna skrzynia rozciągnięta na cały blok — powiększony
+		# model wyglądał obco (uwaga z gry 2026-11-08); lekki obrót i przesunięcie z pozycji, skrzynie wyżej trochę mniejsze
+		var nw := int(g["c1"]) - int(g["c0"]) + 1
+		var w := float(nw) * T
 		var d := minf(w, CRATE_DEPTH)
-		var s := Vector3(w / bb.size.x, h / bb.size.y, d / bb.size.z)
-		var centre := Vector3(float(int(g["c0"])) * T + w * 0.5, -float(int(g["r1"]) + 1) * T, -0.15)
-		var off := Vector3((bb.position.x + bb.size.x * 0.5) * s.x, bb.position.y * s.y, (bb.position.z + bb.size.z * 0.5) * s.z)
-		xf.append(Transform3D(Basis().scaled(s), centre - off))
+		var nd := maxi(1, roundi(d / T))
+		var slot := d / float(nd)
+		for q in range(int(g["r1"]), int(g["r0"]) - 1, -1):
+			var lift := int(g["r1"]) - q                       # 0 = rząd na ziemi
+			for k in range(int(g["c0"]), int(g["c1"]) + 1):
+				for di in nd:
+					var hsh := absi(hash(Vector3i(k, q, di)))
+					var side := minf(T, slot) * (0.97 - 0.03 * float(mini(lift, 2)) - 0.02 * float(hsh % 3))
+					var s := Vector3(side / bb.size.x, side / bb.size.y, side / bb.size.z)
+					var rot := Basis(Vector3.UP, deg_to_rad(90.0 * float(hsh % 4) + float((hsh / 4) % 9 - 4)))
+					var bottom := Vector3((bb.position.x + bb.size.x * 0.5) * s.x, bb.position.y * s.y, (bb.position.z + bb.size.z * 0.5) * s.z)
+					var pos := Vector3((float(k) + 0.5) * T + float((hsh / 36) % 5 - 2) * 0.02, -float(q + 1) * T,
+							-0.15 + d * 0.5 - (float(di) + 0.5) * slot)
+					xf.append(Transform3D(rot * Basis().scaled(s), pos - rot * bottom))
 	_multimesh(parent, BoxMesh.new(), walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
 	if xf.is_empty():
 		return true
@@ -1546,9 +1559,9 @@ const SHELL_Z := 5.6
 const SHELL_DOWN := 8
 const SHELL_CH := "#CMmO~"                 ## znaki litych kafli, które przekrój przedłuża (bez niszczalnych: okien, desek, kratek, skrzyń)
 static var shell_cells := {}               ## Vector2i → klucz materiału przedłużenia ("" = jak kafel; "C" = beton fundamentu budynku)
-## Ściany przekroju (F3, uwaga z gry 2026-11-08: „ściany i sufity są na innym planie niż podłoże”): lite kafle `WALL_CH` w pasie wpisu
-## z przekrojem (ściany boczne, końce sal, nadproża nad przejściem) i nadproża między wpisem o niższym stropie a sąsiednim o wyższym
-## (niski tunel obok sali: skała nad stropem tunelu do wiersza stropu sali). Też sięgają do SHELL_Z, ale w warstwie pierwszego planu
+## Ściany przekroju (F3, uwaga z gry 2026-11-08: „ściany i sufity są na innym planie niż podłoże”): lite kolumny `WALL_CH` na całą wysokość
+## pasa wpisu z przekrojem (końce sal, ściana do kopania; kolumna z oknem lub drzwiami zostaje w płaszczyźnie gry). Nadproża między wpisem
+## o niższym stropie a sąsiednim o wyższym (skała nad stropem niskiego tunelu) idą do `shell_cells`. Ściany sięgają do SHELL_Z w warstwie pierwszego planu
 ## z wygaszaniem (`Front3D.build_walls`): ściana wysunięta ku kamerze rozrasta się w rzucie i bez wygaszania zasłaniałaby wrogów
 ## i znaczniki obok siebie (wynik spike'a F2b). Vector2i → [klucz materiału ("C" / "#"), occ: Vector4 jak u elementów pierwszego planu].
 static var shell_walls := {}
@@ -1591,10 +1604,22 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 		# occ: z kamery nad stropem albo pod podłogą wpisu płyta przekroju zasłania ścianę (warstwa pierwszego planu rysuje się nad światem)
 		var occ := Vector4(-float(int(e["r0"]) + 1) * T + 0.02, -float(e["r1"]) * T - 0.02, SHELL_Z, SHELL_Z)
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			# tylko ściana na całą wysokość pasa (koniec sali, ściana do kopania): kolumna z oknem, drzwiami albo przejściem zostaje
+			# w płaszczyźnie gry razem z otworem — wysunięty kawałek nad drzwiami albo pod oknem wisiał jak skrzynia, a okno stało
+			# w głębi za nim (uwaga z gry 2026-11-08)
+			var full := true
+			for r in range(int(e["r0"]) + 1, int(e["r1"])):
+				if not (_ch(rows, c, r) in WALL_CH or in_dig.call(c, r)):
+					full = false
+			if not full:
+				continue
 			for r in range(int(e["r0"]) + 1, int(e["r1"])):
 				if _ch(rows, c, r) in WALL_CH and not shell_cells.has(Vector2i(c, r)) and not in_dig.call(c, r):
 					shell_walls[Vector2i(c, r)] = [wall_key.call(e, c, r), occ]
-	# nadproża: wpis o niższym stropie (a) obok wpisu o wyższym (b), pasy na wspólnej wysokości — skała nad stropem a do wiersza stropu b
+	# nadproża: wpis o niższym stropie (a) obok wpisu o wyższym (b), pasy na wspólnej wysokości — skała nad stropem a do wiersza stropu b.
+	# W warstwie świata, jak płyta stropu (`shell_cells`): w warstwie pierwszego planu (rysowanej nad światem) `occ` nie zna kolumn —
+	# z kamery w sali pod wysokością stropu tunelu wycinał dół nadproża i w stropie podziemi była dziura (uwaga z gry 2026-11-08).
+	# Nadproże nie wchodzi w pas gry: leży nad stropem niskiego tunelu, a w rzucie oddala się od środka kadru (w skałę, nie w salę).
 	for a: Dictionary in bands:
 		for b: Dictionary in bands:
 			if a == b or int(b["r0"]) >= int(a["r0"]):
@@ -1603,13 +1628,12 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 				continue
 			if int(a["r0"]) >= int(b["r1"]) or int(b["r0"]) >= int(a["r1"]):
 				continue
-			# stoi na płycie stropu a: z kamery pod nią (w tunelu) płyta zasłania nadproże
-			var occ := Vector4(1e6, -float(a["r0"]) * T, SHELL_Z, SHELL_Z)
+			var concrete := String(a.get("set", "")) in ["station", "bunker"]
 			for c in range(int(a["c0"]), int(a["c1"]) + 1):
 				for r in range(int(b["r0"]), int(a["r0"])):
 					var k := Vector2i(c, r)
-					if _ch(rows, c, r) in WALL_CH and not shell_cells.has(k) and not shell_walls.has(k) and not in_band.call(c, r) and not in_dig.call(c, r):
-						shell_walls[k] = [wall_key.call(a, c, r), occ]
+					if _ch(rows, c, r) in SHELL_CH and not shell_cells.has(k) and not shell_walls.has(k) and not in_band.call(c, r) and not in_dig.call(c, r):
+						shell_cells[k] = "C" if concrete else ""
 
 ## Przód strefy wydobycia (`dig_zone.chunk_mesh`): SHELL_Z, gdy strefa styka się z pasem wpisu z przekrojem (koniec sali podziemi 1.3 —
 ## ściana do kopania stoi w jednym planie z podłogą i stropem przekroju), inaczej DEPTH_FRONT. Prostokąt w kaflach.

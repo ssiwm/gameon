@@ -151,6 +151,15 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		_check(not Level3D.shell_cells.has(k), "%s %s: ściana przekroju na kaflu płyty" % [map_id, k])
 		for z in digs:
 			_check(not (k.x >= int(z[0]) and k.x <= int(z[2]) and k.y >= int(z[1]) and k.y <= int(z[3])), "%s %s: ściana przekroju w strefie wydobycia" % [map_id, k])
+		# tylko kolumna lita na całą wysokość pasa: przy oknie, drzwiach albo przejściu ściana zostaje w płaszczyźnie gry
+		for e: Dictionary in Level3D.shell_bands:
+			if k.x >= int(e["c0"]) and k.x <= int(e["c1"]) and k.y > int(e["r0"]) and k.y < int(e["r1"]):
+				for r in range(int(e["r0"]) + 1, int(e["r1"])):
+					var cr := String(rows[r]).substr(k.x, 1)
+					var dug := false
+					for z in digs:
+						dug = dug or (k.x >= int(z[0]) and k.x <= int(z[2]) and r >= int(z[1]) and r <= int(z[3]))
+					_check(cr in Level3D.WALL_CH or dug, "%s %s: ściana przekroju w kolumnie z otworem ('%s' w wierszu %d)" % [map_id, k, cr, r])
 		var w: Array = Level3D.shell_walls[k]
 		_check(String(w[0]) in Front3D.WALL_TEX, "%s %s: ściana bez tekstury ('%s')" % [map_id, k, w[0]])
 		var occ: Vector4 = w[1]
@@ -169,6 +178,8 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 			_check(mmi.layers == Front3D.LAYER_WALL and mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: ściana %s ze złą warstwą albo z cieniem" % [map_id, mmi.name])
 		root.free()
 	if map_id == "z1_m3":
+		# 1.3: nadproże nad niskim tunelem obok sali (skała między stropem tunelu a stropem sali) to płyta świata, nie ściana pierwszego planu
+		_check(Level3D.shell_cells.has(Vector2i(91, 32)) and not Level3D.shell_walls.has(Vector2i(91, 32)), "1.3: nadproże nad tunelem 91–108 nie jest płytą przekroju")
 		# 1.3: strefa kopania przy zachodniej hali stoi w jednej płaszczyźnie z podłogą przekroju
 		_check(is_equal_approx(Level3D.zone_front_z(1, 31, 5, 39), Level3D.SHELL_Z), "1.3: strefa wydobycia przy hali nie wysunięta do przekroju")
 		var muds := Level3D.mud_spills(rows)
