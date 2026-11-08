@@ -589,6 +589,11 @@ static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel
 			for k in range(c0, c1 + 1):                         # tylna ściana budynku pod samą blachę
 				if _ch(rows, k, r + 1) == "b":
 					walls.append(_span_box(Vector3(float(k) * T, y_bot, -DEPTH_BACK), Vector3(float(k + 1) * T, under, -DEPTH_BACK + 0.3)))
+		if not (run["posts"] as Array).is_empty():
+			# oczep: belka wzdłuż wiaty na słupach (przednich i tylnych) — opierają się na niej słupy, zastrzały i pasy dolne wiązarów;
+			# bez niej słup kończył się w powietrzu pod dachem, bo wiązary stoją co 2 kafle, a słupy co ≤ ROOF_SPAN
+			for pz in [POST_Z, ROOF_POST_FRONT]:
+				fr.append(_span_box(Vector3(x0 + 0.05, y_bot, float(pz) - ROOF_POST * 0.5), Vector3(x1 - 0.05, y_bot + bar * 1.4, float(pz) + ROOF_POST * 0.5)))
 		for k in run["posts"]:
 			var g := roof_ground(rows, int(k), r)
 			if g < 0:

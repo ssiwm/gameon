@@ -390,6 +390,23 @@ w strefach z przekrojem: podstawa jest widoczna i właśnie ona sprzedaje głęb
   i `z_roof.jpg` (płytka w powietrzu | pod płatwią), `sheet2.jpg` (hala, drezyna, kładka po poprawkach), `cmp_ride.mp4`,
   `cmp_run_hall.mp4`, `cmp_run_plat.mp4` (pierwsze 6 s), `cmp_boom.mp4`, `cmp_boomtun.mp4`; skrypty w `f2b3_*.sh`.
 
+**Uwagi po grze na 505a50d** (2026-11-08): „rury wychodzą nad dach lub nie łączą się z niczym — powinny mieć logiczne zakończenie
+w dachu lub suficie; filary i dach są niepołączone”. Trzy przyczyny:
+
+- **Rura widoczna przez dach i strop.** Pierwszy plan leży w warstwie graczy, nad całym światem. Gdy kamera jest nad stropem
+  przekroju (gracz na dachu hali, w szybie nad tunelem drezyny), rura pod spodem rysowała się na blasze i na skale razem z płytką
+  na górze. Poprawka: shader odrzuca analitycznie piksel, do którego promień z kamery przechodzi przez płytę stropu (dachu) przed
+  jej przodem (`occ`: spód stropu, wierzch podłogi, przód stropu — `SHELL_Z`, pod dachem `SHELL_Z + ROOF_EAVE` — i przód podłogi);
+  to samo dla kamery pod podłogą. Z dachu hali rurę widać już tylko pod okapem, przez otwarty przód hali.
+- **Rura pod otworem.** `Front3D.blocked_x` omija też kolumny, w których strop albo podłoga wpisu nie są litym kaflem przekroju
+  (kratka szybu nad tunelem, kolumny 273–276) — rura nie kończy się w otworze.
+- **Wiata bez oczepu (stare, od 1.7.299, poza pierwszym planem).** Słupy wiaty (1.2, kolumny 112–132) stoją co ≤ 5 kafli, a wiązary
+  co 2 kafle i obok nich, więc słup kończył się w powietrzu pod dachem. Poprawka: oczep — belka wzdłuż wiaty na przednich
+  i tylnych słupach (`_build_roofs`), na której opierają się słupy, zastrzały i pasy dolne wiązarów.
+- Test `test_front.gd`: `occ` na każdym elemencie z przekrojem i na jego płytce, żaden element tunelu pod otworem w stropie.
+- Zrzuty: `shots_front/f2b4/` — `repro.jpg` (wiata, dach hali, szyb przed poprawką), `fix_sheet.jpg` (wiata po | przed, dach hali
+  po | przed, dach CLOSE, kładka), `fix_sheet2.jpg` (hala z podłogi, szyb).
+
 **Odrzucone warianty:**
 - **Same płyty podłogi i stropu bez przekroju pod nimi:** wyglądałyby jak balkony wysunięte nad cofniętą skałą, bo dolny przekrój
   zostałby na 1,1 m.

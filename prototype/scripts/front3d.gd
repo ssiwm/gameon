@@ -71,6 +71,7 @@ uniform float band = 0.0;                  // REDUCED: pół wysokości pasa bez
 instance uniform vec4 clip = vec4(-1e6, 1e6, -1e6, 1e6);   // x0, x1, y0, y1 na płaszczyźnie gry [m]
 instance uniform vec4 tint = vec4(1.0);
 instance uniform vec2 ywin = vec2(-1e6, 1e6);  // F2b: fizyczny pas y [m] (podłoga, strop) we wpisach z przekrojem
+instance uniform vec4 occ = vec4(1e6, -1e6, 0.0, 0.0);   // F2b: y spodu stropu (dachu), y wierzchu podłogi, z przodu stropu, z przodu podłogi
 varying vec3 wpos;
 
 void vertex() {
@@ -84,6 +85,10 @@ void fragment() {
 	if (q.x < clip.x || q.x > clip.y || q.y < clip.z || q.y > clip.w) { discard; }
 	if (band > 0.0 && abs(q.y - mid_y) < band) { discard; }
 	if (wpos.y < ywin.x || wpos.y > ywin.y) { discard; }
+	// F2b: strop (dach) i płyta podłogi przekroju są w warstwie świata, pod pierwszym planem — z kamery nad stropem (gracz na dachu
+	// hali, w szybie nad tunelem) albo pod podłogą piksel, do którego promień przechodzi przez płytę, odrzucamy analitycznie
+	if (cam.y > occ.x && wpos.y < occ.x && mix(wpos.z, cam.z, (occ.x - wpos.y) / (cam.y - wpos.y)) < occ.z) { discard; }
+	if (cam.y < occ.y && wpos.y > occ.y && mix(wpos.z, cam.z, (wpos.y - occ.y) / (wpos.y - cam.y)) < occ.w) { discard; }
 	float a = 1.0;
 	for (int i = 0; i < npts; i++) {
 		vec2 d = max(abs(q - pts[i].xy) - pts[i].zw, vec2(0.0));
@@ -256,9 +261,12 @@ static func blocked_x(front: Array, rows: Array) -> Array:
 	for e: Dictionary in front:
 		if not bool(e.get("shell", false)):
 			continue
+		var r0 := int(e["r0"])
 		var r1 := int(e["r1"])
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
-			if String(rows[r1]).substr(c, 1) in "O~m":
+			# kałuża na płycie, a także otwór w stropie albo w podłodze (kratka, właz szybu): rura nie miałaby się na czym oprzeć
+			var lo := String(rows[r1]).substr(c, 1)
+			if lo in "O~m" or not lo in Level3D.SHELL_CH or not String(rows[r0]).substr(c, 1) in Level3D.SHELL_CH:
 				out.append(Vector2(float(c) * T - 0.6, float(c + 1) * T + 0.6))
 		for rb: Dictionary in ribs:
 			var rc := int(rb["c"])
@@ -416,6 +424,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 		rng.seed = int(float(it["x"]) * 100.0)
 		var bulbs := []
 		var phys := bool(it.get("shell", false))
+		var occ_z := Level3D.SHELL_Z
 		if phys and Level3D.in_trench(int(floorf(float(it["x"]) / Level3D.T)), roundi(-clip.z / Level3D.T)):
 			clip.z -= Level3D.TRENCH_D                      # torowisko: płyta przekroju leży na wysokości dna koryta — element stoi na podsypce
 		if phys and not rows.is_empty():
@@ -423,6 +432,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			# przed przodem przekroju), i dochodzi do jej spodu; płatew bliżej kamery rzutuje się wyżej, więc rury nie przecina
 			var rp := Level3D.roof_purlins(rows, int(floorf(float(it["x"]) / Level3D.T)), roundi(-clip.w / Level3D.T) - 1)
 			if not rp.is_empty():
+				occ_z = Level3D.SHELL_Z + Level3D.ROOF_EAVE              # blacha dachu wystaje okapem przed przekrój
 				var best := float(it["z"])
 				var dmin := INF
 				for pz: float in rp[1]:
@@ -448,8 +458,13 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			# F2b: element stoi na płycie przekroju (`Level3D.SHELL_Z`) i dochodzi do stropu — przycięcie fizyczne zamiast w rzucie
 			mi.set_instance_shader_parameter("clip", Vector4(-1e6, 1e6, -1e6, 1e6))
 			mi.set_instance_shader_parameter("ywin", Vector2(clip.z, clip.w))
+			var occ := Vector4(clip.w + 0.02, clip.z - 0.02, occ_z, Level3D.SHELL_Z)
+			mi.set_instance_shader_parameter("occ", occ)
 			if bool(it["big"]):
 				_contact(mi, clip.z, clip.w)
+				var plate := mi.get_node_or_null("Plate") as MeshInstance3D
+				if plate != null:
+					plate.set_instance_shader_parameter("occ", occ)
 		else:
 			mi.set_instance_shader_parameter("clip", clip)
 		mi.set_instance_shader_parameter("tint", st["tint"])

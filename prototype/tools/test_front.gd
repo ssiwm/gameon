@@ -242,6 +242,21 @@ func _check_roof() -> void:
 			_check((rp[1] as Array).any(func(pz: float) -> bool: return absf(pz - mi.position.z) < 0.001), "%s: z %.2f nie pod płatwią" % [mi.name, mi.position.z])
 			_check(mi.position.z + 0.45 < Level3D.SHELL_Z, "%s: kołnierz przed przekrojem (z %.2f)" % [mi.name, mi.position.z])
 	_check(n > 0, "hala stacji: żaden element nie wisi pod dachem")
+	# zasłanianie płytą (shader `occ`): każdy element z przekrojem i jego płytka znają spód stropu / dachu i przód płyty
+	if fr != null:
+		for c in fr.get_children():
+			var mi := c as MeshInstance3D
+			var oc: Variant = mi.get_instance_shader_parameter("occ")
+			var yw: Variant = mi.get_instance_shader_parameter("ywin")
+			_check(oc is Vector4 and yw is Vector2 and absf((oc as Vector4).x - (yw as Vector2).y - 0.02) < 0.001 and (oc as Vector4).z >= Level3D.SHELL_Z, "%s: brak zasłaniania stropem / dachem (occ)" % mi.name)
+			var pl := mi.get_node_or_null("Plate") as MeshInstance3D
+			if pl != null:
+				_check(pl.get_instance_shader_parameter("occ") == oc, "%s: płytka bez zasłaniania (occ)" % mi.name)
+	# otwór w stropie (kratka szybu nad tunelem, kolumny 273–276): element nie stoi pod nim
+	var tun: Array = (consts["FRONT"] as Array).filter(func(t: Dictionary) -> bool: return String(t["set"]) == "tunnel")
+	for it: Dictionary in Front3D.layout(tun, [], false, Front3D.blocked_x(tun, rows)):
+		var cx := int(floorf(float(it["x"]) / Level3D.T))
+		_check(String(rows[int(tun[0]["r0"])]).substr(cx, 1) in Level3D.SHELL_CH, "tunel: %s x %.1f pod otworem w stropie" % [it["kind"], float(it["x"])])
 	Level3D.set_shells([], rows)
 	root.queue_free()
 
