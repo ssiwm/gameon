@@ -273,6 +273,10 @@ static func blocked_x(front: Array, rows: Array) -> Array:
 			if rc >= int(e["c0"]) and rc <= int(e["c1"]):
 				var rx := (float(rc) + 0.5) * T
 				out.append(Vector2(rx - 1.0, rx + 1.0))
+	# wyciek oleju (plama i przewrócona beczka na płycie przekroju): rura nie stoi w oleju
+	for sp: Dictionary in Level3D.oil_spills(rows):
+		var xr: Vector2 = sp["xr"]
+		out.append(Vector2(xr.x - 0.3, xr.y + 0.3))
 	return out
 
 

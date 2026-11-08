@@ -341,13 +341,12 @@ static func post_runs(rows: Array, radius := -1.0) -> Array:
 	return out
 
 ## Przedłużenie kafli strefy przekroju (`shell_cells`) od DEPTH_FRONT do SHELL_Z jako skrzynki MultiMesh: wierzch płyty podłogi, spód stropu,
-## przekrój na SHELL_Z i boczne ściany na końcach strefy (ściany skrzynek na brzegu). Bez dachu z blachy (`_build_roofs` wysuwa okap) i bez
-## cieczy (`build_liquids` sięga niecką i taflą do przodu przekroju).
+## przekrój na SHELL_Z i boczne ściany na końcach strefy (ściany skrzynek na brzegu). Bez dachu z blachy (`_build_roofs` wysuwa okap).
+## Kafel cieczy dostaje litą płytę od DEPTH_FRONT (niecka zostaje w pasie gry, rozlany olej rysuje `build_oil_stains`).
 static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictionary, crate_cells: Dictionary, slabs: Dictionary) -> void:
 	if shell_cells.is_empty():
 		return
 	var d := SHELL_Z - DEPTH_FRONT
-	var liquids := not "--noliquids" in OS.get_cmdline_user_args()
 	var by_row := {}                                            # "wiersz|materiał" → [kolumny]
 	for k: Vector2i in shell_cells:
 		var ch := _ch(rows, k.x, k.y)
@@ -355,11 +354,9 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 			continue
 		if crate_cells.has(k) or slabs.has(k):
 			continue
-		if liquids and (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, k.x, k.y, ch):
-			continue
 		var key: String = shell_cells[k]
 		if key == "":
-			key = ch
+			key = "#" if ch in "O~m" else ch                   # ciecz: niecka kończy się na DEPTH_FRONT, przed nią lita płyta (plama oleju — `oil_spills`)
 		if not mats.has(key):
 			continue
 		var rk := "%d|%s|%d" % [k.y, key, int(in_trench(k.x, k.y))]
@@ -1802,7 +1799,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 				c1 += 1
 			var kd: int = kinds[ch]
 			var n := c1 - c
-			zf = front_z(c, r)                                 # przekrój (F2b): niecka i tafla do przodu strefy
+			zf = DEPTH_FRONT                                   # przekrój (F2b): niecka w pasie gry, przed nią płyta z plamą (`oil_spills`)
 			var x0 := float(c) * T
 			var w := float(n) * T
 			var y_top := -float(r) * T                         # krawędź gruntu
@@ -2122,6 +2119,169 @@ static func _liquid_runs(rows: Array) -> Array:
 				"y_top": -float(r) * T, "seed": float((c * 31 + r * 17) % 97), "stack": stack})
 			c = c1
 	return out
+
+## Wyciek oleju w strefie przekroju (F2b, uwaga z gry 2026-11-08: prostokątna tafla do przodu płyty nie wyglądała jak rozlany olej).
+## Niecka oleju w pasie gry zostaje (rozgrywka bez zmian), a przed nią na betonie przekroju i po bokach niecki leży nieregularna plama:
+## metakule (`blobs`: x, z, promień x, promień z) z poszarpanym brzegiem w shaderze — czarne lustro świeżego oleju i ciemna, matowa obwódka
+## wsiąkniętego w beton. Przy plamie stoją uszkodzone beczki, z których olej wyciekł (stawia je `view3d.gd`): przewrócona na płycie przed
+## płaszczyzną gry, wylotem ku niecce (leży niżej niż linia podłogi w rzucie — nie wchodzi w pas gry), i stojące za płaszczyzną gry przy
+## tylnej ścianie. Tylko ciągi oleju, których powierzchnia jest w strefie przekroju. Wynik: [{x0, x1, y, pit, blobs, xr, zr, barrels, seed}],
+## beczka: {pos (środek podstawy modelu), basis (bez skali), dents: [Vector4 kąt, wysokość 0–1, promień px, głębokość px], leak: Vector4
+## (kąt, wysokość otworu 0–1, szerokość rad, 1 = jest), lying}.
+const OIL_BARREL_R := 0.363                ## promień beczki barrel_n (m; model 7,75 × 11,4 px)
+const OIL_BARREL_H := 1.066                ## wysokość beczki barrel_n (m)
+const OIL_BARREL_Z := -1.25                ## stojące beczki: za płaszczyzną gry, przy tylnej ścianie (jak dekoracje Pompowni)
+const OIL_LYING_Z := 3.1                   ## przewrócona beczka na płycie przekroju
+const OIL_BLOBS := 14
+
+static func oil_spills(rows: Array) -> Array:
+	var out: Array = []
+	if shell_cells.is_empty():
+		return out
+	for run in _liquid_runs(rows):
+		var c: int = run["c"]
+		var c1: int = run["c1"]
+		var r: int = run["r"]
+		if int(run["kd"]) != 1 or not in_shell(c, r) or not in_shell(c1 - 1, r):
+			continue
+		var x0: float = run["x0"]
+		var x1: float = x0 + float(run["w"])
+		var w := x1 - x0
+		var xc := (x0 + x1) * 0.5
+		var y: float = run["y_top"]
+		var rng := RandomNumberGenerator.new()
+		rng.seed = c * 7919 + r * 104729
+		# strona przewróconej beczki: tam, gdzie posadzka przekroju (lita, bez cieczy, wolna nad sobą) ciągnie się dalej
+		var room := func(dir: int) -> int:
+			var k := 0
+			var cc := c1 if dir > 0 else c - 1
+			while k < 6 and in_shell(cc, r) and not _ch(rows, cc, r) in "O~m" and not is_solid_ch(_ch(rows, cc, r - 1)):
+				k += 1
+				cc += dir
+			return k
+		var rr: int = room.call(1)
+		var rl: int = room.call(-1)
+		if maxi(rr, rl) < 2:
+			continue
+		var s := 1.0 if rr > rl else -1.0                     # przy równym miejscu w lewo (w hali 1.2 ku lampie — beczkę widać)
+		var barrels: Array = []
+		# przewrócona: oś wzdłuż x, dno daleko od niecki, wylot (góra modelu) ku niecce
+		var lx := (x1 + 1.35) if s > 0.0 else (x0 - 1.35)
+		var yaw := s * rng.randf_range(0.12, 0.32)
+		var lb := Basis(Vector3.UP, yaw) * Basis(Vector3.BACK, s * PI * 0.5) * Basis(Vector3.UP, rng.randf_range(0.0, TAU))
+		var axis := lb * Vector3.UP
+		var centre := Vector3(lx, y + OIL_BARREL_R * 0.96, OIL_LYING_Z)
+		var mouth := centre + axis * OIL_BARREL_H * 0.5
+		barrels.append({"pos": centre - axis * OIL_BARREL_H * 0.5, "basis": lb, "lying": true, "leak": Vector4(0.0, 0.97, 0.0, 1.0),
+			"dents": [Vector4(rng.randf_range(0.0, TAU), 0.55, 3.2, 1.0), Vector4(rng.randf_range(0.0, TAU), 0.9, 2.2, 0.8)]})
+		# stojące przy tylnej ścianie: dwie po stronie przeciwnej (jedna mocno wgnieciona, druga przechylona ku niej), jedna po stronie przewróconej
+		var back: Array = [[x0 - 0.55 if s > 0.0 else x1 + 0.55, 0.0], [x0 - 1.35 if s > 0.0 else x1 + 1.35, -s * 0.07], [x1 + 0.55 if s > 0.0 else x0 - 0.55, 0.0]]
+		for i in back.size():
+			var bx: float = back[i][0]
+			var cc := int(floorf(bx / T))
+			if not is_solid_ch(_ch(rows, cc, r)) or is_solid_ch(_ch(rows, cc, r - 1)):
+				continue
+			var spin := rng.randf_range(0.0, TAU)
+			var bb := Basis(Vector3.BACK, float(back[i][1])) * Basis(Vector3.UP, spin)
+			var bz := OIL_BARREL_Z + rng.randf_range(-0.12, 0.12)
+			# kąt w układzie modelu, który po obrocie `spin` patrzy w kamerę (+z): −spin (wgniecenia i otwór wycieku widać)
+			var dents: Array = [Vector4(-spin + rng.randf_range(-0.9, 0.9), rng.randf_range(0.35, 0.7), rng.randf_range(2.2, 3.4), rng.randf_range(0.7, 1.1) * (1.4 if i == 0 else 1.0))]
+			if i == 0:
+				dents.append(Vector4(-spin + rng.randf_range(0.6, 1.4), 0.93, 2.6, 1.0))
+			barrels.append({"pos": Vector3(bx, y, bz), "basis": bb, "lying": false, "dents": dents,
+				"leak": Vector4(-spin + rng.randf_range(-0.5, 0.5), rng.randf_range(0.2, 0.4), 0.22, 1.0 if i != 1 else 0.0)})
+		# plama: od przodu niecki ku kamerze, płat w stronę przewróconej beczki, smuga do jej wylotu, kałuża pod wylotem, boki niecki w pasie gry
+		var zf := DEPTH_FRONT
+		var blobs: Array = [Vector4(xc + rng.randf_range(-0.3, 0.3), zf + 0.75, w * 0.5 + 0.5, 1.0), Vector4(xc, zf + 0.1, w * 0.55, 0.45),
+			Vector4(xc + s * w * 0.4, zf + 1.35, w * 0.32 + 0.3, 0.75),
+			Vector4(mouth.x - s * 0.15, mouth.z, 0.75, 0.6)]
+		for k in 3:
+			var t := (float(k) + 1.0) / 4.0
+			var p := Vector2(xc + s * w * 0.4, zf + 1.35).lerp(Vector2(mouth.x, mouth.z), t)
+			blobs.append(Vector4(p.x, p.y + rng.randf_range(-0.15, 0.15), 0.5, 0.4))
+		blobs.append(Vector4(x0 - 0.35, rng.randf_range(-0.4, 0.4), 0.6, 0.95))
+		blobs.append(Vector4(x1 + 0.35, rng.randf_range(-0.6, 0.2), 0.55, 0.8))
+		for b in barrels:
+			if not bool(b["lying"]) and float((b["leak"] as Vector4).w) > 0.5:
+				blobs.append(Vector4((b["pos"] as Vector3).x + rng.randf_range(-0.1, 0.1), (b["pos"] as Vector3).z + 0.45, 0.5, 0.45))
+		while blobs.size() < OIL_BLOBS:
+			var a := rng.randf_range(0.0, TAU)
+			var d := rng.randf_range(1.2, 1.9)
+			blobs.append(Vector4(xc + cos(a) * d * w * 0.45, clampf(zf + 1.2 + sin(a) * d, zf + 0.3, SHELL_Z - 0.5), rng.randf_range(0.12, 0.25), rng.randf_range(0.1, 0.2)))
+		blobs.resize(OIL_BLOBS)
+		var xr := Vector2(1e9, -1e9)
+		var zr := Vector2(1e9, -1e9)
+		for b: Vector4 in blobs:
+			xr = Vector2(minf(xr.x, b.x - b.z * 1.7), maxf(xr.y, b.x + b.z * 1.7))
+			zr = Vector2(minf(zr.x, b.y - b.w * 1.7), maxf(zr.y, b.y + b.w * 1.7))
+		zr = Vector2(maxf(zr.x, -DEPTH_BACK + 0.5), minf(zr.y, SHELL_Z - 0.12))
+		out.append({"x0": x0, "x1": x1, "y": y, "pit": Vector3(x0, x1, zf), "blobs": blobs, "xr": xr, "zr": zr, "barrels": barrels,
+			"seed": float(run["seed"])})
+	return out
+
+## Plama oleju na betonie (`oil_spills`): pole metakul z poszarpanym brzegiem; nad niecką gry (prostokąt `pit`) nic nie rysuje.
+const OIL_STAIN_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+uniform vec4 blobs[14];
+uniform vec3 pit = vec3(0.0);
+uniform float seed = 0.0;
+varying vec3 wp;
+//COMMON
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	float f = 0.0;
+	for (int i = 0; i < 14; i++) {
+		vec2 d = (wp.xz - blobs[i].xy) / max(blobs[i].zw, vec2(0.01));
+		f += exp(-dot(d, d) * 1.6);
+	}
+	float g = f + (fbm(wp.xz * 1.6 + seed) - 0.5) * 0.5 + (vn(wp.xz * 6.0 + seed) - 0.5) * 0.06;
+	float soak = smoothstep(0.10, 0.32, g);        // wsiąknięty w beton: ciemny, matowy, ku brzegowi coraz jaśniejszy
+	float wet = smoothstep(0.40, 0.56, g);         // świeża warstwa: czarne lustro (szeroki próg: kamera patrzy na płytę pod ostrym kątem)
+	// nad niecką gry plama zachodzi tylko przez przednią krawędź (poszarpany pas do ok. 0,4 m): niecka i plama na płycie są jedną kałużą,
+	// a reszta niecki zostaje żywą taflą (fale, brodzenie). Pas przy bokach i z tyłu rysował ciemną ramkę wokół niecki (zrzut f2b6/oil3).
+	if (wp.x > pit.x && wp.x < pit.y && wp.z < pit.z) {
+		float k = 1.0 - smoothstep(0.1, 0.35, pit.z - wp.z + (fbm(wp.xz * 2.3 + seed * 1.7) - 0.5) * 0.4);
+		soak *= k;
+		wet *= k;
+	}
+	if (soak < 0.01) { discard; }
+	float t = TIME * 0.05;
+	vec3 n = normalize(vec3((vn(wp.xz * 3.0 + vec2(t, 0.0)) - 0.5) * 0.05, 1.0, (vn(wp.xz * 3.4 - vec2(0.0, t)) - 0.5) * 0.05));
+	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+	vec3 film = 0.5 + 0.5 * cos(6.2832 * (fbm(wp.xz * 0.9 - seed) * 2.0 + vec3(0.0, 0.33, 0.67)));
+	float deep = smoothstep(0.32, 0.46, g);
+	ALBEDO = mix(mix(vec3(0.075, 0.068, 0.058), vec3(0.030, 0.027, 0.023), deep), mix(vec3(0.009, 0.009, 0.010), film * 0.03, 0.35), wet);
+	ROUGHNESS = mix(mix(0.85, 0.55, deep), 0.035, wet);
+	SPECULAR = mix(0.25, 1.0, wet);
+	ALPHA = soak * mix(mix(0.55, 0.8, deep), 0.96, wet);
+}
+"""
+
+## Plamy oleju z `oil_spills` (warstwa świata, bez cienia): jeden czworokąt na wyciek tuż nad posadzką.
+static func build_oil_stains(parent: Node3D, spills: Array) -> void:
+	if spills.is_empty():
+		return
+	var sh := Shader.new()
+	sh.code = OIL_STAIN_SHADER.replace("//COMMON", PROP_COMMON)
+	for i in spills.size():
+		var sp: Dictionary = spills[i]
+		var xr: Vector2 = sp["xr"]
+		var zr: Vector2 = sp["zr"]
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(xr.y - xr.x, zr.y - zr.x)
+		var mat := ShaderMaterial.new()
+		mat.shader = sh
+		mat.set_shader_parameter("blobs", PackedVector4Array(sp["blobs"]))
+		mat.set_shader_parameter("pit", sp["pit"])
+		mat.set_shader_parameter("seed", float(sp["seed"]))
+		var mi := MeshInstance3D.new()
+		mi.name = "OilStain_%d" % i
+		mi.mesh = pm
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.position = Vector3((xr.x + xr.y) * 0.5, float(sp["y"]) + 0.008, (zr.x + zr.y) * 0.5)
+		parent.add_child(mi)
 
 ## Profil niecki ciągu (jak w `build_liquids`): `[próbki co 0,131 m od początku ciągu]`.
 static func _run_profile(run: Dictionary) -> PackedFloat32Array:

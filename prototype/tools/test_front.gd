@@ -10,6 +10,8 @@ extends SceneTree
 ## (4) przekrój budynku (F2b): kafle strefy tylko w stropie i podłodze z fundamentem (nigdy ściany w pasie gry ani strefy wydobycia),
 ##     element na płycie (nie w cieczy), kołnierz przed przodem przekroju, ≥ 1 m od belki pod stropem; plama okluzji i płytka;
 ##     nad torowiskiem drezyny element stoi na podsypce (płyta na wysokości dna koryta), pod dachem z blachy wisi pod płatwią,
+##     wyciek oleju w hali 1.2 (`Level3D.oil_spills`): plama w zasięgu płyty, przewrócona beczka na płycie przed niecką i niżej niż linia
+##     podłogi w rzucie, stojące za płaszczyzną gry poza niecką, element nie stoi w plamie,
 ## (5) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
 ##     waga 0 nie wygasza wcale.
 ## godot --headless --path prototype -s tools/test_front.gd       → ma wypisać PASS
@@ -51,6 +53,7 @@ func _process(_dt: float) -> bool:
 	_check_layers()
 	_check_trench()
 	_check_roof()
+	_check_oil()
 	_check_fade()
 	print("PASS" if _fail == 0 else "FAIL (%d)" % _fail)
 	quit(0 if _fail == 0 else 1)
@@ -259,6 +262,42 @@ func _check_roof() -> void:
 		_check(String(rows[int(tun[0]["r0"])]).substr(cx, 1) in Level3D.SHELL_CH, "tunel: %s x %.1f pod otworem w stropie" % [it["kind"], float(it["x"])])
 	Level3D.set_shells([], rows)
 	root.queue_free()
+
+## Wyciek oleju (`Level3D.oil_spills`) w hali stacji 1.2: dane plamy i beczek oraz rura poza plamą.
+func _check_oil() -> void:
+	var consts: Dictionary = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()
+	var rows: Array = consts["MAP"]
+	var front: Array = (consts["FRONT"] as Array).filter(func(e: Dictionary) -> bool: return String(e["set"]) == "station")
+	Level3D.set_shells(front, rows)
+	var spills := Level3D.oil_spills(rows)
+	_check(spills.size() == 1, "hala 1.2: %d wycieków oleju zamiast 1" % spills.size())
+	for sp: Dictionary in spills:
+		var pit: Vector3 = sp["pit"]
+		var zr: Vector2 = sp["zr"]
+		_check((sp["blobs"] as Array).size() == Level3D.OIL_BLOBS, "wyciek: liczba metakul różna od OIL_BLOBS (tablica w shaderze)")
+		_check(zr.y <= Level3D.SHELL_Z and zr.x >= -Level3D.DEPTH_BACK, "wyciek: plama poza płytą (z %.2f–%.2f)" % [zr.x, zr.y])
+		var lying := 0
+		for b: Dictionary in sp["barrels"]:
+			var p: Vector3 = b["pos"]
+			var c := (b["basis"] as Basis) * Vector3.UP * Level3D.OIL_BARREL_H * 0.5 + p     # środek beczki
+			var outside := c.x + Level3D.OIL_BARREL_R < pit.x or c.x - Level3D.OIL_BARREL_R > pit.y
+			if bool(b["lying"]):
+				lying += 1
+				_check(c.z > Level3D.DEPTH_FRONT + Level3D.OIL_BARREL_R and c.z + Level3D.OIL_BARREL_R < Level3D.SHELL_Z, "wyciek: przewrócona beczka poza płytą przekroju (z %.2f)" % c.z)
+				_check(outside, "wyciek: przewrócona beczka nad niecką")
+				# rzut wierzchu beczki na płaszczyznę gry przy kamerze NORMAL (oko EYE_UP nad środkiem kadru, kadr nad podłogą): pod linią podłogi
+				var dist := 20.2
+				var eye_up := FRAME_H_NORMAL * 0.5 + 2.2
+				var top := 2.0 * Level3D.OIL_BARREL_R
+				_check(eye_up + (top - eye_up) * dist / (dist - (c.z + Level3D.OIL_BARREL_R)) < 0.05, "wyciek: przewrócona beczka wchodzi w pas gry")
+			else:
+				_check(c.z + Level3D.OIL_BARREL_R < 0.0 and c.z - Level3D.OIL_BARREL_R > -Level3D.DEPTH_BACK + 0.3, "wyciek: stojąca beczka nie za płaszczyzną gry (z %.2f)" % c.z)
+				_check(outside, "wyciek: stojąca beczka nad niecką")
+		_check(lying == 1, "wyciek: %d przewróconych beczek zamiast 1" % lying)
+		for it: Dictionary in Front3D.layout(front, [], false, Front3D.blocked_x(front, rows)):
+			var x := float(it["x"])
+			_check(x < (sp["xr"] as Vector2).x or x > (sp["xr"] as Vector2).y, "hala: %s x %.1f stoi w plamie oleju" % [it["kind"], x])
+	Level3D.set_shells([], rows)
 
 func _check_fade() -> void:
 	_check(is_equal_approx(Front3D.fade(0.0), Front3D.MIN_A), "fade na sylwetce ≠ MIN_A")

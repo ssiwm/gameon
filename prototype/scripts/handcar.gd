@@ -21,6 +21,7 @@ const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 
 const HALF_W := 44.0                 ## połowa długości pokładu
+const LANTERN := Vector2(-HALF_W + 4.7, -28.0)   ## środek szkła latarni modelu 3D (słupek na lewym końcu pokładu) względem węzła
 const SOLO_POWER := 1.5              ## moc pompowania jedynego człowieka w sesji bez bota (jak człowiek + bot: 1 + 0,5)
 const DECK_TOP := 5.35               ## wysokość górnej krawędzi pokładu nad torem [px świata] — do tej wysokości drezyna zasłania nogi graczy
 const FRONT_Z := 10                  ## z względem drezyny: osłona pokładu i koła leżą przed graczami
@@ -67,7 +68,7 @@ func _ready() -> void:
 	collision_mask = 0
 	sync_to_physics = false          # bez tego position czytane w tej samej klatce jest nieaktualne (dx = 0) i nikogo nie wozimy
 	_light = Lights.make_light(Lights.radial(), 7.0, Color(1.0, 0.82, 0.5), 0.0, true)
-	_light.position = Vector2(-HALF_W + 1.5, -17)  # (HD: latarnia stoi 1,5 px dalej, różnica pomijalna)
+	_light.position = LANTERN
 	add_child(_light)
 	start_x = position.x
 	end_x = start_x

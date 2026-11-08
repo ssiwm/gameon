@@ -2,7 +2,7 @@
 
 Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A); F1 + F2 (pilot: hala stacji i tunel 1.2) w 1.7.519; po pierwszej
 ocenie w grze poprawki rur w 1.7.520 (rury z Poly Haven, półprzezroczyste wygaszanie, lampy w tunelu) — czeka na bramkę F2 (wyniki
-niżej). Po drugiej uwadze („nie ma tam świata”) F2b: przekrój budynku przesunięty do warstwy pierwszego planu — mechanizm w 1.7.521 (hala i tunel 1.2), luki pilota (drezyna, górny pomost, wstrząs) sprawdzone i poprawione w tym samym PR — czeka na ocenę w grze.** Punkt 2 raportu o głębi świata
+niżej). Po drugiej uwadze („nie ma tam świata”) F2b: przekrój budynku przesunięty do warstwy pierwszego planu — mechanizm w 1.7.521 (hala i tunel 1.2), luki pilota (drezyna, górny pomost, wstrząs) i uwagi po grze (rury przez dach, oczep wiaty, plama oleju z beczkami, latarnia drezyny) poprawione w tym samym PR — czeka na ocenę w grze.** Punkt 2 raportu o głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`); punkty 1 i 3 (wnętrza) zamknął `DEPTH_PLAN.md` (1.7.507–1.7.518).
 Stan odniesienia: `main` 1.7.518 (473eee6).
 
@@ -406,6 +406,26 @@ w dachu lub suficie; filary i dach są niepołączone”. Trzy przyczyny:
 - Test `test_front.gd`: `occ` na każdym elemencie z przekrojem i na jego płytce, żaden element tunelu pod otworem w stropie.
 - Zrzuty: `shots_front/f2b4/` — `repro.jpg` (wiata, dach hali, szyb przed poprawką), `fix_sheet.jpg` (wiata po | przed, dach hali
   po | przed, dach CLOSE, kładka), `fix_sheet2.jpg` (hala z podłogi, szyb).
+
+**Uwagi po grze na 133ea7e** (2026-11-08): „plama oleju niech wygląda jak duża plama oleju, przy niej powinny stać uszkodzone beczki,
+z których olej wyciekł; źródło światła drezyny jest w złym miejscu”.
+
+- **Olej.** Niecka oleju sięgała w przekroju prostokątną taflą aż do 5,6 m — na płycie hali ciemny prostokąt. Teraz niecka zostaje
+  w pasie gry (do 1,1 m, rozgrywka bez zmian), przed nią leży lita płyta, a na betonie nieregularna plama (`Level3D.oil_spills`,
+  `build_oil_stains`): pole 14 metakul z poszarpanym brzegiem w shaderze, czarne lustro świeżego oleju z lekkim tęczowym nalotem
+  i matowa obwódka wsiąkniętego w beton; przez przednią krawędź niecki plama wchodzi na taflę, więc niecka i plama są jedną kałużą
+  (pas przy bokach i z tyłu niecki rysował ciemną ramkę — odrzucony). Przy plamie beczki `barrel_n` z wgnieceniami w siatce
+  (`view3d._dent_mesh`) i zaciekiem oleju w nakładce: przewrócona na płycie przed płaszczyzną gry, wylotem ku niecce, ze smugą
+  oleju do niecki (leży niżej niż linia podłogi w rzucie), i trzy stojące za płaszczyzną gry przy tylnej ścianie (dwie z wyciekiem,
+  jedna przechylona). Rura pierwszego planu nie stoi w plamie (`Front3D.blocked_x`).
+- **Latarnia drezyny.** Poświata wisiała 0,8 m pod szkłem latarni (stała z rysunku 2D, model 3D ma latarnię na słupku 26 px nad
+  podstawą) i za modelem (z 0,45 zamiast przed szkłem), a światło omni nie schodziło z drezyną do koryta toru. Jedna stała
+  `Handcar.LANTERN` (pomiar szkła w `handcar.glb`) dla światła gry, poświaty (przed szkłem, w korycie, mniejsza niż obudowa)
+  i światła 3D (`_sync_lights`: −`TRENCH_D` dla latarni drezyny).
+- Test `test_front.gd`: jeden wyciek w hali 1.2, plama w zasięgu płyty, przewrócona beczka na płycie poza niecką i pod linią podłogi
+  w rzucie, stojące za płaszczyzną gry poza niecką, rura poza plamą.
+- Zrzuty: `shots_front/f2b6/` — `oil5_c.jpg` (CLOSE, rozjaśniony), `oil5_n_s.jpg` (NORMAL), `hc2_c.jpg` (drezyna), `oil3_c.jpg`
+  (odrzucona ramka w niecce).
 
 **Odrzucone warianty:**
 - **Same płyty podłogi i stropu bez przekroju pod nimi:** wyglądałyby jak balkony wysunięte nad cofniętą skałą, bo dolny przekrój
