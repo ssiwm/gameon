@@ -656,9 +656,10 @@ static func _build_wall_feet(parent: Node3D, rows: Array, mat: Material) -> void
 	_multimesh(parent, BoxMesh.new(), xf, mat)
 
 ## Skrzynie `M` poza konstrukcjami (na gruncie, na dachu Składu, w podziemnych halach 1.3): prostokątne bloki sąsiednich kafli `M`, które nie leżą
-## w ciągu nad nogami wieży (`tower_slabs`) — [{"c0", "c1", "r0", "r1"} (włącznie)]. W 3D były pudłami głębokimi na całą bryłę (3,5 m), teraz to
-## stosy skrzyń z modelu `crate` (ta sama co skrzynie fizyczne `k`): od 1.7.526 skrzynia zwykłej wielkości na kafel, kilka w głąb, razem
-## głębokie jak szerokie (najwyżej CRATE_DEPTH) — wcześniej jedna skrzynia rozciągnięta na cały blok wyglądała na powiększoną.
+## w ciągu nad nogami wieży (`tower_slabs`) — [{"c0", "c1", "r0", "r1"} (włącznie)]. W 3D były pudłami głębokimi na całą bryłę (3,5 m), potem
+## powiększoną skrzynią i stosem skrzyń (obce w scenie, uwagi z gry 2026-11-08); od 1.7.525 to mur z betonowych bloków prefabrykowanych
+## z czopami (`mblock_a0`/`a1`/`ah`), a w podziemnej hali blok 2 × 2 kafle to obudowa transformatora (`mblock_c`) — modele z
+## `tools/mblock_bake.py`. Głębokość jak szerokość, najwyżej CRATE_DEPTH (w modułach bloku, pół kafla).
 const CRATE_DEPTH := 2.4
 static func crate_blocks(rows: Array) -> Array:
 	var skip := {}
@@ -691,45 +692,90 @@ static func crate_blocks(rows: Array) -> Array:
 			out.append({"c0": c, "c1": c1, "r0": r, "r1": r1})
 	return out
 
+## Modele bloków (`tools/mblock_bake.py`, jednostka = piksel świata): pełny blok MB_U × 2 długości, MB_U głębokości, korpus MB_BODY + czopy
+## do MB_U. W stosie rzędy stoją co wysokość korpusu (czopy wchodzą w gniazda bloku wyżej), czopy najwyższego rzędu kończą się na górze kafla.
+const MB_U := 8.0
+const MB_BODY := 7.3
+const MB_GAP := 0.012                       ## m: szczelina między sąsiednimi blokami (bez migotania stykających się ścian)
+
 static func _build_crates(parent: Node3D, rows: Array) -> bool:
-	var mm := model_mesh("crate")
-	if mm.is_empty():
+	var full := [model_mesh("mblock_a0"), model_mesh("mblock_a1")]
+	var half := model_mesh("mblock_ah")
+	var trafo := model_mesh("mblock_c")
+	if (full[0] as Array).is_empty() or (full[1] as Array).is_empty() or half.is_empty():
 		return false
-	var bb: AABB = (mm[1] as Transform3D) * (mm[0] as Mesh).get_aabb()
-	var xf: Array = []
+	var xf_full: Array = [[], []]
+	var xf_half: Array = []
+	var xf_trafo: Array = []
 	var walls: Array = []
+	var u := T * 0.5                                        # moduł bloku: pół kafla (0,65 m; bloki 1,31 × 0,65 × 0,65 m)
 	for g in crate_blocks(rows):
-		var inside := _ch(rows, int(g["c0"]) - 1, int(g["r0"])) == "b" or _ch(rows, int(g["c1"]) + 1, int(g["r0"])) == "b" or _ch(rows, int(g["c0"]), int(g["r0"]) - 1) == "b"
-		if inside:                                          # w hali skrzynia jest płytsza niż dawne pudło — za nią musi stać ściana tła
-			for k in range(int(g["c0"]), int(g["c1"]) + 1):
+		var c0 := int(g["c0"])
+		var inside := _ch(rows, c0 - 1, int(g["r0"])) == "b" or _ch(rows, int(g["c1"]) + 1, int(g["r0"])) == "b" or _ch(rows, c0, int(g["r0"]) - 1) == "b"
+		if inside:                                          # w hali blok jest płytszy niż dawne pudło — za nim musi stać ściana tła
+			for k in range(c0, int(g["c1"]) + 1):
 				for q in range(int(g["r0"]), int(g["r1"]) + 1):
 					walls.append(Transform3D(Basis().scaled(Vector3(T, T, 0.3)), cell_pos(k, q) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
-		# stos skrzyń zwykłej wielkości (kafel na skrzynię, dwie w głąb), a nie jedna skrzynia rozciągnięta na cały blok — powiększony
-		# model wyglądał obco (uwaga z gry 2026-11-08); lekki obrót i przesunięcie z pozycji, skrzynie wyżej trochę mniejsze
-		var nw := int(g["c1"]) - int(g["c0"]) + 1
+		var nw := int(g["c1"]) - c0 + 1
+		var nh := int(g["r1"]) - int(g["r0"]) + 1
 		var w := float(nw) * T
-		var d := minf(w, CRATE_DEPTH)
-		var nd := maxi(1, roundi(d / T))
-		var slot := d / float(nd)
-		for q in range(int(g["r1"]), int(g["r0"]) - 1, -1):
-			var lift := int(g["r1"]) - q                       # 0 = rząd na ziemi
-			for k in range(int(g["c0"]), int(g["c1"]) + 1):
-				for di in nd:
-					var hsh := absi(hash(Vector3i(k, q, di)))
-					var side := minf(T, slot) * (0.97 - 0.03 * float(mini(lift, 2)) - 0.02 * float(hsh % 3))
-					var s := Vector3(side / bb.size.x, side / bb.size.y, side / bb.size.z)
-					var rot := Basis(Vector3.UP, deg_to_rad(90.0 * float(hsh % 4) + float((hsh / 4) % 9 - 4)))
-					var bottom := Vector3((bb.position.x + bb.size.x * 0.5) * s.x, bb.position.y * s.y, (bb.position.z + bb.size.z * 0.5) * s.z)
-					var pos := Vector3((float(k) + 0.5) * T + float((hsh / 36) % 5 - 2) * 0.02, -float(q + 1) * T,
-							-0.15 + d * 0.5 - (float(di) + 0.5) * slot)
-					xf.append(Transform3D(rot * Basis().scaled(s), pos - rot * bottom))
+		var h := float(nh) * T
+		var x0 := float(c0) * T
+		var y0 := -float(int(g["r1"]) + 1) * T
+		var depth := minf(w, CRATE_DEPTH)
+		# podziemna hala, blok 2 × 2 kafle: obudowa transformatora (płaska pokrywa na wysokości bloku)
+		if inside and nw == 2 and nh == 2 and not trafo.is_empty():
+			var bt: AABB = (trafo[1] as Transform3D) * (trafo[0] as Mesh).get_aabb()
+			var st := Vector3(w / bt.size.x, h / bt.size.y, depth / bt.size.z)
+			var bot := Vector3((bt.position.x + bt.size.x * 0.5) * st.x, bt.position.y * st.y, (bt.position.z + bt.size.z * 0.5) * st.z)
+			xf_trafo.append(Transform3D(Basis().scaled(st), Vector3(x0 + w * 0.5, y0, -0.15) - bot))
+			continue
+		# betonowe bloki z czopami, wiązanie mijankowe: rząd co pół kafla, w rzędzie bloki długości kafla, co drugi rząd (i co druga warstwa
+		# w głąb) zaczyna się i kończy połówką. Bloki całkiem schowane w środku stosu pomijamy.
+		var nd := maxi(1, floori(depth / u + 0.01))
+		var dz := float(nd) * u
+		var nr := nh * 2
+		var units := nw * 2
+		var sy := h / (float(nr) * MB_BODY + (MB_U - MB_BODY))
+		var pitch := MB_BODY * sy
+		for row in nr:
+			for layer in nd:
+				var pos_u := 0
+				var slots: Array = []                           # [początek w modułach, długość 1 | 2]
+				if (row + layer + c0) % 2 == 1:
+					slots.append([0, 1])
+					pos_u = 1
+				while pos_u + 2 <= units:
+					slots.append([pos_u, 2])
+					pos_u += 2
+				if pos_u < units:
+					slots.append([pos_u, 1])
+				for sl in slots:
+					var a := int(sl[0])
+					var n := int(sl[1])
+					var edge := a == 0 or a + n == units
+					if layer > 0 and layer < nd - 1 and row < nr - 1 and not edge:
+						continue
+					var hsh := absi(hash(Vector3i(c0 * 4 + a, int(g["r0"]) * 4 + row, layer)))
+					var s := Vector3((float(n) * u - MB_GAP) / (float(n) * MB_U), sy, (u - MB_GAP) / MB_U)
+					var rot := Basis(Vector3.UP, (PI if hsh % 2 == 1 else 0.0) + deg_to_rad(float((hsh / 2) % 7 - 3) * 0.25))
+					var pos := Vector3(x0 + (float(a) + float(n) * 0.5) * u + float((hsh / 14) % 5 - 2) * 0.004, y0 + float(row) * pitch,
+							-0.15 + dz * 0.5 - (float(layer) + 0.5) * u)
+					var mm: Array = half if n == 1 else full[(hsh / 70) % 2]
+					var t := Transform3D(rot * Basis().scaled(s), pos) * (mm[1] as Transform3D)
+					if n == 1:
+						xf_half.append(t)
+					else:
+						(xf_full[(hsh / 70) % 2] as Array).append(t)
 	_multimesh(parent, BoxMesh.new(), walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
-	if xf.is_empty():
-		return true
-	var out: Array = []
-	for x in xf:
-		out.append((x as Transform3D) * (mm[1] as Transform3D))
-	_multimesh(parent, mm[0], out, null)
+	for i in 2:
+		_multimesh(parent, (full[i] as Array)[0], xf_full[i], null)
+	_multimesh(parent, half[0], xf_half, null)
+	if not xf_trafo.is_empty():
+		var out: Array = []
+		for x in xf_trafo:
+			out.append((x as Transform3D) * (trafo[1] as Transform3D))
+		_multimesh(parent, trafo[0], out, null)
 	return true
 
 ## Żebra długich hal (kryjówka): pilaster przy ścianie tła i belka pod stropem w poprzek, co RIB_EVERY kafli — strop z betonu na 50–70 m

@@ -534,8 +534,23 @@ kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepop
 - **Ściana do kopania** — `dig_zone.chunk_mesh` pomijał komórki pierścienia, a kontur brzegu strefy przy powietrzu mapy leży właśnie
   tam: strefa na końcu sali nie miała boku i przez niego widać było mur tła. Komórki pierścienia przy powietrzu dostają ścianę konturu.
 - **Beton** — podłoga posterunku 1.3 (wiersz 26, kol. 18–37) z `#` na `C`.
-- **Skrzynie `M`** — zamiast jednego modelu `crate` rozciągniętego na blok (2×2 kafle = 2,6 m) stos skrzyń zwykłej wielkości: kafel na
-  skrzynię, dwie w głąb, lekki obrót i przesunięcie z pozycji, wyżej trochę mniejsze. Dotyczy wszystkich map.
+- **Skrzynie `M`** — zamiast jednego modelu `crate` rozciągniętego na blok (2×2 kafle = 2,6 m) stos skrzyń zwykłej wielkości.
+  Po grze: „wygląda jeszcze gorzej” → warianty A–D na wizualizacji, wybrane A (bloki betonowe) i C (obudowa maszyny) „w dużo lepszej
+  jakości”. Teraz `tools/mblock_bake.py` (Blender):
+  - **A** — blok 1,31 × 0,65 × 0,65 m z dwoma czopami i prętem uchwytu (`mblock_a0`, `mblock_a1` — dwa układy ubytków i odcień) oraz
+    pół bloku (`mblock_ah`). Bryła wysoka z siatki wokselowej: ubytki tylko przy krawędziach, inna gęstość na każdej z 12 krawędzi,
+    większe w narożach, strome ścianki i nierówne dno, drobne szczerby i pory. Siatka gry (ok. 3,3 tys. ścian) to uproszczona bryła
+    z samymi dużymi ubytkami; normalne, AO, kolor i chropowatość wypalane z wysokiej na niską. UV: rzut ścian na boki bloku (Smart UV
+    na zaszczerbionej siatce dawał setki wysp i czarne plamy).
+  - **C** — obudowa transformatora 2×2 kafle: cokół, zbiornik z okapem i śrubami, drzwi z żaluzjami, zawiasami, klamką z kłódką,
+    znakiem wysokiego napięcia i tabliczką znamionową, radiator z kolektorami, rura osłonowa, kabel, uziemienie, napis „T-2 15 kV”
+    (ok. 7,2 tys. ścian, tekstury 2048).
+  - Materiały: skany CC0 z Poly Haven (`art_src/world/polyhaven/tex/`: concrete_wall_006, green_metal_rust, rusty_metal_02) rzutowane
+    pudełkowo + maski: odpryski (świeży beton), krawędzie (węzeł Bevel), brud w zagłębieniach, błoto przy ziemi, zacieki wody i rdzy.
+  - W grze (`Level3D._build_crates`): mur mijankowy, rząd co pół kafla (czopy wchodzą w gniazda wyższego rzędu, czopy górnego rzędu
+    kończą się na górze kafla), w głąb do CRATE_DEPTH w modułach pół kafla, bloki schowane w środku pominięte, losowo obrót o 180°
+    i wariant. Blok 2×2 przy tle hali (`b`) to transformator. Na 1.1 kafle `M` to płyty wieży, bez zmian.
+  - Zrzuty: `shots_front/f3_m3/m_*.png` (`crop_r17.jpg` — bloki na dachu Składu, `crop_b75.jpg` — transformator w hali).
 - Test: kolumna ściany przekroju lita w całym pasie, nadproże 1.3 w `shell_cells`; `--digtest` 68/68.
 - Zrzuty: `shots_front/f3_m3/s_c_*.jpg` (Skład, przejścia sala–tunel, posterunek, ściana do kopania), `s_a_crate17l.jpg` (stos skrzyń).
 - Zrzuty: `shots_front/f3_m3/` — `s_y_start10l.jpg`, `s_y_post30l.jpg` (start i posterunek), `s_x_mud22l.jpg` (błoto w zachodniej
