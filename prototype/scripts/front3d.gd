@@ -70,6 +70,7 @@ uniform float mid_y = 0.0;                 // środek kadru na płaszczyźnie gr
 uniform float band = 0.0;                  // REDUCED: pół wysokości pasa bez pierwszego planu [m]; 0 = wył.
 instance uniform vec4 clip = vec4(-1e6, 1e6, -1e6, 1e6);   // x0, x1, y0, y1 na płaszczyźnie gry [m]
 instance uniform vec4 tint = vec4(1.0);
+instance uniform vec2 ywin = vec2(-1e6, 1e6);  // F2b: fizyczny pas y [m] (podłoga, strop) we wpisach z przekrojem
 varying vec3 wpos;
 
 void vertex() {
@@ -82,6 +83,7 @@ void fragment() {
 	vec2 q = cam.xy + (wpos.xy - cam.xy) * k;      // ten piksel na płaszczyźnie gry (z = 0)
 	if (q.x < clip.x || q.x > clip.y || q.y < clip.z || q.y > clip.w) { discard; }
 	if (band > 0.0 && abs(q.y - mid_y) < band) { discard; }
+	if (wpos.y < ywin.x || wpos.y > ywin.y) { discard; }
 	float a = 1.0;
 	for (int i = 0; i < npts; i++) {
 		vec2 d = max(abs(q - pts[i].xy) - pts[i].zw, vec2(0.0));
@@ -198,7 +200,7 @@ static func _skipped(x: float, skip: Array) -> bool:
 
 ## Rozmieszczenie (bez węzłów, do testu i budowy): [{kind, x, z, big, clip, set}] dla wpisów `FRONT`, z pominięciem `skip`
 ## ([c0, c1]); `low` pomija małe elementy. Stałe ziarno z wpisu, więc ten sam układ u wszystkich graczy.
-static func layout(front: Array, skip: Array, low := false) -> Array:
+static func layout(front: Array, skip: Array, low := false, blocked: Array = []) -> Array:
 	var out := []
 	for e: Dictionary in front:
 		var st: Dictionary = SETS.get(String(e.get("set", "")), {})
@@ -210,6 +212,9 @@ static func layout(front: Array, skip: Array, low := false) -> Array:
 		var xs := []
 		var x := clip.x + MARGIN + rng.randf_range(2.0, 8.0)
 		while x < clip.y - MARGIN:
+			x = _free_x(x, blocked)
+			if x >= clip.y - MARGIN:
+				break
 			xs.append(x)
 			x += rng.randf_range(BIG_SPACING.x, BIG_SPACING.y)
 		var bi := 0
@@ -218,13 +223,48 @@ static func layout(front: Array, skip: Array, low := false) -> Array:
 			if not _skipped(xb, skip):
 				var kb: String = st["big"][bi % (st["big"] as Array).size()]
 				bi += 1
-				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"]})
+				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
 			var nx: float = xs[i + 1] if i + 1 < xs.size() else clip.y - MARGIN
-			var xm := (xb + nx) * 0.5 + rng.randf_range(-3.0, 3.0)
+			var xm := _free_x((xb + nx) * 0.5 + rng.randf_range(-3.0, 3.0), blocked)
 			var ks: String = st["small"][rng.randi() % (st["small"] as Array).size()]
 			var want := rng.randf() < 0.6
 			if want and not low and xm - xb >= SMALL_MIN and nx - xm >= SMALL_MIN and xm < clip.y - MARGIN and not _skipped(xm, skip):
-				out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"]})
+				out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
+	return out
+
+
+## Pierwsze x ≥ `x` poza przedziałami `blocked` ([Vector2(x0, x1)], m).
+static func _free_x(x: float, blocked: Array) -> float:
+	var moved := true
+	while moved:
+		moved = false
+		for b: Vector2 in blocked:
+			if x >= b.x and x <= b.y:
+				x = b.y + 0.01
+				moved = true
+	return x
+
+
+## Przekrój (F2b): przedziały x, w których element nie może stanąć — kałuża na płycie podłogi (rura stałaby w cieczy) i belka pod stropem
+## ±1 m (`Level3D.interior_ribs`; belka w warstwie świata przecinałaby rurę). Tylko wpisy z `"shell": true`.
+static func blocked_x(front: Array, rows: Array) -> Array:
+	var out := []
+	if rows.is_empty():
+		return out
+	var T := Level3D.T
+	var ribs: Array = Level3D.interior_ribs(rows)
+	for e: Dictionary in front:
+		if not bool(e.get("shell", false)):
+			continue
+		var r1 := int(e["r1"])
+		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			if String(rows[r1]).substr(c, 1) in "O~m":
+				out.append(Vector2(float(c) * T - 0.6, float(c + 1) * T + 0.6))
+		for rb: Dictionary in ribs:
+			var rc := int(rb["c"])
+			if rc >= int(e["c0"]) and rc <= int(e["c1"]):
+				var rx := (float(rc) + 0.5) * T
+				out.append(Vector2(rx - 1.0, rx + 1.0))
 	return out
 
 
@@ -262,7 +302,8 @@ static func _pipe_column(sts: Dictionary, x: float, z: float, y0: float, y1: flo
 
 ## Siatka jednego elementu: środek u góry w (0, y_top), w dół do y_bot; `band` = pas wpisu [y0 podłoga, y1 strop] w metrach.
 ## Powierzchnie w kolejności MATS (puste koszyki pominięte); zwraca [ArrayMesh, [klucze materiałów]]. Do `lights` dopisuje miejsca żarówek.
-static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector2, rng: RandomNumberGenerator, lights: Array = []) -> Array:
+static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector2, rng: RandomNumberGenerator, lights: Array = [], phys := false) -> Array:
+	var lo := 0.0 if phys else 1.0                      # F2b: z przekrojem rura zaczyna się kołnierzem na płycie podłogi
 	var sts := {}
 	for key: String in MATS:
 		var st := SurfaceTool.new()
@@ -277,15 +318,15 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			# zawór nad głowami (górna część pasa), trójnik nisko — oba w kadrze, kiedy kamera stoi przy podłodze pasa
 			var yv := band.y - rng.randf_range(1.6, 3.2)
 			var yt := band.x + rng.randf_range(0.6, 1.6) if rng.randf() < 0.6 else -1e6
-			_pipe_column(sts, 0.0, 0.0, y_bot + rng.randf_range(-1.7, 0.0), y_top, PIPE_SCALE, "seg", yv, yt)
+			_pipe_column(sts, 0.0, 0.0, y_bot + rng.randf_range(-1.7, 0.0) * lo, y_top, PIPE_SCALE, "seg", yv, yt)
 			used["g1"] = true
 			used["g2"] = true
 			for i in 2:                                          # kable wzdłuż rury
 				dark.append_from(_cyl(0.026, h, 8), 0, Transform3D(Basis.IDENTITY, Vector3(0.5 + 0.08 * float(i), ym, -0.14)))
 			used["dark"] = true
 		"pipes2":
-			_pipe_column(sts, -0.26, 0.0, y_bot + rng.randf_range(-3.9, 0.0), y_top, 1.5, "thin", -1e6, -1e6)
-			_pipe_column(sts, 0.24, -0.06, y_bot + rng.randf_range(-1.0, 0.0), y_top, 1.2, "seg", band.y - rng.randf_range(1.8, 3.0), -1e6)
+			_pipe_column(sts, -0.26, 0.0, y_bot + rng.randf_range(-3.9, 0.0) * lo, y_top, 1.5, "thin", -1e6, -1e6)
+			_pipe_column(sts, 0.24, -0.06, y_bot + rng.randf_range(-1.0, 0.0) * lo, y_top, 1.2, "seg", band.y - rng.randf_range(1.8, 3.0), -1e6)
 			used["g1"] = true
 			used["g2"] = true
 			var clamp_m := BoxMesh.new()
@@ -360,7 +401,7 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 
 
 ## Buduje elementy pod `parent` (węzeł „Front”). Zwraca liczbę elementów.
-static func build(parent: Node3D, front: Array, skip: Array, low: bool) -> int:
+static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Array = []) -> int:
 	_root = null
 	if front.is_empty():
 		return 0
@@ -368,13 +409,14 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool) -> int:
 	_root.name = "Front"
 	parent.add_child(_root)
 	var mats := materials()
-	var items := layout(front, skip, low)
+	var items := layout(front, skip, low, blocked_x(front, rows))
 	for it: Dictionary in items:
 		var clip: Vector4 = it["clip"]
 		var rng := RandomNumberGenerator.new()
 		rng.seed = int(float(it["x"]) * 100.0)
 		var bulbs := []
-		var res := _element_mesh(String(it["kind"]), clip.w + ABOVE, clip.z - ABOVE, Vector2(clip.z, clip.w), rng, bulbs)
+		var phys := bool(it.get("shell", false))
+		var res := _element_mesh(String(it["kind"]), clip.w + (0.0 if phys else ABOVE), clip.z - (0.0 if phys else ABOVE), Vector2(clip.z, clip.w), rng, bulbs, phys)
 		var mi := MeshInstance3D.new()
 		mi.name = "%s_%d" % [it["kind"], roundi(float(it["x"]))]
 		mi.mesh = res[0]
@@ -386,7 +428,14 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool) -> int:
 		mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 		mi.position = Vector3(float(it["x"]), 0.0, float(it["z"]))
 		var st: Dictionary = SETS[it["set"]]
-		mi.set_instance_shader_parameter("clip", clip)
+		if phys:
+			# F2b: element stoi na płycie przekroju (`Level3D.SHELL_Z`) i dochodzi do stropu — przycięcie fizyczne zamiast w rzucie
+			mi.set_instance_shader_parameter("clip", Vector4(-1e6, 1e6, -1e6, 1e6))
+			mi.set_instance_shader_parameter("ywin", Vector2(clip.z, clip.w))
+			if bool(it["big"]):
+				_contact(mi, clip.z, clip.w)
+		else:
+			mi.set_instance_shader_parameter("clip", clip)
 		mi.set_instance_shader_parameter("tint", st["tint"])
 		_root.add_child(mi)
 		for b: Vector3 in bulbs:
@@ -404,6 +453,47 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool) -> int:
 			ol.position = b
 			mi.add_child(ol)
 	return items.size()
+
+
+const CONTACT_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
+uniform float strength = 0.75;
+void fragment() {
+	float r = length(UV - vec2(0.5)) * 2.0;
+	ALBEDO = vec3(0.0);
+	ALPHA = strength * (1.0 - smoothstep(0.25, 1.0, r));
+}
+"""
+static var _contact_mat: ShaderMaterial = null
+
+## F2b: plama okluzji pod kołnierzem na wierzchu płyty (warstwa świata — pierwszy plan nie rzuca cienia) i płytka mocująca pod stropem.
+static func _contact(mi: MeshInstance3D, y_floor: float, y_ceil: float) -> void:
+	if _contact_mat == null:
+		var sh := Shader.new()
+		sh.code = CONTACT_SHADER
+		_contact_mat = ShaderMaterial.new()
+		_contact_mat.shader = sh
+	var q := PlaneMesh.new()
+	q.size = Vector2(1.9, 1.5)
+	var blob := MeshInstance3D.new()
+	blob.name = "Contact"
+	blob.mesh = q
+	blob.material_override = _contact_mat
+	blob.layers = 1                                             # LAYER_WORLD (view3d.gd): leży na płycie, pod graczami
+	blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	blob.position = Vector3(0.0, y_floor + 0.01, 0.0)
+	mi.add_child(blob)
+	var plate := BoxMesh.new()
+	plate.size = Vector3(0.9, 0.06, 0.7)
+	var pm := MeshInstance3D.new()
+	pm.name = "Plate"
+	pm.mesh = plate
+	pm.material_override = materials()["dark"]
+	pm.layers = LAYER_FRONT
+	pm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	pm.position = Vector3(0.0, y_ceil - 0.03, 0.0)
+	mi.add_child(pm)
 
 
 ## Stan z ustawień: widoczność (OFF). `low` zostaje w podpisie dla zgodności z wywołaniem (LOW zmienia tylko rozmieszczenie przy budowie).

@@ -1013,6 +1013,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 	var steps := [
 		["level", func() -> void:
 			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches))
+			Level3D.set_shells(front, rows)
 			Level3D.build_level(root, rows, trench)],
 		["niches", func() -> void: Niches3D.build(root, rows, niches, Settings.quality_idx)],
 		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
@@ -1027,7 +1028,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 		["deco", func() -> void: _build_deco(root)],
 		["fog_volumes", func() -> void: Level3D.build_fog_volumes(root, rows, 0.02 if hub else 0.035)],
 		["front", func() -> void:
-			Front3D.build(root, front, front_skip, Settings.quality_idx == 0)
+			Front3D.build(root, front, front_skip, Settings.quality_idx == 0, rows)
 			Front3D.apply_settings(Settings.front_idx, Settings.quality_idx == 0)],
 	]
 	if not hub:

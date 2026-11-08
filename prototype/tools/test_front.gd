@@ -7,7 +7,9 @@ extends SceneTree
 ## (3) bryły: tylko warstwa `LAYER_FRONT` (rozłączna z warstwami świata, lasu, dna lasu i wnęk), bez cienia, bez kolizji,
 ##     części rur z `pipe_parts.glb` (odcinek, zawór, trójnik, cienka rura) i tekstury zestawu, każda powierzchnia z materiałem
 ##     pierwszego planu (półprzezroczysty, z wygaszaniem), pas przycięcia w parametrze instancji; OFF chowa całość,
-## (4) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
+## (4) przekrój budynku (F2b): kafle strefy tylko w stropie i podłodze z fundamentem (nigdy ściany w pasie gry ani strefy wydobycia),
+##     element na płycie (nie w cieczy), kołnierz przed przodem przekroju, ≥ 1 m od belki pod stropem; plama okluzji i płytka,
+## (5) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
 ##     waga 0 nie wygasza wcale.
 ## godot --headless --path prototype -s tools/test_front.gd       → ma wypisać PASS
 const Level3D := preload("res://scripts/level3d.gd")
@@ -42,6 +44,7 @@ func _process(_dt: float) -> bool:
 			continue
 		total += front.size()
 		_check_map(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []))
+		_check_shell(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []), consts.get("DIG_ZONES", []))
 	_check(total > 0, "żadna mapa nie ma pierwszego planu (pilot na z1_m2)")
 	_check_skip()
 	_check_layers()
@@ -61,9 +64,10 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 		_check(int(e["r0"]) >= 0 and int(e["r1"]) < nrows and int(e["r0"]) < int(e["r1"]), tag + ": wiersze poza mapą albo r0 ≥ r1")
 	for s in skip:
 		_check(s is Array and (s as Array).size() == 2 and int(s[0]) <= int(s[1]), "%s FRONT_SKIP %s: oczekiwane [c0, c1]" % [map_id, s])
-	var items := Front3D.layout(front, skip)
+	var bl := Front3D.blocked_x(front, rows)                 # przekrój (F2b): bez kałuż na płycie i belek pod stropem
+	var items := Front3D.layout(front, skip, false, bl)
 	_check(not items.is_empty(), map_id + ": wpisy FRONT bez żadnego elementu")
-	_check(str(items) == str(Front3D.layout(front, skip)), map_id + ": układ różni się między wywołaniami (ziarno)")
+	_check(str(items) == str(Front3D.layout(front, skip, false, bl)), map_id + ": układ różni się między wywołaniami (ziarno)")
 	for it: Dictionary in items:
 		var clip: Vector4 = it["clip"]
 		var x: float = it["x"]
@@ -85,8 +89,39 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 				_check(dx >= Front3D.BIG_SPACING.x - 0.01, "%s: dwa duże elementy %.1f m od siebie (x %.1f i %.1f), dwa w jednym kadrze" % [map_id, dx, a["x"], b["x"]])
 			elif bool(a["big"]) != bool(b["big"]):
 				_check(dx >= Front3D.SMALL_MIN - 0.01, "%s: mały element %.1f m od dużego (x %.1f i %.1f)" % [map_id, dx, a["x"], b["x"]])
-	for it: Dictionary in Front3D.layout(front, skip, true):
+	for it: Dictionary in Front3D.layout(front, skip, true, bl):
 		_check(bool(it["big"]), "%s: na LOW został mały element %s x %.1f" % [map_id, it["kind"], it["x"]])
+
+
+## Przekrój budynku (F2b, `Level3D.set_shells`): kafle strefy to lite kafle stropu (r0) i podłogi z fundamentem (od r1 w dół), nigdy
+## ściany w pasie gry (wysunięte zasłaniałyby wrogów w rzucie) ani strefy wydobycia; element pierwszego planu stoi na płycie z betonu
+## lub gruntu (nie w cieczy), z kołnierzem przed przodem przekroju i co najmniej 1 m od belek pod stropem (belka w warstwie świata).
+func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: Array) -> void:
+	Level3D.set_shells(front, rows)
+	var shelled := front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
+	_check(shelled.is_empty() or not Level3D.shell_cells.is_empty(), map_id + ": wpis z przekrojem bez kafli przekroju")
+	for k: Vector2i in Level3D.shell_cells:
+		var ch := String(rows[k.y]).substr(k.x, 1)
+		_check(ch in Level3D.SHELL_CH, "%s %s: kafel przekroju '%s' nie jest litym kaflem" % [map_id, k, ch])
+		for e: Dictionary in shelled:
+			if k.x >= int(e["c0"]) and k.x <= int(e["c1"]):
+				_check(k.y <= int(e["r0"]) or k.y >= int(e["r1"]), "%s %s: kafel przekroju w pasie gry (ściana wysunięta ku kamerze)" % [map_id, k])
+		for z in digs:
+			_check(not (k.x >= int(z[0]) and k.x <= int(z[2]) and k.y >= int(z[1]) and k.y <= int(z[3])), "%s %s: przekrój w strefie wydobycia" % [map_id, k])
+	var ribs: Array = Level3D.interior_ribs(rows).map(func(rb: Dictionary) -> float: return (float(int(rb["c"])) + 0.5) * Level3D.T)
+	for it: Dictionary in Front3D.layout(front, skip, false, Front3D.blocked_x(front, rows)):
+		if not bool(it["shell"]):
+			continue
+		var x: float = it["x"]
+		var c := int(floor(x / Level3D.T))
+		var r1 := roundi(-(it["clip"] as Vector4).z / Level3D.T)
+		var below := String(rows[r1]).substr(c, 1)
+		_check(Level3D.in_shell(c, r1) and not below in "O~m", "%s %s x %.1f: nie stoi na płycie przekroju ('%s')" % [map_id, it["kind"], x, below])
+		_check(float(it["z"]) + 0.45 < Level3D.SHELL_Z, "%s %s x %.1f: kołnierz wystaje przed przekrój" % [map_id, it["kind"], x])
+		if bool(it["big"]):
+			for rx: float in ribs:
+				_check(absf(rx - x) >= 1.0, "%s %s x %.1f: %.2f m od belki pod stropem (x %.1f)" % [map_id, it["kind"], x, absf(rx - x), rx])
+	Level3D.set_shells([], rows)
 
 
 ## FRONT_SKIP: zakres bez pierwszego planu nie dostaje żadnego elementu (z zapasem MARGIN).
@@ -107,13 +142,14 @@ func _check_layers() -> void:
 		_check(lf & int(other) == 0, "LAYER_FRONT nachodzi na warstwę %d" % other)
 	var root := Node3D.new()
 	get_root().add_child(root)
-	var front := [{"set": "station", "c0": 0, "c1": 120, "r0": 2, "r1": 10}, {"set": "tunnel", "c0": 0, "c1": 120, "r0": 30, "r1": 37}]
+	var front := [{"set": "station", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}, {"set": "tunnel", "c0": 0, "c1": 120, "r0": 30, "r1": 37}]
 	var n := Front3D.build(root, front, [], false)
 	var fr := root.get_node_or_null("Front")
 	_check(fr != null and n > 0, "build nie zbudował węzła Front")
 	if fr == null:
 		return
 	var kinds := {}
+	var shell_parts := {}
 	for c in fr.get_children():
 		_check(c is MeshInstance3D, "Front: dziecko %s nie jest MeshInstance3D" % c.name)
 		if not (c is MeshInstance3D):
@@ -122,8 +158,17 @@ func _check_layers() -> void:
 		kinds[String(mi.name).get_slice("_", 0)] = true
 		_check(mi.layers == lf, "%s: warstwy %d zamiast LAYER_FRONT" % [mi.name, mi.layers])
 		_check(mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: rzuca cień" % mi.name)
-		for ch in mi.get_children():                             # dzieci: tylko światło żarówki lampy, świecące wyłącznie na pierwszy plan
-			_check(ch is OmniLight3D and (ch as OmniLight3D).light_cull_mask == lf and not (ch as OmniLight3D).shadow_enabled, "%s: dziecko %s to nie światło żarówki tylko na LAYER_FRONT (kolizja? światło na postacie?)" % [mi.name, ch.name])
+		for ch in mi.get_children():
+			# dzieci: światło żarówki lampy (tylko na pierwszy plan), a przy przekroju (F2b) plama okluzji na płycie (warstwa świata,
+			# leży pod graczami) i płytka pod stropem (LAYER_FRONT); nic z kolizją ani cieniem
+			if ch is OmniLight3D:
+				_check((ch as OmniLight3D).light_cull_mask == lf and not (ch as OmniLight3D).shadow_enabled, "%s: światło %s nie tylko na LAYER_FRONT albo z cieniem" % [mi.name, ch.name])
+			elif ch is MeshInstance3D and (ch.name == "Contact" or ch.name == "Plate"):
+				var cm := ch as MeshInstance3D
+				_check(cm.layers == (LAYER_WORLD if ch.name == "Contact" else lf) and cm.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: %s ze złą warstwą albo z cieniem" % [mi.name, ch.name])
+				shell_parts[ch.name] = true
+			else:
+				_check(false, "%s: nieoczekiwane dziecko %s (kolizja?)" % [mi.name, ch.name])
 		_check(mi.mesh != null and mi.mesh.get_surface_count() > 0, "%s: pusta siatka" % mi.name)
 		if mi.mesh != null:
 			for si in mi.mesh.get_surface_count():
@@ -133,6 +178,7 @@ func _check_layers() -> void:
 		_check(clip is Vector4 and (clip as Vector4).y > (clip as Vector4).x and (clip as Vector4).w > (clip as Vector4).z, "%s: brak pasa przycięcia" % mi.name)
 	for k in ["pipe", "pipes2", "cables", "chain", "lamp"]:
 		_check(kinds.has(k), "rodzaj %s nie powstał na długim zakresie" % k)
+	_check(shell_parts.has("Contact") and shell_parts.has("Plate"), "wpis z przekrojem: duży element bez plamy okluzji albo płytki pod stropem")
 	Front3D.apply_settings(2, false)
 	_check(not (fr as Node3D).visible, "OFF nie chowa pierwszego planu")
 	Front3D.apply_settings(0, false)

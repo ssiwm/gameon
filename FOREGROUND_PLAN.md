@@ -2,7 +2,7 @@
 
 Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A); F1 + F2 (pilot: hala stacji i tunel 1.2) w 1.7.519; po pierwszej
 ocenie w grze poprawki rur w 1.7.520 (rury z Poly Haven, półprzezroczyste wygaszanie, lampy w tunelu) — czeka na bramkę F2 (wyniki
-niżej). Po drugiej uwadze („nie ma tam świata”) plan F2b: przekrój budynku przesunięty do warstwy pierwszego planu (decyzje 5–7).** Punkt 2 raportu o głębi świata
+niżej). Po drugiej uwadze („nie ma tam świata”) F2b: przekrój budynku przesunięty do warstwy pierwszego planu — mechanizm w 1.7.521 (hala i tunel 1.2), czeka na ocenę w grze.** Punkt 2 raportu o głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`); punkty 1 i 3 (wnętrza) zamknął `DEPTH_PLAN.md` (1.7.507–1.7.518).
 Stan odniesienia: `main` 1.7.518 (473eee6).
 
@@ -224,8 +224,8 @@ Rachunek dla NORMAL. Oko stoi `EYE_UP_M` = 2,2 m nad środkiem kadru, a środek 
   stropu nie widać w ogóle.
 - **Wniosek:** problem leży prawie wyłącznie u dołu rury, przy styku z podłogą. Strop wchodzi w kadr tylko z górnych pomostów hali.
 
-**Rozwiązanie: przesunąć przekrój do przodu.** W prostokącie strefy wpisu `FRONT` lite kafle świata (`#`, `C`, `M`, …) sięgają
-do z = `SHELL_Z` = 5,6 m zamiast 1,1 m. Przekrój staje się jedną płaszczyzną cięcia na 5,6 m. Wnętrza zostają otwarte, a kamera
+**Rozwiązanie: przesunąć przekrój do przodu.** W strefie wpisu `FRONT` lite kafle świata (`#`, `C`, `M`, …) stropu i podłogi
+z fundamentem sięgają do z = `SHELL_Z` = 5,6 m zamiast 1,1 m (ściany w pasie gry zostają na 1,1 m — wynik spike'a niżej). Przekrój staje się jedną płaszczyzną cięcia na 5,6 m. Wnętrza zostają otwarte, a kamera
 zagląda do nich przez brakującą przednią ścianę, jak w domku dla lalek. Elementy pierwszego planu (z 3,5–5 m, kołnierz
 z ≤ 5,42 m) stoją wtedy fizycznie na płycie podłogi i dochodzą do stropu.
 
@@ -294,6 +294,75 @@ w strefach z przekrojem: podstawa jest widoczna i właśnie ona sprzedaje głęb
 3. **Hala i tunel 1.2** (0,5 d): zrzuty, nagrania, pomiar, `--maptest` całe i rozbite, test sieci. Bramka F2 obejmuje wtedy
    rury razem z przekrojem.
 
+**Wyniki spike'a F2b** (2026-11-08, decyzje 5–7 zgodnie z rekomendacją; kod lokalnie na `spike/front-shell` 47396c9, poza `main`):
+
+- **Zakres:** hala stacji 1.2 (`"shell": true` we wpisie). Strop (wiersz 18) i podłoga z fundamentem (wiersze 26–34) sięgają
+  do z = 5,6 m; grunt pod halą jako beton fundamentu. Rury stoją kołnierzem na płycie, przycięte fizycznie (okno y w shaderze)
+  zamiast w rzucie, z plamą okluzji pod rurą i płytką pod stropem. Flagi dev: `--noshell` (A/B), `--camidx=N` (WIDE / NORMAL / CLOSE).
+- **Zmiana względem planu — ściany w pasie gry zostają na 1,1 m.** Pierwsza wersja wysuwała wszystkie lite kafle w prostokącie,
+  także ściany boczne hali w pasie gry. Ściana wysunięta ku kamerze rozrasta się w rzucie (×1,38 przy z = 5,6 m) i zasłoniła
+  pierścień Stalkera obok siebie, czyli wrogów i znaczniki z warstwy świata. Przekrój obejmuje więc tylko wiersz stropu i podłogę
+  z fundamentem. Dopiero wtedy pas gry jest bezpieczny geometrycznie, jak zakładał plan.
+- **Obraz:**
+  - przed graczami leży płyta peronu oświetlona latarką i lampą hali, a rura stoi na niej kołnierzem bliżej kamery niż gracz;
+  - podstawa nie wisi już na linii podłogi, a na nagraniu biegu (`cmp_hall.mp4`, z | bez) przesuwa się razem z płytą;
+  - przy WIDE pas płyty jest wąski, przy CLOSE wyraźny;
+  - z zewnątrz (kolumny 63 i 103) budynek stoi na wysuniętym cokole, a pierścień Stalkera przy ścianie jest cały.
+- **Wydajność** (GPU, 4K HIGH, debug, trzy rundy naprzemiennie): bez przekroju 7,58 / 7,84 / 7,80 ms, z przekrojem 7,38 / 7,59 /
+  7,63 ms — w szumie.
+- **Braki do mechanizmu:**
+  - kałuża oleju (`O`, kolumny 84–87) kończy się na 1,1 m, a przed nią leży beton: ciemny prostokąt na płycie. Tafla cieczy powinna
+    sięgać przodu przekroju;
+  - kalki przedniej krawędzi starej bryły zostały na płycie jako przerywana linia na z = 1,1;
+  - plama okluzji pod rurą jest prawie niewidoczna (jasny kołnierz robi więcej);
+  - okap blachy dachu nie przesunięty — z podłogi strop jest poza kadrem;
+  - nie sprawdzone: górny pomost (zrzut z `--shotrow=21` stawia gracza na podłodze), tunel, co-op, drezyna.
+- Zrzuty, nagrania i pomiary: `shots_front/f2b/`:
+  - `sheet.jpg` i `sheet2.jpg` (bez | z: hala, hala w lewo, WIDE, CLOSE, z zewnątrz), `cmp.jpg` (zbliżenia), `out2.jpg`;
+  - `cmp_hall.mp4`, `run_hall_on/off.mp4`, `strip.jpg`;
+  - `perf_*.txt`, skrypty `f2b.sh` i `f2b_run.sh`.
+
+**Mechanizm F2b + hala i tunel 1.2** (2026-11-08, 1.7.521; po bramce spike'a — użytkownik: „kierunek jest dobry, kontynuuj”):
+
+- **Kafle przekroju** (`Level3D.set_shells(front, rows)`, `shell_cells`, `front_z`):
+  - wiersz stropu r0;
+  - podłoga r1 i ciągły lity grunt pod nią w każdej kolumnie, najwyżej `SHELL_DOWN` = 8 wierszy (nie wchodzi w głąb sąsiedniego wnętrza);
+  - tylko znaki `#CMmO~`, więc kafle niszczalne zostają;
+  - w hali fundament z betonu, w tunelu przekrój skały.
+- **Bryły:** skrzynki scalone w ciągi w wierszu (kilkadziesiąt zamiast kilku tysięcy w tunelu), bez cienia.
+- **Ciecze:** niecka i tafla cieczy sięgają przodu strefy, więc kałuża oleju w hali leży na płycie aż do jej krawędzi. Przy okazji
+  zniknęła przerywana linia na płycie: była krawędzią niecki na 1,1 m.
+- **Dach:** blacha dachu (okap), pas dolny wiązarów i dodatkowe płatwie co 1,45 m sięgają przodu strefy. Belki pod stropem
+  (`_build_ribs`) też.
+- **Rozmieszczenie:** `Front3D.blocked_x` omija kałuże na płycie i belki stropu ±1 m.
+  - Test z rozmieszczeniem od razu znalazł oba przypadki: rura stała w oleju (x 114) i 0,43 m od belki w tunelu (x 233).
+  - Elementy z przekrojem zaczynają się kołnierzem na płycie, przycięte fizycznie (okno `ywin` w shaderze).
+  - Duży element ma plamę okluzji na płycie (warstwa świata, krycie 0,75) i płytkę pod stropem.
+- **Test** `test_front.gd`:
+  - kafle przekroju tylko lite i tylko w stropie i podłodze, nigdy w pasie gry ani w strefie wydobycia;
+  - element na płycie, nie w cieczy;
+  - kołnierz przed przodem przekroju;
+  - duży element ≥ 1 m od belki;
+  - dzieci elementu: światło, plama, płytka.
+- **Wydajność** (GPU, 4K HIGH, debug, trzy rundy naprzemiennie, po scaleniu w ciągi):
+
+  | Kadr | bez przekroju [ms] | z przekrojem [ms] |
+  |---|---|---|
+  | hala | 7,96 / 7,78 / 7,88 | 8,00 / 7,91 / 7,92 |
+  | tunel | 6,89 / 6,77 / 7,28 | 6,74 / 7,17 / 7,16 |
+
+  Różnica median w hali +0,04 ms, w tunelu +0,27 ms, ale przedziały się pokrywają (średnie +0,04 ms). Przed scaleniem w ciągi
+  tunel kosztował +0,31 ms. Mieści się w budżecie 0,4 ms (zasada 7).
+- **Obraz:**
+  - **hala:** jak w spike'u, a kałuża oleju jest ciemną taflą do przodu płyty;
+  - **tunel:** płyta jest słabo widoczna (tunel jest ciemny z założenia, GDD §8.3), a rury i lampy stoją na niej i dochodzą do
+    spodu stropu; ślepy koniec tunelu (kolumna 8) ma płytę z boczną ścianą skały.
+- **Nie sprawdzone:** górny pomost hali (`--shotrow` nie stawia gracza na kładce), drezyna, co-op, wstrząs kamery.
+- Zrzuty, nagrania i pomiary: `shots_front/f2b2/`:
+  - `sheet.jpg` (bez | z: hala, olej, z zewnątrz, tunel ×3, koniec tunelu), `z_oil.jpg`, `z_left.jpg`;
+  - `cmp_hall.mp4`, `cmp_tun.mp4`, `strip_tun.jpg`;
+  - `perf_*.txt` (przed scaleniem), `perf2_*.txt`, skrypty `run.sh`, `perf2.sh`.
+
 **Odrzucone warianty:**
 - **Same płyty podłogi i stropu bez przekroju pod nimi:** wyglądałyby jak balkony wysunięte nad cofniętą skałą, bo dolny przekrój
   zostałby na 1,1 m.
@@ -325,7 +394,7 @@ w strefach z przekrojem: podstawa jest widoczna i właśnie ona sprzedaje głęb
 | F0 | zrzuty, nagranie, pomiar, spike A / B | 0,5–1 d | zrobione 2026-11-08, bez wersji: wariant A |
 | F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | 1.7.519 |
 | F2 | pilot: hala stacji i tunel 1.2 + A/B + bramka; las 1.2 z kontrą po bramce | 0,5–1 d | 1.7.519 (ten sam PR) |
-| F2b | przekrój budynku: spike w hali, mechanizm, hala i tunel 1.2 | 2 d | spike bez wersji; potem jeden PR |
+| F2b | przekrój budynku: spike w hali, mechanizm, hala i tunel 1.2 | 2 d | 1.7.521 |
 | F3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
 | F4 | rozmycie bliskiego planu | 0,5 d | natywne DOF nie działa w `VpActors` (1.7.520); tylko własny przebieg, jeśli bramka zażąda |
 
@@ -351,7 +420,7 @@ w strefach z przekrojem: podstawa jest widoczna i właśnie ona sprzedaje głęb
 3. **Ustawienie „Foreground”** ON / REDUCED / OFF, domyślnie ON (polecam) czy domyślnie REDUCED.
 4. **Rozmycie (F4):** sprawdzone w 1.7.520 — natywne rozmycie nie działa w warstwie graczy; własny przebieg tylko na żądanie bramki.
 
-Przed spike'iem F2b:
+Przed spike'iem F2b (5–7 rozstrzygnięte 2026-11-08 zgodnie z rekomendacją):
 
 5. **Uskok przekroju na powierzchni** (hala to budynek na gruncie):
    - polecam wysunąć tylko budynek z fundamentem (betonowy cokół, widoczna ściana boczna);

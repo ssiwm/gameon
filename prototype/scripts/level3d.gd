@@ -340,6 +340,55 @@ static func post_runs(rows: Array, radius := -1.0) -> Array:
 			r = r1
 	return out
 
+## Przedłużenie kafli strefy przekroju (`shell_cells`) od DEPTH_FRONT do SHELL_Z jako skrzynki MultiMesh: wierzch płyty podłogi, spód stropu,
+## przekrój na SHELL_Z i boczne ściany na końcach strefy (ściany skrzynek na brzegu). Bez dachu z blachy (`_build_roofs` wysuwa okap) i bez
+## cieczy (`build_liquids` sięga niecką i taflą do przodu przekroju).
+static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictionary, crate_cells: Dictionary, slabs: Dictionary) -> void:
+	if shell_cells.is_empty():
+		return
+	var d := SHELL_Z - DEPTH_FRONT
+	var liquids := not "--noliquids" in OS.get_cmdline_user_args()
+	var by_row := {}                                            # "wiersz|materiał" → [kolumny]
+	for k: Vector2i in shell_cells:
+		var ch := _ch(rows, k.x, k.y)
+		if ch == "C" and is_roof_cell(rows, k.x, k.y):
+			continue
+		if crate_cells.has(k) or slabs.has(k):
+			continue
+		if liquids and (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, k.x, k.y, ch):
+			continue
+		var key: String = shell_cells[k]
+		if key == "":
+			key = ch
+		if not mats.has(key):
+			continue
+		var rk := "%d|%s" % [k.y, key]
+		if not by_row.has(rk):
+			by_row[rk] = []
+		(by_row[rk] as Array).append(k.x)
+	# ciągi sąsiednich kafli w wierszu jako jedna skrzynka (tekstura w projekcji świata przechodzi bez szwu): w tunelu kilkadziesiąt skrzynek
+	# zamiast kilku tysięcy; bez cienia (płyta przed płaszczyzną gry niczego nie zacienia, a cienie świateł tunelu liczyłyby tysiące brył)
+	var out := {}
+	for rk: String in by_row:
+		var r := int(rk.get_slice("|", 0))
+		var key := rk.get_slice("|", 1)
+		var cs: Array = by_row[rk]
+		cs.sort()
+		var i := 0
+		while i < cs.size():
+			var j := i
+			while j + 1 < cs.size() and int(cs[j + 1]) == int(cs[j]) + 1:
+				j += 1
+			var n := j - i + 1
+			var ctr := (cell_pos(int(cs[i]), r) + cell_pos(int(cs[j]), r)) * 0.5
+			var sc := Basis().scaled(Vector3(float(n), 1.0, d / (DEPTH_FRONT + DEPTH_BACK)))
+			if not out.has(key):
+				out[key] = []
+			(out[key] as Array).append(Transform3D(sc, Vector3(ctr.x, ctr.y, DEPTH_FRONT + d * 0.5)))
+			i = j + 1
+	for k in out:
+		_multimesh(parent, box, out[k], mats[k], false)
+
 ## Przekrój wnętrza bryły od frontu (z = DEPTH_FRONT): poziome ciągi niewidocznych z boku kafli jako jeden czworokąt na ciąg; materiał jak bryła
 ## (projekcja w świecie — tekstura przechodzi bez szwu przez front sąsiednich brył). Nocą czarny jak dotąd, ale światła mają na czym się położyć.
 static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
@@ -495,7 +544,8 @@ static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel
 		var x0 := float(c0) * T - (0.0 if is_solid_ch(lo) or is_platform_ch(lo) else ROOF_EAVE)
 		var x1 := float(c1 + 1) * T + (0.0 if is_solid_ch(hi) or is_platform_ch(hi) else ROOF_EAVE)
 		var z0 := -DEPTH_BACK
-		var z1 := DEPTH_FRONT + ROOF_EAVE
+		var zf := front_z(c0, r)                                # przekrój (F2b): blacha i pas dolny wiązarów do przodu strefy
+		var z1 := zf + ROOF_EAVE
 		var is_boards := bool(run.get("boards", false))
 		var top_list: Array = boards if is_boards else sheets
 		top_list.append(_span_box(Vector3(x0, y_top - ROOF_SHEET * (2.4 if is_boards else 1.0), z0), Vector3(x1, y_top, z1)))
@@ -503,15 +553,20 @@ static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel
 		var bar := 0.16 if steel else 0.18
 		var under := y_top - ROOF_SHEET
 		var fr: Array = frame[steel]
-		for pz in ROOF_PURLIN_Z:
+		var purlins: Array = ROOF_PURLIN_Z.duplicate()
+		var pz_add: float = ROOF_PURLIN_Z[-1] + 1.45
+		while pz_add < zf:
+			purlins.append(pz_add)
+			pz_add += 1.45
+		for pz in purlins:
 			fr.append(_span_box(Vector3(x0 + 0.05, under - bar, float(pz) - bar * 0.5), Vector3(x1 - 0.05, under, float(pz) + bar * 0.5)))
 		var trusses: Array = []
 		for k in range(c0, c1 + 1, ROOF_TRUSS):
 			trusses.append(float(k) * T + 0.15)
 		trusses.append(float(c1 + 1) * T - 0.15)
 		for tx in trusses:
-			fr.append(_span_box(Vector3(tx - bar * 0.5, y_bot, z0 + 0.05), Vector3(tx + bar * 0.5, y_bot + bar * 1.4, DEPTH_FRONT)))   # pas dolny
-			for pz in ROOF_PURLIN_Z:
+			fr.append(_span_box(Vector3(tx - bar * 0.5, y_bot, z0 + 0.05), Vector3(tx + bar * 0.5, y_bot + bar * 1.4, zf)))   # pas dolny
+			for pz in purlins:
 				fr.append(_span_box(Vector3(tx - bar * 0.4, y_bot + bar, float(pz) - bar * 0.4), Vector3(tx + bar * 0.4, under - bar, float(pz) + bar * 0.4)))
 		if steel:
 			for k in range(c0, c1 + 1):                         # tylna ściana budynku pod samą blachę
@@ -703,7 +758,7 @@ static func _build_ribs(parent: Node3D, rows: Array, mat: Material) -> void:
 		var y_top := -float(int(rb["top"])) * T
 		var y_bot := -float(int(rb["bot"])) * T
 		xf.append(_span_box(Vector3(x - 0.3, y_bot, -DEPTH_BACK + 0.3), Vector3(x + 0.3, y_top, RIB_Z)))               # pilaster przy ścianie
-		xf.append(_span_box(Vector3(x - 0.25, y_top - 0.42, -DEPTH_BACK + 0.3), Vector3(x + 0.25, y_top, DEPTH_FRONT)))  # belka pod stropem
+		xf.append(_span_box(Vector3(x - 0.25, y_top - 0.42, -DEPTH_BACK + 0.3), Vector3(x + 0.25, y_top, front_z(int(rb["c"]), int(rb["top"]) - 1))))  # belka pod stropem (do przodu przekroju)
 		for sx in [-1.0, 1.0]:                                  # skosy (wuty) między pilastrem a belką
 			xf.append(_strut(Vector3(x + sx * 0.3, y_top - 1.0, (-DEPTH_BACK + 0.3 + RIB_Z) * 0.5), Vector3(x + sx * 0.75, y_top - 0.42, (-DEPTH_BACK + 0.3 + RIB_Z) * 0.5), 0.22))
 	_multimesh(parent, BoxMesh.new(), xf, mat)
@@ -804,6 +859,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	for k in groups:
 		_multimesh(parent, box, groups[k], mats[k])
 		_build_caps(parent, caps[k], mats[k])
+	_build_shell(parent, rows, box, mats, crate_cells, slabs)
 	var wbox := BoxMesh.new()
 	wbox.size = Vector3(T, T, 0.3)
 	_multimesh(parent, wbox, walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
@@ -1448,6 +1504,43 @@ static func set_niches(cells: Dictionary, holes: Array) -> void:
 	niche_cells = cells
 	niche_holes = holes
 
+## Przekrój budynku wysunięty do pierwszego planu (`FOREGROUND_PLAN.md` F2b): w strefie wpisu `FRONT` z `"shell": true` strop i podłoga
+## sięgają do SHELL_Z zamiast DEPTH_FRONT, więc rury pierwszego planu (`front3d.gd`, z 3,5–5 m) stoją na płycie podłogi i dochodzą do stropu.
+## Kafle strefy: wiersz stropu r0 i podłoga r1 z fundamentem w dół (ciągły lity grunt pod każdą kolumną, najwyżej SHELL_DOWN wierszy — poza
+## dolną krawędź kadru, ale nie w głąb sąsiedniego wnętrza). Ściany w pasie gry zostają na DEPTH_FRONT: wysunięte ku kamerze rozrastają się
+## w rzucie (×1,38) i zasłaniałyby wrogów i znaczniki z warstwy świata obok siebie (spike: pierścień Stalkera przy ścianie hali).
+## Poziomy wierzch płyty przed płaszczyzną gry rzutuje się zawsze poniżej linii podłogi, a spód stropu powyżej linii stropu — przekrój
+## nie wchodzi w pas gry przy żadnej kamerze.
+const SHELL_Z := 5.6
+const SHELL_DOWN := 8
+const SHELL_CH := "#CMmO~"                 ## znaki litych kafli, które przekrój przedłuża (bez niszczalnych: okien, desek, kratek, skrzyń)
+static var shell_cells := {}               ## Vector2i → klucz materiału przedłużenia ("" = jak kafel; "C" = beton fundamentu budynku)
+
+static func set_shells(front: Array, rows: Array) -> void:
+	shell_cells = {}
+	if "--noshell" in OS.get_cmdline_user_args():
+		return                                                  # dev: bez przekroju (porównanie A/B)
+	for e: Dictionary in front:
+		if not bool(e.get("shell", false)):
+			continue
+		var concrete := String(e.get("set", "")) == "station"   # budynek stacji: fundament z betonu; tunel: przekrój skały
+		var r0 := int(e["r0"])
+		var r1 := int(e["r1"])
+		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			if _ch(rows, c, r0) in SHELL_CH:
+				shell_cells[Vector2i(c, r0)] = "C" if concrete else ""
+			var r := r1
+			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH:
+				shell_cells[Vector2i(c, r)] = "C" if concrete else ""
+				r += 1
+
+static func in_shell(c: int, r: int) -> bool:
+	return shell_cells.has(Vector2i(c, r))
+
+## Przód bryły kafla (z): SHELL_Z w strefie przekroju, inaczej DEPTH_FRONT.
+static func front_z(c: int, r: int) -> float:
+	return SHELL_Z if in_shell(c, r) else DEPTH_FRONT
+
 ## Czy kafel (c, r) dostaje płytę ściany tła (`build_level`): tło `b` albo wnętrze przed nim, poza otworami wnęk (`niches3d.gd`).
 static func back_wall_at(rows: Array, c: int, r: int) -> bool:
 	var ch := _ch(rows, c, r)
@@ -1678,6 +1771,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 				c1 += 1
 			var kd: int = kinds[ch]
 			var n := c1 - c
+			zf = front_z(c, r)                                 # przekrój (F2b): niecka i tafla do przodu strefy
 			var x0 := float(c) * T
 			var w := float(n) * T
 			var y_top := -float(r) * T                         # krawędź gruntu
