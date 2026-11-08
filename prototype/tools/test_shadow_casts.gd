@@ -4,7 +4,8 @@ extends SceneTree
 ##     miejsce), lampa wchodząca do zestawu w czasie gry dostaje cień, gdy jest wśród najbliższych (błąd do 1.7.523: nigdy),
 ## (2) kopie „tylko cień” siatek gracza: warstwa świata, SHADOWS_ONLY, ta sama siatka i szkielet, bez dzieci, bez powtórnych kopii,
 ##     widoczność za oryginałem, sprzątanie zwolnionych par i `clear`,
-## (3) view3d.gd: lampy nie dostają cienia przy tworzeniu (tylko `_pick_shadows`), a rig gracza ma kopie cienia.
+## (3) view3d.gd: lampy nie dostają cienia przy tworzeniu (tylko `_pick_shadows`), rig gracza ma kopie cienia, model lampy i poświata
+##     sejfu nie rzucają cienia od własnego światła.
 ## godot --headless --path prototype -s tools/test_shadow_casts.gd      → ma wypisać PASS
 const ShadowCasts := preload("res://scripts/shadow_casts.gd")
 var _fail := 0
@@ -108,3 +109,6 @@ func _test_view3d_source() -> void:
 	_check(not src.contains("shadow_enabled = n <= SHADOW_LIGHTS"), "view3d: cień nie jest już przydzielany przy tworzeniu światła")
 	_check(src.contains("\"casts\": ShadowCasts.add(actor, LAYER_ACTORS, LAYER_WORLD)"), "view3d: rig gracza ma kopie cienia")
 	_check(src.contains("ShadowCasts.clear(rig.get(\"casts\""), "view3d: zwolnienie riga sprząta kopie")
+	_check(src.contains("if name == \"lamp\":"), "view3d: model lampy nie rzuca cienia od własnej żarówki")
+	var sb := FileAccess.get_file_as_string("res://scripts/strongbox.gd")
+	_check(sb.contains("_light.no_shadow = true"), "strongbox: poświata sejfu bez cienia")

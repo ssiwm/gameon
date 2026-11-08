@@ -7449,6 +7449,9 @@ func _make_item(sp: ItemsHd.ItemMark) -> void:
 				apron.visible = false
 				hid.append(apron)
 		var zoff := -1.45 if ITEM_BACK.has(name) else (TRACK_ZC if name.begins_with("handcar") else float(ITEM_Z.get(name, -0.2)))
+		if name == "lamp":                                     # klosz i oprawa tuż nad żarówką: z cieniem własnego światła kładłyby wielką czarną plamę na ścianę
+			for n in model.find_children("*", "MeshInstance3D", true, false):
+				(n as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if name == "rack":                                     # drewno z generatora jest jaskrawopomarańczowe w ciepłym świetle lamp — tonujemy
 			_tint_model(model, Color(0.56, 0.5, 0.46))
 		if sp.offset == Vector2.ZERO:
