@@ -275,7 +275,7 @@ func setup(level: Node2D, players: Node2D) -> void:
 		dl.basis = Basis.looking_at(spec[0], Vector3.UP)
 		dl.light_color = spec[1]
 		dl.light_energy = float(spec[2]) * ACTOR_LIGHT
-		dl.light_cull_mask = LAYER_ACTORS
+		dl.light_cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT       # kontra postaci rysuje też krawędź rur pierwszego planu
 		dl.light_volumetric_fog_energy = 0.0               # mgła wolumetryczna nie zna masek warstw — kontra postaci nie może jej rozświetlać
 		dl.layers = LAYER_WORLD | LAYER_ACTORS             # Forward+: kamera odcina też same światła maską warstw — światło musi być widoczne dla obu kamer
 		_world.add_child(dl)
@@ -484,7 +484,7 @@ func _tick(delta: float) -> void:
 	_destr_warm_sync()
 	var tp := Time.get_ticks_usec()
 	_sync_camera()
-	_front_tick()
+	_front_tick(delta)
 	tp = _tp("camera", tp)
 	_geo_t -= delta
 	var pre := _curtain_key == PRE_CURTAIN_KEY and _curtain != null and _curtain.visible
@@ -938,38 +938,64 @@ func _build_world(root: Node3D, rows: Array, hub: bool, spread := false) -> Dict
 	var reeds := root.get_node_or_null("ShoreReeds") as MeshInstance3D
 	return {"rows": rows, "reeds": reeds.material_override as ShaderMaterial if reeds != null else null, "mud": mud}
 
-## Pierwszy plan (front3d.gd): punkty wygaszania co klatkę — wszyscy gracze (także w co-op), celownik lokalnego gracza, potem wrogowie
-## od najbliższego środka kadru; środek i wysokość kadru dla REDUCED.
-func _front_tick() -> void:
+## Pierwszy plan (front3d.gd): sylwetki do wygaszenia co klatkę — wszyscy gracze (także w co-op), potem wrogowie w kadrze od najbliższego
+## środka kadru (prostokąt trafień z zapasem); waga każdej sylwetki narasta i gaśnie przez `Front3D.FADE_T`, więc rura nie mruga, kiedy
+## wróg pojawia się albo znika. Celownik niczego nie wygasza (rura pod kursorem nie zasłania postaci). Środek i wysokość kadru dla REDUCED.
+var _front_w := {}                           ## id węzła → [Vector4 prostokąt sylwetki, waga 0–1]
+
+func _front_tick(delta: float) -> void:
 	if _level == null or (_level.get("front") as Array).is_empty() or Settings.front_idx == 2:
 		return
 	var c2 := get_viewport().get_camera_2d()
 	if c2 == null:
 		return
 	var ctr := c2.get_screen_center_position()
-	var pts := []
+	var vis := get_viewport().get_visible_rect().size
+	var half := vis * 0.5 / Vector2(maxf(c2.zoom.x, 0.01), maxf(c2.zoom.y, 0.01))
+	var now := {}
 	if _players != null:
 		for p in _players.get_children():
 			if p is Node2D:
-				var g := (p as Node2D).global_position
-				pts.append(Vector3(g.x * PX, -(g.y - 10.0) * PX, Front3D.R_PLAYER))
-	var np := pts.size()
-	var m := get_global_mouse_position()
-	pts.append(Vector3(m.x * PX, -m.y * PX, Front3D.R_AIM))
+				var g := (p as Node2D).global_position                # stopy; sylwetka 22 px nad nimi
+				now[p.get_instance_id()] = Vector4(g.x * PX, -(g.y - 11.0) * PX, Front3D.PLAYER_HALF.x, Front3D.PLAYER_HALF.y)
 	var en := []
 	for n in get_tree().get_nodes_in_group("enemies"):
 		if n is Node2D and (n as Node2D).is_visible_in_tree():
 			var g2 := (n as Node2D).global_position
-			en.append([g2.distance_squared_to(ctr), g2])
+			if absf(g2.x - ctr.x) > half.x + 48.0 or absf(g2.y - ctr.y) > half.y + 48.0:
+				continue                                             # poza kadrem: pierwszy plan go nie zasłania
+			en.append([g2.distance_squared_to(ctr), n])
 	en.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	for e in en:
-		if pts.size() >= Front3D.MAX_PTS:
+		if now.size() >= Front3D.MAX_PTS:
 			break
-		var g3: Vector2 = e[1]
-		pts.append(Vector3(g3.x * PX, -(g3.y - 8.0) * PX, Front3D.R_ENEMY))
-	var vis := get_viewport().get_visible_rect().size
+		var n2 := e[1] as Node2D
+		var d: Variant = n2.get("_def")
+		var sz := Vector2(14.0, 20.0)
+		if d is Dictionary and (d as Dictionary).has("size"):
+			sz = (d as Dictionary)["size"]
+			sz.y = maxf(sz.y, float((d as Dictionary).get("hurt_h", 0.0)))
+		var g3 := n2.global_position
+		now[n2.get_instance_id()] = Vector4(g3.x * PX, -(g3.y - sz.y * 0.5) * PX, sz.x * 0.5 * PX + Front3D.ENEMY_PAD, sz.y * 0.5 * PX + Front3D.ENEMY_PAD)
+	var step := delta / Front3D.FADE_T
+	for id in now.keys():
+		var prev: Array = _front_w.get(id, [now[id], 0.0])
+		_front_w[id] = [now[id], minf(float(prev[1]) + step, 1.0)]
+	for id in _front_w.keys():
+		if not now.has(id):
+			var w := float(_front_w[id][1]) - step                   # zniknął (zginął, wyszedł z kadru): wygaszenie gaśnie w miejscu
+			if w <= 0.0:
+				_front_w.erase(id)
+			else:
+				_front_w[id][1] = w
+	var pts := []
+	for id in now.keys():                                            # najpierw obecni (gracze, potem wrogowie od środka kadru)
+		pts.append(_front_w[id])
+	for id in _front_w.keys():
+		if not now.has(id):
+			pts.append(_front_w[id])
 	var frame_h := vis.y / maxf(c2.zoom.y, 0.01) * PX
-	Front3D.update(pts, np, -ctr.y * PX, frame_h, Settings.front_idx == 1)
+	Front3D.update(pts, -ctr.y * PX, frame_h, Settings.front_idx == 1)
 
 ## Kroki `_build_world` w kolejności (nazwa do pomiaru, wywołanie). Kolejność ma znaczenie: ciecze potrzebują strumieni, las — dna lasu itd.
 func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
@@ -7727,7 +7753,7 @@ func _scan_lights() -> void:
 				l3.shadow_enabled = n <= SHADOW_LIGHTS and not is_aura and not li.no_shadow
 				l3a = OmniLight3D.new()
 				l3a.light_color = li.color
-				l3a.light_cull_mask = LAYER_ACTORS
+				l3a.light_cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT   # lampy oświetlają też pierwszy plan (front3d.gd)
 				l3a.shadow_enabled = false
 				l3a.light_volumetric_fog_energy = 0.0
 				l3a.layers = LAYER_WORLD | LAYER_ACTORS
