@@ -343,6 +343,16 @@ static func post_runs(rows: Array, radius := -1.0) -> Array:
 ## Przedłużenie kafli strefy przekroju (`shell_cells`) od DEPTH_FRONT do SHELL_Z jako skrzynki MultiMesh: wierzch płyty podłogi, spód stropu,
 ## przekrój na SHELL_Z i boczne ściany na końcach strefy (ściany skrzynek na brzegu). Bez dachu z blachy (`_build_roofs` wysuwa okap).
 ## Kafel cieczy dostaje litą płytę od DEPTH_FRONT (niecka zostaje w pasie gry, rozlany olej rysuje `build_oil_stains`).
+## Materiał płyty przekroju przed niecką cieczy: lity kafel pod niecką (beton hali, skała podziemi), a bez niego `#`.
+## Niecka w betonowej podłodze sali podziemi (1.3) dostawała ziemię z trawą na krawędzi zamiast betonu.
+static func _shell_liquid_base(rows: Array, k: Vector2i) -> String:
+	for r in range(k.y + 1, mini(k.y + 6, rows.size())):
+		var ch := _ch(rows, k.x, r)
+		if ch in "O~m":
+			continue
+		return ch if ch in "#CM" else "#"
+	return "#"
+
 static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictionary, crate_cells: Dictionary, slabs: Dictionary) -> void:
 	if shell_cells.is_empty():
 		return
@@ -356,7 +366,7 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 			continue
 		var key: String = shell_cells[k]
 		if key == "":
-			key = "#" if ch in "O~m" else ch                   # ciecz: niecka kończy się na DEPTH_FRONT, przed nią lita płyta (plama oleju — `oil_spills`)
+			key = _shell_liquid_base(rows, k) if ch in "O~m" else ch   # ciecz: niecka kończy się na DEPTH_FRONT, przed nią lita płyta (plama oleju — `oil_spills`)
 		if not mats.has(key):
 			continue
 		var rk := "%d|%s|%d" % [k.y, key, int(in_trench(k.x, k.y))]

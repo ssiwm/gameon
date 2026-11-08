@@ -476,6 +476,24 @@ z których olej wyciekł; źródło światła drezyny jest w złym miejscu”.
   (dół z przekrojem | bez przekroju | bez pierwszego planu — lewa połowa ciemna także bez przekroju, to światło mapy).
 - Zostaje: rura przed oknem sterowni (góra, 54 m) — świadomie, warstwa przed wnęką dodaje głębi; ocena w grze.
 
+### Wyniki F3 — 1.3 (2026-11-08, 1.7.523)
+
+- Dziesięć wpisów `FRONT`, wszystkie z przekrojem: posterunek (18–36, wiersze 21–26) i piwniczka pod nim (32–37, 26–30), Skład
+  (112–142, 18–26, z antresolą i niecką oleju) — zestaw `station`; w podziemiach zestaw `tunnel`: cztery sale ze stropem w wierszu 30
+  (zachodnia 6–30, środkowa 63–90, wschodnia 109–143, sala ewakuacji 171–186) i trzy niskie tunele ze stropem w wierszu 35 (31–62,
+  91–108, 144–170), razem z szybami — pod otworem szybu nie ma płyty stropu i nie staje element (`blocked_x`).
+- **Dlaczego osobne wpisy w podziemiach:** jeden wpis na cały poziom ze stropem w wierszu 30 wysunąłby strop sal nad tunelami, w których
+  pod nim stoi skała w pasie gry na 1,1 m — odrzucony już w F2b „balkon”. Strop tunelu na 5,6 m łączy się z salami bez progu.
+- **Fundament przed niecką.** W zestawie `tunnel` płyta przed niecką cieczy dostawała materiał `#` (ziemia z trawą na krawędzi), a sala
+  środkowa ma betonową podłogę — w przekroju wyrastał pas ziemi. `Level3D._shell_liquid_base`: materiał litego kafla pod niecką.
+- Wyciek oleju (plama i beczki z F2b) pojawia się w Składzie i w obu salach z niecką; w pełnym świetle (`--view3dlit`) plama wychodzi
+  jasna — to artefakt trybu podglądu, w grze jest czarnym lustrem jak w hali 1.2.
+- Rozkład: posterunek — rura 35 m; Skład — rura 164 m, kable; sale i tunele co 21–28 m (rura 14, 58, 87, 112, 133, 164, 193, 217,
+  239 m); rura na 164 m stoi w Składzie i w sali pod nim w tym samym miejscu (pion przez strop).
+- Mapa jest nocą prawie czarna (bez lamp we wnętrzach), więc pierwszy plan widać głównie w latarce i przy flarach.
+- Zrzuty: `shots_front/f3_m3/` — `sheet1.jpg` (gra), `sheetL.jpg` (`--view3dlit`), `sheet3.jpg` (niecki po poprawce),
+  `s_N_mid80_c.jpg` (plama w normalnym świetle, rozjaśniony).
+
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
 - Rozmycie głębi ostrości tylko dla bliskiego planu na kamerze graczy (`CameraAttributesPractical.dof_blur_near_*`): gracze
