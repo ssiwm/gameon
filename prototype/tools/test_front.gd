@@ -5,8 +5,10 @@ extends SceneTree
 ##     między wpisami, których pasy mieszczą się razem w kadrze (najwyżej jeden duży element w kadrze NORMAL), mały element
 ##     co najmniej SMALL_MIN od dużego, `FRONT_SKIP` pusty, na LOW bez małych, ten sam układ przy każdym wywołaniu,
 ## (3) bryły: tylko warstwa `LAYER_FRONT` (rozłączna z warstwami świata, lasu, dna lasu i wnęk), bez cienia, bez kolizji,
-##     materiał bez oświetlenia sceny (`unshaded`), pas przycięcia w parametrze instancji; OFF chowa całość,
-## (4) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A w punkcie, pełne krycie od r × FADE_OUT, rośnie z odległością.
+##     części rur z `pipe_parts.glb` (odcinek, zawór, trójnik, cienka rura) i tekstury zestawu, każda powierzchnia z materiałem
+##     pierwszego planu (półprzezroczysty, z wygaszaniem), pas przycięcia w parametrze instancji; OFF chowa całość,
+## (4) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
+##     waga 0 nie wygasza wcale.
 ## godot --headless --path prototype -s tools/test_front.gd       → ma wypisać PASS
 const Level3D := preload("res://scripts/level3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
@@ -120,12 +122,16 @@ func _check_layers() -> void:
 		kinds[String(mi.name).get_slice("_", 0)] = true
 		_check(mi.layers == lf, "%s: warstwy %d zamiast LAYER_FRONT" % [mi.name, mi.layers])
 		_check(mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: rzuca cień" % mi.name)
-		_check(mi.get_child_count() == 0, "%s: ma dzieci (kolizja?)" % mi.name)
-		var mat := mi.material_override as ShaderMaterial
-		_check(mat != null and "unshaded" in mat.shader.code, "%s: materiał nie jest unshaded (oświetlałyby go lampy i latarka)" % mi.name)
+		for ch in mi.get_children():                             # dzieci: tylko światło żarówki lampy, świecące wyłącznie na pierwszy plan
+			_check(ch is OmniLight3D and (ch as OmniLight3D).light_cull_mask == lf and not (ch as OmniLight3D).shadow_enabled, "%s: dziecko %s to nie światło żarówki tylko na LAYER_FRONT (kolizja? światło na postacie?)" % [mi.name, ch.name])
+		_check(mi.mesh != null and mi.mesh.get_surface_count() > 0, "%s: pusta siatka" % mi.name)
+		if mi.mesh != null:
+			for si in mi.mesh.get_surface_count():
+				var mat := mi.get_surface_override_material(si) as ShaderMaterial
+				_check(mat != null and "blend_mix" in mat.shader.code and "ALPHA = a" in mat.shader.code, "%s: powierzchnia %d bez materiału pierwszego planu (wygaszanie)" % [mi.name, si])
 		var clip: Variant = mi.get_instance_shader_parameter("clip")
 		_check(clip is Vector4 and (clip as Vector4).y > (clip as Vector4).x and (clip as Vector4).w > (clip as Vector4).z, "%s: brak pasa przycięcia" % mi.name)
-	for k in ["pipe", "pipes2", "cables", "chain"]:
+	for k in ["pipe", "pipes2", "cables", "chain", "lamp"]:
 		_check(kinds.has(k), "rodzaj %s nie powstał na długim zakresie" % k)
 	Front3D.apply_settings(2, false)
 	_check(not (fr as Node3D).visible, "OFF nie chowa pierwszego planu")
@@ -136,12 +142,18 @@ func _check_layers() -> void:
 
 
 func _check_fade() -> void:
-	var r := 1.8
-	_check(is_equal_approx(Front3D.fade(0.0, r), Front3D.MIN_A), "fade w punkcie ≠ MIN_A")
-	_check(Front3D.fade(0.0, r) <= 0.15 + 0.001, "krycie w punkcie > 0,15 (zasada 1)")
-	_check(is_equal_approx(Front3D.fade(r * Front3D.FADE_OUT, r), 1.0), "fade na r × FADE_OUT ≠ 1")
+	_check(is_equal_approx(Front3D.fade(0.0), Front3D.MIN_A), "fade na sylwetce ≠ MIN_A")
+	_check(is_equal_approx(Front3D.fade(Front3D.FADE_M), 1.0), "fade na brzegu FADE_M ≠ 1")
+	_check(is_equal_approx(Front3D.fade(0.0, 0.0), 1.0), "waga 0 wygasza")
+	_check(Front3D.MIN_A >= 0.2 and Front3D.MIN_A <= 0.45, "MIN_A poza 0,2–0,45 (rura ma być widoczna jako przyciemniona, postać za nią czytelna)")
 	var prev := -1.0
 	for i in 40:
-		var a := Front3D.fade(float(i) * 0.1, r)
-		_check(a >= prev - 0.0001, "fade maleje z odległością (d %.1f)" % (float(i) * 0.1))
+		var a := Front3D.fade(float(i) * 0.02)
+		_check(a >= prev - 0.0001, "fade maleje z odległością (d %.2f)" % (float(i) * 0.02))
 		prev = a
+	var p := Front3D.parts()
+	for k in ["seg", "thin", "valve", "tee"]:
+		_check(p.has(k), "brak części %s w %s" % [k, Front3D.PARTS_GLB])
+	for key: String in ["g1", "g2", "lamp"]:
+		var m := Front3D.materials()[key] as ShaderMaterial
+		_check(m.get_shader_parameter("albedo_tex") != null and m.get_shader_parameter("normal_tex") != null, "materiał %s bez tekstur" % key)

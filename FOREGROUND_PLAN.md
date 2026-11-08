@@ -1,7 +1,8 @@
 # Plan: pierwszy plan przed płaszczyzną gry
 
-Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A); F1 + F2 (pilot: hala stacji i tunel 1.2) w 1.7.519 — czeka
-na bramkę F2 (wyniki niżej).** Punkt 2 raportu o głębi świata
+Status: **plan z 2026-11-07; F0 zrobione 2026-11-08 (wariant A); F1 + F2 (pilot: hala stacji i tunel 1.2) w 1.7.519; po pierwszej
+ocenie w grze poprawki rur w 1.7.520 (rury z Poly Haven, półprzezroczyste wygaszanie, lampy w tunelu) — czeka na bramkę F2 (wyniki
+niżej).** Punkt 2 raportu o głębi świata
 (`C:\deadair87\reports\world-depth-recommendations-2026-11-04.md`); punkty 1 i 3 (wnętrza) zamknął `DEPTH_PLAN.md` (1.7.507–1.7.518).
 Stan odniesienia: `main` 1.7.518 (473eee6).
 
@@ -166,6 +167,47 @@ Decyzje przed F1 (użytkownik, 2026-11-08): pilot w hali stacji 1.2 z tunelem; e
 - Zrzuty, nagrania i pomiary: `shots_front/f2/` — `f2_sheet.jpg` (hala, hala w lewo, REDUCED, LOW, tunel, tunel LOW),
   `cmp_hall.mp4` i `cmp_tun.mp4` (z | bez, 22 s biegu z `--shotrun`), pełne `run_*_on/off.mp4`, `perf_*.txt`, skrypt `f2.sh`.
 
+### Poprawki po pierwszej ocenie F2 (2026-11-08, 1.7.520)
+
+Uwaga użytkownika po grze na 1.7.519: „rury wyglądają źle, zanikają, mają niską jakość”. Przyczyny (zrzuty z wygaszaniem i bez,
+zbliżenie 4K — `shots_front/f3/cmp.jpg`):
+
+- **Zanikanie:** wygaszanie w kołach 2,7–3 m wokół gracza, celownika i każdego wroga. Rura nad wrogiem urywała się metr nad podłogą,
+  a celownik w ruchu wycinał dziury tam, gdzie gracz celował. Dithering zostawiał 15% pikseli, a na ciemnym tle tego nie widać —
+  rura wyglądała na uciętą, nie na przezroczystą, a w ruchu wzór migotał.
+- **Niska jakość:** materiał bez oświetlenia sceny i prawie czarny (płaski pas bez bryły i odblasku), proste walce z 12–14 ścianek,
+  obejmy z prostopadłościanów. To najbliższy obiekt w kadrze (ok. 60 px szerokości w 4K), więc braki widać najbardziej.
+- **Tunel:** ciemny pion na ciemnym tle prawie niewidoczny.
+
+Zmiany (decyzja użytkownika: kroki 1 i 2 naraz):
+
+- **Wygaszanie:** celownik niczego nie wygasza. Wygaszany jest prostokąt sylwetki (gracz 1,1 × 1,9 m; wróg — prostokąt trafień z `_def`
+  z zapasem 0,15 m) z miękkim brzegiem 0,6 m, tylko dla wrogów w kadrze. Zamiast ditheringu prawdziwa półprzezroczystość (krycie 0,3,
+  przebieg przezroczysty z zapisem głębi). Waga każdej sylwetki narasta i gaśnie przez 0,25 s, a zniknięty wróg gaśnie w miejscu —
+  rura nie mruga. Zasada 1 (dithering bez mieszania) przestaje obowiązywać: elementów jest kilka i są wąskie, więc nadrysowanie jest znikome.
+- **Rury z modeli:** części zestawu Poly Haven `modular_industrial_pipes_01` (CC0) — odcinek z kołnierzami na śruby, cienka rura,
+  zawór z czerwonym kołem i manometrem (ku kamerze), trójnik — wycięte skryptem Blendera `tools/front_parts.py` do
+  `art/world3d/front/pipe_parts.glb` (sama geometria; tekstury kolor / ARM / normalne te same co dekoracji `pipes`). Rura to stos odcinków
+  w skali ×2 (kołnierz 0,42 m) z zaworem nad głowami i czasem trójnikiem nisko; para rur to cienka rura ×1,5 i odcinki ×1,2 z obejmami
+  z malowanej stali. Kable (10 ścianek, opaski) i łańcuch (gęstsze ogniwa) zostają proceduralne, w ciemnym metalu.
+- **Światło:** materiał PBR oświetlany sceną. Latarka (reflektor bez maski) świeci na pierwszy plan od zawsze; kontra postaci
+  (trzy światła kierunkowe) i lampy dla warstwy graczy dostały `LAYER_FRONT` w masce. Otoczenie środowiska graczy jest jaśniejsze niż
+  świata, więc shader zostawia z niego 35% (`ambient_k` przez AO). Zasada 5 (światła gry nie oświetlają pierwszego planu) przestaje
+  obowiązywać — dopiero odblask latarki i lamp sprzedaje rurę jako bryłę blisko kamery.
+- **Tunel:** zestaw `tunnel` ma lampy na przewodzie (klosz `lamp` z emisją żarówki, 0,75 m, 1,6–2,4 m pod linią stropu pasa) z własnym
+  światłem omni tylko na `LAYER_FRONT` (klosz od środka, przewód, sąsiednia rura) — ciemność przy graczach się nie zmienia (GDD §8.3).
+- **Rozmycie (F4) sprawdzone i odrzucone:** `CameraAttributesPractical.dof_blur_near_*` na kamerze graczy nie rozmywa niczego — także
+  przy odległości 40 m, przy której rozmyta powinna być cała postać. Natywne rozmycie Godota nie działa w warstwie graczy
+  (przezroczyste tło SubViewportu); zostałby własny przebieg rozmycia, a rury z modeli wyglądają dobrze ostre. Kod próby usunięty.
+- **Wydajność** (GPU, 4K HIGH, debug, trzy rundy naprzemiennie, mediana): hala stacji bez 7,39 ms / z 7,59 ms (+0,20), tunel 6,47 /
+  6,64 ms (+0,17) — w budżecie 0,4 ms.
+- **Obraz:** w hali para rur z kołnierzami i zaworem odcina się od muru, ma połysk od lampy i latarki; przechodzący za nią wróg jest
+  widoczny przez przyciemnioną rurę. W tunelu rury łapią kontrę i latarkę (kołnierze i koło zaworu czytelne), lampy na przewodach świecą.
+- Zrzuty, nagrania i pomiary: `shots_front/f3/` — `sheet.jpg` (stare / nowe / próba rozmycia), `z_hall.png` (zbliżenie), `parts_sheet.jpg`
+  (części zestawu), `cmp_hall.mp4` i `cmp_tun.mp4` (z | bez, 22 s biegu), `hall_strip.jpg` i `tun_strip.jpg` (klatki co 2,5 s), `perf_*.txt`,
+  skrypty `f3full.sh`, `f3.sh`.
+- **Nie sprawdzone:** drezyna, co-op, WIDE i CLOSE, wstrząs kamery.
+
 ### F3 — katalog i mapy (po bramce)
 
 - Las: pień sosny, pień brzozy, martwy pień, zwisająca gałąź, wysoka paproć i trawa przy dolnej krawędzi.
@@ -174,7 +216,7 @@ Decyzje przed F1 (użytkownik, 2026-11-08): pilot w hali stacji 1.2 z tunelem; e
 - Zabudowania i stacja: słup energetyczny z przewodami, płot, siatka.
 - Po jednym PR na mapę: 1.2, 1.1, 1.3, B1, kryjówka. Każda mapa: zrzuty, nagranie, pokrycie, GPU, `test_front.gd`.
 
-### F4 — rozmycie bliskiego planu (opcjonalnie, po F3)
+### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
 - Rozmycie głębi ostrości tylko dla bliskiego planu na kamerze graczy (`CameraAttributesPractical.dof_blur_near_*`): gracze
   stoją 20,2 m od kamery i zostają ostrzy, pierwszy plan przy 15–17 m się rozmywa. Sprawdzić koszt w 4K i krawędzie
@@ -188,7 +230,7 @@ Decyzje przed F1 (użytkownik, 2026-11-08): pilot w hali stacji 1.2 z tunelem; e
 | F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | 1.7.519 |
 | F2 | pilot: hala stacji i tunel 1.2 + A/B + bramka; las 1.2 z kontrą po bramce | 0,5–1 d | 1.7.519 (ten sam PR) |
 | F3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
-| F4 | rozmycie bliskiego planu | 0,5 d | po F3, jeśli bramka F2 tego zażąda |
+| F4 | rozmycie bliskiego planu | 0,5 d | natywne DOF nie działa w `VpActors` (1.7.520); tylko własny przebieg, jeśli bramka zażąda |
 
 ## Ryzyka
 
@@ -210,4 +252,4 @@ Decyzje przed F1 (użytkownik, 2026-11-08): pilot w hali stacji 1.2 z tunelem; e
 2. **Wygaszanie przy postaciach** (polecam: element może przejść przez środek kadru) czy zakaz stawiania w pasie gry
    (tylko górny i dolny brzeg kadru, prościej, ale słabsza paralaksa).
 3. **Ustawienie „Foreground”** ON / REDUCED / OFF, domyślnie ON (polecam) czy domyślnie REDUCED.
-4. **Rozmycie (F4):** decyzja po bramce F2.
+4. **Rozmycie (F4):** sprawdzone w 1.7.520 — natywne rozmycie nie działa w warstwie graczy; własny przebieg tylko na żądanie bramki.
