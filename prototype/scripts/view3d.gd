@@ -23,6 +23,7 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 const HubProp := preload("res://scripts/hub_prop.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const ShadowCasts := preload("res://scripts/shadow_casts.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
 const Parts := preload("res://scripts/parts.gd")
@@ -43,6 +44,7 @@ const OFFSCREEN_ENEMY_EVERY := 4          ## wróg poza kadrem: pełna synchroni
 const ENEMY_CULL_R := 3.5                ## m: promień sfery wroga przy teście kadru (`_sync_enemies`); bossowie ×3
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
+const SHADOW_KEEP := 1                     ## histereza cieni: światło z cieniem zachowuje go, dopóki jest wśród SHADOW_LIGHTS + SHADOW_KEEP najbliższych
 const BEAM_FOG_ENERGY := 6.0              ## snop latarki we mgle wolumetrycznej przy gęstości bazowej (bez pogody)
 const FOG_LIGHT_EXP := 0.8                ## światła gry w gęstszej mgle (pogoda MGŁA do ok. 10× gęstości): energia we mgle × gęstość^−wykładnik — snop dalej widać, ale się nie przepala
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
@@ -1080,12 +1082,14 @@ func _sync_rigs() -> void:
 				else:
 					m.layers = LAYER_ACTORS
 			rig["model"] = model_now
+			rig["casts"].append_array(ShadowCasts.add(model_now, LAYER_ACTORS, LAYER_WORLD))
 		var gun_now = c3._gun                              # zmiana broni: Char3D tworzy nowy model w swoim świecie — przepinamy go do aktora
 		if gun_now != null and is_instance_valid(gun_now) and (gun_now as Node).get_parent() != actor:
 			(gun_now as Node).reparent(actor, false)
 			for mi in (gun_now as Node).find_children("*", "MeshInstance3D", true, false):
 				(mi as MeshInstance3D).layers = LAYER_ACTORS
 			rig["gun"] = gun_now
+			rig["casts"].append_array(ShadowCasts.add(gun_now, LAYER_ACTORS, LAYER_WORLD))
 			if c3._gun_n != null:
 				c3._gun_n.visible = false
 		var tool_now = c3._tool                            # kilof na plecach (B1): Char3D buduje go w swoim świecie — przepinamy do aktora jak broń
@@ -1094,6 +1098,7 @@ func _sync_rigs() -> void:
 			for mi in (tool_now as Node).find_children("*", "MeshInstance3D", true, false):
 				(mi as MeshInstance3D).layers = LAYER_ACTORS
 			rig["tool"] = tool_now
+			rig["casts"].append_array(ShadowCasts.add(tool_now, LAYER_ACTORS, LAYER_WORLD))
 			if c3._tool_n != null:
 				c3._tool_n.visible = false
 		# na drezynie: tor leży w korycie przed peronem, a pokład jest równo z peronem — pasażer przesuwa się tylko na oś toru (ku kamerze)
@@ -1105,6 +1110,7 @@ func _sync_rigs() -> void:
 		rig["wade"] = _wade_step(float(rig.get("wade", 0.0)), p.global_position)
 		actor.position = Level3D.px_to_m(p.global_position) + Vector3(0.0, -float(c3.sink_m) - float(rig["wade"]), float(rig["lift"]))
 		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS, float(rig["wade"]))
+		rig["casts"] = ShadowCasts.sync(rig["casts"])
 		actor.basis = Basis(Vector3.UP, float(c3.model_yaw))         # zwrot postaci: obrót z animacją (Char3D.TURN_TIME), nie odbicie lustrzane
 		c3._on_screen = true                       # poza liczymy zawsze (bez powiadomień o ekranie 2D)
 	for p in _rigs.keys():
@@ -1134,7 +1140,8 @@ func _make_rig(p: Node, c3: Node) -> void:
 	c3._vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	c3._vpn.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	c3._sprite.visible = false
-	_rigs[p] = {"actor": actor, "model": model, "gun": gun, "root": root}
+	# cień gracza w świecie: kopie siatek „tylko cień” w warstwie świata (lampy z cieniem świecą tylko na nią) — `shadow_casts.gd`
+	_rigs[p] = {"actor": actor, "model": model, "gun": gun, "root": root, "casts": ShadowCasts.add(actor, LAYER_ACTORS, LAYER_WORLD)}
 
 func _release_rig(p) -> void:
 	if not _rigs.has(p):
@@ -1143,6 +1150,7 @@ func _release_rig(p) -> void:
 	if rig.has("wfx"):                                         # efekty strzału 3D: zwolnij i przywróć rysunek 2D
 		if is_instance_valid(rig["wfx"]["root"]):
 			(rig["wfx"]["root"] as Node).queue_free()
+	ShadowCasts.clear(rig.get("casts", []))                       # kopie cienia nie wracają do świata Char3D
 	var c3 = p.get("c3d") if is_instance_valid(p) else null
 	if c3 != null and is_instance_valid(c3):
 		var root: Node = rig["root"]
@@ -7441,6 +7449,9 @@ func _make_item(sp: ItemsHd.ItemMark) -> void:
 				apron.visible = false
 				hid.append(apron)
 		var zoff := -1.45 if ITEM_BACK.has(name) else (TRACK_ZC if name.begins_with("handcar") else float(ITEM_Z.get(name, -0.2)))
+		if name == "lamp":                                     # klosz i oprawa tuż nad żarówką: z cieniem własnego światła kładłyby wielką czarną plamę na ścianę
+			for n in model.find_children("*", "MeshInstance3D", true, false):
+				(n as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if name == "rack":                                     # drewno z generatora jest jaskrawopomarańczowe w ciepłym świetle lamp — tonujemy
 			_tint_model(model, Color(0.56, 0.5, 0.46))
 		if sp.offset == Vector2.ZERO:
@@ -7862,12 +7873,11 @@ func _scan_lights() -> void:
 			l3.layers = LAYER_WORLD | LAYER_ACTORS
 			var l3a: Light3D = null
 			if is_cone:
-				l3.shadow_enabled = n <= SHADOW_LIGHTS            # reflektor oświetla i teren, i graczy
+				pass                                              # reflektor oświetla i teren, i graczy (cień: `_pick_shadows`)
 			else:
 				# światło omni jest rozdzielone na dwie warstwy: świat (z cieniami dla kilku najbliższych) i gracze (bez cieni, osobne światło) —
 				# cień światła omni w tej samej warstwie co modele graczy gubił je w warstwie z maską kamery (Compatibility)
 				l3.light_cull_mask = LAYER_WORLD
-				l3.shadow_enabled = n <= SHADOW_LIGHTS and not is_aura and not li.no_shadow
 				l3a = OmniLight3D.new()
 				l3a.light_color = li.color
 				l3a.light_cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT   # lampy oświetlają też pierwszy plan (front3d.gd)
@@ -7884,6 +7894,35 @@ func _scan_lights() -> void:
 				if pair[k] != null and is_instance_valid(pair[k]):
 					(pair[k] as Node).queue_free()
 			_lights.erase(id)
+	_pick_shadows()
+
+## Cień dla najwyżej SHADOW_LIGHTS świateł najbliższych środka kadru (odległość 2D, więc lampy innego piętra są dalej), wybierany przy
+## każdym przeglądzie, z histerezą (`ShadowCasts.pick`). Aura gracza i poświaty znajdziek nigdy (ta sama plama widoczności co w 2D,
+## a poświata leży tuż przy przedmiocie); lampa z `no_shadow` też nie. Do 1.7.523 cień przydzielało tylko tworzenie światła: lampy, które
+## weszły do zestawu w czasie gry, nie miały go nigdy.
+func _pick_shadows() -> void:
+	var ctr := Vector2(_cam_a.global_position.x, -(_cam_a.global_position.y - EYE_UP_M)) / PX
+	var cand: Array = []
+	var current := {}
+	for id in _lights.keys():
+		var pair: Array = _lights[id]
+		var li := pair[0] as Lights.GameLight
+		var l3 := pair[1] as Light3D
+		if not is_instance_valid(li) or not is_instance_valid(l3):
+			continue
+		if l3.shadow_enabled:
+			current[id] = true
+		if l3 is SpotLight3D or not (bool(pair[3]) or bool(pair[4]) or li.no_shadow):
+			cand.append([li.global_position.distance_squared_to(ctr), id])
+	cand.sort_custom(func(a, b): return a[0] < b[0])
+	var ranked: Array = []
+	for c in cand:
+		ranked.append(c[1])
+	var want := ShadowCasts.pick(ranked, current, SHADOW_LIGHTS, SHADOW_KEEP)
+	for id in _lights.keys():
+		var l3 := (_lights[id] as Array)[1] as Light3D
+		if is_instance_valid(l3) and l3.shadow_enabled != want.has(id):
+			l3.shadow_enabled = want.has(id)
 
 func _sync_lights() -> void:
 	for id in _lights.keys():
