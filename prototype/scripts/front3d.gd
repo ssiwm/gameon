@@ -25,6 +25,7 @@ const FADE_M := 0.6                        ## m: miękki brzeg wygaszania wokó�
 const FADE_T := 0.25                       ## s: narastanie i gaśnięcie wygaszania (postać wchodzi za rurę / wychodzi)
 const BIG_SPACING := Vector2(21.0, 28.0)   ## m: odstęp dużych elementów — najwyżej jeden w kadrze NORMAL (kadr na z = 4 m ma ok. 21 m)
 const SMALL_MIN := 6.0                     ## m: mały element najbliżej dużego
+const FRAME_H_NORMAL := 180.0 * 1.8 / 22.0   ## m: wysokość kadru NORMAL na płaszczyźnie gry (Settings.CAM_ZOOM 2.0 → 180 px)
 const Z_RANGE := Vector2(3.5, 5.0)         ## m: przed płaszczyzną gry
 const MARGIN := 2.0                        ## m: od brzegu zakresu
 const PLAYER_HALF := Vector2(0.55, 0.95)   ## m: połowa szerokości i wysokości sylwetki gracza (z bronią przy ciele)
@@ -38,6 +39,7 @@ const LAMP_DROP := Vector2(1.6, 2.4)       ## m: lampa wisi tyle pod linią stro
 const SETS := {
 	"station": {"big": ["pipe", "pipes2"], "small": ["chain", "cables"], "tint": Color(0.8, 0.8, 0.8)},
 	"tunnel": {"big": ["pipe", "pipes2"], "small": ["lamp", "cables", "lamp"], "tint": Color(0.7, 0.72, 0.75)},
+	"bunker": {"big": ["pipe", "pipes2"], "small": ["cables", "lamp"], "tint": Color(0.85, 0.8, 0.74)},    # kryjówka: bez łańcuchów, lampy na przewodzie
 }
 const BIG_KINDS := ["pipe", "pipes2"]
 const PARTS_GLB := "res://art/world3d/front/pipe_parts.glb"
@@ -205,6 +207,14 @@ static func _skipped(x: float, skip: Array) -> bool:
 
 ## Rozmieszczenie (bez węzłów, do testu i budowy): [{kind, x, z, big, clip, set}] dla wpisów `FRONT`, z pominięciem `skip`
 ## ([c0, c1]); `low` pomija małe elementy. Stałe ziarno z wpisu, więc ten sam układ u wszystkich graczy.
+## Czy elementy dwóch pasów (clip: x0, x1, y podłogi, y stropu) mogą stać w jednym kadrze NORMAL. Nie, gdy pasy dzieli więcej niż kadr,
+## albo gdy oba mają przekrój (F2b) i jeden leży cały nad drugim: płyta stropu / podłogi sięga do SHELL_Z, a shader (`occ`) chowa za nią
+## element innego piętra — z kamery na jednym piętrze widać tylko jego pierwszy plan (piętra kryjówki).
+static func apart(a: Vector4, a_shell: bool, b: Vector4, b_shell: bool) -> bool:
+	if maxf(0.0, maxf(a.z, b.z) - minf(a.w, b.w)) >= FRAME_H_NORMAL:
+		return true
+	return a_shell and b_shell and (a.w <= b.z + 0.01 or b.w <= a.z + 0.01)
+
 static func layout(front: Array, skip: Array, low := false, blocked: Array = []) -> Array:
 	var out := []
 	for e: Dictionary in front:
@@ -214,10 +224,24 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 		var clip := clip_of(e)
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 0xF407 + int(e["c0"]) * 131 + int(e["r0"]) * 7
+		# wpisy, których pasy mieszczą się razem w kadrze NORMAL: duży element innego wpisu zajmuje ±BIG_SPACING.x dla dużych
+		# i ±SMALL_MIN dla małych, mały — ±SMALL_MIN dla dużych (najwyżej jeden duży element w kadrze także między wpisami)
+		var blk_big := blocked.duplicate()
+		var blk_small := blocked.duplicate()
+		for o: Dictionary in out:
+			var oc: Vector4 = o["clip"]
+			if apart(oc, bool(o["shell"]), clip, bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()):
+				continue
+			var ox: float = o["x"]
+			if bool(o["big"]):
+				blk_big.append(Vector2(ox - BIG_SPACING.x, ox + BIG_SPACING.x))
+				blk_small.append(Vector2(ox - SMALL_MIN, ox + SMALL_MIN))
+			else:
+				blk_big.append(Vector2(ox - SMALL_MIN, ox + SMALL_MIN))
 		var xs := []
 		var x := clip.x + MARGIN + rng.randf_range(2.0, 8.0)
 		while x < clip.y - MARGIN:
-			x = _free_x(x, blocked)
+			x = _free_x(x, blk_big)
 			if x >= clip.y - MARGIN:
 				break
 			xs.append(x)
@@ -230,7 +254,7 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 				bi += 1
 				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
 			var nx: float = xs[i + 1] if i + 1 < xs.size() else clip.y - MARGIN
-			var xm := _free_x((xb + nx) * 0.5 + rng.randf_range(-3.0, 3.0), blocked)
+			var xm := _free_x((xb + nx) * 0.5 + rng.randf_range(-3.0, 3.0), blk_small)
 			var ks: String = st["small"][rng.randi() % (st["small"] as Array).size()]
 			var want := rng.randf() < 0.6
 			if want and not low and xm - xb >= SMALL_MIN and nx - xm >= SMALL_MIN and xm < clip.y - MARGIN and not _skipped(xm, skip):
@@ -251,7 +275,11 @@ static func _free_x(x: float, blocked: Array) -> float:
 
 
 ## Przekrój (F2b): przedziały x, w których element nie może stanąć — kałuża na płycie podłogi (rura stałaby w cieczy) i belka pod stropem
-## ±1 m (`Level3D.interior_ribs`; belka w warstwie świata przecinałaby rurę). Tylko wpisy z `"shell": true`.
+## ±1 m (`Level3D.interior_ribs`; belka w warstwie świata przecinałaby rurę), stanowisko ±`STATION_PAD`. Tylko wpisy z `"shell": true`.
+## Znaki mapy stanowisk (`level.gd`: tablice, warsztat, szafki, skrzynka, tokarka, stoły, radio, gabloty) i zapas z boków (m).
+const STATION_CH := "vhnRgpjdxzc"
+const STATION_PAD := 1.0
+
 static func blocked_x(front: Array, rows: Array) -> Array:
 	var out := []
 	if rows.is_empty():
@@ -273,6 +301,14 @@ static func blocked_x(front: Array, rows: Array) -> Array:
 			if rc >= int(e["c0"]) and rc <= int(e["c1"]):
 				var rx := (float(rc) + 0.5) * T
 				out.append(Vector2(rx - 1.0, rx + 1.0))
+	# stanowiska warsztatu (kryjówka): element przed płaszczyzną gry zasłaniałby stanowisko, a wygaszanie obejmuje tylko postacie
+	for e: Dictionary in front:
+		if not bool(e.get("shell", false)):
+			continue
+		for r in range(int(e["r0"]) + 1, int(e["r1"])):
+			for c in range(int(e["c0"]), int(e["c1"]) + 1):
+				if String(rows[r]).substr(c, 1) in STATION_CH:
+					out.append(Vector2(float(c) * T - STATION_PAD, float(c + 1) * T + STATION_PAD))
 	# wyciek oleju (plama i przewrócona beczka na płycie przekroju): rura nie stoi w oleju
 	for sp: Dictionary in Level3D.oil_spills(rows):
 		var xr: Vector2 = sp["xr"]

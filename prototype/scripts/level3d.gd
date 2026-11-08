@@ -1540,17 +1540,22 @@ static func set_shells(front: Array, rows: Array) -> void:
 	shell_cells = {}
 	if "--noshell" in OS.get_cmdline_user_args():
 		return                                                  # dev: bez przekroju (porównanie A/B)
-	for e: Dictionary in front:
-		if not bool(e.get("shell", false)):
-			continue
-		var concrete := String(e.get("set", "")) == "station"   # budynek stacji: fundament z betonu; tunel: przekrój skały
+	var bands: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
+	# fundament schodzi w dół najwyżej do pasa gry innego wpisu (piętra kryjówki: pod podłogą środkowego piętra są ściany dolnego)
+	var in_band := func(c: int, r: int) -> bool:
+		for b: Dictionary in bands:
+			if c >= int(b["c0"]) and c <= int(b["c1"]) and r > int(b["r0"]) and r < int(b["r1"]):
+				return true
+		return false
+	for e: Dictionary in bands:
+		var concrete := String(e.get("set", "")) in ["station", "bunker"]   # budynek: fundament z betonu; tunel: przekrój skały
 		var r0 := int(e["r0"])
 		var r1 := int(e["r1"])
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
 			if _ch(rows, c, r0) in SHELL_CH:
 				shell_cells[Vector2i(c, r0)] = "C" if concrete else ""
 			var r := r1
-			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH:
+			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH and not in_band.call(c, r):
 				shell_cells[Vector2i(c, r)] = "C" if concrete else ""
 				r += 1
 

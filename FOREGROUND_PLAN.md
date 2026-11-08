@@ -445,6 +445,37 @@ z których olej wyciekł; źródło światła drezyny jest w złym miejscu”.
 - Wnętrza i podziemia dostają przekrój z F2b (strefa `shell` przy każdym wpisie). W katalogu dochodzą elementy, które opierają się
   o płytę: filar hali, pierścień tubingu w tunelu, pion rur z kołnierzem w podłodze.
 
+### Wyniki F3 — kryjówka (2026-11-08, 1.7.522)
+
+**Sprawdzenia po F2b** (przed kryjówką):
+- **Co-op.** Klient widzi przekrój, rury i plamę oleju jak host; przejazd drezyną w czasie rzeczywistym bez zarzutu
+  (`shots_front/f3_coop/w_14_s.jpg`). Nagranie `--write-movie` po stronie klienta zatrzymuje drezynę po ~130 px — klient renderuje
+  wtedy wolniej niż czas rzeczywisty i nie nadąża z siecią; to artefakt nagrywania, nie błąd gry (headless i okno bez nagrania przechodzą).
+- **GPU** (RTX 3080, 4K, `shots_front/f3_perf/`): hala stacji z przekrojem i bez — w szumie (8,4–9,3 ms obie wersje); tunel +1,1 ms
+  całości, ale równolegle GPU używała inna sesja. Rozbicie na viewporty: `VpWorld` bez zmian, `VpActors` +0,2 ms (jak w F2). Czysty
+  pomiar tunelu do powtórzenia przy wolnym GPU.
+
+**Kryjówka:**
+- Trzy wpisy `FRONT` z `"shell": true` i nowym zestawem `bunker` (rury, podwójne rury, kable, lampy; ciepły odcień betonu): sterownia
+  nadajnika (wiersze 6–14), świetlica z warsztatem (14–22), maszynownia z magazynem (22–30).
+- **Odstęp między piętrami.** Reguła „jeden duży element w kadrze” liczona także między wpisami zagłodziła środkowe i dolne piętro
+  (rury z górnego zajmowały ich x). Wpisy, których pasy dzieli przekrój (jeden leży cały nad drugim), liczą odstęp osobno
+  (`Front3D.apart`): z kamery na jednym piętrze płyta stropu i podłogi chowa pierwszy plan pozostałych (`occ`). Wpisy bez przekroju
+  albo dalej niż kadr — jak dotąd.
+- **Fundament nie wchodzi w sąsiednie piętro.** Ciągły lity grunt pod podłogą (`SHELL_DOWN`) schodził w pas piętra niżej i wysuwał tam
+  ściany do 5,6 m (`test_front` łapał kolumny 3, 68 i 71) — `set_shells` przerywa fundament na pasie innego wpisu.
+- **Stanowiska.** Wygaszanie obejmuje tylko postacie, więc rura przed tablicą wyników, szafką czy tokarką zasłaniałaby je na stałe.
+  `Front3D.blocked_x` omija znaki stanowisk (`STATION_CH` = tablice, warsztat, szafki, skrzynka, tokarka, stoły, radio, gabloty) ±1 m.
+  Na 1.2 przesuwa to rurę przy gablocie w hali o 3 m (104 → 107 m) — reszta 1.2 bez zmian.
+- Wynik: góra — rura 31 m, podwójna 54 m, kable 70 m, rura 82 m; środek — rura 6 m, podwójna 51 m, lampa 65 m, rura 82 m;
+  dół — rura 24 m, podwójna 51 m, kable 70 m, rura 82 m. Rury na 51 i 82 m wypadają na kilku piętrach w tym samym miejscu, więc
+  czytają się jak piony przechodzące przez stropy.
+- Widoki gablot i oględzin mają własne światy, a `LAYER_FRONT` widzi tylko kamera graczy — pierwszy plan tam nie wchodzi.
+- Zrzuty: `shots_front/f3_hub/` — `sheet1.jpg` (przed regułą stanowisk), `sheet2.jpg` (po: środek przy szafce, przy schodach,
+  przy tablicy wyników, góra przy oknach sterowni, dół przy generatorze, WIDE), `sheet_wc.jpg` (WIDE | CLOSE), `sheet_bot.jpg`
+  (dół z przekrojem | bez przekroju | bez pierwszego planu — lewa połowa ciemna także bez przekroju, to światło mapy).
+- Zostaje: rura przed oknem sterowni (góra, 54 m) — świadomie, warstwa przed wnęką dodaje głębi; ocena w grze.
+
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
 - Rozmycie głębi ostrości tylko dla bliskiego planu na kamerze graczy (`CameraAttributesPractical.dof_blur_near_*`): gracze

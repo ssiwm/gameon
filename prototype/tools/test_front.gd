@@ -2,7 +2,8 @@ extends SceneTree
 ## Test pierwszego planu przed płaszczyzną gry (`scripts/front3d.gd`, `FOREGROUND_PLAN.md`) na wszystkich mapach z scripts/maps:
 ## (1) dane `FRONT` / `FRONT_SKIP`: znany zestaw, kolumny i wiersze w mapie, c0 < c1, r0 < r1,
 ## (2) rozmieszczenie: z w Z_RANGE, element w zakresie wpisu z zapasem, duże elementy co najmniej BIG_SPACING.x od siebie także
-##     między wpisami, których pasy mieszczą się razem w kadrze (najwyżej jeden duży element w kadrze NORMAL), mały element
+##     między wpisami, których pasy mieszczą się razem w kadrze (najwyżej jeden duży element w kadrze NORMAL; piętra z przekrojem
+##     rozdzielone płytą liczą się osobno — `Front3D.apart`), mały element
 ##     co najmniej SMALL_MIN od dużego, `FRONT_SKIP` pusty, na LOW bez małych, ten sam układ przy każdym wywołaniu,
 ## (3) bryły: tylko warstwa `LAYER_FRONT` (rozłączna z warstwami świata, lasu, dna lasu i wnęk), bez cienia, bez kolizji,
 ##     części rur z `pipe_parts.glb` (odcinek, zawór, trójnik, cienka rura) i tekstury zestawu, każda powierzchnia z materiałem
@@ -20,7 +21,7 @@ const Niches3D := preload("res://scripts/niches3d.gd")
 const Front3D := preload("res://scripts/front3d.gd")
 const LAYER_WORLD := 1                    ## view3d.gd LAYER_WORLD
 const LAYER_ACTORS := 2                   ## view3d.gd LAYER_ACTORS
-const FRAME_H_NORMAL := 180.0 * 1.8 / 22.0   ## m: wysokość kadru NORMAL na płaszczyźnie gry (Settings.CAM_ZOOM 2.0 → 180 px)
+const FRAME_H_NORMAL := Front3D.FRAME_H_NORMAL
 var _frames := 0
 var _fail := 0
 
@@ -87,8 +88,7 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 			var b: Dictionary = items[j]
 			var ca: Vector4 = a["clip"]
 			var cb: Vector4 = b["clip"]
-			var gap_y := maxf(0.0, maxf(ca.z, cb.z) - minf(ca.w, cb.w))          # odstęp pionowy pasów
-			if gap_y >= FRAME_H_NORMAL:
+			if Front3D.apart(ca, bool(a["shell"]), cb, bool(b["shell"])):        # pasy dalej niż kadr albo piętra rozdzielone płytą przekroju
 				continue
 			var dx := absf(float(a["x"]) - float(b["x"]))
 			if bool(a["big"]) and bool(b["big"]):
@@ -101,7 +101,8 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 
 ## Przekrój budynku (F2b, `Level3D.set_shells`): kafle strefy to lite kafle stropu (r0) i podłogi z fundamentem (od r1 w dół), nigdy
 ## ściany w pasie gry (wysunięte zasłaniałyby wrogów w rzucie) ani strefy wydobycia; element pierwszego planu stoi na płycie z betonu
-## lub gruntu (nie w cieczy), z kołnierzem przed przodem przekroju i co najmniej 1 m od belek pod stropem (belka w warstwie świata).
+## lub gruntu (nie w cieczy), z kołnierzem przed przodem przekroju, co najmniej 1 m od belek pod stropem (belka w warstwie świata)
+## i nie przed stanowiskiem w pasie wpisu (`Front3D.STATION_CH` ± `STATION_PAD`; wygaszanie obejmuje tylko postacie).
 func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: Array) -> void:
 	Level3D.set_shells(front, rows)
 	var shelled := front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
@@ -127,6 +128,15 @@ func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: 
 		if bool(it["big"]):
 			for rx: float in ribs:
 				_check(absf(rx - x) >= 1.0, "%s %s x %.1f: %.2f m od belki pod stropem (x %.1f)" % [map_id, it["kind"], x, absf(rx - x), rx])
+		# stanowisko w pasie wpisu (kryjówka): element nie stoi przed nim, wygaszanie obejmuje tylko postacie
+		for r in range(roundi(-(it["clip"] as Vector4).w / Level3D.T) + 1, r1):
+			for cc in String(rows[r]).length():
+				if String(rows[r]).substr(cc, 1) in Front3D.STATION_CH:
+					var sx0 := float(cc) * Level3D.T - Front3D.STATION_PAD
+					var sx1 := float(cc + 1) * Level3D.T + Front3D.STATION_PAD
+					var clip: Vector4 = it["clip"]
+					if sx1 > clip.x and sx0 < clip.y:
+						_check(x < sx0 or x > sx1, "%s %s x %.1f: przed stanowiskiem '%s' (%d, %d)" % [map_id, it["kind"], x, String(rows[r]).substr(cc, 1), cc, r])
 	Level3D.set_shells([], rows)
 
 
