@@ -494,6 +494,37 @@ z których olej wyciekł; źródło światła drezyny jest w złym miejscu”.
 - Zrzuty: `shots_front/f3_m3/` — `sheet1.jpg` (gra), `sheetL.jpg` (`--view3dlit`), `sheet3.jpg` (niecki po poprawce),
   `s_N_mid80_c.jpg` (plama w normalnym świetle, rozjaśniony).
 
+### Poprawki po playteście 1.3 (2026-11-08, 1.7.525)
+
+Uwagi użytkownika po zagraniu 1.3: kierunek dobry („gra zyskała głębię, poczucie przestrzeni”), ale (1) ściany i stropy czasem stoją na
+innym planie niż podłoga — w wielu miejscach, (2) błoto powinno mieć kształt jak plamy oleju, (3) początek misji nie jest spójny:
+dwie struktury podłoża, przeszkody bez sensu.
+
+- **Ściany na planie podłogi.** Przyczyna: przekrój F2b wysuwał tylko płyty stropu i podłogi; ściany w pasie wpisu zostawały na 1,1 m,
+  bo wysunięte w warstwie świata zasłaniały wrogów i pierścień Stalkera (rzut ×1,38). Teraz `Level3D.set_shells` zbiera
+  `shell_walls`: lite kafle ścian (`WALL_CH` = `#C`) w pasie wpisu z przekrojem (bez kafli płyt i stref wydobycia) oraz nadproża —
+  kafle między stropem wyższego wpisu a stropem sąsiedniego niższego (sala → niski tunel). `Front3D.build_walls` stawia je jako
+  bryły od 1,1 do 5,6 m (scalone poziome ciągi, MultiMesh na klucz materiału) na nowej warstwie `LAYER_WALL` = 512, którą widzi
+  kamera graczy: shader pierwszego planu z wygaszaniem nad sylwetkami, tekstura w układzie świata (`world_uv`: beton albo skała,
+  z brudem), `occ` odcina część za płytą stropu i podłogi (z kamery nad stropem). Kontra postaci (`LAYER_ACTORS|LAYER_FRONT`)
+  ich nie oświetla — na pierwszej próbie boki ścian świeciły na niebiesko; lampy `l3a` dostały `LAYER_WALL` w maskę. Ściany są poza
+  węzłem `Front`, więc „Foreground” OFF i REDUCED ich nie ruszają (to geometria świata, nie dekoracja).
+- **Strefa wydobycia.** Kopana ściana przy zachodniej sali stała na 1,1 m przed płytą 5,6 m. `Level3D.zone_front_z` daje strefie
+  dotykającej pasa przekroju przód na `SHELL_Z` (`view3d._sync_dig_zones` → `chunk_mesh`). Wpisy 1.3: zachodnia sala od kolumny 0,
+  sala ewakuacji do 191 — końcowe ściany mapy też w płaszczyźnie podłogi.
+- **Kształt błota.** `OIL_STAIN_SHADER` ma tryb błota (`mode` 1): metakule w kolorach tafli nad brzegami niecki (wsunięte 0,4 m,
+  `MUD_INSET`), rozbryzgi obok i — w przekroju — plamy na płycie przed niecką. `Level3D.mud_spills` dla każdej niecki błota;
+  `Front3D.blocked_x` nie stawia rury w plamie na płycie.
+- **Start 1.3.** Usunięte pnie `w` i kładki w lesie przy starcie, płot i zapora betonowa (`ACCENTS`) — stały bez związku z drogą;
+  posterunek dostał lewą ścianę `C` z drzwiami, skrzynie przeniesione do środka, błoto przed posterunek (kol. 14–16). Dwie
+  struktury podłoża (grunt lasu i beton posterunku) zostają celowo: beton to podłoga budynku z przekrojem, granica wypada na ścianie.
+- Test `tools/test_front.gd`: ściany przekroju tylko na kaflach ścian, nigdy na płycie ani w strefie wydobycia, z teksturą i
+  niepustym `occ`; `LAYER_WALL` rozłączna z innymi; `build_walls` na 1.3 i w kryjówce coś buduje, bez cienia; przód strefy przy
+  zachodniej sali 1.3 na `SHELL_Z`; plamy błota z `OIL_BLOBS` metakul na płycie.
+- Koszt GPU nie mierzony osobno (kilka MultiMeshy prostopadłościanów na mapę).
+- Zrzuty: `shots_front/f3_m3/` — `s_y_start10l.jpg`, `s_y_post30l.jpg` (start i posterunek), `s_x_mud22l.jpg` (błoto w zachodniej
+  sali), `s_x_east183.jpg` (końcowa ściana), `s_z_hub4l.jpg`, `s_z_hub67l.jpg` (kryjówka), `s_z_m2hall98l.jpg` (hala 1.2).
+
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
 - Rozmycie głębi ostrości tylko dla bliskiego planu na kamerze graczy (`CameraAttributesPractical.dof_blur_near_*`): gracze

@@ -18,9 +18,9 @@ const OBJECTIVE := "nests"                ## nests = gniazda + boss; generators 
 const UNDERGROUND_ROW := 31               ## od tego rzędu postać jest w podziemiach (ambient, straszaki)
 ## Broń na ziemi („g") w kolejności od lewej (rosnąca moc).
 const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.HKM9, Weapons.GNIEW4]
-## Ręczne akcenty dekoracji: [pozycja stóp, indeks z art/props.png] — płot przy starcie, kłody w tartaku.
-## (8+) Poly Haven: zapora betonowa przy starcie, koksownik wartowników przed posterunkiem.
-const ACCENTS := [[Vector2(152, 416), 6], [Vector2(184, 416), 6], [Vector2(1432, 416), 7], [Vector2(2872, 416), 7], [Vector2(200, 416), 14], [Vector2(584, 416), 11], [Vector2(1864, 416), 15], [Vector2(1928, 416), 20], [Vector2(1960, 416), 16], [Vector2(2024, 416), 19], [Vector2(2072, 416), 15], [Vector2(2120, 416), 20], [Vector2(2184, 416), 16], [Vector2(2216, 416), 15], [Vector2(2248, 416), 17], [Vector2(1880, 353), 15], [Vector2(1928, 353), 17], [Vector2(2008, 353), 20], [Vector2(2056, 353), 16], [Vector2(2136, 353), 15], [Vector2(2200, 353), 20], [Vector2(2088, 416), 21], [Vector2(1896, 405), 22]]
+## Ręczne akcenty dekoracji: [pozycja stóp, indeks z art/props.png] — kłody w tartaku, regały i beczki w Składzie.
+## (8+) Poly Haven: koksownik wartowników przed posterunkiem. Start w lesie bez płotu i zapory (porządek po playteście F3).
+const ACCENTS := [[Vector2(1432, 416), 7], [Vector2(2872, 416), 7], [Vector2(584, 416), 11], [Vector2(1864, 416), 15], [Vector2(1928, 416), 20], [Vector2(1960, 416), 16], [Vector2(2024, 416), 19], [Vector2(2072, 416), 15], [Vector2(2120, 416), 20], [Vector2(2184, 416), 16], [Vector2(2216, 416), 15], [Vector2(2248, 416), 17], [Vector2(1880, 353), 15], [Vector2(1928, 353), 17], [Vector2(2008, 353), 20], [Vector2(2056, 353), 16], [Vector2(2136, 353), 15], [Vector2(2200, 353), 20], [Vector2(2088, 416), 21], [Vector2(1896, 405), 22]]
 
 ## Tło 3D (`backdrop3d.gd`, kosmetyka): ta sama linia energetyczna co w 1.2 i daleki maszt radiostacji za lasem.
 const BACKDROP := [{"kind": "power", "c0": -20, "c1": 215, "z": -82.0}, {"kind": "mast", "col": 30, "z": -170.0, "h": 110.0}]
@@ -52,13 +52,13 @@ const FRONT := [
 	{"set": "station", "c0": 18, "c1": 36, "r0": 21, "r1": 26, "shell": true},     # posterunek
 	{"set": "station", "c0": 32, "c1": 37, "r0": 26, "r1": 30, "shell": true},     # piwniczka pod posterunkiem (kratka do szybu)
 	{"set": "station", "c0": 112, "c1": 142, "r0": 18, "r1": 26, "shell": true},   # Skład (antresola, niecka oleju)
-	{"set": "tunnel", "c0": 6, "c1": 30, "r0": 30, "r1": 40, "shell": true},       # zachodnia sala podziemi (gniazda)
+	{"set": "tunnel", "c0": 0, "c1": 30, "r0": 30, "r1": 40, "shell": true},       # zachodnia sala podziemi (gniazda) ze ścianą do kopania
 	{"set": "tunnel", "c0": 31, "c1": 62, "r0": 35, "r1": 40, "shell": true},      # niski tunel z pierwszym szybem
 	{"set": "tunnel", "c0": 63, "c1": 90, "r0": 30, "r1": 40, "shell": true},      # środkowa sala
 	{"set": "tunnel", "c0": 91, "c1": 108, "r0": 35, "r1": 40, "shell": true},     # tunel ze środkowym szybem
 	{"set": "tunnel", "c0": 109, "c1": 143, "r0": 30, "r1": 40, "shell": true},    # wschodnia sala (niecka oleju)
 	{"set": "tunnel", "c0": 144, "c1": 170, "r0": 35, "r1": 40, "shell": true},    # tunel z trzecim szybem
-	{"set": "tunnel", "c0": 171, "c1": 186, "r0": 30, "r1": 40, "shell": true},    # sala ewakuacji
+	{"set": "tunnel", "c0": 171, "c1": 191, "r0": 30, "r1": 40, "shell": true},    # sala ewakuacji z końcową ścianą
 ]
 const FRONT_SKIP := []
 
@@ -80,16 +80,16 @@ const MAP := [
 	"##.............................................................................................................................................................w.........w.........w---------.##",
 	"##.............................................................................................................................................................w.........w........Tw..........##",
 	"##.............................................................................................................................................................w.........w......---------.....##",
-	"##.......w...w...........................................................................................................P..MM..T..M...........................w.........wk.T......w..........##",
-	"##.......w...w..................................................................................................CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC................w........-------....w..........##",
-	"##.......w...w..................................................................................................|bbbbbbbbbbbbbbbbbbbbbbbbbbbbb|................w...g.....w.........w..........##",
-	"##.......w...w............................................=========.........................................----|bbbbbbbbbbbbbbbbbJbbbbbbbbbbb|----............w-------..w.........w..........##",
-	"##.......w...w....CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbbbbbbbbbTbbbbbbC................w.........w.........w..........##",
-	"##.......w...w.---bbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w......-------......w..........##",
-	"##.......w...w....bbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
-	"##.......w..---...bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----......-------....w.........w..........##",
-	"##.ES..S.w.g.w.kk.bbbbbbobTbTbTbbNbb.u......a.....L...M..ok.W.a....u..X...M.......TaT...u..............k....kko..bYbbbTbbTbbubbabbbkbWbbbbbbbb....oP..k........w..a......w.o..W.aykw...B....E.##",
-	"#############mmmmmm###################bbbbbbCCCCCCCCCCOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"##.......................................................................................................................P..MM..T..M...........................w.........wk.T......w..........##",
+	"##..............................................................................................................CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC................w........-------....w..........##",
+	"##..............................................................................................................|bbbbbbbbbbbbbbbbbbbbbbbbbbbbb|................w...g.....w.........w..........##",
+	"##........................................................=========.........................................----|bbbbbbbbbbbbbbbbbJbbbbbbbbbbb|----............w-------..w.........w..........##",
+	"##................CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbbbbbbbbbTbbbbbbC................w.........w.........w..........##",
+	"##................CbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w......-------......w..........##",
+	"##................CbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
+	"##................bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----......-------....w.........w..........##",
+	"##.ESg.S..........bbbbkkobTbTbTbbNbb.u......a.....L...M..ok.W.a....u..X...M.......TaT...u..............k....kko..bYbbbTbbTbbubbabbbkbWbbbbbbbb....oP..k........w..a......w.o..W.aykw...B....E.##",
+	"##############mmm#####################bbbbbbCCCCCCCCCCOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"################################bbbbbCbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"################################bbbbbb======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"################################bybub+bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",

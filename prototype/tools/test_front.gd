@@ -104,7 +104,7 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 ## lub gruntu (nie w cieczy), z kołnierzem przed przodem przekroju, co najmniej 1 m od belek pod stropem (belka w warstwie świata)
 ## i nie przed stanowiskiem w pasie wpisu (`Front3D.STATION_CH` ± `STATION_PAD`; wygaszanie obejmuje tylko postacie).
 func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: Array) -> void:
-	Level3D.set_shells(front, rows)
+	Level3D.set_shells(front, rows, digs)
 	var shelled := front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
 	_check(shelled.is_empty() or not Level3D.shell_cells.is_empty(), map_id + ": wpis z przekrojem bez kafli przekroju")
 	for k: Vector2i in Level3D.shell_cells:
@@ -137,7 +137,46 @@ func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: 
 					var clip: Vector4 = it["clip"]
 					if sx1 > clip.x and sx0 < clip.y:
 						_check(x < sx0 or x > sx1, "%s %s x %.1f: przed stanowiskiem '%s' (%d, %d)" % [map_id, it["kind"], x, String(rows[r]).substr(cc, 1), cc, r])
+	_check_walls(map_id, rows, digs)
 	Level3D.set_shells([], rows)
+
+
+## Ściany przekroju (`Level3D.shell_walls`): lite ściany w pasie wpisu i nadproża między przekrojami o różnym stropie, wysunięte do
+## przodu przekroju na osobnej warstwie `Front3D.LAYER_WALL` (z wygaszaniem, bez światła obrysu postaci). Tylko kafle ścian (`WALL_CH`),
+## nigdy kafle płyt (`shell_cells`) ani strefa wydobycia; `occ` tnie część za płytą stropu i podłogi.
+func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
+	for k: Vector2i in Level3D.shell_walls:
+		var ch := String(rows[k.y]).substr(k.x, 1)
+		_check(ch in Level3D.WALL_CH, "%s %s: ściana przekroju na kaflu '%s'" % [map_id, k, ch])
+		_check(not Level3D.shell_cells.has(k), "%s %s: ściana przekroju na kaflu płyty" % [map_id, k])
+		for z in digs:
+			_check(not (k.x >= int(z[0]) and k.x <= int(z[2]) and k.y >= int(z[1]) and k.y <= int(z[3])), "%s %s: ściana przekroju w strefie wydobycia" % [map_id, k])
+		var w: Array = Level3D.shell_walls[k]
+		_check(String(w[0]) in Front3D.WALL_TEX, "%s %s: ściana bez tekstury ('%s')" % [map_id, k, w[0]])
+		var occ: Vector4 = w[1]
+		_check(occ.x > occ.y, "%s %s: pusty pas okluzji ściany" % [map_id, k])
+	for z in digs:
+		var zf := Level3D.zone_front_z(int(z[0]), int(z[1]), int(z[2]), int(z[3]))
+		_check(is_equal_approx(zf, Level3D.DEPTH_FRONT) or is_equal_approx(zf, Level3D.SHELL_Z), "%s: przód strefy wydobycia %.2f" % [map_id, zf])
+	if map_id in ["z1_m3", "z1_hub"]:
+		_check(not Level3D.shell_walls.is_empty(), map_id + ": brak ścian przekroju")
+		var root := Node3D.new()
+		get_root().add_child(root)
+		var n := Front3D.build_walls(root)
+		_check(n > 0, map_id + ": build_walls nic nie zbudował")
+		for c in root.find_children("*", "MultiMeshInstance3D", true, false):
+			var mmi := c as MultiMeshInstance3D
+			_check(mmi.layers == Front3D.LAYER_WALL and mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: ściana %s ze złą warstwą albo z cieniem" % [map_id, mmi.name])
+		root.free()
+	if map_id == "z1_m3":
+		# 1.3: strefa kopania przy zachodniej hali stoi w jednej płaszczyźnie z podłogą przekroju
+		_check(is_equal_approx(Level3D.zone_front_z(1, 31, 5, 39), Level3D.SHELL_Z), "1.3: strefa wydobycia przy hali nie wysunięta do przekroju")
+		var muds := Level3D.mud_spills(rows)
+		_check(muds.size() >= 2, "1.3: %d plam błota (start i hala)" % muds.size())
+		for sp: Dictionary in muds:
+			_check(int(sp["mode"]) == 1 and (sp["blobs"] as Array).size() == Level3D.OIL_BLOBS, "błoto: tryb albo liczba metakul (tablica w shaderze)")
+			var zr: Vector2 = sp["zr"]
+			_check(zr.y <= Level3D.SHELL_Z and zr.x >= -Level3D.DEPTH_BACK, "błoto: plama poza płytą (z %.2f–%.2f)" % [zr.x, zr.y])
 
 
 ## FRONT_SKIP: zakres bez pierwszego planu nie dostaje żadnego elementu (z zapasem MARGIN).
@@ -156,6 +195,8 @@ func _check_layers() -> void:
 	var lf := Front3D.LAYER_FRONT
 	for other in [LAYER_WORLD, LAYER_ACTORS, Level3D.LAYER_FOREST, Level3D.LAYER_FAR, Niches3D.LAYER_NICHE]:
 		_check(lf & int(other) == 0, "LAYER_FRONT nachodzi na warstwę %d" % other)
+	for other in [LAYER_WORLD, LAYER_ACTORS, Level3D.LAYER_FOREST, Level3D.LAYER_FAR, Niches3D.LAYER_NICHE, lf]:
+		_check(Front3D.LAYER_WALL & int(other) == 0, "LAYER_WALL nachodzi na warstwę %d" % other)
 	var root := Node3D.new()
 	get_root().add_child(root)
 	var front := [{"set": "station", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}, {"set": "tunnel", "c0": 0, "c1": 120, "r0": 30, "r1": 37}]
