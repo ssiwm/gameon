@@ -191,12 +191,25 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		for c in root.find_children("*", "MultiMeshInstance3D", true, false):
 			var mmi := c as MultiMeshInstance3D
 			_check(mmi.layers == Front3D.LAYER_WALL and mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: ściana %s ze złą warstwą albo z cieniem" % [map_id, mmi.name])
+		var nb := 0
+		for k: Vector2i in Level3D.shell_walls:
+			nb += int(not Level3D.shell_entry_cells.has(k))
+		_check(n <= nb, "%s: ściana wejścia budynku w warstwie pierwszego planu (ma być w świecie z fasadą)" % map_id)
 		root.free()
 	if map_id in ["z1_m2", "z1_m3"]:
 		# wejścia budynków: pełna ściana przed drzwiami (1.3 posterunek i Skład, 1.2 hala), bez ściany przed kratką piwniczki 1.3
 		var ent: Array = [Vector2i(18, 24), Vector2i(36, 24), Vector2i(112, 23), Vector2i(142, 23)] if map_id == "z1_m3" else [Vector2i(66, 23), Vector2i(100, 23)]
 		for k: Vector2i in ent:
 			_check(Level3D.shell_walls.has(k), "%s %s: brak pełnej ściany wejścia" % [map_id, k])
+		for k: Vector2i in ent:
+			_check(Level3D.shell_entry_cells.has(k), "%s %s: ściana wejścia nie w warstwie świata" % [map_id, k])
+		# fasada na bokach wysuniętej ściany wejścia (uwaga z gry 2026-11-09: „budynki z drzwiami”): drzwi posterunku, brama i okno Składu
+		var kinds := {}
+		for f: Dictionary in Level3D.shell_facades:
+			kinds["%d:%s" % [int(f["c"]), String(f["kind"])]] = true
+		var want: Array = ["18:door", "36:door", "112:gate", "112:window", "142:gate"] if map_id == "z1_m3" else ["66:gate", "100:gate"]
+		for w: String in want:
+			_check(kinds.has(w), "%s: brak fasady %s (są: %s)" % [map_id, w, kinds.keys()])
 		if map_id == "z1_m3":
 			_check(not Level3D.shell_walls.has(Vector2i(37, 29)), "1.3: ściana wejścia zasłania kratkę piwniczki")
 	if map_id == "z1_m3":
@@ -210,6 +223,9 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 			_check(int(sp["mode"]) == 1 and (sp["blobs"] as Array).size() == Level3D.OIL_BLOBS, "błoto: tryb albo liczba metakul (tablica w shaderze)")
 			var zr: Vector2 = sp["zr"]
 			_check(zr.y <= Level3D.SHELL_Z and zr.x >= -Level3D.DEPTH_BACK, "błoto: plama poza płytą (z %.2f–%.2f)" % [zr.x, zr.y])
+		# bagno startu (14–16, wiersz 26) pod gołym niebem: plama wychodzi na podłoże lasu, a podłoże pod nią jest płaskie i bez runa
+		var start: Array = muds.filter(func(sp: Dictionary) -> bool: return absf(float(sp["x0"]) - 14.0 * Level3D.T) < 0.5)
+		_check(start.size() == 1 and bool(start[0].get("open", false)) and (start[0]["zr"] as Vector2).y > Level3D.DEPTH_FRONT + 2.0, "1.3: bagno startu nie wychodzi na podłoże lasu")
 
 
 ## FRONT_SKIP: zakres bez pierwszego planu nie dostaje żadnego elementu (z zapasem MARGIN).
@@ -320,7 +336,7 @@ func _check_forest() -> void:
 	for c in fr.get_children():
 		var mi := c as MeshInstance3D
 		var kind := String(mi.name).get_slice("_", 0)
-		if not kind in ["pine", "birch", "snag", "bough", "ferns", "grass"]:
+		if not kind in ["pine", "birch", "snag", "sapling", "ferns", "grass"]:
 			for si in mi.mesh.get_surface_count():                # rury w tunelu: bez kontry księżyca
 				var pm := mi.get_surface_override_material(si) as ShaderMaterial
 				_check(_par(pm, "rim_k", 0.0) == 0.0 and _par(pm, "trans_k", 0.0) == 0.0, "%s: kontra księżyca pod ziemią" % mi.name)
@@ -333,15 +349,15 @@ func _check_forest() -> void:
 		var bb := mi.mesh.get_aabb()
 		var yg := Front3D.ground_y(mi.position.x, mi.position.z)
 		var yw: Variant = mi.get_instance_shader_parameter("ywin")
-		if kind != "bough":
-			_check(yw is Vector2 and absf((yw as Vector2).x - yg) < 0.001 and absf(yg - y_floor) < 0.001, "%s: nasada nie kończy się na podłożu (ywin %s, podłoże %.3f)" % [mi.name, yw, yg - y_floor])
-			for dx in [-1.0, 0.0, 1.0]:                          # płasko pod elementem (nierówność podłoża nie wchodzi nad nasadę)
-				_check(absf(Front3D.ground_y(mi.position.x + dx, mi.position.z) - yg) < 0.001, "%s: podłoże pod elementem nierówne" % mi.name)
+		_check(yw is Vector2 and absf((yw as Vector2).x - yg) < 0.001 and absf(yg - y_floor) < 0.001, "%s: nasada nie kończy się na podłożu (ywin %s, podłoże %.3f)" % [mi.name, yw, yg - y_floor])
+		for dx in [-1.0, 0.0, 1.0]:                          # płasko pod elementem (nierówność podłoża nie wchodzi nad nasadę)
+			_check(absf(Front3D.ground_y(mi.position.x + dx, mi.position.z) - yg) < 0.001, "%s: podłoże pod elementem nierówne" % mi.name)
 		if kind in ["pine", "birch", "snag"]:
 			# nasada (szyja, korzenie) schodzi pod podłoże, koniec nad górnym brzegiem kadru NORMAL (ok. 8 m nad podłogą przy z = 3,5–5 m)
 			_check(bb.position.y < yg - 0.2 and bb.position.y > yg - 1.0 and bb.end.y > y_floor + FRAME_H_NORMAL * 0.75, "%s: pień nie stoi na podłożu albo nie sięga nad kadr (%.1f..%.1f wzgl. podłoża)" % [mi.name, bb.position.y - yg, bb.end.y - yg])
-		elif kind == "bough":
-			_check(bb.end.y > y_floor + FRAME_H_NORMAL * 0.5 and bb.position.y > y_floor + 3.0, "%s: gałąź nie wisi przy górnym brzegu" % mi.name)
+		elif kind == "sapling":
+			# młody świerk stoi na podłożu (dawniej gałąź `bough` wisiała nad kadrem bez pnia — uwaga z gry 2026-11-09)
+			_check(bb.position.y < yg and bb.end.y > yg + Front3D.SAPLING_H.x * 0.8 and bb.end.y < yg + Front3D.SAPLING_H.y * 1.1, "%s: świerczek nie stoi na podłożu (%.1f..%.1f wzgl. podłoża)" % [mi.name, bb.position.y - yg, bb.end.y - yg])
 		else:
 			var z := mi.position.z
 			_check(z >= Front3D.CLUMP_Z.x and z <= Front3D.CLUMP_Z.y, "%s: kępa w z %.2f poza CLUMP_Z" % [mi.name, z])
@@ -366,13 +382,13 @@ func _check_forest() -> void:
 				_check(_par(m, "rim_k", 0.0) > 0.0, "%s: kora bez kontry księżyca" % mi.name)
 		if kind in ["pine", "birch", "snag"]:
 			_check(rims == 1 and bases == 1, "%s: pień bez osobnej kory nasady (kora %d, nasada %d)" % [mi.name, rims, bases])
-	for k in ["pine", "birch", "snag", "bough", "ferns", "grass"]:
+	for k in ["pine", "birch", "snag", "sapling", "ferns", "grass"]:
 		_check(kinds.has(k), "las: rodzaj %s nie powstał na długim zakresie" % k)
 	Front3D.set_moon(0.25)
 	for c in fr.get_children():
 		var mi := c as MeshInstance3D
 		var m := mi.get_surface_override_material(0) as ShaderMaterial
-		var forest := String(mi.name).get_slice("_", 0) in ["pine", "birch", "snag", "bough", "ferns", "grass"]
+		var forest := String(mi.name).get_slice("_", 0) in ["pine", "birch", "snag", "sapling", "ferns", "grass"]
 		_check(is_equal_approx(_par(m, "moon", 1.0), 0.25 if forest else 1.0), "%s: set_moon nie działa tylko na las" % mi.name)
 	Front3D.set_moon(1.0)
 	_check_ground(root, y_floor)

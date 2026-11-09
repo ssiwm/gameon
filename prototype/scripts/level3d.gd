@@ -420,6 +420,80 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 	for k in out:
 		_multimesh(parent, box, out[k], mats[k], false)
 
+## Ściany wejścia budynków (`shell_entry_cells`) od DEPTH_FRONT do SHELL_Z w warstwie świata, betonem jak płyty przekroju, i na obu bokach
+## wysuniętej ściany (z zewnątrz i od środka budynku) element w miejscu otworu w pasie gry (`shell_facades`): stalowe drzwi w ościeżnicy
+## z klamką i progiem, brama z blachy z prowadnicą albo okno z ramą, szprosem i parapetem. Kilkanaście skrzynek na budynek, bez cienia.
+const FACADE_Z := 1.15                     ## m przed DEPTH_FRONT: środek drzwi i okna na boku ściany wejścia (blisko pasa gry, gdzie jest prawdziwy otwór)
+static func _build_facades(parent: Node3D, box: BoxMesh, mats: Dictionary) -> void:
+	if shell_entry_cells.is_empty():
+		return
+	var d := SHELL_Z - DEPTH_FRONT
+	var xfs := []
+	for k: Vector2i in shell_entry_cells:
+		var p := cell_pos(k.x, k.y)
+		xfs.append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, d / (DEPTH_FRONT + DEPTH_BACK))), Vector3(p.x, p.y, DEPTH_FRONT + d * 0.5)))
+	_multimesh(parent, box, xfs, mats["C"], false)
+	var steel: Material = mats["M"]
+	var leaf := make_pbr("metal", 0.40, Color(0.22, 0.24, 0.22), 0.55, 1.0, 0.7, false, "rust")
+	var sheet: Material = mats["roof"]
+	var glass := make_mat(Color(0.03, 0.035, 0.04), 0.12, 0.06, 0.0)
+	var parts := {}                                             # materiał → [Transform3D skrzynki 1×1×1]
+	var add := func(mat: Material, size: Vector3, pos: Vector3) -> void:
+		if not parts.has(mat):
+			parts[mat] = []
+		(parts[mat] as Array).append(Transform3D(Basis().scaled(size), pos))
+	for f: Dictionary in shell_facades:
+		var c := int(f["c"])
+		var y_top := -float(int(f["rt"])) * T
+		var y_bot := -float(int(f["rb"]) + 1) * T
+		for side in [-1, 1]:
+			var face := float(c) * T if side < 0 else float(c + 1) * T
+			var at := func(depth: float) -> float:                  # x środka elementu wystającego o `depth` z boku ściany
+				return face + float(side) * depth * 0.5
+			match String(f["kind"]):
+				"door":
+					var h := minf(2.15, y_top - y_bot - 0.15)
+					var w := 1.05
+					var zc := DEPTH_FRONT + FACADE_Z
+					add.call(leaf, Vector3(0.05, h, w), Vector3(at.call(0.05), y_bot + h * 0.5, zc))
+					for dz in [-1.0, 1.0]:
+						add.call(steel, Vector3(0.09, h + 0.08, 0.08), Vector3(at.call(0.09), y_bot + (h + 0.08) * 0.5, zc + dz * (w * 0.5 + 0.04)))
+					add.call(steel, Vector3(0.09, 0.08, w + 0.16), Vector3(at.call(0.09), y_bot + h + 0.04, zc))
+					for yy in [0.55, 1.6]:                              # przetłoczenia skrzydła
+						add.call(leaf, Vector3(0.075, 0.05, w - 0.2), Vector3(at.call(0.075), y_bot + yy, zc))
+					add.call(steel, Vector3(0.13, 0.05, 0.16), Vector3(at.call(0.13), y_bot + 1.02, zc - w * 0.5 + 0.14))   # klamka od strony pasa gry
+					add.call(mats["C"], Vector3(0.22, 0.12, w + 0.4), Vector3(at.call(0.22), y_bot + 0.06, zc))             # próg
+				"gate":
+					var h := minf(3.5, y_top - y_bot - 0.35)
+					var w := minf(2.9, d - 0.9)
+					var zc := DEPTH_FRONT + 0.35 + w * 0.5
+					add.call(sheet, Vector3(0.06, h, w), Vector3(at.call(0.06), y_bot + h * 0.5, zc))
+					var n_rib := int(h / 0.9)
+					for i in n_rib:
+						add.call(steel, Vector3(0.1, 0.07, w), Vector3(at.call(0.1), y_bot + h * float(i + 1) / float(n_rib + 1), zc))
+					for dz in [-1.0, 1.0]:
+						add.call(steel, Vector3(0.12, h + 0.15, 0.1), Vector3(at.call(0.12), y_bot + (h + 0.15) * 0.5, zc + dz * (w * 0.5 + 0.05)))
+					add.call(steel, Vector3(0.16, 0.14, w + 0.6), Vector3(at.call(0.16), y_bot + h + 0.12, zc))           # prowadnica
+					add.call(leaf, Vector3(0.11, 1.95, 0.85), Vector3(at.call(0.11), y_bot + 0.975, zc + w * 0.5 - 0.6))  # furtka w bramie
+					add.call(steel, Vector3(0.15, 0.05, 0.14), Vector3(at.call(0.15), y_bot + 1.0, zc + w * 0.5 - 0.95))
+				"window":
+					var h := y_top - y_bot - 0.5
+					var w := 1.3
+					var zc := DEPTH_FRONT + FACADE_Z
+					var yc := (y_top + y_bot) * 0.5
+					add.call(glass, Vector3(0.03, h, w), Vector3(at.call(0.03), yc, zc))
+					for dz in [-1.0, 1.0]:
+						add.call(steel, Vector3(0.08, h + 0.08, 0.07), Vector3(at.call(0.08), yc, zc + dz * (w * 0.5 + 0.035)))
+					for dy in [-1.0, 1.0]:
+						add.call(steel, Vector3(0.08, 0.07, w + 0.14), Vector3(at.call(0.08), yc + dy * (h * 0.5 + 0.035), zc))
+					add.call(steel, Vector3(0.06, h, 0.05), Vector3(at.call(0.06), yc, zc))
+					add.call(steel, Vector3(0.06, 0.05, w), Vector3(at.call(0.06), yc, zc))
+					add.call(mats["C"], Vector3(0.16, 0.08, w + 0.3), Vector3(at.call(0.16), yc - h * 0.5 - 0.08, zc))    # parapet
+	var unit := BoxMesh.new()
+	unit.size = Vector3.ONE
+	for m: Material in parts:
+		_multimesh(parent, unit, parts[m], m, false)
+
 ## Przekrój wnętrza bryły od frontu (z = DEPTH_FRONT): poziome ciągi niewidocznych z boku kafli jako jeden czworokąt na ciąg; materiał jak bryła
 ## (projekcja w świecie — tekstura przechodzi bez szwu przez front sąsiednich brył). Nocą czarny jak dotąd, ale światła mają na czym się położyć.
 static func _build_caps(parent: Node3D, cells: Array, mat: Material) -> void:
@@ -972,6 +1046,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 		_multimesh(parent, box, groups[k], mats[k])
 		_build_caps(parent, caps[k], mats[k])
 	_build_shell(parent, rows, box, mats, crate_cells, slabs)
+	_build_facades(parent, box, mats)
 	var wbox := BoxMesh.new()
 	wbox.size = Vector3(T, T, 0.3)
 	_multimesh(parent, wbox, walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
@@ -1635,6 +1710,11 @@ static var shell_cells := {}               ## Vector2i → klucz materiału prze
 ## i znaczniki obok siebie (wynik spike'a F2b). Vector2i → [klucz materiału ("C" / "#"), occ: Vector4 jak u elementów pierwszego planu].
 static var shell_walls := {}
 static var shell_bands: Array = []         ## wpisy FRONT z przekrojem z ostatniego `set_shells` (strefy wydobycia obok sięgają SHELL_Z)
+## Ściany wejścia budynku (`shell_entry`): kafle z `shell_walls` budowane w warstwie świata razem z płytami przekroju (`_build_facades`) —
+## to samo światło i ten sam beton co podłoga i strop, więc budynek jest jedną bryłą, a nie czarną płytą z przodu (uwaga z gry 2026-11-09).
+static var shell_entry_cells := {}
+## Elementy fasady na bokach wysuniętej ściany wejścia: {c, out (−1 lewy koniec budynku, +1 prawy), kind ("door"/"gate"/"window"), rt, rb (wiersze)}.
+static var shell_facades: Array = []
 const WALL_CH := "#C"
 const ENTRY_KEEP := "+%:q"                 ## niszczalne przegrody: kolumna z nimi nie dostaje pełnej ściany wejścia
 
@@ -1642,6 +1722,8 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	shell_cells = {}
 	shell_walls = {}
 	shell_bands = []
+	shell_entry_cells = {}
+	shell_facades = []
 	if "--noshell" in OS.get_cmdline_user_args():
 		return                                                  # dev: bez przekroju (porównanie A/B)
 	var bands: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
@@ -1683,10 +1765,14 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 					full = false
 			if not full and shell_entry(e, c, rows):
 				# ściana wejścia i wyjścia budynku: przed pasem gry cała wysokość, także przed drzwiami i oknem — budynek to zamknięta bryła
-				# jak podłoga i strop przekroju (uwaga z gry 2026-11-09); otwór zostaje w pasie gry, postać w nim widać przez wygaszanie
+				# jak podłoga i strop przekroju (uwaga z gry 2026-11-09); otwór zostaje w pasie gry. Ściana stoi w warstwie świata
+				# (`shell_entry_cells`, `_build_facades`), a na jej bokach drzwi, brama albo okno w miejscu otworu (uwaga z gry 2026-11-09:
+				# „budynki z drzwiami, a nie zlepek brył”)
 				for r in range(int(e["r0"]) + 1, int(e["r1"])):
 					if not shell_cells.has(Vector2i(c, r)):
 						shell_walls[Vector2i(c, r)] = ["C", occ]
+						shell_entry_cells[Vector2i(c, r)] = true
+				_entry_facades(e, c, rows)
 				continue
 			if not full:
 				continue
@@ -1711,6 +1797,27 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 					var k := Vector2i(c, r)
 					if _ch(rows, c, r) in SHELL_CH and not shell_cells.has(k) and not shell_walls.has(k) and not in_band.call(c, r) and not in_dig.call(c, r):
 						shell_cells[k] = "C" if concrete else ""
+
+## Otwory kolumny wejścia → `shell_facades`: ciąg wierszy bez muru nad podłogą pasa to drzwi (do 2 kafli) albo brama (wyżej),
+## ciąg okien `|` to okno; otwór w połowie wysokości bez okna (np. pomost) zostaje gładką ścianą.
+static func _entry_facades(e: Dictionary, c: int, rows: Array) -> void:
+	var out := -1 if c == int(e["c0"]) else 1
+	var r1 := int(e["r1"])
+	var r := int(e["r0"]) + 1
+	while r < r1:
+		var ch := _ch(rows, c, r)
+		if ch in WALL_CH:
+			r += 1
+			continue
+		var win := ch == "|"
+		var rt := r
+		while r < r1 and not (_ch(rows, c, r) in WALL_CH) and (_ch(rows, c, r) == "|") == win:
+			r += 1
+		var rb := r - 1
+		if win:
+			shell_facades.append({"c": c, "out": out, "kind": "window", "rt": rt, "rb": rb})
+		elif rb == r1 - 1:
+			shell_facades.append({"c": c, "out": out, "kind": "door" if rb - rt < 2 else "gate", "rt": rt, "rb": rb})
 
 ## Kolumna wejścia (`shell_walls` na całą wysokość pasa, uwaga z gry 2026-11-09): skrajna kolumna budynku (`station`, `bunker`) bez
 ## sąsiedniego wpisu z przekrojem na tej wysokości (przejście między salami zostaje otwarte), z kawałkiem ściany (`WALL_CH`) albo okna
@@ -2426,7 +2533,7 @@ void fragment() {
 	// nad niecką gry plama zachodzi tylko przez przednią krawędź (poszarpany pas do ok. 0,4 m): niecka i plama na płycie są jedną kałużą,
 	// a reszta niecki zostaje żywą taflą (fale, brodzenie). Pas przy bokach i z tyłu rysował ciemną ramkę wokół niecki (zrzut f2b6/oil3).
 	if (mode == 1) {
-		float e = min(wp.x - pit.x, pit.y - wp.x) + (fbm(wp.xz * 2.1 + seed * 1.3) - 0.5) * 0.5;
+		float e = min(min(wp.x - pit.x, pit.y - wp.x), (pit.z - wp.z) * 0.8) + (fbm(wp.xz * 2.1 + seed * 1.3) - 0.5) * 0.5;
 		if (wp.x > pit.x && wp.x < pit.y && wp.z < pit.z) {
 			float k = 1.0 - smoothstep(inset * 0.5, inset, e);
 			soak *= k;
@@ -2463,6 +2570,15 @@ void fragment() {
 ## kilka rozbryzgów leży na gruncie obok, a w strefie przekroju plama wychodzi też na płytę przed niecką. Każdy ciąg błota z wolnym
 ## powietrzem nad sobą, także na zewnątrz. Wynik w formacie `oil_spills` (bez beczek) z "mode": 1 dla `build_oil_stains`.
 const MUD_INSET := 0.4
+const MUD_FRONT_Z := 4.0                   ## m: jak daleko ku kamerze sięga plama bagna pod gołym niebem (na płycie podłoża lasu)
+
+## Nad kaflem tylko powietrze aż do góry mapy (bagno w lesie, nie w budynku ani w tunelu).
+static func _open_sky(rows: Array, c: int, r: int) -> bool:
+	for rr in r:
+		var ch := _ch(rows, c, rr)
+		if is_solid_ch(ch) or is_platform_ch(ch) or ch == "b":
+			return false
+	return true
 
 static func mud_spills(rows: Array) -> Array:
 	var out: Array = []
@@ -2479,7 +2595,10 @@ static func mud_spills(rows: Array) -> Array:
 		rng.seed = c * 6007 + r * 7741
 		var shell := in_shell(c, r) and in_shell(int(run["c1"]) - 1, r)
 		var zf := DEPTH_FRONT
-		var zmax := (SHELL_Z - 0.12) if shell else (DEPTH_FRONT - 0.02)
+		# bagno pod gołym niebem: przed nim leży płyta podłoża lasu (`Front3D`), więc plama wychodzi na nią nieregularnymi płatami —
+		# prosty przód niecki na DEPTH_FRONT leży wtedy w środku kałuży, a nie na jej brzegu (uwaga z gry 2026-11-09: „bagna naturalnie”)
+		var open := not shell and _open_sky(rows, c, r) and _open_sky(rows, int(run["c1"]) - 1, r)
+		var zmax := (SHELL_Z - 0.12) if shell else (MUD_FRONT_Z if open else DEPTH_FRONT - 0.02)
 		var blobs: Array = []
 		for side in [0, 1]:                                     # boki niecki: poszarpany brzeg zamiast prostej krawędzi
 			var ex := x0 if side == 0 else x1
@@ -2493,13 +2612,19 @@ static func mud_spills(rows: Array) -> Array:
 		if shell:                                               # przekrój: plama wychodzi na płytę przed niecką
 			for k in 3:
 				blobs.append(Vector4(x0 + w * (float(k) + 0.5) / 3.0 + rng.randf_range(-0.3, 0.3), zf + rng.randf_range(0.4, 1.2), w / 3.0 + 0.3, rng.randf_range(0.5, 0.8)))
+		if open:                                                # płaty przed niecką: szersze przy niej, mniejsze i rzadsze ku kamerze
+			for k in 5:
+				var t := (float(k) + rng.randf_range(0.1, 0.9)) / 5.0
+				var z := lerpf(zf + 0.1, MUD_FRONT_Z - 0.9, t)
+				var sx := lerpf(w * 0.32 + 0.5, 0.45, t) * rng.randf_range(0.8, 1.2)
+				blobs.append(Vector4(rng.randf_range(x0 - 0.5, x1 + 0.5), z, sx, lerpf(0.9, 0.45, t) * rng.randf_range(0.8, 1.2)))
 		while blobs.size() < OIL_BLOBS:
 			blobs.append(Vector4(rng.randf_range(x0 - 0.6, x1 + 0.6), rng.randf_range(-DEPTH_BACK + 0.6, zmax), rng.randf_range(0.12, 0.22), rng.randf_range(0.12, 0.2)))
 		blobs.resize(OIL_BLOBS)
 		var xr := Vector2(x0 - 1.8, x1 + 1.8)
 		var zr := Vector2(-DEPTH_BACK + 0.3, zmax)
 		out.append({"x0": x0, "x1": x1, "y": y, "pit": Vector3(x0, x1, zf + 0.01), "blobs": blobs, "xr": xr, "zr": zr, "barrels": [],
-			"seed": float(run["seed"]), "mode": 1, "inset": MUD_INSET})
+			"seed": float(run["seed"]), "mode": 1, "inset": MUD_INSET, "open": open})
 	return out
 
 ## Plamy oleju z `oil_spills` i błota z `mud_spills` (warstwa świata, bez cienia): jeden czworokąt na plamę tuż nad posadzką.
