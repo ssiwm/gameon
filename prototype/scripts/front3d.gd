@@ -119,6 +119,11 @@ uniform vec3 col_mid : source_color = vec3(0.17, 0.28, 0.07);
 uniform vec3 col_tip : source_color = vec3(0.40, 0.46, 0.18);
 uniform vec3 col_dry : source_color = vec3(0.40, 0.33, 0.18);
 uniform float trans_k = 0.35;
+uniform sampler2D gmask : hint_default_white, filter_nearest;   // widoczność kolumny podłoża (`Front3D.set_camera_y`): < 0,5 — egzemplarz znika
+uniform float gmask_t = 1.309;
+float gmask_at(float x) {
+	return texelFetch(gmask, ivec2(clamp(int(floor(x / gmask_t)) + 8, 0, textureSize(gmask, 0).x - 1), 0), 0).r;
+}
 varying float vk;
 varying float vdry;
 varying float vgust;
@@ -143,6 +148,7 @@ void vertex() {
 	VERTEX += transpose(m) * vec3(d.x * bend * h * 0.9, -bend * bend * h * 0.35, d.y * bend * h * 0.9) / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2]));
 	vk = k;
 	NORMAL = normalize(mix(NORMAL, vec3(0.0, 1.0, 0.0), 0.55));
+	if (gmask_at(o.x) < 0.5) { VERTEX = vec3(0.0); }
 }
 void fragment() {
 	vec3 c = mix(col_root, col_mid, smoothstep(0.0, 0.45, vk));
@@ -170,6 +176,11 @@ uniform vec2 wdir = vec2(-1.0, 0.2);
 uniform float y0 = 0.0;
 uniform float hm = 1.0;                  // wysokość siatki modelu w jej jednostkach
 uniform float sway_m = 0.18;             // wychylenie czubka w podmuchu [m na metr wysokości egzemplarza]
+uniform sampler2D gmask : hint_default_white, filter_nearest;   // widoczność kolumny podłoża (`Front3D.set_camera_y`): < 0,5 — egzemplarz znika
+uniform float gmask_t = 1.309;
+float gmask_at(float x) {
+	return texelFetch(gmask, ivec2(clamp(int(floor(x / gmask_t)) + 8, 0, textureSize(gmask, 0).x - 1), 0), 0).r;
+}
 float gust(vec2 p, float t) {
 	float a = sin(dot(p, wdir) * 0.55 - t * 1.6) * 0.5 + 0.5;
 	float b = sin(dot(p, vec2(-wdir.y, wdir.x)) * 0.31 + dot(p, wdir) * 0.17 - t * 0.9) * 0.5 + 0.5;
@@ -185,6 +196,7 @@ void vertex() {
 	float fl = sin(TIME * 4.3 + w.x * 3.1 + w.z * 2.3) * 0.25 * (0.3 + g);
 	vec2 dd = normalize(wdir) * (0.1 + lean * 0.4 + g * amp * 1.2 + fl) * sway_m * hs * k * k;
 	VERTEX += transpose(m) * vec3(dd.x, 0.0, dd.y) / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2]));
+	if (gmask_at(o.x) < 0.5) { VERTEX = vec3(0.0); }
 }
 void fragment() {
 	vec4 a = texture(albedo_tex, UV);
@@ -217,7 +229,30 @@ const PROP_Z := Vector2(5.6, 9.0)          ## m: przed pniami (rzut niżej niż 
 ## i runo wisiały nad szybem półprzezroczyste (uwaga z gry 2026-11-09, „błąd powierzchni”).
 const SURF_FADE := Vector2(4.0, 4.7)
 const SURF_NEAR := 12.0                    ## m: zasięg w x od kamery, z którego liczy się wierzch podłoża dla `SURF_FADE`
-static var _on_surface := {}               ## wpisy z przekrojem z podłogą na powierzchni (grunt przed nimi to mostek `_ground`, nie `_floors`)
+## Wygaszanie miejscowe (uwaga z gry 2026-11-09: „grunt po prawej stronie ekranu znika po zejściu na dół”): kamera pod powierzchnią
+## (`SURF_FADE`) gasi tylko kawałki płyty (GROUND_CHUNK kolumn) zasłaniające w rzucie wolne kafle w kadrze (piwniczka, szyb, tunel) i te,
+## nad którymi kamera jest niżej niż ich wierzch + SURF_BELOW (płyta widziana z boku albo od spodu); płyta nad litym gruntem zostaje.
+## Pnie, runo i kępki gasną razem z kolumną pod nimi (maska kolumn `gmask` w shaderach, kamienie i kłody — węzłami).
+const GROUND_CHUNK := 2                    ## kolumn płyty podłoża w jednym węźle
+## m: kamera niżej niż wierzch kawałka + tyle — kawałek gaśnie (przez 0,25 m). Z kamery na wysokości wierzchu (gracz 4 kafle pod
+## powierzchnią) płyta jest krawędzią, a pnie i trawa stoją na linii gruntu; spod niej podstawy w rzucie wisiałyby nad tą linią.
+const SURF_BELOW := 0.05
+const GROUND_FADE_T := 0.25                ## s: przejście kawałka między zgaszonym a widocznym (kamera w poziomie przesuwa granicę rzutu)
+const GMASK_PAD := 8                       ## kolumn maski na lewo od kolumny 0 (podłoże ma zapas GROUND_PAD poza wpisem)
+const GMASK_VIEW := Vector2(22.0, 13.0)    ## m: wolne kafle sprawdzane w rzucie — ± w x od kamery i w dół od niej
+static var _gmask: ImageTexture            ## widoczność kolumn podłoża (R8, kolumna c → piksel c + GMASK_PAD); wspólna dla shaderów lasu i runa
+static var _gmask_img: Image
+static var _gcols := 0
+static var _gvis := PackedFloat32Array()   ## widoczność kolumny 0–1
+static var _gtop := PackedFloat32Array()   ## y wierzchu podłoża kolumny, -INF bez podłoża
+static var _gz0 := PackedFloat32Array()    ## z przodu płyty kolumny (przód bryły albo płyta przekroju)
+static var _gopen: Array = []              ## kolumna → PackedFloat32Array par (y góry, y dołu) ciągów wolnych kafli
+static var _gchunks: Array = []            ## Vector3i(c0, c1 włącznie, -) kawałków płyty; y wierzchu w `_gchunk_top`
+static var _gchunk_top := PackedFloat32Array()
+static var _grows := false                 ## znane wiersze mapy (bez nich, w teście: cały pas gaśnie jak dawniej)
+static var _gus := 0
+static var _gidle := true
+static var _on_surface := {}              ## wpisy z przekrojem z podłogą na powierzchni (grunt przed nimi to mostek `_ground`, nie `_floors`)
 static var _ground: Array = []             ## [{"x0", "x1" [m], "c0" (kolumna pierwszej wartości), "ys": PackedFloat32Array (y podłoża kolumny)}]
 static var _ground_top := -INF             ## m: najwyższy y podłoża (`SURF_FADE`)
 static var _ground_nodes: Array = []       ## płyta, runo, kamienie wszystkich budów świata (`Geometry` i `GeometryAfterCollapse`): wygaszane pod powierzchnią
@@ -273,7 +308,11 @@ uniform vec4 pts[16];                      // xy: środek sylwetki na płaszczy�
 uniform float wts[16];                     // waga punktu 0–1 (płynne wejście i wyjście)
 uniform int npts = 0;
 uniform float min_a = 0.3;
-uniform float vis = 1.0;                   // las: 0 pod powierzchnią (`set_camera_y`)
+uniform sampler2D gmask : hint_default_white, filter_nearest;   // las: widoczność kolumny podłoża pod pniem (`set_camera_y`)
+uniform float gmask_t = 1.309;
+float gmask_at(float x) {
+	return texelFetch(gmask, ivec2(clamp(int(floor(x / gmask_t)) + 8, 0, textureSize(gmask, 0).x - 1), 0), 0).r;
+}
 uniform float fade_m = 0.6;
 uniform float mid_y = 0.0;                 // środek kadru na płaszczyźnie gry [m]
 uniform float band = 0.0;                  // REDUCED: pół wysokości pasa bez pierwszego planu [m]; 0 = wył.
@@ -283,8 +322,10 @@ instance uniform vec2 ywin = vec2(-1e6, 1e6);  // F2b: fizyczny pas y [m] (podł
 instance uniform vec4 occ = vec4(1e6, -1e6, 0.0, 0.0);   // F2b: y spodu stropu (dachu), y wierzchu podłogi, z przodu stropu, z przodu podłogi
 varying vec3 wpos;
 varying vec3 wnrm;
+varying float vmask;
 
 void vertex() {
+	vmask = gmask_at(MODEL_MATRIX[3].x);
 	if (sway > 0.0) {
 		vec3 w0 = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		float k = dot(vec2(UV.x, 1.0 - UV.y), sway_uv);
@@ -371,7 +412,7 @@ void fragment() {
 		float ridge = bark_bump > 0.0 ? mix(0.15, 1.7, smoothstep(0.03, 0.35, dot(ALBEDO / max(alb_k, 0.01), vec3(0.3, 0.59, 0.11)))) : 1.0;
 		EMISSION += rim_col * moon * (rim_k * fr * side * ridge + trans_k * (ALBEDO + vec3(0.06)));
 	}
-	ALPHA = a * vis;
+	ALPHA = a * vmask;
 }
 """
 
@@ -1103,10 +1144,12 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 		if bool(sp.get("open", false)):
 			_mud.append(Vector3(float(sp["x0"]), float(sp["x1"]), float(sp["y"])))
 	_ground_top = -INF
-	_ground_nodes = _ground_nodes.filter(func(n: Variant) -> bool: return is_instance_valid(n))   # bez czyszczenia: mapa z zawałem (1.1) buduje świat dwa razy (przed i po)
+	var merge := String(parent.name) == "GeometryAfterCollapse"   # mapa z zawałem (1.1) buduje świat dwa razy (przed i po): gasną obie kopie podłoża
+	_ground_nodes = _ground_nodes.filter(func(n: Variant) -> bool: return is_instance_valid(n)) if merge else []
 	_surface_k = 1.0
-	for m: ShaderMaterial in _moon_mats:
-		m.set_shader_parameter("vis", 1.0)
+	if not merge:
+		_gcols = 0
+		_gchunks = []
 	if front.is_empty():
 		return 0
 	_root = Node3D.new()
@@ -1197,7 +1240,10 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			ol.light_volumetric_fog_energy = 0.0
 			ol.position = b
 			mi.add_child(ol)
-	_build_ground(parent, rows)
+	for m: ShaderMaterial in _moon_mats:                  # pnie i kępy lasu gasną z kolumną podłoża pod nimi
+		m.set_shader_parameter("gmask", gmask_tex())
+		m.set_shader_parameter("gmask_t", Level3D.T)
+	_build_ground(parent, rows, merge)
 	_build_floors(parent, front, rows)
 	return items.size()
 
@@ -1299,7 +1345,7 @@ static func _span_at(x: float) -> float:
 
 ## Wygaszenie lasu i podłoża od y kamery (`SURF_FADE`): 1 nad powierzchnią, 0 pod nią; 1 bez podłoża.
 static func surface_k(cam_y: float, cam_x := NAN) -> float:
-	if _ground_top == -INF:
+	if _ground_top == -INF or "--nosurffade" in OS.get_cmdline_user_args():   # dev: bez wygaszania (porównanie A/B)
 		return 1.0
 	var top := _ground_top
 	if not is_nan(cam_x):
@@ -1315,24 +1361,196 @@ static func surface_k(cam_y: float, cam_x := NAN) -> float:
 	return smoothstep(top + SURF_FADE.x, top + SURF_FADE.y, cam_y)
 
 
-## Co klatkę (`view3d._front_tick`, także przy „Foreground: OFF” — podłoże zostaje): las przez `vis` w shaderze, płyta i kamienie przez
-## przezroczystość węzła, runo (shader z alpha to coverage) znika w połowie.
-static func set_camera_y(cam_y: float, cam_x := NAN) -> void:
-	var k := surface_k(cam_y, cam_x)
-	if absf(k - _surface_k) < 0.0005:
+## Co klatkę (`view3d._front_tick`, także przy „Foreground: OFF” — podłoże zostaje): `cam_z` — odległość kamery od płaszczyzny gry,
+## `dt` < 0 — czas z zegara (test podaje krok). Kawałki płyty przez przezroczystość węzła, pnie przez alfę z maski kolumn, runo i kępki
+## (maska w shaderze, alpha to coverage) znikają w połowie.
+static func set_camera_y(cam_y: float, cam_x := NAN, cam_z := 20.2, dt := -1.0) -> void:
+	if _gcols == 0:
 		return
+	var now := Time.get_ticks_usec()
+	if dt < 0.0:
+		dt = clampf(float(now - _gus) * 1e-6, 0.0, 0.1)
+	_gus = now
+	var k := surface_k(cam_y, cam_x)
 	_surface_k = k
-	for m: ShaderMaterial in _moon_mats:
-		m.set_shader_parameter("vis", k)
+	if k >= 0.999 and _gidle:
+		return
+	var marks := PackedByteArray()
+	marks.resize(_gcols)
+	var local := _grows and not is_nan(cam_x)
+	if k < 0.999 and local:
+		_ground_marks(marks, Vector3(cam_x, cam_y, cam_z))
+	var step := dt / GROUND_FADE_T
+	var changed := false
+	var idle := true
+	for n in _gchunks.size():
+		var ch: Vector3i = _gchunks[n]
+		var tgt := 1.0
+		if k < 0.999:
+			var top := _gchunk_top[n]
+			var hit := not local
+			for c in range(ch.x, ch.y + 1):
+				hit = hit or marks[c + GMASK_PAD] != 0
+			tgt = smoothstep(top + SURF_BELOW - 0.25, top + SURF_BELOW, cam_y) * (k if hit else 1.0)
+		var i := ch.x + GMASK_PAD
+		var v := _gvis[i]
+		var nv := move_toward(v, tgt, step) if step > 0.0 else v
+		if nv != v:
+			changed = true
+			for c in range(ch.x, ch.y + 1):
+				_gvis[c + GMASK_PAD] = nv
+		if nv < 1.0 or tgt < 1.0:
+			idle = false
+	_gidle = idle
+	if changed:
+		_apply_ground_vis()
+
+
+## Kolumny płyty, przez które z kamery widać wolny kafel w kadrze (`GMASK_VIEW`): promień do kafla przecina wierzch płyty (y wierzchu
+## kolumny) w x' = x kamery + (x − x kamery)·t, gdzie t = (y kamery − y wierzchu) / (y kamery − y kafla), o ile przecięcie leży nad płytą
+## (z = z kamery·(1 − t) od przodu płyty do GROUND_Z[-1]). Druga iteracja z wierzchem kolumn trafionych w pierwszej (dołek przed szybem).
+static func _ground_marks(marks: PackedByteArray, cam: Vector3) -> void:
+	var T := Level3D.T
+	var ylo := cam.y - GMASK_VIEW.y
+	var icam := clampi(floori(cam.x / T) + GMASK_PAD, 0, _gcols - 1)
+	var tmin := 1.0 - float(GROUND_Z[GROUND_Z.size() - 1]) / maxf(cam.z, 0.1)
+	for c in range(floori((cam.x - GMASK_VIEW.x) / T), floori((cam.x + GMASK_VIEW.x) / T) + 1):
+		var i := c + GMASK_PAD
+		if i < 0 or i >= _gcols:
+			continue
+		var runs: PackedFloat32Array = _gopen[i]
+		var x0 := float(c) * T
+		var x1 := x0 + T
+		for r in range(0, runs.size(), 2):
+			var h := _gtop[i] if _gtop[i] > -INF else _gtop[icam]
+			var z0 := _gz0[i] if _gtop[i] > -INF else _gz0[icam]
+			for it in 2:
+				if h == -INF or cam.y <= h + 0.05:
+					break
+				var ya := minf(runs[r], h - 0.02)           # tylko pod wierzchem płyty (niebo nad gruntem jej nie dotyczy)
+				var yb := maxf(runs[r + 1], ylo)
+				if ya <= yb:
+					break
+				var tmax := 1.0 - z0 / cam.z
+				var t_hi := minf((cam.y - h) / (cam.y - ya), tmax)
+				var t_lo := maxf((cam.y - h) / (cam.y - yb), tmin)
+				if t_lo > t_hi:
+					break
+				var xa := minf(minf(cam.x + (x0 - cam.x) * t_lo, cam.x + (x0 - cam.x) * t_hi), minf(cam.x + (x1 - cam.x) * t_lo, cam.x + (x1 - cam.x) * t_hi))
+				var xb := maxf(maxf(cam.x + (x0 - cam.x) * t_lo, cam.x + (x0 - cam.x) * t_hi), maxf(cam.x + (x1 - cam.x) * t_lo, cam.x + (x1 - cam.x) * t_hi))
+				var a := clampi(floori(xa / T) + GMASK_PAD, 0, _gcols - 1)
+				var b := clampi(floori(xb / T) + GMASK_PAD, 0, _gcols - 1)
+				var h2 := -INF
+				var z2 := INF
+				for j in range(a, b + 1):
+					if _gtop[j] > -INF:
+						h2 = maxf(h2, _gtop[j])
+						z2 = minf(z2, _gz0[j])
+				if h2 == -INF:
+					break                                    # bez płyty w miejscu przecięcia
+				if it == 1 or (absf(h2 - h) < 0.01 and absf(z2 - z0) < 0.01):
+					for j in range(a, b + 1):
+						marks[j] = 1
+					break
+				h = h2
+				z0 = z2
+			# przód płyty (z = GROUND_Z[-1], GROUND_DROP w dół) tuż przed kamerą: z kamery blisko wierzchu zasłania dół kadru
+			# w powiększeniu (z 20 m ok. 5×) — promień do kafla przechodzi przez tę płaszczyznę w t = tmin
+			if tmin > 0.0:
+				var yf_hi := cam.y + (runs[r] - cam.y) * tmin
+				var yf_lo := cam.y + (maxf(runs[r + 1], ylo) - cam.y) * tmin
+				var fa := clampi(floori((cam.x + (x0 - cam.x) * tmin) / T) + GMASK_PAD, 0, _gcols - 1)
+				var fb := clampi(floori((cam.x + (x1 - cam.x) * tmin) / T) + GMASK_PAD, 0, _gcols - 1)
+				for j in range(fa, fb + 1):
+					if _gtop[j] > -INF and yf_hi > _gtop[j] - GROUND_DROP and yf_lo < _gtop[j] - 0.02:
+						marks[j] = 1
+
+
+## Maska kolumn do shaderów (pnie, runo, kępki) i przezroczystość węzłów płyty oraz kamieni i kłód.
+static func _apply_ground_vis() -> void:
+	var bytes := PackedByteArray()
+	bytes.resize(_gcols)
+	for i in _gcols:
+		bytes[i] = roundi(clampf(_gvis[i], 0.0, 1.0) * 255.0)
+	_gmask_img.set_data(_gcols, 1, false, Image.FORMAT_R8, bytes)
+	_gmask.update(_gmask_img)
 	for n in _ground_nodes:
-		if not is_instance_valid(n):
+		if not is_instance_valid(n) or (n as Node).has_meta("gmask"):
 			continue
 		var g := n as GeometryInstance3D
+		var gc: Vector2i = g.get_meta("gc", Vector2i(-GMASK_PAD, -GMASK_PAD))
+		var v := 1.0
+		for c in range(gc.x, gc.y + 1):
+			v = minf(v, _gvis[clampi(c + GMASK_PAD, 0, _gcols - 1)])
 		if g is MultiMeshInstance3D:
-			g.visible = k > 0.5
+			g.visible = v > 0.5
 		else:
-			g.visible = k > 0.05
-			g.transparency = 1.0 - k
+			g.visible = v > 0.05
+			g.transparency = 1.0 - v
+
+
+## Tekstura maski kolumn (raz na sesję; rozmiar zmienia `_ground_scan`).
+static func gmask_tex() -> ImageTexture:
+	if _gmask == null:
+		_gmask_img = Image.create(1, 1, false, Image.FORMAT_R8)
+		_gmask_img.fill(Color.WHITE)
+		_gmask = ImageTexture.create_from_image(_gmask_img)
+	return _gmask
+
+
+## Dane wygaszania miejscowego dla `_ground` i wierszy mapy: wierzch i przód płyty w kolumnach, ciągi wolnych kafli. `merge`: druga budowa
+## tej samej mapy (`GeometryAfterCollapse`) — wolne kafle obu wersji razem.
+static func _ground_scan(rows: Array, merge: bool) -> void:
+	var T := Level3D.T
+	var w := (rows[0] as String).length() if not rows.is_empty() else 0
+	for g: Dictionary in _ground:
+		w = maxi(w, int(g["c0"]) + (g["ys"] as PackedFloat32Array).size())
+	w += GMASK_PAD * 2
+	if not merge or w != _gcols:
+		_gcols = w
+		_gvis = PackedFloat32Array()
+		_gvis.resize(w)
+		_gvis.fill(1.0)
+		_gtop = PackedFloat32Array()
+		_gtop.resize(w)
+		_gtop.fill(-INF)
+		_gz0 = PackedFloat32Array()
+		_gz0.resize(w)
+		_gopen = []
+		_gopen.resize(w)
+		for i in w:
+			_gopen[i] = PackedFloat32Array()
+		_gchunks = []
+		_gchunk_top = PackedFloat32Array()
+		_grows = false
+	for g: Dictionary in _ground:
+		var ys: PackedFloat32Array = g["ys"]
+		for j in ys.size():
+			var i := clampi(int(g["c0"]) + j + GMASK_PAD, 0, w - 1)
+			if ys[j] > _gtop[i]:
+				_gtop[i] = ys[j]
+				_gz0[i] = float(g["z0"])
+	if not rows.is_empty():
+		_grows = true
+		var nrows := rows.size()
+		for c in (rows[0] as String).length():
+			var runs: PackedFloat32Array = _gopen[c + GMASK_PAD]
+			var r := 0
+			while r < nrows:
+				if Level3D.is_solid_ch(Level3D._ch(rows, c, r)):
+					r += 1
+					continue
+				var r0 := r
+				while r < nrows and not Level3D.is_solid_ch(Level3D._ch(rows, c, r)):
+					r += 1
+				runs.append_array(PackedFloat32Array([-float(r0) * T, -float(r) * T]))
+			_gopen[c + GMASK_PAD] = runs
+	_gvis.fill(1.0)
+	var tex := gmask_tex()
+	_gmask_img = Image.create(w, 1, false, Image.FORMAT_R8)
+	_gmask_img.fill(Color.WHITE)
+	tex.set_image(_gmask_img)
+	_gidle = false
 
 
 static func _span_y(g: Dictionary, x: float) -> float:
@@ -1371,20 +1589,53 @@ static func _in_foot(x: float, z: float, k := 1.0) -> bool:
 
 ## Płyta podłoża (`_ground`): wierzch od przodu bryły do GROUND_Z[-1], przód i boki w dół o GROUND_DROP; runo, kamienie, pniaki i kłody.
 ## Węzły pod `parent` (warstwa świata), nie pod „Front” — ustawienie „Foreground: OFF” chowa pnie, a podłoże zostaje jak reszta terenu.
-static func _build_ground(parent: Node3D, rows: Array) -> void:
+static func _build_ground(parent: Node3D, rows: Array, merge := false) -> void:
 	if _ground.is_empty() or "--nofrontground" in OS.get_cmdline_user_args():      # dev: bez płyty podłoża i runa (porównanie A/B)
 		return
-	var mi := MeshInstance3D.new()
-	mi.name = "FrontGround"
-	mi.mesh = _plate_mesh(_ground)
-	mi.material_override = Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła `#`
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	parent.add_child(mi)
-	_ground_nodes.append(mi)
+	_ground_scan(rows, merge)
+	var mat := Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła `#`
+	for g: Dictionary in _ground:                         # płyta w kawałkach po GROUND_CHUNK kolumn (wygaszanie miejscowe, `set_camera_y`)
+		var ys: PackedFloat32Array = g["ys"]
+		var i := 0
+		while i < ys.size():
+			var j := mini(i + GROUND_CHUNK, ys.size())
+			var sub := g.duplicate()
+			sub["c0"] = int(g["c0"]) + i
+			sub["ys"] = ys.slice(i, j)
+			sub["x0"] = float(int(sub["c0"])) * Level3D.T
+			sub["x1"] = float(int(g["c0"]) + j) * Level3D.T
+			if i > 0:
+				sub["yl"] = ys[i - 1]                            # sąsiad w pasie: ściana tylko do niższego (dołek), jak w jednej płycie
+			if j < ys.size():
+				sub["yr"] = ys[j]
+			var mi := MeshInstance3D.new()
+			mi.name = "FrontGround_plate_%d" % int(sub["c0"])
+			mi.mesh = _plate_mesh([sub])
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.set_meta("gc", Vector2i(int(sub["c0"]), int(g["c0"]) + j - 1))
+			parent.add_child(mi)
+			_gchunks.append(Vector3i(int(sub["c0"]), int(g["c0"]) + j - 1, 0))
+			var top := -INF
+			for y in (sub["ys"] as PackedFloat32Array):
+				top = maxf(top, y)
+			_gchunk_top.append(top)
+			i = j
 	_ground_cover(parent)
 	for c in parent.get_children():
-		if String(c.name).begins_with("FrontGround_") and c is GeometryInstance3D:
-			_ground_nodes.append(c)
+		if not String(c.name).begins_with("FrontGround_") or not c is GeometryInstance3D:
+			continue
+		var gi := c as GeometryInstance3D
+		var sm := gi.material_override as ShaderMaterial
+		if gi is MultiMeshInstance3D and sm != null and sm.shader.code.contains("gmask_at"):
+			sm.set_shader_parameter("gmask", gmask_tex())       # runo i kępki: maska kolumn w shaderze (egzemplarz w kolumnie zgaszonej znika)
+			sm.set_shader_parameter("gmask_t", Level3D.T)
+			gi.set_meta("gmask", true)
+		elif not gi.has_meta("gc"):
+			var ab := gi.transform * gi.get_aabb()            # kamień, kłoda, trzcina: kolumna środka
+			var cx := floori(ab.get_center().x / Level3D.T)
+			gi.set_meta("gc", Vector2i(cx, cx))
+		_ground_nodes.append(gi)
 
 
 ## Siatka płyty z pasów (`_span`): wierzch od z0 do GROUND_Z[-1] z nierównością, osobno w każdej kolumnie (dwa odcinki na kolumnę), pionowe
@@ -1415,8 +1666,15 @@ static func _plate_mesh(spans: Array) -> ArrayMesh:
 		var nz := zs.size()
 		# wierzch kolumny ci w x, rząd j: pierwszy rząd 4 cm za przodem bryły i GROUND_LIFT nad jej wierzchem — płyta 2 cm niżej odsłaniała
 		# 2 cm nieoświetlonego przodu bryły (ciemna linia między planami, uwaga z gry 2026-11-09)
+		# kolumna poza pasem: sąsiedni kawałek płyty ("yl", "yr") albo koniec pasu (-INF)
+		var yat := func(ci: int) -> float:
+			if ci < 0:
+				return float(g.get("yl", -INF))
+			if ci >= ys.size():
+				return float(g.get("yr", -INF))
+			return ys[ci]
 		var hgt := func(ci: int, x: float, j: int) -> float:
-			return ys[ci] + (GROUND_LIFT if j == 0 else _bump(x, zs[j], g["zb"]))
+			return float(yat.call(ci)) + (GROUND_LIFT if j == 0 else _bump(x, zs[j], g["zb"]))
 		# normalna z samej nierówności (bez skoku między kolumnami): kolumny o tym samym gruncie łączą się w cieniowaniu bez szwu
 		var nrm := func(x: float, j: int) -> Vector3:
 			if j == 0:
@@ -1452,8 +1710,8 @@ static func _plate_mesh(spans: Array) -> ArrayMesh:
 				var x: float = xs[0] if side == 0 else xs[2]
 				var cn := ci - 1 if side == 0 else ci + 1
 				var n := Vector3.LEFT if side == 0 else Vector3.RIGHT
-				var edge := cn < 0 or cn >= ys.size()
-				if not edge and ys[cn] >= ys[ci] - 0.001:
+				var edge: bool = float(yat.call(cn)) == -INF
+				if not edge and float(yat.call(cn)) >= ys[ci] - 0.001:
 					continue
 				for j in nz - 1:
 					var a := Vector3(x, hgt.call(ci, x, j), zs[j])

@@ -3579,6 +3579,11 @@ render_mode cull_disabled, depth_draw_opaque, specular_disabled, alpha_to_covera
 uniform sampler2D tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
 uniform float amp = 0.5;
 uniform float lean = 0.0;
+uniform sampler2D gmask : hint_default_white, filter_nearest;   // widoczność kolumny podłoża przed bryłą (`Front3D.set_camera_y`; runo na bryle: biała): < 0,5 — egzemplarz znika
+uniform float gmask_t = 1.309;
+float gmask_at(float x) {
+	return texelFetch(gmask, ivec2(clamp(int(floor(x / gmask_t)) + 8, 0, textureSize(gmask, 0).x - 1), 0), 0).r;
+}
 void vertex() {
 	float k = 1.0 - UV.y;
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -3586,6 +3591,7 @@ void vertex() {
 	VERTEX.x += (sway - lean) * 0.14 * amp * k * k;
 	NORMAL = normalize(vec3(0.0, 1.0, 0.45));
 	COLOR = INSTANCE_CUSTOM;
+	if (gmask_at(MODEL_MATRIX[3].x) < 0.5) { VERTEX = vec3(0.0); }
 }
 void fragment() {
 	vec4 c = texture(tex, UV);

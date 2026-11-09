@@ -407,15 +407,19 @@ func _proj(y: float, z: float, cy: float, d: float) -> float:
 ## gruntu, w rzucie pod linią podłogi z każdej kamery (WIDE / NORMAL / CLOSE; kamera nisko, jak gracz przy podłodze, i wysoko), runo
 ## w rzucie najwyżej przy stopach; tunel (wpis bez „open”) bez podłoża.
 func _check_ground(root: Node3D, y_floor: float) -> void:
-	var g := root.get_node_or_null("FrontGround") as MeshInstance3D
-	_check(g != null, "las: brak podłoża FrontGround")
-	if g == null:
+	var plates: Array = root.get_children().filter(func(c: Node) -> bool: return String(c.name).begins_with("FrontGround_plate_"))
+	_check(plates.size() > 10, "las: brak płyty podłoża w kawałkach (FrontGround_plate_*: %d)" % plates.size())
+	if plates.is_empty():
 		return
-	_check(g.layers == LAYER_WORLD and g.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "podłoże: warstwa albo cień")
-	_check(g.material_override == Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic"), "podłoże: inny materiał niż bryła gruntu")
-	var bb := g.mesh.get_aabb()
+	var g := plates[0] as MeshInstance3D
+	var bb := AABB()
+	var verts := PackedVector3Array()
+	for p: MeshInstance3D in plates:
+		_check(p.layers == LAYER_WORLD and p.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "podłoże: warstwa albo cień")
+		_check(p.material_override == Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic"), "podłoże: inny materiał niż bryła gruntu")
+		bb = p.mesh.get_aabb() if bb.size == Vector3.ZERO else bb.merge(p.mesh.get_aabb())
+		verts.append_array(p.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX])
 	_check(bb.end.z >= float(Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1]) - 0.01 and bb.position.z < Level3D.DEPTH_FRONT, "podłoże: nie sięga od bryły do %.0f m (%.2f..%.2f)" % [Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1], bb.position.z, bb.end.z])
-	var verts: PackedVector3Array = g.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var bad := 0
 	for v in verts:
 		if v.z <= Level3D.DEPTH_FRONT and v.y > y_floor - 0.01:
@@ -451,26 +455,70 @@ func _check_ground(root: Node3D, y_floor: float) -> void:
 	Level3D.set_wind(1.7, 0.4)
 	_check(is_equal_approx(float(Front3D._grass_mat.get_shader_parameter("amp")), 1.7), "trawa: set_wind nie dochodzi do kępek")
 	Level3D.set_wind(wind0.x, wind0.y)
-	# kamera pod powierzchnią (`SURF_FADE`; gracz na podłożu: kamera ok. 5,3 m nad nim): płyta i runo znikają, las gaśnie przez `vis`
-	# mapa z zawałem (1.1) buduje świat dwa razy (`Geometry` i `GeometryAfterCollapse`): gasną obie kopie podłoża
+	# kamera pod powierzchnią (`SURF_FADE`; gracz na podłożu: kamera ok. 5,3 m nad nim) bez wierszy mapy: gaśnie cały pas — płyta i runo
+	# (węzły i maska kolumn), pnie przez maskę `gmask`; mapa z zawałem (1.1) buduje świat dwa razy (`GeometryAfterCollapse`): gasną obie kopie
 	var fm := Front3D._moon_mats[0] as ShaderMaterial
+	_check(fm.get_shader_parameter("gmask") == Front3D.gmask_tex(), "las: pnie bez maski kolumn podłoża")
 	var r3 := Node3D.new()
+	r3.name = "GeometryAfterCollapse"
 	get_root().add_child(r3)
 	Front3D.build(r3, [{"set": "forest", "c0": 0, "c1": 400, "r0": 0, "r1": 26}], [], false)
-	Front3D.set_camera_y(y_floor + 1.0)
+	Front3D.set_camera_y(y_floor + 1.0, NAN, 20.2, 1.0)
 	var shown := 0
 	for c in root.get_children() + r3.get_children():
-		if String(c.name).begins_with("FrontGround") and (c as Node3D).visible:
+		if String(c.name).begins_with("FrontGround") and (c as Node3D).visible and not c.has_meta("gmask"):
 			shown += 1
 	r3.queue_free()
-	_check(shown == 0 and float(fm.get_shader_parameter("vis")) == 0.0, "kamera pod powierzchnią: %d węzłów podłoża widocznych, vis lasu %s" % [shown, fm.get_shader_parameter("vis")])
-	Front3D.set_camera_y(y_floor + 5.3)
-	_check(g.visible and g.transparency == 0.0 and float(fm.get_shader_parameter("vis")) == 1.0, "kamera nad powierzchnią: las albo podłoże wygaszone")
+	var mask0 := Front3D._gmask_img.get_pixel(200 + Front3D.GMASK_PAD, 0).r
+	_check(shown == 0 and mask0 == 0.0, "kamera pod powierzchnią: %d węzłów podłoża widocznych, maska kolumn %.2f" % [shown, mask0])
+	Front3D.set_camera_y(y_floor + 5.3, NAN, 20.2, 1.0)
+	var mask1 := Front3D._gmask_img.get_pixel(200 + Front3D.GMASK_PAD, 0).r
+	_check(g.visible and g.transparency == 0.0 and mask1 == 1.0, "kamera nad powierzchnią: las albo podłoże wygaszone")
+	_check_local_fade()
 	var r2 := Node3D.new()
 	get_root().add_child(r2)
 	Front3D.build(r2, [{"set": "tunnel", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}], [], false)
 	_check(r2.get_node_or_null("FrontGround") == null, "tunel: podłoże bez wpisu otwartego")
 	r2.queue_free()
+
+
+## Wygaszanie miejscowe (uwaga z gry 2026-11-09: grunt po prawej znikał po zejściu do piwniczki): grunt w wierszu 26, piwniczka pod nim
+## (kolumny 40–44, wiersze 27–29, strop lity), gracz na jej dnie. Kawałki płyty nad piwniczką gasną, płyta nad litym gruntem z prawej
+## i z lewej zostaje; nad powierzchnią wszystko widać; gracz głęboko (kamera pod wierzchem) — gaśnie płyta w kadrze.
+func _check_local_fade() -> void:
+	var T := Level3D.T
+	var rows: Array = []
+	for r in 40:
+		var line := ""
+		for c in 120:
+			var open := r < 26 or (r >= 27 and r <= 29 and c >= 40 and c <= 44)
+			line += "." if open else "#"
+		rows.append(line)
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Front3D.build(root, [{"set": "forest", "c0": 2, "c1": 110, "r0": 0, "r1": 26}], [], false, rows)
+	var vis_at := func(c: int) -> float:
+		return Front3D._gvis[c + Front3D.GMASK_PAD]
+	var cx := 42.5 * T
+	Front3D.set_camera_y(-26.0 * T + 5.3, cx, 20.2, 1.0)        # gracz na powierzchni
+	_check(vis_at.call(42) == 1.0 and vis_at.call(60) == 1.0, "miejscowe: nad powierzchnią płyta zgaszona")
+	Front3D.set_camera_y(-30.0 * T + 5.3, cx, 20.2, 1.0)        # gracz na dnie piwniczki (kamera ok. 0,06 m nad wierzchem)
+	_check(vis_at.call(42) == 0.0 and vis_at.call(60) == 1.0, "miejscowe: kamera na wysokości gruntu — płyta nad piwniczką widoczna albo nad litym gruntem zgaszona")
+	Front3D.set_camera_y(-26.0 * T - 1.0, cx, 20.2, 1.0)        # kamera metr pod wierzchem: płytę widać od spodu — gaśnie cała
+	_check(vis_at.call(42) == 0.0 and vis_at.call(60) == 0.0 and vis_at.call(20) == 0.0, "miejscowe: kamera pod wierzchem — płyta widoczna od spodu")
+	Front3D.set_camera_y(-28.0 * T + 5.3, cx, 20.2, 1.0)        # gracz dwa kafle pod powierzchnią
+	var hid := 0
+	for c in range(30, 60):
+		if vis_at.call(c) < 0.5:
+			hid += 1
+	_check(vis_at.call(42) == 0.0 and vis_at.call(40) == 0.0 and vis_at.call(44) == 0.0, "miejscowe: płyta nad piwniczką nie gaśnie (%.2f %.2f %.2f)" % [vis_at.call(40), vis_at.call(42), vis_at.call(44)])
+	_check(vis_at.call(52) == 1.0 and vis_at.call(58) == 1.0 and vis_at.call(30) == 1.0, "miejscowe: płyta nad litym gruntem gaśnie (%.2f %.2f %.2f)" % [vis_at.call(30), vis_at.call(52), vis_at.call(58)])
+	_check(hid <= 10, "miejscowe: zgaszonych %d kolumn przy piwniczce o szerokości 5" % hid)
+	var plate := root.get_node("FrontGround_plate_%d" % 56) as MeshInstance3D
+	var over := root.get_node("FrontGround_plate_%d" % 42) as MeshInstance3D
+	_check(plate.visible and plate.transparency == 0.0 and not over.visible, "miejscowe: węzły płyty nie idą za maską kolumn")
+	Front3D.build(root, [], [], false)
+	root.queue_free()
 
 
 ## Podłoże na mapie: przy bryle (z = DEPTH_FRONT) w całej kolumnie nie wyżej niż wierzch jej gruntu w pasie wpisu otwartego (pierwszy lity

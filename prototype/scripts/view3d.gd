@@ -949,7 +949,7 @@ var _front_w := {}                           ## id węzła → [Vector4 prostok�
 func _front_tick(delta: float) -> void:
 	if _level == null or (_level.get("front") as Array).is_empty():
 		return
-	Front3D.set_camera_y(_cam_a.global_position.y, _cam_a.global_position.x)               # pod ziemią las i podłoże gasną (także przy „Foreground: OFF”)
+	Front3D.set_camera_y(_cam_a.global_position.y, _cam_a.global_position.x, _cam_a.global_position.z)             # pod ziemią las i podłoże gasną (także przy „Foreground: OFF”)
 	if Settings.front_idx == 2:
 		return
 	var c2 := get_viewport().get_camera_2d()
