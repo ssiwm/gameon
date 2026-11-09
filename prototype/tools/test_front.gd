@@ -14,8 +14,12 @@ extends SceneTree
 ##     wyciek oleju w hali 1.2 (`Level3D.oil_spills`): plama w zasięgu płyty, przewrócona beczka na płycie przed niecką i niżej niż linia
 ##     podłogi w rzucie, stojące za płaszczyzną gry poza niecką, element nie stoi w plamie,
 ## (5) las (zestaw „forest”, F3): pnie sosny, brzozy i martwy, zwisające gałęzie, paprocie i trawa; pas otwarty w pionie (przycięcie tylko
-##     w poziomie, z zapasem OPEN_PAD), pień od pod dolnego do nad górny brzeg kadru NORMAL (podstawy i końca nie widać), kontra księżyca
-##     tylko na materiałach lasu (rury i ściany przekroju bez niej), karty z alfą i dwustronne, `set_moon` zmienia tylko las,
+##     w poziomie, z zapasem OPEN_PAD), pień od podłoża (nasada pod nim, `ywin` na podłożu) nad górny brzeg kadru NORMAL, kępa na podłożu
+##     bliżej kamery (CLUMP_Z) z wierzchem w rzucie pod linią podłogi, kontra księżyca tylko na materiałach lasu (rury i ściany przekroju
+##     bez niej), karty z alfą i dwustronne, `set_moon` zmienia tylko las; podłoże przed płaszczyzną gry: płyta w warstwie świata z materiałem
+##     bryły gruntu, nie wyżej niż grunt kolumny przy bryle, w rzucie zawsze pod linią podłogi (trzy kamery, gracz wyżej i niżej), płasko
+##     pod elementami, runo w rzucie najwyżej przy stopach, na mapach nie wyżej niż wierzch gruntu żadnej kolumny pasa i bez wejścia
+##     w przekrój obok,
 ## (6) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
 ##     waga 0 nie wygasza wcale.
 ## godot --headless --path prototype -s tools/test_front.gd       → ma wypisać PASS
@@ -77,6 +81,7 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 		_check(s is Array and (s as Array).size() == 2 and int(s[0]) <= int(s[1]), "%s FRONT_SKIP %s: oczekiwane [c0, c1]" % [map_id, s])
 	var bl := Front3D.blocked_x(front, rows)                 # przekrój (F2b): bez kałuż na płycie i belek pod stropem
 	var items := Front3D.layout(front, skip, false, bl)
+	_check_map_ground(map_id, rows, front, items)
 	_check(not items.is_empty(), map_id + ": wpisy FRONT bez żadnego elementu")
 	_check(str(items) == str(Front3D.layout(front, skip, false, bl)), map_id + ": układ różni się między wywołaniami (ziarno)")
 	for it: Dictionary in items:
@@ -296,20 +301,41 @@ func _check_forest() -> void:
 		_check(clip.z < -1e5 and clip.w > 1e5, "%s: las przycięty w pionie" % mi.name)
 		_check(is_equal_approx(clip.x, clip0.x - Front3D.OPEN_PAD) and is_equal_approx(clip.y, clip0.y + Front3D.OPEN_PAD), "%s: przycięcie w poziomie bez zapasu OPEN_PAD" % mi.name)
 		var bb := mi.mesh.get_aabb()
+		var yg := Front3D.ground_y(mi.position.x, mi.position.z)
+		var yw: Variant = mi.get_instance_shader_parameter("ywin")
+		if kind != "bough":
+			_check(yw is Vector2 and absf((yw as Vector2).x - yg) < 0.001 and absf(yg - y_floor) < 0.001, "%s: nasada nie kończy się na podłożu (ywin %s, podłoże %.3f)" % [mi.name, yw, yg - y_floor])
+			for dx in [-1.0, 0.0, 1.0]:                          # płasko pod elementem (nierówność podłoża nie wchodzi nad nasadę)
+				_check(absf(Front3D.ground_y(mi.position.x + dx, mi.position.z) - yg) < 0.001, "%s: podłoże pod elementem nierówne" % mi.name)
 		if kind in ["pine", "birch", "snag"]:
-			# kadr NORMAL przy z = 3,5–5 m: od ok. 6 m pod do ok. 8 m nad podłogą (kamera przy graczu na podłodze); pień wychodzi poza oba brzegi
-			_check(bb.position.y < y_floor - FRAME_H_NORMAL * 0.5 and bb.end.y > y_floor + FRAME_H_NORMAL * 0.75, "%s: pień nie wychodzi poza kadr (%.1f..%.1f wzgl. podłogi)" % [mi.name, bb.position.y - y_floor, bb.end.y - y_floor])
+			# nasada (szyja, korzenie) schodzi pod podłoże, koniec nad górnym brzegiem kadru NORMAL (ok. 8 m nad podłogą przy z = 3,5–5 m)
+			_check(bb.position.y < yg - 0.2 and bb.position.y > yg - 1.0 and bb.end.y > y_floor + FRAME_H_NORMAL * 0.75, "%s: pień nie stoi na podłożu albo nie sięga nad kadr (%.1f..%.1f wzgl. podłoża)" % [mi.name, bb.position.y - yg, bb.end.y - yg])
 		elif kind == "bough":
 			_check(bb.end.y > y_floor + FRAME_H_NORMAL * 0.5 and bb.position.y > y_floor + 3.0, "%s: gałąź nie wisi przy górnym brzegu" % mi.name)
 		else:
-			_check(bb.end.y < y_floor - 0.5 and bb.position.y < y_floor - FRAME_H_NORMAL * 0.35, "%s: kępa nie stoi przy dolnym brzegu" % mi.name)
+			var z := mi.position.z
+			_check(z >= Front3D.CLUMP_Z.x and z <= Front3D.CLUMP_Z.y, "%s: kępa w z %.2f poza CLUMP_Z" % [mi.name, z])
+			_check(bb.end.y > yg + 0.4 and bb.end.y < yg + Front3D.CLUMP_H.y, "%s: kępa %.2f m nad podłożem" % [mi.name, bb.end.y - yg])
+			_check(_proj(bb.end.y, z, y_floor + 5.3, 20.2) < y_floor, "%s: wierzch kępy w rzucie nad linią podłogi" % mi.name)
+		var rims := 0
+		var bases := 0
 		for si in mi.mesh.get_surface_count():
 			var m := mi.get_surface_override_material(si) as ShaderMaterial
 			var card := _par(m, "cutout", 0.0) > 0.0
+			var mk := ""
+			for k2: String in Front3D.materials():
+				if Front3D.materials()[k2] == m:
+					mk = k2
 			if card:
 				_check(_par(m, "trans_k", 0.0) > 0.0 and "cull_disabled" in m.shader.code, "%s: karta bez prześwitu albo jednostronna" % mi.name)
+			elif mk.ends_with(":base"):
+				bases += 1
+				_check(_par(m, "rim_k", 0.0) == 0.0, "%s: nasada pnia z kontrą księżyca" % mi.name)
 			else:
+				rims += 1
 				_check(_par(m, "rim_k", 0.0) > 0.0, "%s: kora bez kontry księżyca" % mi.name)
+		if kind in ["pine", "birch", "snag"]:
+			_check(rims == 1 and bases == 1, "%s: pień bez osobnej kory nasady (kora %d, nasada %d)" % [mi.name, rims, bases])
 	for k in ["pine", "birch", "snag", "bough", "ferns", "grass"]:
 		_check(kinds.has(k), "las: rodzaj %s nie powstał na długim zakresie" % k)
 	Front3D.set_moon(0.25)
@@ -319,8 +345,78 @@ func _check_forest() -> void:
 		var forest := String(mi.name).get_slice("_", 0) in ["pine", "birch", "snag", "bough", "ferns", "grass"]
 		_check(is_equal_approx(_par(m, "moon", 1.0), 0.25 if forest else 1.0), "%s: set_moon nie działa tylko na las" % mi.name)
 	Front3D.set_moon(1.0)
+	_check_ground(root, y_floor)
 	Front3D.build(root, [], [], false)
 	root.queue_free()
+
+
+## y punktu (y, z) w rzucie na płaszczyznę gry z kamery na wysokości `cy`, `d` m przed nią.
+func _proj(y: float, z: float, cy: float, d: float) -> float:
+	return cy + (y - cy) * d / (d - z)
+
+
+## Podłoże lasu z `_check_forest` (płaski grunt w wierszu 26): płyta w warstwie świata z materiałem bryły `#`, przy bryle na wierzchu
+## gruntu, w rzucie pod linią podłogi z każdej kamery (WIDE / NORMAL / CLOSE; kamera nisko, jak gracz przy podłodze, i wysoko), runo
+## w rzucie najwyżej przy stopach; tunel (wpis bez „open”) bez podłoża.
+func _check_ground(root: Node3D, y_floor: float) -> void:
+	var g := root.get_node_or_null("FrontGround") as MeshInstance3D
+	_check(g != null, "las: brak podłoża FrontGround")
+	if g == null:
+		return
+	_check(g.layers == LAYER_WORLD and g.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "podłoże: warstwa albo cień")
+	_check(g.material_override == Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic"), "podłoże: inny materiał niż bryła gruntu")
+	var bb := g.mesh.get_aabb()
+	_check(bb.end.z >= float(Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1]) - 0.01 and bb.position.z < Level3D.DEPTH_FRONT, "podłoże: nie sięga od bryły do %.0f m (%.2f..%.2f)" % [Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1], bb.position.z, bb.end.z])
+	var verts: PackedVector3Array = g.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var bad := 0
+	for v in verts:
+		if v.z <= Level3D.DEPTH_FRONT and v.y > y_floor - 0.01:
+			continue                                        # pierwszy rząd pod wierzchem bryły
+		if v.z <= 1.6 and v.y > y_floor + 0.001:
+			bad += 1
+		for d: float in [16.85, 20.2, 25.3]:
+			for cy: float in [y_floor + 2.0, y_floor + 5.3, y_floor + 9.0]:
+				if _proj(v.y, v.z, cy, d) > y_floor + 0.001:
+					bad += 1
+	_check(bad == 0, "podłoże: %d punktów nad gruntem przy bryle albo w rzucie nad linią podłogi" % bad)
+	var cards := 0
+	for c in root.get_children():
+		var mm := c as MultiMeshInstance3D
+		if mm != null and String(mm.name).begins_with("FrontGround_"):
+			cards += mm.multimesh.instance_count
+	_check(cards > 100 and cards == Front3D.cover_tops.size(), "podłoże: %d kart runa (zapis wierzchołków: %d)" % [cards, Front3D.cover_tops.size()])
+	for t: Vector2 in Front3D.cover_tops:
+		if _proj(t.x, t.y, y_floor + 5.3, 20.2) > y_floor + 0.35:
+			bad += 1
+	_check(bad == 0, "podłoże: %d kart runa w rzucie wyżej niż stopy" % bad)
+	var r2 := Node3D.new()
+	get_root().add_child(r2)
+	Front3D.build(r2, [{"set": "tunnel", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}], [], false)
+	_check(r2.get_node_or_null("FrontGround") == null, "tunel: podłoże bez wpisu otwartego")
+	r2.queue_free()
+
+
+## Podłoże na mapie: przy bryle (z = DEPTH_FRONT) nie wyżej niż wierzch gruntu kolumny i obu sąsiednich w pasie wpisu otwartego
+## (pierwszy lity kafel pod stropem pasa) — rzut przesunięty w poziomie nie wejdzie nad niższy grunt; nie wchodzi w przekrój obok.
+func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) -> void:
+	Front3D.prepare_ground(front, rows, items)
+	var T := Level3D.T
+	var cols: int = (rows[0] as String).length()
+	for e: Dictionary in front:
+		if not bool((Front3D.SETS[e["set"]] as Dictionary).get("open", false)):
+			continue
+		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			var y := Front3D.ground_y((float(c) + 0.5) * T, Level3D.DEPTH_FRONT)
+			for cc in [c - 1, c, c + 1]:
+				var r := int(e["r0"]) + 1
+				while r < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, clampi(cc, 0, cols - 1), r)):
+					r += 1
+				_check(y <= -float(r) * T + 0.001, "%s kolumna %d: podłoże %.2f m nad gruntem kolumny %d" % [map_id, c, y + float(r) * T, cc])
+		for o: Dictionary in front:
+			if bool(o.get("shell", false)) and absi(int(o["r1"]) - int(e["r1"])) <= 4:
+				for x in [float(o["c0"]) * T + 0.3, float(int(o["c1"]) + 1) * T - 0.3]:
+					_check(Front3D.ground_y(x, 3.0) == -INF, "%s: podłoże lasu wchodzi w przekrój %s (x %.1f)" % [map_id, o["set"], x])
+	Front3D.prepare_ground([], rows, [])
 
 
 ## Torowisko drezyny w strefie przekroju (`Level3D.in_trench`): płyta leży na wysokości dna koryta (pełna płyta zasłoniłaby szyny i koła),

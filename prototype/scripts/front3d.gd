@@ -42,7 +42,8 @@ const SETS := {
 	"tunnel": {"big": ["pipe", "pipes2"], "small": ["lamp", "cables", "lamp"], "tint": Color(0.7, 0.72, 0.75)},
 	"bunker": {"big": ["pipe", "pipes2"], "small": ["cables", "lamp"], "tint": Color(0.85, 0.8, 0.74)},    # kryjówka: bez łańcuchów, lampy na przewodzie
 	# las pod gołym niebem (F3): pnie przez cały kadr, zwisające gałęzie świerka u góry i paprocie z trawą u dołu; pas wpisu otwarty
-	# w pionie (pień nie kończy się na linii podłogi ani stropu — jego podstawę i koniec zasłania brzeg kadru, zasada 4)
+	# w pionie (pień nie kończy się na linii stropu — koniec zasłania górny brzeg kadru); pnie i kępy stoją na podłożu przed płaszczyzną
+	# gry (`_build_ground`), które wpis otwarty buduje w warstwie świata
 	# las: w każdej przerwie między pniami dwa małe elementy — gałąź u góry kadru (`small`) i kępa u dołu (`small2`); nie zasłaniają się nawzajem
 	"forest": {"big": ["pine", "birch", "snag", "pine"], "small": ["bough"], "small2": ["ferns", "grass", "ferns"], "tint": Color(0.62, 0.64, 0.66), "open": true},
 }
@@ -64,10 +65,37 @@ const TRUNKS := {
 	"birch": ["birch_bark", 0.55, 0.008, Vector2(0.80, 0.05)],
 	"snag": ["snag_wood", 0.8, 0.018, Vector2(0.95, 0.10)],
 }
-const TRUNK_SPAN := Vector2(-10.0, 16.0)   ## m: pień od tyle pod do tyle nad podłogą pasa — podstawa i koniec zawsze poza kadrem NORMAL
+const TRUNK_TOP := 16.0                    ## m: koniec pnia nad podłożem — zawsze nad górnym brzegiem kadru NORMAL
+const TRUNK_SINK := 0.3                    ## m: pień, szyja i korzenie zaczynają się tyle pod podłożem (część pod nim odcina `ywin`)
 const BOUGH_Y := Vector2(8.2, 9.4)         ## m nad podłogą pasa: nasada zwisającej gałęzi (nad górnym brzegiem kadru przy z ≈ 4 m)
-const FERN_BASE := -6.0                    ## m: podstawa kępy paproci i trawy względem podłogi pasa (pod dolnym brzegiem kadru)
-const FERN_TOP := Vector2(-2.3, -1.3)      ## m: wierzch kępy — wchodzi w kadr od dołu na ok. 1–2 m
+const CLUMP_Z := Vector2(6.4, 7.8)         ## m: kępa paproci i trawy stoi na podłożu bliżej kamery niż pnie — wchodzi w kadr od dołu
+const CLUMP_H := Vector2(1.3, 2.1)         ## m: wysokość karty paproci w kępie (trawa ×0,6; paproć ma nasadę w 42% karty)
+const BASE_FERN_H := Vector2(0.5, 1.0)     ## m: paprocie u nasady pnia
+const FERN_SINK := 0.2                     ## część karty paproci pod podłożem
+
+## Podłoże lasu przed płaszczyzną gry (uwaga 2026-11-09: „zbudujmy do tego podłoże, aby całość była spójna”): bez niego pnie schodziły
+## przez dolny brzeg kadru w pustkę przed przekrojem gruntu, a kępy wisiały nad niczym. Wpis otwarty (`"open"`) dostaje płytę terenu
+## od przodu bryły gruntu (`Level3D.DEPTH_FRONT`) do GROUND_Z[-1] ku kamerze, z tym samym materiałem co bryła (`make_pbr("terrain")`,
+## rzut trójpłaszczyznowy w świecie — bez szwu na przodzie bryły), runem i kilkoma kamieniami, pniakami i kłodą. Leży w warstwie świata
+## (oświetlenie, mgła i burza jak na wierzchu bryły), na wysokości podłogi kolumny albo niżej: poziomy grunt przed płaszczyzną gry
+## rzutuje się zawsze poniżej linii podłogi, więc nie wchodzi w pas gry. Nierówności rosną z odległością od bryły (GROUND_BUMP) i znikają
+## pod pniami i kępami (FOOT): element pierwszego planu rysuje się nad warstwą świata, więc musi stać na płaskim gruncie na wysokości
+## swojego `ywin`.
+const GROUND_Z := [1.5, 2.0, 2.6, 3.3, 4.1, 5.0, 6.0, 7.2, 8.6, 10.2, 12.0, 14.0, 16.0]   ## m: rzędy siatki (pierwszy rząd: przód bryły)
+const GROUND_DROP := 6.0                   ## m: przód i boki płyty schodzą tyle w dół
+const GROUND_PAD := 8                      ## kafli poza pas wpisu (rzut przy brzegu kadru sięga dalej od środka); bez wejścia w przekrój obok
+const GROUND_BUMP := Vector2(0.06, 0.3)    ## nierówność: m przyrostu na metr od GROUND_Z[0] i najwyżej
+const FOOT := Vector2(2.6, 1.3)            ## m: półosie płaskiego miejsca pod pniem i kępą (x, z)
+const GROUND_GRASS := 5.0                  ## kart runa na metr podłoża wzdłuż mapy
+const GROUND_PROPS := ["rock", "stump", "tree_log", "rock_b", "rock_c", "stump"]
+const PROP_STEP := Vector2(14.0, 24.0)     ## m: odstęp kamieni, pniaków i kłód na podłożu
+const PROP_Z := Vector2(5.6, 9.0)          ## m: przed pniami (rzut niżej niż ich nasada — pień ich nie przykrywa)
+static var _ground: Array = []             ## [{"x0", "x1" [m], "c0" (kolumna pierwszej wartości), "ys": PackedFloat32Array (y podłoża kolumny)}]
+static var _feet: Array = []               ## Vector2(x, z) elementów lasu — płaskie miejsca podłoża
+static var _noise: FastNoiseLite
+## Test (`tools/test_front.gd`): wierzchołki kart runa na podłożu (x = y wierzchu, y = z) — w trybie headless `MultiMesh`
+## nie przechowuje przekształceń egzemplarzy.
+static var cover_tops := PackedVector2Array()
 const FOREST_RIM := 0.9                    ## kontra księżyca na krawędzi pnia (emisja, mnożona przez pogodę jak `MoonRim`)
 const FOREST_TRANS := 0.16                 ## prześwit księżyca przez karty igliwia, paproci i trawy
 ## Igliwie przy górnym brzegu kadru wisi na tle ciemnych koron lasu — bez mocniejszego prześwitu znika jak pień w F0.
@@ -221,9 +249,10 @@ static func _shader(two_sided := false) -> Shader:
 
 
 ## Materiał lasu (klucz „f:<tekstura>”): kora (pień) albo karta z alfą (`card`), z kontrą księżyca. Rejestruje go w `_mats`,
-## więc wygaszanie przy sylwetkach (`update`) obejmuje go tak samo jak rury.
-static func _forest_mat(tex: String, card: bool) -> String:
-	var key := "f:" + tex
+## więc wygaszanie przy sylwetkach (`update`) obejmuje go tak samo jak rury. `rim` = false (klucz „f:<tekstura>:base”): kora nasady pnia
+## bez obrysu — szyja i korzenie mają wierzch zwrócony w górę, ku tarczy, i świeciły na tle ciemnego podłoża jak białe kolce.
+static func _forest_mat(tex: String, card: bool, rim := true) -> String:
+	var key := "f:" + tex + ("" if rim or card else ":base")
 	materials()
 	if _mats.has(key):
 		return key
@@ -241,7 +270,7 @@ static func _forest_mat(tex: String, card: bool) -> String:
 		m.set_shader_parameter("trans_k", FOREST_TRANS * float(FOREST_TRANS_K.get(tex, 1.0)))
 		m.set_shader_parameter("sway", 0.05)
 		m.set_shader_parameter("sway_uv", Vector2(1.0, 0.0) if tex.begins_with("bough") else Vector2(0.0, 1.0))
-	else:
+	elif rim:
 		m.set_shader_parameter("rim_k", FOREST_RIM)
 	_mats[key] = m
 	_moon_mats.append(m)
@@ -554,7 +583,7 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 		"bough":
 			_bough(sts, used, band.x, rng)
 		"ferns", "grass":
-			_ferns(sts, used, kind, band.x, rng, 2.2)
+			_ferns(sts, used, kind, band.x, rng, 2.2, CLUMP_H, 0.5)
 		"lamp":
 			# lampa na przewodzie: klosz z modelu `lamp` (emisja żarówki), przewód do stropu (przycięcie pasa ucina go na linii stropu)
 			var y_lamp := band.y - rng.randf_range(LAMP_DROP.x, LAMP_DROP.y)
@@ -593,7 +622,9 @@ static func _st(sts: Dictionary, key: String) -> SurfaceTool:
 
 ## Stożek ścięty wzdłuż `axis` od `a`: promień `r0` → `r1`, `seg` boków, `rings` odcinków; nierówność kory `rough` (część promienia,
 ## z ziarna `ph`); UV: u dookoła (`u_rep` powtórzeń), v liniowo `v` (dół → góra); `bend` wygina środek łukiem. Trójkąty bez indeksów.
-static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0: float, r1: float, seg: int, rings: int, v: Vector2, u_rep: float, rough: float, ph: float, bend := Vector3.ZERO) -> void:
+## `flat_up`: normalne bez składowej w górę (nasada pnia na podłożu) — kontra postaci pada z góry zza sceny i rozświetlała wierzch szyi
+## i korzeni, a grunt obok (warstwa świata) jej nie dostaje.
+static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0: float, r1: float, seg: int, rings: int, v: Vector2, u_rep: float, rough: float, ph: float, bend := Vector3.ZERO, flat_up := false) -> void:
 	var ax := axis.normalized()
 	var side := ax.cross(Vector3.BACK)
 	if side.length() < 0.1:
@@ -610,7 +641,11 @@ static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0:
 			var ang := TAU * float(i) / float(seg)
 			var nrm := side * cos(ang) + up * sin(ang)
 			var wob := 1.0 + rough * (sin(3.0 * ang + t * length * 0.9 + ph) * 0.6 + sin(7.0 * ang - t * length * 1.7 + ph * 2.3) * 0.4)
-			row.append([c + nrm * r * wob, nrm, Vector2(u_rep * float(i) / float(seg), lerpf(v.x, v.y, t))])
+			var sn := nrm
+			if flat_up:
+				sn = Vector3(nrm.x, minf(nrm.y, 0.0), nrm.z) + Vector3(0.0, 0.0, 0.3)
+				sn = sn.normalized() if sn.length() > 0.01 else Vector3.BACK
+			row.append([c + nrm * r * wob, sn, Vector2(u_rep * float(i) / float(seg), lerpf(v.x, v.y, t))])
 		grid.append(row)
 	for j in rings:
 		for i in seg:
@@ -632,7 +667,9 @@ static func _card(st: SurfaceTool, at: Vector3, w: float, h: float, rz: float, r
 		var lx := (c.x - pivot.x) * w * (-1.0 if flip else 1.0)
 		var ly := (pivot.y - c.y) * h
 		pts.append([at + b * Vector3(lx, ly, 0.0), c])
-	for k in [0, 2, 1, 0, 3, 2]:
+	# odbita karta ma lustrzane wierzchołki — odwrotna kolejność, żeby kamera widziała przód z normalną ku sobie (inaczej tył
+	# z normalną od kamery łapał kontrę postaci zza sceny: płaskie, niebieskawe paprocie i „oszroniona” gałąź świerka)
+	for k in ([0, 1, 2, 0, 2, 3] if flip else [0, 2, 1, 0, 3, 2]):
 		st.set_normal(nrm)
 		st.set_uv(pts[k][1])
 		st.add_vertex(pts[k][0])
@@ -645,17 +682,35 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 	var key := _forest_mat(String(spec[0]), false)
 	var st := _st(sts, key)
 	used[key] = true
-	var y0 := y_floor + TRUNK_SPAN.x
-	var length := TRUNK_SPAN.y - TRUNK_SPAN.x
+	var y0 := y_floor - TRUNK_SINK
+	var length := TRUNK_TOP + TRUNK_SINK
 	var d := float(spec[1]) * rng.randf_range(0.85, 1.15)
 	var taper := float(spec[2])
-	var r0 := (d + taper * -TRUNK_SPAN.x) * 0.5
+	var r0 := d * 0.5
 	var r1 := maxf(r0 - taper * length * 0.5, 0.08)
 	var lean := Vector3(rng.randf_range(-0.06, 0.06), 1.0, rng.randf_range(-0.02, 0.02))
 	var bend := Vector3(rng.randf_range(0.25, 0.6) * (-1.0 if rng.randf() < 0.5 else 1.0), 0.0, 0.0)
 	var ph := rng.randf() * TAU
 	var vr: Vector2 = spec[3]
-	_cone(st, Vector3(0.0, y0, 0.0), lean, length, r0, r1, 14, 26, vr, 2.0, 0.11 if kind == "snag" else 0.075, ph, bend)
+	var rough := 0.11 if kind == "snag" else 0.075
+	_cone(st, Vector3(0.0, y0, 0.0), lean, length, r0, r1, 14, 26, vr, 2.0, rough, ph, bend)
+	# nasada na podłożu: szersza szyja (wzdłuż osi pnia z jej wygięciem; u góry chowa się w pniu — 0,82 promienia z nierównością
+	# mniejszą niż najgłębsza bruzda kory) i 3–5 korzeni rozchodzących się płasko, które po ok. pół metra schodzą pod podłoże
+	var neck := 1.5
+	var nb := _trunk_axis(lean, bend, y0, length, y0)
+	var nt := _trunk_axis(lean, bend, y0, length, y0 + neck)
+	var v_neck := Vector2(vr.x, lerpf(vr.x, vr.y, neck / length))
+	var bkey := _forest_mat(String(spec[0]), false, false)
+	var bst := _st(sts, bkey)
+	used[bkey] = true
+	_cone(bst, nb, nt - nb, (nt - nb).length(), r0 * 1.6, _trunk_r(r0, r1, y0, length, y0 + neck) * 0.82 / (1.0 + 0.2), 14, 5, v_neck, 2.0, 0.2, ph + 1.3, Vector3.ZERO, true)
+	var nroot := rng.randi_range(3, 5)
+	for i in nroot:
+		# krótkie, grube nabiegi: cienki stożek pod kątem do kamery dawał na obrysie pełną kontrę (białe kolce przy pniu)
+		var a := TAU * (float(i) + rng.randf_range(-0.3, 0.3)) / float(nroot) + ph
+		var dir := Vector3(cos(a), -rng.randf_range(0.4, 0.55), sin(a) * 0.7).normalized()
+		var ln := rng.randf_range(0.8, 1.2)
+		_cone(bst, nb + Vector3(0.0, TRUNK_SINK + rng.randf_range(0.3, 0.45), 0.0), dir, ln, r0 * 0.55, r0 * 0.2, 8, 4, v_neck, 1.0, 0.15, ph + float(i) * 2.1, Vector3(0.0, 0.05 * ln, 0.0), true)
 	var v_mid := (vr.x + vr.y) * 0.5
 	var limbs := 1
 	if kind == "snag":
@@ -694,7 +749,7 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 			var at := c + dir * ln * rng.randf_range(0.45, 1.0) + Vector3(0.0, rng.randf_range(-0.35, 0.1), rng.randf_range(-0.25, 0.25))
 			var s := rng.randf_range(1.0, 1.5)
 			_card(tst, at, s * 1.2, s, rng.randf_range(-0.3, 0.3), rng.randf_range(-0.5, 0.5), rng.randf() < 0.5, Vector2(0.5, 0.6))
-	_ferns(sts, used, "ferns", y_floor, rng, 1.2)
+	_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
 
 
 ## Środek pnia na wysokości `y` (bez nierówności kory) i jego promień.
@@ -722,24 +777,28 @@ static func _bough(sts: Dictionary, used: Dictionary, y_floor: float, rng: Rando
 		_card(st, at, w, w * 0.5, droop, rng.randf_range(-0.35, 0.35), flip, Vector2(0.0, 0.1))
 
 
-## Kępa paproci i trawy przy dolnym brzegu kadru (`ferns`: głównie paproć, `grass`: głównie trawa) szeroka na 2 × `spread` m.
-static func _ferns(sts: Dictionary, used: Dictionary, kind: String, y_floor: float, rng: RandomNumberGenerator, spread: float) -> void:
+## Kępa paproci i trawy na podłożu `y_ground` (`ferns`: głównie paproć, `grass`: głównie trawa) szeroka na 2 × `spread` m i głęboka
+## na 2 × `dz` m; `hr`: wysokość karty paproci (trawa ×0,6). Nasada paproci leży ok. 40% wysokości karty, ale karta schodzi pod podłoże
+## tylko o FERN_SINK: `ywin` tnie kartę poziomą linią — przy głębszym osadzeniu przecinał gęste liście tuż pod nasadą, a tak tylko
+## końce opadających liści.
+static func _ferns(sts: Dictionary, used: Dictionary, kind: String, y_ground: float, rng: RandomNumberGenerator, spread: float, hr: Vector2, dz: float) -> void:
 	for i in rng.randi_range(3, 5):
 		var fern := rng.randf() < (0.7 if kind == "ferns" else 0.2)
 		var tex := "fern_a" if fern else ("grass_a" if rng.randf() < 0.55 else "grass_b")
 		var key := _forest_mat(tex, true)
 		var st := _st(sts, key)
 		used[key] = true
-		var top := y_floor + rng.randf_range(FERN_TOP.x, FERN_TOP.y)
-		var h := top - (y_floor + FERN_BASE)
+		var h := rng.randf_range(hr.x, hr.y) * (1.0 if fern else 0.6)
 		var w := h * (1.6 if fern else rng.randf_range(0.9, 1.2))
-		var at := Vector3(rng.randf_range(-spread, spread), y_floor + FERN_BASE, rng.randf_range(-0.4, 0.4))
+		var at := Vector3(rng.randf_range(-spread, spread), y_ground - h * (FERN_SINK if fern else 0.04), rng.randf_range(-dz, dz))
 		_card(st, at, w, h, rng.randf_range(-0.12, 0.12), rng.randf_range(-0.6, 0.6), rng.randf() < 0.5)
 
 
 ## Buduje elementy pod `parent` (węzeł „Front”). Zwraca liczbę elementów.
 static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Array = []) -> int:
 	_root = null
+	_ground = []
+	_feet = []
 	if front.is_empty():
 		return 0
 	_root = Node3D.new()
@@ -747,10 +806,22 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 	parent.add_child(_root)
 	var mats := materials()
 	var items := layout(front, skip, low, blocked_x(front, rows))
+	for it: Dictionary in items:                          # kępy lasu stoją na podłożu bliżej kamery niż pnie
+		if bool((SETS[it["set"]] as Dictionary).get("open", false)) and String(it["kind"]) in ["ferns", "grass"]:
+			var zr := RandomNumberGenerator.new()
+			zr.seed = int(float(it["x"]) * 37.0)
+			it["z"] = zr.randf_range(CLUMP_Z.x, CLUMP_Z.y)
+	prepare_ground(front, rows, items)
 	for it: Dictionary in items:
 		var clip: Vector4 = it["clip"]
 		var rng := RandomNumberGenerator.new()
 		rng.seed = int(float(it["x"]) * 100.0)
+		var st: Dictionary = SETS[it["set"]]
+		var open := bool(st.get("open", false))
+		var band := Vector2(clip.z, clip.w)
+		var yg := ground_y(float(it["x"]), float(it["z"])) if open and String(it["kind"]) != "bough" else -INF
+		if yg > -INF:
+			band.x = yg                                     # pień i kępa stoją na podłożu w swoim miejscu (nie na podłodze pasa)
 		var bulbs := []
 		var phys := bool(it.get("shell", false))
 		var occ_z := Level3D.SHELL_Z
@@ -771,7 +842,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 				if dmin < INF:
 					it["z"] = best
 					clip.w = float(rp[0])
-		var res := _element_mesh(String(it["kind"]), clip.w + (0.0 if phys else ABOVE), clip.z - (0.0 if phys else ABOVE), Vector2(clip.z, clip.w), rng, bulbs, phys)
+		var res := _element_mesh(String(it["kind"]), clip.w + (0.0 if phys else ABOVE), clip.z - (0.0 if phys else ABOVE), band, rng, bulbs, phys)
 		var mi := MeshInstance3D.new()
 		mi.name = "%s_%d" % [it["kind"], roundi(float(it["x"]))]
 		mi.mesh = res[0]
@@ -782,7 +853,6 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 		mi.position = Vector3(float(it["x"]), 0.0, float(it["z"]))
-		var st: Dictionary = SETS[it["set"]]
 		if phys:
 			# F2b: element stoi na płycie przekroju (`Level3D.SHELL_Z`) i dochodzi do stropu — przycięcie fizyczne zamiast w rzucie
 			mi.set_instance_shader_parameter("clip", Vector4(-1e6, 1e6, -1e6, 1e6))
@@ -794,8 +864,10 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 				var plate := mi.get_node_or_null("Plate") as MeshInstance3D
 				if plate != null:
 					plate.set_instance_shader_parameter("occ", occ)
-		elif bool(st.get("open", false)):
+		elif open:
 			mi.set_instance_shader_parameter("clip", Vector4(clip.x - OPEN_PAD, clip.y + OPEN_PAD, -1e6, 1e6))
+			if yg > -INF:
+				mi.set_instance_shader_parameter("ywin", Vector2(yg, 1e6))      # nasada pnia i kępy kończy się na podłożu
 		else:
 			mi.set_instance_shader_parameter("clip", clip)
 		mi.set_instance_shader_parameter("tint", st["tint"])
@@ -814,7 +886,221 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			ol.light_volumetric_fog_energy = 0.0
 			ol.position = b
 			mi.add_child(ol)
+	_build_ground(parent, rows)
 	return items.size()
+
+
+## Podłoże wpisów otwartych (`_ground`) i płaskie miejsca pod elementami lasu (`_feet`) — przed budową elementów (stoją na `ground_y`).
+## y kolumny: wierzch gruntu w wierszu podłogi pasa r1, a gdy w nim nie ma litego kafla (dół) — pierwszy lity niżej (najwyżej 8 kafli);
+## potem minimum z sąsiednimi kolumnami, żeby rzut podłoża przesunięty w poziomie nie wszedł nad niższy grunt obok.
+static func prepare_ground(front: Array, rows: Array, items: Array) -> void:
+	_ground = []
+	_feet = []
+	if _noise == null:
+		_noise = FastNoiseLite.new()
+		_noise.seed = 87
+		_noise.frequency = 0.22
+	var T := Level3D.T
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	for e: Dictionary in front:
+		if not bool((SETS.get(String(e.get("set", "")), {}) as Dictionary).get("open", false)):
+			continue
+		var r1 := int(e["r1"])
+		var c0 := int(e["c0"]) - GROUND_PAD
+		var c1 := int(e["c1"]) + GROUND_PAD
+		for o: Dictionary in front:                      # przekrój obok (hala stacji): podłoże kończy się na jego brzegu
+			if not bool(o.get("shell", false)) or absi(int(o["r1"]) - r1) > 4:
+				continue
+			if int(o["c0"]) > int(e["c1"]) and int(o["c0"]) <= c1:
+				c1 = int(o["c0"]) - 1
+			if int(o["c1"]) < int(e["c0"]) and int(o["c1"]) >= c0:
+				c0 = int(o["c1"]) + 1
+		var raw := PackedFloat32Array()
+		for c in range(c0 - 1, c1 + 2):
+			var r := r1
+			if nrows > 0:
+				var cc := clampi(c, 0, cols - 1)
+				while r < mini(r1 + 8, nrows - 1) and not Level3D.is_solid_ch(Level3D._ch(rows, cc, r)):
+					r += 1
+			raw.append(-float(r) * T)
+		var ys := PackedFloat32Array()
+		for i in range(1, raw.size() - 1):
+			ys.append(minf(raw[i], minf(raw[i - 1], raw[i + 1])))
+		_ground.append({"x0": float(c0) * T, "x1": float(c1 + 1) * T, "c0": c0, "ys": ys})
+	for it: Dictionary in items:
+		if bool((SETS[it["set"]] as Dictionary).get("open", false)) and String(it["kind"]) != "bough":
+			_feet.append(Vector2(float(it["x"]), float(it["z"])))
+
+
+## y podłoża (m) w punkcie x i z (m przed płaszczyzną gry) albo -INF poza podłożem.
+static func ground_y(x: float, z: float) -> float:
+	for g: Dictionary in _ground:
+		if x >= float(g["x0"]) - 0.01 and x <= float(g["x1"]) + 0.01:
+			return _span_y(g, x) + _bump(x, z)
+	return -INF
+
+
+static func _span_y(g: Dictionary, x: float) -> float:
+	var ys: PackedFloat32Array = g["ys"]
+	var u := clampf(x / Level3D.T - 0.5 - float(g["c0"]), 0.0, float(ys.size() - 1))
+	var i := int(u)
+	return lerpf(ys[i], ys[mini(i + 1, ys.size() - 1)], u - float(i))
+
+
+## Nierówność podłoża: zero przy bryle, rośnie ku kamerze; płasko pod elementami lasu (`_feet`).
+static func _bump(x: float, z: float) -> float:
+	var amp := clampf((z - float(GROUND_Z[0])) * GROUND_BUMP.x, 0.0, GROUND_BUMP.y)
+	if amp <= 0.0 or _noise == null:
+		return 0.0
+	var flat := 1.0
+	for f: Vector2 in _feet:
+		flat = minf(flat, smoothstep(0.75, 1.0, Vector2((x - f.x) / FOOT.x, (z - f.y) / FOOT.y).length()))
+	return amp * _noise.get_noise_2d(x, z) * flat
+
+
+static func _in_foot(x: float, z: float, k := 1.0) -> bool:
+	for f: Vector2 in _feet:
+		if Vector2((x - f.x) / FOOT.x, (z - f.y) / FOOT.y).length() < k:
+			return true
+	return false
+
+
+## Płyta podłoża (`_ground`): wierzch od przodu bryły do GROUND_Z[-1], przód i boki w dół o GROUND_DROP; runo, kamienie, pniaki i kłody.
+## Węzły pod `parent` (warstwa świata), nie pod „Front” — ustawienie „Foreground: OFF” chowa pnie, a podłoże zostaje jak reszta terenu.
+static func _build_ground(parent: Node3D, rows: Array) -> void:
+	if _ground.is_empty() or "--nofrontground" in OS.get_cmdline_user_args():      # dev: bez płyty podłoża i runa (porównanie A/B)
+		return
+	var T := Level3D.T
+	var zs := PackedFloat32Array([Level3D.DEPTH_FRONT - 0.04])
+	for z: float in GROUND_Z:
+		zs.append(z)
+	var verts: Array = []                                  # Array, nie Packed*: lambda `tri` dopisuje do niego (Packed* łapie kopię)
+	var nrms: Array = []
+	for g: Dictionary in _ground:
+		var x0: float = g["x0"]
+		var x1: float = g["x1"]
+		var nx := int(ceil((x1 - x0) / (T * 0.5))) + 1
+		var nz := zs.size()
+		var hs := PackedFloat32Array()
+		hs.resize(nx * nz)
+		var xs := PackedFloat32Array()
+		for i in nx:
+			xs.append(lerpf(x0, x1, float(i) / float(nx - 1)))
+		for j in nz:
+			for i in nx:
+				# pierwszy rząd tuż pod wierzchem bryły (wsuwa się pod niego) — bez migotania dwóch powierzchni
+				hs[j * nx + i] = _span_y(g, xs[i]) + (-0.02 if j == 0 else _bump(xs[i], zs[j]))
+		var nrm := func(i: int, j: int) -> Vector3:
+			var im := maxi(i - 1, 0)
+			var ip := mini(i + 1, nx - 1)
+			var jm := maxi(j - 1, 0)
+			var jp := mini(j + 1, nz - 1)
+			var dydx: float = (hs[j * nx + ip] - hs[j * nx + im]) / (xs[ip] - xs[im])
+			var dydz: float = (hs[jp * nx + i] - hs[jm * nx + i]) / (zs[jp] - zs[jm])
+			return Vector3(-dydx, 1.0, -dydz).normalized()
+		var tri := func(a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3) -> void:
+			verts.append_array([a, b, c])
+			nrms.append_array([na, nb, nc])
+		for j in nz - 1:                                   # wierzch: zgodnie z ruchem wskazówek zegara patrząc z góry (przód ściany w Godocie)
+			for i in nx - 1:
+				var a := Vector3(xs[i], hs[j * nx + i], zs[j])
+				var b := Vector3(xs[i + 1], hs[j * nx + i + 1], zs[j])
+				var c := Vector3(xs[i], hs[(j + 1) * nx + i], zs[j + 1])
+				var d := Vector3(xs[i + 1], hs[(j + 1) * nx + i + 1], zs[j + 1])
+				var na: Vector3 = nrm.call(i, j)
+				var nb: Vector3 = nrm.call(i + 1, j)
+				var nc: Vector3 = nrm.call(i, j + 1)
+				var nd: Vector3 = nrm.call(i + 1, j + 1)
+				tri.call(a, b, c, na, nb, nc)
+				tri.call(b, d, c, nb, nd, nc)
+		var zl: float = zs[nz - 1]
+		for i in nx - 1:                                   # przód płyty (ku kamerze)
+			var a := Vector3(xs[i], hs[(nz - 1) * nx + i], zl)
+			var b := Vector3(xs[i + 1], hs[(nz - 1) * nx + i + 1], zl)
+			var drop := Vector3(0.0, -GROUND_DROP, 0.0)
+			tri.call(a, b, a + drop, Vector3.BACK, Vector3.BACK, Vector3.BACK)
+			tri.call(b, b + drop, a + drop, Vector3.BACK, Vector3.BACK, Vector3.BACK)
+		for side in [0, 1]:                                # boki płyty
+			var i := 0 if side == 0 else nx - 1
+			var n := Vector3.LEFT if side == 0 else Vector3.RIGHT
+			for j in nz - 1:
+				var a := Vector3(xs[i], hs[j * nx + i], zs[j])
+				var b := Vector3(xs[i], hs[(j + 1) * nx + i], zs[j + 1])
+				var drop := Vector3(0.0, -GROUND_DROP, 0.0)
+				if side == 1:
+					tri.call(a, a + drop, b, n, n, n)
+					tri.call(b, a + drop, b + drop, n, n, n)
+				else:
+					tri.call(a, b, a + drop, n, n, n)
+					tri.call(b, b + drop, a + drop, n, n, n)
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = PackedVector3Array(verts)
+	arr[Mesh.ARRAY_NORMAL] = PackedVector3Array(nrms)
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new()
+	mi.name = "FrontGround"
+	mi.mesh = mesh
+	mi.material_override = Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła `#`
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	_ground_cover(parent)
+
+
+## Runo na podłożu (karty trawy i paproci jak na bryle, wyższe dalej od bryły — rzut i tak leży poniżej linii podłogi) oraz kamienie,
+## pniaki i kłody przed pniami. Bez nich w miejscach pod elementami (`_feet`): element pierwszego planu rysuje się nad warstwą świata,
+## więc trawa przed nasadą pnia wyszłaby za nim.
+static func _ground_cover(parent: Node3D) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0x6D0F
+	var xf := {"grass_a": [], "grass_b": [], "fern_a": []}
+	cover_tops = PackedVector2Array()
+	var z0 := Level3D.DEPTH_FRONT + 0.15
+	var z1: float = GROUND_Z[GROUND_Z.size() - 4]
+	for g: Dictionary in _ground:
+		var x0: float = g["x0"]
+		var x1: float = g["x1"]
+		for _n in int((x1 - x0) * GROUND_GRASS):
+			var x := rng.randf_range(x0, x1)
+			var z := z0 + (z1 - z0) * pow(rng.randf(), 1.3)
+			if _in_foot(x, z):
+				continue
+			var hmax := 0.3 + 0.12 * (z - Level3D.DEPTH_FRONT)
+			var fern := z > 2.8 and rng.randf() < 0.22
+			var h := minf(rng.randf_range(0.55, 0.95) if fern else rng.randf_range(0.2, 0.42) + 0.03 * (z - Level3D.DEPTH_FRONT), hmax)
+			var wd := h * (1.5 if fern else rng.randf_range(0.9, 1.3))
+			var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6)).scaled(Vector3(wd, h, wd))
+			var kind := "fern_a" if fern else ("grass_a" if rng.randf() < 0.6 else "grass_b")
+			var base := ground_y(x, z) - h * (0.42 if fern else 0.04)
+			(xf[kind] as Array).append(Transform3D(b, Vector3(x, base, z)))
+			cover_tops.append(Vector2(base + h, z))
+	Level3D.undergrowth_cards(parent, xf, "FrontGround_", rng)
+	var k := 0
+	for g: Dictionary in _ground:
+		var x := float(g["x0"]) + rng.randf_range(3.0, 9.0)
+		while x < float(g["x1"]) - 2.0:
+			var z := rng.randf_range(PROP_Z.x, PROP_Z.y)
+			var pname: String = GROUND_PROPS[k % GROUND_PROPS.size()]
+			k += 1
+			var mm := Level3D.model_mesh(pname)
+			if not mm.is_empty() and not _in_foot(x, z, 1.25):
+				var local: Transform3D = mm[1]
+				var ab := local * (mm[0] as Mesh).get_aabb()
+				var big := maxf(maxf(ab.size.x, ab.size.z), 0.001)
+				var size := rng.randf_range(2.6, 3.8) if pname == "tree_log" else (rng.randf_range(0.7, 0.95) if pname == "stump" else rng.randf_range(0.6, 1.2))
+				var s := size / big
+				var ry := rng.randf_range(-0.45, 0.45) if pname == "tree_log" else rng.randf() * TAU
+				var b := Basis(Vector3.UP, ry).scaled(Vector3(s, s * (0.7 if pname.begins_with("rock") else 1.0), s))
+				var y := ground_y(x, z) - (0.08 if pname == "tree_log" else 0.05) - (b * ab.position).y
+				var prop := MeshInstance3D.new()
+				prop.name = "FrontGround_%s_%d" % [pname, roundi(x)]
+				prop.mesh = mm[0]
+				prop.transform = Transform3D(b, Vector3(x, y, z)) * local
+				prop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				parent.add_child(prop)
+			x += rng.randf_range(PROP_STEP.x, PROP_STEP.y)
 
 
 const CONTACT_SHADER := """

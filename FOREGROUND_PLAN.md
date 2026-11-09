@@ -556,7 +556,7 @@ kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepop
 - Zrzuty: `shots_front/f3_m3/` — `s_y_start10l.jpg`, `s_y_post30l.jpg` (start i posterunek), `s_x_mud22l.jpg` (błoto w zachodniej
   sali), `s_x_east183.jpg` (końcowa ściana), `s_z_hub4l.jpg`, `s_z_hub67l.jpg` (kryjówka), `s_z_m2hall98l.jpg` (hala 1.2).
 
-### Wyniki F3 — las z kontrą, 1.2 (2026-11-09, 1.7.526)
+### Wyniki F3 — las z kontrą i podłożem, 1.2 (2026-11-09, 1.7.526)
 
 Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mocniejszej kontry od księżyca”) i katalog lasu z F3.
 
@@ -568,13 +568,15 @@ Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mo
   za pogodą i błyskiem burzy tak jak `MoonRim` (`Front3D.set_moon` z `view3d._sync_weather`). Rury i ściany przekroju bez kontry.
 - **Zestaw `forest`** (`"open": true` — przycięcie tylko w poziomie z zapasem `OPEN_PAD` 3 m, bo rzut pnia przy brzegu kadru wychodzi
   ×1,25 dalej od środka i przy zwykłym przycięciu pień byłby ucięty pionową linią):
-  - pnie sosny, brzozy i martwy pień: proceduralne stożki od 10 m pod do 16 m nad podłogą pasa (podstawa i koniec zawsze poza kadrem
-    NORMAL, zasada 4), średnica 0,55–0,9 m, lekko pochylone i wygięte, nierówna kora (dwa sinusy po obwodzie), tekstury kory
-    z `art/world3d/forest/` (pionowy pas całego drzewa — pień bierze jego środek, bez powtórzeń); sosna ma martwy sęk i w 65%
+  - pnie sosny, brzozy i martwy pień: proceduralne stożki od podłoża (niżej o 0,3 m, część pod nim odcina `ywin`) do 16 m nad nim
+    (koniec zawsze nad kadrem NORMAL), średnica 0,55–0,9 m, lekko pochylone i wygięte, nierówna kora (dwa sinusy po obwodzie), tekstury kory
+    z `art/world3d/forest/` (pionowy pas całego drzewa); u dołu szersza szyja (1,5 m, wzdłuż wygiętej osi) i 3–5 krótkich, grubych
+    nabiegów korzeni, które schodzą pod podłoże; sosna ma martwy sęk i w 65%
     gałąź z kępami igliwia przy górnym brzegu, martwy pień 3–5 połamanych konarów w płaszczyźnie kadru, brzoza cienką ciemną gałązkę;
     u nasady kępa paproci;
   - zwisająca gałąź świerka (`bough_side`, 2–3 karty pod różnym kątem) z nasadą nad górnym brzegiem kadru;
-  - kępa paproci i trawy (3–5 kart) wchodząca w kadr od dołu na 1–2 m;
+  - kępa paproci i trawy (3–5 kart, paproć 1,3–2,1 m) na podłożu 6,4–7,8 m przed płaszczyzną gry (`CLUMP_Z`, bliżej kamery niż pnie):
+    wchodzi w kadr od dołu, a wierzch w rzucie zostaje pod linią podłogi;
   - w każdej przerwie między pniami gałąź u góry i kępa u dołu (`small` / `small2`; wcześniej jeden mały element na przerwę —
     w lesie wychodziło 5 elementów na 78 m i ani jednej gałęzi).
 - **Dlaczego nie modele drzew lasu:** sosny i brzozy z `prep_items3d.py` mają koronę od 30–70% wysokości; pień 4 m przed kamerą
@@ -583,13 +585,37 @@ Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mo
 - **Jasność:** biała kora brzozy i szare drewno martwego pnia świeciły jak słup — `alb_k` (brzoza 0,3, martwy pień 0,7, trawa 0,45,
   paproć 0,7). Pierwsze zrzuty: pień cały biały — odwrócone nawinięcie trójkątów (Godot bierze za przód ściany zgodne z ruchem
   wskazówek), więc rysowało się wnętrze z pełnym obrysem.
+- **Podłoże przed płaszczyzną gry** (uwaga użytkownika 2026-11-09 po pierwszych zrzutach: „zbudujmy do tego podłoże, aby całość była
+  spójna” — pnie schodziły przez dolny brzeg kadru w pustkę przed przekrojem ziemi, kępy wisiały 6 m pod podłogą nad niczym):
+  - wpis otwarty buduje płytę terenu (`Front3D._build_ground`) od przodu bryły gruntu (`DEPTH_FRONT`, pierwszy rząd wsunięty 2 cm
+    pod wierzch bryły — bez migotania) do 16 m ku kamerze, z przodem i bokami 6 m w dół; ten sam materiał co bryła `#`
+    (`make_pbr("terrain")`, rzut trójpłaszczyznowy w świecie), więc tekstura przechodzi bez szwu, a przekrój ziemi pod bryłą znika
+    pod płytą; warstwa świata — światło, mgła i błysk burzy jak na wierzchu bryły (w warstwie pierwszego planu dostałaby jaśniejsze
+    otoczenie i kontrę postaci, szew na przodzie bryły);
+  - wysokość: grunt kolumny w wierszu podłogi wpisu (w dole pierwszy lity kafel niżej), minimum z sąsiednimi kolumnami; pas wpisu
+    ± 8 kafli, bez wejścia w przekrój obok (hala stacji). Poziomy grunt przed płaszczyzną gry rzutuje się zawsze poniżej linii podłogi
+    (kamera nad nim), więc płyta nie wchodzi w pas gry przy żadnej kamerze; kopiec na 1.2 (kolumny 20–27) wystaje z niej swoim przekrojem;
+  - nierówność (szum, do 0,3 m, rośnie z odległością od bryły), płasko pod pniami i kępami: element pierwszego planu rysuje się nad
+    warstwą świata, więc stoi na płaskim gruncie na wysokości swojego `ywin` (pod nim nic go nie przecina);
+  - runo z tych samych kart co na bryle (`Level3D.undergrowth_cards`, wiatr), wyższe dalej od bryły (w rzucie najwyżej przy stopach),
+    bez runa pod elementami; co 14–24 m kamień, pniak albo kłoda (modele `rock*`, `stump`, `tree_log`) 5,6–9 m przed płaszczyzną —
+    przed pniami, więc w rzucie niżej niż ich nasada;
+  - nasada pnia ma osobny materiał kory bez kontry księżyca i normalne bez składowej w górę: szyja i korzenie świeciły na tle
+    ciemnego gruntu jak białe kolce (kontra księżyca na wierzchu i kontra postaci padająca z góry zza sceny — grunt jej nie dostaje);
+  - paproć schodzi pod podłoże tylko o 20% karty (`FERN_SINK`): `ywin` tnie kartę poziomą linią, przy 42% (jak w runie) przecinał
+    gęste liście tuż pod nasadą;
+  - poprawka kart z #632: odbita karta (`flip`) ma lustrzane wierzchołki i odwrotne nawinięcie — kamera widziała tył z normalną od siebie,
+    który łapał kontrę postaci zza sceny (płaskie, niebieskawe paprocie przy dolnym brzegu, „oszroniona” gałąź świerka); teraz
+    odbita karta ma odwróconą kolejność wierzchołków.
 - Wpis na 1.2: las od startu do hali stacji (kolumny 2–62, podłoga w wierszu 26): sosna 10 m, trawa 26 m, brzoza 34 m, paproć 48 m,
-  martwy pień 55 m, gałąź 62 m, paproć 72 m, sosna 79 m. Kępy przy dolnym brzegu znikają, gdy gracz stoi na wyższej platformie
-  (kadr idzie w górę) — pas liczy się od podłogi wpisu.
-- Koszt GPU (4K, HIGH, debug ze źródeł, `--perf=15`, trzy pomiary, z i bez `--nofront`): brzoza (kolumna 24) 8,04 → 8,13 ms (+0,09), martwy pień przy watasze (kolumna 40) 8,20 → 8,32 ms (+0,12); limit zasady 7 to 0,4 ms.
-- Zrzuty: `shots_front/forest/` — `d_c12_s.jpg` (sosna, paprocie), `d_c24_s.jpg` (brzoza), `d_c40_s.jpg` (martwy pień przy watasze),
-  `h_c48_s.jpg` (zwisająca gałąź), `h_c48w_s.jpg` (kamera WIDE), `d_c40l_s.jpg` (pełne światło: wygaszanie przy wilku).
-- Zostaje: 1.1 i 1.3 (las na powierzchni), nagranie w ruchu, decyzja użytkownika po zagraniu.
+  martwy pień 55 m, gałąź 62 m, paproć 72 m, sosna 79 m.
+- Koszt GPU (4K, HIGH, debug ze źródeł, `--perf=15`, trzy pomiary, z i bez `--nofront`): sam las — brzoza (kolumna 24) 8,04 → 8,13 ms (+0,09), martwy pień przy watasze (kolumna 40) 8,20 → 8,32 ms (+0,12); z podłożem brzoza 7,98 → 8,19 ms (+0,21), martwy pień 8,15 → 8,51 ms (+0,36; sam las bez płyty 8,28 ms — płyta z runem ok. +0,23 ms: zajmuje ok. ćwierci ekranu 4K materiałem bryły z warstwą brudu; gęstość runa 3 zamiast 5 kart na metr nic nie zmienia); limit zasady 7 to 0,4 ms.
+- Zrzuty: `shots_front/forest/` — bez podłoża `d_c12_s.jpg`, `d_c24_s.jpg`, `d_c40_s.jpg`, `h_c48_s.jpg`, `h_c48w_s.jpg`; z podłożem
+  `p_c12_s.jpg` (sosna), `p_c24_s.jpg` (brzoza przy kopcu), `p_c40_s.jpg` (martwy pień przy watasze, kępa paproci), `n_c48_s.jpg`,
+  `n_c48w_s.jpg` (kamera WIDE), `n_c40l_s.jpg` i `g_c24l_s.jpg` (pełne światło: płyta, runo, kamień, nasada pnia), `g_c62_s.jpg`
+  (koniec podłoża przy hali stacji).
+- Zostaje: 1.1 i 1.3 (las na powierzchni), nagranie w ruchu, decyzja użytkownika po zagraniu; przed halą stacji (od kolumny 66) płyta
+  przekroju kończy się na 5,6 m, a podłoże lasu na jej brzegu — dalej ku kamerze pusto (w nocy prawie niewidoczne).
 
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
@@ -605,7 +631,7 @@ Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mo
 | F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | 1.7.519 |
 | F2 | pilot: hala stacji i tunel 1.2 + A/B + bramka; las 1.2 z kontrą po bramce | 0,5–1 d | 1.7.519 (ten sam PR) |
 | F2b | przekrój budynku: spike w hali, mechanizm, hala i tunel 1.2 | 2 d | 1.7.521 |
-| F3 | katalog i mapy | 2–3 d | po jednym PR na mapę; kryjówka 1.7.522, 1.3 1.7.523, poprawki 1.7.525, las 1.2 z kontrą 1.7.526 |
+| F3 | katalog i mapy | 2–3 d | po jednym PR na mapę; kryjówka 1.7.522, 1.3 1.7.523, poprawki 1.7.525, las 1.2 z kontrą i podłożem 1.7.526 |
 | F4 | rozmycie bliskiego planu | 0,5 d | natywne DOF nie działa w `VpActors` (1.7.520); tylko własny przebieg, jeśli bramka zażąda |
 
 ## Ryzyka

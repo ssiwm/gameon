@@ -3457,6 +3457,12 @@ static func build_undergrowth(parent: Node3D, rows: Array) -> void:
 				var kind := "fern_a" if fern else ("grass_a" if rng.randf() < 0.6 else "grass_b")
 				var at := top + Vector3(rng.randf_range(-0.5, 0.5) * T, -h * (0.42 if fern else 0.04), z)
 				(xf[kind] as Array).append(Transform3D(b, at))
+	undergrowth_cards(parent, xf, "Undergrowth_", rng)
+
+## Karty runa (`xf`: tekstura z FOREST_DIR → [Transform3D]; skrzyżowane karty z podstawą w y = 0) jako `MultiMesh` z wiatrem
+## (`UNDERGROWTH_SHADER`, `set_wind`); węzły „<prefix><tekstura>”. Wspólne dla runa na bryle i podłoża lasu przed płaszczyzną gry
+## (`Front3D.build`) — ta sama trawa i paproć po obu stronach przodu bryły.
+static func undergrowth_cards(parent: Node3D, xf: Dictionary, prefix: String, rng: RandomNumberGenerator) -> void:
 	var v := PackedVector3Array()
 	var uv := PackedVector2Array()
 	var idx := PackedInt32Array()
@@ -3494,7 +3500,7 @@ static func build_undergrowth(parent: Node3D, rows: Array) -> void:
 			mm.set_instance_transform(i, list[i])
 			mm.set_instance_custom_data(i, Color(rng.randf(), 0.0, 0.0, 1.0))
 		var mi := MultiMeshInstance3D.new()
-		mi.name = "Undergrowth_" + k
+		mi.name = prefix + k
 		mi.multimesh = mm
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
