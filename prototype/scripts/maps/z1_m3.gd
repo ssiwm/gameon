@@ -51,7 +51,7 @@ const NICHES := [
 const FRONT := [
 	{"set": "station", "c0": 18, "c1": 36, "r0": 21, "r1": 26, "shell": true, "build": "bunker"},     # posterunek (budynek 3D, `building3d.gd`)
 	{"set": "station", "c0": 32, "c1": 37, "r0": 26, "r1": 30, "shell": true},     # piwniczka pod posterunkiem (kratka do szybu)
-	{"set": "station", "c0": 112, "c1": 142, "r0": 18, "r1": 26, "shell": true},   # Skład (antresola, niecka oleju)
+	{"set": "station", "c0": 112, "c1": 142, "r0": 18, "r1": 26, "shell": true, "build": "hall"},   # Skład (antresola, niecka oleju; budynek 3D: szkielet z cegłą)
 	{"set": "tunnel", "c0": 0, "c1": 30, "r0": 30, "r1": 40, "shell": true},       # zachodnia sala podziemi (gniazda) ze ścianą do kopania
 	{"set": "tunnel", "c0": 31, "c1": 62, "r0": 35, "r1": 40, "shell": true},      # niski tunel z pierwszym szybem
 	{"set": "tunnel", "c0": 63, "c1": 90, "r0": 30, "r1": 40, "shell": true},      # środkowa sala
