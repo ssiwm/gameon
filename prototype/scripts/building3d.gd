@@ -1,5 +1,5 @@
 extends RefCounted
-## Budynki 3D z mapy (pilot wariantu C: posterunek 1.3). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
+## Budynki 3D z mapy (wariant C: posterunek i Skład 1.3; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
 ## w prawdziwych wymiarach zamiast pudeł kafli 1,31 m: płaski stropodach żelbetowy 0,25 m na górze kafla dachu z żebrami i podciągami
 ## do dolnej krawędzi kafla (Skoczek dalej wisi „pod sufitem”), attyka, ściany szczytowe 0,4 m z pilastrami, cokołem, okapem i oknami
 ## w głębi, drzwi w ościeżnicach w pasie gry, słupy co 4–6 m przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
@@ -34,10 +34,14 @@ const KINDS := {
 	"bunker": {"wall": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"], "slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"],
 			"back": ["bld_wall", 0.5, Color(0.22, 0.23, 0.24), 0.8, "stone"], "cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""],
 			"plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"]},
+	# hala magazynowa (Skład 1.3): żelbetowy szkielet (słupy, pilastry, strop) z wypełnieniem z cegły — ta sama cegła co mury mapy
+	"hall": {"wall": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, "stone"], "col": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"],
+			"slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"], "back": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.85, "stone"],
+			"cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""], "plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"]},
 }
-## Klucz części → rola materiału; części z siatką fazowaną i UV na element (`_box_mesh`) — w `SOLO` każda bryła z własnym przesunięciem tekstury
+## Klucz części → rola materiału (rola „col” bez wpisu w typie bierze materiał ścian); części z siatką fazowaną i UV na element (`_box_mesh`) — w `SOLO` każda bryła z własnym przesunięciem tekstury
 ## (słup, belka, pilaster czytają się jako osobne elementy), reszta w UV świata (kawałki muru wokół otworów łączą się bez szwu).
-const ROLE := {"wall": "wall", "col": "wall", "slab": "slab", "beam": "slab", "back": "back", "plinth": "plinth"}
+const ROLE := {"wall": "wall", "col": "col", "slab": "slab", "beam": "slab", "back": "back", "plinth": "plinth"}
 const SOLO := ["col", "beam"]
 
 ## Materiał roli z UV siatki w metrach (`uv1_scale` = powtórzeń na metr), bez rzutowania triplanarnego.
@@ -248,7 +252,7 @@ static func build_one(parent: Node3D, b: Dictionary, rows: Array) -> int:
 		"cut": _tinted(cs),   # przekrój: rzut świata — płaszczyzna cięcia jak jeden blok betonu
 	}
 	for k: String in ROLE:
-		mats[k] = _uv_mat(spec[ROLE[k]])
+		mats[k] = _uv_mat(spec.get(ROLE[k], spec["wall"]))
 	var unit := BoxMesh.new()
 	unit.size = Vector3.ONE
 	var p := parts(b, rows)
