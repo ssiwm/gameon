@@ -102,6 +102,105 @@ const GROUND_GRASS := 5.0                  ## kart runa na metr podłoża wzdłu
 const GROUND_PROPS := ["rock", "ph_branches_a", "trunk_big", "rock_b", "fence", "ph_fern_c", "rock_c", "logs", "ph_branches_b", "tyre", "rock", "bones", "ph_fern_a", "rock_b", "trunk_big", "rock_c"]
 const GROUND_GRASS_M := 2.6                ## runo z modeli ze skanów: sztuk na metr (każda to cała kępa, nie jedna karta)
 const COVER_CHUNK := 24.0                  ## m: runo z modeli w kawałkach wzdłuż mapy (odrzucanie poza kadrem)
+## Ruchoma trawa (wariant C zaakceptowany 2026-11-09): kępki liści z geometrii (`_tuft_mesh`) na podłożu, kołysane wiatrem z pogody
+## (`Level3D.set_wind`) falami podmuchów; między nimi rośliny ze skanów, też kołysane (`_sway_mat`).
+const TUFTS_M2 := 24.0                     ## kępek na m² (przed płatami łanu: część miejsc zostaje łysa)
+const TUFT_H := Vector2(0.3, 0.65)         ## m: wysokość kępki (przycinana zasadą rzutu pod linią stóp)
+const TUFT_NEAR := 3.0                     ## m od przodu bryły: przy płaszczyźnie gry kępki niskie i małe na ekranie — gęstość od 75% do pełnej
+const TUFT_W := 0.42                       ## m: najmniejsza szerokość kępki (niska kępka przy płaszczyźnie gry rozłożona szerzej, nie jak sadzonka)
+const GRASS_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+uniform float amp = 0.5;                  // `Level3D.set_wind`: 0 cisza, 0,5 lekki wiatr, 2 burza
+uniform float lean = 0.0;                 // stały przechył w lewo (burza)
+uniform vec2 wdir = vec2(-1.0, 0.2);      // podmuchy idą w lewo, jak przechył koron w burzy
+uniform vec3 col_root : source_color = vec3(0.06, 0.08, 0.03);
+uniform vec3 col_mid : source_color = vec3(0.17, 0.28, 0.07);
+uniform vec3 col_tip : source_color = vec3(0.40, 0.46, 0.18);
+uniform vec3 col_dry : source_color = vec3(0.40, 0.33, 0.18);
+uniform float trans_k = 0.35;
+varying float vk;
+varying float vdry;
+varying float vgust;
+float gust(vec2 p, float t) {
+	float a = sin(dot(p, wdir) * 0.55 - t * 1.6) * 0.5 + 0.5;
+	float b = sin(dot(p, vec2(-wdir.y, wdir.x)) * 0.31 + dot(p, wdir) * 0.17 - t * 0.9) * 0.5 + 0.5;
+	return a * a * mix(0.55, 1.0, b);
+}
+void vertex() {
+	float k = UV.y;                                   // 0 nasada → 1 czubek
+	vec3 o = MODEL_MATRIX[3].xyz;
+	float seed = INSTANCE_CUSTOM.r;
+	vdry = INSTANCE_CUSTOM.g;
+	float g = gust(o.xz, TIME);
+	vgust = g;
+	float flutter = sin(TIME * (5.0 + seed * 3.0) + seed * 40.0) * 0.08 * (0.4 + g);
+	float bend = min((0.2 + lean + g * 1.1 * amp + flutter) * k * k, 1.2);
+	// przesunięcie w świecie → w modelu: obrót wokół pionu i skala wzdłuż osi, więc transpozycja / skala² osi zamiast inverse() na wierzchołek
+	mat3 m = mat3(MODEL_MATRIX);
+	vec2 d = normalize(wdir);
+	float h = (m * VERTEX).y;
+	VERTEX += transpose(m) * vec3(d.x * bend * h * 0.9, -bend * bend * h * 0.35, d.y * bend * h * 0.9) / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2]));
+	vk = k;
+	NORMAL = normalize(mix(NORMAL, vec3(0.0, 1.0, 0.0), 0.55));
+}
+void fragment() {
+	vec3 c = mix(col_root, col_mid, smoothstep(0.0, 0.45, vk));
+	c = mix(c, col_tip, smoothstep(0.5, 1.0, vk));
+	c = mix(c, col_dry, vdry);
+	c *= 1.0 + vgust * 0.25 * vk;                     // jaśniejszy pas łanu w podmuchu
+	ALBEDO = c;
+	ROUGHNESS = 0.85;
+	SPECULAR = 0.25;
+	AO = mix(0.35, 1.0, vk);
+	AO_LIGHT_AFFECT = 0.6;
+	BACKLIGHT = c * trans_k;
+}
+"""
+## Kołysanie modeli roślin runa (warstwa świata): waga z wysokości wierzchołka w siatce modelu.
+const SWAY_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, diffuse_burley;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic;
+uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic;
+uniform sampler2D arm_tex : hint_default_white, filter_linear_mipmap_anisotropic;
+uniform float amp = 0.5;
+uniform float lean = 0.0;
+uniform vec2 wdir = vec2(-1.0, 0.2);
+uniform float y0 = 0.0;
+uniform float hm = 1.0;                  // wysokość siatki modelu w jej jednostkach
+uniform float sway_m = 0.18;             // wychylenie czubka w podmuchu [m na metr wysokości egzemplarza]
+float gust(vec2 p, float t) {
+	float a = sin(dot(p, wdir) * 0.55 - t * 1.6) * 0.5 + 0.5;
+	float b = sin(dot(p, vec2(-wdir.y, wdir.x)) * 0.31 + dot(p, wdir) * 0.17 - t * 0.9) * 0.5 + 0.5;
+	return a * a * mix(0.55, 1.0, b);
+}
+void vertex() {
+	float k = clamp((VERTEX.y - y0) / hm, 0.0, 1.0);
+	mat3 m = mat3(MODEL_MATRIX);
+	vec3 o = MODEL_MATRIX[3].xyz;
+	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float hs = length(m[1]) * hm;
+	float g = gust(o.xz, TIME);
+	float fl = sin(TIME * 4.3 + w.x * 3.1 + w.z * 2.3) * 0.25 * (0.3 + g);
+	vec2 dd = normalize(wdir) * (0.1 + lean * 0.4 + g * amp * 1.2 + fl) * sway_m * hs * k * k;
+	VERTEX += transpose(m) * vec3(dd.x, 0.0, dd.y) / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2]));
+}
+void fragment() {
+	vec4 a = texture(albedo_tex, UV);
+	if (a.a < 0.42) { discard; }
+	ALBEDO = a.rgb;
+	vec3 arm = texture(arm_tex, UV).rgb;
+	ROUGHNESS = arm.g;
+	AO = arm.r;
+	NORMAL_MAP = texture(normal_tex, UV).rgb;
+	BACKLIGHT = a.rgb * 0.3;
+}
+"""
+static var _grass_mat: ShaderMaterial
+static var _sway_mats := {}                ## model → ShaderMaterial (raz na sesję, w `Level3D._wind_models`)
+static var _tuft: ArrayMesh
+static var tuft_tops := PackedVector2Array()   ## (y czubka, z) kępek trawy — test: rzut pod linią stóp
 ## m: odstęp kamieni, pniaków, kłód, sągów, płotu, opon i kości na podłożu (dawniej 14–24 m: pierwszy plan był pusty, uwaga z gry 2026-11-09)
 const PROP_STEP := Vector2(5.5, 10.0)
 ## wielkość elementu podłoża [m, najdłuższy bok w poziomie]; elementy wydłużone (`PROP_ALONG`) leżą wzdłuż kadru
@@ -151,6 +250,7 @@ uniform bool arm_ao = true;                // modele ze skanów: kanał R mapy A
 uniform bool cutout = false;               // karty lasu (igliwie, paproć, trawa): alfa z tekstury, odcięcie
 uniform float sway = 0.0;                  // karty: kołysanie [m] — wierzch kępy paproci, koniec gałęzi (`sway_uv`)
 uniform vec2 sway_uv = vec2(0.0, 1.0);     // waga kołysania z UV: (u, 1 − v)
+uniform float sway_h = 0.0;                // > 0: waga kołysania z wysokości nad podłożem (`ywin.x`) zamiast z UV [m do pełnego wychylenia] — modele roślin
 uniform float rim_k = 0.0;                 // kontra księżyca (las): obrys krawędzi zwróconej ku księżycowi; 0 = brak
 uniform float trans_k = 0.0;               // karty lasu: prześwit księżyca przez igliwie i liście
 uniform vec3 rim_col : source_color = vec3(0.62, 0.72, 0.95);
@@ -188,6 +288,7 @@ void vertex() {
 	if (sway > 0.0) {
 		vec3 w0 = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		float k = dot(vec2(UV.x, 1.0 - UV.y), sway_uv);
+		if (sway_h > 0.0) { k = clamp((w0.y - ywin.x) / sway_h, 0.0, 1.0); k *= k; }
 		VERTEX.x += sway * k * (sin(TIME * 0.9 + w0.x * 0.37) + 0.4 * sin(TIME * 2.3 + w0.x * 1.1));
 	}
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -930,6 +1031,8 @@ static func _model_mat(name: String, si: int, src: Material, leaf: bool) -> Stri
 	if leaf:
 		m.set_shader_parameter("cutout", true)
 		m.set_shader_parameter("trans_k", FOREST_TRANS)
+		m.set_shader_parameter("sway", 0.07)
+		m.set_shader_parameter("sway_h", 1.2)
 	else:
 		m.set_shader_parameter("rim_k", FOREST_RIM * 0.7)
 	_mats[key] = m
@@ -1423,7 +1526,7 @@ static func _ground_cover(parent: Node3D) -> void:
 			var wd := h * (1.5 if fern else rng.randf_range(0.9, 1.3))
 			var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6)).scaled(Vector3(wd, h, wd))
 			if models:
-				var names: Array = FERN_MODELS if fern else GRASS_MODELS
+				var names: Array = FERN_MODELS if fern else (GRASS_MODELS.slice(3) if rng.randf() < 0.7 else GRASS_MODELS)   # trawę dają kępki
 				var nm := String(names[rng.randi() % names.size()])
 				var t := _plant_xf(nm, Vector3(x, ground_y(x, z), z), h * (0.75 if fern else 1.0), h * 2.4, rng.randf() * TAU)
 				if not mxf.has(nm):
@@ -1437,6 +1540,9 @@ static func _ground_cover(parent: Node3D) -> void:
 			cover_tops.append(Vector2(base + h, z))
 	Level3D.undergrowth_cards(parent, xf, "FrontGround_", rng)
 	_cover_models(parent, mxf, "FrontGround_")
+	tuft_tops = PackedVector2Array()
+	if models:
+		_grass_tufts(parent, rng, z1)
 	var k := 0
 	for g: Dictionary in _ground:
 		var x := float(g["x0"]) + rng.randf_range(3.0, 9.0)
@@ -1505,6 +1611,123 @@ static func _ground_cover(parent: Node3D) -> void:
 				parent.add_child(prop)
 
 
+## Kępki trawy na podłożu: `MultiMesh` w kawałkach COVER_CHUNK, płaty łanu z szumu (łyse miejsca zostają), wysokość pod zasadą rzutu
+## (`hmax`), rzadziej przy płaszczyźnie gry (TUFT_NEAR); bez trawy pod pniami, na bagnie i na dnie dołka przed szybem.
+static func _grass_tufts(parent: Node3D, rng: RandomNumberGenerator, z1: float) -> void:
+	if "--nograss" in OS.get_cmdline_user_args():          # dev: porównanie A/B i pomiar kosztu
+		return
+	var noise := FastNoiseLite.new()
+	noise.seed = 11
+	noise.frequency = 0.18
+	var chunks := {}
+	for g: Dictionary in _ground:
+		var x0: float = g["x0"]
+		var x1: float = g["x1"]
+		var zf: float = float(g["z0"]) + 0.04
+		for _n in int((x1 - x0) * maxf(z1 - zf, 0.0) * TUFTS_M2):
+			var x := rng.randf_range(x0, x1)
+			var z := rng.randf_range(zf + 0.1, z1)
+			var n := noise.get_noise_2d(x, z) * 0.5 + 0.5
+			if rng.randf() > smoothstep(0.05, 0.45, n) * lerpf(0.75, 1.0, clampf((z - zf) / TUFT_NEAR, 0.0, 1.0)):
+				continue
+			if _in_foot(x, z, 0.6) or _span_y(g, x) < float(g["base"]) - 0.3 or _mud_k(x, z) > 0.3:
+				continue
+			var hmax := 0.3 + 0.12 * (z - zf)
+			var h := minf(rng.randf_range(TUFT_H.x, TUFT_H.y) * (0.7 + 0.6 * n), hmax)
+			var y := ground_y(x, z) - 0.01
+			var c := floori(x / COVER_CHUNK)
+			if not chunks.has(c):
+				chunks[c] = []
+			var wd := maxf(h, TUFT_W * rng.randf_range(0.8, 1.2))
+			(chunks[c] as Array).append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(wd, h, wd)), Vector3(x, y, z)),
+					Color(rng.randf(), clampf(rng.randf() * 1.4 - 0.6, 0.0, 1.0) * 0.8, 0.0, 1.0)])
+			tuft_tops.append(Vector2(y + h, z))
+	if _grass_mat == null:
+		_grass_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = GRASS_SHADER
+		_grass_mat.shader = sh
+		Level3D._wind_models.append(_grass_mat)
+	_grass_mat.set_shader_parameter("amp", Level3D._wind.x)
+	_grass_mat.set_shader_parameter("lean", Level3D._wind.y)
+	for c: int in chunks:
+		var list: Array = chunks[c]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = _tuft_mesh()
+		mm.instance_count = list.size()
+		for i in list.size():
+			mm.set_instance_transform(i, list[i][0])
+			mm.set_instance_custom_data(i, list[i][1])
+		var mi := MultiMeshInstance3D.new()
+		mi.name = "FrontGround_tufts_%d" % c
+		mi.multimesh = mm
+		mi.material_override = _grass_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
+
+
+## Kępka trawy (wysokość 1 m, skalowana w egzemplarzu): 9 liści od nasady — środkowe prawie pionowe, zewnętrzne odchylone i mocniej
+## wygięte, lekko skręcone; UV.y 0 nasada → 1 czubek (kolor i waga wiatru w GRASS_SHADER). 4 odcinki na liść: 72 trójkąty.
+static func _tuft_mesh() -> ArrayMesh:
+	if _tuft != null:
+		return _tuft
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for b in 9:
+		var ry := float(b) * 2.399 + 0.4                    # złoty kąt — równomiernie dookoła
+		var outer := float(b % 3) / 2.0                     # 0 środek, 1 brzeg kępki
+		var tilt := lerpf(0.08, 0.55, outer)
+		var ln := lerpf(1.0, 0.7, outer) * (0.85 + 0.15 * sin(float(b) * 4.1))
+		var curve := lerpf(0.12, 0.45, outer)
+		var off := Vector3(cos(ry), 0.0, sin(ry)) * 0.018 * (0.5 + outer)
+		var bas := Basis(Vector3.UP, ry) * Basis(Vector3.RIGHT, tilt)
+		var nrm := (bas * Vector3(0.0, -0.2, 1.0)).normalized()
+		var pts := []
+		for j in 5:
+			var t := float(j) / 4.0
+			var w := 0.032 * (1.0 - t * 0.9) * lerpf(1.0, 0.8, outer)
+			var c := off + bas * Vector3(0.0, t * ln, curve * t * t * ln)
+			var tw := Basis(Vector3.UP, ry + t * 0.5)
+			pts.append([c + tw * Vector3(-w, 0.0, 0.0), c + tw * Vector3(w, 0.0, 0.0), t])
+		for j in 4:
+			var a: Array = pts[j]
+			var n: Array = pts[j + 1]
+			for v: Array in [[a[0], a[2]], [a[1], a[2]], [n[1], n[2]], [a[0], a[2]], [n[1], n[2]], [n[0], n[2]]]:
+				st.set_normal(nrm)
+				st.set_uv(Vector2(0.5, float(v[1])))
+				st.add_vertex(v[0])
+	_tuft = st.commit()
+	return _tuft
+
+
+## Materiał runa z modelu `name` kołysany wiatrem (SWAY_SHADER; tekstury z materiału GLB). Jeden na model, w `Level3D._wind_models`.
+static func _sway_mat(name: String) -> Material:
+	if _sway_mats.has(name):
+		return _sway_mats[name]
+	var mm := Level3D.model_mesh(name)
+	var mesh: Mesh = mm[0]
+	var src := mesh.surface_get_material(0) as BaseMaterial3D
+	if src == null or src.roughness_texture == null:
+		return null
+	var m := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = SWAY_SHADER
+	m.shader = sh
+	m.set_shader_parameter("albedo_tex", src.albedo_texture)
+	m.set_shader_parameter("normal_tex", src.normal_texture)
+	m.set_shader_parameter("arm_tex", src.roughness_texture)
+	var ab := mesh.get_aabb()
+	m.set_shader_parameter("y0", ab.position.y)
+	m.set_shader_parameter("hm", maxf(ab.size.y, 0.001))
+	m.set_shader_parameter("amp", Level3D._wind.x)
+	m.set_shader_parameter("lean", Level3D._wind.y)
+	_sway_mats[name] = m
+	Level3D._wind_models.append(m)
+	return m
+
+
 ## Przekształcenie egzemplarza rośliny `name` (jednostki modelu → świat): środek podstawy w `at`, wysokość `h`, szerokość najwyżej `wmax`.
 static func _plant_xf(name: String, at: Vector3, h: float, wmax: float, ry: float) -> Transform3D:
 	var mm := Level3D.model_mesh(name)
@@ -1544,6 +1767,7 @@ static func _cover_models(parent: Node3D, xf: Dictionary, prefix: String) -> voi
 			var mi := MultiMeshInstance3D.new()
 			mi.name = "%s%s_%d" % [prefix, nm, c]
 			mi.multimesh = mm
+			mi.material_override = _sway_mat(nm)
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			parent.add_child(mi)
 

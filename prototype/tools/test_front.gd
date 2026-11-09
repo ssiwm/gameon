@@ -428,15 +428,29 @@ func _check_ground(root: Node3D, y_floor: float) -> void:
 					bad += 1
 	_check(bad == 0, "podłoże: %d punktów nad gruntem przy bryle albo w rzucie nad linią podłogi" % bad)
 	var cards := 0
+	var tufts := 0
 	for c in root.get_children():
 		var mm := c as MultiMeshInstance3D
-		if mm != null and String(mm.name).begins_with("FrontGround_") and not String(mm.name).begins_with("FrontGround_bank_"):   # brzeg bagna osobno
+		if mm != null and String(mm.name).begins_with("FrontGround_tufts_"):
+			tufts += mm.multimesh.instance_count
+			_check(mm.material_override is ShaderMaterial and (mm.material_override as ShaderMaterial).shader.code == Front3D.GRASS_SHADER, "trawa: kępki bez shadera wiatru")
+		elif mm != null and String(mm.name).begins_with("FrontGround_") and not String(mm.name).begins_with("FrontGround_bank_"):   # brzeg bagna osobno
 			cards += mm.multimesh.instance_count
 	_check(cards > 100 and cards == Front3D.cover_tops.size(), "podłoże: %d kart runa (zapis wierzchołków: %d)" % [cards, Front3D.cover_tops.size()])
 	for t: Vector2 in Front3D.cover_tops:
 		if _proj(t.x, t.y, y_floor + 5.3, 20.2) > y_floor + 0.35:
 			bad += 1
 	_check(bad == 0, "podłoże: %d kart runa w rzucie wyżej niż stopy" % bad)
+	# ruchoma trawa: kępki w kawałkach mapy, czubki w rzucie pod stopami (jak runo), wiatr z pogody
+	_check(tufts > 1000 and tufts == Front3D.tuft_tops.size(), "trawa: %d kępek (zapis czubków: %d)" % [tufts, Front3D.tuft_tops.size()])
+	for t: Vector2 in Front3D.tuft_tops:
+		if _proj(t.x, t.y, y_floor + 5.3, 20.2) > y_floor + 0.35:
+			bad += 1
+	_check(bad == 0, "trawa: %d kępek w rzucie wyżej niż stopy" % bad)
+	var wind0 := Level3D._wind
+	Level3D.set_wind(1.7, 0.4)
+	_check(is_equal_approx(float(Front3D._grass_mat.get_shader_parameter("amp")), 1.7), "trawa: set_wind nie dochodzi do kępek")
+	Level3D.set_wind(wind0.x, wind0.y)
 	# kamera pod powierzchnią (`SURF_FADE`; gracz na podłożu: kamera ok. 5,3 m nad nim): płyta i runo znikają, las gaśnie przez `vis`
 	# mapa z zawałem (1.1) buduje świat dwa razy (`Geometry` i `GeometryAfterCollapse`): gasną obie kopie podłoża
 	var fm := Front3D._moon_mats[0] as ShaderMaterial
