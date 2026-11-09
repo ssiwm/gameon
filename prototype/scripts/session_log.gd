@@ -48,6 +48,11 @@ extends RefCounted
 ##                  raport właściciela profilu (u klienta przez RPC do hosta); pisany po mission_end (PROGRESSION_PLAN.md P0.1)
 ##   hub_buy        clock, who, kind (weapon / part / supply / order / research / machining / service), id, cost, ok, reason, bank (po operacji)
 ##                  — rozstrzygnięta operacja warsztatu na serwerze, także w kryjówce, poza misją (P0.4); bez odmów „station” i „repeat”
+##   hub_enter      clock, map, humans, bots — drużyna weszła do kryjówki (od 1.7.531, plan układu kryjówki E0); dalej wiersze kryjówki mają
+##                  `s` = sekundy od tego wejścia
+##   hub_pos        s, p: lista graczy [{who, bot, pos}] — próbka co HUB_POS_EVERY s w kryjówce (mapa cieplna, postoje przy stanowiskach)
+##   hub_station    s, who, station (bench / locker / service / press / pyro / lab / lathe) — gracz otworzył panel stanowiska (klient
+##                  zgłasza hostowi przez Scrap); raport: sekcja „Kryjówka” w tools/session_progress.py
 ##   system         gpu, gpu_vendor, cpu, threads, ram_gb, os, screen, window, fullscreen, quality, render_scale, vsync, fps_cap — raz na plik, przy jego otwarciu
 ##   perf           map („menu” poza sesją, od 1.7.461; wcześniej domyślna mapa spod menu), fps, avg, p50, p95, p99 (od 1.7.461), max (ms klatki),
 ##                  spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry); raport: tools/session_perf.py
@@ -75,6 +80,7 @@ extends RefCounted
 const DIR := "user://sessions"
 const PHASES := ["OBJECTIVE", "BOSS", "EXTRACT", "SUCCESS", "FAILED"]
 const POS_EVERY := 3.0                 ## s między próbkami pozycji graczy (zdarzenie `pos`): ok. 120 B na gracza, 10 min w duecie ≈ 50 KB
+const HUB_POS_EVERY := 1.0             ## s między próbkami pozycji w kryjówce (`hub_pos`): ok. 40 B na gracza, pobyt 100 s w duecie ≈ 8 KB
 const PERF_EVERY := 10.0               ## s między próbkami wydajności (zdarzenie `perf`): ok. 130 B, godzina gry ≈ 47 KB
 const PERF_SPIKE_MS := 50.0            ## klatka dłuższa niż tyle ms to przestój (zacięcie widoczne przy 60 kl./s)
 
@@ -84,6 +90,7 @@ static var path := ""                  ## plik bieżącej sesji ("" = jeszcze ni
 static var _file: FileAccess
 static var _open_failed := false
 static var _in_mission := false
+static var _hub_t0 := -1               ## ms zegara silnika przy wejściu do kryjówki (hub_start); -1 = drużyna nie jest w kryjówce
 static var _t0 := 0                    ## ms zegara silnika w chwili startu misji
 static var _noise := {}                ## źródło → [liczba zdarzeń, suma Uwagi]
 static var _weapons := {}              ## klucz broni → {shots, noise, dmg, kills}
@@ -172,6 +179,7 @@ static func mission_start(data: Dictionary) -> void:
 		return
 	var row := {"clock": Time.get_datetime_string_from_system(), "build": build()}      # build() pyta gita — przed startem zegara
 	_in_mission = true
+	_hub_t0 = -1
 	_t0 = Time.get_ticks_msec()
 	_noise = {}
 	_weapons = {}
@@ -219,6 +227,28 @@ static func mission_end(data: Dictionary) -> void:
 ## Koniec misji bez wyniku (wyjście do kryjówki, zmiana mapy) — zdarzenia przestają się zapisywać.
 static func leave_mission() -> void:
 	_in_mission = false
+
+# ---------------------------------------------------------------- kryjówka (plan układu kryjówki E0)
+
+## Drużyna weszła do kryjówki (mission.log_start przy kind == "hub"): koniec próby misji i początek zegara `s` wierszy kryjówki.
+static func hub_start(data := {}) -> void:
+	_in_mission = false
+	if not active():
+		return
+	_hub_t0 = Time.get_ticks_msec()
+	note("hub_enter", data)
+
+## Czy wiersz kryjówki zostałby teraz zapisany (próbki pozycji nie składają się na próżno).
+static func hub_recording() -> bool:
+	return active() and _hub_t0 >= 0
+
+## Wiersz kryjówki `ev` z `s` = sekundy od wejścia (hub_start); poza kryjówką nic nie pisze.
+static func hub_note(ev: String, data := {}) -> void:
+	if not hub_recording():
+		return
+	var row := {"s": snappedf(float(Time.get_ticks_msec() - _hub_t0) / 1000.0, 0.1)}
+	row.merge(data)
+	_write(ev, row)
 
 # ---------------------------------------------------------------- liczniki do mission_end
 
@@ -382,6 +412,7 @@ static func reset_for_test() -> void:
 	path = ""
 	_open_failed = false
 	_in_mission = false
+	_hub_t0 = -1
 	_noise = {}
 	_weapons = {}
 	_dmg_by = {}

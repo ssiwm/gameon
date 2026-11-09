@@ -148,6 +148,30 @@ func supply_station(kind: String) -> String:
 	var mode := String(Throwables.KINDS.get(kind, {}).get("mode", ""))
 	return "pyro_bench" if mode == "throw" or mode == "place" else "workshop"
 
+## Panele stanowisk kryjówki zapisywane w dzienniku (`hub_station`, plan układu kryjówki E0); tryby workshop_ui.open.
+const LOG_STATIONS := ["bench", "locker", "service", "press", "pyro", "lab", "lathe"]
+
+## Gracz otworzył panel stanowiska `mode` (workshop_ui.open): klient zgłasza hostowi, pisze tylko serwer. Czysta telemetria —
+## niczego nie odblokowuje, więc serwer sprawdza tylko nazwę i to, czy zgłaszający gra w tej sesji.
+func note_station(mode: String) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_log_station(NoiseMgr.local_id(), mode)
+	else:
+		_station_rpc.rpc_id(1, mode)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _station_rpc(mode: String) -> void:
+	if NoiseMgr.is_server():
+		_log_station(multiplayer.get_remote_sender_id(), mode)
+
+func _log_station(peer_id: int, mode: String) -> void:
+	if not LOG_STATIONS.has(mode) or not SessionLog.hub_recording():
+		return
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and int(p.player_id) == peer_id:
+			SessionLog.hub_note("hub_station", {"who": "P%d" % int(p.display_id), "station": mode})
+			return
+
 ## Dziennik sesji: rozstrzygnięta operacja warsztatu (PROGRESSION_PLAN.md P0.4). Bez odmów „station”, „repeat” i „off”
 ## (gracz poza stanowiskiem, podwójne kliknięcie, Nocny Dyżur) — nie mówią nic o ekonomii.
 func _log_buy(kind: String, id: String, cost: int, reason: String, peer_id: int, extra := {}) -> void:

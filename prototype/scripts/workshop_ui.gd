@@ -1063,6 +1063,7 @@ func open(mode := "bench") -> void:
 	_open = true
 	visible = true
 	_mode = mode if MODE_PAGES.has(mode) else "bench"
+	Scrap.note_station(_mode)                              # dziennik sesji: które stanowiska drużyna naprawdę otwiera (plan układu kryjówki E0)
 	_session += 1
 	_lab_tall = 0.0
 	_bench_slot = ""

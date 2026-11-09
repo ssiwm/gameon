@@ -11,6 +11,7 @@ const Char3D := preload("res://scripts/char3d.gd")
 const SupplyArtRef := preload("res://scripts/station_supply_art.gd")
 const ServiceArtRef := preload("res://scripts/station_service_art.gd")
 const Perks := preload("res://scripts/perks.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 var total := 0
 var failed := 0
 var main: Node
@@ -65,9 +66,52 @@ func run(m: Node) -> void:
 	await _immersive()
 	await _progression()
 	await _strip_frame()
+	await _hub_log()
 	await _layout()                                  # na końcu: przegląda wszystkie stanowiska i kafle, zmienia wybory w panelu
 	print("[WORKSHOP-TEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
 	Audio.quit_game(1 if failed else 0)
+
+## Dziennik kryjówki (plan układu kryjówki E0): wejście, próbka pozycji co HUB_POS_EVERY s i otwarty panel stanowiska; poza kryjówką cisza.
+func _hub_log() -> void:
+	if main.level.map_id != "z1_hub":
+		main._set_map("z1_hub")
+		await frames(3)
+	var was_enabled := SessionLog.enabled
+	var was_dir := SessionLog.dir
+	SessionLog.reset_for_test()
+	SessionLog.enabled = true
+	SessionLog.dir = "user://_hub_log_test"
+	var mis := get_tree().get_first_node_in_group("mission")
+	mis.log_start()
+	mis._log_positions()
+	Scrap.note_station("bench")
+	Scrap.note_station("nonsense")
+	var wui = get_tree().get_first_node_in_group("workshop_ui")
+	if wui != null:
+		wui.open("press")
+		await frames(2)
+		wui.close()
+	SessionLog.mission_start({"map": "z1_m1", "test": "hub_log"})
+	Scrap.note_station("lab")                        # po wyjściu na misję: nic
+	var rows: Array = []
+	var f := FileAccess.open(SessionLog.path, FileAccess.READ)
+	while f != null and not f.eof_reached():
+		var r = JSON.parse_string(f.get_line())
+		if r is Dictionary:
+			rows.append(r)
+	var kinds := rows.map(func(r: Dictionary) -> String: return String(r.get("ev")))
+	var st := rows.filter(func(r: Dictionary) -> bool: return r.get("ev") == "hub_station").map(func(r: Dictionary) -> String: return String(r.get("station")))
+	var pos := rows.filter(func(r: Dictionary) -> bool: return r.get("ev") == "hub_pos")
+	check("dziennik kryjówki: hub_enter, hub_pos z pozycją i `s` (%s)" % [kinds], kinds.has("hub_enter") and pos.size() >= 1 and (pos[0]["p"] as Array).size() >= 1
+		and (pos[0]["p"][0] as Dictionary).has("pos") and pos[0].has("s"))
+	check("dziennik kryjówki: panele tylko znane i tylko w kryjówce (%s)" % [st], st.has("bench") and not st.has("nonsense") and not st.has("lab") and (wui == null or st.has("press")))
+	check("odstęp próbek w kryjówce %.1f s" % SessionLog.HUB_POS_EVERY, SessionLog.HUB_POS_EVERY <= 1.0)
+	for fn in DirAccess.get_files_at(SessionLog.dir):
+		DirAccess.remove_absolute(SessionLog.dir.path_join(fn))
+	SessionLog.reset_for_test()
+	SessionLog.enabled = was_enabled
+	SessionLog.dir = was_dir
+	mis.log_start()                                  # z powrotem w kryjówce (kolejne kroki testu)
 
 func _authorization() -> void:
 	var peer: int = player.player_id
