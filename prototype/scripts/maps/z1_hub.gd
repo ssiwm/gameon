@@ -51,9 +51,9 @@ const NICHES := [
 ## na trzech piętrach; strop i podłoga z betonu wysunięte do `Level3D.SHELL_Z`, rury omijają otwory schodów i żebra stropu
 ## (`Front3D.blocked_x`). Piętra mieszczą się razem w kadrze, więc na całą kryjówkę wypada kilka dużych elementów (`Front3D.layout`).
 const FRONT := [
-	{"set": "bunker", "c0": 20, "c1": 71, "r0": 6, "r1": 14, "shell": true},       # sterownia nadajnika (góra)
-	{"set": "bunker", "c0": 0, "c1": 71, "r0": 14, "r1": 22, "shell": true},       # świetlica i warsztat (środek)
-	{"set": "bunker", "c0": 3, "c1": 68, "r0": 22, "r1": 30, "shell": true},       # maszynownia i magazyn (dół)
+	{"set": "bunker", "c0": 20, "c1": 71, "r0": 6, "r1": 14, "shell": true, "build": "vault"},       # sterownia nadajnika (góra)
+	{"set": "bunker", "c0": 0, "c1": 71, "r0": 14, "r1": 22, "shell": true, "build": "vault"},       # świetlica i warsztat (środek)
+	{"set": "bunker", "c0": 3, "c1": 68, "r0": 22, "r1": 30, "shell": true, "build": "vault"},       # maszynownia i magazyn (dół)
 ]
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.

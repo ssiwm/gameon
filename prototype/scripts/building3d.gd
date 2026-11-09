@@ -1,5 +1,5 @@
 extends RefCounted
-## Budynki 3D z mapy (wariant C: posterunek i Skład 1.3, hala stacji 1.2; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
+## Budynki 3D z mapy (wariant C: posterunek i Skład 1.3, hala stacji 1.2, kryjówka; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą, „vault” — bunkier w skale). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
 ## w prawdziwych wymiarach zamiast pudeł kafli 1,31 m: płaski stropodach żelbetowy 0,25 m na górze kafla dachu z żebrami i podciągami
 ## do dolnej krawędzi kafla (Skoczek dalej wisi „pod sufitem”), attyka, ściany szczytowe 0,4 m z pilastrami, cokołem, okapem i oknami
 ## w głębi, drzwi w ościeżnicach w pasie gry, słupy co 4–6 m przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
@@ -38,6 +38,13 @@ const KINDS := {
 	"hall": {"wall": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, "stone"], "col": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"],
 			"slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"], "back": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.85, "stone"],
 			"cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""], "plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"]},
+	# bunkier w skale (kryjówka): materiały jak „hall” (żelbetowy szkielet, ciepła cegła ścian — tu jest bezpiecznie), ale zakopany (`buried`):
+	# bez okapu, attyki, cokołu, pilastrów i okien; strop z otworami szybów (kafle wiersza dachu poza murem), słupy z dala od otworów w stropie
+	# i w podłodze; kondygnacje to osobne wpisy jeden nad drugim (strop dolnej jest podłogą górnej)
+	"vault": {"wall": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, "stone"], "col": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"],
+			"slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"], "back": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.85, "stone"],
+			"cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""], "plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"],
+			"buried": true},
 }
 ## Klucz części → rola materiału (rola „col” bez wpisu w typie bierze materiał ścian); części z siatką fazowaną i UV na element (`_box_mesh`) — w `SOLO` każda bryła z własnym przesunięciem tekstury
 ## (słup, belka, pilaster czytają się jako osobne elementy), reszta w UV świata (kawałki muru wokół otworów łączą się bez szwu).
@@ -82,6 +89,32 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	var ys := yr - SLAB                                     # spód płyty
 	var zb := -Level3D.DEPTH_BACK
 	var zc := Level3D.SHELL_Z
+	var r0 := int(b["r0"])
+	var r1 := int(b["r1"])
+	var buried := bool((KINDS.get(String(b["kind"]), KINDS["bunker"]) as Dictionary).get("buried", false))
+	var solid := func(c: int, r: int) -> bool: return Level3D._ch(rows, c, r) in Level3D.WALL_CH
+	var gaps: Array = []                                    # otwory w stropie (szyby, pomosty w wierszu dachu): [x0, x1]
+	for c in range(c0, c1 + 1):
+		if not solid.call(c, r0):
+			if not gaps.is_empty() and is_equal_approx(float(gaps[-1][1]), float(c) * T):
+				gaps[-1][1] = float(c + 1) * T
+			else:
+				gaps.append([float(c) * T, float(c + 1) * T])
+	var in_gap := func(xa: float, xb: float) -> bool:
+		for g: Array in gaps:
+			if xb > float(g[0]) + 0.001 and xa < float(g[1]) - 0.001:
+				return true
+		return false
+	var spans := func(xa: float, xb: float) -> Array:         # odcinki [xa, xb] bez otworów stropu
+		var res: Array = []
+		var x := xa
+		for g: Array in gaps:
+			if float(g[0]) > x:
+				res.append([x, minf(float(g[0]), xb)])
+			x = maxf(x, float(g[1]))
+		if x < xb:
+			res.append([x, xb])
+		return res
 	var out := {"wall": [], "col": [], "slab": [], "beam": [], "back": [], "plinth": [], "steel": [], "leaf": [], "glass": [], "cut": []}
 	var box := func(key: String, a: Vector3, b2: Vector3) -> void:
 		if absf(b2.x - a.x) < 0.001 or absf(b2.y - a.y) < 0.001 or absf(b2.z - a.z) < 0.001:
@@ -89,15 +122,20 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		(out[key] as Array).append(Level3D._span_box(a, b2))
 		if maxf(a.z, b2.z) >= zc - 0.001 and key != "cut":   # przecięte płaszczyzną przekroju: nakładka z materiałem przekroju
 			(out["cut"] as Array).append(Level3D._span_box(Vector3(a.x, a.y, zc), Vector3(b2.x, b2.y, zc + CUT)))
-	# stropodach: płyta z okapem, czoło okapu, attyka (z przerwą w bokach nad pasem gry)
-	box.call("slab", Vector3(x0 - EAVE, ys, zb - EAVE), Vector3(x1 + EAVE, yr, zc))
-	for sx in [-1.0, 1.0]:
+	# stropodach: płyta z okapem, czoło okapu, attyka (z przerwą w bokach nad pasem gry); w skale sama płyta między ścianami, z otworami
+	if buried:
+		for sp: Array in spans.call(x0, x1):
+			box.call("slab", Vector3(float(sp[0]), ys, zb), Vector3(float(sp[1]), yr, zc))
+	else:
+		box.call("slab", Vector3(x0 - EAVE, ys, zb - EAVE), Vector3(x1 + EAVE, yr, zc))
+	for sx in ([] if buried else [-1.0, 1.0]):
 		var xe := x0 - EAVE if sx < 0.0 else x1 + EAVE
 		box.call("slab", Vector3(xe, yr - FASCIA, zb - EAVE), Vector3(xe - sx * 0.12, ys, zc))
 		for seg in [[zb - EAVE, ROOF_GAP[0]], [ROOF_GAP[1], zc]]:
 			box.call("slab", Vector3(xe, yr, float(seg[0])), Vector3(xe - sx * PARAPET[1], yr + PARAPET[0], float(seg[1])))
-	box.call("slab", Vector3(x0 - EAVE, yr - FASCIA, zb - EAVE), Vector3(x1 + EAVE, yr + PARAPET[0], zb - EAVE + PARAPET[1]))
-	box.call("slab", Vector3(x0 - EAVE, yr, zc - PARAPET[1]), Vector3(x1 + EAVE, yr + PARAPET[0], zc))
+	if not buried:
+		box.call("slab", Vector3(x0 - EAVE, yr - FASCIA, zb - EAVE), Vector3(x1 + EAVE, yr + PARAPET[0], zb - EAVE + PARAPET[1]))
+		box.call("slab", Vector3(x0 - EAVE, yr, zc - PARAPET[1]), Vector3(x1 + EAVE, yr + PARAPET[0], zc))
 	# słupy i podciągi: linie na granicach kafli co ok. BAY
 	var ncols := c1 - c0 + 1
 	var nbay := maxi(1, roundi((x1 - x0) / BAY))
@@ -109,6 +147,9 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 			var free := g > 1 and g < ncols - 1
 			for r in range(int(b["r0"]) + 1, int(b["r1"])):
 				free = free and not Level3D.niche_cells.has(Vector2i(c0 + g - 1, r)) and not Level3D.niche_cells.has(Vector2i(c0 + g, r))
+			if buried:                                         # w skale: słup nie pod otworem stropu ani nad otworem podłogi (szyb)
+				for rr in [r0, r1]:
+					free = free and solid.call(c0 + g - 1, rr) and solid.call(c0 + g, rr)
 			if free:
 				lines.append(x0 + float(g) * T)
 				break
@@ -121,14 +162,15 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 			var zd := 0.45 if zz < 0.0 else -0.45
 			box.call("beam", Vector3(x - COL * 0.5, yc - 0.3, minf(zz, zz + zd)), Vector3(x + COL * 0.5, yc, maxf(zz, zz + zd)))
 	# podciąg wzdłuż ściany tylnej; w płaszczyźnie przekroju bez podciągu — pas 1,3 m nad salą zasłaniał strop z żebrami
-	box.call("beam", Vector3(x0 + WALL, yc, zin), Vector3(x1 - WALL, ys, zin + 0.35))
+	for sp: Array in spans.call(x0 + WALL, x1 - WALL):
+		box.call("beam", Vector3(float(sp[0]), yc, zin), Vector3(float(sp[1]), ys, zin + 0.35))
 	# żebra stropu co kafel (poza liniami podciągów)
 	for k in range(1, ncols):
 		var x := x0 + float(k) * T
 		var near := false
 		for lx: float in lines:
 			near = near or absf(lx - x) < 0.5
-		if not near:
+		if not near and not in_gap.call(x - RIB, x + RIB):
 			box.call("beam", Vector3(x - RIB * 0.5, yc, zin + 0.35), Vector3(x + RIB * 0.5, ys, zc))
 	# ściana tylna: w wierszach pasa ciągi kafli ze ścianą tła (`Level3D.back_wall_at` — bez otworów wnęk), nad nimi pełny pas pod płytę
 	var xl := x0 + WALL
@@ -163,10 +205,14 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 				doors.append(h)
 		var front0: float = ROOF_GAP[1] + 0.2
 		var wlen := zc - COL - front0
-		if wlen >= WIN[2] + 0.8:                            # okno w odcinku ściany przed pasem gry
+		if wlen >= WIN[2] + 0.8 and not buried:                            # okno w odcinku ściany przed pasem gry
 			var wz := front0 + wlen * 0.5
 			holes.append([wz - WIN[2] * 0.5, wz + WIN[2] * 0.5, yf + WIN[0], yf + WIN[1], "deco"])
 		_wall_x(box, "wall", minf(xo, xi), maxf(xo, xi), zb, zc, yf, ys, holes)
+		for h: Array in holes:
+			_frame(box, side, xo, xi, h)
+		if buried:
+			continue                                         # w skale: lico zewnętrzne niewidoczne, bez cokołu i pilastrów
 		var xout := func(d: float) -> float: return xo + float(side) * d     # x w odległości d na zewnątrz lica
 		# cokół (bez progów drzwi), pilastry przy narożniku tylnym i obok drzwi
 		var pz: Array = [zb]
@@ -180,8 +226,6 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 			pil.append_array([float(h[0]) - JAMB - 0.35, float(h[1]) + JAMB + 0.35])
 		for z: float in pil:
 			box.call("col", Vector3(xo, yf + PLINTH[0], z - PILASTER[0] * 0.5), Vector3(xout.call(PILASTER[1]), ys, z + PILASTER[0] * 0.5))
-		for h: Array in holes:
-			_frame(box, side, xo, xi, h)
 	return out
 
 ## Ściana w płaszczyźnie y-z (x od xa do xb) z prostokątnymi otworami [z0, z1, y0, y1, …]: pasy między kolejnymi krawędziami otworów w z,
