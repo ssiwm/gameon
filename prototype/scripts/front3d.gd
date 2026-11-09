@@ -258,6 +258,18 @@ static var _ground_top := -INF             ## m: najwyższy y podłoża (`SURF_F
 static var _ground_nodes: Array = []       ## płyta, runo, kamienie wszystkich budów świata (`Geometry` i `GeometryAfterCollapse`): wygaszane pod powierzchnią
 static var _surface_k := 1.0
 static var _feet: Array = []               ## Vector2(x, z) elementów lasu — płaskie miejsca podłoża
+## Rośliny lasu w warstwie świata (uwaga z gry 2026-11-09: „rośliny nie mają właściwych proporcji i kolorów”): kępy paproci i pokrzyw
+## (`shrub`, `ferns`, `grass`) i paprocie przy pniach powstają jako runo z modeli (`_clump_cover`) — oświetla je scena jak trawę
+## (w warstwie pierwszego planu świeciły tylko kontry postaci i niebieski prześwit księżyca), w naturalnej wysokości; krzew ze siewek
+## `shrub_04` (0,2 m powiększone do 2,5 m — wielkie liście) odpada. Bez modeli ze skanów (`--nomodels3d`) zostają kępy z kart w pierwszym planie.
+static var _world_plants := false
+static var _clumps: Array = []             ## [x, z, rodzaj] kęp roślin na podłożu (rodzaj "base": paproć obok pnia)
+const CLUMP_PLANTS := {                    ## rodzaj kępy → [[modele, liczba, wysokość m (natur.)], …]
+	"shrub": [[["ph_nettle_c"], 2, Vector2(1.0, 1.35)], [["ph_nettle_a"], 2, Vector2(0.7, 1.0)], [["ph_fern_a", "ph_fern_b", "ph_fern_c", "ph_fern_d"], 2, Vector2(0.7, 1.0)]],
+	"ferns": [[["ph_fern_a", "ph_fern_b", "ph_fern_c", "ph_fern_d"], 4, Vector2(0.65, 1.05)], [["ph_nettle_a", "ph_nettle_b"], 1, Vector2(0.5, 0.8)]],
+	"grass": [[["ph_nettle_a", "ph_nettle_b"], 3, Vector2(0.5, 0.85)], [["ph_grass_a", "ph_grass_b", "ph_grass_c"], 2, Vector2(0.35, 0.55)]],
+	"base": [[["ph_fern_a", "ph_fern_b", "ph_fern_c", "ph_fern_d"], 2, Vector2(0.45, 0.75)]],
+}
 static var _mud: Array = []                ## Vector3(x0, x1, y) bagien pod gołym niebem (`Level3D.mud_spills` "open") — płasko i bez runa pod plamą
 static var _noise: FastNoiseLite
 ## Test (`tools/test_front.gd`): wierzchołki kart runa na podłożu (x = y wierzchu, y = z) — w trybie headless `MultiMesh`
@@ -975,7 +987,8 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 			var at := c + dir * ln * rng.randf_range(0.45, 1.0) + Vector3(0.0, rng.randf_range(-0.35, 0.1), rng.randf_range(-0.25, 0.25))
 			var s := rng.randf_range(1.0, 1.5)
 			_card(tst, at, s * 1.2, s, rng.randf_range(-0.3, 0.3), rng.randf_range(-0.5, 0.5), rng.randf() < 0.5, Vector2(0.5, 0.6))
-	_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
+	if not _world_plants:
+		_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
 
 
 ## Środek pnia na wysokości `y` (bez nierówności kory) i jego promień.
@@ -1130,7 +1143,8 @@ static func _model_tree(sts: Dictionary, used: Dictionary, name: String, y_floor
 	var s := rng.randf_range(SNAG_H.x, SNAG_H.y) / maxf(ab.size.y, 0.001)
 	var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6) + (PI if rng.randf() < 0.5 else 0.0)).scaled(Vector3(s, s, s))
 	_put_model(sts, used, name, Transform3D(b, Vector3(0.0, y_floor - TRUNK_SINK, 0.0) - b * Vector3(foot.x, ab.position.y, foot.z)))
-	_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
+	if not _world_plants:
+		_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
 	return true
 
 
@@ -1166,8 +1180,17 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 	items = items.filter(func(it: Dictionary) -> bool:     # pień i kępa tylko na równym podłożu (nie na zboczu dołka przed szybem i rampą)
 		return not bool((SETS[it["set"]] as Dictionary).get("open", false)) or String(it["kind"]) == "bough" or level_at(float(it["x"])))
 	prepare_ground(front, rows, items)
+	_world_plants = not Level3D.model_mesh(String(FERN_MODELS[0])).is_empty() and not "--frontplants" in OS.get_cmdline_user_args()
+	_clumps = []
 	for it: Dictionary in items:
 		var clip: Vector4 = it["clip"]
+		if _world_plants and bool((SETS[it["set"]] as Dictionary).get("open", false)):
+			var kd := String(it["kind"])
+			if kd in ["shrub", "ferns", "grass"]:
+				_clumps.append([float(it["x"]), float(it["z"]), kd])
+				continue
+			if kd in ["pine", "snag"]:
+				_clumps.append([float(it["x"]), float(it["z"]) + 0.4, "base"])
 		var rng := RandomNumberGenerator.new()
 		rng.seed = int(float(it["x"]) * 100.0)
 		var st: Dictionary = SETS[it["set"]]
@@ -1796,6 +1819,8 @@ static func _ground_cover(parent: Node3D) -> void:
 			var base := ground_y(x, z) - h * (0.42 if fern else 0.04)
 			(xf[kind] as Array).append(Transform3D(b, Vector3(x, base, z)))
 			cover_tops.append(Vector2(base + h, z))
+	if models:
+		_clump_cover(mxf, rng)
 	Level3D.undergrowth_cards(parent, xf, "FrontGround_", rng)
 	_cover_models(parent, mxf, "FrontGround_")
 	tuft_tops = PackedVector2Array()
@@ -1867,6 +1892,37 @@ static func _ground_cover(parent: Node3D) -> void:
 				prop.transform = Transform3D(b, Vector3(spot.x, yg - 0.04 - (b * ab.position).y, spot.y)) * local
 				prop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				parent.add_child(prop)
+
+
+## Kępy roślin lasu (`_clumps`) jako runo z modeli w warstwie świata: naturalna wysokość (CLUMP_PLANTS), przycięta zasadą rzutu
+## (z kamery 5,3 m nad podłogą wierzch pod linią stóp: 0,3 + 0,2 m na metr od przodu bryły); paproć obok pnia — z boku, nie przed nim
+## (pień w pierwszym planie rysuje się nad warstwą świata).
+static func _clump_cover(mxf: Dictionary, rng: RandomNumberGenerator) -> void:
+	for cl: Array in _clumps:
+		var kind := String(cl[2])
+		for grp: Array in CLUMP_PLANTS[kind]:
+			var names: Array = grp[0]
+			var hr: Vector2 = grp[2]
+			for n in int(grp[1]):
+				var x := float(cl[0])
+				var z := float(cl[1])
+				if kind == "base":
+					x += rng.randf_range(0.8, 1.5) * (-1.0 if rng.randf() < 0.5 else 1.0)
+					z += rng.randf_range(-0.2, 0.4)
+				else:
+					x += rng.randf_range(-0.9, 0.9)
+					z += rng.randf_range(-0.45, 0.45)
+				var yg := ground_y(x, z)
+				if yg == -INF or _mud_k(x, z) > 0.3:
+					continue
+				var h := minf(rng.randf_range(hr.x, hr.y), 0.3 + 0.2 * (z - _front_z(x)))
+				var nm := String(names[rng.randi() % names.size()])
+				if Level3D.model_mesh(nm).is_empty():
+					continue
+				if not mxf.has(nm):
+					mxf[nm] = []
+				(mxf[nm] as Array).append(_plant_xf(nm, Vector3(x, yg, z), h, h * 2.2, rng.randf() * TAU))
+				cover_tops.append(Vector2(yg + h, z))
 
 
 ## Kępki trawy na podłożu: `MultiMesh` w kawałkach COVER_CHUNK, płaty łanu z szumu (łyse miejsca zostają), wysokość pod zasadą rzutu

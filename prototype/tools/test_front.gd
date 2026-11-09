@@ -384,8 +384,16 @@ func _check_forest() -> void:
 			_check(rims == 1 and bases == 1, "%s: pień bez osobnej kory nasady (kora %d, nasada %d)" % [mi.name, rims, bases])
 		elif kind == "snag":
 			_check(rims >= 1, "%s: martwy pień (model) bez kory z kontrą" % mi.name)
-	for k in ["pine", "snag", "shrub", "ferns", "grass"]:
+	for k in ["pine", "snag"]:
 		_check(kinds.has(k), "las: rodzaj %s nie powstał na długim zakresie" % k)
+	# kępy paproci i pokrzyw w warstwie świata (runo z modeli, oświetlone sceną), nie w pierwszym planie; paproć przy każdym pniu
+	var ck := {}
+	for cl: Array in Front3D._clumps:
+		ck[cl[2]] = int(ck.get(cl[2], 0)) + 1
+	for k in ["shrub", "ferns", "grass", "base"]:
+		_check(ck.has(k), "las: kępa %s nie powstała w warstwie świata (%s)" % [k, ck])
+	for k in ["shrub", "ferns", "grass"]:
+		_check(not kinds.has(k), "las: kępa %s w warstwie pierwszego planu (oświetlają ją tylko kontry postaci)" % k)
 	Front3D.set_moon(0.25)
 	for c in fr.get_children():
 		var mi := c as MeshInstance3D
