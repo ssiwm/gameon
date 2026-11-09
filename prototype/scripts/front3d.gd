@@ -972,23 +972,25 @@ static func prepare_ground(front: Array, rows: Array, items: Array) -> void:
 			_feet.append(Vector2(float(it["x"]), float(it["z"])))
 
 
-## Pas podłoża kolumn c0..c1 od z0 (m przed płaszczyzną gry): y kolumny jak w `prepare_ground`, "zb" — początek nierówności (`_bump`).
-static func _span(rows: Array, c0: int, c1: int, r1: int, z0: float) -> Dictionary:
+## Pas podłoża kolumn c0..c1 od z0 (m przed płaszczyzną gry): y wierzchu gruntu każdej kolumny (pierwszy lity kafel od r1 w dół, najwyżej
+## 8 wierszy — dołek przed szybem), "base" — y pasa (r1), "zb" — początek nierówności (`_bump`), "drop" — o ile przód i boki płyty schodzą w dół.
+## Wysokość stała w kolumnie, a na granicy kolumn pionowa ściana (`_plate_mesh`): dołek przed szybem ma ściany równo z bokami bryły szybu.
+## Wcześniej y był minimum z sąsiadów i przechodził liniowo między środkami kolumn — płyta opadała już nad sąsiednią kolumną, więc przód jej
+## bryły sterczał jak słup nad dołkiem, a zbocze rysowało się smugą; podłoga piwnicy opadała w szyb obok aż do tunelu (uwaga z gry 2026-11-09).
+static func _span(rows: Array, c0: int, c1: int, r1: int, z0: float, drop := GROUND_DROP) -> Dictionary:
 	var T := Level3D.T
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
-	var raw := PackedFloat32Array()
-	for c in range(c0 - 1, c1 + 2):
+	var ys := PackedFloat32Array()
+	for c in range(c0, c1 + 1):
 		var r := r1
 		if nrows > 0:
 			var cc := clampi(c, 0, cols - 1)
 			while r < mini(r1 + 8, nrows - 1) and not Level3D.is_solid_ch(Level3D._ch(rows, cc, r)):
 				r += 1
-		raw.append(-float(r) * T)
-	var ys := PackedFloat32Array()
-	for i in range(1, raw.size() - 1):
-		ys.append(minf(raw[i], minf(raw[i - 1], raw[i + 1])))
-	return {"x0": float(c0) * T, "x1": float(c1 + 1) * T, "c0": c0, "ys": ys, "z0": z0, "zb": z0 + 0.04 + float(GROUND_Z[0]) - Level3D.DEPTH_FRONT}
+		ys.append(-float(r) * T)
+	return {"x0": float(c0) * T, "x1": float(c1 + 1) * T, "c0": c0, "ys": ys, "z0": z0, "base": -float(r1) * T, "drop": drop,
+			"zb": z0 + 0.04 + float(GROUND_Z[0]) - Level3D.DEPTH_FRONT}
 
 
 ## y podłoża (m) w punkcie x i z (m przed płaszczyzną gry) albo -INF poza podłożem.
@@ -1041,9 +1043,7 @@ static func set_camera_y(cam_y: float) -> void:
 
 static func _span_y(g: Dictionary, x: float) -> float:
 	var ys: PackedFloat32Array = g["ys"]
-	var u := clampf(x / Level3D.T - 0.5 - float(g["c0"]), 0.0, float(ys.size() - 1))
-	var i := int(u)
-	return lerpf(ys[i], ys[mini(i + 1, ys.size() - 1)], u - float(i))
+	return ys[clampi(floori(x / Level3D.T) - int(g["c0"]), 0, ys.size() - 1)]
 
 
 ## Nierówność podłoża: zero przy bryle, rośnie ku kamerze; płasko pod elementami lasu (`_feet`).
@@ -1082,73 +1082,80 @@ static func _build_ground(parent: Node3D, rows: Array) -> void:
 			_ground_nodes.append(c)
 
 
-## Siatka płyty z pasów (`_span`): wierzch od z0 do GROUND_Z[-1] z nierównością, przód i boki w dół o GROUND_DROP.
+## Siatka płyty z pasów (`_span`): wierzch od z0 do GROUND_Z[-1] z nierównością, osobno w każdej kolumnie (dwa odcinki na kolumnę), pionowe
+## ściany na granicy kolumn o różnym gruncie (dołek przed szybem), przód i boki pasa w dół o "drop".
 static func _plate_mesh(spans: Array) -> ArrayMesh:
 	var verts: Array = []                                  # Array, nie Packed*: lambda `tri` dopisuje do niego (Packed* łapie kopię)
 	var nrms: Array = []
 	var T := Level3D.T
+	var tri := func(a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3) -> void:
+		verts.append_array([a, b, c])
+		nrms.append_array([na, nb, nc])
+	# pionowy czworokąt: górna krawędź a–b (wzdłuż z) nad dolną a2–b2, przodem w stronę n (LEFT albo RIGHT)
+	var wall := func(a: Vector3, b: Vector3, a2: Vector3, b2: Vector3, n: Vector3) -> void:
+		if n == Vector3.LEFT:
+			tri.call(a, b, a2, n, n, n)
+			tri.call(b, b2, a2, n, n, n)
+		else:
+			tri.call(a, a2, b, n, n, n)
+			tri.call(b, a2, b2, n, n, n)
 	for g: Dictionary in spans:
-		var x0: float = g["x0"]
-		var x1: float = g["x1"]
-		var zs := PackedFloat32Array([float(g["z0"])])        # pas lasu: od przodu bryły; przed budynkiem: od SHELL_Z
+		var ys: PackedFloat32Array = g["ys"]
+		var c0 := int(g["c0"])
+		var drop := Vector3(0.0, -float(g["drop"]), 0.0)
+		var zs := PackedFloat32Array([float(g["z0"])])        # pas lasu: od przodu bryły; przed budynkiem i w tunelu: od SHELL_Z
 		for z: float in GROUND_Z:
 			if z > float(g["z0"]) + 0.3:
 				zs.append(z)
-		var nx := int(ceil((x1 - x0) / (T * 0.5))) + 1
 		var nz := zs.size()
-		var hs := PackedFloat32Array()
-		hs.resize(nx * nz)
-		var xs := PackedFloat32Array()
-		for i in nx:
-			xs.append(lerpf(x0, x1, float(i) / float(nx - 1)))
-		for j in nz:
-			for i in nx:
-				# pierwszy rząd 4 cm za przodem bryły i GROUND_LIFT nad jej wierzchem: płyta 2 cm niżej odsłaniała 2 cm nieoświetlonego przodu
-				# bryły — ciemna linia między planami w każdym kręgu światła (uwaga z gry 2026-11-09)
-				hs[j * nx + i] = _span_y(g, xs[i]) + (GROUND_LIFT if j == 0 else _bump(xs[i], zs[j], g["zb"]))
-		var nrm := func(i: int, j: int) -> Vector3:
-			var im := maxi(i - 1, 0)
-			var ip := mini(i + 1, nx - 1)
-			var jm := maxi(j - 1, 0)
+		# wierzch kolumny ci w x, rząd j: pierwszy rząd 4 cm za przodem bryły i GROUND_LIFT nad jej wierzchem — płyta 2 cm niżej odsłaniała
+		# 2 cm nieoświetlonego przodu bryły (ciemna linia między planami, uwaga z gry 2026-11-09)
+		var hgt := func(ci: int, x: float, j: int) -> float:
+			return ys[ci] + (GROUND_LIFT if j == 0 else _bump(x, zs[j], g["zb"]))
+		# normalna z samej nierówności (bez skoku między kolumnami): kolumny o tym samym gruncie łączą się w cieniowaniu bez szwu
+		var nrm := func(x: float, j: int) -> Vector3:
+			if j == 0:
+				return Vector3.UP
+			var e := 0.25
+			var jm := maxi(j - 1, 1)
 			var jp := mini(j + 1, nz - 1)
-			var dydx: float = (hs[j * nx + ip] - hs[j * nx + im]) / (xs[ip] - xs[im])
-			var dydz: float = (hs[jp * nx + i] - hs[jm * nx + i]) / (zs[jp] - zs[jm])
+			var dydx: float = (_bump(x + e, zs[j], g["zb"]) - _bump(x - e, zs[j], g["zb"])) / (2.0 * e)
+			var dydz: float = (_bump(x, zs[jp], g["zb"]) - _bump(x, zs[jm], g["zb"])) / maxf(zs[jp] - zs[jm], 0.01)
 			return Vector3(-dydx, 1.0, -dydz).normalized()
-		var tri := func(a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3) -> void:
-			verts.append_array([a, b, c])
-			nrms.append_array([na, nb, nc])
-		for j in nz - 1:                                   # wierzch: zgodnie z ruchem wskazówek zegara patrząc z góry (przód ściany w Godocie)
-			for i in nx - 1:
-				var a := Vector3(xs[i], hs[j * nx + i], zs[j])
-				var b := Vector3(xs[i + 1], hs[j * nx + i + 1], zs[j])
-				var c := Vector3(xs[i], hs[(j + 1) * nx + i], zs[j + 1])
-				var d := Vector3(xs[i + 1], hs[(j + 1) * nx + i + 1], zs[j + 1])
-				var na: Vector3 = nrm.call(i, j)
-				var nb: Vector3 = nrm.call(i + 1, j)
-				var nc: Vector3 = nrm.call(i, j + 1)
-				var nd: Vector3 = nrm.call(i + 1, j + 1)
-				tri.call(a, b, c, na, nb, nc)
-				tri.call(b, d, c, nb, nd, nc)
-		var zl: float = zs[nz - 1]
-		for i in nx - 1:                                   # przód płyty (ku kamerze)
-			var a := Vector3(xs[i], hs[(nz - 1) * nx + i], zl)
-			var b := Vector3(xs[i + 1], hs[(nz - 1) * nx + i + 1], zl)
-			var drop := Vector3(0.0, -GROUND_DROP, 0.0)
-			tri.call(a, b, a + drop, Vector3.BACK, Vector3.BACK, Vector3.BACK)
-			tri.call(b, b + drop, a + drop, Vector3.BACK, Vector3.BACK, Vector3.BACK)
-		for side in [0, 1]:                                # boki płyty
-			var i := 0 if side == 0 else nx - 1
-			var n := Vector3.LEFT if side == 0 else Vector3.RIGHT
-			for j in nz - 1:
-				var a := Vector3(xs[i], hs[j * nx + i], zs[j])
-				var b := Vector3(xs[i], hs[(j + 1) * nx + i], zs[j + 1])
-				var drop := Vector3(0.0, -GROUND_DROP, 0.0)
-				if side == 1:
-					tri.call(a, a + drop, b, n, n, n)
-					tri.call(b, a + drop, b + drop, n, n, n)
-				else:
-					tri.call(a, b, a + drop, n, n, n)
-					tri.call(b, b + drop, a + drop, n, n, n)
+		for ci in ys.size():
+			var xa := float(c0 + ci) * T
+			var xs := [xa, xa + T * 0.5, xa + T]
+			for j in nz - 1:                                   # wierzch: zgodnie z ruchem wskazówek zegara patrząc z góry (przód ściany w Godocie)
+				for i in 2:
+					var a := Vector3(xs[i], hgt.call(ci, xs[i], j), zs[j])
+					var b := Vector3(xs[i + 1], hgt.call(ci, xs[i + 1], j), zs[j])
+					var c := Vector3(xs[i], hgt.call(ci, xs[i], j + 1), zs[j + 1])
+					var d := Vector3(xs[i + 1], hgt.call(ci, xs[i + 1], j + 1), zs[j + 1])
+					var na: Vector3 = nrm.call(xs[i], j)
+					var nb: Vector3 = nrm.call(xs[i + 1], j)
+					var nc: Vector3 = nrm.call(xs[i], j + 1)
+					var nd: Vector3 = nrm.call(xs[i + 1], j + 1)
+					tri.call(a, b, c, na, nb, nc)
+					tri.call(b, d, c, nb, nd, nc)
+			for i in 2:                                        # przód kolumny (ku kamerze)
+				var a := Vector3(xs[i], hgt.call(ci, xs[i], nz - 1), zs[nz - 1])
+				var b := Vector3(xs[i + 1], hgt.call(ci, xs[i + 1], nz - 1), zs[nz - 1])
+				tri.call(a, b, a + drop, Vector3.BACK, Vector3.BACK, Vector3.BACK)
+				tri.call(b, b + drop, a + drop, Vector3.BACK, Vector3.BACK, Vector3.BACK)
+			# boki kolumny: na końcu pasa w dół o "drop", przy niższej sąsiedniej kolumnie (dołek) pionowa ściana do jej wierzchu
+			for side in [0, 1]:
+				var x: float = xs[0] if side == 0 else xs[2]
+				var cn := ci - 1 if side == 0 else ci + 1
+				var n := Vector3.LEFT if side == 0 else Vector3.RIGHT
+				var edge := cn < 0 or cn >= ys.size()
+				if not edge and ys[cn] >= ys[ci] - 0.001:
+					continue
+				for j in nz - 1:
+					var a := Vector3(x, hgt.call(ci, x, j), zs[j])
+					var b := Vector3(x, hgt.call(ci, x, j + 1), zs[j + 1])
+					var a2: Vector3 = a + drop if edge else Vector3(x, hgt.call(cn, x, j), zs[j])
+					var b2: Vector3 = b + drop if edge else Vector3(x, hgt.call(cn, x, j + 1), zs[j + 1])
+					wall.call(a, b, a2, b2, n)
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = PackedVector3Array(verts)
@@ -1172,7 +1179,8 @@ static func _build_floors(parent: Node3D, front: Array, rows: Array) -> void:
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
 			nc += int(Level3D._ch(rows, c, int(e["r1"])) == "C")
 		var key := "C" if nc * 2 > int(e["c1"]) - int(e["c0"]) + 1 else "#"
-		var g := _span(rows, int(e["c0"]), int(e["c1"]), int(e["r1"]), Level3D.SHELL_Z - 0.04)
+		# brzegi płyty schodzą tylko o kafel: boki podłogi piwnicy wisiały 6 m w dół nad tunelem pod nią (uwaga z gry 2026-11-09)
+		var g := _span(rows, int(e["c0"]), int(e["c1"]), int(e["r1"]), Level3D.SHELL_Z - 0.04, Level3D.T)
 		g["zb"] = INF                                    # płasko
 		if not by_mat.has(key):
 			by_mat[key] = []
@@ -1203,8 +1211,8 @@ static func _ground_cover(parent: Node3D) -> void:
 		for _n in int((x1 - x0) * GROUND_GRASS):
 			var x := rng.randf_range(x0, x1)
 			var z := z0 + (z1 - z0) * pow(rng.randf(), 1.3)
-			if _in_foot(x, z):
-				continue
+			if _in_foot(x, z) or _span_y(g, x) < float(g["base"]) - 0.3:
+				continue                                     # bez runa na dnie dołka przed szybem
 			var hmax := 0.3 + 0.12 * (z - zf)
 			var fern := z > zf + 1.7 and rng.randf() < 0.22
 			var h := minf(rng.randf_range(0.55, 0.95) if fern else rng.randf_range(0.2, 0.42) + 0.03 * (z - zf), hmax)

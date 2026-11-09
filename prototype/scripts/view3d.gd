@@ -925,6 +925,7 @@ func _drop_geo_alt() -> void:
 ## Geometria mapy z wierszy `rows` pod węzłem `root` (teren, kładki, ciecze, dekale, runo, dekoracje, las, tło, mgła); zwraca stan widoku z niej
 ## wyliczony (`_apply_geo_state`). Bez środowiska i kamer — te ustawia `_sync_geometry` raz na mapę.
 func _build_world(root: Node3D, rows: Array, hub: bool, spread := false) -> Dictionary:
+	rows = Level3D.sky_edges(rows)                         # bez ściany świata nad gruntem na krawędziach mapy (tylko widok)
 	var verbose := OS.is_stdout_verbose()
 	for step in _build_steps(root, rows, hub):
 		var t0 := Time.get_ticks_usec()

@@ -29,6 +29,29 @@ const MOON_RIM := 0.35                     ## energia poświaty księżyca na le
 static func is_solid_ch(ch: String) -> bool:
 	return ch == "#" or ch == "C" or ch == "M" or ch == "m" or ch == "O" or ch == "~"
 
+## Wiersze mapy do budowy widoku 3D bez ściany świata nad gruntem: dwie skrajne kolumny `#` z każdej strony (w 2D granica mapy) nad
+## pierwszym litym kaflem sąsiedniej kolumny w głąb mapy stają się powietrzem. Na mapach z powierzchnią stały jak słup ziemi do nieba
+## na początku i końcu misji (uwaga z gry 2026-11-09); pod ziemią i w B1 (sąsiad lity od góry) nic się nie zmienia. Kolizja 2D — bez zmian.
+static func sky_edges(rows: Array) -> Array:
+	if rows.is_empty():
+		return rows
+	var cols: int = (rows[0] as String).length()
+	if cols < 6:
+		return rows
+	var out := rows.duplicate()
+	for side in [[0, 1, 2], [cols - 1, cols - 2, cols - 3]]:
+		var inner: int = side[2]
+		var top := 0
+		while top < out.size() and not is_solid_ch(_ch(out, inner, top)):
+			top += 1
+		for r in top:
+			var s: String = out[r]
+			for c in [side[0], side[1]]:
+				if s[c] == "#":
+					s = s.substr(0, c) + "." + s.substr(c + 1)
+			out[r] = s
+	return out
+
 ## Wypełnienie przejścia w ścianie: okno `|` (window_glass.gd), przegrody `q` / `%` / `+` i pusty otwór `:` na barykadę (breakable.gd) — w 3D rysują je ich własne węzły,
 ## ale dla konstrukcji świata (nogi kładek, dachy, nadproża) to ściana.
 static func is_wall_fill(ch: String) -> bool:

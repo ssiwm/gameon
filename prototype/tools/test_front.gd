@@ -56,6 +56,7 @@ func _process(_dt: float) -> bool:
 		total += front.size()
 		_check_map(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []))
 		_check_shell(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []), consts.get("DIG_ZONES", []))
+		_check_sky_edges(f.get_basename(), consts.get("MAP", []))
 	_check(total > 0, "żadna mapa nie ma pierwszego planu (pilot na z1_m2)")
 	_check_skip()
 	_check_layers()
@@ -212,6 +213,23 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 
 
 ## FRONT_SKIP: zakres bez pierwszego planu nie dostaje żadnego elementu (z zapasem MARGIN).
+## Krawędzie mapy w widoku 3D (`Level3D.sky_edges`): nad gruntem sąsiedniej kolumny dwie skrajne kolumny to powietrze (bez słupa ziemi
+## do nieba), od gruntu w dół bez zmian; poza krawędziami wiersze identyczne.
+func _check_sky_edges(map_id: String, rows: Array) -> void:
+	var out := Level3D.sky_edges(rows)
+	var cols: int = (rows[0] as String).length()
+	_check(out.size() == rows.size(), "%s: sky_edges zmienia liczbę wierszy" % map_id)
+	for side in [[0, 1, 2], [cols - 1, cols - 2, cols - 3]]:
+		var top := 0
+		while top < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, side[2], top)):
+			top += 1
+		for r in rows.size():
+			for c in [side[0], side[1]]:
+				var want := "." if r < top and Level3D._ch(rows, c, r) == "#" else Level3D._ch(rows, c, r)
+				_check(Level3D._ch(out, c, r) == want, "%s: krawędź kol. %d wiersz %d w widoku 3D: %s" % [map_id, c, r, Level3D._ch(out, c, r)])
+	for r in rows.size():
+		_check((out[r] as String).substr(2, cols - 4) == (rows[r] as String).substr(2, cols - 4), "%s: sky_edges zmienia wiersz %d poza krawędzią" % [map_id, r])
+
 func _check_skip() -> void:
 	var front := [{"set": "station", "c0": 0, "c1": 199, "r0": 0, "r1": 8}]
 	var skip := [[60, 120]]
@@ -423,8 +441,9 @@ func _check_ground(root: Node3D, y_floor: float) -> void:
 	r2.queue_free()
 
 
-## Podłoże na mapie: przy bryle (z = DEPTH_FRONT) nie wyżej niż wierzch gruntu kolumny i obu sąsiednich w pasie wpisu otwartego
-## (pierwszy lity kafel pod stropem pasa) — rzut przesunięty w poziomie nie wejdzie nad niższy grunt; nie wchodzi w przekrój obok.
+## Podłoże na mapie: przy bryle (z = DEPTH_FRONT) w całej kolumnie nie wyżej niż wierzch jej gruntu w pasie wpisu otwartego (pierwszy lity
+## kafel pod stropem pasa) i równo z gruntem od r1 w dół (najwyżej 8 wierszy) — dołek przed szybem ma pionowe ściany równo z bokami bryły,
+## bez opadania nad sąsiednią kolumną; nie wchodzi w przekrój obok.
 func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) -> void:
 	Front3D.prepare_ground(front, rows, items)
 	var T := Level3D.T
@@ -433,14 +452,19 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 		if not bool((Front3D.SETS[e["set"]] as Dictionary).get("open", false)):
 			continue
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
-			var y := Front3D.ground_y((float(c) + 0.5) * T, Level3D.DEPTH_FRONT)
-			for cc in [c - 1, c, c + 1]:
-				var r := int(e["r0"]) + 1
-				while r < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, clampi(cc, 0, cols - 1), r)):
-					r += 1
-				# szyb głębszy niż r1 + 8: dołek kończy się na tej głębokości (kamera w szybie jest już pod powierzchnią, `SURF_FADE`)
-				r = mini(r, int(e["r1"]) + 8)
-				_check(y <= -float(r) * T + 0.001, "%s kolumna %d: podłoże %.2f m nad gruntem kolumny %d" % [map_id, c, y + float(r) * T, cc])
+			var cc := clampi(c, 0, cols - 1)
+			var top := int(e["r0"]) + 1
+			while top < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, cc, top)):
+				top += 1
+			top = mini(top, int(e["r1"]) + 8)
+			var r := int(e["r1"])
+			while r < mini(int(e["r1"]) + 8, rows.size() - 1) and not Level3D.is_solid_ch(Level3D._ch(rows, cc, r)):
+				r += 1                                       # szyb głębszy niż r1 + 8: dołek kończy się na tej głębokości (kamera jest już pod powierzchnią, `SURF_FADE`)
+			for fx in [0.02, 0.5, 0.98]:
+				var y := Front3D.ground_y((float(c) + fx) * T, Level3D.DEPTH_FRONT)
+				if y > -INF:
+					_check(y <= -float(top) * T + 0.001, "%s kolumna %d: podłoże %.2f m nad gruntem kolumny" % [map_id, c, y + float(top) * T])
+					_check(absf(y + float(r) * T) < 0.001, "%s kolumna %d: podłoże %.2f m od gruntu kolumny od r1" % [map_id, c, y + float(r) * T])
 		for o: Dictionary in front:
 			if bool(o.get("shell", false)) and absi(int(o["r1"]) - int(e["r1"])) <= 4:
 				for x in [float(o["c0"]) * T + 0.3, float(int(o["c1"]) + 1) * T - 0.3]:
