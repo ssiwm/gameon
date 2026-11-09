@@ -920,7 +920,7 @@ static func interior_ribs(rows: Array) -> Array:
 						if kk > c and kk < c1 and col_ok.call(kk, top, bot) and col_ok.call(kk - 1, top, bot) and col_ok.call(kk + 1, top, bot):
 							best = kk
 							break
-					if best >= 0:
+					if best >= 0 and not bld_cells.has(Vector2i(best, top - 1)):   # w budynku 3D konstrukcję daje `building3d.gd`
 						out.append({"c": best, "top": top, "bot": bot})
 					k += RIB_EVERY
 			c = c1 + 1
