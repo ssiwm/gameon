@@ -556,6 +556,41 @@ kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepop
 - Zrzuty: `shots_front/f3_m3/` — `s_y_start10l.jpg`, `s_y_post30l.jpg` (start i posterunek), `s_x_mud22l.jpg` (błoto w zachodniej
   sali), `s_x_east183.jpg` (końcowa ściana), `s_z_hub4l.jpg`, `s_z_hub67l.jpg` (kryjówka), `s_z_m2hall98l.jpg` (hala 1.2).
 
+### Wyniki F3 — las z kontrą, 1.2 (2026-11-09, 1.7.526)
+
+Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mocniejszej kontry od księżyca”) i katalog lasu z F3.
+
+- **Kontra księżyca w shaderze** pierwszego planu (zasada 5: bez nowych świateł; `MoonRim` świeci tylko na `LAYER_FOREST`, a kamera świata
+  nie widzi `LAYER_FRONT`): emisja `rim_col × moon × (rim_k × fresnel⁴ × strona + trans_k × albedo)`. „Strona” to iloczyn normalnej
+  w kadrze z kierunkiem do tarczy (`Level3D.MOON_DIR` w przestrzeni kamery) — świeci tylko cienka krawędź zwrócona ku księżycowi
+  (prawa górna), reszta pnia zostaje ciemna. Karty igliwia, paproci i trawy dostają prześwit (`trans_k × (albedo + 0,06)` — ciemnozielone
+  igliwie ma albedo liniowe ok. 0,03, więc sam iloczyn z albedo nic nie dawał; gałąź świerka na tle ciemnych koron ×2,4, kępy igliwia sosny ×2,2). Mnożnik `moon` idzie
+  za pogodą i błyskiem burzy tak jak `MoonRim` (`Front3D.set_moon` z `view3d._sync_weather`). Rury i ściany przekroju bez kontry.
+- **Zestaw `forest`** (`"open": true` — przycięcie tylko w poziomie z zapasem `OPEN_PAD` 3 m, bo rzut pnia przy brzegu kadru wychodzi
+  ×1,25 dalej od środka i przy zwykłym przycięciu pień byłby ucięty pionową linią):
+  - pnie sosny, brzozy i martwy pień: proceduralne stożki od 10 m pod do 16 m nad podłogą pasa (podstawa i koniec zawsze poza kadrem
+    NORMAL, zasada 4), średnica 0,55–0,9 m, lekko pochylone i wygięte, nierówna kora (dwa sinusy po obwodzie), tekstury kory
+    z `art/world3d/forest/` (pionowy pas całego drzewa — pień bierze jego środek, bez powtórzeń); sosna ma martwy sęk i w 65%
+    gałąź z kępami igliwia przy górnym brzegu, martwy pień 3–5 połamanych konarów w płaszczyźnie kadru, brzoza cienką ciemną gałązkę;
+    u nasady kępa paproci;
+  - zwisająca gałąź świerka (`bough_side`, 2–3 karty pod różnym kątem) z nasadą nad górnym brzegiem kadru;
+  - kępa paproci i trawy (3–5 kart) wchodząca w kadr od dołu na 1–2 m;
+  - w każdej przerwie między pniami gałąź u góry i kępa u dołu (`small` / `small2`; wcześniej jeden mały element na przerwę —
+    w lesie wychodziło 5 elementów na 78 m i ani jednej gałęzi).
+- **Dlaczego nie modele drzew lasu:** sosny i brzozy z `prep_items3d.py` mają koronę od 30–70% wysokości; pień 4 m przed kamerą
+  musiałby mieć 25–55 m, żeby korona wypadła nad kadrem, a przy grubszym pniu (skala w poziomie) korona rozciągała się ×3.
+  Pień proceduralny ma pełną kontrolę nad średnicą i wysokością, 1–1,2 tys. trójkątów.
+- **Jasność:** biała kora brzozy i szare drewno martwego pnia świeciły jak słup — `alb_k` (brzoza 0,3, martwy pień 0,7, trawa 0,45,
+  paproć 0,7). Pierwsze zrzuty: pień cały biały — odwrócone nawinięcie trójkątów (Godot bierze za przód ściany zgodne z ruchem
+  wskazówek), więc rysowało się wnętrze z pełnym obrysem.
+- Wpis na 1.2: las od startu do hali stacji (kolumny 2–62, podłoga w wierszu 26): sosna 10 m, trawa 26 m, brzoza 34 m, paproć 48 m,
+  martwy pień 55 m, gałąź 62 m, paproć 72 m, sosna 79 m. Kępy przy dolnym brzegu znikają, gdy gracz stoi na wyższej platformie
+  (kadr idzie w górę) — pas liczy się od podłogi wpisu.
+- Koszt GPU (4K, HIGH, debug ze źródeł, `--perf=15`, trzy pomiary, z i bez `--nofront`): brzoza (kolumna 24) 8,04 → 8,13 ms (+0,09), martwy pień przy watasze (kolumna 40) 8,20 → 8,32 ms (+0,12); limit zasady 7 to 0,4 ms.
+- Zrzuty: `shots_front/forest/` — `d_c12_s.jpg` (sosna, paprocie), `d_c24_s.jpg` (brzoza), `d_c40_s.jpg` (martwy pień przy watasze),
+  `h_c48_s.jpg` (zwisająca gałąź), `h_c48w_s.jpg` (kamera WIDE), `d_c40l_s.jpg` (pełne światło: wygaszanie przy wilku).
+- Zostaje: 1.1 i 1.3 (las na powierzchni), nagranie w ruchu, decyzja użytkownika po zagraniu.
+
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
 - Rozmycie głębi ostrości tylko dla bliskiego planu na kamerze graczy (`CameraAttributesPractical.dof_blur_near_*`): gracze
@@ -570,7 +605,7 @@ kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepop
 | F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | 1.7.519 |
 | F2 | pilot: hala stacji i tunel 1.2 + A/B + bramka; las 1.2 z kontrą po bramce | 0,5–1 d | 1.7.519 (ten sam PR) |
 | F2b | przekrój budynku: spike w hali, mechanizm, hala i tunel 1.2 | 2 d | 1.7.521 |
-| F3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
+| F3 | katalog i mapy | 2–3 d | po jednym PR na mapę; kryjówka 1.7.522, 1.3 1.7.523, poprawki 1.7.525, las 1.2 z kontrą 1.7.526 |
 | F4 | rozmycie bliskiego planu | 0,5 d | natywne DOF nie działa w `VpActors` (1.7.520); tylko własny przebieg, jeśli bramka zażąda |
 
 ## Ryzyka

@@ -6858,6 +6858,7 @@ func _sync_weather(delta: float) -> void:
 	var rim := _geo.get_node_or_null("MoonRim") as DirectionalLight3D
 	if rim != null:
 		rim.light_energy = Level3D.MOON_RIM * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 1.2 * flash
+		Front3D.set_moon(rim.light_energy / Level3D.MOON_RIM)      # kontra księżyca na pierwszym planie lasu (front3d.gd) idzie za pogodą i błyskiem
 	var moon := _geo.get_node_or_null("Moon") as DirectionalLight3D
 	if moon != null:
 		if not moon.has_meta("base_e"):

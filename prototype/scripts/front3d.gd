@@ -41,8 +41,12 @@ const SETS := {
 	"station": {"big": ["pipe", "pipes2"], "small": ["chain", "cables"], "tint": Color(0.8, 0.8, 0.8)},
 	"tunnel": {"big": ["pipe", "pipes2"], "small": ["lamp", "cables", "lamp"], "tint": Color(0.7, 0.72, 0.75)},
 	"bunker": {"big": ["pipe", "pipes2"], "small": ["cables", "lamp"], "tint": Color(0.85, 0.8, 0.74)},    # kryjówka: bez łańcuchów, lampy na przewodzie
+	# las pod gołym niebem (F3): pnie przez cały kadr, zwisające gałęzie świerka u góry i paprocie z trawą u dołu; pas wpisu otwarty
+	# w pionie (pień nie kończy się na linii podłogi ani stropu — jego podstawę i koniec zasłania brzeg kadru, zasada 4)
+	# las: w każdej przerwie między pniami dwa małe elementy — gałąź u góry kadru (`small`) i kępa u dołu (`small2`); nie zasłaniają się nawzajem
+	"forest": {"big": ["pine", "birch", "snag", "pine"], "small": ["bough"], "small2": ["ferns", "grass", "ferns"], "tint": Color(0.62, 0.64, 0.66), "open": true},
 }
-const BIG_KINDS := ["pipe", "pipes2"]
+const BIG_KINDS := ["pipe", "pipes2", "pine", "birch", "snag"]
 const PARTS_GLB := "res://art/world3d/front/pipe_parts.glb"
 const PIPE_TEX := "res://art/items3d/pipes_modular_industrial_pipes_01_group0%d_%s_1k.jpg"   ## %d grupa 1–2, %s diff / arm / nor_gl
 const LAMP_GLB := "res://art/items3d/lamp.glb"
@@ -50,6 +54,27 @@ const LAMP_TEX := "res://art/items3d/lamp_%s_14ae6b34-1cdc-422e-9215-833102ba089
 const LAMP_EMI := "res://art/items3d/lamp_lamp_emi.jpg"
 ## Materiały elementu w kolejności powierzchni siatki.
 const MATS := ["g1", "g2", "dark", "lamp"]
+
+## Las (zestaw „forest”): tekstury kory i kart z `art/world3d/forest/` (te same co karty dalekiego lasu, `world_forest_gen.py`).
+const FOREST_TEX := "res://art/world3d/forest/%s.png"
+## Pień: rodzaj → [kora, średnica przy podłodze pasa (m), zbieg (m średnicy na m wysokości), v kory na dole i na górze pnia].
+## Kora to pionowy pas całego drzewa (u dołu ciemna nasada) — pień w kadrze bierze jego środek, bez powtórzeń.
+const TRUNKS := {
+	"pine": ["pine_bark", 0.9, 0.012, Vector2(0.92, 0.18)],
+	"birch": ["birch_bark", 0.55, 0.008, Vector2(0.80, 0.05)],
+	"snag": ["snag_wood", 0.8, 0.018, Vector2(0.95, 0.10)],
+}
+const TRUNK_SPAN := Vector2(-10.0, 16.0)   ## m: pień od tyle pod do tyle nad podłogą pasa — podstawa i koniec zawsze poza kadrem NORMAL
+const BOUGH_Y := Vector2(8.2, 9.4)         ## m nad podłogą pasa: nasada zwisającej gałęzi (nad górnym brzegiem kadru przy z ≈ 4 m)
+const FERN_BASE := -6.0                    ## m: podstawa kępy paproci i trawy względem podłogi pasa (pod dolnym brzegiem kadru)
+const FERN_TOP := Vector2(-2.3, -1.3)      ## m: wierzch kępy — wchodzi w kadr od dołu na ok. 1–2 m
+const FOREST_RIM := 0.9                    ## kontra księżyca na krawędzi pnia (emisja, mnożona przez pogodę jak `MoonRim`)
+const FOREST_TRANS := 0.16                 ## prześwit księżyca przez karty igliwia, paproci i trawy
+## Igliwie przy górnym brzegu kadru wisi na tle ciemnych koron lasu — bez mocniejszego prześwitu znika jak pień w F0.
+const FOREST_TRANS_K := {"bough_side": 2.4, "pine_tuft": 2.2}
+## Jasność tekstur lasu w pierwszym planie (`alb_k`): biała kora brzozy i szare drewno martwego pnia w nocy nie mogą świecić jak słup.
+const FOREST_ALB := {"birch_bark": 0.3, "snag_wood": 0.7, "grass_a": 0.45, "grass_b": 0.45, "fern_a": 0.7}
+const OPEN_PAD := 3.0                      ## m: zapas przycięcia w poziomie dla wpisów otwartych — rzut pnia przy brzegu kadru wychodzi ×1,25 dalej od środka
 
 const SHADER := """
 shader_type spatial;
@@ -59,6 +84,16 @@ uniform sampler2D arm_tex : hint_default_white, filter_linear_mipmap_anisotropic
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D emit_tex : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
 uniform bool use_tex = true;
+uniform bool has_arm = true;               // las: tekstury kory i kart bez mapy AO / chropowatość / metal — wtedy base_rough, metal 0
+uniform bool cutout = false;               // karty lasu (igliwie, paproć, trawa): alfa z tekstury, odcięcie
+uniform float sway = 0.0;                  // karty: kołysanie [m] — wierzch kępy paproci, koniec gałęzi (`sway_uv`)
+uniform vec2 sway_uv = vec2(0.0, 1.0);     // waga kołysania z UV: (u, 1 − v)
+uniform float rim_k = 0.0;                 // kontra księżyca (las): obrys krawędzi zwróconej ku księżycowi; 0 = brak
+uniform float trans_k = 0.0;               // karty lasu: prześwit księżyca przez igliwie i liście
+uniform vec3 rim_col : source_color = vec3(0.62, 0.72, 0.95);
+uniform vec3 moon_dir = vec3(0.34, 0.215, -0.915);   // `Level3D.MOON_DIR`: za lasem, po prawej, nisko
+uniform float moon = 1.0;                  // pogoda i błysk burzy (`set_moon`, jak `MoonRim`)
+uniform float alb_k = 1.0;                 // las: mnożnik jasności tekstury (jasna kora brzozy w nocy szarzeje)
 uniform bool world_uv = false;             // ściany przekroju (`build_walls`): tekstura świata w rzucie trójpłaszczyznowym jak `Level3D.make_pbr`
 uniform float uv_per_m = 0.33;
 uniform sampler2D grime_tex : source_color, hint_default_transparent, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -83,6 +118,11 @@ varying vec3 wpos;
 varying vec3 wnrm;
 
 void vertex() {
+	if (sway > 0.0) {
+		vec3 w0 = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		float k = dot(vec2(UV.x, 1.0 - UV.y), sway_uv);
+		VERTEX.x += sway * k * (sin(TIME * 0.9 + w0.x * 0.37) + 0.4 * sin(TIME * 2.3 + w0.x * 1.1));
+	}
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wnrm = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
 }
@@ -105,6 +145,7 @@ void fragment() {
 	}
 	vec2 uv = UV;
 	vec2 guv = UV;
+	if (cutout && texture(albedo_tex, uv).a < 0.42) { discard; }
 	if (world_uv) {
 		vec3 an = abs(normalize(wnrm));
 		vec3 p = wpos * vec3(1.0, -1.0, 1.0);
@@ -118,12 +159,18 @@ void fragment() {
 			vec4 g = texture(grime_tex, guv);
 			alb = mix(alb, g.rgb, g.a * grime_a);
 		}
-		ALBEDO = alb * tint.rgb;
-		vec3 arm = texture(arm_tex, uv).rgb;
-		AO = arm.r * ambient_k;
-		ROUGHNESS = arm.g;
-		METALLIC = arm.b;
-		NORMAL_MAP = texture(normal_tex, uv).rgb;
+		ALBEDO = alb * tint.rgb * alb_k;
+		if (has_arm) {
+			vec3 arm = texture(arm_tex, uv).rgb;
+			AO = arm.r * ambient_k;
+			ROUGHNESS = arm.g;
+			METALLIC = arm.b;
+			NORMAL_MAP = texture(normal_tex, uv).rgb;
+		} else {
+			AO = ambient_k;
+			ROUGHNESS = base_rough;
+			METALLIC = 0.0;
+		}
 	} else {
 		ALBEDO = base_col * tint.rgb;
 		AO = ambient_k;
@@ -132,11 +179,23 @@ void fragment() {
 	}
 	AO_LIGHT_AFFECT = 0.0;
 	EMISSION = texture(emit_tex, UV).rgb * emit_energy;
+	if (rim_k > 0.0 || trans_k > 0.0) {
+		// kontra księżyca liczona w shaderze (FOREGROUND_PLAN.md zasada 5: bez nowych świateł — `MoonRim` świeci tylko na warstwę lasu):
+		// obrys tej krawędzi bryły, która w kadrze jest zwrócona ku tarczy księżyca, i prześwit kart igliwia pod światło
+		vec3 mv = normalize((VIEW_MATRIX * vec4(moon_dir, 0.0)).xyz);
+		vec3 n = normalize(NORMAL);
+		float fr = pow(1.0 - clamp(dot(n, VIEW), 0.0, 1.0), 4.0);
+		float side = smoothstep(0.1, 0.85, dot(normalize(n.xy + vec2(1e-4)), normalize(mv.xy)));
+		// prześwit niezależny od samej jasności tekstury (+0,06): ciemnozielone igliwie ma albedo liniowe ok. 0,03 i bez tego by nie świeciło
+		EMISSION += rim_col * moon * (rim_k * fr * side + trans_k * (ALBEDO + vec3(0.06)));
+	}
 	ALPHA = a;
 }
 """
 
 static var _mats: Dictionary = {}
+static var _moon_mats: Array = []          ## materiały lasu z kontrą księżyca (`set_moon`)
+static var _shaders: Dictionary = {}
 static var _wall_mats: Dictionary = {}
 static var _parts: Dictionary = {}
 static var _lamp_mesh: Mesh
@@ -151,10 +210,48 @@ static func _tex(path: String) -> Texture2D:
 	return load(path) as Texture2D if ResourceLoader.exists(path) else null
 
 
-static func _shader() -> Shader:
+## Shader pierwszego planu; `two_sided`: karty lasu (igliwie, paproć) widoczne z obu stron. Jeden obiekt na wariant.
+static func _shader(two_sided := false) -> Shader:
+	if _shaders.has(two_sided):
+		return _shaders[two_sided]
 	var sh := Shader.new()
-	sh.code = SHADER
+	sh.code = SHADER.replace("cull_back", "cull_disabled") if two_sided else SHADER
+	_shaders[two_sided] = sh
 	return sh
+
+
+## Materiał lasu (klucz „f:<tekstura>”): kora (pień) albo karta z alfą (`card`), z kontrą księżyca. Rejestruje go w `_mats`,
+## więc wygaszanie przy sylwetkach (`update`) obejmuje go tak samo jak rury.
+static func _forest_mat(tex: String, card: bool) -> String:
+	var key := "f:" + tex
+	materials()
+	if _mats.has(key):
+		return key
+	var m := ShaderMaterial.new()
+	m.shader = _shader(card)
+	m.set_shader_parameter("min_a", MIN_A)
+	m.set_shader_parameter("fade_m", FADE_M)
+	m.set_shader_parameter("albedo_tex", _tex(FOREST_TEX % tex))
+	m.set_shader_parameter("has_arm", false)
+	m.set_shader_parameter("base_rough", 0.9)
+	m.set_shader_parameter("alb_k", float(FOREST_ALB.get(tex, 1.0)))
+	m.set_shader_parameter("moon_dir", Level3D.MOON_DIR.normalized())
+	if card:
+		m.set_shader_parameter("cutout", true)
+		m.set_shader_parameter("trans_k", FOREST_TRANS * float(FOREST_TRANS_K.get(tex, 1.0)))
+		m.set_shader_parameter("sway", 0.05)
+		m.set_shader_parameter("sway_uv", Vector2(1.0, 0.0) if tex.begins_with("bough") else Vector2(0.0, 1.0))
+	else:
+		m.set_shader_parameter("rim_k", FOREST_RIM)
+	_mats[key] = m
+	_moon_mats.append(m)
+	return key
+
+
+## Pogoda i błysk burzy na kontrze lasu: `k` = energia `MoonRim` / `Level3D.MOON_RIM` (`view3d._sync_weather`).
+static func set_moon(k: float) -> void:
+	for m: ShaderMaterial in _moon_mats:
+		m.set_shader_parameter("moon", k)
 
 
 ## Materiały: g1 / g2 (dwie grupy tekstur zestawu rur), dark (kable, łańcuchy, obejmy), lamp (klosz z emisją żarówki).
@@ -276,11 +373,15 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 				bi += 1
 				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
 			var nx: float = xs[i + 1] if i + 1 < xs.size() else clip.y - MARGIN
-			var xm := _free_x((xb + nx) * 0.5 + rng.randf_range(-3.0, 3.0), blk_small)
-			var ks: String = st["small"][rng.randi() % (st["small"] as Array).size()]
-			var want := rng.randf() < 0.6
-			if want and not low and xm - xb >= SMALL_MIN and nx - xm >= SMALL_MIN and xm < clip.y - MARGIN and not _skipped(xm, skip):
-				out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
+			var pair := st.has("small2")
+			for si in (2 if pair else 1):
+				var key := "small2" if si == 1 else "small"
+				var frac := (0.36 if si == 0 else 0.66) if pair else 0.5
+				var xm := _free_x(lerpf(xb, nx, frac) + rng.randf_range(-3.0, 3.0) * (0.5 if pair else 1.0), blk_small)
+				var ks: String = st[key][rng.randi() % (st[key] as Array).size()]
+				var want := rng.randf() < 0.6
+				if want and not low and xm - xb >= SMALL_MIN and nx - xm >= SMALL_MIN and xm < clip.y - MARGIN and not _skipped(xm, skip):
+					out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
 	return out
 
 
@@ -448,6 +549,12 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			hook.ring_segments = 8
 			dark.append_from(hook, 0, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.0, yl - 0.1, 0.0)))
 			used["dark"] = true
+		"pine", "birch", "snag":
+			_trunk(sts, used, kind, band.x, rng)
+		"bough":
+			_bough(sts, used, band.x, rng)
+		"ferns", "grass":
+			_ferns(sts, used, kind, band.x, rng, 2.2)
 		"lamp":
 			# lampa na przewodzie: klosz z modelu `lamp` (emisja żarówki), przewód do stropu (przycięcie pasa ucina go na linii stropu)
 			var y_lamp := band.y - rng.randf_range(LAMP_DROP.x, LAMP_DROP.y)
@@ -464,7 +571,7 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			used["dark"] = true
 	var mesh := ArrayMesh.new()
 	var keys := []
-	for key: String in MATS:
+	for key: String in sts:
 		if used.has(key):
 			var st := sts[key] as SurfaceTool
 			if key != "dark":
@@ -472,6 +579,162 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			st.commit(mesh)
 			keys.append(key)
 	return [mesh, keys]
+
+
+# ---------------------------------------------------------------- las (F3)
+
+static func _st(sts: Dictionary, key: String) -> SurfaceTool:
+	if not sts.has(key):
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		sts[key] = st
+	return sts[key]
+
+
+## Stożek ścięty wzdłuż `axis` od `a`: promień `r0` → `r1`, `seg` boków, `rings` odcinków; nierówność kory `rough` (część promienia,
+## z ziarna `ph`); UV: u dookoła (`u_rep` powtórzeń), v liniowo `v` (dół → góra); `bend` wygina środek łukiem. Trójkąty bez indeksów.
+static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0: float, r1: float, seg: int, rings: int, v: Vector2, u_rep: float, rough: float, ph: float, bend := Vector3.ZERO) -> void:
+	var ax := axis.normalized()
+	var side := ax.cross(Vector3.BACK)
+	if side.length() < 0.1:
+		side = ax.cross(Vector3.RIGHT)
+	side = side.normalized()
+	var up := side.cross(ax).normalized()
+	var grid := []
+	for j in rings + 1:
+		var t := float(j) / float(rings)
+		var c := a + ax * (length * t) + bend * sin(t * PI)
+		var r := lerpf(r0, r1, t)
+		var row := []
+		for i in seg + 1:
+			var ang := TAU * float(i) / float(seg)
+			var nrm := side * cos(ang) + up * sin(ang)
+			var wob := 1.0 + rough * (sin(3.0 * ang + t * length * 0.9 + ph) * 0.6 + sin(7.0 * ang - t * length * 1.7 + ph * 2.3) * 0.4)
+			row.append([c + nrm * r * wob, nrm, Vector2(u_rep * float(i) / float(seg), lerpf(v.x, v.y, t))])
+		grid.append(row)
+	for j in rings:
+		for i in seg:
+			var q: Array = [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]]
+			for k in [0, 1, 2, 0, 2, 3]:                   # zgodnie z ruchem wskazówek zegara od zewnątrz (przód ściany w Godocie)
+				st.set_normal(q[k][1])
+				st.set_uv(q[k][2])
+				st.add_vertex(q[k][0])
+
+
+## Karta (prostokąt `w` × `h`) zaczepiona w `at` punktem `pivot` (UV karty: (0.5, 1) = środek podstawy, (0, 0) = lewy górny róg),
+## obrót `rz` w płaszczyźnie kadru i `ry` wokół pionu; `flip` odbija w poziomie.
+static func _card(st: SurfaceTool, at: Vector3, w: float, h: float, rz: float, ry: float, flip: bool, pivot := Vector2(0.5, 1.0)) -> void:
+	var b := Basis(Vector3.UP, ry) * Basis(Vector3.BACK, rz)
+	var nrm := (b * Vector3.BACK).normalized()
+	var corners := [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
+	var pts := []
+	for c: Vector2 in corners:
+		var lx := (c.x - pivot.x) * w * (-1.0 if flip else 1.0)
+		var ly := (pivot.y - c.y) * h
+		pts.append([at + b * Vector3(lx, ly, 0.0), c])
+	for k in [0, 2, 1, 0, 3, 2]:
+		st.set_normal(nrm)
+		st.set_uv(pts[k][1])
+		st.add_vertex(pts[k][0])
+
+
+## Pień przez cały kadr (podstawa i koniec poza nim): lekko pochylony i wygięty, nierówna kora; sosna z martwym sękiem i czasem
+## gałęzią z igliwiem przy górnym brzegu, martwy pień z połamanymi konarami, brzoza z cienką gałązką. U nasady kępa paproci.
+static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: float, rng: RandomNumberGenerator) -> void:
+	var spec: Array = TRUNKS[kind]
+	var key := _forest_mat(String(spec[0]), false)
+	var st := _st(sts, key)
+	used[key] = true
+	var y0 := y_floor + TRUNK_SPAN.x
+	var length := TRUNK_SPAN.y - TRUNK_SPAN.x
+	var d := float(spec[1]) * rng.randf_range(0.85, 1.15)
+	var taper := float(spec[2])
+	var r0 := (d + taper * -TRUNK_SPAN.x) * 0.5
+	var r1 := maxf(r0 - taper * length * 0.5, 0.08)
+	var lean := Vector3(rng.randf_range(-0.06, 0.06), 1.0, rng.randf_range(-0.02, 0.02))
+	var bend := Vector3(rng.randf_range(0.25, 0.6) * (-1.0 if rng.randf() < 0.5 else 1.0), 0.0, 0.0)
+	var ph := rng.randf() * TAU
+	var vr: Vector2 = spec[3]
+	_cone(st, Vector3(0.0, y0, 0.0), lean, length, r0, r1, 14, 26, vr, 2.0, 0.11 if kind == "snag" else 0.075, ph, bend)
+	var v_mid := (vr.x + vr.y) * 0.5
+	var limbs := 1
+	if kind == "snag":
+		limbs = rng.randi_range(3, 5)
+	elif kind == "pine":
+		limbs = rng.randi_range(1, 2)
+	for i in limbs:
+		# konary w płaszczyźnie kadru (w lewo albo w prawo, lekko ku kamerze lub od niej) — sylwetka czytelna; martwe konary połamane i krótkie
+		var yb := y_floor + (rng.randf_range(1.5, 8.5) if kind == "snag" else rng.randf_range(3.0, 9.0))
+		var sgn := -1.0 if (i + rng.randi()) % 2 == 0 else 1.0
+		var upk := rng.randf_range(0.6, 1.2) if kind == "birch" else rng.randf_range(0.25, 0.9)
+		var dir := Vector3(sgn, upk, rng.randf_range(-0.35, 0.35)).normalized()
+		var ln := rng.randf_range(0.9, 2.3)
+		if kind == "pine":
+			ln = rng.randf_range(0.25, 0.6)
+		elif kind == "birch":
+			ln = rng.randf_range(1.2, 2.2)
+		var rt := _trunk_r(r0, r1, y0, length, yb)
+		var rb := rt * (0.22 if kind == "snag" else 0.16)
+		var c := _trunk_axis(lean, bend, y0, length, yb)
+		var lv := Vector2(0.98, 0.96) if kind == "birch" else Vector2(v_mid, v_mid - 0.05)      # gałązki brzozy ciemne (czarna nasada kory)
+		_cone(st, c + dir * rt * 0.6, dir, ln, rb, rb * 0.25, 6, 3, lv, 1.0, 0.1, ph + float(i), Vector3(0.0, -0.08 * ln, 0.0))
+	if kind == "pine" and rng.randf() < 0.65:
+		# gałąź korony przy górnym brzegu kadru: konar w bok z kępami igliwia na końcu (karty `pine_tuft`)
+		var yb := y_floor + rng.randf_range(BOUGH_Y.x - 1.0, BOUGH_Y.y)
+		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
+		var dir := Vector3(sgn, rng.randf_range(0.1, 0.35), rng.randf_range(-0.2, 0.2)).normalized()
+		var ln := rng.randf_range(1.8, 3.0)
+		var c := _trunk_axis(lean, bend, y0, length, yb)
+		var rb := _trunk_r(r0, r1, y0, length, yb) * 0.3
+		_cone(st, c, dir, ln, rb, rb * 0.3, 6, 4, Vector2(v_mid, v_mid - 0.1), 1.0, 0.08, ph, Vector3(0.0, -0.15 * ln, 0.0))
+		var tk := _forest_mat("pine_tuft", true)
+		var tst := _st(sts, tk)
+		used[tk] = true
+		for j in rng.randi_range(3, 4):
+			var at := c + dir * ln * rng.randf_range(0.45, 1.0) + Vector3(0.0, rng.randf_range(-0.35, 0.1), rng.randf_range(-0.25, 0.25))
+			var s := rng.randf_range(1.0, 1.5)
+			_card(tst, at, s * 1.2, s, rng.randf_range(-0.3, 0.3), rng.randf_range(-0.5, 0.5), rng.randf() < 0.5, Vector2(0.5, 0.6))
+	_ferns(sts, used, "ferns", y_floor, rng, 1.2)
+
+
+## Środek pnia na wysokości `y` (bez nierówności kory) i jego promień.
+static func _trunk_axis(lean: Vector3, bend: Vector3, y0: float, length: float, y: float) -> Vector3:
+	var t := clampf((y - y0) / length, 0.0, 1.0)
+	return Vector3(lean.x / lean.y * (y - y0), y, lean.z / lean.y * (y - y0)) + bend * sin(t * PI)
+
+
+static func _trunk_r(r0: float, r1: float, y0: float, length: float, y: float) -> float:
+	return lerpf(r0, r1, clampf((y - y0) / length, 0.0, 1.0))
+
+
+## Zwisająca gałąź świerka (`bough_side`): nasada nad górnym brzegiem kadru, gałąź opada w bok i w dół; dwie lub trzy karty
+## w lekko innej głębi i pod innym kątem (bryła zamiast płaskiej naklejki).
+static func _bough(sts: Dictionary, used: Dictionary, y_floor: float, rng: RandomNumberGenerator) -> void:
+	var key := _forest_mat("bough_side", true)
+	var st := _st(sts, key)
+	used[key] = true
+	var flip := rng.randf() < 0.5
+	var base := Vector3(0.0, y_floor + rng.randf_range(BOUGH_Y.x, BOUGH_Y.y), 0.0)
+	for i in rng.randi_range(2, 3):
+		var w := rng.randf_range(2.6, 3.6)
+		var droop := rng.randf_range(0.22, 0.5) * (1.0 if flip else -1.0)        # w prawo: zgodnie z ruchem wskazówek (w dół), odbita w lewo: przeciwnie
+		var at := base + Vector3(rng.randf_range(-0.4, 0.4), rng.randf_range(-0.5, 0.2), rng.randf_range(-0.3, 0.3))
+		_card(st, at, w, w * 0.5, droop, rng.randf_range(-0.35, 0.35), flip, Vector2(0.0, 0.1))
+
+
+## Kępa paproci i trawy przy dolnym brzegu kadru (`ferns`: głównie paproć, `grass`: głównie trawa) szeroka na 2 × `spread` m.
+static func _ferns(sts: Dictionary, used: Dictionary, kind: String, y_floor: float, rng: RandomNumberGenerator, spread: float) -> void:
+	for i in rng.randi_range(3, 5):
+		var fern := rng.randf() < (0.7 if kind == "ferns" else 0.2)
+		var tex := "fern_a" if fern else ("grass_a" if rng.randf() < 0.55 else "grass_b")
+		var key := _forest_mat(tex, true)
+		var st := _st(sts, key)
+		used[key] = true
+		var top := y_floor + rng.randf_range(FERN_TOP.x, FERN_TOP.y)
+		var h := top - (y_floor + FERN_BASE)
+		var w := h * (1.6 if fern else rng.randf_range(0.9, 1.2))
+		var at := Vector3(rng.randf_range(-spread, spread), y_floor + FERN_BASE, rng.randf_range(-0.4, 0.4))
+		_card(st, at, w, h, rng.randf_range(-0.12, 0.12), rng.randf_range(-0.6, 0.6), rng.randf() < 0.5)
 
 
 ## Buduje elementy pod `parent` (węzeł „Front”). Zwraca liczbę elementów.
@@ -531,6 +794,8 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 				var plate := mi.get_node_or_null("Plate") as MeshInstance3D
 				if plate != null:
 					plate.set_instance_shader_parameter("occ", occ)
+		elif bool(st.get("open", false)):
+			mi.set_instance_shader_parameter("clip", Vector4(clip.x - OPEN_PAD, clip.y + OPEN_PAD, -1e6, 1e6))
 		else:
 			mi.set_instance_shader_parameter("clip", clip)
 		mi.set_instance_shader_parameter("tint", st["tint"])

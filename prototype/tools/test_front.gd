@@ -13,7 +13,10 @@ extends SceneTree
 ##     nad torowiskiem drezyny element stoi na podsypce (płyta na wysokości dna koryta), pod dachem z blachy wisi pod płatwią,
 ##     wyciek oleju w hali 1.2 (`Level3D.oil_spills`): plama w zasięgu płyty, przewrócona beczka na płycie przed niecką i niżej niż linia
 ##     podłogi w rzucie, stojące za płaszczyzną gry poza niecką, element nie stoi w plamie,
-## (5) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
+## (5) las (zestaw „forest”, F3): pnie sosny, brzozy i martwy, zwisające gałęzie, paprocie i trawa; pas otwarty w pionie (przycięcie tylko
+##     w poziomie, z zapasem OPEN_PAD), pień od pod dolnego do nad górny brzeg kadru NORMAL (podstawy i końca nie widać), kontra księżyca
+##     tylko na materiałach lasu (rury i ściany przekroju bez niej), karty z alfą i dwustronne, `set_moon` zmienia tylko las,
+## (6) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
 ##     waga 0 nie wygasza wcale.
 ## godot --headless --path prototype -s tools/test_front.gd       → ma wypisać PASS
 const Level3D := preload("res://scripts/level3d.gd")
@@ -55,6 +58,7 @@ func _process(_dt: float) -> bool:
 	_check_trench()
 	_check_roof()
 	_check_oil()
+	_check_forest()
 	_check_fade()
 	print("PASS" if _fail == 0 else "FAIL (%d)" % _fail)
 	quit(0 if _fail == 0 else 1)
@@ -252,6 +256,70 @@ func _check_layers() -> void:
 	Front3D.apply_settings(0, false)
 	_check((fr as Node3D).visible, "ON nie pokazuje pierwszego planu")
 	_check(Front3D.build(root, [], [], false) == 0, "pusty FRONT coś zbudował")
+	root.queue_free()
+
+
+## Parametr materiału albo `def`, gdy nieustawiony (domyślna wartość z shadera); bool jako 0/1.
+func _par(m: ShaderMaterial, name: String, def: float) -> float:
+	var v: Variant = m.get_shader_parameter(name)
+	if v == null:
+		return def
+	return (1.0 if v else 0.0) if v is bool else float(v)
+
+
+## Las (F3): rodzaje, otwarty pas, wysokość pnia względem kadru, kontra księżyca tylko na lesie, karty z alfą.
+func _check_forest() -> void:
+	var st: Dictionary = Front3D.SETS.get("forest", {})
+	_check(bool(st.get("open", false)), "zestaw forest bez otwartego pasa")
+	var root := Node3D.new()
+	get_root().add_child(root)
+	var e := {"set": "forest", "c0": 0, "c1": 400, "r0": 0, "r1": 26}
+	var y_floor := -26.0 * Level3D.T
+	var n := Front3D.build(root, [e, {"set": "tunnel", "c0": 0, "c1": 400, "r0": 40, "r1": 47}], [], false)
+	var fr := root.get_node_or_null("Front")
+	_check(fr != null and n > 0, "las: build nic nie zbudował")
+	if fr == null:
+		return
+	var kinds := {}
+	var clip0 := Front3D.clip_of(e)
+	for c in fr.get_children():
+		var mi := c as MeshInstance3D
+		var kind := String(mi.name).get_slice("_", 0)
+		if not kind in ["pine", "birch", "snag", "bough", "ferns", "grass"]:
+			for si in mi.mesh.get_surface_count():                # rury w tunelu: bez kontry księżyca
+				var pm := mi.get_surface_override_material(si) as ShaderMaterial
+				_check(_par(pm, "rim_k", 0.0) == 0.0 and _par(pm, "trans_k", 0.0) == 0.0, "%s: kontra księżyca pod ziemią" % mi.name)
+			continue
+		kinds[kind] = true
+		_check(mi.layers == Front3D.LAYER_FRONT and mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: warstwa albo cień" % mi.name)
+		var clip: Vector4 = mi.get_instance_shader_parameter("clip")
+		_check(clip.z < -1e5 and clip.w > 1e5, "%s: las przycięty w pionie" % mi.name)
+		_check(is_equal_approx(clip.x, clip0.x - Front3D.OPEN_PAD) and is_equal_approx(clip.y, clip0.y + Front3D.OPEN_PAD), "%s: przycięcie w poziomie bez zapasu OPEN_PAD" % mi.name)
+		var bb := mi.mesh.get_aabb()
+		if kind in ["pine", "birch", "snag"]:
+			# kadr NORMAL przy z = 3,5–5 m: od ok. 6 m pod do ok. 8 m nad podłogą (kamera przy graczu na podłodze); pień wychodzi poza oba brzegi
+			_check(bb.position.y < y_floor - FRAME_H_NORMAL * 0.5 and bb.end.y > y_floor + FRAME_H_NORMAL * 0.75, "%s: pień nie wychodzi poza kadr (%.1f..%.1f wzgl. podłogi)" % [mi.name, bb.position.y - y_floor, bb.end.y - y_floor])
+		elif kind == "bough":
+			_check(bb.end.y > y_floor + FRAME_H_NORMAL * 0.5 and bb.position.y > y_floor + 3.0, "%s: gałąź nie wisi przy górnym brzegu" % mi.name)
+		else:
+			_check(bb.end.y < y_floor - 0.5 and bb.position.y < y_floor - FRAME_H_NORMAL * 0.35, "%s: kępa nie stoi przy dolnym brzegu" % mi.name)
+		for si in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(si) as ShaderMaterial
+			var card := _par(m, "cutout", 0.0) > 0.0
+			if card:
+				_check(_par(m, "trans_k", 0.0) > 0.0 and "cull_disabled" in m.shader.code, "%s: karta bez prześwitu albo jednostronna" % mi.name)
+			else:
+				_check(_par(m, "rim_k", 0.0) > 0.0, "%s: kora bez kontry księżyca" % mi.name)
+	for k in ["pine", "birch", "snag", "bough", "ferns", "grass"]:
+		_check(kinds.has(k), "las: rodzaj %s nie powstał na długim zakresie" % k)
+	Front3D.set_moon(0.25)
+	for c in fr.get_children():
+		var mi := c as MeshInstance3D
+		var m := mi.get_surface_override_material(0) as ShaderMaterial
+		var forest := String(mi.name).get_slice("_", 0) in ["pine", "birch", "snag", "bough", "ferns", "grass"]
+		_check(is_equal_approx(_par(m, "moon", 1.0), 0.25 if forest else 1.0), "%s: set_moon nie działa tylko na las" % mi.name)
+	Front3D.set_moon(1.0)
+	Front3D.build(root, [], [], false)
 	root.queue_free()
 
 
