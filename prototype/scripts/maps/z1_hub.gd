@@ -32,6 +32,9 @@ const SHAFTS := [[21, 26]]
 const LAUNCH_ZONE := [46, 51, 9]
 ## Kamera w pionie: [wiersz stropu parteru, wiersz podłogi piwnicy] — pas, który kamera trzyma w kadrze (player.gd `_lock_camera_band`).
 const CAM_LOCK := [4, 14]
+## Oko kamery 3D 3,4 m nad środkiem kadru zamiast 2,2 m z misji (view3d.gd `eye_up_for`): środek pasa wypada na stropie między pokładami,
+## więc przy 2,2 m oko stało 1,5 m nad podłogą parteru i ta była tylko kreską; przy 3,4 m czyta się jak pokład (zrzuty E3, przy 4,6 m piwnica się spłaszcza).
+const EYE_UP := 3.4
 ## Rekwizyty bez znaczników (hub_prop.gd): [rodzaj, kolumna mapy, wiersz podłogi, parametry]. Skrzynie prasy 32–48 px na prawo od „x”,
 ## skrzynia wojskowa 16 px na lewo i beczka 32 px na prawo od „z” (press_bench.gd, pyro_bench.gd); okno z prognozą przy radiostacji.
 const HUB_PROPS := [

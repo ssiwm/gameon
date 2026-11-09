@@ -148,6 +148,7 @@ var depth_mult := 1.0                                    ## mnożnik ambientu od
 var underground_y := 0.0         ## od tej wysokości (px) postać jest w podziemiach
 var bounds := Rect2()
 var cam_lock := Vector2i(-1, -1)          ## CAM_LOCK z danych mapy: [wiersz stropu, wiersz podłogi] pasa, który kamera trzyma w pionie (kryjówka „dwa pokłady”); -1 = kamera jak na misjach
+var eye_up := -1.0                         ## EYE_UP z danych mapy: wysokość oka kamery 3D nad środkiem kadru [m] (view3d.gd); -1 = View3D.EYE_UP_M jak na misjach
 var spawns: Array[Vector2] = []
 var exits: Array[Vector2] = []
 var stalker_home := Vector2.ZERO
@@ -254,6 +255,7 @@ func _load(id: String) -> void:
 	_range_door = ((m as GDScript).get_script_constant_map().get("RANGE_DOOR", []) as Array).duplicate()
 	var cl: Array = (m as GDScript).get_script_constant_map().get("CAM_LOCK", [])
 	cam_lock = Vector2i(int(cl[0]), int(cl[1])) if cl.size() == 2 else Vector2i(-1, -1)
+	eye_up = float((m as GDScript).get_script_constant_map().get("EYE_UP", -1.0))
 	hint_zones.clear()
 	var hz: Dictionary = (m as GDScript).get_script_constant_map().get("HINT_ZONES", {})
 	for hid in hz:

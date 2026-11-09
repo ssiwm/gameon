@@ -73,7 +73,10 @@ const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość 
 const WADE_SHOT_BLEND_M := 3.0              ## m: na tym odcinku lotu smuga pocisku brodzącego strzelca wraca z wysokości lufy modelu na tor symulacji
 const ATLAS_WARM_FRAMES := 4               ## klatki ze środowiskiem kamery świata, po których `_atlas_warm` znika (atlas cieni już istnieje)
 const FOG_SYM_DENS := 4.0                   ## gęstość bryły mgły (× bazowa, `_fog_dens`), od której kamera świata ma bryłę symetryczną (pogoda MGŁA: ok. 9×)
-const EYE_UP_M := 2.2                       ## wysokość oka kamery ponad środkiem kadru [m] (punkt zbiegu nad głowami postaci)
+const SectionCamera := preload("res://scripts/section_camera.gd")
+const EYE_UP_M := SectionCamera.EYE_UP_M         ## wysokość oka kamery ponad środkiem kadru [m] (punkt zbiegu nad głowami postaci)
+## Wysokość oka w tej klatce: EYE_UP z danych mapy (level.gd `eye_up`, kryjówka „dwa pokłady”) albo EYE_UP_M; dev `--eyeup=M` nadpisuje (zrzuty porównawcze).
+var _eye_up := EYE_UP_M
 const Z_BG := -60
 const Z_FG := 1
 
@@ -637,10 +640,11 @@ func _sync_camera() -> void:
 	var ctr := c2.get_screen_center_position()
 	# oko kamery stoi EYE_UP_M ponad środkiem kadru, a bryła widzenia jest przesunięta w dół o tyle samo (obiektyw „shift”): płaszczyzna gry
 	# pokrywa się z kadrem 2D jak dotąd (celowanie bez zmian), ale punkt zbiegu leży nad głowami — widać wierzch gruntu i kładek zamiast ich spodów
-	var xf := Transform3D(Basis.IDENTITY, Vector3(ctr.x * PX, -ctr.y * PX + EYE_UP_M, dist))
+	_eye_up = SectionCamera.eye_up_for(_level)
+	var xf := Transform3D(Basis.IDENTITY, Vector3(ctr.x * PX, -ctr.y * PX + _eye_up, dist))
 	var near := 0.3
 	var fsize := 2.0 * near * tan(deg_to_rad(FOV * 0.5))
-	var foff := Vector2(0.0, -EYE_UP_M * near / dist)
+	var foff := Vector2(0.0, -_eye_up * near / dist)
 	# oględziny broni ([H], weapon_controller.gd): kamera dojeżdża do oczu lokalnego gracza i patrzy w głąb sceny (stojak, ściana, las);
 	# bryła widzenia przechodzi z przesuniętej na zwykłą perspektywę o szerszym kącie. Tło rozmywa ekran oględzin (weapon_inspect.gd).
 	_fp_player = null
@@ -6532,7 +6536,7 @@ func _sync_ambient() -> void:
 		_world.add_child(_motes)
 	var cam := _cam_a.global_position
 	_motes.emitting = Settings.quality_idx >= 1 and Settings.fx_mult() > 0.0
-	_motes.position = Vector3(cam.x, cam.y - EYE_UP_M + 1.0, -0.3)
+	_motes.position = Vector3(cam.x, cam.y - _eye_up + 1.0, -0.3)
 
 # ---------------------------------------------------------------- pył finału kopalni
 
@@ -6611,7 +6615,7 @@ func _sync_mine_dust() -> void:
 	if on and key != _mine_dust_key:
 		_mine_dust_key = key
 		var cc := int(floor(cam.x / Level3D.T))
-		var cr := int(floor(-(cam.y - EYE_UP_M) / Level3D.T))
+		var cr := int(floor(-(cam.y - _eye_up) / Level3D.T))
 		var fine := PackedVector3Array()
 		var streams := PackedVector3Array()
 		for r in range(maxi(1, cr - DUST_ROWS), mini(_rows.size(), cr + DUST_ROWS)):
@@ -6798,7 +6802,7 @@ func _sync_weather(delta: float) -> void:
 		_rain.initial_velocity_max = speed * 1.15
 		_rain.lifetime = (half_h * 2.0 + 2.0) / speed
 		_rain.emission_box_extents = Vector3(half_w + half_h * tan(a), 0.4, 8.0)
-		_rain.position = Vector3(cam.x + half_h * tan(a), cam.y - EYE_UP_M + half_h + 1.0, -7.1)       # z od −15 do +0,9: krople przed frontem gruntu nie spadają „pod ziemię”
+		_rain.position = Vector3(cam.x + half_h * tan(a), cam.y - _eye_up + half_h + 1.0, -7.1)       # z od −15 do +0,9: krople przed frontem gruntu nie spadają „pod ziemię”
 		_rain.color = Color(0.55, 0.62, 0.74, (0.16 + 0.5 * flash) * clampf(strength, 0.0, 1.0))
 		var lp = wx.call("_local_player")
 		if lp != null:
@@ -7912,7 +7916,7 @@ func _scan_lights() -> void:
 ## a poświata leży tuż przy przedmiocie); lampa z `no_shadow` też nie. Do 1.7.523 cień przydzielało tylko tworzenie światła: lampy, które
 ## weszły do zestawu w czasie gry, nie miały go nigdy.
 func _pick_shadows() -> void:
-	var ctr := Vector2(_cam_a.global_position.x, -(_cam_a.global_position.y - EYE_UP_M)) / PX
+	var ctr := Vector2(_cam_a.global_position.x, -(_cam_a.global_position.y - _eye_up)) / PX
 	var cand: Array = []
 	var current := {}
 	for id in _lights.keys():
