@@ -14,6 +14,7 @@ extends Node2D
 ## Kamera 3D jest dopasowana do Camera2D: płaszczyzna z = 0 pokrywa się z kadrem 2D (zoom, wstrząsy, „Camera zoom”).
 
 const Level3D := preload("res://scripts/level3d.gd")
+const Building3D := preload("res://scripts/building3d.gd")
 const DamageMask := preload("res://scripts/damage_mask.gd")
 const Lights := preload("res://scripts/lights.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
@@ -1020,7 +1021,8 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 		["level", func() -> void:
 			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches))
 			Level3D.set_shells(front, rows)
-			Level3D.build_level(root, rows, trench)],
+			Level3D.build_level(root, rows, trench)
+			Building3D.build(root, rows)],
 		["niches", func() -> void: Niches3D.build(root, rows, niches, Settings.quality_idx)],
 		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
 		["liquids", func() -> void:

@@ -26,6 +26,7 @@ extends SceneTree
 const Level3D := preload("res://scripts/level3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
 const Front3D := preload("res://scripts/front3d.gd")
+const Building3D := preload("res://scripts/building3d.gd")
 const LAYER_WORLD := 1                    ## view3d.gd LAYER_WORLD
 const LAYER_ACTORS := 2                   ## view3d.gd LAYER_ACTORS
 const FRAME_H_NORMAL := Front3D.FRAME_H_NORMAL
@@ -197,8 +198,8 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		_check(n <= nb, "%s: ściana wejścia budynku w warstwie pierwszego planu (ma być w świecie z fasadą)" % map_id)
 		root.free()
 	if map_id in ["z1_m2", "z1_m3"]:
-		# wejścia budynków: pełna ściana przed drzwiami (1.3 posterunek i Skład, 1.2 hala), bez ściany przed kratką piwniczki 1.3
-		var ent: Array = [Vector2i(18, 24), Vector2i(36, 24), Vector2i(112, 23), Vector2i(142, 23)] if map_id == "z1_m3" else [Vector2i(66, 23), Vector2i(100, 23)]
+		# wejścia budynków: pełna ściana przed drzwiami (1.3 Skład, 1.2 hala), bez ściany przed kratką piwniczki 1.3; posterunek 1.3 to budynek 3D
+		var ent: Array = [Vector2i(112, 23), Vector2i(142, 23)] if map_id == "z1_m3" else [Vector2i(66, 23), Vector2i(100, 23)]
 		for k: Vector2i in ent:
 			_check(Level3D.shell_walls.has(k), "%s %s: brak pełnej ściany wejścia" % [map_id, k])
 		for k: Vector2i in ent:
@@ -207,11 +208,12 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		var kinds := {}
 		for f: Dictionary in Level3D.shell_facades:
 			kinds["%d:%s" % [int(f["c"]), String(f["kind"])]] = true
-		var want: Array = ["18:door", "36:door", "112:gate", "112:window", "142:gate"] if map_id == "z1_m3" else ["66:gate", "100:gate"]
+		var want: Array = ["112:gate", "112:window", "142:gate"] if map_id == "z1_m3" else ["66:gate", "100:gate"]
 		for w: String in want:
 			_check(kinds.has(w), "%s: brak fasady %s (są: %s)" % [map_id, w, kinds.keys()])
 		if map_id == "z1_m3":
 			_check(not Level3D.shell_walls.has(Vector2i(37, 29)), "1.3: ściana wejścia zasłania kratkę piwniczki")
+			_check_building(rows)
 	if map_id == "z1_m3":
 		# 1.3: nadproże nad niskim tunelem obok sali (skała między stropem tunelu a stropem sali) to płyta świata, nie ściana pierwszego planu
 		_check(Level3D.shell_cells.has(Vector2i(91, 32)) and not Level3D.shell_walls.has(Vector2i(91, 32)), "1.3: nadproże nad tunelem 91–108 nie jest płytą przekroju")
@@ -493,6 +495,57 @@ func _check_ground(root: Node3D, y_floor: float) -> void:
 ## Wygaszanie miejscowe (uwaga z gry 2026-11-09: grunt po prawej znikał po zejściu do piwniczki): grunt w wierszu 26, piwniczka pod nim
 ## (kolumny 40–44, wiersze 27–29, strop lity), gracz na jej dnie. Kawałki płyty nad piwniczką gasną, płyta nad litym gruntem z prawej
 ## i z lewej zostaje; nad powierzchnią wszystko widać; gracz głęboko (kamera pod wierzchem) — gaśnie płyta w kadrze.
+## Budynek 3D (`building3d.gd`, pilot: posterunek 1.3): kafle dachu i ścian szczytowych bez pudła, płyty przekroju i ściany wejścia;
+## drzwi po obu stronach; płyta 0,25 m na górze kafla dachu, ściany 0,4 m, słupy poza pasem gry, przekrój na SHELL_Z dla każdej
+## skrzynki dochodzącej do płaszczyzny przekroju, nic przed SHELL_Z.
+func _check_building(rows: Array) -> void:
+	var b: Dictionary = {}
+	for x: Dictionary in Level3D.buildings:
+		if int(x["c0"]) == 18 and int(x["r0"]) == 21:
+			b = x
+	_check(not b.is_empty(), "1.3: brak budynku 3D posterunku (są: %s)" % [Level3D.buildings])
+	if b.is_empty():
+		return
+	var doors := {}
+	for o: Dictionary in b["open"]:
+		doors["%d:%s" % [int(o["side"]), String(o["kind"])]] = true
+	_check(doors.has("-1:door") and doors.has("1:door"), "1.3: posterunek bez drzwi po obu stronach (%s)" % [doors.keys()])
+	for k in [Vector2i(18, 21), Vector2i(27, 21), Vector2i(36, 22), Vector2i(18, 23)]:
+		_check(Level3D.bld_cells.has(k), "1.3 %s: kafel budynku 3D z pudłem kafla" % k)
+		_check(not Level3D.shell_cells.has(k) and not Level3D.shell_walls.has(k) and not Level3D.shell_entry_cells.has(k), "1.3 %s: kafel budynku 3D w przekroju z kafli" % k)
+	for run in Level3D.roof_runs(rows):
+		_check(not (int(run["r"]) == 21 and int(run["c0"]) <= 36 and int(run["c1"]) >= 18), "1.3: dach z blachy na posterunku 3D")
+	_check(Level3D.shell_cells.has(Vector2i(27, 26)), "1.3: podłoga posterunku bez płyty przekroju")
+	var p := Building3D.parts(b, rows)
+	var T := Level3D.T
+	var zc := Level3D.SHELL_Z
+	var yr := -21.0 * T
+	var slab := false
+	var cuts: Array = p["cut"]
+	for key: String in p:
+		for xf: Transform3D in p[key]:
+			var sz := xf.basis.get_scale()
+			var zmax := xf.origin.z + sz.z * 0.5
+			_check(zmax <= zc + Building3D.CUT + 0.001, "1.3: element budynku '%s' przed przekrojem (z %.2f)" % [key, zmax])
+			if key == "cut":
+				continue
+			slab = slab or (is_equal_approx(xf.origin.y + sz.y * 0.5, yr) and absf(sz.y - Building3D.SLAB) < 0.001 and sz.x > 20.0)
+			if zmax >= zc - 0.001:                           # dochodzi do płaszczyzny przekroju: nakładka o tym samym obrysie
+				var hit := false
+				for c: Transform3D in cuts:
+					hit = hit or (c.origin - Vector3(xf.origin.x, xf.origin.y, c.origin.z)).length() < 0.001
+				_check(hit, "1.3: '%s' w %s bez materiału przekroju" % [key, xf.origin])
+			# słupy (wysokie, wąskie skrzynki muru) nie stoją w pasie gry
+			if key == "wall" and sz.y > 4.0 and sz.x <= Building3D.COL + 0.001 and sz.z <= Building3D.COL + 0.001:
+				_check(xf.origin.z - sz.z * 0.5 >= Level3D.DEPTH_FRONT or xf.origin.z + sz.z * 0.5 <= -1.0, "1.3: słup w pasie gry (z %.2f)" % xf.origin.z)
+	_check(slab, "1.3: brak płyty stropodachu 0,25 m na górze kafla dachu")
+	var walls := 0
+	for xf: Transform3D in p["wall"]:
+		var sz := xf.basis.get_scale()
+		walls += int(absf(sz.x - Building3D.WALL) < 0.001 and sz.y > 1.0)
+	_check(walls >= 4, "1.3: za mało odcinków ścian szczytowych 0,4 m (%d)" % walls)
+	_check(not (p["cut"] as Array).is_empty(), "1.3: brak przekroju budynku")
+
 func _check_local_fade() -> void:
 	var T := Level3D.T
 	var rows: Array = []

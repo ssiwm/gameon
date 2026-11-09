@@ -385,7 +385,7 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 		var ch := _ch(rows, k.x, k.y)
 		if ch == "C" and is_roof_cell(rows, k.x, k.y):
 			continue
-		if crate_cells.has(k) or slabs.has(k):
+		if crate_cells.has(k) or slabs.has(k) or bld_cells.has(k):
 			continue
 		var key: String = shell_cells[k]
 		if key == "":
@@ -548,11 +548,11 @@ static func roof_runs(rows: Array) -> Array:
 	for r in nrows:
 		var c := 0
 		while c < cols:
-			if not is_roof_cell(rows, c, r):
+			if not is_roof_cell(rows, c, r) or bld_cells.has(Vector2i(c, r)):
 				c += 1
 				continue
 			var c1 := c
-			while c1 + 1 < cols and is_roof_cell(rows, c1 + 1, r):
+			while c1 + 1 < cols and is_roof_cell(rows, c1 + 1, r) and not bld_cells.has(Vector2i(c1 + 1, r)):
 				c1 += 1
 			var steel := _ch(rows, c - 1, r) == "C" or _ch(rows, c1 + 1, r) == "C"
 			var posts: Array = []
@@ -1002,7 +1002,9 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				continue                                            # dach / podłoga strażnicy: `_build_roofs` (kolizja kafla bez zmian)
 			if ch == "M" and crate_cells.has(Vector2i(c, r)):
 				continue                                            # skrzynia z modelu (`_build_crates`); kolizja kafla bez zmian
-			if groups.has(ch):
+			if groups.has(ch) and bld_cells.has(Vector2i(c, r)):
+				pass                                                # dach i ściana szczytowa budynku 3D (`building3d.gd`)
+			elif groups.has(ch):
 				# bryły tylko dla odsłoniętych kafli (sąsiad z powietrzem lub tłem); wnętrza skał zamyka od frontu płaski przekrój (`caps`),
 				# bez niego pod skorupą gruntu widać było pustkę zamiast ziemi (flara czy wybuch nie miały czego oświetlić)
 				# sąsiad-skrzynia (`_build_crates`, płytsza niż kafel) nie zasłania już ścian bryły — kafel obok niej jest odsłonięty
@@ -1021,7 +1023,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, (T - TRENCH_D) / T, bed_d / full)), p + Vector3(0.0, -TRENCH_D * 0.5, TRENCH_Z0 + bed_d * 0.5)))
 					continue
 				groups[ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))
-			if back_wall_at(rows, c, r):
+			if back_wall_at(rows, c, r) and not bld_back.has(Vector2i(c, r)):
 				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
 				pass
@@ -1716,6 +1718,13 @@ static var shell_entry_cells := {}
 ## Elementy fasady na bokach wysuniętej ściany wejścia: {c, out (−1 lewy koniec budynku, +1 prawy), kind ("door"/"gate"/"window"), rt, rb (wiersze)}.
 static var shell_facades: Array = []
 const WALL_CH := "#C"
+## Budynki 3D (pilot wariantu C na posterunku 1.3, `building3d.gd`): wpisy FRONT z przekrojem i kluczem "build" (typ budynku, np. "bunker").
+## Bryłę budynku buduje generator w prawdziwych wymiarach (strop 0,25 m z żebrami, ściany 0,4 m, słupy, attyka, przekrój na SHELL_Z);
+## kafle dachu i ścian szczytowych (`bld_cells`) nie dostają pudła kafla, płyty przekroju ani ściany wejścia, a tło wnętrza (`bld_back`) —
+## muru z cegły. Kolizja, zniszczenia i pierwszy plan zostają na kaflach. [{c0, c1, r0, r1, kind, open: [{side, rt, rb, kind}]}]
+static var buildings: Array = []
+static var bld_cells := {}
+static var bld_back := {}
 const ENTRY_KEEP := "+%:q"                 ## niszczalne przegrody: kolumna z nimi nie dostaje pełnej ściany wejścia
 
 static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
@@ -1724,10 +1733,17 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	shell_bands = []
 	shell_entry_cells = {}
 	shell_facades = []
+	buildings = []
+	bld_cells = {}
+	bld_back = {}
 	if "--noshell" in OS.get_cmdline_user_args():
 		return                                                  # dev: bez przekroju (porównanie A/B)
 	var bands: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
 	shell_bands = bands
+	if not "--nobuild3d" in OS.get_cmdline_user_args():          # dev: budynki z kafli jak dotąd (porównanie A/B)
+		for e: Dictionary in bands:
+			if e.has("build"):
+				_plan_building(e, rows)
 	# fundament schodzi w dół najwyżej do pasa gry innego wpisu (piętra kryjówki: pod podłogą środkowego piętra są ściany dolnego)
 	var in_band := func(c: int, r: int) -> bool:
 		for b: Dictionary in bands:
@@ -1739,7 +1755,7 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 		var r0 := int(e["r0"])
 		var r1 := int(e["r1"])
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
-			if _ch(rows, c, r0) in SHELL_CH:
+			if _ch(rows, c, r0) in SHELL_CH and not bld_cells.has(Vector2i(c, r0)):
 				shell_cells[Vector2i(c, r0)] = "C" if concrete else ""
 			var r := r1
 			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH and not in_band.call(c, r):
@@ -1756,6 +1772,8 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 		# occ: z kamery nad stropem albo pod podłogą wpisu płyta przekroju zasłania ścianę (warstwa pierwszego planu rysuje się nad światem)
 		var occ := Vector4(-float(int(e["r0"]) + 1) * T + 0.02, -float(e["r1"]) * T - 0.02, SHELL_Z, SHELL_Z)
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			if bld_cells.has(Vector2i(c, int(e["r0"]))) and (c == int(e["c0"]) or c == int(e["c1"])):
+				continue                                            # ściana szczytowa budynku 3D (`building3d.gd`)
 			# tylko ściana na całą wysokość pasa (koniec sali, ściana do kopania): kolumna z oknem, drzwiami albo przejściem zostaje
 			# w płaszczyźnie gry razem z otworem — wysunięty kawałek nad drzwiami albo pod oknem wisiał jak skrzynia, a okno stało
 			# w głębi za nim (uwaga z gry 2026-11-08)
@@ -1797,6 +1815,38 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 					var k := Vector2i(c, r)
 					if _ch(rows, c, r) in SHELL_CH and not shell_cells.has(k) and not shell_walls.has(k) and not in_band.call(c, r) and not in_dig.call(c, r):
 						shell_cells[k] = "C" if concrete else ""
+
+## Budynek 3D z wpisu FRONT (`buildings`, `bld_cells`, `bld_back`): wiersz r0 to dach, kolumny c0 i c1 — ściany szczytowe; otwory w nich
+## (ciągi wierszy bez muru: drzwi, brama, okno `|`) przechodzą przez ścianę 3D w pasie gry.
+static func _plan_building(e: Dictionary, rows: Array) -> void:
+	var c0 := int(e["c0"])
+	var c1 := int(e["c1"])
+	var r0 := int(e["r0"])
+	var r1 := int(e["r1"])
+	var open: Array = []
+	for c in range(c0, c1 + 1):
+		if _ch(rows, c, r0) in WALL_CH:
+			bld_cells[Vector2i(c, r0)] = true
+		for r in range(r0 + 1, r1):
+			bld_back[Vector2i(c, r)] = true
+	for side in [-1, 1]:
+		var c := c0 if side < 0 else c1
+		var r := r0 + 1
+		while r < r1:
+			var ch := _ch(rows, c, r)
+			if ch in WALL_CH:
+				bld_cells[Vector2i(c, r)] = true
+				r += 1
+				continue
+			var win := ch == "|"
+			var rt := r
+			while r < r1 and not (_ch(rows, c, r) in WALL_CH) and (_ch(rows, c, r) == "|") == win:
+				r += 1
+			var kind := "window" if win else ("door" if r - rt <= 2 else "gate")
+			if not win and r < r1:
+				kind = "hole"                                       # otwór w połowie wysokości (pomost): przejście bez skrzydeł
+			open.append({"side": side, "rt": rt, "rb": r - 1, "kind": kind})
+	buildings.append({"c0": c0, "c1": c1, "r0": r0, "r1": r1, "kind": String(e["build"]), "open": open})
 
 ## Otwory kolumny wejścia → `shell_facades`: ciąg wierszy bez muru nad podłogą pasa to drzwi (do 2 kafli) albo brama (wyżej),
 ## ciąg okien `|` to okno; otwór w połowie wysokości bez okna (np. pomost) zostaje gładką ścianą.
