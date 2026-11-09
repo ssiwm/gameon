@@ -1,14 +1,20 @@
 extends RefCounted
-## Kryjówka między misjami kampanii (GDD §10.3): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp. 72 × 36 kafli, trzy poziomy co 8 kafli
-## (7 kafli światła + 1 kafel stropu), projekt „Stacja Dead Air” (bunkier pod nieczynną stacją radiową).
-## ŚRODEK (wiersz podłogi 22), od lewej w kolejności „co robi drużyna po powrocie”: śluza (dwa punkty startu S) → ściana wyników (v) → stół konserwacji (j: [E] czyszczenie i części eksploatacyjne) → warsztat
-## (h: [E] panel broni, części i zaopatrzenia za złom) → świetlica (meble z hub_decor.gd, szafki osobiste p: [E] perki i wygląd) → zbrojownia (a, dwie gabloty g po cztery bronie: SPREAD-12, PELLET-8,
-## LR-7, HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6, a) → tablica z odprawą następnej misji (n). Nad tablicą, na GÓRZE (wiersz 14), radiostacja
-## z prognozą pogody (R, weather.gd) i pracownią elektroniki i próbek (c: [E] badania części broni specjalnych); pod zbrojownią i warsztatem na DOLE (wiersz 30) maszynownia z tokarką i szlifierką (d: [E] części ze schematów, ostrzenie broni białej) i magazyn ze skrytkami (H) i prasą elaboracyjną (x: [E] zamówienia amunicji specjalnej) i stołem pirotechnicznym (z: [E] granaty, miny, ładunki, 40 mm, zapalniki), a za magazynem
-## drzwi strzelnicy FPP z tablicą rekordów (RANGE_DOOR).
-## Poziomy łączą dwa szyby (SHAFTS: kraty „=” w podłogach i podesty co 2 kafle, prawy–lewy–prawy jak szyb serwisowy w 1.1); w dół zeskakuje się przez kratę (S+SPACE).
+## Kryjówka między misjami kampanii (GDD §10.3, `HUB_LAYOUT_PLAN.md`): bez wrogów (NoiseMgr.safe_zone), ciepłe światło lamp. Układ „dwa pokłady”
+## (od 1.7.532): 53 × 20 kafli, dwie kondygnacje po 4 kafle światła (5,2 m — wysokość pomieszczeń jak budynki misji) i 1 kafel stropu, jeden pion
+## pośrodku. Kamera trzyma oba pokłady w kadrze (CAM_LOCK): przy zbliżeniu NORMAL kadr ma 11,25 kafla, pas stropu do podłogi piwnicy — 11.
+## PARTER (wiersz podłogi 9), od lewej w kolejności „co robi drużyna po powrocie”: śluza (dwa punkty startu S, szafki osobiste p: [E] perki
+## i wygląd) → warsztat (stół konserwacji j: [E] czyszczenie i części eksploatacyjne; ława h: [E] panel broni, części i zaopatrzenia za złom)
+## → pion (kol. 21–26) → drzwi strzelnicy FPP (RANGE_DOOR) → zbrojownia (a, dwie gabloty g po cztery bronie: SPREAD-12, PELLET-8, LR-7,
+## HKM-9, WRATH-4, SPECTER-1, FALCON-6, SINEW-6, a) → radiostacja z prognozą pogody (R i okno, weather.gd) → odprawa następnej misji
+## (tablica n) w strefie wyjścia (LAUNCH_ZONE).
+## PIWNICA (wiersz podłogi 14): kwatery (skrytka H, ściana wyników v) → pracownia elektroniki i próbek (c: [E] badania części broni
+## specjalnych) i tokarka ze szlifierką (d: [E] części ze schematów, ostrzenie broni białej) pod ławą → pion → prasa elaboracyjna
+## (x: [E] zamówienia amunicji specjalnej) i stół pirotechniczny (z: [E] granaty, miny, ładunki, 40 mm, zapalniki) pod zbrojownią →
+## maszynownia (generator, sprężarka, zamknięte drzwi D-7, skrytka H).
+## Łańcuchy stanowisk leżą w pionie: badanie (c) → wykonanie (d) → montaż (h) w jednej kolumnie pomieszczeń, amunicja i granaty pod gablotami.
+## Pion: krata „=” w podłodze parteru i dwa podesty (wiersze 11 i 12); w dół zeskakuje się przez kratę (S+SPACE).
 ## Ekwipunek i amunicja przechodzą z poprzedniej misji i do następnej (main._restart_mission z carry); wyjście na misję po gotowości wszystkich ([Enter]).
-## Każdy poziom ma jeden wiersz znaczników i jeden wiersz lamp — po zmianie uruchom `--maptest`.
+## Każdy pokład ma jeden wiersz znaczników i jeden wiersz lamp — po zmianie uruchom `--maptest`.
 
 const Weapons := preload("res://scripts/weapons.gd")
 
@@ -20,84 +26,57 @@ const UNDERGROUND_ROW := 99               ## poza mapą: bez „głębi" (ambien
 ## Broń w gablotach („g": CABINET_SLOTS sztuk na gablotę, od lewej gabloty i od górnego rzędu): drużyna wymienia ekwipunek przed misją.
 const WEAPONS := [Weapons.SPREAD12, Weapons.SRUT8, Weapons.LR7, Weapons.HKM9, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6]
 const ACCENTS := []
-## Szyby między poziomami: [pierwsza, ostatnia] kolumna mapy. Meble z hub_decor.gd ich nie zastawiają.
-const SHAFTS := [[26, 31], [56, 61]]
-## Strefa startu przed drzwiami wyjścia: [pierwsza kolumna, ostatnia kolumna, wiersz podłogi]. Kto w niej stoi, jest gotowy (main.gd: _hub_zone_ids).
-const LAUNCH_ZONE := [63, 70, 22]
-## Rekwizyty bez znaczników (hub_prop.gd, bryły buduje view3d.gd): [rodzaj, kolumna mapy, wiersz podłogi, parametry]. Maszynownia i magazyn na dole (wiersz 30),
-## okno z prognozą pogody w radiostacji na górze (wiersz 14; parametr = szerokość w kaflach), rury: parametr = ostatnia kolumna.
+## Pion między pokładami: [pierwsza, ostatnia] kolumna mapy. Meble z hub_decor.gd go nie zastawiają.
+const SHAFTS := [[21, 26]]
+## Strefa startu przed drzwiami wyjścia na prawym końcu parteru: [pierwsza kolumna, ostatnia kolumna, wiersz podłogi].
+const LAUNCH_ZONE := [46, 51, 9]
+## Kamera w pionie: [wiersz stropu parteru, wiersz podłogi piwnicy] — pas, który kamera trzyma w kadrze (player.gd `_lock_camera_band`).
+const CAM_LOCK := [4, 14]
+## Rekwizyty bez znaczników (hub_prop.gd): [rodzaj, kolumna mapy, wiersz podłogi, parametry]. Skrzynie prasy 32–48 px na prawo od „x”,
+## skrzynia wojskowa 16 px na lewo i beczka 32 px na prawo od „z” (press_bench.gd, pyro_bench.gd); okno z prognozą przy radiostacji.
 const HUB_PROPS := [
-	["pipes", 5, 30, [26]], ["generator", 14, 30, []], ["compressor", 21, 30, []], ["barrel", 24, 30, []],
-	["crate", 35, 30, []], ["crate", 36, 30, []], ["scrap_pile", 39, 30, []], ["mil_crate", 45, 30, []], ["barrel", 48, 30, []],
-	["d7", 66, 30, []], ["window", 68, 14, [3]],
+	["pipes", 10, 14, [20]], ["pipes", 41, 14, [51]],
+	["crate", 32, 14, []], ["crate", 33, 14, []], ["mil_crate", 35, 14, []], ["barrel", 38, 14, []], ["scrap_pile", 40, 14, []],
+	["generator", 43, 14, []], ["compressor", 46, 14, []], ["d7", 48, 14, []],
+	["window", 45, 9, [3]],
 ]
-## Drzwi strzelnicy FPP (RANGE_FPS_PLAN.md, range_door.gd): [kolumna, wiersz podłogi] w tylnej ścianie magazynu na dole, tablica rekordów
-## drużyny na ścianie obok (view3d.gd). [E] przy drzwiach przenosi gracza do tunelu strzelnicy.
-const RANGE_DOOR := [54, 30]
-## Wnęki w tylnej ścianie (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
-## Wnęki na podłodze tylko na dole: na górze i w środku tylną ścianę zajmują meble z hub_decor.gd, tablice, gabloty i szyby.
-## Rodzaje ścienne (N4) wiszą nad meblami: okna sterowni na górze, kratki w świetlicy i w magazynie — w przęsłach między żebrami
-## stropu (`Level3D.interior_ribs`), bo żebro przy otworze znika (`_rib_in_niche`).
-## Maszynownia: korytarz techniczny między generatorem a sprężarką (rury biegną nad otworem); magazyn: krata obok drzwi strzelnicy.
-const NICHES := [
-	{"kind": "corridor", "c0": 16, "c1": 18, "r0": 27, "r1": 29, "lit": "cage"},
-	{"kind": "grate", "c0": 49, "c1": 51, "r0": 27, "r1": 29, "lit": "bulb"},
-	{"kind": "window", "c0": 38, "c1": 41, "r0": 10, "r1": 11, "lit": "tube"},     # N4: okna sterowni nadajnika wysoko na górze, w przęsłach
-	{"kind": "window", "c0": 46, "c1": 49, "r0": 10, "r1": 11, "lit": "bulb"},     #     między żebrami stropu 36–43–52 (z dala od pracowni i radiostacji)
-	{"kind": "vent", "c0": 41, "c1": 41, "r0": 16, "r1": 16, "lit": "lamp"},       # N4: kratka wentylacji wysoko w świetlicy (między żebrami 35 i 44)
-	{"kind": "vent", "c0": 42, "c1": 42, "r0": 24, "r1": 24, "lit": "lamp"},       # N4: kratka pod stropem magazynu na dole
-]
-## Pierwszy plan z przekrojem (`front3d.gd`, `FOREGROUND_PLAN.md` F3): rury, kable i lampy na przewodzie 3,5–5 m przed płaszczyzną gry
-## na trzech piętrach; strop i podłoga z betonu wysunięte do `Level3D.SHELL_Z`, rury omijają otwory schodów i żebra stropu
-## (`Front3D.blocked_x`). Piętra mieszczą się razem w kadrze, więc na całą kryjówkę wypada kilka dużych elementów (`Front3D.layout`).
+## Drzwi strzelnicy FPP (range_door.gd): na parterze tuż za pionem, krok od ławy (próba części zaraz po montażu).
+const RANGE_DOOR := [29, 9]
+## Wnęki w tylnej ścianie (`niches3d.gd`): na razie bez wnęk — wrócą z ręcznie ustawionymi meblami (HUB_LAYOUT_PLAN.md E5).
+const NICHES := []
+## Pierwszy plan z przekrojem (`front3d.gd`) i bryły bunkra (`building3d.gd`, typ „vault”): dwie kondygnacje jedna nad drugą; słupy tylko
+## na granicach pomieszczeń (klucz "bays": śluza | warsztat | pion | zbrojownia | radiostacja i odprawa), nie co 5 m.
 const FRONT := [
-	{"set": "bunker", "c0": 20, "c1": 71, "r0": 6, "r1": 14, "shell": true, "build": "vault"},       # sterownia nadajnika (góra)
-	{"set": "bunker", "c0": 0, "c1": 71, "r0": 14, "r1": 22, "shell": true, "build": "vault"},       # świetlica i warsztat (środek)
-	{"set": "bunker", "c0": 3, "c1": 68, "r0": 22, "r1": 30, "shell": true, "build": "vault"},       # maszynownia i magazyn (dół)
+	{"set": "bunker", "c0": 0, "c1": 52, "r0": 4, "r1": 9, "shell": true, "build": "vault", "bays": [10, 20, 28, 41]},       # parter
+	{"set": "bunker", "c0": 0, "c1": 52, "r0": 9, "r1": 14, "shell": true, "build": "vault", "bays": [10, 20, 28, 41]},      # piwnica
 ]
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
 const RADIO := ["...the transmitter is still humming. Whatever listens out there heard it too.", "Restock. Swap guns at the armory. Check the board for the next job."]
 const RACKS := true                       ## broń z „g" stoi w miejscu (ekspozycja)
-const CABINET_SLOTS := 4                  ## każde „g" to gablota na tyle broni (cabinet.gd), zamiast stojaka na jedną
+const CABINET_SLOTS := 4                  ## każde „g" to gablota na tyle broni (cabinet.gd)
 const AMBIENT := Color(0.15, 0.108, 0.075, 1.0)     ## cieplejsza i jaśniejsza ciemność: tu jest bezpiecznie
 const BRIEF := ""
 
 const MAP := [
-	"########################################################################",
-	"########################################################################",
-	"########################################################################",
-	"########################################################################",
-	"########################################################################",
-	"########################################################################",
-	"####################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
-	"####################CbbblbbbbbbbbbbbbbbbblbbbbbbbbbbbbbbbbbbbbbbblbbbbbC",
-	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"####################CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"####################CbbbbbbbbbbbbbbbbbbbbbbbbcbbbbbbbbbbbbbbbbbbRbbbbbbC",
-	"CCCCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCC",
-	"CbbbblbbbbbblbbbbbbblbbbbbbbbbbblbbbbblbbbbbbbbbbblbbbbbbbbbbbbbblbbbbbC",
-	"Cbbbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbC",
-	"CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"Cbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbC",
-	"CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"Cbbbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbC",
-	"CbbbSbSbbbbbvbbbjbbbhbbbbbbbbbbbbbbbbpbbbbbbbbabgbbgbbabbbbbbbbbbnbbbbbC",
-	"CCCCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCC",
-	"###CbbbbbbbbbbblbbbbbbbbbbbbbbbbbbbbbbblbbbbbbbbbbbbbbbbbbbbbbbbbbbbC###",
-	"###Cbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbC###",
-	"###CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC###",
-	"###Cbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbC###",
-	"###CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC###",
-	"###Cbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbC###",
-	"###CbbHbbbbdbbbbbbbbbbbbbbbbbbbbbxbbbbbbbbHbbbzbbbbbbbbbbbbbbbbbbbbbC###",
-	"###CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC###",
-	"########################################################################",
-	"########################################################################",
-	"########################################################################",
-	"########################################################################",
-	"########################################################################",
+	"#####################################################",
+	"#####################################################",
+	"#####################################################",
+	"#####################################################",
+	"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+	"CbbblbbbbbbbbblbbbbbbbblbbbbbbbblbbbbbbblbbbbbbblbbbC",
+	"CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"CbSbSbbpbbbbjbbbhbbbbbbbbbbbbbbbabgbbgbabbRbbbbbbnbbC",
+	"CCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCCCCCCCCCCCCCCCCCC",
+	"CbbblbbbbbbbbblbbbbbbbbbbbbblbbbbbblbbbbbbblbbbbblbbC",
+	"Cbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"Cbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbC",
+	"CbHbbbvbbbbbcbbbbdbbbbbbbbbbbbxbbbbbzbbbbbbbbbbbbbbHC",
+	"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+	"#####################################################",
+	"#####################################################",
+	"#####################################################",
+	"#####################################################",
+	"#####################################################",
 ]

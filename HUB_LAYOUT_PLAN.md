@@ -3,7 +3,7 @@
 Analiza i projekt z 2026-11-09 (raport z przekrojami, zrzutami i modelem tras: prywatny artefakt, skrypty w `C:\deadair87\hub_layout`).
 GDD §16.0a: gdy gracze gubią się w Kryjówce, upraszczamy układ i nie dokładamy stanowisk. Ten plan niczego nie dokłada, tylko przestawia.
 
-## Problem (stan 1.7.530, `z1_hub.gd`)
+## Problem (stan do 1.7.531, stary `z1_hub.gd`)
 
 - Trzy poziomy po 7 kafli światła (9,2 m), podczas gdy budynki na misjach mają 4 kafle (5,2 m). Postać zajmuje 11% wysokości kadru.
 - 184 kafle podłogi na 17 punktów z interakcją. Góra ma 50 kafli i dwa stanowiska, a odstępy między lampami sięgają 28 kafli.
@@ -40,8 +40,8 @@ Model tras (`hub_layout.py`: bieg 95 px/s, szacowany czas zmiany piętra), obecn
 | Etap | Zakres | Stan |
 |---|---|---|
 | E0 | Dziennik kryjówki: `hub_enter`, `hub_pos` co 1 s, `hub_station`; sekcja „Kryjówka — ruch” w `session_progress.py` | PR #637 |
-| E1 | Spike pod flagą `--hub2`: mapa `z1_hub2.gd`, kamera trzymana w pionie (`CAM_LOCK`), słupy na granicach pomieszczeń (`"bays"`), zrzuty | lokalnie, **bramka: ocena w grze** |
-| E2 | Układ w grze: `z1_hub2.gd` zastępuje `z1_hub.gd`, bez flagi; dokumenty, wersja | po bramce E1 |
+| E1 | Spike pod flagą `--hub2`: mapa `z1_hub2.gd`, kamera trzymana w pionie (`CAM_LOCK`), słupy na granicach pomieszczeń (`"bays"`), zrzuty | bramka przyjęta 2026-11-09 |
+| E2 | Układ w grze: nowy `z1_hub.gd` (flaga `--hub2` i `z1_hub2.gd` usunięte), test bryły kryjówki (2 kondygnacje, słupy tylko w `bays`), README, GDD §10.3 | 1.7.532 |
 | E3 | Kamera przekroju: płynne przejście przy zbliżeniu CLOSE, test `test_hub_camera.gd` | |
 | E4 | Czytelność: tabliczki stanowisk, barwa światła pomieszczeń, uśpione stanowiska ciemne do pierwszego użycia, ściana wyników ×0,7 | |
 | E5 | Kwatery i meble stawiane ręcznie zamiast losowych z `hub_decor.gd`, właz pionu, wnęki | |
@@ -54,8 +54,7 @@ Model tras (`hub_layout.py`: bieg 95 px/s, szacowany czas zmiany piętra), obecn
 3. Ściana wyników w kwaterach, w E4 pomniejszona do 0,7.
 4. Radio przy odprawie, a nie na osobnym piętrze.
 
-## Uwagi z E1
+## Uwagi z E1 i E2
 
-- Testy kryjówki z `--hub2` (`--workshoptest`, gabloty z siecią, `--rangetest`, `--nobottest`, bronie) sprawdzają nowy układ pod id `z1_hub`;
-  `--maptest`, `test_front.gd`, `test_structures.gd` i `test_niches.gd` sprawdzają `z1_hub2` jako osobną mapę.
+- Od E2 wszystkie testy kryjówki (`--maptest`, `test_front.gd` z `_check_vault`, `--workshoptest`, gabloty, `--rangetest`, `--nobottest`, bronie) sprawdzają nowy układ.
 - Do decyzji w E4: krata pionu na parterze czyta się w przekroju jak dziura w stropie; słup przekroju w płaszczyźnie z = SHELL_Z jest czarny i stoi przed całą wysokością obu pokładów.

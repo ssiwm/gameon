@@ -98,14 +98,9 @@ const MAPS := {
 	"z1_m3": preload("res://scripts/maps/z1_m3.gd"),
 	"z1_b1": preload("res://scripts/maps/z1_b1.gd"),
 	"z1_hub": preload("res://scripts/maps/z1_hub.gd"),     # kryjówka między misjami (nie należy do CAMPAIGN)
-	"z1_hub2": preload("res://scripts/maps/z1_hub2.gd"),   # kryjówka „dwa pokłady” (plan układu kryjówki E1): w grze pod id z1_hub z flagą --hub2
 	"t_mine": preload("res://scripts/maps/t_mine.gd"),     # mapa testowa zawału D3 (nie należy do CAMPAIGN ani SHIFT_POOL): --destructiontest, --maptest, test sieci
 	"t_dig": preload("res://scripts/maps/t_dig.gd"),       # mapa testowa stref wydobycia D5 (nie należy do CAMPAIGN ani SHIFT_POOL): --digtest, --maptest, test sieci
 }
-## Plan układu kryjówki E1: `--hub2` podmienia mapę kryjówki na układ „dwa pokłady” (z1_hub2.gd) pod tym samym id z1_hub — stanowiska,
-## testy i zapis widzą zwykłą kryjówkę.
-static var hub2 := OS.get_cmdline_user_args().has("--hub2")
-
 ## Kolejność kampanii Strefy I: 1.1 → 1.2 → 1.3 → boss B1 (Pijawka); po bossie kampania wraca przez kryjówkę do 1.1.
 const CAMPAIGN := ["z1_m1", "z1_m2", "z1_m3", "z1_b1"]
 ## Mapy losowane w Nocnym Dyżurze: bez 1.1 (samouczek bez bossa i Stalkera zaniżałby trudność serii) i bez areny B1 (osobna walka z bossem).
@@ -246,7 +241,7 @@ func load_map(id: String) -> void:
 	map_changed.emit(id)
 
 func _load(id: String) -> void:
-	var m = MAPS["z1_hub2" if id == "z1_hub" and hub2 else id]
+	var m = MAPS[id]
 	map_id = id
 	title = m.TITLE
 	objective = m.OBJECTIVE
