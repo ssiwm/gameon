@@ -21,6 +21,10 @@ Z [Poly Haven](https://polyhaven.com) (CC0): `roof` — blacha falista z tekstur
 1K po gradingu jak reszta; `world_pbr_import.py --only=roof` pobiera je do `art_src/world_pbr_cc0/polyhaven/`. Panoramy HDRI w `hdri/` (`kloppenheim_07`,
 `debris_basement_corridor`) — niewidoczne dla gracza „niebo odbić” na stali broni; przycięte i znormalizowane przez `tools/polyhaven_fetch.py --hdri`.
 
+Budynek 3D (`building3d.gd`, od 1.7.527) — Poly Haven (CC0), 1K po gradingu przyciemnionym do tonu betonu gry: `bld_wall` (ściany, słupy, pilastry)
+`concrete_layers_02`, `bld_slab` (stropodach, belki, żebra) `concrete`, `bld_cut` (płaszczyzna przekroju) `granular_concrete`, `bld_plinth` (cokół)
+`concrete_wall_007`; `world_pbr_import.py --only=bld_wall,bld_slab,bld_cut,bld_plinth`.
+
 Pierwszy plan (`front/pipe_parts.glb`, od 1.7.519): części rur z modelu Poly Haven `modular_industrial_pipes_01` (CC0) — sama geometria wycięta przez `tools/front_parts.py`; tekstury te same co dekoracji `pipes` w `art/items3d/`.
 
 ## Porównania z Poly Haven (2026-10-15, `tools/world_pbr_compare.py`)

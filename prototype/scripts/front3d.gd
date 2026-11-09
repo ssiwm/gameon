@@ -45,7 +45,7 @@ const SETS := {
 	# w pionie (pień nie kończy się na linii stropu — koniec zasłania górny brzeg kadru); pnie i kępy stoją na podłożu przed płaszczyzną
 	# gry (`_build_ground`), które wpis otwarty buduje w warstwie świata
 	# las: w każdej przerwie między pniami dwa małe elementy — gałąź u góry kadru (`small`) i kępa u dołu (`small2`); nie zasłaniają się nawzajem
-	"forest": {"big": ["pine", "birch", "snag", "pine"], "small": ["bough"], "small2": ["ferns", "grass", "ferns"], "tint": Color(0.62, 0.64, 0.66), "open": true},
+	"forest": {"big": ["pine", "snag", "pine"], "small": ["shrub"], "small2": ["ferns", "grass", "ferns"], "tint": Color(0.62, 0.64, 0.66), "open": true},
 }
 const BIG_KINDS := ["pipe", "pipes2", "pine", "birch", "snag"]
 const PARTS_GLB := "res://art/world3d/front/pipe_parts.glb"
@@ -67,6 +67,17 @@ const TRUNKS := {
 }
 const TRUNK_TOP := 16.0                    ## m: koniec pnia nad podłożem — zawsze nad górnym brzegiem kadru NORMAL
 const TRUNK_SINK := 0.3                    ## m: pień, szyja i korzenie zaczynają się tyle pod podłożem (część pod nim odcina `ywin`)
+const SAPLING_H := Vector2(2.2, 3.6)       ## m: wysokość młodego świerka (`_sapling`) na podłożu pierwszego planu
+## Skany Poly Haven na pierwszym planie (uwaga z gry 2026-11-09: karty 256 px i proceduralne pnie „zbyt słabej jakości”):
+const PBR_BARK := {"pine_bark": "res://art/world3d/forest/pine_bark_%s_2k.jpg"}   ## kora 2K (kolor, ARM, normalne)
+const PINE_BOUGH_P := 0.0                  ## gałąź z kartami igliwia (`pine_tuft`) przy górnym brzegu — karty odrzucone przy akceptacji 2026-11-09
+const BARK_TILE := 1.3                     ## m kory na jedno powtórzenie tekstury
+const SNAG_MODEL := "tree_snag_hi"         ## martwy pień: model z korą PBR zamiast proceduralnego
+const SNAG_H := Vector2(11.5, 13.5)        ## m: wysokość martwego pnia (złamany wierzchołek nad górnym brzegiem kadru)
+const SHRUB_MODELS := ["ph_shrub_a", "ph_shrub_b", "ph_shrub_c", "ph_shrub_d"]
+const SHRUB_H := Vector2(1.8, 2.8)         ## m: krzew (`shrub`) na podłożu pierwszego planu
+const FERN_MODELS := ["ph_fern_a", "ph_fern_b", "ph_fern_c", "ph_fern_d"]
+const GRASS_MODELS := ["ph_grass_a", "ph_grass_b", "ph_grass_c", "ph_nettle_a", "ph_nettle_b", "ph_nettle_c"]
 const BOUGH_Y := Vector2(8.2, 9.4)         ## m nad podłogą pasa: nasada zwisającej gałęzi (nad górnym brzegiem kadru przy z ≈ 4 m)
 const CLUMP_Z := Vector2(6.4, 7.8)         ## m: kępa paproci i trawy stoi na podłożu bliżej kamery niż pnie — wchodzi w kadr od dołu
 const CLUMP_H := Vector2(1.3, 2.1)         ## m: wysokość karty paproci w kępie (trawa ×0,6; paproć ma nasadę w 42% karty)
@@ -88,24 +99,184 @@ const GROUND_PAD := 8                      ## kafli poza pas wpisu (rzut przy br
 const GROUND_BUMP := Vector2(0.06, 0.3)    ## nierówność: m przyrostu na metr od GROUND_Z[0] i najwyżej
 const FOOT := Vector2(2.6, 1.3)            ## m: półosie płaskiego miejsca pod pniem i kępą (x, z)
 const GROUND_GRASS := 5.0                  ## kart runa na metr podłoża wzdłuż mapy
-const GROUND_PROPS := ["rock", "stump", "tree_log", "rock_b", "rock_c", "stump"]
-const PROP_STEP := Vector2(14.0, 24.0)     ## m: odstęp kamieni, pniaków i kłód na podłożu
+const GROUND_PROPS := ["rock", "ph_branches_a", "trunk_big", "rock_b", "fence", "ph_fern_c", "rock_c", "logs", "ph_branches_b", "tyre", "rock", "bones", "ph_fern_a", "rock_b", "trunk_big", "rock_c"]
+const GROUND_GRASS_M := 2.6                ## runo z modeli ze skanów: sztuk na metr (każda to cała kępa, nie jedna karta)
+const COVER_CHUNK := 24.0                  ## m: runo z modeli w kawałkach wzdłuż mapy (odrzucanie poza kadrem)
+## Ruchoma trawa (wariant C zaakceptowany 2026-11-09): kępki liści z geometrii (`_tuft_mesh`) na podłożu, kołysane wiatrem z pogody
+## (`Level3D.set_wind`) falami podmuchów; między nimi rośliny ze skanów, też kołysane (`_sway_mat`).
+const TUFTS_M2 := 24.0                     ## kępek na m² (przed płatami łanu: część miejsc zostaje łysa)
+const TUFT_H := Vector2(0.3, 0.65)         ## m: wysokość kępki (przycinana zasadą rzutu pod linią stóp)
+const TUFT_NEAR := 3.0                     ## m od przodu bryły: przy płaszczyźnie gry kępki niskie i małe na ekranie — gęstość od 75% do pełnej
+const TUFT_W := 0.42                       ## m: najmniejsza szerokość kępki (niska kępka przy płaszczyźnie gry rozłożona szerzej, nie jak sadzonka)
+const GRASS_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+uniform float amp = 0.5;                  // `Level3D.set_wind`: 0 cisza, 0,5 lekki wiatr, 2 burza
+uniform float lean = 0.0;                 // stały przechył w lewo (burza)
+uniform vec2 wdir = vec2(-1.0, 0.2);      // podmuchy idą w lewo, jak przechył koron w burzy
+uniform vec3 col_root : source_color = vec3(0.06, 0.08, 0.03);
+uniform vec3 col_mid : source_color = vec3(0.17, 0.28, 0.07);
+uniform vec3 col_tip : source_color = vec3(0.40, 0.46, 0.18);
+uniform vec3 col_dry : source_color = vec3(0.40, 0.33, 0.18);
+uniform float trans_k = 0.35;
+uniform sampler2D gmask : hint_default_white, filter_nearest;   // widoczność kolumny podłoża (`Front3D.set_camera_y`): < 0,5 — egzemplarz znika
+uniform float gmask_t = 1.309;
+float gmask_at(float x) {
+	return texelFetch(gmask, ivec2(clamp(int(floor(x / gmask_t)) + 8, 0, textureSize(gmask, 0).x - 1), 0), 0).r;
+}
+varying float vk;
+varying float vdry;
+varying float vgust;
+float gust(vec2 p, float t) {
+	float a = sin(dot(p, wdir) * 0.55 - t * 1.6) * 0.5 + 0.5;
+	float b = sin(dot(p, vec2(-wdir.y, wdir.x)) * 0.31 + dot(p, wdir) * 0.17 - t * 0.9) * 0.5 + 0.5;
+	return a * a * mix(0.55, 1.0, b);
+}
+void vertex() {
+	float k = UV.y;                                   // 0 nasada → 1 czubek
+	vec3 o = MODEL_MATRIX[3].xyz;
+	float seed = INSTANCE_CUSTOM.r;
+	vdry = INSTANCE_CUSTOM.g;
+	float g = gust(o.xz, TIME);
+	vgust = g;
+	float flutter = sin(TIME * (5.0 + seed * 3.0) + seed * 40.0) * 0.08 * (0.4 + g);
+	float bend = min((0.2 + lean + g * 1.1 * amp + flutter) * k * k, 1.2);
+	// przesunięcie w świecie → w modelu: obrót wokół pionu i skala wzdłuż osi, więc transpozycja / skala² osi zamiast inverse() na wierzchołek
+	mat3 m = mat3(MODEL_MATRIX);
+	vec2 d = normalize(wdir);
+	float h = (m * VERTEX).y;
+	VERTEX += transpose(m) * vec3(d.x * bend * h * 0.9, -bend * bend * h * 0.35, d.y * bend * h * 0.9) / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2]));
+	vk = k;
+	NORMAL = normalize(mix(NORMAL, vec3(0.0, 1.0, 0.0), 0.55));
+	if (gmask_at(o.x) < 0.5) { VERTEX = vec3(0.0); }
+}
+void fragment() {
+	vec3 c = mix(col_root, col_mid, smoothstep(0.0, 0.45, vk));
+	c = mix(c, col_tip, smoothstep(0.5, 1.0, vk));
+	c = mix(c, col_dry, vdry);
+	c *= 1.0 + vgust * 0.25 * vk;                     // jaśniejszy pas łanu w podmuchu
+	ALBEDO = c;
+	ROUGHNESS = 0.85;
+	SPECULAR = 0.25;
+	AO = mix(0.35, 1.0, vk);
+	AO_LIGHT_AFFECT = 0.6;
+	BACKLIGHT = c * trans_k;
+}
+"""
+## Kołysanie modeli roślin runa (warstwa świata): waga z wysokości wierzchołka w siatce modelu.
+const SWAY_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, diffuse_burley;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic;
+uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic;
+uniform sampler2D arm_tex : hint_default_white, filter_linear_mipmap_anisotropic;
+uniform float amp = 0.5;
+uniform float lean = 0.0;
+uniform vec2 wdir = vec2(-1.0, 0.2);
+uniform float y0 = 0.0;
+uniform float hm = 1.0;                  // wysokość siatki modelu w jej jednostkach
+uniform float sway_m = 0.18;             // wychylenie czubka w podmuchu [m na metr wysokości egzemplarza]
+uniform sampler2D gmask : hint_default_white, filter_nearest;   // widoczność kolumny podłoża (`Front3D.set_camera_y`): < 0,5 — egzemplarz znika
+uniform float gmask_t = 1.309;
+float gmask_at(float x) {
+	return texelFetch(gmask, ivec2(clamp(int(floor(x / gmask_t)) + 8, 0, textureSize(gmask, 0).x - 1), 0), 0).r;
+}
+float gust(vec2 p, float t) {
+	float a = sin(dot(p, wdir) * 0.55 - t * 1.6) * 0.5 + 0.5;
+	float b = sin(dot(p, vec2(-wdir.y, wdir.x)) * 0.31 + dot(p, wdir) * 0.17 - t * 0.9) * 0.5 + 0.5;
+	return a * a * mix(0.55, 1.0, b);
+}
+void vertex() {
+	float k = clamp((VERTEX.y - y0) / hm, 0.0, 1.0);
+	mat3 m = mat3(MODEL_MATRIX);
+	vec3 o = MODEL_MATRIX[3].xyz;
+	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float hs = length(m[1]) * hm;
+	float g = gust(o.xz, TIME);
+	float fl = sin(TIME * 4.3 + w.x * 3.1 + w.z * 2.3) * 0.25 * (0.3 + g);
+	vec2 dd = normalize(wdir) * (0.1 + lean * 0.4 + g * amp * 1.2 + fl) * sway_m * hs * k * k;
+	VERTEX += transpose(m) * vec3(dd.x, 0.0, dd.y) / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2]));
+	if (gmask_at(o.x) < 0.5) { VERTEX = vec3(0.0); }
+}
+void fragment() {
+	vec4 a = texture(albedo_tex, UV);
+	if (a.a < 0.42) { discard; }
+	ALBEDO = a.rgb;
+	vec3 arm = texture(arm_tex, UV).rgb;
+	ROUGHNESS = arm.g;
+	AO = arm.r;
+	NORMAL_MAP = texture(normal_tex, UV).rgb;
+	BACKLIGHT = a.rgb * 0.3;
+}
+"""
+static var _grass_mat: ShaderMaterial
+static var _sway_mats := {}                ## model → ShaderMaterial (raz na sesję, w `Level3D._wind_models`)
+static var _tuft: ArrayMesh
+static var tuft_tops := PackedVector2Array()   ## (y czubka, z) kępek trawy — test: rzut pod linią stóp
+## m: odstęp kamieni, pniaków, kłód, sągów, płotu, opon i kości na podłożu (dawniej 14–24 m: pierwszy plan był pusty, uwaga z gry 2026-11-09)
+const PROP_STEP := Vector2(5.5, 10.0)
+## wielkość elementu podłoża [m, najdłuższy bok w poziomie]; elementy wydłużone (`PROP_ALONG`) leżą wzdłuż kadru
+const PROP_SIZE := {"tree_log": Vector2(2.6, 3.8), "stump": Vector2(0.7, 0.95), "fence": Vector2(2.4, 3.2), "logs": Vector2(1.6, 2.3),
+		"tyre": Vector2(0.75, 0.9), "bones": Vector2(0.5, 0.8), "reeds": Vector2(1.0, 1.6), "trunk_big": Vector2(2.6, 3.4),
+		"ph_branches_a": Vector2(1.5, 2.1), "ph_branches_b": Vector2(1.5, 2.1), "ph_fern_a": Vector2(0.9, 1.2), "ph_fern_c": Vector2(0.9, 1.2)}
+const PROP_ALONG := ["tree_log", "fence", "logs", "trunk_big", "ph_branches_a", "ph_branches_b"]
+const PROP_ACROSS := ["logs", "ph_branches_a", "ph_branches_b"]   ## modele z długą osią wzdłuż z — obrót o 90°, żeby leżały wzdłuż mapy
 const PROP_Z := Vector2(5.6, 9.0)          ## m: przed pniami (rzut niżej niż ich nasada — pień ich nie przykrywa)
 ## Kamera pod podłożem (rampa i szyby kopalni 1.1 tuż pod powierzchnią, szyby 1.2 i 1.3): las i podłoże gasną, kiedy y kamery spada
-## z SURF_FADE.y do SURF_FADE.x m nad najwyższy punkt podłoża (gracz na podłożu: kamera ok. 5,3 m nad nim). Spod ziemi płyta zakrywałaby
-## przekrój korytarza, a pnie przycięte do podłoża (`ywin`) wisiałyby nad nim.
-const SURF_FADE := Vector2(2.4, 4.4)
-static var _on_surface := {}               ## wpisy z przekrojem z podłogą na powierzchni (grunt przed nimi to mostek `_ground`, nie `_floors`)
+## z SURF_FADE.y do SURF_FADE.x m nad najwyższy punkt podłoża w pobliżu kamery (`SURF_NEAR`; gracz na podłożu: kamera ok. 5,3 m nad nim).
+## Spod ziemi płyta zakrywałaby przekrój korytarza, a pnie przycięte do podłoża (`ywin`) wisiałyby nad nim. Przejście wąskie: gracz kafel
+## pod powierzchnią (kamera ok. 4 m nad nią) ma już pustą powierzchnię — dawniej (2,4–4,4 m nad najwyższym punktem całej mapy) płyta
+## i runo wisiały nad szybem półprzezroczyste (uwaga z gry 2026-11-09, „błąd powierzchni”).
+const SURF_FADE := Vector2(4.0, 4.7)
+const SURF_NEAR := 12.0                    ## m: zasięg w x od kamery, z którego liczy się wierzch podłoża dla `SURF_FADE`
+## Wygaszanie miejscowe (uwaga z gry 2026-11-09: „grunt po prawej stronie ekranu znika po zejściu na dół”): kamera pod powierzchnią
+## (`SURF_FADE`) gasi tylko kawałki płyty (GROUND_CHUNK kolumn) zasłaniające w rzucie wolne kafle w kadrze (piwniczka, szyb, tunel) i te,
+## nad którymi kamera jest niżej niż ich wierzch + SURF_BELOW (płyta widziana z boku albo od spodu); płyta nad litym gruntem zostaje.
+## Pnie, runo i kępki gasną razem z kolumną pod nimi (maska kolumn `gmask` w shaderach, kamienie i kłody — węzłami).
+const GROUND_CHUNK := 2                    ## kolumn płyty podłoża w jednym węźle
+## m: kamera niżej niż wierzch kawałka + tyle — kawałek gaśnie (przez 0,25 m). Z kamery na wysokości wierzchu (gracz 4 kafle pod
+## powierzchnią) płyta jest krawędzią, a pnie i trawa stoją na linii gruntu; spod niej podstawy w rzucie wisiałyby nad tą linią.
+const SURF_BELOW := 0.05
+const GROUND_FADE_T := 0.25                ## s: przejście kawałka między zgaszonym a widocznym (kamera w poziomie przesuwa granicę rzutu)
+const GMASK_PAD := 8                       ## kolumn maski na lewo od kolumny 0 (podłoże ma zapas GROUND_PAD poza wpisem)
+const GMASK_VIEW := Vector2(22.0, 13.0)    ## m: wolne kafle sprawdzane w rzucie — ± w x od kamery i w dół od niej
+static var _gmask: ImageTexture            ## widoczność kolumn podłoża (R8, kolumna c → piksel c + GMASK_PAD); wspólna dla shaderów lasu i runa
+static var _gmask_img: Image
+static var _gcols := 0
+static var _gvis := PackedFloat32Array()   ## widoczność kolumny 0–1
+static var _gtop := PackedFloat32Array()   ## y wierzchu podłoża kolumny, -INF bez podłoża
+static var _gz0 := PackedFloat32Array()    ## z przodu płyty kolumny (przód bryły albo płyta przekroju)
+static var _gopen: Array = []              ## kolumna → PackedFloat32Array par (y góry, y dołu) ciągów wolnych kafli
+static var _gchunks: Array = []            ## Vector3i(c0, c1 włącznie, -) kawałków płyty; y wierzchu w `_gchunk_top`
+static var _gchunk_top := PackedFloat32Array()
+static var _grows := false                 ## znane wiersze mapy (bez nich, w teście: cały pas gaśnie jak dawniej)
+static var _gus := 0
+static var _gidle := true
+static var _on_surface := {}              ## wpisy z przekrojem z podłogą na powierzchni (grunt przed nimi to mostek `_ground`, nie `_floors`)
 static var _ground: Array = []             ## [{"x0", "x1" [m], "c0" (kolumna pierwszej wartości), "ys": PackedFloat32Array (y podłoża kolumny)}]
 static var _ground_top := -INF             ## m: najwyższy y podłoża (`SURF_FADE`)
 static var _ground_nodes: Array = []       ## płyta, runo, kamienie wszystkich budów świata (`Geometry` i `GeometryAfterCollapse`): wygaszane pod powierzchnią
 static var _surface_k := 1.0
 static var _feet: Array = []               ## Vector2(x, z) elementów lasu — płaskie miejsca podłoża
+## Rośliny lasu w warstwie świata (uwaga z gry 2026-11-09: „rośliny nie mają właściwych proporcji i kolorów”): kępy paproci i pokrzyw
+## (`shrub`, `ferns`, `grass`) i paprocie przy pniach powstają jako runo z modeli (`_clump_cover`) — oświetla je scena jak trawę
+## (w warstwie pierwszego planu świeciły tylko kontry postaci i niebieski prześwit księżyca), w naturalnej wysokości; krzew ze siewek
+## `shrub_04` (0,2 m powiększone do 2,5 m — wielkie liście) odpada. Bez modeli ze skanów (`--nomodels3d`) zostają kępy z kart w pierwszym planie.
+static var _world_plants := false
+static var _clumps: Array = []             ## [x, z, rodzaj] kęp roślin na podłożu (rodzaj "base": paproć obok pnia)
+const CLUMP_PLANTS := {                    ## rodzaj kępy → [[modele, liczba, wysokość m (natur.)], …]
+	"shrub": [[["ph_nettle_c"], 2, Vector2(1.0, 1.35)], [["ph_nettle_a"], 2, Vector2(0.7, 1.0)], [["ph_fern_a", "ph_fern_b", "ph_fern_c", "ph_fern_d"], 2, Vector2(0.7, 1.0)]],
+	"ferns": [[["ph_fern_a", "ph_fern_b", "ph_fern_c", "ph_fern_d"], 4, Vector2(0.65, 1.05)], [["ph_nettle_a", "ph_nettle_b"], 1, Vector2(0.5, 0.8)]],
+	"grass": [[["ph_nettle_a", "ph_nettle_b"], 3, Vector2(0.5, 0.85)], [["ph_grass_a", "ph_grass_b", "ph_grass_c"], 2, Vector2(0.35, 0.55)]],
+	"base": [[["ph_fern_a", "ph_fern_b", "ph_fern_c", "ph_fern_d"], 2, Vector2(0.45, 0.75)]],
+}
+static var _mud: Array = []                ## Vector3(x0, x1, y) bagien pod gołym niebem (`Level3D.mud_spills` "open") — płasko i bez runa pod plamą
 static var _noise: FastNoiseLite
 ## Test (`tools/test_front.gd`): wierzchołki kart runa na podłożu (x = y wierzchu, y = z) — w trybie headless `MultiMesh`
 ## nie przechowuje przekształceń egzemplarzy.
 static var cover_tops := PackedVector2Array()
-const FOREST_RIM := 0.9                    ## kontra księżyca na krawędzi pnia (emisja, mnożona przez pogodę jak `MoonRim`)
+const FOREST_RIM := 0.55                   ## kontra księżyca na krawędzi pnia (emisja, mnożona przez pogodę jak `MoonRim`; 0,9 dawało świecącą rurę)
+const FOREST_BARK_BUMP := 9.0              ## siła wypukłości kory z jasności tekstury (`bark_bump`)
 const FOREST_TRANS := 0.16                 ## prześwit księżyca przez karty igliwia, paproci i trawy
 ## Igliwie przy górnym brzegu kadru wisi na tle ciemnych koron lasu — bez mocniejszego prześwitu znika jak pień w F0.
 const FOREST_TRANS_K := {"bough_side": 2.4, "pine_tuft": 2.2}
@@ -122,15 +293,18 @@ uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, re
 uniform sampler2D emit_tex : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
 uniform bool use_tex = true;
 uniform bool has_arm = true;               // las: tekstury kory i kart bez mapy AO / chropowatość / metal — wtedy base_rough, metal 0
+uniform bool arm_ao = true;                // modele ze skanów: kanał R mapy ARM to okluzja tylko w spakowanym ORM (bez niego R bywa pusty)
 uniform bool cutout = false;               // karty lasu (igliwie, paproć, trawa): alfa z tekstury, odcięcie
 uniform float sway = 0.0;                  // karty: kołysanie [m] — wierzch kępy paproci, koniec gałęzi (`sway_uv`)
 uniform vec2 sway_uv = vec2(0.0, 1.0);     // waga kołysania z UV: (u, 1 − v)
+uniform float sway_h = 0.0;                // > 0: waga kołysania z wysokości nad podłożem (`ywin.x`) zamiast z UV [m do pełnego wychylenia] — modele roślin
 uniform float rim_k = 0.0;                 // kontra księżyca (las): obrys krawędzi zwróconej ku księżycowi; 0 = brak
 uniform float trans_k = 0.0;               // karty lasu: prześwit księżyca przez igliwie i liście
 uniform vec3 rim_col : source_color = vec3(0.62, 0.72, 0.95);
 uniform vec3 moon_dir = vec3(0.34, 0.215, -0.915);   // `Level3D.MOON_DIR`: za lasem, po prawej, nisko
 uniform float moon = 1.0;                  // pogoda i błysk burzy (`set_moon`, jak `MoonRim`)
 uniform float alb_k = 1.0;                 // las: mnożnik jasności tekstury (jasna kora brzozy w nocy szarzeje)
+uniform float bark_bump = 0.0;             // kora pnia: wypukłość z jasności tekstury (bruzdy ciemne = wgłębienia), rozbija też kontrę; 0 = wył.
 uniform bool world_uv = false;             // ściany przekroju (`build_walls`): tekstura świata w rzucie trójpłaszczyznowym jak `Level3D.make_pbr`
 uniform float uv_per_m = 0.33;
 uniform sampler2D grime_tex : source_color, hint_default_transparent, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -138,13 +312,19 @@ uniform float grime_a = 0.0;               // brud wielkoskalowy jak `next_pass`
 uniform vec3 base_col : source_color = vec3(0.05);
 uniform float base_rough = 0.55;
 uniform float base_metal = 0.5;
+uniform float rough_min = 0.0;             // modele drewna: dolna granica chropowatości (mokry połysk kory z ORM Tripo)
+uniform float metal_k = 1.0;               // modele roślin i drewna: 0 (kanał B mapy ORM z Tripo/Meshy bywa niezerowy — kora błyszczała jak blacha)
 uniform float emit_energy = 0.0;
 uniform float ambient_k = 0.35;            // ile otoczenia środowiska graczy zostaje (jest jaśniejsze niż w obrazie świata)
 uniform vec4 pts[16];                      // xy: środek sylwetki na płaszczyźnie gry [m], zw: połowa szerokości i wysokości [m]
 uniform float wts[16];                     // waga punktu 0–1 (płynne wejście i wyjście)
 uniform int npts = 0;
 uniform float min_a = 0.3;
-uniform float vis = 1.0;                   // las: 0 pod powierzchnią (`set_camera_y`)
+uniform sampler2D gmask : hint_default_white, filter_nearest;   // las: widoczność kolumny podłoża pod pniem (`set_camera_y`)
+uniform float gmask_t = 1.309;
+float gmask_at(float x) {
+	return texelFetch(gmask, ivec2(clamp(int(floor(x / gmask_t)) + 8, 0, textureSize(gmask, 0).x - 1), 0), 0).r;
+}
 uniform float fade_m = 0.6;
 uniform float mid_y = 0.0;                 // środek kadru na płaszczyźnie gry [m]
 uniform float band = 0.0;                  // REDUCED: pół wysokości pasa bez pierwszego planu [m]; 0 = wył.
@@ -154,11 +334,14 @@ instance uniform vec2 ywin = vec2(-1e6, 1e6);  // F2b: fizyczny pas y [m] (podł
 instance uniform vec4 occ = vec4(1e6, -1e6, 0.0, 0.0);   // F2b: y spodu stropu (dachu), y wierzchu podłogi, z przodu stropu, z przodu podłogi
 varying vec3 wpos;
 varying vec3 wnrm;
+varying float vmask;
 
 void vertex() {
+	vmask = gmask_at(MODEL_MATRIX[3].x);
 	if (sway > 0.0) {
 		vec3 w0 = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		float k = dot(vec2(UV.x, 1.0 - UV.y), sway_uv);
+		if (sway_h > 0.0) { k = clamp((w0.y - ywin.x) / sway_h, 0.0, 1.0); k *= k; }
 		VERTEX.x += sway * k * (sin(TIME * 0.9 + w0.x * 0.37) + 0.4 * sin(TIME * 2.3 + w0.x * 1.1));
 	}
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -200,14 +383,26 @@ void fragment() {
 		ALBEDO = alb * tint.rgb * alb_k;
 		if (has_arm) {
 			vec3 arm = texture(arm_tex, uv).rgb;
-			AO = arm.r * ambient_k;
-			ROUGHNESS = arm.g;
-			METALLIC = arm.b;
+			AO = (arm_ao ? arm.r : 1.0) * ambient_k;
+			ROUGHNESS = max(arm.g, rough_min);
+			METALLIC = arm.b * metal_k;
 			NORMAL_MAP = texture(normal_tex, uv).rgb;
 		} else {
 			AO = ambient_k;
 			ROUGHNESS = base_rough;
 			METALLIC = 0.0;
+			if (bark_bump > 0.0) {
+				// kora bez mapy normalnych: wysokość = jasność tekstury, nachylenie z sąsiednich tekseli (płaska rura w świetle latarki
+				// dostaje bruzdy; uwaga z gry 2026-11-09: „jakość drzew na 1 planie”)
+				vec2 px = 1.5 / vec2(textureSize(albedo_tex, 0));
+				vec3 lw = vec3(0.3, 0.59, 0.11);
+				float h0 = dot(alb, lw);
+				float hx = dot(texture(albedo_tex, uv + vec2(px.x, 0.0)).rgb, lw);
+				float hy = dot(texture(albedo_tex, uv + vec2(0.0, px.y)).rgb, lw);
+				NORMAL_MAP = normalize(vec3((h0 - hx) * bark_bump, (h0 - hy) * bark_bump, 1.0)) * 0.5 + 0.5;
+				NORMAL_MAP_DEPTH = 1.0;
+				ROUGHNESS = mix(1.0, 0.75, smoothstep(0.05, 0.3, h0));
+			}
 		}
 	} else {
 		ALBEDO = base_col * tint.rgb;
@@ -225,9 +420,11 @@ void fragment() {
 		float fr = pow(1.0 - clamp(dot(n, VIEW), 0.0, 1.0), 4.0);
 		float side = smoothstep(0.1, 0.85, dot(normalize(n.xy + vec2(1e-4)), normalize(mv.xy)));
 		// prześwit niezależny od samej jasności tekstury (+0,06): ciemnozielone igliwie ma albedo liniowe ok. 0,03 i bez tego by nie świeciło
-		EMISSION += rim_col * moon * (rim_k * fr * side + trans_k * (ALBEDO + vec3(0.06)));
+		// kora: kontra tylko na wypukłościach (jasne łuski), w bruzdach gaśnie — zamiast gładkiej świecącej linii wzdłuż pnia
+		float ridge = bark_bump > 0.0 ? mix(0.15, 1.7, smoothstep(0.03, 0.35, dot(ALBEDO / max(alb_k, 0.01), vec3(0.3, 0.59, 0.11)))) : 1.0;
+		EMISSION += rim_col * moon * (rim_k * fr * side * ridge + trans_k * (ALBEDO + vec3(0.06)));
 	}
-	ALPHA = a * vis;
+	ALPHA = a * vmask;
 }
 """
 
@@ -272,6 +469,12 @@ static func _forest_mat(tex: String, card: bool, rim := true) -> String:
 	m.set_shader_parameter("fade_m", FADE_M)
 	m.set_shader_parameter("albedo_tex", _tex(FOREST_TEX % tex))
 	m.set_shader_parameter("has_arm", false)
+	var pbr := PBR_BARK.has(tex) and ResourceLoader.exists(String(PBR_BARK[tex]) % "diff")
+	if pbr:                                                 # kora ze skanu (Poly Haven, 2K): kolor, ARM i normalne zamiast karty 256 px
+		m.set_shader_parameter("albedo_tex", _tex(String(PBR_BARK[tex]) % "diff"))
+		m.set_shader_parameter("arm_tex", _tex(String(PBR_BARK[tex]) % "arm"))
+		m.set_shader_parameter("normal_tex", _tex(String(PBR_BARK[tex]) % "nor_gl"))
+		m.set_shader_parameter("has_arm", true)
 	m.set_shader_parameter("base_rough", 0.9)
 	m.set_shader_parameter("alb_k", float(FOREST_ALB.get(tex, 1.0)))
 	m.set_shader_parameter("moon_dir", Level3D.MOON_DIR.normalized())
@@ -282,6 +485,7 @@ static func _forest_mat(tex: String, card: bool, rim := true) -> String:
 		m.set_shader_parameter("sway_uv", Vector2(1.0, 0.0) if tex.begins_with("bough") else Vector2(0.0, 1.0))
 	elif rim:
 		m.set_shader_parameter("rim_k", FOREST_RIM)
+		m.set_shader_parameter("bark_bump", 0.0 if pbr else FOREST_BARK_BUMP)
 	_mats[key] = m
 	_moon_mats.append(m)
 	return key
@@ -598,10 +802,17 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			hook.ring_segments = 8
 			dark.append_from(hook, 0, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.0, yl - 0.1, 0.0)))
 			used["dark"] = true
-		"pine", "birch", "snag":
+		"pine", "birch":
 			_trunk(sts, used, kind, band.x, rng)
+		"snag":
+			if not _model_tree(sts, used, SNAG_MODEL, band.x, rng):
+				_trunk(sts, used, kind, band.x, rng)
 		"bough":
 			_bough(sts, used, band.x, rng)
+		"sapling":
+			_sapling(sts, used, band.x, rng)
+		"shrub":
+			_shrub(sts, used, band.x, rng)
 		"ferns", "grass":
 			_ferns(sts, used, kind, band.x, rng, 2.2, CLUMP_H, 0.5)
 		"lamp":
@@ -644,7 +855,8 @@ static func _st(sts: Dictionary, key: String) -> SurfaceTool:
 ## z ziarna `ph`); UV: u dookoła (`u_rep` powtórzeń), v liniowo `v` (dół → góra); `bend` wygina środek łukiem. Trójkąty bez indeksów.
 ## `flat_up`: normalne bez składowej w górę (nasada pnia na podłożu) — kontra postaci pada z góry zza sceny i rozświetlała wierzch szyi
 ## i korzeni, a grunt obok (warstwa świata) jej nie dostaje.
-static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0: float, r1: float, seg: int, rings: int, v: Vector2, u_rep: float, rough: float, ph: float, bend := Vector3.ZERO, flat_up := false) -> void:
+## `ridge`: udział drobnych pionowych bruzd kory w nierówności zarysu (sylwetka pnia nie jest gładką rurą; potrzeba ok. 24 segmentów).
+static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0: float, r1: float, seg: int, rings: int, v: Vector2, u_rep: float, rough: float, ph: float, bend := Vector3.ZERO, flat_up := false, ridge := 0.0) -> void:
 	var ax := axis.normalized()
 	var side := ax.cross(Vector3.BACK)
 	if side.length() < 0.1:
@@ -660,7 +872,8 @@ static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0:
 		for i in seg + 1:
 			var ang := TAU * float(i) / float(seg)
 			var nrm := side * cos(ang) + up * sin(ang)
-			var wob := 1.0 + rough * (sin(3.0 * ang + t * length * 0.9 + ph) * 0.6 + sin(7.0 * ang - t * length * 1.7 + ph * 2.3) * 0.4)
+			var wob := 1.0 + rough * (sin(3.0 * ang + t * length * 0.9 + ph) * 0.6 + sin(7.0 * ang - t * length * 1.7 + ph * 2.3) * 0.4
+					+ ridge * (absf(sin(5.5 * ang + sin(t * length * 0.6 + ph) * 0.8 + ph * 1.7)) - 0.5) * 2.0)
 			var sn := nrm
 			if flat_up:
 				sn = Vector3(nrm.x, minf(nrm.y, 0.0), nrm.z) + Vector3(0.0, 0.0, 0.3)
@@ -712,8 +925,13 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 	var bend := Vector3(rng.randf_range(0.25, 0.6) * (-1.0 if rng.randf() < 0.5 else 1.0), 0.0, 0.0)
 	var ph := rng.randf() * TAU
 	var vr: Vector2 = spec[3]
+	var u_rep := 2.0
+	if PBR_BARK.has(String(spec[0])):
+		# kafelkowana kora ze skanu: BARK_TILE m na powtórzenie wzdłuż pnia i całkowita liczba powtórzeń wokół obwodu (bez szwu)
+		vr = Vector2(length / BARK_TILE, 0.0)
+		u_rep = maxf(1.0, roundf(PI * d / BARK_TILE))
 	var rough := 0.11 if kind == "snag" else 0.075
-	_cone(st, Vector3(0.0, y0, 0.0), lean, length, r0, r1, 14, 26, vr, 2.0, rough, ph, bend)
+	_cone(st, Vector3(0.0, y0, 0.0), lean, length, r0, r1, 24, 30, vr, u_rep, rough, ph, bend, false, 0.35 if kind == "pine" else 0.2)
 	# nasada na podłożu: szersza szyja (wzdłuż osi pnia z jej wygięciem; u góry chowa się w pniu — 0,82 promienia z nierównością
 	# mniejszą niż najgłębsza bruzda kory) i 3–5 korzeni rozchodzących się płasko, które po ok. pół metra schodzą pod podłoże
 	var neck := 1.5
@@ -723,7 +941,7 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 	var bkey := _forest_mat(String(spec[0]), false, false)
 	var bst := _st(sts, bkey)
 	used[bkey] = true
-	_cone(bst, nb, nt - nb, (nt - nb).length(), r0 * 1.6, _trunk_r(r0, r1, y0, length, y0 + neck) * 0.82 / (1.0 + 0.2), 14, 5, v_neck, 2.0, 0.2, ph + 1.3, Vector3.ZERO, true)
+	_cone(bst, nb, nt - nb, (nt - nb).length(), r0 * 1.6, _trunk_r(r0, r1, y0, length, y0 + neck) * 0.82 / (1.0 + 0.2), 14, 5, v_neck, u_rep, 0.2, ph + 1.3, Vector3.ZERO, true)
 	var nroot := rng.randi_range(3, 5)
 	for i in nroot:
 		# krótkie, grube nabiegi: cienki stożek pod kątem do kamery dawał na obrysie pełną kontrę (białe kolce przy pniu)
@@ -753,7 +971,7 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 		var c := _trunk_axis(lean, bend, y0, length, yb)
 		var lv := Vector2(0.98, 0.96) if kind == "birch" else Vector2(v_mid, v_mid - 0.05)      # gałązki brzozy ciemne (czarna nasada kory)
 		_cone(st, c + dir * rt * 0.6, dir, ln, rb, rb * 0.25, 6, 3, lv, 1.0, 0.1, ph + float(i), Vector3(0.0, -0.08 * ln, 0.0))
-	if kind == "pine" and rng.randf() < 0.65:
+	if kind == "pine" and rng.randf() < PINE_BOUGH_P:
 		# gałąź korony przy górnym brzegu kadru: konar w bok z kępami igliwia na końcu (karty `pine_tuft`)
 		var yb := y_floor + rng.randf_range(BOUGH_Y.x - 1.0, BOUGH_Y.y)
 		var sgn := -1.0 if rng.randf() < 0.5 else 1.0
@@ -769,7 +987,8 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 			var at := c + dir * ln * rng.randf_range(0.45, 1.0) + Vector3(0.0, rng.randf_range(-0.35, 0.1), rng.randf_range(-0.25, 0.25))
 			var s := rng.randf_range(1.0, 1.5)
 			_card(tst, at, s * 1.2, s, rng.randf_range(-0.3, 0.3), rng.randf_range(-0.5, 0.5), rng.randf() < 0.5, Vector2(0.5, 0.6))
-	_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
+	if not _world_plants:
+		_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
 
 
 ## Środek pnia na wysokości `y` (bez nierówności kory) i jego promień.
@@ -797,21 +1016,136 @@ static func _bough(sts: Dictionary, used: Dictionary, y_floor: float, rng: Rando
 		_card(st, at, w, w * 0.5, droop, rng.randf_range(-0.35, 0.35), flip, Vector2(0.0, 0.1))
 
 
-## Kępa paproci i trawy na podłożu `y_ground` (`ferns`: głównie paproć, `grass`: głównie trawa) szeroka na 2 × `spread` m i głęboka
-## na 2 × `dz` m; `hr`: wysokość karty paproci (trawa ×0,6). Nasada paproci leży ok. 40% wysokości karty, ale karta schodzi pod podłoże
-## tylko o FERN_SINK: `ywin` tnie kartę poziomą linią — przy głębszym osadzeniu przecinał gęste liście tuż pod nasadą, a tak tylko
-## końce opadających liści.
+## Młody świerk na podłożu (zamiast zwisającej gałęzi `bough`, której nasada była nad kadrem — z niższej kamery wisiała w powietrzu,
+## uwaga z gry 2026-11-09): dwie lub trzy karty sylwetki świerka skrzyżowane pod różnym kątem, nasada lekko pod podłożem, u stóp paproć.
+static func _sapling(sts: Dictionary, used: Dictionary, y_ground: float, rng: RandomNumberGenerator) -> void:
+	var tex: String = ["spruce_a", "spruce_b", "spruce_c"][rng.randi() % 3]
+	var key := _forest_mat(tex, true)
+	var st := _st(sts, key)
+	used[key] = true
+	var h := rng.randf_range(SAPLING_H.x, SAPLING_H.y)
+	var ry := rng.randf_range(-0.3, 0.3)
+	for i in rng.randi_range(2, 3):
+		var hh := h * rng.randf_range(0.92, 1.05)
+		_card(st, Vector3(rng.randf_range(-0.05, 0.05), y_ground - 0.12, rng.randf_range(-0.05, 0.05)), hh * rng.randf_range(0.5, 0.62), hh,
+				rng.randf_range(-0.04, 0.04), ry + float(i) * 1.05, rng.randf() < 0.5)
+	_ferns(sts, used, "ferns", y_ground, rng, 0.9, BASE_FERN_H, 0.5)
+
+
+## Kępa paproci i trawy na podłożu `y_ground` (`ferns`: głównie paproć, `grass`: trawa i pokrzywy) szeroka na 2 × `spread` m i głęboka
+## na 2 × `dz` m; `hr`: wysokość kępy paproci (trawa ×0,6). Modele ze skanów Poly Haven (`FERN_MODELS`, `GRASS_MODELS`) — karty 256 px
+## odrzucone przy akceptacji assetów 2026-11-09; bez modeli (`--nomodels3d`) zostają karty.
 static func _ferns(sts: Dictionary, used: Dictionary, kind: String, y_ground: float, rng: RandomNumberGenerator, spread: float, hr: Vector2, dz: float) -> void:
 	for i in rng.randi_range(3, 5):
 		var fern := rng.randf() < (0.7 if kind == "ferns" else 0.2)
+		var h := rng.randf_range(hr.x, hr.y) * (0.55 if fern else 0.42)
+		var at := Vector3(rng.randf_range(-spread, spread), y_ground, rng.randf_range(-dz, dz))
+		var names: Array = FERN_MODELS if fern else GRASS_MODELS
+		if _put_plant(sts, used, String(names[rng.randi() % names.size()]), at, h, h * 2.2, rng.randf() * TAU):
+			continue
 		var tex := "fern_a" if fern else ("grass_a" if rng.randf() < 0.55 else "grass_b")
 		var key := _forest_mat(tex, true)
 		var st := _st(sts, key)
 		used[key] = true
-		var h := rng.randf_range(hr.x, hr.y) * (1.0 if fern else 0.6)
-		var w := h * (1.6 if fern else rng.randf_range(0.9, 1.2))
-		var at := Vector3(rng.randf_range(-spread, spread), y_ground - h * (FERN_SINK if fern else 0.04), rng.randf_range(-dz, dz))
-		_card(st, at, w, h, rng.randf_range(-0.12, 0.12), rng.randf_range(-0.6, 0.6), rng.randf() < 0.5)
+		var hc := h / (0.55 if fern else 0.42) * (1.0 if fern else 0.6)
+		_card(st, at - Vector3(0.0, hc * (FERN_SINK if fern else 0.04), 0.0), hc * (1.6 if fern else 1.0), hc, rng.randf_range(-0.12, 0.12), rng.randf_range(-0.6, 0.6), rng.randf() < 0.5)
+
+
+## Krzew na podłożu (zamiast młodego świerka z kart): model ze skanu (`SHRUB_MODELS`) wysoki na SHRUB_H, u stóp paproć.
+static func _shrub(sts: Dictionary, used: Dictionary, y_ground: float, rng: RandomNumberGenerator) -> void:
+	var h := rng.randf_range(SHRUB_H.x, SHRUB_H.y)
+	if not _put_plant(sts, used, String(SHRUB_MODELS[rng.randi() % SHRUB_MODELS.size()]), Vector3(0.0, y_ground, 0.0), h, 3.0, rng.randf() * TAU):
+		_sapling(sts, used, y_ground, rng)
+		return
+	_ferns(sts, used, "ferns", y_ground, rng, 1.1, BASE_FERN_H * 1.6, 0.5)
+
+
+## Materiał pierwszego planu (shader z wygaszaniem przy sylwetkach) z materiału modelu `src` (kolor, normalne, ARM ze skanu); `leaf`:
+## liście z alfą (wycinanie, obie strony, prześwit księżyca), inaczej kora z kontrą. Klucz „pm:<model>:<powierzchnia>”.
+static func _model_mat(name: String, si: int, src: Material, leaf: bool) -> String:
+	var key := "pm:%s:%d" % [name, si]
+	materials()
+	if _mats.has(key):
+		return key
+	var m := ShaderMaterial.new()
+	m.shader = _shader(leaf)
+	m.set_shader_parameter("min_a", MIN_A)
+	m.set_shader_parameter("fade_m", FADE_M)
+	m.set_shader_parameter("moon_dir", Level3D.MOON_DIR.normalized())
+	var bm := src as BaseMaterial3D
+	if bm != null:
+		m.set_shader_parameter("albedo_tex", bm.albedo_texture)
+		m.set_shader_parameter("normal_tex", bm.normal_texture)
+		m.set_shader_parameter("arm_tex", bm.roughness_texture)
+		m.set_shader_parameter("has_arm", bm.roughness_texture != null and bm.normal_texture != null)
+		m.set_shader_parameter("arm_ao", bm.roughness_texture != null and bm.roughness_texture == bm.metallic_texture)   # spakowany ARM
+	m.set_shader_parameter("base_rough", 0.9)
+	m.set_shader_parameter("metal_k", 0.0)
+	m.set_shader_parameter("rough_min", 0.0 if leaf else 0.8)
+	if leaf:
+		m.set_shader_parameter("cutout", true)
+		m.set_shader_parameter("trans_k", FOREST_TRANS)
+		m.set_shader_parameter("sway", 0.07)
+		m.set_shader_parameter("sway_h", 1.2)
+	else:
+		m.set_shader_parameter("rim_k", FOREST_RIM * 0.7)
+	_mats[key] = m
+	_moon_mats.append(m)
+	return key
+
+
+## Dokłada model `name` (wszystkie powierzchnie) do elementu w przekształceniu `xf` (jednostki modelu → m elementu).
+static func _put_model(sts: Dictionary, used: Dictionary, name: String, xf: Transform3D) -> bool:
+	var mm := Level3D.model_mesh(name)
+	if mm.is_empty():
+		return false
+	var mesh: Mesh = mm[0]
+	var local: Transform3D = mm[1]
+	for si in mesh.get_surface_count():
+		var src := mesh.surface_get_material(si)
+		var leaf := src is BaseMaterial3D and (src as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+		var key := _model_mat(name, si, src, leaf)
+		_st(sts, key).append_from(mesh, si, xf * local)
+		used[key] = true
+	return true
+
+
+## Roślina `name` stojąca na `at` (środek podstawy): wysokość `h` [m], szerokość najwyżej `wmax` [m], obrót `ry` wokół pionu; nasada 3 cm pod podłożem.
+static func _put_plant(sts: Dictionary, used: Dictionary, name: String, at: Vector3, h: float, wmax: float, ry: float) -> bool:
+	var mm := Level3D.model_mesh(name)
+	if mm.is_empty():
+		return false
+	var ab := (mm[1] as Transform3D) * (mm[0] as Mesh).get_aabb()
+	var s := minf(h / maxf(ab.size.y, 0.001), wmax / maxf(maxf(ab.size.x, ab.size.z), 0.001))
+	var b := Basis(Vector3.UP, ry).scaled(Vector3(s, s, s))
+	var c := ab.get_center()
+	return _put_model(sts, used, name, Transform3D(b, at + Vector3(0.0, -0.03, 0.0) - b * Vector3(c.x, ab.position.y, c.z)))
+
+
+## Drzewo z modelu (martwy pień `SNAG_MODEL`): wysokie na SNAG_H, nasada TRUNK_SINK pod podłożem i w osi elementu (środek przekroju
+## pnia przy ziemi, nie środek bryły z konarami), losowy obrót wokół pionu, u stóp paproć. Fałsz bez modelu (wtedy pień proceduralny).
+static func _model_tree(sts: Dictionary, used: Dictionary, name: String, y_floor: float, rng: RandomNumberGenerator) -> bool:
+	var mm := Level3D.model_mesh(name)
+	if mm.is_empty():
+		return false
+	var local: Transform3D = mm[1]
+	var mesh: Mesh = mm[0]
+	var ab := local * mesh.get_aabb()
+	var foot := Vector3.ZERO
+	var nf := 0
+	for si in mesh.get_surface_count():
+		for v: Vector3 in mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]:
+			var w := local * v
+			if w.y < ab.position.y + ab.size.y * 0.03:
+				foot += w
+				nf += 1
+	foot = foot / float(nf) if nf > 0 else ab.get_center()
+	var s := rng.randf_range(SNAG_H.x, SNAG_H.y) / maxf(ab.size.y, 0.001)
+	var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6) + (PI if rng.randf() < 0.5 else 0.0)).scaled(Vector3(s, s, s))
+	_put_model(sts, used, name, Transform3D(b, Vector3(0.0, y_floor - TRUNK_SINK, 0.0) - b * Vector3(foot.x, ab.position.y, foot.z)))
+	if not _world_plants:
+		_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
+	return true
 
 
 ## Buduje elementy pod `parent` (węzeł „Front”). Zwraca liczbę elementów.
@@ -819,11 +1153,17 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 	_root = null
 	_ground = []
 	_feet = []
+	_mud = []
+	for sp: Dictionary in (Level3D.mud_spills(rows) if not rows.is_empty() else []):
+		if bool(sp.get("open", false)):
+			_mud.append(Vector3(float(sp["x0"]), float(sp["x1"]), float(sp["y"])))
 	_ground_top = -INF
-	_ground_nodes = _ground_nodes.filter(func(n: Variant) -> bool: return is_instance_valid(n))   # bez czyszczenia: mapa z zawałem (1.1) buduje świat dwa razy (przed i po)
+	var merge := String(parent.name) == "GeometryAfterCollapse"   # mapa z zawałem (1.1) buduje świat dwa razy (przed i po): gasną obie kopie podłoża
+	_ground_nodes = _ground_nodes.filter(func(n: Variant) -> bool: return is_instance_valid(n)) if merge else []
 	_surface_k = 1.0
-	for m: ShaderMaterial in _moon_mats:
-		m.set_shader_parameter("vis", 1.0)
+	if not merge:
+		_gcols = 0
+		_gchunks = []
 	if front.is_empty():
 		return 0
 	_root = Node3D.new()
@@ -840,8 +1180,17 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 	items = items.filter(func(it: Dictionary) -> bool:     # pień i kępa tylko na równym podłożu (nie na zboczu dołka przed szybem i rampą)
 		return not bool((SETS[it["set"]] as Dictionary).get("open", false)) or String(it["kind"]) == "bough" or level_at(float(it["x"])))
 	prepare_ground(front, rows, items)
+	_world_plants = not Level3D.model_mesh(String(FERN_MODELS[0])).is_empty() and not "--frontplants" in OS.get_cmdline_user_args()
+	_clumps = []
 	for it: Dictionary in items:
 		var clip: Vector4 = it["clip"]
+		if _world_plants and bool((SETS[it["set"]] as Dictionary).get("open", false)):
+			var kd := String(it["kind"])
+			if kd in ["shrub", "ferns", "grass"]:
+				_clumps.append([float(it["x"]), float(it["z"]), kd])
+				continue
+			if kd in ["pine", "snag"]:
+				_clumps.append([float(it["x"]), float(it["z"]) + 0.4, "base"])
 		var rng := RandomNumberGenerator.new()
 		rng.seed = int(float(it["x"]) * 100.0)
 		var st: Dictionary = SETS[it["set"]]
@@ -914,7 +1263,10 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			ol.light_volumetric_fog_energy = 0.0
 			ol.position = b
 			mi.add_child(ol)
-	_build_ground(parent, rows)
+	for m: ShaderMaterial in _moon_mats:                  # pnie i kępy lasu gasną z kolumną podłoża pod nimi
+		m.set_shader_parameter("gmask", gmask_tex())
+		m.set_shader_parameter("gmask_t", Level3D.T)
+	_build_ground(parent, rows, merge)
 	_build_floors(parent, front, rows)
 	return items.size()
 
@@ -1015,30 +1367,213 @@ static func _span_at(x: float) -> float:
 
 
 ## Wygaszenie lasu i podłoża od y kamery (`SURF_FADE`): 1 nad powierzchnią, 0 pod nią; 1 bez podłoża.
-static func surface_k(cam_y: float) -> float:
-	if _ground_top == -INF:
+static func surface_k(cam_y: float, cam_x := NAN) -> float:
+	if _ground_top == -INF or "--nosurffade" in OS.get_cmdline_user_args():   # dev: bez wygaszania (porównanie A/B)
 		return 1.0
-	return smoothstep(_ground_top + SURF_FADE.x, _ground_top + SURF_FADE.y, cam_y)
+	var top := _ground_top
+	if not is_nan(cam_x):
+		top = -INF
+		for g: Dictionary in _ground:
+			var ys: PackedFloat32Array = g["ys"]
+			for i in ys.size():
+				var x := (float(int(g["c0"]) + i) + 0.5) * Level3D.T
+				if absf(x - cam_x) <= SURF_NEAR:
+					top = maxf(top, ys[i])
+		if top == -INF:
+			top = _ground_top                                # bez podłoża w pobliżu: jak dawniej, najwyższy punkt mapy
+	return smoothstep(top + SURF_FADE.x, top + SURF_FADE.y, cam_y)
 
 
-## Co klatkę (`view3d._front_tick`, także przy „Foreground: OFF” — podłoże zostaje): las przez `vis` w shaderze, płyta i kamienie przez
-## przezroczystość węzła, runo (shader z alpha to coverage) znika w połowie.
-static func set_camera_y(cam_y: float) -> void:
-	var k := surface_k(cam_y)
-	if absf(k - _surface_k) < 0.0005:
+## Co klatkę (`view3d._front_tick`, także przy „Foreground: OFF” — podłoże zostaje): `cam_z` — odległość kamery od płaszczyzny gry,
+## `dt` < 0 — czas z zegara (test podaje krok). Kawałki płyty przez przezroczystość węzła, pnie przez alfę z maski kolumn, runo i kępki
+## (maska w shaderze, alpha to coverage) znikają w połowie.
+static func set_camera_y(cam_y: float, cam_x := NAN, cam_z := 20.2, dt := -1.0) -> void:
+	if _gcols == 0:
 		return
+	var now := Time.get_ticks_usec()
+	if dt < 0.0:
+		dt = clampf(float(now - _gus) * 1e-6, 0.0, 0.1)
+	_gus = now
+	var k := surface_k(cam_y, cam_x)
 	_surface_k = k
-	for m: ShaderMaterial in _moon_mats:
-		m.set_shader_parameter("vis", k)
+	if k >= 0.999 and _gidle:
+		return
+	var marks := PackedByteArray()
+	marks.resize(_gcols)
+	var local := _grows and not is_nan(cam_x)
+	if k < 0.999 and local:
+		_ground_marks(marks, Vector3(cam_x, cam_y, cam_z))
+	var step := dt / GROUND_FADE_T
+	var changed := false
+	var idle := true
+	for n in _gchunks.size():
+		var ch: Vector3i = _gchunks[n]
+		var tgt := 1.0
+		if k < 0.999:
+			var top := _gchunk_top[n]
+			var hit := not local
+			for c in range(ch.x, ch.y + 1):
+				hit = hit or marks[c + GMASK_PAD] != 0
+			tgt = smoothstep(top + SURF_BELOW - 0.25, top + SURF_BELOW, cam_y) * (k if hit else 1.0)
+		var i := ch.x + GMASK_PAD
+		var v := _gvis[i]
+		var nv := move_toward(v, tgt, step) if step > 0.0 else v
+		if nv != v:
+			changed = true
+			for c in range(ch.x, ch.y + 1):
+				_gvis[c + GMASK_PAD] = nv
+		if nv < 1.0 or tgt < 1.0:
+			idle = false
+	_gidle = idle
+	if changed:
+		_apply_ground_vis()
+
+
+## Kolumny płyty, przez które z kamery widać wolny kafel w kadrze (`GMASK_VIEW`): promień do kafla przecina wierzch płyty (y wierzchu
+## kolumny) w x' = x kamery + (x − x kamery)·t, gdzie t = (y kamery − y wierzchu) / (y kamery − y kafla), o ile przecięcie leży nad płytą
+## (z = z kamery·(1 − t) od przodu płyty do GROUND_Z[-1]). Druga iteracja z wierzchem kolumn trafionych w pierwszej (dołek przed szybem).
+static func _ground_marks(marks: PackedByteArray, cam: Vector3) -> void:
+	var T := Level3D.T
+	var ylo := cam.y - GMASK_VIEW.y
+	var icam := clampi(floori(cam.x / T) + GMASK_PAD, 0, _gcols - 1)
+	var tmin := 1.0 - float(GROUND_Z[GROUND_Z.size() - 1]) / maxf(cam.z, 0.1)
+	for c in range(floori((cam.x - GMASK_VIEW.x) / T), floori((cam.x + GMASK_VIEW.x) / T) + 1):
+		var i := c + GMASK_PAD
+		if i < 0 or i >= _gcols:
+			continue
+		var runs: PackedFloat32Array = _gopen[i]
+		var x0 := float(c) * T
+		var x1 := x0 + T
+		for r in range(0, runs.size(), 2):
+			var h := _gtop[i] if _gtop[i] > -INF else _gtop[icam]
+			var z0 := _gz0[i] if _gtop[i] > -INF else _gz0[icam]
+			for it in 2:
+				if h == -INF or cam.y <= h + 0.05:
+					break
+				var ya := minf(runs[r], h - 0.02)           # tylko pod wierzchem płyty (niebo nad gruntem jej nie dotyczy)
+				var yb := maxf(runs[r + 1], ylo)
+				if ya <= yb:
+					break
+				var tmax := 1.0 - z0 / cam.z
+				var t_hi := minf((cam.y - h) / (cam.y - ya), tmax)
+				var t_lo := maxf((cam.y - h) / (cam.y - yb), tmin)
+				if t_lo > t_hi:
+					break
+				var xa := minf(minf(cam.x + (x0 - cam.x) * t_lo, cam.x + (x0 - cam.x) * t_hi), minf(cam.x + (x1 - cam.x) * t_lo, cam.x + (x1 - cam.x) * t_hi))
+				var xb := maxf(maxf(cam.x + (x0 - cam.x) * t_lo, cam.x + (x0 - cam.x) * t_hi), maxf(cam.x + (x1 - cam.x) * t_lo, cam.x + (x1 - cam.x) * t_hi))
+				var a := clampi(floori(xa / T) + GMASK_PAD, 0, _gcols - 1)
+				var b := clampi(floori(xb / T) + GMASK_PAD, 0, _gcols - 1)
+				var h2 := -INF
+				var z2 := INF
+				for j in range(a, b + 1):
+					if _gtop[j] > -INF:
+						h2 = maxf(h2, _gtop[j])
+						z2 = minf(z2, _gz0[j])
+				if h2 == -INF:
+					break                                    # bez płyty w miejscu przecięcia
+				if it == 1 or (absf(h2 - h) < 0.01 and absf(z2 - z0) < 0.01):
+					for j in range(a, b + 1):
+						marks[j] = 1
+					break
+				h = h2
+				z0 = z2
+			# przód płyty (z = GROUND_Z[-1], GROUND_DROP w dół) tuż przed kamerą: z kamery blisko wierzchu zasłania dół kadru
+			# w powiększeniu (z 20 m ok. 5×) — promień do kafla przechodzi przez tę płaszczyznę w t = tmin
+			if tmin > 0.0:
+				var yf_hi := cam.y + (runs[r] - cam.y) * tmin
+				var yf_lo := cam.y + (maxf(runs[r + 1], ylo) - cam.y) * tmin
+				var fa := clampi(floori((cam.x + (x0 - cam.x) * tmin) / T) + GMASK_PAD, 0, _gcols - 1)
+				var fb := clampi(floori((cam.x + (x1 - cam.x) * tmin) / T) + GMASK_PAD, 0, _gcols - 1)
+				for j in range(fa, fb + 1):
+					if _gtop[j] > -INF and yf_hi > _gtop[j] - GROUND_DROP and yf_lo < _gtop[j] - 0.02:
+						marks[j] = 1
+
+
+## Maska kolumn do shaderów (pnie, runo, kępki) i przezroczystość węzłów płyty oraz kamieni i kłód.
+static func _apply_ground_vis() -> void:
+	var bytes := PackedByteArray()
+	bytes.resize(_gcols)
+	for i in _gcols:
+		bytes[i] = roundi(clampf(_gvis[i], 0.0, 1.0) * 255.0)
+	_gmask_img.set_data(_gcols, 1, false, Image.FORMAT_R8, bytes)
+	_gmask.update(_gmask_img)
 	for n in _ground_nodes:
-		if not is_instance_valid(n):
+		if not is_instance_valid(n) or (n as Node).has_meta("gmask"):
 			continue
 		var g := n as GeometryInstance3D
+		var gc: Vector2i = g.get_meta("gc", Vector2i(-GMASK_PAD, -GMASK_PAD))
+		var v := 1.0
+		for c in range(gc.x, gc.y + 1):
+			v = minf(v, _gvis[clampi(c + GMASK_PAD, 0, _gcols - 1)])
 		if g is MultiMeshInstance3D:
-			g.visible = k > 0.5
+			g.visible = v > 0.5
 		else:
-			g.visible = k > 0.01
-			g.transparency = 1.0 - k
+			g.visible = v > 0.05
+			g.transparency = 1.0 - v
+
+
+## Tekstura maski kolumn (raz na sesję; rozmiar zmienia `_ground_scan`).
+static func gmask_tex() -> ImageTexture:
+	if _gmask == null:
+		_gmask_img = Image.create(1, 1, false, Image.FORMAT_R8)
+		_gmask_img.fill(Color.WHITE)
+		_gmask = ImageTexture.create_from_image(_gmask_img)
+	return _gmask
+
+
+## Dane wygaszania miejscowego dla `_ground` i wierszy mapy: wierzch i przód płyty w kolumnach, ciągi wolnych kafli. `merge`: druga budowa
+## tej samej mapy (`GeometryAfterCollapse`) — wolne kafle obu wersji razem.
+static func _ground_scan(rows: Array, merge: bool) -> void:
+	var T := Level3D.T
+	var w := (rows[0] as String).length() if not rows.is_empty() else 0
+	for g: Dictionary in _ground:
+		w = maxi(w, int(g["c0"]) + (g["ys"] as PackedFloat32Array).size())
+	w += GMASK_PAD * 2
+	if not merge or w != _gcols:
+		_gcols = w
+		_gvis = PackedFloat32Array()
+		_gvis.resize(w)
+		_gvis.fill(1.0)
+		_gtop = PackedFloat32Array()
+		_gtop.resize(w)
+		_gtop.fill(-INF)
+		_gz0 = PackedFloat32Array()
+		_gz0.resize(w)
+		_gopen = []
+		_gopen.resize(w)
+		for i in w:
+			_gopen[i] = PackedFloat32Array()
+		_gchunks = []
+		_gchunk_top = PackedFloat32Array()
+		_grows = false
+	for g: Dictionary in _ground:
+		var ys: PackedFloat32Array = g["ys"]
+		for j in ys.size():
+			var i := clampi(int(g["c0"]) + j + GMASK_PAD, 0, w - 1)
+			if ys[j] > _gtop[i]:
+				_gtop[i] = ys[j]
+				_gz0[i] = float(g["z0"])
+	if not rows.is_empty():
+		_grows = true
+		var nrows := rows.size()
+		for c in (rows[0] as String).length():
+			var runs: PackedFloat32Array = _gopen[c + GMASK_PAD]
+			var r := 0
+			while r < nrows:
+				if Level3D.is_solid_ch(Level3D._ch(rows, c, r)):
+					r += 1
+					continue
+				var r0 := r
+				while r < nrows and not Level3D.is_solid_ch(Level3D._ch(rows, c, r)):
+					r += 1
+				runs.append_array(PackedFloat32Array([-float(r0) * T, -float(r) * T]))
+			_gopen[c + GMASK_PAD] = runs
+	_gvis.fill(1.0)
+	var tex := gmask_tex()
+	_gmask_img = Image.create(w, 1, false, Image.FORMAT_R8)
+	_gmask_img.fill(Color.WHITE)
+	tex.set_image(_gmask_img)
+	_gidle = false
 
 
 static func _span_y(g: Dictionary, x: float) -> float:
@@ -1054,7 +1589,18 @@ static func _bump(x: float, z: float, zb: float) -> float:
 	var flat := 1.0
 	for f: Vector2 in _feet:
 		flat = minf(flat, smoothstep(0.75, 1.0, Vector2((x - f.x) / FOOT.x, (z - f.y) / FOOT.y).length()))
+	flat = minf(flat, 1.0 - _mud_k(x, z))
 	return amp * _noise.get_noise_2d(x, z) * flat
+
+
+## 1 pod plamą bagna na podłożu (płasko, bez runa), 0 dalej niż ok. 1,2 m od jej obrysu.
+static func _mud_k(x: float, z: float) -> float:
+	var k := 0.0
+	for m: Vector3 in _mud:
+		var dx := maxf(m.x - 0.6 - x, x - m.y - 0.6)
+		var dz := z - (Level3D.MUD_FRONT_Z - 0.6)
+		k = maxf(k, 1.0 - smoothstep(0.0, 1.2, maxf(dx, dz)))
+	return k
 
 
 static func _in_foot(x: float, z: float, k := 1.0) -> bool:
@@ -1066,20 +1612,53 @@ static func _in_foot(x: float, z: float, k := 1.0) -> bool:
 
 ## Płyta podłoża (`_ground`): wierzch od przodu bryły do GROUND_Z[-1], przód i boki w dół o GROUND_DROP; runo, kamienie, pniaki i kłody.
 ## Węzły pod `parent` (warstwa świata), nie pod „Front” — ustawienie „Foreground: OFF” chowa pnie, a podłoże zostaje jak reszta terenu.
-static func _build_ground(parent: Node3D, rows: Array) -> void:
+static func _build_ground(parent: Node3D, rows: Array, merge := false) -> void:
 	if _ground.is_empty() or "--nofrontground" in OS.get_cmdline_user_args():      # dev: bez płyty podłoża i runa (porównanie A/B)
 		return
-	var mi := MeshInstance3D.new()
-	mi.name = "FrontGround"
-	mi.mesh = _plate_mesh(_ground)
-	mi.material_override = Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła `#`
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	parent.add_child(mi)
-	_ground_nodes.append(mi)
+	_ground_scan(rows, merge)
+	var mat := Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła `#`
+	for g: Dictionary in _ground:                         # płyta w kawałkach po GROUND_CHUNK kolumn (wygaszanie miejscowe, `set_camera_y`)
+		var ys: PackedFloat32Array = g["ys"]
+		var i := 0
+		while i < ys.size():
+			var j := mini(i + GROUND_CHUNK, ys.size())
+			var sub := g.duplicate()
+			sub["c0"] = int(g["c0"]) + i
+			sub["ys"] = ys.slice(i, j)
+			sub["x0"] = float(int(sub["c0"])) * Level3D.T
+			sub["x1"] = float(int(g["c0"]) + j) * Level3D.T
+			if i > 0:
+				sub["yl"] = ys[i - 1]                            # sąsiad w pasie: ściana tylko do niższego (dołek), jak w jednej płycie
+			if j < ys.size():
+				sub["yr"] = ys[j]
+			var mi := MeshInstance3D.new()
+			mi.name = "FrontGround_plate_%d" % int(sub["c0"])
+			mi.mesh = _plate_mesh([sub])
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.set_meta("gc", Vector2i(int(sub["c0"]), int(g["c0"]) + j - 1))
+			parent.add_child(mi)
+			_gchunks.append(Vector3i(int(sub["c0"]), int(g["c0"]) + j - 1, 0))
+			var top := -INF
+			for y in (sub["ys"] as PackedFloat32Array):
+				top = maxf(top, y)
+			_gchunk_top.append(top)
+			i = j
 	_ground_cover(parent)
 	for c in parent.get_children():
-		if String(c.name).begins_with("FrontGround_") and c is GeometryInstance3D:
-			_ground_nodes.append(c)
+		if not String(c.name).begins_with("FrontGround_") or not c is GeometryInstance3D:
+			continue
+		var gi := c as GeometryInstance3D
+		var sm := gi.material_override as ShaderMaterial
+		if gi is MultiMeshInstance3D and sm != null and sm.shader.code.contains("gmask_at"):
+			sm.set_shader_parameter("gmask", gmask_tex())       # runo i kępki: maska kolumn w shaderze (egzemplarz w kolumnie zgaszonej znika)
+			sm.set_shader_parameter("gmask_t", Level3D.T)
+			gi.set_meta("gmask", true)
+		elif not gi.has_meta("gc"):
+			var ab := gi.transform * gi.get_aabb()            # kamień, kłoda, trzcina: kolumna środka
+			var cx := floori(ab.get_center().x / Level3D.T)
+			gi.set_meta("gc", Vector2i(cx, cx))
+		_ground_nodes.append(gi)
 
 
 ## Siatka płyty z pasów (`_span`): wierzch od z0 do GROUND_Z[-1] z nierównością, osobno w każdej kolumnie (dwa odcinki na kolumnę), pionowe
@@ -1110,8 +1689,15 @@ static func _plate_mesh(spans: Array) -> ArrayMesh:
 		var nz := zs.size()
 		# wierzch kolumny ci w x, rząd j: pierwszy rząd 4 cm za przodem bryły i GROUND_LIFT nad jej wierzchem — płyta 2 cm niżej odsłaniała
 		# 2 cm nieoświetlonego przodu bryły (ciemna linia między planami, uwaga z gry 2026-11-09)
+		# kolumna poza pasem: sąsiedni kawałek płyty ("yl", "yr") albo koniec pasu (-INF)
+		var yat := func(ci: int) -> float:
+			if ci < 0:
+				return float(g.get("yl", -INF))
+			if ci >= ys.size():
+				return float(g.get("yr", -INF))
+			return ys[ci]
 		var hgt := func(ci: int, x: float, j: int) -> float:
-			return ys[ci] + (GROUND_LIFT if j == 0 else _bump(x, zs[j], g["zb"]))
+			return float(yat.call(ci)) + (GROUND_LIFT if j == 0 else _bump(x, zs[j], g["zb"]))
 		# normalna z samej nierówności (bez skoku między kolumnami): kolumny o tym samym gruncie łączą się w cieniowaniu bez szwu
 		var nrm := func(x: float, j: int) -> Vector3:
 			if j == 0:
@@ -1147,8 +1733,8 @@ static func _plate_mesh(spans: Array) -> ArrayMesh:
 				var x: float = xs[0] if side == 0 else xs[2]
 				var cn := ci - 1 if side == 0 else ci + 1
 				var n := Vector3.LEFT if side == 0 else Vector3.RIGHT
-				var edge := cn < 0 or cn >= ys.size()
-				if not edge and ys[cn] >= ys[ci] - 0.001:
+				var edge: bool = float(yat.call(cn)) == -INF
+				if not edge and float(yat.call(cn)) >= ys[ci] - 0.001:
 					continue
 				for j in nz - 1:
 					var a := Vector3(x, hgt.call(ci, x, j), zs[j])
@@ -1201,6 +1787,8 @@ static func _ground_cover(parent: Node3D) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x6D0F
 	var xf := {"grass_a": [], "grass_b": [], "fern_a": []}
+	var mxf := {}                                        # model ze skanu → [Transform3D] (runo z modeli; karty tylko bez modeli)
+	var models := not Level3D.model_mesh(String(GRASS_MODELS[0])).is_empty()
 	cover_tops = PackedVector2Array()
 	var z1: float = GROUND_Z[GROUND_Z.size() - 4]
 	for g: Dictionary in _ground:
@@ -1208,21 +1796,36 @@ static func _ground_cover(parent: Node3D) -> void:
 		var x1: float = g["x1"]
 		var zf: float = float(g["z0"]) + 0.04            # przód bryły albo płyty podłogi przekroju
 		var z0 := zf + 0.15
-		for _n in int((x1 - x0) * GROUND_GRASS):
+		for _n in int((x1 - x0) * (GROUND_GRASS_M if models else GROUND_GRASS)):
 			var x := rng.randf_range(x0, x1)
 			var z := z0 + (z1 - z0) * pow(rng.randf(), 1.3)
-			if _in_foot(x, z) or _span_y(g, x) < float(g["base"]) - 0.3:
-				continue                                     # bez runa na dnie dołka przed szybem
+			if _in_foot(x, z) or _span_y(g, x) < float(g["base"]) - 0.3 or _mud_k(x, z) > 0.55:
+				continue                                     # bez runa na dnie dołka przed szybem i na bagnie
 			var hmax := 0.3 + 0.12 * (z - zf)
 			var fern := z > zf + 1.7 and rng.randf() < 0.22
 			var h := minf(rng.randf_range(0.55, 0.95) if fern else rng.randf_range(0.2, 0.42) + 0.03 * (z - zf), hmax)
 			var wd := h * (1.5 if fern else rng.randf_range(0.9, 1.3))
 			var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6)).scaled(Vector3(wd, h, wd))
+			if models:
+				var names: Array = FERN_MODELS if fern else (GRASS_MODELS.slice(3) if rng.randf() < 0.7 else GRASS_MODELS)   # trawę dają kępki
+				var nm := String(names[rng.randi() % names.size()])
+				var t := _plant_xf(nm, Vector3(x, ground_y(x, z), z), h * (0.75 if fern else 1.0), h * 2.4, rng.randf() * TAU)
+				if not mxf.has(nm):
+					mxf[nm] = []
+				(mxf[nm] as Array).append(t)
+				cover_tops.append(Vector2(ground_y(x, z) + h, z))
+				continue
 			var kind := "fern_a" if fern else ("grass_a" if rng.randf() < 0.6 else "grass_b")
 			var base := ground_y(x, z) - h * (0.42 if fern else 0.04)
 			(xf[kind] as Array).append(Transform3D(b, Vector3(x, base, z)))
 			cover_tops.append(Vector2(base + h, z))
+	if models:
+		_clump_cover(mxf, rng)
 	Level3D.undergrowth_cards(parent, xf, "FrontGround_", rng)
+	_cover_models(parent, mxf, "FrontGround_")
+	tuft_tops = PackedVector2Array()
+	if models:
+		_grass_tufts(parent, rng, z1)
 	var k := 0
 	for g: Dictionary in _ground:
 		var x := float(g["x0"]) + rng.randf_range(3.0, 9.0)
@@ -1231,15 +1834,18 @@ static func _ground_cover(parent: Node3D) -> void:
 			var pname: String = GROUND_PROPS[k % GROUND_PROPS.size()]
 			k += 1
 			var mm := Level3D.model_mesh(pname)
-			if not mm.is_empty() and not _in_foot(x, z, 1.25) and level_at(x):
+			if not mm.is_empty() and not _in_foot(x, z, 1.25) and level_at(x) and _mud_k(x, z) < 0.05:
 				var local: Transform3D = mm[1]
 				var ab := local * (mm[0] as Mesh).get_aabb()
 				var big := maxf(maxf(ab.size.x, ab.size.z), 0.001)
-				var size := rng.randf_range(2.6, 3.8) if pname == "tree_log" else (rng.randf_range(0.7, 0.95) if pname == "stump" else rng.randf_range(0.6, 1.2))
+				var sz: Vector2 = PROP_SIZE.get(pname, Vector2(0.6, 1.2))
+				var size := rng.randf_range(sz.x, sz.y)
 				var s := size / big
-				var ry := rng.randf_range(-0.45, 0.45) if pname == "tree_log" else rng.randf() * TAU
+				var ry := rng.randf_range(-0.45, 0.45) if pname in PROP_ALONG else rng.randf() * TAU
+				if pname in PROP_ACROSS:
+					ry += PI * 0.5                               # model sągu ma polana wzdłuż z — czołem do kamery stał jak słupek
 				var b := Basis(Vector3.UP, ry).scaled(Vector3(s, s * (0.7 if pname.begins_with("rock") else 1.0), s))
-				var y := ground_y(x, z) - (0.08 if pname == "tree_log" else 0.05) - (b * ab.position).y
+				var y := ground_y(x, z) - (0.08 if pname in ["tree_log", "trunk_big"] else 0.05) - (b * ab.position).y
 				var prop := MeshInstance3D.new()
 				prop.name = "FrontGround_%s_%d" % [pname, roundi(x)]
 				prop.mesh = mm[0]
@@ -1247,6 +1853,237 @@ static func _ground_cover(parent: Node3D) -> void:
 				prop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				parent.add_child(prop)
 			x += rng.randf_range(PROP_STEP.x, PROP_STEP.y)
+	# brzeg bagna: pokrzywy i trawa przy bokach i z przodu plamy (`_mud`) — brzeg kałuży zarasta jak w niecce w płaszczyźnie gry;
+	# trzcina (model „reeds”) odrzucona przy akceptacji assetów 2026-11-09, zostaje tylko bez modeli ze skanów
+	var bank := {}
+	for m: Vector3 in _mud:
+		for spot: Vector2 in [Vector2(m.x - 0.7, 2.0), Vector2(m.y + 0.7, 2.4), Vector2(m.x - 0.4, 3.6), Vector2(m.y + 0.3, 3.9), Vector2((m.x + m.y) * 0.5 + rng.randf_range(-1.0, 1.0), 4.3)]:
+			var yg := ground_y(spot.x, spot.y)
+			if yg == -INF:
+				continue
+			var zf := _front_z(spot.x)
+			for j in 3:
+				var p := Vector3(spot.x + rng.randf_range(-0.5, 0.5), yg, spot.y + rng.randf_range(-0.3, 0.3))
+				var hmax := 0.3 + 0.12 * (p.z - zf)
+				var nm := String(GRASS_MODELS[3 + rng.randi() % 3] if j == 0 else GRASS_MODELS[rng.randi() % GRASS_MODELS.size()])
+				if models:
+					if not bank.has(nm):
+						bank[nm] = []
+					(bank[nm] as Array).append(_plant_xf(nm, Vector3(p.x, ground_y(p.x, p.z), p.z), minf(rng.randf_range(0.5, 0.8), hmax), 1.2, rng.randf() * TAU))
+	if models:
+		_cover_models(parent, bank, "FrontGround_bank_")
+		return
+	var rm := Level3D.model_mesh("reeds")
+	if not rm.is_empty():
+		var local: Transform3D = rm[1]
+		var ab := local * (rm[0] as Mesh).get_aabb()
+		var big := maxf(maxf(ab.size.x, ab.size.z), 0.001)
+		for m: Vector3 in _mud:
+			for spot: Vector2 in [Vector2(m.x - 0.7, 2.0), Vector2(m.y + 0.7, 2.4), Vector2(m.x - 0.4, 3.6), Vector2(m.y + 0.3, 3.9)]:
+				var yg := ground_y(spot.x, spot.y)
+				if yg == -INF:
+					continue
+				var sz: Vector2 = PROP_SIZE["reeds"]
+				var sc := rng.randf_range(sz.x, sz.y) / big
+				var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sc, sc, sc))
+				var prop := MeshInstance3D.new()
+				prop.name = "FrontGround_reeds_%d" % roundi(spot.x * 10.0 + spot.y)
+				prop.mesh = rm[0]
+				prop.transform = Transform3D(b, Vector3(spot.x, yg - 0.04 - (b * ab.position).y, spot.y)) * local
+				prop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				parent.add_child(prop)
+
+
+## Kępy roślin lasu (`_clumps`) jako runo z modeli w warstwie świata: naturalna wysokość (CLUMP_PLANTS), przycięta zasadą rzutu
+## (z kamery 5,3 m nad podłogą wierzch pod linią stóp: 0,3 + 0,2 m na metr od przodu bryły); paproć obok pnia — z boku, nie przed nim
+## (pień w pierwszym planie rysuje się nad warstwą świata).
+static func _clump_cover(mxf: Dictionary, rng: RandomNumberGenerator) -> void:
+	for cl: Array in _clumps:
+		var kind := String(cl[2])
+		for grp: Array in CLUMP_PLANTS[kind]:
+			var names: Array = grp[0]
+			var hr: Vector2 = grp[2]
+			for n in int(grp[1]):
+				var x := float(cl[0])
+				var z := float(cl[1])
+				if kind == "base":
+					x += rng.randf_range(0.8, 1.5) * (-1.0 if rng.randf() < 0.5 else 1.0)
+					z += rng.randf_range(-0.2, 0.4)
+				else:
+					x += rng.randf_range(-0.9, 0.9)
+					z += rng.randf_range(-0.45, 0.45)
+				var yg := ground_y(x, z)
+				if yg == -INF or _mud_k(x, z) > 0.3:
+					continue
+				var h := minf(rng.randf_range(hr.x, hr.y), 0.3 + 0.2 * (z - _front_z(x)))
+				var nm := String(names[rng.randi() % names.size()])
+				if Level3D.model_mesh(nm).is_empty():
+					continue
+				if not mxf.has(nm):
+					mxf[nm] = []
+				(mxf[nm] as Array).append(_plant_xf(nm, Vector3(x, yg, z), h, h * 2.2, rng.randf() * TAU))
+				cover_tops.append(Vector2(yg + h, z))
+
+
+## Kępki trawy na podłożu: `MultiMesh` w kawałkach COVER_CHUNK, płaty łanu z szumu (łyse miejsca zostają), wysokość pod zasadą rzutu
+## (`hmax`), rzadziej przy płaszczyźnie gry (TUFT_NEAR); bez trawy pod pniami, na bagnie i na dnie dołka przed szybem.
+static func _grass_tufts(parent: Node3D, rng: RandomNumberGenerator, z1: float) -> void:
+	if "--nograss" in OS.get_cmdline_user_args():          # dev: porównanie A/B i pomiar kosztu
+		return
+	var noise := FastNoiseLite.new()
+	noise.seed = 11
+	noise.frequency = 0.18
+	var chunks := {}
+	for g: Dictionary in _ground:
+		var x0: float = g["x0"]
+		var x1: float = g["x1"]
+		var zf: float = float(g["z0"]) + 0.04
+		for _n in int((x1 - x0) * maxf(z1 - zf, 0.0) * TUFTS_M2):
+			var x := rng.randf_range(x0, x1)
+			var z := rng.randf_range(zf + 0.1, z1)
+			var n := noise.get_noise_2d(x, z) * 0.5 + 0.5
+			if rng.randf() > smoothstep(0.05, 0.45, n) * lerpf(0.75, 1.0, clampf((z - zf) / TUFT_NEAR, 0.0, 1.0)):
+				continue
+			if _in_foot(x, z, 0.6) or _span_y(g, x) < float(g["base"]) - 0.3 or _mud_k(x, z) > 0.3:
+				continue
+			var hmax := 0.3 + 0.12 * (z - zf)
+			var h := minf(rng.randf_range(TUFT_H.x, TUFT_H.y) * (0.7 + 0.6 * n), hmax)
+			var y := ground_y(x, z) - 0.01
+			var c := floori(x / COVER_CHUNK)
+			if not chunks.has(c):
+				chunks[c] = []
+			var wd := maxf(h, TUFT_W * rng.randf_range(0.8, 1.2))
+			(chunks[c] as Array).append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(wd, h, wd)), Vector3(x, y, z)),
+					Color(rng.randf(), clampf(rng.randf() * 1.4 - 0.6, 0.0, 1.0) * 0.8, 0.0, 1.0)])
+			tuft_tops.append(Vector2(y + h, z))
+	if _grass_mat == null:
+		_grass_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = GRASS_SHADER
+		_grass_mat.shader = sh
+		Level3D._wind_models.append(_grass_mat)
+	_grass_mat.set_shader_parameter("amp", Level3D._wind.x)
+	_grass_mat.set_shader_parameter("lean", Level3D._wind.y)
+	for c: int in chunks:
+		var list: Array = chunks[c]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		mm.mesh = _tuft_mesh()
+		mm.instance_count = list.size()
+		for i in list.size():
+			mm.set_instance_transform(i, list[i][0])
+			mm.set_instance_custom_data(i, list[i][1])
+		var mi := MultiMeshInstance3D.new()
+		mi.name = "FrontGround_tufts_%d" % c
+		mi.multimesh = mm
+		mi.material_override = _grass_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
+
+
+## Kępka trawy (wysokość 1 m, skalowana w egzemplarzu): 9 liści od nasady — środkowe prawie pionowe, zewnętrzne odchylone i mocniej
+## wygięte, lekko skręcone; UV.y 0 nasada → 1 czubek (kolor i waga wiatru w GRASS_SHADER). 4 odcinki na liść: 72 trójkąty.
+static func _tuft_mesh() -> ArrayMesh:
+	if _tuft != null:
+		return _tuft
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for b in 9:
+		var ry := float(b) * 2.399 + 0.4                    # złoty kąt — równomiernie dookoła
+		var outer := float(b % 3) / 2.0                     # 0 środek, 1 brzeg kępki
+		var tilt := lerpf(0.08, 0.55, outer)
+		var ln := lerpf(1.0, 0.7, outer) * (0.85 + 0.15 * sin(float(b) * 4.1))
+		var curve := lerpf(0.12, 0.45, outer)
+		var off := Vector3(cos(ry), 0.0, sin(ry)) * 0.018 * (0.5 + outer)
+		var bas := Basis(Vector3.UP, ry) * Basis(Vector3.RIGHT, tilt)
+		var nrm := (bas * Vector3(0.0, -0.2, 1.0)).normalized()
+		var pts := []
+		for j in 5:
+			var t := float(j) / 4.0
+			var w := 0.032 * (1.0 - t * 0.9) * lerpf(1.0, 0.8, outer)
+			var c := off + bas * Vector3(0.0, t * ln, curve * t * t * ln)
+			var tw := Basis(Vector3.UP, ry + t * 0.5)
+			pts.append([c + tw * Vector3(-w, 0.0, 0.0), c + tw * Vector3(w, 0.0, 0.0), t])
+		for j in 4:
+			var a: Array = pts[j]
+			var n: Array = pts[j + 1]
+			for v: Array in [[a[0], a[2]], [a[1], a[2]], [n[1], n[2]], [a[0], a[2]], [n[1], n[2]], [n[0], n[2]]]:
+				st.set_normal(nrm)
+				st.set_uv(Vector2(0.5, float(v[1])))
+				st.add_vertex(v[0])
+	_tuft = st.commit()
+	return _tuft
+
+
+## Materiał runa z modelu `name` kołysany wiatrem (SWAY_SHADER; tekstury z materiału GLB). Jeden na model, w `Level3D._wind_models`.
+static func _sway_mat(name: String) -> Material:
+	if _sway_mats.has(name):
+		return _sway_mats[name]
+	var mm := Level3D.model_mesh(name)
+	var mesh: Mesh = mm[0]
+	var src := mesh.surface_get_material(0) as BaseMaterial3D
+	if src == null or src.roughness_texture == null:
+		return null
+	var m := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = SWAY_SHADER
+	m.shader = sh
+	m.set_shader_parameter("albedo_tex", src.albedo_texture)
+	m.set_shader_parameter("normal_tex", src.normal_texture)
+	m.set_shader_parameter("arm_tex", src.roughness_texture)
+	var ab := mesh.get_aabb()
+	m.set_shader_parameter("y0", ab.position.y)
+	m.set_shader_parameter("hm", maxf(ab.size.y, 0.001))
+	m.set_shader_parameter("amp", Level3D._wind.x)
+	m.set_shader_parameter("lean", Level3D._wind.y)
+	_sway_mats[name] = m
+	Level3D._wind_models.append(m)
+	return m
+
+
+## Przekształcenie egzemplarza rośliny `name` (jednostki modelu → świat): środek podstawy w `at`, wysokość `h`, szerokość najwyżej `wmax`.
+static func _plant_xf(name: String, at: Vector3, h: float, wmax: float, ry: float) -> Transform3D:
+	var mm := Level3D.model_mesh(name)
+	var local: Transform3D = mm[1]
+	var ab := local * (mm[0] as Mesh).get_aabb()
+	var s := minf(h / maxf(ab.size.y, 0.001), wmax / maxf(maxf(ab.size.x, ab.size.z), 0.001))
+	var b := Basis(Vector3.UP, ry).scaled(Vector3(s, s, s))
+	var c := ab.get_center()
+	return Transform3D(b, at + Vector3(0.0, -0.03, 0.0) - b * Vector3(c.x, ab.position.y, c.z)) * local
+
+
+## z przodu bryły (albo płyty podłogi) pod `x` — tam zaczyna się podłoże.
+static func _front_z(x: float) -> float:
+	for g: Dictionary in _ground:
+		if x >= float(g["x0"]) and x < float(g["x1"]):
+			return float(g["z0"]) + 0.04
+	return GROUND_Z[0]
+
+
+## Runo z modeli: `MultiMesh` na model i kawałek mapy (COVER_CHUNK), materiały z modelu (wycinanie alfą, obie strony — `Level3D.model_mesh`).
+static func _cover_models(parent: Node3D, xf: Dictionary, prefix: String) -> void:
+	for nm: String in xf:
+		var chunks := {}
+		for t: Transform3D in xf[nm]:
+			var c := floori(t.origin.x / COVER_CHUNK)
+			if not chunks.has(c):
+				chunks[c] = []
+			(chunks[c] as Array).append(t)
+		for c: int in chunks:
+			var list: Array = chunks[c]
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = Level3D.model_mesh(nm)[0]
+			mm.instance_count = list.size()
+			for i in list.size():
+				mm.set_instance_transform(i, list[i])
+			var mi := MultiMeshInstance3D.new()
+			mi.name = "%s%s_%d" % [prefix, nm, c]
+			mi.multimesh = mm
+			mi.material_override = _sway_mat(nm)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			parent.add_child(mi)
 
 
 const CONTACT_SHADER := """
@@ -1359,6 +2196,8 @@ static func build_walls(parent: Node3D) -> int:
 	var groups := {}                                         # "occ|klucz" → {wiersz: [kolumny]}
 	var occs := {}
 	for k: Vector2i in Level3D.shell_walls:
+		if Level3D.shell_entry_cells.has(k):
+			continue                                         # ściana wejścia budynku: w warstwie świata z fasadą (`Level3D._build_facades`)
 		var v: Array = Level3D.shell_walls[k]
 		var key := String(v[0]) if WALL_TEX.has(String(v[0])) else "#"
 		var gk := "%s|%s" % [str(v[1]), key]
