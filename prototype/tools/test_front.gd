@@ -336,7 +336,7 @@ func _check_forest() -> void:
 	for c in fr.get_children():
 		var mi := c as MeshInstance3D
 		var kind := String(mi.name).get_slice("_", 0)
-		if not kind in ["pine", "birch", "snag", "sapling", "ferns", "grass"]:
+		if not kind in ["pine", "snag", "shrub", "ferns", "grass"]:
 			for si in mi.mesh.get_surface_count():                # rury w tunelu: bez kontry księżyca
 				var pm := mi.get_surface_override_material(si) as ShaderMaterial
 				_check(_par(pm, "rim_k", 0.0) == 0.0 and _par(pm, "trans_k", 0.0) == 0.0, "%s: kontra księżyca pod ziemią" % mi.name)
@@ -352,12 +352,12 @@ func _check_forest() -> void:
 		_check(yw is Vector2 and absf((yw as Vector2).x - yg) < 0.001 and absf(yg - y_floor) < 0.001, "%s: nasada nie kończy się na podłożu (ywin %s, podłoże %.3f)" % [mi.name, yw, yg - y_floor])
 		for dx in [-1.0, 0.0, 1.0]:                          # płasko pod elementem (nierówność podłoża nie wchodzi nad nasadę)
 			_check(absf(Front3D.ground_y(mi.position.x + dx, mi.position.z) - yg) < 0.001, "%s: podłoże pod elementem nierówne" % mi.name)
-		if kind in ["pine", "birch", "snag"]:
+		if kind in ["pine", "snag"]:
 			# nasada (szyja, korzenie) schodzi pod podłoże, koniec nad górnym brzegiem kadru NORMAL (ok. 8 m nad podłogą przy z = 3,5–5 m)
 			_check(bb.position.y < yg - 0.2 and bb.position.y > yg - 1.0 and bb.end.y > y_floor + FRAME_H_NORMAL * 0.75, "%s: pień nie stoi na podłożu albo nie sięga nad kadr (%.1f..%.1f wzgl. podłoża)" % [mi.name, bb.position.y - yg, bb.end.y - yg])
-		elif kind == "sapling":
-			# młody świerk stoi na podłożu (dawniej gałąź `bough` wisiała nad kadrem bez pnia — uwaga z gry 2026-11-09)
-			_check(bb.position.y < yg and bb.end.y > yg + Front3D.SAPLING_H.x * 0.8 and bb.end.y < yg + Front3D.SAPLING_H.y * 1.1, "%s: świerczek nie stoi na podłożu (%.1f..%.1f wzgl. podłoża)" % [mi.name, bb.position.y - yg, bb.end.y - yg])
+		elif kind == "shrub":
+			# krzew ze skanu stoi na podłożu (dawniej gałąź `bough` wisiała nad kadrem bez pnia — uwaga z gry 2026-11-09)
+			_check(bb.position.y < yg and bb.end.y > yg + 0.7 and bb.end.y < yg + Front3D.SHRUB_H.y * 1.1, "%s: krzew nie stoi na podłożu (%.1f..%.1f wzgl. podłoża)" % [mi.name, bb.position.y - yg, bb.end.y - yg])
 		else:
 			var z := mi.position.z
 			_check(z >= Front3D.CLUMP_Z.x and z <= Front3D.CLUMP_Z.y, "%s: kępa w z %.2f poza CLUMP_Z" % [mi.name, z])
@@ -380,15 +380,17 @@ func _check_forest() -> void:
 			else:
 				rims += 1
 				_check(_par(m, "rim_k", 0.0) > 0.0, "%s: kora bez kontry księżyca" % mi.name)
-		if kind in ["pine", "birch", "snag"]:
+		if kind == "pine":
 			_check(rims == 1 and bases == 1, "%s: pień bez osobnej kory nasady (kora %d, nasada %d)" % [mi.name, rims, bases])
-	for k in ["pine", "birch", "snag", "sapling", "ferns", "grass"]:
+		elif kind == "snag":
+			_check(rims >= 1, "%s: martwy pień (model) bez kory z kontrą" % mi.name)
+	for k in ["pine", "snag", "shrub", "ferns", "grass"]:
 		_check(kinds.has(k), "las: rodzaj %s nie powstał na długim zakresie" % k)
 	Front3D.set_moon(0.25)
 	for c in fr.get_children():
 		var mi := c as MeshInstance3D
 		var m := mi.get_surface_override_material(0) as ShaderMaterial
-		var forest := String(mi.name).get_slice("_", 0) in ["pine", "birch", "snag", "sapling", "ferns", "grass"]
+		var forest := String(mi.name).get_slice("_", 0) in ["pine", "snag", "shrub", "ferns", "grass"]
 		_check(is_equal_approx(_par(m, "moon", 1.0), 0.25 if forest else 1.0), "%s: set_moon nie działa tylko na las" % mi.name)
 	Front3D.set_moon(1.0)
 	_check_ground(root, y_floor)
@@ -428,7 +430,7 @@ func _check_ground(root: Node3D, y_floor: float) -> void:
 	var cards := 0
 	for c in root.get_children():
 		var mm := c as MultiMeshInstance3D
-		if mm != null and String(mm.name).begins_with("FrontGround_"):
+		if mm != null and String(mm.name).begins_with("FrontGround_") and not String(mm.name).begins_with("FrontGround_bank_"):   # brzeg bagna osobno
 			cards += mm.multimesh.instance_count
 	_check(cards > 100 and cards == Front3D.cover_tops.size(), "podłoże: %d kart runa (zapis wierzchołków: %d)" % [cards, Front3D.cover_tops.size()])
 	for t: Vector2 in Front3D.cover_tops:
