@@ -628,7 +628,7 @@ Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mo
   - las nad tunelami 1.3 nie dzieli kadru z rurami tunelu (`Front3D.over_ground`): pod ziemią gaśnie, a z reguły jednego dużego
     elementu w kadrze rury tunelu wypierały z powierzchni wszystkie pnie;
   - GPU na 1.1 (4K, HIGH, debug, trzy pomiary, z i bez `--nofront --nofrontground`): obóz (kolumna 110) 7,66 → 7,97 ms (+0,31),
-    las nad kopalnią (kolumna 275) 8,56 → 8,95 ms (+0,39) — na granicy limitu 0,4 ms.
+    las nad kopalnią (kolumna 275) 8,58 → 8,96 ms (+0,38) — na granicy limitu 0,4 ms.
 - Koszt GPU (4K, HIGH, debug ze źródeł, `--perf=15`, trzy pomiary, z i bez `--nofront`): sam las — brzoza (kolumna 24) 8,04 → 8,13 ms (+0,09), martwy pień przy watasze (kolumna 40) 8,20 → 8,32 ms (+0,12); z podłożem brzoza 7,98 → 8,19 ms (+0,21), martwy pień 8,15 → 8,51 ms (+0,36; sam las bez płyty 8,28 ms — płyta z runem ok. +0,23 ms: zajmuje ok. ćwierci ekranu 4K materiałem bryły z warstwą brudu; gęstość runa 3 zamiast 5 kart na metr nic nie zmienia); limit zasady 7 to 0,4 ms.
 - Zrzuty: `shots_front/forest/` — bez podłoża `d_c12_s.jpg`, `d_c24_s.jpg`, `d_c40_s.jpg`, `h_c48_s.jpg`, `h_c48w_s.jpg`; z podłożem
   `p_c12_s.jpg` (sosna), `p_c24_s.jpg` (brzoza przy kopcu), `p_c40_s.jpg` (martwy pień przy watasze, kępa paproci), `n_c48_s.jpg`,
