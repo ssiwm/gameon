@@ -1,0 +1,61 @@
+# Układ kryjówki „dwa pokłady” — plan wdrożenia
+
+Analiza i projekt z 2026-11-09 (raport z przekrojami, zrzutami i modelem tras: prywatny artefakt, skrypty w `C:\deadair87\hub_layout`).
+GDD §16.0a: gdy gracze gubią się w Kryjówce, upraszczamy układ i nie dokładamy stanowisk. Ten plan niczego nie dokłada, tylko przestawia.
+
+## Problem (stan 1.7.530, `z1_hub.gd`)
+
+- Trzy poziomy po 7 kafli światła (9,2 m), podczas gdy budynki na misjach mają 4 kafle (5,2 m). Postać zajmuje 11% wysokości kadru.
+- 184 kafle podłogi na 17 punktów z interakcją. Góra ma 50 kafli i dwa stanowiska, a odstępy między lampami sięgają 28 kafli.
+- Kadr NORMAL ma 11,25 kafla wysokości, a piętro 8, więc z żadnego piętra nie widać pozostałych.
+- Łańcuchy stanowisk są rozrzucone: pracownia (góra) → tokarka (dół) → ława (środek) to 35 s biegu, a strzelnica leży piętro niżej, 34 kafle od ławy.
+- Stół konserwacji jest domyślnie martwy (zużycie wyłączone), a pracownia i tokarka otwierają się dopiero z postępem.
+- Słupy przekroju stoją co 5 m, więc w kadrze są około czterech czarnych pasów.
+
+## Projekt
+
+Dwie kondygnacje po 4 kafle światła i 1 kafel stropu, jeden pion pośrodku, 53 × 20 kafli:
+
+| Parter (wiersz podłogi 9) | Piwnica (wiersz podłogi 14) |
+|---|---|
+| śluza: start S, szafki p | kwatery: skrytka H, ściana wyników v |
+| warsztat: konserwacja j, ława h | pracownia c, tokarka d (pod ławą) |
+| pion (kol. 21–26): krata i podesty | pion |
+| drzwi strzelnicy, zbrojownia (a, g, g, a) | prasa x, pirotechnika z (pod zbrojownią) |
+| radiostacja R z oknem prognozy, odprawa n, strefa startu | maszynownia: generator, sprężarka, D-7, skrytka H |
+
+Kamera trzyma oba pokłady w kadrze (`CAM_LOCK`). Pas od stropu do podłogi piwnicy to 11 wierszy, a kadr NORMAL ma 11,25 kafla.
+
+Model tras (`hub_layout.py`: bieg 95 px/s, szacowany czas zmiany piętra), obecny układ kontra projekt:
+
+| Trasa | Obecny | Projekt |
+|---|---|---|
+| Start → strefa wyjścia | 9,8 s | 7,2 s |
+| Ława → strzelnica | 15,8 s | 7,2 s |
+| Pracownia → tokarka → ława | 35,2 s | 15,5 s |
+| Pełny obchód 17 punktów | 38,6 s | 26,9 s |
+
+## Etapy
+
+| Etap | Zakres | Stan |
+|---|---|---|
+| E0 | Dziennik kryjówki: `hub_enter`, `hub_pos` co 1 s, `hub_station`; sekcja „Kryjówka — ruch” w `session_progress.py` | PR #637 |
+| E1 | Spike pod flagą `--hub2`: mapa `z1_hub2.gd`, kamera trzymana w pionie (`CAM_LOCK`), słupy na granicach pomieszczeń (`"bays"`), zrzuty | lokalnie, **bramka: ocena w grze** |
+| E2 | Układ w grze: `z1_hub2.gd` zastępuje `z1_hub.gd`, bez flagi; dokumenty, wersja | po bramce E1 |
+| E3 | Kamera przekroju: płynne przejście przy zbliżeniu CLOSE, test `test_hub_camera.gd` | |
+| E4 | Czytelność: tabliczki stanowisk, barwa światła pomieszczeń, uśpione stanowiska ciemne do pierwszego użycia, ściana wyników ×0,7 | |
+| E5 | Kwatery i meble stawiane ręcznie zamiast losowych z `hub_decor.gd`, właz pionu, wnęki | |
+| E6 | Ocena po playteście z danych E0 | |
+
+## Decyzje (przyjęte rekomendacje planu)
+
+1. Dwa pokłady, nie trzy zwarte: przy trzech droga do radia rośnie do 22 s.
+2. Kamera zablokowana w pionie: przy NORMAL i WIDE widać oba pokłady, przy CLOSE kamera idzie za graczem w obrębie pasa.
+3. Ściana wyników w kwaterach, w E4 pomniejszona do 0,7.
+4. Radio przy odprawie, a nie na osobnym piętrze.
+
+## Uwagi z E1
+
+- Testy kryjówki z `--hub2` (`--workshoptest`, gabloty z siecią, `--rangetest`, `--nobottest`, bronie) sprawdzają nowy układ pod id `z1_hub`;
+  `--maptest`, `test_front.gd`, `test_structures.gd` i `test_niches.gd` sprawdzają `z1_hub2` jako osobną mapę.
+- Do decyzji w E4: krata pionu na parterze czyta się w przekroju jak dziura w stropie; słup przekroju w płaszczyźnie z = SHELL_Z jest czarny i stoi przed całą wysokością obu pokładów.

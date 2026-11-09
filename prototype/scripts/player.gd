@@ -585,6 +585,24 @@ func _apply_level_bounds() -> void:
 		_camera.limit_right = int(b.end.x)
 		_camera.limit_bottom = int(b.end.y)
 
+## Kamera trzymana w pionie (CAM_LOCK z danych mapy, kryjówka „dwa pokłady”): gdy pas mieści się w kadrze, granice kamery to kadr wyśrodkowany
+## na pasie — kamera jedzie tylko w poziomie i oba pokłady są widoczne naraz; przy ciaśniejszym zbliżeniu kamera chodzi za graczem w obrębie pasu.
+func _lock_camera_band() -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or (lvl.cam_lock as Vector2i).x < 0:
+		return
+	var cl: Vector2i = lvl.cam_lock
+	var t := float(lvl.TILE)
+	var top := float(cl.x) * t
+	var bot := float(cl.y + 1) * t
+	var h := get_viewport_rect().size.y / maxf(_camera.zoom.y, 0.01)
+	if h >= bot - top:
+		var mid := (top + bot) * 0.5
+		top = mid - h * 0.5
+		bot = mid + h * 0.5
+	_camera.limit_top = int(floor(top))
+	_camera.limit_bottom = int(ceil(bot))
+
 ## Nowa mapa (level.load_map): punkt startu i granice kamery z nowej mapy, postać wraca na start.
 func _on_map_changed(_id: String) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
@@ -604,6 +622,7 @@ func _process(delta: float) -> void:
 	_scream_ring = maxf(0.0, _scream_ring - delta)
 	if _camera.enabled:
 		_camera.offset = Feel.shake_offset()
+		_lock_camera_band()
 	if _is_remote or is_bot:
 		_update_footsteps_passive()
 	_update_lights()

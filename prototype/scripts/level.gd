@@ -98,9 +98,14 @@ const MAPS := {
 	"z1_m3": preload("res://scripts/maps/z1_m3.gd"),
 	"z1_b1": preload("res://scripts/maps/z1_b1.gd"),
 	"z1_hub": preload("res://scripts/maps/z1_hub.gd"),     # kryjówka między misjami (nie należy do CAMPAIGN)
+	"z1_hub2": preload("res://scripts/maps/z1_hub2.gd"),   # kryjówka „dwa pokłady” (plan układu kryjówki E1): w grze pod id z1_hub z flagą --hub2
 	"t_mine": preload("res://scripts/maps/t_mine.gd"),     # mapa testowa zawału D3 (nie należy do CAMPAIGN ani SHIFT_POOL): --destructiontest, --maptest, test sieci
 	"t_dig": preload("res://scripts/maps/t_dig.gd"),       # mapa testowa stref wydobycia D5 (nie należy do CAMPAIGN ani SHIFT_POOL): --digtest, --maptest, test sieci
 }
+## Plan układu kryjówki E1: `--hub2` podmienia mapę kryjówki na układ „dwa pokłady” (z1_hub2.gd) pod tym samym id z1_hub — stanowiska,
+## testy i zapis widzą zwykłą kryjówkę.
+static var hub2 := OS.get_cmdline_user_args().has("--hub2")
+
 ## Kolejność kampanii Strefy I: 1.1 → 1.2 → 1.3 → boss B1 (Pijawka); po bossie kampania wraca przez kryjówkę do 1.1.
 const CAMPAIGN := ["z1_m1", "z1_m2", "z1_m3", "z1_b1"]
 ## Mapy losowane w Nocnym Dyżurze: bez 1.1 (samouczek bez bossa i Stalkera zaniżałby trudność serii) i bez areny B1 (osobna walka z bossem).
@@ -147,6 +152,7 @@ var hp_mult := 1.0               ## mnożnik HP wrogów tej mapy (ENEMY_HP w dan
 var depth_mult := 1.0                                    ## mnożnik ambientu od głębi podziemi (dread.gd)
 var underground_y := 0.0         ## od tej wysokości (px) postać jest w podziemiach
 var bounds := Rect2()
+var cam_lock := Vector2i(-1, -1)          ## CAM_LOCK z danych mapy: [wiersz stropu, wiersz podłogi] pasa, który kamera trzyma w pionie (kryjówka „dwa pokłady”); -1 = kamera jak na misjach
 var spawns: Array[Vector2] = []
 var exits: Array[Vector2] = []
 var stalker_home := Vector2.ZERO
@@ -240,7 +246,7 @@ func load_map(id: String) -> void:
 	map_changed.emit(id)
 
 func _load(id: String) -> void:
-	var m = MAPS[id]
+	var m = MAPS["z1_hub2" if id == "z1_hub" and hub2 else id]
 	map_id = id
 	title = m.TITLE
 	objective = m.OBJECTIVE
@@ -251,6 +257,8 @@ func _load(id: String) -> void:
 	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
 	_hub_props = ((m as GDScript).get_script_constant_map().get("HUB_PROPS", []) as Array).duplicate()
 	_range_door = ((m as GDScript).get_script_constant_map().get("RANGE_DOOR", []) as Array).duplicate()
+	var cl: Array = (m as GDScript).get_script_constant_map().get("CAM_LOCK", [])
+	cam_lock = Vector2i(int(cl[0]), int(cl[1])) if cl.size() == 2 else Vector2i(-1, -1)
 	hint_zones.clear()
 	var hz: Dictionary = (m as GDScript).get_script_constant_map().get("HINT_ZONES", {})
 	for hid in hz:
@@ -867,6 +875,13 @@ func _spawn_entities() -> void:
 				x1 -= 1
 			var occ: Array = fl["occ"]
 			var quiet: Array = fl["quiet"]
+			for hp in _hub_props:                                # rekwizyty stojące na podłodze (maszynownia, magazyn) i drzwi strzelnicy: bez mebli na nich
+				if int(hp[2]) == fr and String(hp[0]) in ["generator", "compressor", "barrel", "crate", "mil_crate", "scrap_pile", "d7"]:
+					occ.append(int(hp[1]))
+					fl["wide"][int(hp[1])] = 2.2 if String(hp[0]) in ["generator", "d7"] else 1.2
+			if _range_door.size() == 2 and int(_range_door[1]) == fr:
+				occ.append(int(_range_door[0]))
+				fl["wide"][int(_range_door[0])] = 2.0
 			for sh in _shafts:                                   # szyb: dwa znaczniki na brzegach i cisza między nimi
 				occ.append(int(sh[0]))
 				occ.append(int(sh[1]))
