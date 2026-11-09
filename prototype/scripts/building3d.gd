@@ -109,13 +109,11 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 				lines.append(x0 + float(g) * T)
 				break
 	var zin := zb + BACK
-	var front_cols := not "--nofrontcols" in OS.get_cmdline_user_args()   # dev: A/B bez słupów w płaszczyźnie przekroju
 	for x: float in lines:
 		box.call("col", Vector3(x - COL * 0.5, yf, zin), Vector3(x + COL * 0.5, yc, zin + COL))          # słup przy ścianie tylnej
-		if front_cols:
-			box.call("col", Vector3(x - COL * 0.5, yf, zc - COL), Vector3(x + COL * 0.5, yc, zc))       # słup w płaszczyźnie przekroju
+		box.call("col", Vector3(x - COL * 0.5, yf, zc - COL), Vector3(x + COL * 0.5, yc, zc))           # słup w płaszczyźnie przekroju (wariant A)
 		box.call("beam", Vector3(x - GIRDER * 0.5, yc, zin), Vector3(x + GIRDER * 0.5, ys, zc))         # podciąg w głąb
-		for zz in ([zin + COL, zc - COL] if front_cols else [zin + COL]):                               # wuty pod podciągiem przy słupach
+		for zz in [zin + COL, zc - COL]:                             # wuty pod podciągiem przy słupach
 			var zd := 0.45 if zz < 0.0 else -0.45
 			box.call("beam", Vector3(x - COL * 0.5, yc - 0.3, minf(zz, zz + zd)), Vector3(x + COL * 0.5, yc, maxf(zz, zz + zd)))
 	# podciąg wzdłuż ściany tylnej; w płaszczyźnie przekroju bez podciągu — pas 1,3 m nad salą zasłaniał strop z żebrami
