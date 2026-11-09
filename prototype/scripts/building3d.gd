@@ -25,14 +25,30 @@ const JAMB := 0.1                          ## m: ościeżnica stalowa
 const WIN := [1.0, 2.35, 1.5]              ## m: okno w głębi ściany szczytowej — parapet nad podłogą, nadproże, szerokość
 const CUT := 0.012                         ## m: grubość nakładki przekroju przed płaszczyzną SHELL_Z
 
-## Materiały typu budynku: [klucz tekstury, skala, kolor zastępczy, szorstkość, brud] dla ścian, ściany tylnej i cokołu.
-const KINDS := {
-	"bunker": {"wall": ["concrete", 0.33, Color(0.30, 0.31, 0.33), 0.9, "stone"], "back": ["concrete", 0.45, Color(0.22, 0.23, 0.24), 0.95, "stone"],
-			"plinth": ["concrete", 0.5, Color(0.17, 0.17, 0.18), 0.95, "organic"]},
-}
+const CHAMFER := 0.025                     ## m: faza krawędzi brył betonowych (mniejsza przy cienkich elementach)
 
-static func _pbr(spec: Array) -> Material:
-	return Level3D.make_pbr(String(spec[0]), float(spec[1]), spec[2], float(spec[3]), 1.0, 1.0, false, String(spec[4]))
+## Materiały typu budynku: [klucz tekstury (`world_pbr_import.py`: Poly Haven po gradingu gry), powtórzeń na metr, kolor zastępczy, przyciemnienie].
+## Ściany i słupy: warstwy betonowania; płyta i belki: goły beton z panelami; przekrój: gruboziarnisty; cokół: brudny (porównanie 11 kandydatów 2026-11-09).
+const KINDS := {
+	"bunker": {"wall": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 1.0], "slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 1.0],
+			"back": ["bld_wall", 0.5, Color(0.22, 0.23, 0.24), 0.8], "cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 1.0],
+			"plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 1.0]},
+}
+## Klucz części → rola materiału; części z siatką fazowaną i UV na element (`_box_mesh`) — w `SOLO` każda bryła z własnym przesunięciem tekstury
+## (słup, belka, pilaster czytają się jako osobne elementy), reszta w UV świata (kawałki muru wokół otworów łączą się bez szwu).
+const ROLE := {"wall": "wall", "col": "wall", "slab": "slab", "beam": "slab", "back": "back", "plinth": "plinth"}
+const SOLO := ["col", "beam"]
+
+## Materiał roli z UV siatki w metrach (`uv1_scale` = powtórzeń na metr), bez rzutowania triplanarnego.
+static func _uv_mat(spec: Array) -> Material:
+	var src := Level3D.make_pbr(String(spec[0]), float(spec[1]), spec[2], 0.95)
+	var m := src.duplicate() as StandardMaterial3D                   # make_pbr zwraca materiał ze wspólnej pamięci podręcznej
+	m.uv1_triplanar = false
+	m.uv1_world_triplanar = false
+	m.uv1_scale = Vector3(float(spec[1]), float(spec[1]), 1.0)
+	var k := float(spec[3])
+	m.albedo_color = Color(k, k, k)
+	return m
 
 ## Wszystkie budynki z ostatniego `Level3D.set_shells`. Zwraca liczbę skrzynek (test).
 static func build(parent: Node3D, rows: Array) -> int:
@@ -57,7 +73,7 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	var ys := yr - SLAB                                     # spód płyty
 	var zb := -Level3D.DEPTH_BACK
 	var zc := Level3D.SHELL_Z
-	var out := {"wall": [], "back": [], "plinth": [], "steel": [], "leaf": [], "glass": [], "cut": []}
+	var out := {"wall": [], "col": [], "slab": [], "beam": [], "back": [], "plinth": [], "steel": [], "leaf": [], "glass": [], "cut": []}
 	var box := func(key: String, a: Vector3, b2: Vector3) -> void:
 		if absf(b2.x - a.x) < 0.001 or absf(b2.y - a.y) < 0.001 or absf(b2.z - a.z) < 0.001:
 			return
@@ -65,14 +81,14 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		if maxf(a.z, b2.z) >= zc - 0.001 and key != "cut":   # przecięte płaszczyzną przekroju: nakładka z materiałem przekroju
 			(out["cut"] as Array).append(Level3D._span_box(Vector3(a.x, a.y, zc), Vector3(b2.x, b2.y, zc + CUT)))
 	# stropodach: płyta z okapem, czoło okapu, attyka (z przerwą w bokach nad pasem gry)
-	box.call("wall", Vector3(x0 - EAVE, ys, zb - EAVE), Vector3(x1 + EAVE, yr, zc))
+	box.call("slab", Vector3(x0 - EAVE, ys, zb - EAVE), Vector3(x1 + EAVE, yr, zc))
 	for sx in [-1.0, 1.0]:
 		var xe := x0 - EAVE if sx < 0.0 else x1 + EAVE
-		box.call("wall", Vector3(xe, yr - FASCIA, zb - EAVE), Vector3(xe - sx * 0.12, ys, zc))
+		box.call("slab", Vector3(xe, yr - FASCIA, zb - EAVE), Vector3(xe - sx * 0.12, ys, zc))
 		for seg in [[zb - EAVE, ROOF_GAP[0]], [ROOF_GAP[1], zc]]:
-			box.call("wall", Vector3(xe, yr, float(seg[0])), Vector3(xe - sx * PARAPET[1], yr + PARAPET[0], float(seg[1])))
-	box.call("wall", Vector3(x0 - EAVE, yr - FASCIA, zb - EAVE), Vector3(x1 + EAVE, yr + PARAPET[0], zb - EAVE + PARAPET[1]))
-	box.call("wall", Vector3(x0 - EAVE, yr, zc - PARAPET[1]), Vector3(x1 + EAVE, yr + PARAPET[0], zc))
+			box.call("slab", Vector3(xe, yr, float(seg[0])), Vector3(xe - sx * PARAPET[1], yr + PARAPET[0], float(seg[1])))
+	box.call("slab", Vector3(x0 - EAVE, yr - FASCIA, zb - EAVE), Vector3(x1 + EAVE, yr + PARAPET[0], zb - EAVE + PARAPET[1]))
+	box.call("slab", Vector3(x0 - EAVE, yr, zc - PARAPET[1]), Vector3(x1 + EAVE, yr + PARAPET[0], zc))
 	# słupy i podciągi: linie na granicach kafli co ok. BAY
 	var ncols := c1 - c0 + 1
 	var nbay := maxi(1, roundi((x1 - x0) / BAY))
@@ -90,15 +106,15 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	var zin := zb + BACK
 	var front_cols := not "--nofrontcols" in OS.get_cmdline_user_args()   # dev: A/B bez słupów w płaszczyźnie przekroju
 	for x: float in lines:
-		box.call("wall", Vector3(x - COL * 0.5, yf, zin), Vector3(x + COL * 0.5, yc, zin + COL))          # słup przy ścianie tylnej
+		box.call("col", Vector3(x - COL * 0.5, yf, zin), Vector3(x + COL * 0.5, yc, zin + COL))          # słup przy ścianie tylnej
 		if front_cols:
-			box.call("wall", Vector3(x - COL * 0.5, yf, zc - COL), Vector3(x + COL * 0.5, yc, zc))       # słup w płaszczyźnie przekroju
-		box.call("wall", Vector3(x - GIRDER * 0.5, yc, zin), Vector3(x + GIRDER * 0.5, ys, zc))         # podciąg w głąb
+			box.call("col", Vector3(x - COL * 0.5, yf, zc - COL), Vector3(x + COL * 0.5, yc, zc))       # słup w płaszczyźnie przekroju
+		box.call("beam", Vector3(x - GIRDER * 0.5, yc, zin), Vector3(x + GIRDER * 0.5, ys, zc))         # podciąg w głąb
 		for zz in ([zin + COL, zc - COL] if front_cols else [zin + COL]):                               # wuty pod podciągiem przy słupach
 			var zd := 0.45 if zz < 0.0 else -0.45
-			box.call("wall", Vector3(x - COL * 0.5, yc - 0.3, minf(zz, zz + zd)), Vector3(x + COL * 0.5, yc, maxf(zz, zz + zd)))
+			box.call("beam", Vector3(x - COL * 0.5, yc - 0.3, minf(zz, zz + zd)), Vector3(x + COL * 0.5, yc, maxf(zz, zz + zd)))
 	# podciąg wzdłuż ściany tylnej; w płaszczyźnie przekroju bez podciągu — pas 1,3 m nad salą zasłaniał strop z żebrami
-	box.call("wall", Vector3(x0 + WALL, yc, zin), Vector3(x1 - WALL, ys, zin + 0.35))
+	box.call("beam", Vector3(x0 + WALL, yc, zin), Vector3(x1 - WALL, ys, zin + 0.35))
 	# żebra stropu co kafel (poza liniami podciągów)
 	for k in range(1, ncols):
 		var x := x0 + float(k) * T
@@ -106,7 +122,7 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		for lx: float in lines:
 			near = near or absf(lx - x) < 0.5
 		if not near:
-			box.call("wall", Vector3(x - RIB * 0.5, yc, zin + 0.35), Vector3(x + RIB * 0.5, ys, zc))
+			box.call("beam", Vector3(x - RIB * 0.5, yc, zin + 0.35), Vector3(x + RIB * 0.5, ys, zc))
 	# ściana tylna: w wierszach pasa ciągi kafli ze ścianą tła (`Level3D.back_wall_at` — bez otworów wnęk), nad nimi pełny pas pod płytę
 	var xl := x0 + WALL
 	var xr := x1 - WALL
@@ -156,7 +172,7 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		for h: Array in doors:
 			pil.append_array([float(h[0]) - JAMB - 0.35, float(h[1]) + JAMB + 0.35])
 		for z: float in pil:
-			box.call("wall", Vector3(xo, yf + PLINTH[0], z - PILASTER[0] * 0.5), Vector3(xout.call(PILASTER[1]), ys, z + PILASTER[0] * 0.5))
+			box.call("col", Vector3(xo, yf + PLINTH[0], z - PILASTER[0] * 0.5), Vector3(xout.call(PILASTER[1]), ys, z + PILASTER[0] * 0.5))
 		for h: Array in holes:
 			_frame(box, side, xo, xi, h)
 	return out
@@ -221,18 +237,111 @@ static func _frame(box: Callable, side: int, xo: float, xi: float, h: Array) -> 
 
 static func build_one(parent: Node3D, b: Dictionary, rows: Array) -> int:
 	var spec: Dictionary = KINDS.get(String(b["kind"]), KINDS["bunker"])
+	var cs: Array = spec["cut"]
 	var mats := {
-		"wall": _pbr(spec["wall"]), "back": _pbr(spec["back"]), "plinth": _pbr(spec["plinth"]),
 		"steel": Level3D.make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"),
 		"leaf": Level3D.make_pbr("metal", 0.40, Color(0.22, 0.24, 0.22), 0.55, 1.0, 0.7, false, "rust"),
 		"glass": Level3D.make_mat(Color(0.03, 0.035, 0.04), 0.12, 0.06, 0.0),
-		"cut": Level3D.make_mat(Color(0.36, 0.35, 0.335), 0.97, 0.05, 0.2),   # przekrój: jasny, płaski beton bez tekstury
+		"cut": Level3D.make_pbr(String(cs[0]), float(cs[1]), cs[2], 0.95),   # przekrój: rzut świata — płaszczyzna cięcia jak jeden blok betonu
 	}
+	for k: String in ROLE:
+		mats[k] = _uv_mat(spec[ROLE[k]])
 	var unit := BoxMesh.new()
 	unit.size = Vector3.ONE
 	var p := parts(b, rows)
 	var n := 0
 	for k: String in p:
-		Level3D._multimesh(parent, unit, p[k], mats[k], k != "cut" and k != "glass")
 		n += (p[k] as Array).size()
+		if (p[k] as Array).is_empty():
+			continue
+		if ROLE.has(k):
+			var mi := MeshInstance3D.new()
+			mi.name = k
+			mi.mesh = _box_mesh(p[k], k in SOLO)
+			mi.material_override = mats[k]
+			parent.add_child(mi)
+		else:
+			Level3D._multimesh(parent, unit, p[k], mats[k], k != "cut" and k != "glass")
 	return n
+
+## Bryły (Transform3D pudła 1×1×1, osiowe) jako jedna siatka: skrzynki z fazą CHAMFER na wszystkich krawędziach (normalne fazy przechodzą
+## płynnie między licami — krawędź łapie światło jak zaokrąglony beton), UV w metrach: lica pionowe — poziomo × w dół, poziome — x × z.
+## `solo`: każda bryła z własnym przesunięciem tekstury (z jej położenia), inaczej UV świata.
+static func _box_mesh(xfs: Array, solo: bool) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for xf: Transform3D in xfs:
+		var h := xf.basis.get_scale() * 0.5
+		var o := xf.origin
+		var c := minf(CHAMFER, minf(h.x, minf(h.y, h.z)) * 0.5)
+		var off := Vector2.ZERO
+		if solo:
+			off = Vector2(fposmod(o.x * 3.17 + o.z * 1.31, 7.0), fposmod(o.y * 2.29 + o.x * 0.77, 7.0))
+		for a in 3:
+			var ea := Vector3.ZERO
+			ea[a] = 1.0
+			var b1 := (a + 1) % 3
+			var d1 := (a + 2) % 3
+			for s in [-1.0, 1.0]:
+				var q: Array = []
+				for cc in [[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]:
+					var p := Vector3.ZERO
+					p[a] = s * h[a]
+					p[b1] = float(cc[0]) * (h[b1] - c)
+					p[d1] = float(cc[1]) * (h[d1] - c)
+					q.append([p, ea * s])
+				_quad(st, o, off, q, a)
+			if c <= 0.0:
+				continue
+			# fazy wzdłuż osi d1 między licem (a, s) i licem (b1, t)
+			var eb := Vector3.ZERO
+			eb[b1] = 1.0
+			for s in [-1.0, 1.0]:
+				for t in [-1.0, 1.0]:
+					var q: Array = []
+					for dd in [-1.0, 1.0]:
+						var p1 := Vector3.ZERO
+						p1[a] = s * h[a]
+						p1[b1] = t * (h[b1] - c)
+						p1[d1] = dd * (h[d1] - c)
+						q.append([p1, ea * s])
+					for dd in [1.0, -1.0]:
+						var p2 := Vector3.ZERO
+						p2[a] = s * (h[a] - c)
+						p2[b1] = t * h[b1]
+						p2[d1] = dd * (h[d1] - c)
+						q.append([p2, eb * t])
+					_quad(st, o, off, q, a)
+		if c > 0.0:
+			for sx in [-1.0, 1.0]:                                      # narożniki
+				for sy in [-1.0, 1.0]:
+					for sz in [-1.0, 1.0]:
+						var sg := Vector3(sx, sy, sz)
+						var pts: Array = []
+						for a in 3:
+							var p := Vector3(sx * (h.x - c), sy * (h.y - c), sz * (h.z - c))
+							p[a] = sg[a] * h[a]
+							var nn := Vector3.ZERO
+							nn[a] = sg[a]
+							pts.append([p, nn])
+						_tri(st, o, off, pts[0], pts[1], pts[2], 1)
+	st.generate_tangents()
+	return st.commit()
+
+static func _quad(st: SurfaceTool, o: Vector3, off: Vector2, q: Array, face: int) -> void:
+	_tri(st, o, off, q[0], q[1], q[2], face)
+	_tri(st, o, off, q[0], q[2], q[3], face)
+
+## Trójkąt z [punkt lokalny, normalna] ×3; front Godota = zgodnie z ruchem wskazówek zegara patrząc od strony normalnej.
+static func _tri(st: SurfaceTool, o: Vector3, off: Vector2, a: Array, b: Array, d: Array, face: int) -> void:
+	var n: Vector3 = (a[1] as Vector3) + (b[1] as Vector3) + (d[1] as Vector3)
+	var v := [a, b, d]
+	if ((b[0] as Vector3) - (a[0] as Vector3)).cross((d[0] as Vector3) - (a[0] as Vector3)).dot(n) > 0.0:
+		v = [a, d, b]
+	for e: Array in v:
+		var w: Vector3 = o + (e[0] as Vector3)
+		var uv := Vector2(w.x, w.z) if face == 1 else (Vector2(w.z, -w.y) if face == 0 else Vector2(w.x, -w.y))
+		st.set_normal(e[1])
+		st.set_uv(uv + off)
+		st.add_vertex(w)
+

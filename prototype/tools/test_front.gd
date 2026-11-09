@@ -536,7 +536,7 @@ func _check_building(rows: Array) -> void:
 					hit = hit or (c.origin - Vector3(xf.origin.x, xf.origin.y, c.origin.z)).length() < 0.001
 				_check(hit, "1.3: '%s' w %s bez materiału przekroju" % [key, xf.origin])
 			# słupy (wysokie, wąskie skrzynki muru) nie stoją w pasie gry
-			if key == "wall" and sz.y > 4.0 and sz.x <= Building3D.COL + 0.001 and sz.z <= Building3D.COL + 0.001:
+			if key == "col" and sz.y > 4.0 and sz.x <= Building3D.COL + 0.001 and sz.z <= Building3D.COL + 0.001:
 				_check(xf.origin.z - sz.z * 0.5 >= Level3D.DEPTH_FRONT or xf.origin.z + sz.z * 0.5 <= -1.0, "1.3: słup w pasie gry (z %.2f)" % xf.origin.z)
 	_check(slab, "1.3: brak płyty stropodachu 0,25 m na górze kafla dachu")
 	var walls := 0

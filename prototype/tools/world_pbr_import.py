@@ -39,6 +39,11 @@ MAP = {
 PH = {
     "roof": "rusty_corrugated_iron",    # blacha falista na dachach szop (level3d: samotna warstwa betonu „C” z niebem nad i pustką pod)
     "concrete": "dirty_concrete",       # beton hal i podłóg (kafel 3 m); wpis z PH wygrywa z MAP, `--ambientcg` wraca do skanu Concrete034
+    # budynki 3D (`building3d.gd`, 2026-11-09, porównanie 11 kandydatów na posterunku 1.3): kafle w metrach w KINDS generatora
+    "bld_wall": "concrete_layers_02",     # ściany i słupy: warstwy betonowania (kafel 2 m)
+    "bld_slab": "concrete",               # płyta, belki, attyka: goły beton z podziałem na panele (4 m)
+    "bld_cut": "granular_concrete",       # jednolity materiał przekroju na SHELL_Z: gruboziarnisty (2,4 m)
+    "bld_plinth": "concrete_wall_007",    # cokół i parapety: brudny, z przebarwieniami (2,16 m)
 }
 PH_URL = "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/{id}/{id}_{kind}_1k.jpg"
 
@@ -54,12 +59,17 @@ GRADE = {
     "wall": dict(target=0.115, sat=0.65, tint=(0.95, 0.92, 0.95)),
     "mud": dict(target=0.105, sat=0.45, tint=(0.95, 0.95, 0.90)),
     "roof": dict(target=0.10, sat=0.45, tint=(0.88, 0.94, 1.00)),
+    "bld_wall": dict(target=0.15, sat=0.45, tint=(0.88, 0.94, 1.00)),
+    "bld_slab": dict(target=0.15, sat=0.45, tint=(0.88, 0.94, 1.00)),
+    "bld_cut": dict(target=0.19, sat=0.40, tint=(0.90, 0.94, 1.00)),
+    "bld_plinth": dict(target=0.10, sat=0.50, tint=(0.90, 0.94, 1.00)),
 }
 
 
 # Dopracowanie pod dystans kamery gry (~60 px/m na 4K, więc tekstury 465 px/m są zmniejszane ~8×): zmniejszenie do RES, wygładzenie normalnych
 # (nk = siła 0..1, blur = sigma w px 1K przed zmniejszeniem) i makro-zmienność koloru plamami (macro = ±amplituda jasności, hue = przesunięcie barwy).
 RES = 512
+RES_OF = {"bld_wall": 1024, "bld_slab": 1024, "bld_cut": 1024, "bld_plinth": 1024}   ## budynki 3D z bliska (ok. 150 px/m na 4K): ostrzejsze niż RES
 FINISH = {
     "terrain": dict(nk=0.45, blur=1.4, macro=0.28, hue=(0.10, 0.04, -0.06)),
     "concrete": dict(nk=0.50, blur=1.0, macro=0.22, hue=(0.0, 0.0, 0.05)),
@@ -70,6 +80,10 @@ FINISH = {
     "wall": dict(nk=0.85, blur=0.0, macro=0.15, hue=(0.0, 0.0, 0.0)),
     "mud": dict(nk=0.45, blur=1.4, macro=0.25, hue=(0.06, 0.03, -0.05)),
     "roof": dict(nk=1.00, blur=0.0, macro=0.16, hue=(0.04, 0.0, 0.0)),    # fale muszą zostać wyraźne: normalne bez osłabiania
+    "bld_wall": dict(nk=0.85, blur=0.0, macro=0.14, hue=(0.0, 0.0, 0.05)),
+    "bld_slab": dict(nk=0.85, blur=0.0, macro=0.14, hue=(0.0, 0.0, 0.05)),
+    "bld_cut": dict(nk=0.70, blur=0.0, macro=0.08, hue=(0.0, 0.0, 0.0)),
+    "bld_plinth": dict(nk=0.85, blur=0.0, macro=0.16, hue=(0.04, 0.0, 0.0)),
 }
 
 
@@ -77,6 +91,7 @@ def finish(alb, nrm, orm, alpha, name):
     """Wygładza normalne, zmniejsza do RES i dodaje makro-zmienność (okresowa, więc kafelkuje się bez szwów)."""
     from scipy.ndimage import gaussian_filter
     f = FINISH[name]
+    res = RES_OF.get(name, RES)
     if f["blur"] > 0:
         nxy = nrm[..., :2] * 2 - 1
         nxy = np.dstack([gaussian_filter(nxy[..., i], f["blur"], mode="wrap") for i in (0, 1)])
@@ -88,12 +103,12 @@ def finish(alb, nrm, orm, alpha, name):
 
     def down(a):
         if a.ndim == 2:
-            return np.asarray(Image.fromarray(G.to8(a)).resize((RES, RES), Image.LANCZOS), np.float32) / 255.0
-        return np.asarray(Image.fromarray(G.to8(a)).resize((RES, RES), Image.LANCZOS), np.float32) / 255.0
+            return np.asarray(Image.fromarray(G.to8(a)).resize((res, res), Image.LANCZOS), np.float32) / 255.0
+        return np.asarray(Image.fromarray(G.to8(a)).resize((res, res), Image.LANCZOS), np.float32) / 255.0
     alb, nrm, orm = down(alb), down(nrm), down(orm)
     alpha = down(alpha) if alpha is not None else None
     if f["macro"] > 0:
-        m = G.fbm(RES, 3, 3, 4, 7000 + len(name)) * 0.65 + G.fbm(RES, 7, 7, 3, 7100 + len(name)) * 0.35
+        m = G.fbm(res, 3, 3, 4, 7000 + len(name)) * 0.65 + G.fbm(res, 7, 7, 3, 7100 + len(name)) * 0.35
         m = (m - m.mean()) / max(float(m.std()), 1e-4)
         k = 1.0 + np.clip(m, -2.2, 2.2) * f["macro"] * 0.5
         lin = srgb_to_lin(alb) * k[..., None]
