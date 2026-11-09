@@ -1613,6 +1613,7 @@ static var shell_cells := {}               ## Vector2i → klucz materiału prze
 static var shell_walls := {}
 static var shell_bands: Array = []         ## wpisy FRONT z przekrojem z ostatniego `set_shells` (strefy wydobycia obok sięgają SHELL_Z)
 const WALL_CH := "#C"
+const ENTRY_KEEP := "+%:q"                 ## niszczalne przegrody: kolumna z nimi nie dostaje pełnej ściany wejścia
 
 static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	shell_cells = {}
@@ -1657,6 +1658,13 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 			for r in range(int(e["r0"]) + 1, int(e["r1"])):
 				if not (_ch(rows, c, r) in WALL_CH or in_dig.call(c, r)):
 					full = false
+			if not full and shell_entry(e, c, rows):
+				# ściana wejścia i wyjścia budynku: przed pasem gry cała wysokość, także przed drzwiami i oknem — budynek to zamknięta bryła
+				# jak podłoga i strop przekroju (uwaga z gry 2026-11-09); otwór zostaje w pasie gry, postać w nim widać przez wygaszanie
+				for r in range(int(e["r0"]) + 1, int(e["r1"])):
+					if not shell_cells.has(Vector2i(c, r)):
+						shell_walls[Vector2i(c, r)] = ["C", occ]
+				continue
 			if not full:
 				continue
 			for r in range(int(e["r0"]) + 1, int(e["r1"])):
@@ -1680,6 +1688,23 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 					var k := Vector2i(c, r)
 					if _ch(rows, c, r) in SHELL_CH and not shell_cells.has(k) and not shell_walls.has(k) and not in_band.call(c, r) and not in_dig.call(c, r):
 						shell_cells[k] = "C" if concrete else ""
+
+## Kolumna wejścia (`shell_walls` na całą wysokość pasa, uwaga z gry 2026-11-09): skrajna kolumna budynku (`station`, `bunker`) bez
+## sąsiedniego wpisu z przekrojem na tej wysokości (przejście między salami zostaje otwarte), z kawałkiem ściany (`WALL_CH`) albo okna
+## nad otworem i bez niszczalnej przegrody (`ENTRY_KEEP`: kratka, deski i barykada muszą być widoczne). Pasy z ostatniego `set_shells`.
+static func shell_entry(e: Dictionary, c: int, rows: Array) -> bool:
+	if not String(e.get("set", "")) in ["station", "bunker"] or (c != int(e["c0"]) and c != int(e["c1"])):
+		return false
+	for o: Dictionary in shell_bands:
+		if o != e and (int(o["c0"]) == c + 1 or int(o["c1"]) == c - 1) and int(o["r0"]) < int(e["r1"]) and int(e["r0"]) < int(o["r1"]):
+			return false
+	var wall := false
+	for r in range(int(e["r0"]) + 1, int(e["r1"])):
+		var ch := _ch(rows, c, r)
+		if ch in ENTRY_KEEP:
+			return false
+		wall = wall or ch in WALL_CH or ch == "|"
+	return wall
 
 ## Przód strefy wydobycia (`dig_zone.chunk_mesh`): SHELL_Z, gdy strefa styka się z pasem wpisu z przekrojem (koniec sali podziemi 1.3 —
 ## ściana do kopania stoi w jednym planie z podłogą i stropem przekroju), inaczej DEPTH_FRONT. Prostokąt w kaflach.

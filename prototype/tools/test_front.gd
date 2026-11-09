@@ -158,13 +158,16 @@ func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: 
 func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 	for k: Vector2i in Level3D.shell_walls:
 		var ch := String(rows[k.y]).substr(k.x, 1)
-		_check(ch in Level3D.WALL_CH, "%s %s: ściana przekroju na kaflu '%s'" % [map_id, k, ch])
+		var entry := false                                   # kolumna wejścia budynku: cała wysokość pasa, także przed otworem
+		for e: Dictionary in Level3D.shell_bands:
+			entry = entry or (k.y > int(e["r0"]) and k.y < int(e["r1"]) and Level3D.shell_entry(e, k.x, rows))
+		_check(entry or ch in Level3D.WALL_CH, "%s %s: ściana przekroju na kaflu '%s'" % [map_id, k, ch])
 		_check(not Level3D.shell_cells.has(k), "%s %s: ściana przekroju na kaflu płyty" % [map_id, k])
 		for z in digs:
 			_check(not (k.x >= int(z[0]) and k.x <= int(z[2]) and k.y >= int(z[1]) and k.y <= int(z[3])), "%s %s: ściana przekroju w strefie wydobycia" % [map_id, k])
 		# tylko kolumna lita na całą wysokość pasa: przy oknie, drzwiach albo przejściu ściana zostaje w płaszczyźnie gry
 		for e: Dictionary in Level3D.shell_bands:
-			if k.x >= int(e["c0"]) and k.x <= int(e["c1"]) and k.y > int(e["r0"]) and k.y < int(e["r1"]):
+			if k.x >= int(e["c0"]) and k.x <= int(e["c1"]) and k.y > int(e["r0"]) and k.y < int(e["r1"]) and not entry:
 				for r in range(int(e["r0"]) + 1, int(e["r1"])):
 					var cr := String(rows[r]).substr(k.x, 1)
 					var dug := false
@@ -188,6 +191,13 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 			var mmi := c as MultiMeshInstance3D
 			_check(mmi.layers == Front3D.LAYER_WALL and mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: ściana %s ze złą warstwą albo z cieniem" % [map_id, mmi.name])
 		root.free()
+	if map_id in ["z1_m2", "z1_m3"]:
+		# wejścia budynków: pełna ściana przed drzwiami (1.3 posterunek i Skład, 1.2 hala), bez ściany przed kratką piwniczki 1.3
+		var ent: Array = [Vector2i(18, 24), Vector2i(36, 24), Vector2i(112, 23), Vector2i(142, 23)] if map_id == "z1_m3" else [Vector2i(66, 23), Vector2i(100, 23)]
+		for k: Vector2i in ent:
+			_check(Level3D.shell_walls.has(k), "%s %s: brak pełnej ściany wejścia" % [map_id, k])
+		if map_id == "z1_m3":
+			_check(not Level3D.shell_walls.has(Vector2i(37, 29)), "1.3: ściana wejścia zasłania kratkę piwniczki")
 	if map_id == "z1_m3":
 		# 1.3: nadproże nad niskim tunelem obok sali (skała między stropem tunelu a stropem sali) to płyta świata, nie ściana pierwszego planu
 		_check(Level3D.shell_cells.has(Vector2i(91, 32)) and not Level3D.shell_walls.has(Vector2i(91, 32)), "1.3: nadproże nad tunelem 91–108 nie jest płytą przekroju")
@@ -435,6 +445,13 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 			if bool(o.get("shell", false)) and absi(int(o["r1"]) - int(e["r1"])) <= 4:
 				for x in [float(o["c0"]) * T + 0.3, float(int(o["c1"]) + 1) * T - 0.3]:
 					_check(Front3D.ground_y(x, 3.0) == -INF, "%s: podłoże lasu wchodzi w przekrój %s (x %.1f)" % [map_id, o["set"], x])
+					# budynek na powierzchni: przed płytą podłogi przekroju grunt biegnie dalej (od SHELL_Z), na wysokości podłogi
+					# (przy brzegu może opadać jak podłoże przy szybie obok — na środku budynku leży na wysokości podłogi)
+					if absi(int(o["r1"]) - int(e["r1"])) <= 1:
+						var yb := Front3D.ground_y(x, Level3D.SHELL_Z)
+						var ym := Front3D.ground_y((float(o["c0"]) + float(o["c1"]) + 1.0) * 0.5 * T, Level3D.SHELL_Z + 0.5)
+						_check(yb > -INF and yb <= -float(o["r1"]) * T + 0.01 and absf(ym + float(o["r1"]) * T) < 0.01,
+								"%s: brak gruntu przed przekrojem %s (x %.1f, y %.2f, środek %.2f)" % [map_id, o["set"], x, yb, ym])
 	# pnie i kępy: tylko na równym podłożu (nie na zboczu dołka przed szybem i rampą) i poza pominięciami wpisu (jaskinia, wieża, budynek)
 	Level3D.set_shells(front, rows)
 	var root := Node3D.new()
@@ -456,6 +473,18 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 					_check(x < float(sk[0]) * T or x > float(int(sk[1]) + 1) * T, "%s %s: pień w pominięciu %s (x %.1f)" % [map_id, mi.name, sk, x])
 	if front.any(func(e: Dictionary) -> bool: return bool((Front3D.SETS[e["set"]] as Dictionary).get("open", false))):
 		_check(n > 0, "%s: las bez elementów na podłożu" % map_id)
+	# podłoga tuneli i sal pod ziemią przed płytą przekroju: od SHELL_Z, płaska, nie wyżej niż najwyższa podłoga przekroju
+	var tun: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)) and String(e["set"]) != "bunker")
+	if not tun.is_empty():
+		var ytop := -INF
+		for e: Dictionary in tun:
+			ytop = maxf(ytop, -float(e["r1"]) * T)
+		var floors: Array = root.get_children().filter(func(c: Node) -> bool: return String(c.name).begins_with("FrontFloor"))
+		_check(not floors.is_empty(), "%s: brak podłogi tunelu przed przekrojem" % map_id)
+		for c: Node in floors:
+			var bb := ((c as MeshInstance3D).mesh as ArrayMesh).get_aabb()
+			_check(bb.position.z >= Level3D.SHELL_Z - 0.05 and bb.end.z >= float(Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1]) - 0.01 and bb.end.y <= ytop + 0.01,
+					"%s: podłoga tunelu z %.2f..%.2f, wierzch %.2f (podłoga %.2f)" % [map_id, bb.position.z, bb.end.z, bb.end.y, ytop])
 	root.queue_free()
 	Front3D.prepare_ground([], rows, [])
 

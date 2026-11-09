@@ -82,6 +82,7 @@ const FERN_SINK := 0.2                     ## część karty paproci pod podło�
 ## pod pniami i kępami (FOOT): element pierwszego planu rysuje się nad warstwą świata, więc musi stać na płaskim gruncie na wysokości
 ## swojego `ywin`.
 const GROUND_Z := [1.5, 2.0, 2.6, 3.3, 4.1, 5.0, 6.0, 7.2, 8.6, 10.2, 12.0, 14.0, 16.0]   ## m: rzędy siatki (pierwszy rząd: przód bryły)
+const GROUND_LIFT := 0.004               ## m: pierwszy rząd płyty (na przodzie bryły) nad jej wierzchem, nie pod nim
 const GROUND_DROP := 6.0                   ## m: przód i boki płyty schodzą tyle w dół
 const GROUND_PAD := 8                      ## kafli poza pas wpisu (rzut przy brzegu kadru sięga dalej od środka); bez wejścia w przekrój obok
 const GROUND_BUMP := Vector2(0.06, 0.3)    ## nierówność: m przyrostu na metr od GROUND_Z[0] i najwyżej
@@ -94,6 +95,7 @@ const PROP_Z := Vector2(5.6, 9.0)          ## m: przed pniami (rzut niżej niż 
 ## z SURF_FADE.y do SURF_FADE.x m nad najwyższy punkt podłoża (gracz na podłożu: kamera ok. 5,3 m nad nim). Spod ziemi płyta zakrywałaby
 ## przekrój korytarza, a pnie przycięte do podłoża (`ywin`) wisiałyby nad nim.
 const SURF_FADE := Vector2(2.4, 4.4)
+static var _on_surface := {}               ## wpisy z przekrojem z podłogą na powierzchni (grunt przed nimi to mostek `_ground`, nie `_floors`)
 static var _ground: Array = []             ## [{"x0", "x1" [m], "c0" (kolumna pierwszej wartości), "ys": PackedFloat32Array (y podłoża kolumny)}]
 static var _ground_top := -INF             ## m: najwyższy y podłoża (`SURF_FADE`)
 static var _ground_nodes: Array = []       ## płyta, runo, kamienie wszystkich budów świata (`Geometry` i `GeometryAfterCollapse`): wygaszane pod powierzchnią
@@ -913,6 +915,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			ol.position = b
 			mi.add_child(ol)
 	_build_ground(parent, rows)
+	_build_floors(parent, front, rows)
 	return items.size()
 
 
@@ -926,9 +929,8 @@ static func prepare_ground(front: Array, rows: Array, items: Array) -> void:
 		_noise = FastNoiseLite.new()
 		_noise.seed = 87
 		_noise.frequency = 0.22
-	var T := Level3D.T
-	var nrows := rows.size()
-	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var bcols := {}                                      # kolumna mostka przed budynkiem → wiersz gruntu
+	_on_surface = {}
 	for e: Dictionary in front:
 		if not bool((SETS.get(String(e.get("set", "")), {}) as Dictionary).get("open", false)):
 			continue
@@ -938,34 +940,62 @@ static func prepare_ground(front: Array, rows: Array, items: Array) -> void:
 		for o: Dictionary in front:                      # przekrój obok (hala stacji): podłoże kończy się na jego brzegu
 			if not bool(o.get("shell", false)) or absi(int(o["r1"]) - r1) > 4:
 				continue
+			var touch := false
 			if int(o["c0"]) > int(e["c1"]) and int(o["c0"]) <= c1:
-				c1 = int(o["c0"]) - 1
+				c1 = mini(c1, int(o["c0"]) - 1)
+				touch = true
 			if int(o["c1"]) < int(e["c0"]) and int(o["c1"]) >= c0:
-				c0 = int(o["c1"]) + 1
-		var raw := PackedFloat32Array()
-		for c in range(c0 - 1, c1 + 2):
-			var r := r1
-			if nrows > 0:
-				var cc := clampi(c, 0, cols - 1)
-				while r < mini(r1 + 8, nrows - 1) and not Level3D.is_solid_ch(Level3D._ch(rows, cc, r)):
-					r += 1
-			raw.append(-float(r) * T)
-		var ys := PackedFloat32Array()
-		for i in range(1, raw.size() - 1):
-			ys.append(minf(raw[i], minf(raw[i - 1], raw[i + 1])))
-		_ground.append({"x0": float(c0) * T, "x1": float(c1 + 1) * T, "c0": c0, "ys": ys})
-		for y in ys:
+				c0 = maxi(c0, int(o["c1"]) + 1)
+				touch = true
+			# budynek na powierzchni (podłoga albo strop piwnicy w wierszu gruntu wpisu): przed płytą przekroju grunt biegnie dalej
+			# od SHELL_Z (uwaga z gry 2026-11-09: pusto przed płytą podłogi posterunku)
+			if touch and (absi(int(o["r1"]) - r1) <= 1 or absi(int(o["r0"]) - r1) <= 1) and not "--noshell" in OS.get_cmdline_user_args():
+				for c in range(int(o["c0"]), int(o["c1"]) + 1):
+					bcols[c] = r1
+				if absi(int(o["r1"]) - r1) <= 1:
+					_on_surface[o] = true
+		_ground.append(_span(rows, c0, c1, r1, Level3D.DEPTH_FRONT - 0.04))
+	var bs: Array = bcols.keys()                         # mostki przed budynkami: ciągi kolumn (posterunek z piwniczką to jeden pas)
+	bs.sort()
+	var i := 0
+	while i < bs.size():
+		var j := i
+		while j + 1 < bs.size() and int(bs[j + 1]) == int(bs[j]) + 1 and bcols[bs[j + 1]] == bcols[bs[i]]:
+			j += 1
+		_ground.append(_span(rows, int(bs[i]), int(bs[j]), int(bcols[bs[i]]), Level3D.SHELL_Z - 0.04))
+		i = j + 1
+	for g: Dictionary in _ground:
+		for y in (g["ys"] as PackedFloat32Array):
 			_ground_top = maxf(_ground_top, y)
 	for it: Dictionary in items:
 		if bool((SETS[it["set"]] as Dictionary).get("open", false)) and String(it["kind"]) != "bough":
 			_feet.append(Vector2(float(it["x"]), float(it["z"])))
 
 
+## Pas podłoża kolumn c0..c1 od z0 (m przed płaszczyzną gry): y kolumny jak w `prepare_ground`, "zb" — początek nierówności (`_bump`).
+static func _span(rows: Array, c0: int, c1: int, r1: int, z0: float) -> Dictionary:
+	var T := Level3D.T
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
+	var raw := PackedFloat32Array()
+	for c in range(c0 - 1, c1 + 2):
+		var r := r1
+		if nrows > 0:
+			var cc := clampi(c, 0, cols - 1)
+			while r < mini(r1 + 8, nrows - 1) and not Level3D.is_solid_ch(Level3D._ch(rows, cc, r)):
+				r += 1
+		raw.append(-float(r) * T)
+	var ys := PackedFloat32Array()
+	for i in range(1, raw.size() - 1):
+		ys.append(minf(raw[i], minf(raw[i - 1], raw[i + 1])))
+	return {"x0": float(c0) * T, "x1": float(c1 + 1) * T, "c0": c0, "ys": ys, "z0": z0, "zb": z0 + 0.04 + float(GROUND_Z[0]) - Level3D.DEPTH_FRONT}
+
+
 ## y podłoża (m) w punkcie x i z (m przed płaszczyzną gry) albo -INF poza podłożem.
 static func ground_y(x: float, z: float) -> float:
 	for g: Dictionary in _ground:
-		if x >= float(g["x0"]) - 0.01 and x <= float(g["x1"]) + 0.01:
-			return _span_y(g, x) + _bump(x, z)
+		if x >= float(g["x0"]) - 0.01 and x <= float(g["x1"]) + 0.01 and z >= float(g["z0"]) - 0.05:
+			return _span_y(g, x) + _bump(x, z, g["zb"])
 	return -INF
 
 
@@ -1017,8 +1047,8 @@ static func _span_y(g: Dictionary, x: float) -> float:
 
 
 ## Nierówność podłoża: zero przy bryle, rośnie ku kamerze; płasko pod elementami lasu (`_feet`).
-static func _bump(x: float, z: float) -> float:
-	var amp := clampf((z - float(GROUND_Z[0])) * GROUND_BUMP.x, 0.0, GROUND_BUMP.y)
+static func _bump(x: float, z: float, zb: float) -> float:
+	var amp := clampf((z - zb) * GROUND_BUMP.x, 0.0, GROUND_BUMP.y)
 	if amp <= 0.0 or _noise == null:
 		return 0.0
 	var flat := 1.0
@@ -1039,15 +1069,31 @@ static func _in_foot(x: float, z: float, k := 1.0) -> bool:
 static func _build_ground(parent: Node3D, rows: Array) -> void:
 	if _ground.is_empty() or "--nofrontground" in OS.get_cmdline_user_args():      # dev: bez płyty podłoża i runa (porównanie A/B)
 		return
-	var T := Level3D.T
-	var zs := PackedFloat32Array([Level3D.DEPTH_FRONT - 0.04])
-	for z: float in GROUND_Z:
-		zs.append(z)
+	var mi := MeshInstance3D.new()
+	mi.name = "FrontGround"
+	mi.mesh = _plate_mesh(_ground)
+	mi.material_override = Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła `#`
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mi)
+	_ground_nodes.append(mi)
+	_ground_cover(parent)
+	for c in parent.get_children():
+		if String(c.name).begins_with("FrontGround_") and c is GeometryInstance3D:
+			_ground_nodes.append(c)
+
+
+## Siatka płyty z pasów (`_span`): wierzch od z0 do GROUND_Z[-1] z nierównością, przód i boki w dół o GROUND_DROP.
+static func _plate_mesh(spans: Array) -> ArrayMesh:
 	var verts: Array = []                                  # Array, nie Packed*: lambda `tri` dopisuje do niego (Packed* łapie kopię)
 	var nrms: Array = []
-	for g: Dictionary in _ground:
+	var T := Level3D.T
+	for g: Dictionary in spans:
 		var x0: float = g["x0"]
 		var x1: float = g["x1"]
+		var zs := PackedFloat32Array([float(g["z0"])])        # pas lasu: od przodu bryły; przed budynkiem: od SHELL_Z
+		for z: float in GROUND_Z:
+			if z > float(g["z0"]) + 0.3:
+				zs.append(z)
 		var nx := int(ceil((x1 - x0) / (T * 0.5))) + 1
 		var nz := zs.size()
 		var hs := PackedFloat32Array()
@@ -1057,8 +1103,9 @@ static func _build_ground(parent: Node3D, rows: Array) -> void:
 			xs.append(lerpf(x0, x1, float(i) / float(nx - 1)))
 		for j in nz:
 			for i in nx:
-				# pierwszy rząd tuż pod wierzchem bryły (wsuwa się pod niego) — bez migotania dwóch powierzchni
-				hs[j * nx + i] = _span_y(g, xs[i]) + (-0.02 if j == 0 else _bump(xs[i], zs[j]))
+				# pierwszy rząd 4 cm za przodem bryły i GROUND_LIFT nad jej wierzchem: płyta 2 cm niżej odsłaniała 2 cm nieoświetlonego przodu
+				# bryły — ciemna linia między planami w każdym kręgu światła (uwaga z gry 2026-11-09)
+				hs[j * nx + i] = _span_y(g, xs[i]) + (GROUND_LIFT if j == 0 else _bump(xs[i], zs[j], g["zb"]))
 		var nrm := func(i: int, j: int) -> Vector3:
 			var im := maxi(i - 1, 0)
 			var ip := mini(i + 1, nx - 1)
@@ -1108,17 +1155,35 @@ static func _build_ground(parent: Node3D, rows: Array) -> void:
 	arr[Mesh.ARRAY_NORMAL] = PackedVector3Array(nrms)
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	var mi := MeshInstance3D.new()
-	mi.name = "FrontGround"
-	mi.mesh = mesh
-	mi.material_override = Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła `#`
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	parent.add_child(mi)
-	_ground_nodes.append(mi)
-	_ground_cover(parent)
-	for c in parent.get_children():
-		if String(c.name).begins_with("FrontGround_") and c is GeometryInstance3D:
-			_ground_nodes.append(c)
+	return mesh
+
+
+## Podłoga tuneli i sal pod ziemią przed płytą przekroju (SHELL_Z → GROUND_Z[-1]), jak podłoże lasu na powierzchni (uwaga z gry
+## 2026-11-09: „przebuduj też sceny z tunelami”): płaska, materiał kafli podłogi (beton albo skała), bez runa i bez wygaszania — spod
+## powierzchni widać ją zamiast pustki, a z kamery nad powierzchnią zasłania ją płyta podłoża lasu. Bez kryjówki (piętra jedno nad drugim).
+static func _build_floors(parent: Node3D, front: Array, rows: Array) -> void:
+	if rows.is_empty() or "--nofrontground" in OS.get_cmdline_user_args() or "--noshell" in OS.get_cmdline_user_args():
+		return
+	var by_mat := {}
+	for e: Dictionary in front:
+		if not bool(e.get("shell", false)) or String(e.get("set", "")) == "bunker" or _on_surface.has(e):
+			continue
+		var nc := 0
+		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			nc += int(Level3D._ch(rows, c, int(e["r1"])) == "C")
+		var key := "C" if nc * 2 > int(e["c1"]) - int(e["c0"]) + 1 else "#"
+		var g := _span(rows, int(e["c0"]), int(e["c1"]), int(e["r1"]), Level3D.SHELL_Z - 0.04)
+		g["zb"] = INF                                    # płasko
+		if not by_mat.has(key):
+			by_mat[key] = []
+		(by_mat[key] as Array).append(g)
+	for key: String in by_mat:
+		var mi := MeshInstance3D.new()
+		mi.name = "FrontFloor"
+		mi.mesh = _plate_mesh(by_mat[key])
+		mi.material_override = Level3D.make_pbr("concrete", 0.33, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone") if key == "C" 				else Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
 
 
 ## Runo na podłożu (karty trawy i paproci jak na bryle, wyższe dalej od bryły — rzut i tak leży poniżej linii podłogi) oraz kamienie,
@@ -1129,19 +1194,20 @@ static func _ground_cover(parent: Node3D) -> void:
 	rng.seed = 0x6D0F
 	var xf := {"grass_a": [], "grass_b": [], "fern_a": []}
 	cover_tops = PackedVector2Array()
-	var z0 := Level3D.DEPTH_FRONT + 0.15
 	var z1: float = GROUND_Z[GROUND_Z.size() - 4]
 	for g: Dictionary in _ground:
 		var x0: float = g["x0"]
 		var x1: float = g["x1"]
+		var zf: float = float(g["z0"]) + 0.04            # przód bryły albo płyty podłogi przekroju
+		var z0 := zf + 0.15
 		for _n in int((x1 - x0) * GROUND_GRASS):
 			var x := rng.randf_range(x0, x1)
 			var z := z0 + (z1 - z0) * pow(rng.randf(), 1.3)
 			if _in_foot(x, z):
 				continue
-			var hmax := 0.3 + 0.12 * (z - Level3D.DEPTH_FRONT)
-			var fern := z > 2.8 and rng.randf() < 0.22
-			var h := minf(rng.randf_range(0.55, 0.95) if fern else rng.randf_range(0.2, 0.42) + 0.03 * (z - Level3D.DEPTH_FRONT), hmax)
+			var hmax := 0.3 + 0.12 * (z - zf)
+			var fern := z > zf + 1.7 and rng.randf() < 0.22
+			var h := minf(rng.randf_range(0.55, 0.95) if fern else rng.randf_range(0.2, 0.42) + 0.03 * (z - zf), hmax)
 			var wd := h * (1.5 if fern else rng.randf_range(0.9, 1.3))
 			var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6)).scaled(Vector3(wd, h, wd))
 			var kind := "fern_a" if fern else ("grass_a" if rng.randf() < 0.6 else "grass_b")
@@ -1153,7 +1219,7 @@ static func _ground_cover(parent: Node3D) -> void:
 	for g: Dictionary in _ground:
 		var x := float(g["x0"]) + rng.randf_range(3.0, 9.0)
 		while x < float(g["x1"]) - 2.0:
-			var z := rng.randf_range(PROP_Z.x, PROP_Z.y)
+			var z := rng.randf_range(maxf(PROP_Z.x, float(g["z0"]) + 1.2), PROP_Z.y)
 			var pname: String = GROUND_PROPS[k % GROUND_PROPS.size()]
 			k += 1
 			var mm := Level3D.model_mesh(pname)

@@ -587,8 +587,8 @@ Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mo
   wskazówek), więc rysowało się wnętrze z pełnym obrysem.
 - **Podłoże przed płaszczyzną gry** (uwaga użytkownika 2026-11-09 po pierwszych zrzutach: „zbudujmy do tego podłoże, aby całość była
   spójna” — pnie schodziły przez dolny brzeg kadru w pustkę przed przekrojem ziemi, kępy wisiały 6 m pod podłogą nad niczym):
-  - wpis otwarty buduje płytę terenu (`Front3D._build_ground`) od przodu bryły gruntu (`DEPTH_FRONT`, pierwszy rząd wsunięty 2 cm
-    pod wierzch bryły — bez migotania) do 16 m ku kamerze, z przodem i bokami 6 m w dół; ten sam materiał co bryła `#`
+  - wpis otwarty buduje płytę terenu (`Front3D._build_ground`) od przodu bryły gruntu (`DEPTH_FRONT`, pierwszy rząd 4 cm za przodem
+    bryły i 4 mm nad jej wierzchem — patrz poprawki po zagraniu 1.3) do 16 m ku kamerze, z przodem i bokami 6 m w dół; ten sam materiał co bryła `#`
     (`make_pbr("terrain")`, rzut trójpłaszczyznowy w świecie), więc tekstura przechodzi bez szwu, a przekrój ziemi pod bryłą znika
     pod płytą; warstwa świata — światło, mgła i błysk burzy jak na wierzchu bryły (w warstwie pierwszego planu dostałaby jaśniejsze
     otoczenie i kontrę postaci, szew na przodzie bryły);
@@ -637,8 +637,38 @@ Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mo
 - Zrzuty map: `m1_c30l`, `m1_c110l`, `m1_c170l` (jaskinia bez pni), `m1b_c230l`, `m1b_c242l` (dołek przed rampą), `m1b_c250l`
   i `m1b_c300l` (pod ziemią — bez lasu i płyty), `m1b_c110`, `m1b_c275` (noc), `m2_c120l`, `m2_c190`, `m3_c8l`, `m3_c60l`, `m3_c60`,
   `m3_c170l`, `m3_c170w` (wszystkie `_s.jpg`).
-- Zostaje: nagranie w ruchu, decyzja użytkownika po zagraniu; przed halą stacji (od kolumny 66) płyta
-  przekroju kończy się na 5,6 m, a podłoże lasu na jej brzegu — dalej ku kamerze pusto (w nocy prawie niewidoczne).
+- Zostaje: nagranie w ruchu, decyzja użytkownika po zagraniu.
+
+### Poprawki po zagraniu 1.3 (2026-11-09, 1.7.526)
+
+Uwagi użytkownika ze zrzutami startu 1.3 przy posterunku: „usuń linię oddzielającą plany”, „przebuduj też sceny z budynkami
+i tunelami”, „dodaj kompletne ściany (te, gdzie się wchodzi do budynku i wychodzi z niego), aby wrażenia były spójne”.
+
+- **Linia między planami:** pierwszy rząd płyty podłoża leżał 2 cm pod wierzchem bryły (bez migotania dwóch powierzchni), więc z kamery
+  nad gruntem było widać 2 cm przodu bryły — w kręgu światła gracza i znajdźki ciemna kreska 1–2 px na przedniej krawędzi bryły (przód
+  jest zwrócony do kamery, a światło stoi za nim). Teraz pierwszy rząd leży 4 mm nad wierzchem bryły (`GROUND_LIFT`), 4 cm za jej przodem;
+  profil jasności pod graczem na 1.3 (kolumna 8) bez spadku (wcześniej 9 przy ok. 25 wokół). Próba z zakładką 0,3 m nic nie dodała,
+  a przy błocie (start 1.3) rysowała twardą krawędź płyty nad niecką — odrzucona. Brzeg niecki błota przed płytą to zmiana materiału, nie linia.
+- **Grunt przed budynkami:** wpis otwarty, który kończy się na przekroju budynku z podłogą (albo stropem piwnicy) w wierszu swojego
+  gruntu, dokłada pas płyty od przodu płyty podłogi przekroju (`SHELL_Z` − 4 cm) do 16 m, z runem, kamieniami i nierównością liczoną od jego
+  początku (`_span`, klucze `z0` i `zb`). Kolumny przyległych budynków łączą się w jeden pas (posterunek z piwniczką 1.3: 18–37 —
+  wcześniej kolumna 37 między piwniczką a lasem nie miała płyty, bo przycięcia do dwóch przekrojów nadpisywały się). `ground_y` zwraca
+  podłoże pasa dopiero od jego `z0`, więc nad płytą przekroju (z < 5,6 m) płyty lasu nadal nie ma.
+- **Podłoga pod ziemią:** tunele i sale pod powierzchnią (wpisy z przekrojem bez podłogi na powierzchni, bez kryjówki — piętra jedno nad
+  drugim) dostają płytę od `SHELL_Z` do 16 m (`Front3D._build_floors`, węzły `FrontFloor`): płaska, materiał większości kafli podłogi
+  (beton tunelu drezyny 1.2, skała tuneli 1.3 i piwniczki), bez runa i bez wygaszania — spod ziemi widać ją zamiast ciemnego przodu
+  fundamentu, a z kamery nad powierzchnią zasłania ją płyta lasu. Siatka płyty jest wspólna (`_plate_mesh`).
+- **Ściany wejścia:** skrajna kolumna budynku (`station`, `bunker`) bez sąsiedniego przekroju na tej wysokości, z kawałkiem ściany albo okna
+  nad drzwiami (`Level3D.shell_entry`), dostaje ścianę przekroju (`shell_walls`, beton) na całą wysokość pasa, także przed otworem —
+  budynek to zamknięta bryła jak podłoga i strop. Wcześniej taka kolumna zostawała w płaszczyźnie gry, bo sam wysunięty kawałek nad drzwiami
+  wisiał jak skrzynia (uwaga z 2026-11-08); teraz ściana sięga od podłogi do stropu. Drzwi zostają w pasie gry: postać w nich widać przez
+  wygaszanie ściany przy sylwetkach, sam otwór z kamery na wprost jest zasłonięty (widać go z boku w perspektywie). Kolumna z kratką,
+  deskami albo barykadą (`ENTRY_KEEP`) zostaje bez ściany — przegroda do zniszczenia musi być widoczna (kratka piwniczki 1.3). Przejścia
+  między salami tuneli (sąsiedni wpis) zostają otwarte. Kryjówka bez zmian (same pełne ściany).
+- GPU (4K, HIGH, debug, dwa pomiary, przed i po): posterunek 1.3 od środka (kolumna 27, grunt przed płytą podłogi i ściany wejść) 7,23 → 7,44 ms (+0,22; płyta z runem jak w lesie), tunel drezyny 1.2 (kolumna 150, podłoga do 16 m) 6,25 → 6,32 ms (+0,07).
+- Zrzuty (`shots_front/forest/`, noc rozjaśniona ×2,5): `t_ab_c8.jpg` (linia przed i po), `u_m3_c14_s` i `u_m3_c14l_s` (ściana wejścia
+  posterunku i grunt przed nim), `u_m3_c27_s` (posterunek od środka), `u_m3_c127l_s` (grunt przed Składem), `u_m2_c62l_s`, `w_m2_c104_s`
+  (wejście i wyjście hali 1.2), `w_m2_c150_s` (tunel drezyny), `w_m3_c45_s`, `w_m3_c75_s` (tunele 1.3), `w_m3_c34_s` (piwniczka).
 
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
