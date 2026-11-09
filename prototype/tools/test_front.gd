@@ -183,7 +183,7 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 	for z in digs:
 		var zf := Level3D.zone_front_z(int(z[0]), int(z[1]), int(z[2]), int(z[3]))
 		_check(is_equal_approx(zf, Level3D.DEPTH_FRONT) or is_equal_approx(zf, Level3D.SHELL_Z), "%s: przód strefy wydobycia %.2f" % [map_id, zf])
-	if map_id in ["z1_m3", "z1_hub"]:
+	if map_id == "z1_m3":                          # kryjówka to budynki 3D (bez ścian przekroju z kafli)
 		_check(not Level3D.shell_walls.is_empty(), map_id + ": brak ścian przekroju")
 		var root := Node3D.new()
 		get_root().add_child(root)
@@ -207,6 +207,8 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		# posterunek: drzwi po obu stronach; Skład: bramy na parterze i okna piętra po obu stronach
 		_check_building(rows, "1.3 posterunek", 18, 36, 21, 26, ["-1:door", "1:door"])
 		_check_building(rows, "1.3 Skład", 112, 142, 18, 26, ["-1:gate", "1:gate", "-1:window", "1:window"])
+	if map_id == "z1_hub":
+		_check_vault(rows)
 	if map_id == "z1_m3":
 		# 1.3: nadproże nad niskim tunelem obok sali (skała między stropem tunelu a stropem sali) to płyta świata, nie ściana pierwszego planu
 		_check(Level3D.shell_cells.has(Vector2i(91, 32)) and not Level3D.shell_walls.has(Vector2i(91, 32)), "1.3: nadproże nad tunelem 91–108 nie jest płytą przekroju")
@@ -546,6 +548,42 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 		walls += int(absf(sz.x - Building3D.WALL) < 0.001 and sz.y > 1.0)
 	_check(walls >= 4, "%s: za mało odcinków ścian szczytowych 0,4 m (%d)" % [name, walls])
 	_check(not (p["cut"] as Array).is_empty(), "%s: brak przekroju budynku" % name)
+
+## Kryjówka: trzy kondygnacje bunkra w skale (`"vault"`, `buried`) jedna nad drugą. Bez ścian przekroju i fasad z kafli; płyta stropu tylko nad
+## murem wiersza dachu (otwory szybów `=` wolne), nic poza ścianami szczytowymi (okap, cokół, pilastry weszłyby w skałę), słupy poza otworami
+## w stropie i podłodze, wszystko za płaszczyzną przekroju i z jej materiałem, żeber `interior_ribs` w budynku nie ma.
+func _check_vault(rows: Array) -> void:
+	var T := Level3D.T
+	var zc := Level3D.SHELL_Z
+	_check(Level3D.buildings.size() == 3, "kryjówka: %d budynków 3D zamiast 3" % Level3D.buildings.size())
+	_check(Level3D.shell_walls.is_empty() and Level3D.shell_facades.is_empty(), "kryjówka: ściany albo fasady przekroju z kafli przy budynkach 3D")
+	_check(Level3D.interior_ribs(rows).is_empty(), "kryjówka: żebra z kafli w budynku 3D (%s)" % [Level3D.interior_ribs(rows)])
+	for b: Dictionary in Level3D.buildings:
+		var tag := "kryjówka %d–%d r%d" % [int(b["c0"]), int(b["c1"]), int(b["r0"])]
+		_check(String(b["kind"]) == "vault" and (b["open"] as Array).is_empty(), "%s: typ %s, otwory %s" % [tag, b["kind"], b["open"]])
+		var x0 := float(int(b["c0"])) * T
+		var x1 := float(int(b["c1"]) + 1) * T
+		var p := Building3D.parts(b, rows)
+		var slabs := 0
+		for key: String in p:
+			for xf: Transform3D in p[key]:
+				var sz := xf.basis.get_scale()
+				var xa := xf.origin.x - sz.x * 0.5
+				var xb := xf.origin.x + sz.x * 0.5
+				_check(xa >= x0 - 0.001 and xb <= x1 + 0.001, "%s: '%s' poza ścianami (x %.2f–%.2f)" % [tag, key, xa, xb])
+				_check(xf.origin.z + sz.z * 0.5 <= zc + Building3D.CUT + 0.001, "%s: '%s' przed przekrojem" % [tag, key])
+				if key in ["slab", "beam", "col"]:
+					for c in range(int(floorf((xa + 0.001) / T)), int(ceilf((xb - 0.001) / T))):
+						var top := not Level3D._ch(rows, c, int(b["r0"])) in Level3D.WALL_CH and xf.origin.y > -float(int(b["r0"]) + 1) * T
+						_check(not top, "%s: '%s' nad otworem stropu w kolumnie %d" % [tag, key, c])
+						if key == "col" and sz.y > 4.0:
+							_check(Level3D._ch(rows, c, int(b["r1"])) in Level3D.WALL_CH, "%s: słup nad otworem podłogi w kolumnie %d" % [tag, c])
+				slabs += int(key == "slab")
+		var shafts := false
+		for c in range(int(b["c0"]), int(b["c1"]) + 1):
+			shafts = shafts or not Level3D._ch(rows, c, int(b["r0"])) in Level3D.WALL_CH
+		_check(slabs >= (2 if shafts else 1), "%s: płyta stropu (%d kawałków, szyby: %s)" % [tag, slabs, shafts])
+		_check(not (p["cut"] as Array).is_empty() and not (p["col"] as Array).is_empty(), "%s: brak przekroju albo słupów" % tag)
 
 func _check_local_fade() -> void:
 	var T := Level3D.T
