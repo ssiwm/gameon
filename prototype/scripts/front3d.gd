@@ -90,7 +90,14 @@ const GROUND_GRASS := 5.0                  ## kart runa na metr podłoża wzdłu
 const GROUND_PROPS := ["rock", "stump", "tree_log", "rock_b", "rock_c", "stump"]
 const PROP_STEP := Vector2(14.0, 24.0)     ## m: odstęp kamieni, pniaków i kłód na podłożu
 const PROP_Z := Vector2(5.6, 9.0)          ## m: przed pniami (rzut niżej niż ich nasada — pień ich nie przykrywa)
+## Kamera pod podłożem (rampa i szyby kopalni 1.1 tuż pod powierzchnią, szyby 1.2 i 1.3): las i podłoże gasną, kiedy y kamery spada
+## z SURF_FADE.y do SURF_FADE.x m nad najwyższy punkt podłoża (gracz na podłożu: kamera ok. 5,3 m nad nim). Spod ziemi płyta zakrywałaby
+## przekrój korytarza, a pnie przycięte do podłoża (`ywin`) wisiałyby nad nim.
+const SURF_FADE := Vector2(2.4, 4.4)
 static var _ground: Array = []             ## [{"x0", "x1" [m], "c0" (kolumna pierwszej wartości), "ys": PackedFloat32Array (y podłoża kolumny)}]
+static var _ground_top := -INF             ## m: najwyższy y podłoża (`SURF_FADE`)
+static var _ground_nodes: Array = []       ## płyta, runo, kamienie wszystkich budów świata (`Geometry` i `GeometryAfterCollapse`): wygaszane pod powierzchnią
+static var _surface_k := 1.0
 static var _feet: Array = []               ## Vector2(x, z) elementów lasu — płaskie miejsca podłoża
 static var _noise: FastNoiseLite
 ## Test (`tools/test_front.gd`): wierzchołki kart runa na podłożu (x = y wierzchu, y = z) — w trybie headless `MultiMesh`
@@ -135,6 +142,7 @@ uniform vec4 pts[16];                      // xy: środek sylwetki na płaszczy�
 uniform float wts[16];                     // waga punktu 0–1 (płynne wejście i wyjście)
 uniform int npts = 0;
 uniform float min_a = 0.3;
+uniform float vis = 1.0;                   // las: 0 pod powierzchnią (`set_camera_y`)
 uniform float fade_m = 0.6;
 uniform float mid_y = 0.0;                 // środek kadru na płaszczyźnie gry [m]
 uniform float band = 0.0;                  // REDUCED: pół wysokości pasa bez pierwszego planu [m]; 0 = wył.
@@ -217,7 +225,7 @@ void fragment() {
 		// prześwit niezależny od samej jasności tekstury (+0,06): ciemnozielone igliwie ma albedo liniowe ok. 0,03 i bez tego by nie świeciło
 		EMISSION += rim_col * moon * (rim_k * fr * side + trans_k * (ALBEDO + vec3(0.06)));
 	}
-	ALPHA = a;
+	ALPHA = a * vis;
 }
 """
 
@@ -363,6 +371,12 @@ static func apart(a: Vector4, a_shell: bool, b: Vector4, b_shell: bool) -> bool:
 		return true
 	return a_shell and b_shell and (a.w <= b.z + 0.01 or b.w <= a.z + 0.01)
 
+## Las nad podziemiem (1.3: sale i tunele pod powierzchnią): pas drugiego wpisu leży cały pod podłożem lasu. Pod ziemią las gaśnie
+## (`SURF_FADE`), więc z rurami tunelu nie dzieli kadru (bez reguły jednego dużego elementu w kadrze).
+static func over_ground(a: Vector4, a_open: bool, b: Vector4, b_open: bool) -> bool:
+	return a_open != b_open and ((a_open and b.w <= a.z + 0.01) or (b_open and a.w <= b.z + 0.01))
+
+
 static func layout(front: Array, skip: Array, low := false, blocked: Array = []) -> Array:
 	var out := []
 	for e: Dictionary in front:
@@ -370,15 +384,19 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 		if st.is_empty():
 			continue
 		var clip := clip_of(e)
+		var sk: Array = skip + (e.get("skip", []) as Array)   # wpis: [[c0, c1], …] bez elementów (jaskinia, wieża, budynek bez przekroju)
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 0xF407 + int(e["c0"]) * 131 + int(e["r0"]) * 7
 		# wpisy, których pasy mieszczą się razem w kadrze NORMAL: duży element innego wpisu zajmuje ±BIG_SPACING.x dla dużych
 		# i ±SMALL_MIN dla małych, mały — ±SMALL_MIN dla dużych (najwyżej jeden duży element w kadrze także między wpisami)
 		var blk_big := blocked.duplicate()
 		var blk_small := blocked.duplicate()
+		var e_open := bool(st.get("open", false))
 		for o: Dictionary in out:
 			var oc: Vector4 = o["clip"]
 			if apart(oc, bool(o["shell"]), clip, bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()):
+				continue
+			if over_ground(clip, e_open, oc, bool((SETS[o["set"]] as Dictionary).get("open", false))):
 				continue
 			var ox: float = o["x"]
 			if bool(o["big"]):
@@ -397,7 +415,7 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 		var bi := 0
 		for i in xs.size():
 			var xb: float = xs[i]
-			if not _skipped(xb, skip):
+			if not _skipped(xb, sk):
 				var kb: String = st["big"][bi % (st["big"] as Array).size()]
 				bi += 1
 				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
@@ -409,7 +427,7 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 				var xm := _free_x(lerpf(xb, nx, frac) + rng.randf_range(-3.0, 3.0) * (0.5 if pair else 1.0), blk_small)
 				var ks: String = st[key][rng.randi() % (st[key] as Array).size()]
 				var want := rng.randf() < 0.6
-				if want and not low and xm - xb >= SMALL_MIN and nx - xm >= SMALL_MIN and xm < clip.y - MARGIN and not _skipped(xm, skip):
+				if want and not low and xm - xb >= SMALL_MIN and nx - xm >= SMALL_MIN and xm < clip.y - MARGIN and not _skipped(xm, sk):
 					out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
 	return out
 
@@ -799,6 +817,11 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 	_root = null
 	_ground = []
 	_feet = []
+	_ground_top = -INF
+	_ground_nodes = _ground_nodes.filter(func(n: Variant) -> bool: return is_instance_valid(n))   # bez czyszczenia: mapa z zawałem (1.1) buduje świat dwa razy (przed i po)
+	_surface_k = 1.0
+	for m: ShaderMaterial in _moon_mats:
+		m.set_shader_parameter("vis", 1.0)
 	if front.is_empty():
 		return 0
 	_root = Node3D.new()
@@ -811,6 +834,9 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			var zr := RandomNumberGenerator.new()
 			zr.seed = int(float(it["x"]) * 37.0)
 			it["z"] = zr.randf_range(CLUMP_Z.x, CLUMP_Z.y)
+	prepare_ground(front, rows, [])
+	items = items.filter(func(it: Dictionary) -> bool:     # pień i kępa tylko na równym podłożu (nie na zboczu dołka przed szybem i rampą)
+		return not bool((SETS[it["set"]] as Dictionary).get("open", false)) or String(it["kind"]) == "bough" or level_at(float(it["x"])))
 	prepare_ground(front, rows, items)
 	for it: Dictionary in items:
 		var clip: Vector4 = it["clip"]
@@ -928,6 +954,8 @@ static func prepare_ground(front: Array, rows: Array, items: Array) -> void:
 		for i in range(1, raw.size() - 1):
 			ys.append(minf(raw[i], minf(raw[i - 1], raw[i + 1])))
 		_ground.append({"x0": float(c0) * T, "x1": float(c1 + 1) * T, "c0": c0, "ys": ys})
+		for y in ys:
+			_ground_top = maxf(_ground_top, y)
 	for it: Dictionary in items:
 		if bool((SETS[it["set"]] as Dictionary).get("open", false)) and String(it["kind"]) != "bough":
 			_feet.append(Vector2(float(it["x"]), float(it["z"])))
@@ -939,6 +967,46 @@ static func ground_y(x: float, z: float) -> float:
 		if x >= float(g["x0"]) - 0.01 and x <= float(g["x1"]) + 0.01:
 			return _span_y(g, x) + _bump(x, z)
 	return -INF
+
+
+## Podłoże równe pod elementem: y pasa (bez nierówności) w x i ±0,6 FOOT.x taki sam.
+static func level_at(x: float) -> bool:
+	var y := _span_at(x)
+	return y > -INF and absf(_span_at(x - FOOT.x * 0.6) - y) < 0.05 and absf(_span_at(x + FOOT.x * 0.6) - y) < 0.05
+
+
+static func _span_at(x: float) -> float:
+	for g: Dictionary in _ground:
+		if x >= float(g["x0"]) - 0.01 and x <= float(g["x1"]) + 0.01:
+			return _span_y(g, x)
+	return -INF
+
+
+## Wygaszenie lasu i podłoża od y kamery (`SURF_FADE`): 1 nad powierzchnią, 0 pod nią; 1 bez podłoża.
+static func surface_k(cam_y: float) -> float:
+	if _ground_top == -INF:
+		return 1.0
+	return smoothstep(_ground_top + SURF_FADE.x, _ground_top + SURF_FADE.y, cam_y)
+
+
+## Co klatkę (`view3d._front_tick`, także przy „Foreground: OFF” — podłoże zostaje): las przez `vis` w shaderze, płyta i kamienie przez
+## przezroczystość węzła, runo (shader z alpha to coverage) znika w połowie.
+static func set_camera_y(cam_y: float) -> void:
+	var k := surface_k(cam_y)
+	if absf(k - _surface_k) < 0.0005:
+		return
+	_surface_k = k
+	for m: ShaderMaterial in _moon_mats:
+		m.set_shader_parameter("vis", k)
+	for n in _ground_nodes:
+		if not is_instance_valid(n):
+			continue
+		var g := n as GeometryInstance3D
+		if g is MultiMeshInstance3D:
+			g.visible = k > 0.5
+		else:
+			g.visible = k > 0.01
+			g.transparency = 1.0 - k
 
 
 static func _span_y(g: Dictionary, x: float) -> float:
@@ -1046,7 +1114,11 @@ static func _build_ground(parent: Node3D, rows: Array) -> void:
 	mi.material_override = Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła `#`
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
+	_ground_nodes.append(mi)
 	_ground_cover(parent)
+	for c in parent.get_children():
+		if String(c.name).begins_with("FrontGround_") and c is GeometryInstance3D:
+			_ground_nodes.append(c)
 
 
 ## Runo na podłożu (karty trawy i paproci jak na bryle, wyższe dalej od bryły — rzut i tak leży poniżej linii podłogi) oraz kamienie,
@@ -1085,7 +1157,7 @@ static func _ground_cover(parent: Node3D) -> void:
 			var pname: String = GROUND_PROPS[k % GROUND_PROPS.size()]
 			k += 1
 			var mm := Level3D.model_mesh(pname)
-			if not mm.is_empty() and not _in_foot(x, z, 1.25):
+			if not mm.is_empty() and not _in_foot(x, z, 1.25) and level_at(x):
 				var local: Transform3D = mm[1]
 				var ab := local * (mm[0] as Mesh).get_aabb()
 				var big := maxf(maxf(ab.size.x, ab.size.z), 0.001)

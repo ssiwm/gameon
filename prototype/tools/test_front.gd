@@ -99,6 +99,8 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 			var cb: Vector4 = b["clip"]
 			if Front3D.apart(ca, bool(a["shell"]), cb, bool(b["shell"])):        # pasy dalej niż kadr albo piętra rozdzielone płytą przekroju
 				continue
+			if Front3D.over_ground(ca, bool((Front3D.SETS[a["set"]] as Dictionary).get("open", false)), cb, bool((Front3D.SETS[b["set"]] as Dictionary).get("open", false))):
+				continue                                                          # las nad tunelem: pod ziemią gaśnie
 			var dx := absf(float(a["x"]) - float(b["x"]))
 			if bool(a["big"]) and bool(b["big"]):
 				_check(dx >= Front3D.BIG_SPACING.x - 0.01, "%s: dwa duże elementy %.1f m od siebie (x %.1f i %.1f), dwa w jednym kadrze" % [map_id, dx, a["x"], b["x"]])
@@ -389,6 +391,21 @@ func _check_ground(root: Node3D, y_floor: float) -> void:
 		if _proj(t.x, t.y, y_floor + 5.3, 20.2) > y_floor + 0.35:
 			bad += 1
 	_check(bad == 0, "podłoże: %d kart runa w rzucie wyżej niż stopy" % bad)
+	# kamera pod powierzchnią (`SURF_FADE`; gracz na podłożu: kamera ok. 5,3 m nad nim): płyta i runo znikają, las gaśnie przez `vis`
+	# mapa z zawałem (1.1) buduje świat dwa razy (`Geometry` i `GeometryAfterCollapse`): gasną obie kopie podłoża
+	var fm := Front3D._moon_mats[0] as ShaderMaterial
+	var r3 := Node3D.new()
+	get_root().add_child(r3)
+	Front3D.build(r3, [{"set": "forest", "c0": 0, "c1": 400, "r0": 0, "r1": 26}], [], false)
+	Front3D.set_camera_y(y_floor + 1.0)
+	var shown := 0
+	for c in root.get_children() + r3.get_children():
+		if String(c.name).begins_with("FrontGround") and (c as Node3D).visible:
+			shown += 1
+	r3.queue_free()
+	_check(shown == 0 and float(fm.get_shader_parameter("vis")) == 0.0, "kamera pod powierzchnią: %d węzłów podłoża widocznych, vis lasu %s" % [shown, fm.get_shader_parameter("vis")])
+	Front3D.set_camera_y(y_floor + 5.3)
+	_check(g.visible and g.transparency == 0.0 and float(fm.get_shader_parameter("vis")) == 1.0, "kamera nad powierzchnią: las albo podłoże wygaszone")
 	var r2 := Node3D.new()
 	get_root().add_child(r2)
 	Front3D.build(r2, [{"set": "tunnel", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}], [], false)
@@ -411,11 +428,35 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 				var r := int(e["r0"]) + 1
 				while r < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, clampi(cc, 0, cols - 1), r)):
 					r += 1
+				# szyb głębszy niż r1 + 8: dołek kończy się na tej głębokości (kamera w szybie jest już pod powierzchnią, `SURF_FADE`)
+				r = mini(r, int(e["r1"]) + 8)
 				_check(y <= -float(r) * T + 0.001, "%s kolumna %d: podłoże %.2f m nad gruntem kolumny %d" % [map_id, c, y + float(r) * T, cc])
 		for o: Dictionary in front:
 			if bool(o.get("shell", false)) and absi(int(o["r1"]) - int(e["r1"])) <= 4:
 				for x in [float(o["c0"]) * T + 0.3, float(int(o["c1"]) + 1) * T - 0.3]:
 					_check(Front3D.ground_y(x, 3.0) == -INF, "%s: podłoże lasu wchodzi w przekrój %s (x %.1f)" % [map_id, o["set"], x])
+	# pnie i kępy: tylko na równym podłożu (nie na zboczu dołka przed szybem i rampą) i poza pominięciami wpisu (jaskinia, wieża, budynek)
+	Level3D.set_shells(front, rows)
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Front3D.build(root, front, [], false, rows)
+	var fr := root.get_node_or_null("Front")
+	var n := 0
+	if fr != null:
+		for c in fr.get_children():
+			var mi := c as MeshInstance3D
+			var yw: Variant = mi.get_instance_shader_parameter("ywin") if mi != null else null
+			if not (yw is Vector2) or (yw as Vector2).y < 1e5 or (yw as Vector2).x < -1e5:
+				continue                                         # nie stoi na podłożu lasu (gałąź, rury)
+			n += 1
+			var x := mi.position.x
+			_check(Front3D.level_at(x), "%s %s: stoi na nierównym podłożu (x %.1f)" % [map_id, mi.name, x])
+			for e: Dictionary in front:
+				for sk: Array in (e.get("skip", []) as Array):
+					_check(x < float(sk[0]) * T or x > float(int(sk[1]) + 1) * T, "%s %s: pień w pominięciu %s (x %.1f)" % [map_id, mi.name, sk, x])
+	if front.any(func(e: Dictionary) -> bool: return bool((Front3D.SETS[e["set"]] as Dictionary).get("open", false))):
+		_check(n > 0, "%s: las bez elementów na podłożu" % map_id)
+	root.queue_free()
 	Front3D.prepare_ground([], rows, [])
 
 

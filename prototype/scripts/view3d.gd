@@ -946,7 +946,10 @@ func _build_world(root: Node3D, rows: Array, hub: bool, spread := false) -> Dict
 var _front_w := {}                           ## id węzła → [Vector4 prostokąt sylwetki, waga 0–1]
 
 func _front_tick(delta: float) -> void:
-	if _level == null or (_level.get("front") as Array).is_empty() or Settings.front_idx == 2:
+	if _level == null or (_level.get("front") as Array).is_empty():
+		return
+	Front3D.set_camera_y(_cam_a.global_position.y)               # pod ziemią las i podłoże gasną (także przy „Foreground: OFF”)
+	if Settings.front_idx == 2:
 		return
 	var c2 := get_viewport().get_camera_2d()
 	if c2 == null:

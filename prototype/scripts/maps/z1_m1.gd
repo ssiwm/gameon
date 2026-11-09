@@ -67,6 +67,12 @@ const DIG_ZONES := [[296, 36, 305, 44, "rock", 1101, 0.3]]
 ## Wnęki w tylnej ścianie kopalni (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
 ## Górna galeria: korytarz techniczny ponad 20 kolumn od gniazd ćm. Dolna galeria: regał bez światła obok lampy misji `I`
 ## (widać go w jej świetle) i boczna sztolnia przed przegrodą z desek, 14 kolumn od gniazda i z dala od strefy wydobycia.
+## Pierwszy plan (`front3d.gd`, `FOREGROUND_PLAN.md` F3): las z podłożem na całej powierzchni (wiersz gruntu 23); bez pni przed jaskinią
+## pod skalnym sufitem i przed strażnicą. Nad płytką kopalnią (rampa, sala, szyb wentylacyjny) las i podłoże gasną, kiedy kamera schodzi
+## pod powierzchnię (`Front3D.SURF_FADE`).
+const FRONT := [
+	{"set": "forest", "c0": 2, "c1": 305, "r0": 0, "r1": 23, "skip": [[148, 191], [210, 223]]},
+]
 const NICHES := [
 	{"kind": "corridor", "c0": 268, "c1": 270, "r0": 31, "r1": 33, "lit": "cage"},
 	{"kind": "shelf", "c0": 246, "c1": 248, "r0": 41, "r1": 42, "lit": ""},

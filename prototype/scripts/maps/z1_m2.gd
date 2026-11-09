@@ -58,6 +58,8 @@ const FRONT := [
 	{"set": "station", "c0": 66, "c1": 100, "r0": 18, "r1": 26, "shell": true},     # hala stacji
 	{"set": "tunnel", "c0": 8, "c1": 282, "r0": 44, "r1": 51, "shell": true},      # tunel drezyny
 	{"set": "forest", "c0": 2, "c1": 62, "r0": 0, "r1": 26},                       # las od startu do hali stacji (F3, pilot lasu)
+	# las za halą stacji do masztu; bez pni przed szopą na bagnie i pompownią (wnętrza bez przekroju), podłoże ciągłe (dołki przed szybami)
+	{"set": "forest", "c0": 101, "c1": 285, "r0": 0, "r1": 26, "skip": [[112, 132], [216, 246]]},
 ]
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od

@@ -59,6 +59,10 @@ const FRONT := [
 	{"set": "tunnel", "c0": 109, "c1": 143, "r0": 30, "r1": 40, "shell": true},    # wschodnia sala (niecka oleju)
 	{"set": "tunnel", "c0": 144, "c1": 170, "r0": 35, "r1": 40, "shell": true},    # tunel z trzecim szybem
 	{"set": "tunnel", "c0": 171, "c1": 191, "r0": 30, "r1": 40, "shell": true},    # sala ewakuacji z końcową ścianą
+	# las z podłożem (F3) na powierzchni poza przekrojami posterunku i Składu: skraj lasu przy starcie, arena z kładkami, tartak nad stawem
+	{"set": "forest", "c0": 2, "c1": 17, "r0": 0, "r1": 26},
+	{"set": "forest", "c0": 38, "c1": 111, "r0": 0, "r1": 26},
+	{"set": "forest", "c0": 143, "c1": 189, "r0": 0, "r1": 26},
 ]
 const FRONT_SKIP := []
 

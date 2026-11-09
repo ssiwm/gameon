@@ -556,7 +556,7 @@ kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepop
 - Zrzuty: `shots_front/f3_m3/` — `s_y_start10l.jpg`, `s_y_post30l.jpg` (start i posterunek), `s_x_mud22l.jpg` (błoto w zachodniej
   sali), `s_x_east183.jpg` (końcowa ściana), `s_z_hub4l.jpg`, `s_z_hub67l.jpg` (kryjówka), `s_z_m2hall98l.jpg` (hala 1.2).
 
-### Wyniki F3 — las z kontrą i podłożem, 1.2 (2026-11-09, 1.7.526)
+### Wyniki F3 — las z kontrą i podłożem, 1.1–1.3 (2026-11-09, 1.7.526)
 
 Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mocniejszej kontry od księżyca”) i katalog lasu z F3.
 
@@ -609,12 +609,35 @@ Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mo
     odbita karta ma odwróconą kolejność wierzchołków.
 - Wpis na 1.2: las od startu do hali stacji (kolumny 2–62, podłoga w wierszu 26): sosna 10 m, trawa 26 m, brzoza 34 m, paproć 48 m,
   martwy pień 55 m, gałąź 62 m, paproć 72 m, sosna 79 m.
+- **Wszystkie mapy z powierzchnią** (uwaga użytkownika po zagraniu 1.2: „przebuduj wszystkie mapy w ten sposób”; B1 i kryjówka to
+  wnętrza, bez lasu):
+  - 1.1: cała powierzchnia (kolumny 2–305, grunt w wierszu 23), bez pni przed jaskinią pod skalnym sufitem (148–191) i strażnicą
+    (210–223); 1.2: dodatkowo od hali stacji do masztu (101–285), bez pni przed szopą na bagnie i pompownią; 1.3: skraj lasu
+    przy starcie (2–17), arena z kładkami (38–111) i tartak nad stawem (143–189), podłoże kończy się na przekrojach posterunku,
+    piwniczki i Składu. Pominięcia pni są w samym wpisie (`"skip": [[c0, c1], …]`) — `FRONT_SKIP` mapy dotyczy wszystkich wpisów,
+    także rur tunelu pod spodem;
+  - nad rampą kopalni 1.1 i szybami płyta schodzi dołkiem za gruntem kolumny (najwyżej 8 wierszy pod wierszem wpisu; szyb na 1.3
+    jest głębszy, test przyjmuje tę granicę): przy płaskiej płycie zejścia nie byłoby widać, bo poziomy grunt przed płaszczyzną gry
+    rzutuje się poniżej linii podłogi; pień i kępa stoją tylko na równym podłożu (`Front3D.level_at`, ±1,6 m), kamienie też;
+  - **pod powierzchnią las i podłoże gasną** (`Front3D.set_camera_y` z `view3d._front_tick`, także przy „Foreground: OFF”): kopalnia
+    1.1 leży tuż pod lasem (sala 1 wiersz pod gruntem), a kamera pod płytą widziała jej przód i ściany dołka jako ścianę tuż przed
+    obiektywem, a pnie przycięte do podłoża wisiały nad korytarzem. Wygaszanie od wysokości kamery: pełne przy 4,4 m nad najwyższym
+    punktem podłoża (gracz na podłożu: kamera ok. 5,3 m nad nim), zero przy 2,4 m; las przez `vis` w shaderze, płyta i kamienie przez
+    przezroczystość węzła, runo znika w połowie. Pułapka: mapa z zawałem (1.1) buduje świat dwa razy (`Geometry`
+    i `GeometryAfterCollapse`) — lista węzłów do wygaszania zbiera obie budowy (pierwsza wersja gasiła tylko drugą);
+  - las nad tunelami 1.3 nie dzieli kadru z rurami tunelu (`Front3D.over_ground`): pod ziemią gaśnie, a z reguły jednego dużego
+    elementu w kadrze rury tunelu wypierały z powierzchni wszystkie pnie;
+  - GPU na 1.1 (4K, HIGH, debug, trzy pomiary, z i bez `--nofront --nofrontground`): obóz (kolumna 110) 7,66 → 7,97 ms (+0,31),
+    las nad kopalnią (kolumna 275) 8,56 → 8,95 ms (+0,39) — na granicy limitu 0,4 ms.
 - Koszt GPU (4K, HIGH, debug ze źródeł, `--perf=15`, trzy pomiary, z i bez `--nofront`): sam las — brzoza (kolumna 24) 8,04 → 8,13 ms (+0,09), martwy pień przy watasze (kolumna 40) 8,20 → 8,32 ms (+0,12); z podłożem brzoza 7,98 → 8,19 ms (+0,21), martwy pień 8,15 → 8,51 ms (+0,36; sam las bez płyty 8,28 ms — płyta z runem ok. +0,23 ms: zajmuje ok. ćwierci ekranu 4K materiałem bryły z warstwą brudu; gęstość runa 3 zamiast 5 kart na metr nic nie zmienia); limit zasady 7 to 0,4 ms.
 - Zrzuty: `shots_front/forest/` — bez podłoża `d_c12_s.jpg`, `d_c24_s.jpg`, `d_c40_s.jpg`, `h_c48_s.jpg`, `h_c48w_s.jpg`; z podłożem
   `p_c12_s.jpg` (sosna), `p_c24_s.jpg` (brzoza przy kopcu), `p_c40_s.jpg` (martwy pień przy watasze, kępa paproci), `n_c48_s.jpg`,
   `n_c48w_s.jpg` (kamera WIDE), `n_c40l_s.jpg` i `g_c24l_s.jpg` (pełne światło: płyta, runo, kamień, nasada pnia), `g_c62_s.jpg`
   (koniec podłoża przy hali stacji).
-- Zostaje: 1.1 i 1.3 (las na powierzchni), nagranie w ruchu, decyzja użytkownika po zagraniu; przed halą stacji (od kolumny 66) płyta
+- Zrzuty map: `m1_c30l`, `m1_c110l`, `m1_c170l` (jaskinia bez pni), `m1b_c230l`, `m1b_c242l` (dołek przed rampą), `m1b_c250l`
+  i `m1b_c300l` (pod ziemią — bez lasu i płyty), `m1b_c110`, `m1b_c275` (noc), `m2_c120l`, `m2_c190`, `m3_c8l`, `m3_c60l`, `m3_c60`,
+  `m3_c170l`, `m3_c170w` (wszystkie `_s.jpg`).
+- Zostaje: nagranie w ruchu, decyzja użytkownika po zagraniu; przed halą stacji (od kolumny 66) płyta
   przekroju kończy się na 5,6 m, a podłoże lasu na jej brzegu — dalej ku kamerze pusto (w nocy prawie niewidoczne).
 
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
@@ -631,7 +654,7 @@ Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mo
 | F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | 1.7.519 |
 | F2 | pilot: hala stacji i tunel 1.2 + A/B + bramka; las 1.2 z kontrą po bramce | 0,5–1 d | 1.7.519 (ten sam PR) |
 | F2b | przekrój budynku: spike w hali, mechanizm, hala i tunel 1.2 | 2 d | 1.7.521 |
-| F3 | katalog i mapy | 2–3 d | po jednym PR na mapę; kryjówka 1.7.522, 1.3 1.7.523, poprawki 1.7.525, las 1.2 z kontrą i podłożem 1.7.526 |
+| F3 | katalog i mapy | 2–3 d | po jednym PR na mapę; kryjówka 1.7.522, 1.3 1.7.523, poprawki 1.7.525, las z kontrą i podłożem na 1.1–1.3 1.7.526 |
 | F4 | rozmycie bliskiego planu | 0,5 d | natywne DOF nie działa w `VpActors` (1.7.520); tylko własny przebieg, jeśli bramka zażąda |
 
 ## Ryzyka
