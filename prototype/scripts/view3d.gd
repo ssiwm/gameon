@@ -925,6 +925,7 @@ func _drop_geo_alt() -> void:
 ## Geometria mapy z wierszy `rows` pod węzłem `root` (teren, kładki, ciecze, dekale, runo, dekoracje, las, tło, mgła); zwraca stan widoku z niej
 ## wyliczony (`_apply_geo_state`). Bez środowiska i kamer — te ustawia `_sync_geometry` raz na mapę.
 func _build_world(root: Node3D, rows: Array, hub: bool, spread := false) -> Dictionary:
+	rows = Level3D.sky_edges(rows)                         # bez ściany świata nad gruntem na krawędziach mapy (tylko widok)
 	var verbose := OS.is_stdout_verbose()
 	for step in _build_steps(root, rows, hub):
 		var t0 := Time.get_ticks_usec()
@@ -946,7 +947,10 @@ func _build_world(root: Node3D, rows: Array, hub: bool, spread := false) -> Dict
 var _front_w := {}                           ## id węzła → [Vector4 prostokąt sylwetki, waga 0–1]
 
 func _front_tick(delta: float) -> void:
-	if _level == null or (_level.get("front") as Array).is_empty() or Settings.front_idx == 2:
+	if _level == null or (_level.get("front") as Array).is_empty():
+		return
+	Front3D.set_camera_y(_cam_a.global_position.y)               # pod ziemią las i podłoże gasną (także przy „Foreground: OFF”)
+	if Settings.front_idx == 2:
 		return
 	var c2 := get_viewport().get_camera_2d()
 	if c2 == null:
@@ -6858,6 +6862,7 @@ func _sync_weather(delta: float) -> void:
 	var rim := _geo.get_node_or_null("MoonRim") as DirectionalLight3D
 	if rim != null:
 		rim.light_energy = Level3D.MOON_RIM * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 1.2 * flash
+		Front3D.set_moon(rim.light_energy / Level3D.MOON_RIM)      # kontra księżyca na pierwszym planie lasu (front3d.gd) idzie za pogodą i błyskiem
 	var moon := _geo.get_node_or_null("Moon") as DirectionalLight3D
 	if moon != null:
 		if not moon.has_meta("base_e"):

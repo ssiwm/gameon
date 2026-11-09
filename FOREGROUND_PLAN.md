@@ -556,6 +556,120 @@ kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepop
 - Zrzuty: `shots_front/f3_m3/` — `s_y_start10l.jpg`, `s_y_post30l.jpg` (start i posterunek), `s_x_mud22l.jpg` (błoto w zachodniej
   sali), `s_x_east183.jpg` (końcowa ściana), `s_z_hub4l.jpg`, `s_z_hub67l.jpg` (kryjówka), `s_z_m2hall98l.jpg` (hala 1.2).
 
+### Wyniki F3 — las z kontrą i podłożem, 1.1–1.3 (2026-11-09, 1.7.526)
+
+Wniosek F0 („ciemna sylwetka znika w nocnym lesie, paralaksa w lesie wymaga mocniejszej kontry od księżyca”) i katalog lasu z F3.
+
+- **Kontra księżyca w shaderze** pierwszego planu (zasada 5: bez nowych świateł; `MoonRim` świeci tylko na `LAYER_FOREST`, a kamera świata
+  nie widzi `LAYER_FRONT`): emisja `rim_col × moon × (rim_k × fresnel⁴ × strona + trans_k × albedo)`. „Strona” to iloczyn normalnej
+  w kadrze z kierunkiem do tarczy (`Level3D.MOON_DIR` w przestrzeni kamery) — świeci tylko cienka krawędź zwrócona ku księżycowi
+  (prawa górna), reszta pnia zostaje ciemna. Karty igliwia, paproci i trawy dostają prześwit (`trans_k × (albedo + 0,06)` — ciemnozielone
+  igliwie ma albedo liniowe ok. 0,03, więc sam iloczyn z albedo nic nie dawał; gałąź świerka na tle ciemnych koron ×2,4, kępy igliwia sosny ×2,2). Mnożnik `moon` idzie
+  za pogodą i błyskiem burzy tak jak `MoonRim` (`Front3D.set_moon` z `view3d._sync_weather`). Rury i ściany przekroju bez kontry.
+- **Zestaw `forest`** (`"open": true` — przycięcie tylko w poziomie z zapasem `OPEN_PAD` 3 m, bo rzut pnia przy brzegu kadru wychodzi
+  ×1,25 dalej od środka i przy zwykłym przycięciu pień byłby ucięty pionową linią):
+  - pnie sosny, brzozy i martwy pień: proceduralne stożki od podłoża (niżej o 0,3 m, część pod nim odcina `ywin`) do 16 m nad nim
+    (koniec zawsze nad kadrem NORMAL), średnica 0,55–0,9 m, lekko pochylone i wygięte, nierówna kora (dwa sinusy po obwodzie), tekstury kory
+    z `art/world3d/forest/` (pionowy pas całego drzewa); u dołu szersza szyja (1,5 m, wzdłuż wygiętej osi) i 3–5 krótkich, grubych
+    nabiegów korzeni, które schodzą pod podłoże; sosna ma martwy sęk i w 65%
+    gałąź z kępami igliwia przy górnym brzegu, martwy pień 3–5 połamanych konarów w płaszczyźnie kadru, brzoza cienką ciemną gałązkę;
+    u nasady kępa paproci;
+  - zwisająca gałąź świerka (`bough_side`, 2–3 karty pod różnym kątem) z nasadą nad górnym brzegiem kadru;
+  - kępa paproci i trawy (3–5 kart, paproć 1,3–2,1 m) na podłożu 6,4–7,8 m przed płaszczyzną gry (`CLUMP_Z`, bliżej kamery niż pnie):
+    wchodzi w kadr od dołu, a wierzch w rzucie zostaje pod linią podłogi;
+  - w każdej przerwie między pniami gałąź u góry i kępa u dołu (`small` / `small2`; wcześniej jeden mały element na przerwę —
+    w lesie wychodziło 5 elementów na 78 m i ani jednej gałęzi).
+- **Dlaczego nie modele drzew lasu:** sosny i brzozy z `prep_items3d.py` mają koronę od 30–70% wysokości; pień 4 m przed kamerą
+  musiałby mieć 25–55 m, żeby korona wypadła nad kadrem, a przy grubszym pniu (skala w poziomie) korona rozciągała się ×3.
+  Pień proceduralny ma pełną kontrolę nad średnicą i wysokością, 1–1,2 tys. trójkątów.
+- **Jasność:** biała kora brzozy i szare drewno martwego pnia świeciły jak słup — `alb_k` (brzoza 0,3, martwy pień 0,7, trawa 0,45,
+  paproć 0,7). Pierwsze zrzuty: pień cały biały — odwrócone nawinięcie trójkątów (Godot bierze za przód ściany zgodne z ruchem
+  wskazówek), więc rysowało się wnętrze z pełnym obrysem.
+- **Podłoże przed płaszczyzną gry** (uwaga użytkownika 2026-11-09 po pierwszych zrzutach: „zbudujmy do tego podłoże, aby całość była
+  spójna” — pnie schodziły przez dolny brzeg kadru w pustkę przed przekrojem ziemi, kępy wisiały 6 m pod podłogą nad niczym):
+  - wpis otwarty buduje płytę terenu (`Front3D._build_ground`) od przodu bryły gruntu (`DEPTH_FRONT`, pierwszy rząd 4 cm za przodem
+    bryły i 4 mm nad jej wierzchem — patrz poprawki po zagraniu 1.3) do 16 m ku kamerze, z przodem i bokami 6 m w dół; ten sam materiał co bryła `#`
+    (`make_pbr("terrain")`, rzut trójpłaszczyznowy w świecie), więc tekstura przechodzi bez szwu, a przekrój ziemi pod bryłą znika
+    pod płytą; warstwa świata — światło, mgła i błysk burzy jak na wierzchu bryły (w warstwie pierwszego planu dostałaby jaśniejsze
+    otoczenie i kontrę postaci, szew na przodzie bryły);
+  - wysokość: grunt kolumny w wierszu podłogi wpisu (w dole pierwszy lity kafel niżej), minimum z sąsiednimi kolumnami; pas wpisu
+    ± 8 kafli, bez wejścia w przekrój obok (hala stacji). Poziomy grunt przed płaszczyzną gry rzutuje się zawsze poniżej linii podłogi
+    (kamera nad nim), więc płyta nie wchodzi w pas gry przy żadnej kamerze; kopiec na 1.2 (kolumny 20–27) wystaje z niej swoim przekrojem;
+  - nierówność (szum, do 0,3 m, rośnie z odległością od bryły), płasko pod pniami i kępami: element pierwszego planu rysuje się nad
+    warstwą świata, więc stoi na płaskim gruncie na wysokości swojego `ywin` (pod nim nic go nie przecina);
+  - runo z tych samych kart co na bryle (`Level3D.undergrowth_cards`, wiatr), wyższe dalej od bryły (w rzucie najwyżej przy stopach),
+    bez runa pod elementami; co 14–24 m kamień, pniak albo kłoda (modele `rock*`, `stump`, `tree_log`) 5,6–9 m przed płaszczyzną —
+    przed pniami, więc w rzucie niżej niż ich nasada;
+  - nasada pnia ma osobny materiał kory bez kontry księżyca i normalne bez składowej w górę: szyja i korzenie świeciły na tle
+    ciemnego gruntu jak białe kolce (kontra księżyca na wierzchu i kontra postaci padająca z góry zza sceny — grunt jej nie dostaje);
+  - paproć schodzi pod podłoże tylko o 20% karty (`FERN_SINK`): `ywin` tnie kartę poziomą linią, przy 42% (jak w runie) przecinał
+    gęste liście tuż pod nasadą;
+  - poprawka kart z #632: odbita karta (`flip`) ma lustrzane wierzchołki i odwrotne nawinięcie — kamera widziała tył z normalną od siebie,
+    który łapał kontrę postaci zza sceny (płaskie, niebieskawe paprocie przy dolnym brzegu, „oszroniona” gałąź świerka); teraz
+    odbita karta ma odwróconą kolejność wierzchołków.
+- Wpis na 1.2: las od startu do hali stacji (kolumny 2–62, podłoga w wierszu 26): sosna 10 m, trawa 26 m, brzoza 34 m, paproć 48 m,
+  martwy pień 55 m, gałąź 62 m, paproć 72 m, sosna 79 m.
+- **Wszystkie mapy z powierzchnią** (uwaga użytkownika po zagraniu 1.2: „przebuduj wszystkie mapy w ten sposób”; B1 i kryjówka to
+  wnętrza, bez lasu):
+  - 1.1: cała powierzchnia (kolumny 2–305, grunt w wierszu 23), bez pni przed jaskinią pod skalnym sufitem (148–191) i strażnicą
+    (210–223); 1.2: dodatkowo od hali stacji do masztu (101–285), bez pni przed szopą na bagnie i pompownią; 1.3: skraj lasu
+    przy starcie (2–17), arena z kładkami (38–111) i tartak nad stawem (143–189), podłoże kończy się na przekrojach posterunku,
+    piwniczki i Składu. Pominięcia pni są w samym wpisie (`"skip": [[c0, c1], …]`) — `FRONT_SKIP` mapy dotyczy wszystkich wpisów,
+    także rur tunelu pod spodem;
+  - nad rampą kopalni 1.1 i szybami płyta schodzi dołkiem za gruntem kolumny (najwyżej 8 wierszy pod wierszem wpisu; szyb na 1.3
+    jest głębszy, test przyjmuje tę granicę): przy płaskiej płycie zejścia nie byłoby widać, bo poziomy grunt przed płaszczyzną gry
+    rzutuje się poniżej linii podłogi; pień i kępa stoją tylko na równym podłożu (`Front3D.level_at`, ±1,6 m), kamienie też;
+  - **pod powierzchnią las i podłoże gasną** (`Front3D.set_camera_y` z `view3d._front_tick`, także przy „Foreground: OFF”): kopalnia
+    1.1 leży tuż pod lasem (sala 1 wiersz pod gruntem), a kamera pod płytą widziała jej przód i ściany dołka jako ścianę tuż przed
+    obiektywem, a pnie przycięte do podłoża wisiały nad korytarzem. Wygaszanie od wysokości kamery: pełne przy 4,4 m nad najwyższym
+    punktem podłoża (gracz na podłożu: kamera ok. 5,3 m nad nim), zero przy 2,4 m; las przez `vis` w shaderze, płyta i kamienie przez
+    przezroczystość węzła, runo znika w połowie. Pułapka: mapa z zawałem (1.1) buduje świat dwa razy (`Geometry`
+    i `GeometryAfterCollapse`) — lista węzłów do wygaszania zbiera obie budowy (pierwsza wersja gasiła tylko drugą);
+  - las nad tunelami 1.3 nie dzieli kadru z rurami tunelu (`Front3D.over_ground`): pod ziemią gaśnie, a z reguły jednego dużego
+    elementu w kadrze rury tunelu wypierały z powierzchni wszystkie pnie;
+  - GPU na 1.1 (4K, HIGH, debug, trzy pomiary, z i bez `--nofront --nofrontground`): obóz (kolumna 110) 7,66 → 7,97 ms (+0,31),
+    las nad kopalnią (kolumna 275) 8,58 → 8,96 ms (+0,38) — na granicy limitu 0,4 ms.
+- Koszt GPU (4K, HIGH, debug ze źródeł, `--perf=15`, trzy pomiary, z i bez `--nofront`): sam las — brzoza (kolumna 24) 8,04 → 8,13 ms (+0,09), martwy pień przy watasze (kolumna 40) 8,20 → 8,32 ms (+0,12); z podłożem brzoza 7,98 → 8,19 ms (+0,21), martwy pień 8,15 → 8,51 ms (+0,36; sam las bez płyty 8,28 ms — płyta z runem ok. +0,23 ms: zajmuje ok. ćwierci ekranu 4K materiałem bryły z warstwą brudu; gęstość runa 3 zamiast 5 kart na metr nic nie zmienia); limit zasady 7 to 0,4 ms.
+- Zrzuty: `shots_front/forest/` — bez podłoża `d_c12_s.jpg`, `d_c24_s.jpg`, `d_c40_s.jpg`, `h_c48_s.jpg`, `h_c48w_s.jpg`; z podłożem
+  `p_c12_s.jpg` (sosna), `p_c24_s.jpg` (brzoza przy kopcu), `p_c40_s.jpg` (martwy pień przy watasze, kępa paproci), `n_c48_s.jpg`,
+  `n_c48w_s.jpg` (kamera WIDE), `n_c40l_s.jpg` i `g_c24l_s.jpg` (pełne światło: płyta, runo, kamień, nasada pnia), `g_c62_s.jpg`
+  (koniec podłoża przy hali stacji).
+- Zrzuty map: `m1_c30l`, `m1_c110l`, `m1_c170l` (jaskinia bez pni), `m1b_c230l`, `m1b_c242l` (dołek przed rampą), `m1b_c250l`
+  i `m1b_c300l` (pod ziemią — bez lasu i płyty), `m1b_c110`, `m1b_c275` (noc), `m2_c120l`, `m2_c190`, `m3_c8l`, `m3_c60l`, `m3_c60`,
+  `m3_c170l`, `m3_c170w` (wszystkie `_s.jpg`).
+- Zostaje: nagranie w ruchu, decyzja użytkownika po zagraniu.
+
+### Poprawki po zagraniu 1.3 (2026-11-09, 1.7.526)
+
+Uwagi użytkownika ze zrzutami startu 1.3 przy posterunku: „usuń linię oddzielającą plany”, „przebuduj też sceny z budynkami
+i tunelami”, „dodaj kompletne ściany (te, gdzie się wchodzi do budynku i wychodzi z niego), aby wrażenia były spójne”.
+
+- **Linia między planami:** pierwszy rząd płyty podłoża leżał 2 cm pod wierzchem bryły (bez migotania dwóch powierzchni), więc z kamery
+  nad gruntem było widać 2 cm przodu bryły — w kręgu światła gracza i znajdźki ciemna kreska 1–2 px na przedniej krawędzi bryły (przód
+  jest zwrócony do kamery, a światło stoi za nim). Teraz pierwszy rząd leży 4 mm nad wierzchem bryły (`GROUND_LIFT`), 4 cm za jej przodem;
+  profil jasności pod graczem na 1.3 (kolumna 8) bez spadku (wcześniej 9 przy ok. 25 wokół). Próba z zakładką 0,3 m nic nie dodała,
+  a przy błocie (start 1.3) rysowała twardą krawędź płyty nad niecką — odrzucona. Brzeg niecki błota przed płytą to zmiana materiału, nie linia.
+- **Grunt przed budynkami:** wpis otwarty, który kończy się na przekroju budynku z podłogą (albo stropem piwnicy) w wierszu swojego
+  gruntu, dokłada pas płyty od przodu płyty podłogi przekroju (`SHELL_Z` − 4 cm) do 16 m, z runem, kamieniami i nierównością liczoną od jego
+  początku (`_span`, klucze `z0` i `zb`). Kolumny przyległych budynków łączą się w jeden pas (posterunek z piwniczką 1.3: 18–37 —
+  wcześniej kolumna 37 między piwniczką a lasem nie miała płyty, bo przycięcia do dwóch przekrojów nadpisywały się). `ground_y` zwraca
+  podłoże pasa dopiero od jego `z0`, więc nad płytą przekroju (z < 5,6 m) płyty lasu nadal nie ma.
+- **Podłoga pod ziemią:** tunele i sale pod powierzchnią (wpisy z przekrojem bez podłogi na powierzchni, bez kryjówki — piętra jedno nad
+  drugim) dostają płytę od `SHELL_Z` do 16 m (`Front3D._build_floors`, węzły `FrontFloor`): płaska, materiał większości kafli podłogi
+  (beton tunelu drezyny 1.2, skała tuneli 1.3 i piwniczki), bez runa i bez wygaszania — spod ziemi widać ją zamiast ciemnego przodu
+  fundamentu, a z kamery nad powierzchnią zasłania ją płyta lasu. Siatka płyty jest wspólna (`_plate_mesh`).
+- **Ściany wejścia:** skrajna kolumna budynku (`station`, `bunker`) bez sąsiedniego przekroju na tej wysokości, z kawałkiem ściany albo okna
+  nad drzwiami (`Level3D.shell_entry`), dostaje ścianę przekroju (`shell_walls`, beton) na całą wysokość pasa, także przed otworem —
+  budynek to zamknięta bryła jak podłoga i strop. Wcześniej taka kolumna zostawała w płaszczyźnie gry, bo sam wysunięty kawałek nad drzwiami
+  wisiał jak skrzynia (uwaga z 2026-11-08); teraz ściana sięga od podłogi do stropu. Drzwi zostają w pasie gry: postać w nich widać przez
+  wygaszanie ściany przy sylwetkach, sam otwór z kamery na wprost jest zasłonięty (widać go z boku w perspektywie). Kolumna z kratką,
+  deskami albo barykadą (`ENTRY_KEEP`) zostaje bez ściany — przegroda do zniszczenia musi być widoczna (kratka piwniczki 1.3). Przejścia
+  między salami tuneli (sąsiedni wpis) zostają otwarte. Kryjówka bez zmian (same pełne ściany).
+- GPU (4K, HIGH, debug, dwa pomiary, przed i po): posterunek 1.3 od środka (kolumna 27, grunt przed płytą podłogi i ściany wejść) 7,23 → 7,44 ms (+0,22; płyta z runem jak w lesie), tunel drezyny 1.2 (kolumna 150, podłoga do 16 m) 6,25 → 6,32 ms (+0,07).
+- Zrzuty (`shots_front/forest/`, noc rozjaśniona ×2,5): `t_ab_c8.jpg` (linia przed i po), `u_m3_c14_s` i `u_m3_c14l_s` (ściana wejścia
+  posterunku i grunt przed nim), `u_m3_c27_s` (posterunek od środka), `u_m3_c127l_s` (grunt przed Składem), `u_m2_c62l_s`, `w_m2_c104_s`
+  (wejście i wyjście hali 1.2), `w_m2_c150_s` (tunel drezyny), `w_m3_c45_s`, `w_m3_c75_s` (tunele 1.3), `w_m3_c34_s` (piwniczka).
+
 ### F4 — rozmycie bliskiego planu (sprawdzone 2026-11-08: natywne nie działa w warstwie graczy, odłożone)
 
 - Rozmycie głębi ostrości tylko dla bliskiego planu na kamerze graczy (`CameraAttributesPractical.dof_blur_near_*`): gracze
@@ -570,7 +684,7 @@ kopania nie mają asetu; sufit w podziemiach ma dziurę; okna umieszczone niepop
 | F1 | `front3d.gd`, shader, dane, ustawienie, test | 1–1,5 d | 1.7.519 |
 | F2 | pilot: hala stacji i tunel 1.2 + A/B + bramka; las 1.2 z kontrą po bramce | 0,5–1 d | 1.7.519 (ten sam PR) |
 | F2b | przekrój budynku: spike w hali, mechanizm, hala i tunel 1.2 | 2 d | 1.7.521 |
-| F3 | katalog i mapy | 2–3 d | po jednym PR na mapę |
+| F3 | katalog i mapy | 2–3 d | po jednym PR na mapę; kryjówka 1.7.522, 1.3 1.7.523, poprawki 1.7.525, las z kontrą i podłożem na 1.1–1.3 1.7.526 |
 | F4 | rozmycie bliskiego planu | 0,5 d | natywne DOF nie działa w `VpActors` (1.7.520); tylko własny przebieg, jeśli bramka zażąda |
 
 ## Ryzyka

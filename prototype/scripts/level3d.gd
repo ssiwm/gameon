@@ -29,6 +29,29 @@ const MOON_RIM := 0.35                     ## energia poświaty księżyca na le
 static func is_solid_ch(ch: String) -> bool:
 	return ch == "#" or ch == "C" or ch == "M" or ch == "m" or ch == "O" or ch == "~"
 
+## Wiersze mapy do budowy widoku 3D bez ściany świata nad gruntem: dwie skrajne kolumny `#` z każdej strony (w 2D granica mapy) nad
+## pierwszym litym kaflem sąsiedniej kolumny w głąb mapy stają się powietrzem. Na mapach z powierzchnią stały jak słup ziemi do nieba
+## na początku i końcu misji (uwaga z gry 2026-11-09); pod ziemią i w B1 (sąsiad lity od góry) nic się nie zmienia. Kolizja 2D — bez zmian.
+static func sky_edges(rows: Array) -> Array:
+	if rows.is_empty():
+		return rows
+	var cols: int = (rows[0] as String).length()
+	if cols < 6:
+		return rows
+	var out := rows.duplicate()
+	for side in [[0, 1, 2], [cols - 1, cols - 2, cols - 3]]:
+		var inner: int = side[2]
+		var top := 0
+		while top < out.size() and not is_solid_ch(_ch(out, inner, top)):
+			top += 1
+		for r in top:
+			var s: String = out[r]
+			for c in [side[0], side[1]]:
+				if s[c] == "#":
+					s = s.substr(0, c) + "." + s.substr(c + 1)
+			out[r] = s
+	return out
+
 ## Wypełnienie przejścia w ścianie: okno `|` (window_glass.gd), przegrody `q` / `%` / `+` i pusty otwór `:` na barykadę (breakable.gd) — w 3D rysują je ich własne węzły,
 ## ale dla konstrukcji świata (nogi kładek, dachy, nadproża) to ściana.
 static func is_wall_fill(ch: String) -> bool:
@@ -1613,6 +1636,7 @@ static var shell_cells := {}               ## Vector2i → klucz materiału prze
 static var shell_walls := {}
 static var shell_bands: Array = []         ## wpisy FRONT z przekrojem z ostatniego `set_shells` (strefy wydobycia obok sięgają SHELL_Z)
 const WALL_CH := "#C"
+const ENTRY_KEEP := "+%:q"                 ## niszczalne przegrody: kolumna z nimi nie dostaje pełnej ściany wejścia
 
 static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	shell_cells = {}
@@ -1657,6 +1681,13 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 			for r in range(int(e["r0"]) + 1, int(e["r1"])):
 				if not (_ch(rows, c, r) in WALL_CH or in_dig.call(c, r)):
 					full = false
+			if not full and shell_entry(e, c, rows):
+				# ściana wejścia i wyjścia budynku: przed pasem gry cała wysokość, także przed drzwiami i oknem — budynek to zamknięta bryła
+				# jak podłoga i strop przekroju (uwaga z gry 2026-11-09); otwór zostaje w pasie gry, postać w nim widać przez wygaszanie
+				for r in range(int(e["r0"]) + 1, int(e["r1"])):
+					if not shell_cells.has(Vector2i(c, r)):
+						shell_walls[Vector2i(c, r)] = ["C", occ]
+				continue
 			if not full:
 				continue
 			for r in range(int(e["r0"]) + 1, int(e["r1"])):
@@ -1680,6 +1711,23 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 					var k := Vector2i(c, r)
 					if _ch(rows, c, r) in SHELL_CH and not shell_cells.has(k) and not shell_walls.has(k) and not in_band.call(c, r) and not in_dig.call(c, r):
 						shell_cells[k] = "C" if concrete else ""
+
+## Kolumna wejścia (`shell_walls` na całą wysokość pasa, uwaga z gry 2026-11-09): skrajna kolumna budynku (`station`, `bunker`) bez
+## sąsiedniego wpisu z przekrojem na tej wysokości (przejście między salami zostaje otwarte), z kawałkiem ściany (`WALL_CH`) albo okna
+## nad otworem i bez niszczalnej przegrody (`ENTRY_KEEP`: kratka, deski i barykada muszą być widoczne). Pasy z ostatniego `set_shells`.
+static func shell_entry(e: Dictionary, c: int, rows: Array) -> bool:
+	if not String(e.get("set", "")) in ["station", "bunker"] or (c != int(e["c0"]) and c != int(e["c1"])):
+		return false
+	for o: Dictionary in shell_bands:
+		if o != e and (int(o["c0"]) == c + 1 or int(o["c1"]) == c - 1) and int(o["r0"]) < int(e["r1"]) and int(e["r0"]) < int(o["r1"]):
+			return false
+	var wall := false
+	for r in range(int(e["r0"]) + 1, int(e["r1"])):
+		var ch := _ch(rows, c, r)
+		if ch in ENTRY_KEEP:
+			return false
+		wall = wall or ch in WALL_CH or ch == "|"
+	return wall
 
 ## Przód strefy wydobycia (`dig_zone.chunk_mesh`): SHELL_Z, gdy strefa styka się z pasem wpisu z przekrojem (koniec sali podziemi 1.3 —
 ## ściana do kopania stoi w jednym planie z podłogą i stropem przekroju), inaczej DEPTH_FRONT. Prostokąt w kaflach.
@@ -3457,6 +3505,12 @@ static func build_undergrowth(parent: Node3D, rows: Array) -> void:
 				var kind := "fern_a" if fern else ("grass_a" if rng.randf() < 0.6 else "grass_b")
 				var at := top + Vector3(rng.randf_range(-0.5, 0.5) * T, -h * (0.42 if fern else 0.04), z)
 				(xf[kind] as Array).append(Transform3D(b, at))
+	undergrowth_cards(parent, xf, "Undergrowth_", rng)
+
+## Karty runa (`xf`: tekstura z FOREST_DIR → [Transform3D]; skrzyżowane karty z podstawą w y = 0) jako `MultiMesh` z wiatrem
+## (`UNDERGROWTH_SHADER`, `set_wind`); węzły „<prefix><tekstura>”. Wspólne dla runa na bryle i podłoża lasu przed płaszczyzną gry
+## (`Front3D.build`) — ta sama trawa i paproć po obu stronach przodu bryły.
+static func undergrowth_cards(parent: Node3D, xf: Dictionary, prefix: String, rng: RandomNumberGenerator) -> void:
 	var v := PackedVector3Array()
 	var uv := PackedVector2Array()
 	var idx := PackedInt32Array()
@@ -3494,7 +3548,7 @@ static func build_undergrowth(parent: Node3D, rows: Array) -> void:
 			mm.set_instance_transform(i, list[i])
 			mm.set_instance_custom_data(i, Color(rng.randf(), 0.0, 0.0, 1.0))
 		var mi := MultiMeshInstance3D.new()
-		mi.name = "Undergrowth_" + k
+		mi.name = prefix + k
 		mi.multimesh = mm
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

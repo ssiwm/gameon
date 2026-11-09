@@ -13,7 +13,14 @@ extends SceneTree
 ##     nad torowiskiem drezyny element stoi na podsypce (płyta na wysokości dna koryta), pod dachem z blachy wisi pod płatwią,
 ##     wyciek oleju w hali 1.2 (`Level3D.oil_spills`): plama w zasięgu płyty, przewrócona beczka na płycie przed niecką i niżej niż linia
 ##     podłogi w rzucie, stojące za płaszczyzną gry poza niecką, element nie stoi w plamie,
-## (5) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
+## (5) las (zestaw „forest”, F3): pnie sosny, brzozy i martwy, zwisające gałęzie, paprocie i trawa; pas otwarty w pionie (przycięcie tylko
+##     w poziomie, z zapasem OPEN_PAD), pień od podłoża (nasada pod nim, `ywin` na podłożu) nad górny brzeg kadru NORMAL, kępa na podłożu
+##     bliżej kamery (CLUMP_Z) z wierzchem w rzucie pod linią podłogi, kontra księżyca tylko na materiałach lasu (rury i ściany przekroju
+##     bez niej), karty z alfą i dwustronne, `set_moon` zmienia tylko las; podłoże przed płaszczyzną gry: płyta w warstwie świata z materiałem
+##     bryły gruntu, nie wyżej niż grunt kolumny przy bryle, w rzucie zawsze pod linią podłogi (trzy kamery, gracz wyżej i niżej), płasko
+##     pod elementami, runo w rzucie najwyżej przy stopach, na mapach nie wyżej niż wierzch gruntu żadnej kolumny pasa i bez wejścia
+##     w przekrój obok,
+## (6) wygaszanie: `Front3D.fade` (ta sama funkcja co w shaderze) daje MIN_A na sylwetce, pełne krycie od FADE_M, rośnie z odległością,
 ##     waga 0 nie wygasza wcale.
 ## godot --headless --path prototype -s tools/test_front.gd       → ma wypisać PASS
 const Level3D := preload("res://scripts/level3d.gd")
@@ -49,12 +56,14 @@ func _process(_dt: float) -> bool:
 		total += front.size()
 		_check_map(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []))
 		_check_shell(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []), consts.get("DIG_ZONES", []))
+		_check_sky_edges(f.get_basename(), consts.get("MAP", []))
 	_check(total > 0, "żadna mapa nie ma pierwszego planu (pilot na z1_m2)")
 	_check_skip()
 	_check_layers()
 	_check_trench()
 	_check_roof()
 	_check_oil()
+	_check_forest()
 	_check_fade()
 	print("PASS" if _fail == 0 else "FAIL (%d)" % _fail)
 	quit(0 if _fail == 0 else 1)
@@ -73,6 +82,7 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 		_check(s is Array and (s as Array).size() == 2 and int(s[0]) <= int(s[1]), "%s FRONT_SKIP %s: oczekiwane [c0, c1]" % [map_id, s])
 	var bl := Front3D.blocked_x(front, rows)                 # przekrój (F2b): bez kałuż na płycie i belek pod stropem
 	var items := Front3D.layout(front, skip, false, bl)
+	_check_map_ground(map_id, rows, front, items)
 	_check(not items.is_empty(), map_id + ": wpisy FRONT bez żadnego elementu")
 	_check(str(items) == str(Front3D.layout(front, skip, false, bl)), map_id + ": układ różni się między wywołaniami (ziarno)")
 	for it: Dictionary in items:
@@ -90,6 +100,8 @@ func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 			var cb: Vector4 = b["clip"]
 			if Front3D.apart(ca, bool(a["shell"]), cb, bool(b["shell"])):        # pasy dalej niż kadr albo piętra rozdzielone płytą przekroju
 				continue
+			if Front3D.over_ground(ca, bool((Front3D.SETS[a["set"]] as Dictionary).get("open", false)), cb, bool((Front3D.SETS[b["set"]] as Dictionary).get("open", false))):
+				continue                                                          # las nad tunelem: pod ziemią gaśnie
 			var dx := absf(float(a["x"]) - float(b["x"]))
 			if bool(a["big"]) and bool(b["big"]):
 				_check(dx >= Front3D.BIG_SPACING.x - 0.01, "%s: dwa duże elementy %.1f m od siebie (x %.1f i %.1f), dwa w jednym kadrze" % [map_id, dx, a["x"], b["x"]])
@@ -147,13 +159,16 @@ func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: 
 func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 	for k: Vector2i in Level3D.shell_walls:
 		var ch := String(rows[k.y]).substr(k.x, 1)
-		_check(ch in Level3D.WALL_CH, "%s %s: ściana przekroju na kaflu '%s'" % [map_id, k, ch])
+		var entry := false                                   # kolumna wejścia budynku: cała wysokość pasa, także przed otworem
+		for e: Dictionary in Level3D.shell_bands:
+			entry = entry or (k.y > int(e["r0"]) and k.y < int(e["r1"]) and Level3D.shell_entry(e, k.x, rows))
+		_check(entry or ch in Level3D.WALL_CH, "%s %s: ściana przekroju na kaflu '%s'" % [map_id, k, ch])
 		_check(not Level3D.shell_cells.has(k), "%s %s: ściana przekroju na kaflu płyty" % [map_id, k])
 		for z in digs:
 			_check(not (k.x >= int(z[0]) and k.x <= int(z[2]) and k.y >= int(z[1]) and k.y <= int(z[3])), "%s %s: ściana przekroju w strefie wydobycia" % [map_id, k])
 		# tylko kolumna lita na całą wysokość pasa: przy oknie, drzwiach albo przejściu ściana zostaje w płaszczyźnie gry
 		for e: Dictionary in Level3D.shell_bands:
-			if k.x >= int(e["c0"]) and k.x <= int(e["c1"]) and k.y > int(e["r0"]) and k.y < int(e["r1"]):
+			if k.x >= int(e["c0"]) and k.x <= int(e["c1"]) and k.y > int(e["r0"]) and k.y < int(e["r1"]) and not entry:
 				for r in range(int(e["r0"]) + 1, int(e["r1"])):
 					var cr := String(rows[r]).substr(k.x, 1)
 					var dug := false
@@ -177,6 +192,13 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 			var mmi := c as MultiMeshInstance3D
 			_check(mmi.layers == Front3D.LAYER_WALL and mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: ściana %s ze złą warstwą albo z cieniem" % [map_id, mmi.name])
 		root.free()
+	if map_id in ["z1_m2", "z1_m3"]:
+		# wejścia budynków: pełna ściana przed drzwiami (1.3 posterunek i Skład, 1.2 hala), bez ściany przed kratką piwniczki 1.3
+		var ent: Array = [Vector2i(18, 24), Vector2i(36, 24), Vector2i(112, 23), Vector2i(142, 23)] if map_id == "z1_m3" else [Vector2i(66, 23), Vector2i(100, 23)]
+		for k: Vector2i in ent:
+			_check(Level3D.shell_walls.has(k), "%s %s: brak pełnej ściany wejścia" % [map_id, k])
+		if map_id == "z1_m3":
+			_check(not Level3D.shell_walls.has(Vector2i(37, 29)), "1.3: ściana wejścia zasłania kratkę piwniczki")
 	if map_id == "z1_m3":
 		# 1.3: nadproże nad niskim tunelem obok sali (skała między stropem tunelu a stropem sali) to płyta świata, nie ściana pierwszego planu
 		_check(Level3D.shell_cells.has(Vector2i(91, 32)) and not Level3D.shell_walls.has(Vector2i(91, 32)), "1.3: nadproże nad tunelem 91–108 nie jest płytą przekroju")
@@ -191,6 +213,23 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 
 
 ## FRONT_SKIP: zakres bez pierwszego planu nie dostaje żadnego elementu (z zapasem MARGIN).
+## Krawędzie mapy w widoku 3D (`Level3D.sky_edges`): nad gruntem sąsiedniej kolumny dwie skrajne kolumny to powietrze (bez słupa ziemi
+## do nieba), od gruntu w dół bez zmian; poza krawędziami wiersze identyczne.
+func _check_sky_edges(map_id: String, rows: Array) -> void:
+	var out := Level3D.sky_edges(rows)
+	var cols: int = (rows[0] as String).length()
+	_check(out.size() == rows.size(), "%s: sky_edges zmienia liczbę wierszy" % map_id)
+	for side in [[0, 1, 2], [cols - 1, cols - 2, cols - 3]]:
+		var top := 0
+		while top < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, side[2], top)):
+			top += 1
+		for r in rows.size():
+			for c in [side[0], side[1]]:
+				var want := "." if r < top and Level3D._ch(rows, c, r) == "#" else Level3D._ch(rows, c, r)
+				_check(Level3D._ch(out, c, r) == want, "%s: krawędź kol. %d wiersz %d w widoku 3D: %s" % [map_id, c, r, Level3D._ch(out, c, r)])
+	for r in rows.size():
+		_check((out[r] as String).substr(2, cols - 4) == (rows[r] as String).substr(2, cols - 4), "%s: sky_edges zmienia wiersz %d poza krawędzią" % [map_id, r])
+
 func _check_skip() -> void:
 	var front := [{"set": "station", "c0": 0, "c1": 199, "r0": 0, "r1": 8}]
 	var skip := [[60, 120]]
@@ -253,6 +292,225 @@ func _check_layers() -> void:
 	_check((fr as Node3D).visible, "ON nie pokazuje pierwszego planu")
 	_check(Front3D.build(root, [], [], false) == 0, "pusty FRONT coś zbudował")
 	root.queue_free()
+
+
+## Parametr materiału albo `def`, gdy nieustawiony (domyślna wartość z shadera); bool jako 0/1.
+func _par(m: ShaderMaterial, name: String, def: float) -> float:
+	var v: Variant = m.get_shader_parameter(name)
+	if v == null:
+		return def
+	return (1.0 if v else 0.0) if v is bool else float(v)
+
+
+## Las (F3): rodzaje, otwarty pas, wysokość pnia względem kadru, kontra księżyca tylko na lesie, karty z alfą.
+func _check_forest() -> void:
+	var st: Dictionary = Front3D.SETS.get("forest", {})
+	_check(bool(st.get("open", false)), "zestaw forest bez otwartego pasa")
+	var root := Node3D.new()
+	get_root().add_child(root)
+	var e := {"set": "forest", "c0": 0, "c1": 400, "r0": 0, "r1": 26}
+	var y_floor := -26.0 * Level3D.T
+	var n := Front3D.build(root, [e, {"set": "tunnel", "c0": 0, "c1": 400, "r0": 40, "r1": 47}], [], false)
+	var fr := root.get_node_or_null("Front")
+	_check(fr != null and n > 0, "las: build nic nie zbudował")
+	if fr == null:
+		return
+	var kinds := {}
+	var clip0 := Front3D.clip_of(e)
+	for c in fr.get_children():
+		var mi := c as MeshInstance3D
+		var kind := String(mi.name).get_slice("_", 0)
+		if not kind in ["pine", "birch", "snag", "bough", "ferns", "grass"]:
+			for si in mi.mesh.get_surface_count():                # rury w tunelu: bez kontry księżyca
+				var pm := mi.get_surface_override_material(si) as ShaderMaterial
+				_check(_par(pm, "rim_k", 0.0) == 0.0 and _par(pm, "trans_k", 0.0) == 0.0, "%s: kontra księżyca pod ziemią" % mi.name)
+			continue
+		kinds[kind] = true
+		_check(mi.layers == Front3D.LAYER_FRONT and mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: warstwa albo cień" % mi.name)
+		var clip: Vector4 = mi.get_instance_shader_parameter("clip")
+		_check(clip.z < -1e5 and clip.w > 1e5, "%s: las przycięty w pionie" % mi.name)
+		_check(is_equal_approx(clip.x, clip0.x - Front3D.OPEN_PAD) and is_equal_approx(clip.y, clip0.y + Front3D.OPEN_PAD), "%s: przycięcie w poziomie bez zapasu OPEN_PAD" % mi.name)
+		var bb := mi.mesh.get_aabb()
+		var yg := Front3D.ground_y(mi.position.x, mi.position.z)
+		var yw: Variant = mi.get_instance_shader_parameter("ywin")
+		if kind != "bough":
+			_check(yw is Vector2 and absf((yw as Vector2).x - yg) < 0.001 and absf(yg - y_floor) < 0.001, "%s: nasada nie kończy się na podłożu (ywin %s, podłoże %.3f)" % [mi.name, yw, yg - y_floor])
+			for dx in [-1.0, 0.0, 1.0]:                          # płasko pod elementem (nierówność podłoża nie wchodzi nad nasadę)
+				_check(absf(Front3D.ground_y(mi.position.x + dx, mi.position.z) - yg) < 0.001, "%s: podłoże pod elementem nierówne" % mi.name)
+		if kind in ["pine", "birch", "snag"]:
+			# nasada (szyja, korzenie) schodzi pod podłoże, koniec nad górnym brzegiem kadru NORMAL (ok. 8 m nad podłogą przy z = 3,5–5 m)
+			_check(bb.position.y < yg - 0.2 and bb.position.y > yg - 1.0 and bb.end.y > y_floor + FRAME_H_NORMAL * 0.75, "%s: pień nie stoi na podłożu albo nie sięga nad kadr (%.1f..%.1f wzgl. podłoża)" % [mi.name, bb.position.y - yg, bb.end.y - yg])
+		elif kind == "bough":
+			_check(bb.end.y > y_floor + FRAME_H_NORMAL * 0.5 and bb.position.y > y_floor + 3.0, "%s: gałąź nie wisi przy górnym brzegu" % mi.name)
+		else:
+			var z := mi.position.z
+			_check(z >= Front3D.CLUMP_Z.x and z <= Front3D.CLUMP_Z.y, "%s: kępa w z %.2f poza CLUMP_Z" % [mi.name, z])
+			_check(bb.end.y > yg + 0.4 and bb.end.y < yg + Front3D.CLUMP_H.y, "%s: kępa %.2f m nad podłożem" % [mi.name, bb.end.y - yg])
+			_check(_proj(bb.end.y, z, y_floor + 5.3, 20.2) < y_floor, "%s: wierzch kępy w rzucie nad linią podłogi" % mi.name)
+		var rims := 0
+		var bases := 0
+		for si in mi.mesh.get_surface_count():
+			var m := mi.get_surface_override_material(si) as ShaderMaterial
+			var card := _par(m, "cutout", 0.0) > 0.0
+			var mk := ""
+			for k2: String in Front3D.materials():
+				if Front3D.materials()[k2] == m:
+					mk = k2
+			if card:
+				_check(_par(m, "trans_k", 0.0) > 0.0 and "cull_disabled" in m.shader.code, "%s: karta bez prześwitu albo jednostronna" % mi.name)
+			elif mk.ends_with(":base"):
+				bases += 1
+				_check(_par(m, "rim_k", 0.0) == 0.0, "%s: nasada pnia z kontrą księżyca" % mi.name)
+			else:
+				rims += 1
+				_check(_par(m, "rim_k", 0.0) > 0.0, "%s: kora bez kontry księżyca" % mi.name)
+		if kind in ["pine", "birch", "snag"]:
+			_check(rims == 1 and bases == 1, "%s: pień bez osobnej kory nasady (kora %d, nasada %d)" % [mi.name, rims, bases])
+	for k in ["pine", "birch", "snag", "bough", "ferns", "grass"]:
+		_check(kinds.has(k), "las: rodzaj %s nie powstał na długim zakresie" % k)
+	Front3D.set_moon(0.25)
+	for c in fr.get_children():
+		var mi := c as MeshInstance3D
+		var m := mi.get_surface_override_material(0) as ShaderMaterial
+		var forest := String(mi.name).get_slice("_", 0) in ["pine", "birch", "snag", "bough", "ferns", "grass"]
+		_check(is_equal_approx(_par(m, "moon", 1.0), 0.25 if forest else 1.0), "%s: set_moon nie działa tylko na las" % mi.name)
+	Front3D.set_moon(1.0)
+	_check_ground(root, y_floor)
+	Front3D.build(root, [], [], false)
+	root.queue_free()
+
+
+## y punktu (y, z) w rzucie na płaszczyznę gry z kamery na wysokości `cy`, `d` m przed nią.
+func _proj(y: float, z: float, cy: float, d: float) -> float:
+	return cy + (y - cy) * d / (d - z)
+
+
+## Podłoże lasu z `_check_forest` (płaski grunt w wierszu 26): płyta w warstwie świata z materiałem bryły `#`, przy bryle na wierzchu
+## gruntu, w rzucie pod linią podłogi z każdej kamery (WIDE / NORMAL / CLOSE; kamera nisko, jak gracz przy podłodze, i wysoko), runo
+## w rzucie najwyżej przy stopach; tunel (wpis bez „open”) bez podłoża.
+func _check_ground(root: Node3D, y_floor: float) -> void:
+	var g := root.get_node_or_null("FrontGround") as MeshInstance3D
+	_check(g != null, "las: brak podłoża FrontGround")
+	if g == null:
+		return
+	_check(g.layers == LAYER_WORLD and g.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "podłoże: warstwa albo cień")
+	_check(g.material_override == Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic"), "podłoże: inny materiał niż bryła gruntu")
+	var bb := g.mesh.get_aabb()
+	_check(bb.end.z >= float(Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1]) - 0.01 and bb.position.z < Level3D.DEPTH_FRONT, "podłoże: nie sięga od bryły do %.0f m (%.2f..%.2f)" % [Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1], bb.position.z, bb.end.z])
+	var verts: PackedVector3Array = g.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var bad := 0
+	for v in verts:
+		if v.z <= Level3D.DEPTH_FRONT and v.y > y_floor - 0.01:
+			continue                                        # pierwszy rząd pod wierzchem bryły
+		if v.z <= 1.6 and v.y > y_floor + 0.001:
+			bad += 1
+		for d: float in [16.85, 20.2, 25.3]:
+			for cy: float in [y_floor + 2.0, y_floor + 5.3, y_floor + 9.0]:
+				if _proj(v.y, v.z, cy, d) > y_floor + 0.001:
+					bad += 1
+	_check(bad == 0, "podłoże: %d punktów nad gruntem przy bryle albo w rzucie nad linią podłogi" % bad)
+	var cards := 0
+	for c in root.get_children():
+		var mm := c as MultiMeshInstance3D
+		if mm != null and String(mm.name).begins_with("FrontGround_"):
+			cards += mm.multimesh.instance_count
+	_check(cards > 100 and cards == Front3D.cover_tops.size(), "podłoże: %d kart runa (zapis wierzchołków: %d)" % [cards, Front3D.cover_tops.size()])
+	for t: Vector2 in Front3D.cover_tops:
+		if _proj(t.x, t.y, y_floor + 5.3, 20.2) > y_floor + 0.35:
+			bad += 1
+	_check(bad == 0, "podłoże: %d kart runa w rzucie wyżej niż stopy" % bad)
+	# kamera pod powierzchnią (`SURF_FADE`; gracz na podłożu: kamera ok. 5,3 m nad nim): płyta i runo znikają, las gaśnie przez `vis`
+	# mapa z zawałem (1.1) buduje świat dwa razy (`Geometry` i `GeometryAfterCollapse`): gasną obie kopie podłoża
+	var fm := Front3D._moon_mats[0] as ShaderMaterial
+	var r3 := Node3D.new()
+	get_root().add_child(r3)
+	Front3D.build(r3, [{"set": "forest", "c0": 0, "c1": 400, "r0": 0, "r1": 26}], [], false)
+	Front3D.set_camera_y(y_floor + 1.0)
+	var shown := 0
+	for c in root.get_children() + r3.get_children():
+		if String(c.name).begins_with("FrontGround") and (c as Node3D).visible:
+			shown += 1
+	r3.queue_free()
+	_check(shown == 0 and float(fm.get_shader_parameter("vis")) == 0.0, "kamera pod powierzchnią: %d węzłów podłoża widocznych, vis lasu %s" % [shown, fm.get_shader_parameter("vis")])
+	Front3D.set_camera_y(y_floor + 5.3)
+	_check(g.visible and g.transparency == 0.0 and float(fm.get_shader_parameter("vis")) == 1.0, "kamera nad powierzchnią: las albo podłoże wygaszone")
+	var r2 := Node3D.new()
+	get_root().add_child(r2)
+	Front3D.build(r2, [{"set": "tunnel", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}], [], false)
+	_check(r2.get_node_or_null("FrontGround") == null, "tunel: podłoże bez wpisu otwartego")
+	r2.queue_free()
+
+
+## Podłoże na mapie: przy bryle (z = DEPTH_FRONT) w całej kolumnie nie wyżej niż wierzch jej gruntu w pasie wpisu otwartego (pierwszy lity
+## kafel pod stropem pasa) i równo z gruntem od r1 w dół (najwyżej 8 wierszy) — dołek przed szybem ma pionowe ściany równo z bokami bryły,
+## bez opadania nad sąsiednią kolumną; nie wchodzi w przekrój obok.
+func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) -> void:
+	Front3D.prepare_ground(front, rows, items)
+	var T := Level3D.T
+	var cols: int = (rows[0] as String).length()
+	for e: Dictionary in front:
+		if not bool((Front3D.SETS[e["set"]] as Dictionary).get("open", false)):
+			continue
+		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			var cc := clampi(c, 0, cols - 1)
+			var top := int(e["r0"]) + 1
+			while top < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, cc, top)):
+				top += 1
+			top = mini(top, int(e["r1"]) + 8)
+			var r := int(e["r1"])
+			while r < mini(int(e["r1"]) + 8, rows.size() - 1) and not Level3D.is_solid_ch(Level3D._ch(rows, cc, r)):
+				r += 1                                       # szyb głębszy niż r1 + 8: dołek kończy się na tej głębokości (kamera jest już pod powierzchnią, `SURF_FADE`)
+			for fx in [0.02, 0.5, 0.98]:
+				var y := Front3D.ground_y((float(c) + fx) * T, Level3D.DEPTH_FRONT)
+				if y > -INF:
+					_check(y <= -float(top) * T + 0.001, "%s kolumna %d: podłoże %.2f m nad gruntem kolumny" % [map_id, c, y + float(top) * T])
+					_check(absf(y + float(r) * T) < 0.001, "%s kolumna %d: podłoże %.2f m od gruntu kolumny od r1" % [map_id, c, y + float(r) * T])
+		for o: Dictionary in front:
+			if bool(o.get("shell", false)) and absi(int(o["r1"]) - int(e["r1"])) <= 4:
+				for x in [float(o["c0"]) * T + 0.3, float(int(o["c1"]) + 1) * T - 0.3]:
+					_check(Front3D.ground_y(x, 3.0) == -INF, "%s: podłoże lasu wchodzi w przekrój %s (x %.1f)" % [map_id, o["set"], x])
+					# budynek na powierzchni: przed płytą podłogi przekroju grunt biegnie dalej (od SHELL_Z), na wysokości podłogi
+					# (przy brzegu może opadać jak podłoże przy szybie obok — na środku budynku leży na wysokości podłogi)
+					if absi(int(o["r1"]) - int(e["r1"])) <= 1:
+						var yb := Front3D.ground_y(x, Level3D.SHELL_Z)
+						var ym := Front3D.ground_y((float(o["c0"]) + float(o["c1"]) + 1.0) * 0.5 * T, Level3D.SHELL_Z + 0.5)
+						_check(yb > -INF and yb <= -float(o["r1"]) * T + 0.01 and absf(ym + float(o["r1"]) * T) < 0.01,
+								"%s: brak gruntu przed przekrojem %s (x %.1f, y %.2f, środek %.2f)" % [map_id, o["set"], x, yb, ym])
+	# pnie i kępy: tylko na równym podłożu (nie na zboczu dołka przed szybem i rampą) i poza pominięciami wpisu (jaskinia, wieża, budynek)
+	Level3D.set_shells(front, rows)
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Front3D.build(root, front, [], false, rows)
+	var fr := root.get_node_or_null("Front")
+	var n := 0
+	if fr != null:
+		for c in fr.get_children():
+			var mi := c as MeshInstance3D
+			var yw: Variant = mi.get_instance_shader_parameter("ywin") if mi != null else null
+			if not (yw is Vector2) or (yw as Vector2).y < 1e5 or (yw as Vector2).x < -1e5:
+				continue                                         # nie stoi na podłożu lasu (gałąź, rury)
+			n += 1
+			var x := mi.position.x
+			_check(Front3D.level_at(x), "%s %s: stoi na nierównym podłożu (x %.1f)" % [map_id, mi.name, x])
+			for e: Dictionary in front:
+				for sk: Array in (e.get("skip", []) as Array):
+					_check(x < float(sk[0]) * T or x > float(int(sk[1]) + 1) * T, "%s %s: pień w pominięciu %s (x %.1f)" % [map_id, mi.name, sk, x])
+	if front.any(func(e: Dictionary) -> bool: return bool((Front3D.SETS[e["set"]] as Dictionary).get("open", false))):
+		_check(n > 0, "%s: las bez elementów na podłożu" % map_id)
+	# podłoga tuneli i sal pod ziemią przed płytą przekroju: od SHELL_Z, płaska, nie wyżej niż najwyższa podłoga przekroju
+	var tun: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)) and String(e["set"]) != "bunker")
+	if not tun.is_empty():
+		var ytop := -INF
+		for e: Dictionary in tun:
+			ytop = maxf(ytop, -float(e["r1"]) * T)
+		var floors: Array = root.get_children().filter(func(c: Node) -> bool: return String(c.name).begins_with("FrontFloor"))
+		_check(not floors.is_empty(), "%s: brak podłogi tunelu przed przekrojem" % map_id)
+		for c: Node in floors:
+			var bb := ((c as MeshInstance3D).mesh as ArrayMesh).get_aabb()
+			_check(bb.position.z >= Level3D.SHELL_Z - 0.05 and bb.end.z >= float(Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1]) - 0.01 and bb.end.y <= ytop + 0.01,
+					"%s: podłoga tunelu z %.2f..%.2f, wierzch %.2f (podłoga %.2f)" % [map_id, bb.position.z, bb.end.z, bb.end.y, ytop])
+	root.queue_free()
+	Front3D.prepare_ground([], rows, [])
 
 
 ## Torowisko drezyny w strefie przekroju (`Level3D.in_trench`): płyta leży na wysokości dna koryta (pełna płyta zasłoniłaby szyny i koła),
