@@ -27,12 +27,13 @@ const CUT := 0.012                         ## m: grubość nakładki przekroju p
 
 const CHAMFER := 0.025                     ## m: faza krawędzi brył betonowych (mniejsza przy cienkich elementach)
 
-## Materiały typu budynku: [klucz tekstury (`world_pbr_import.py`: Poly Haven po gradingu gry), powtórzeń na metr, kolor zastępczy, przyciemnienie].
+## Materiały typu budynku: [klucz tekstury (`world_pbr_import.py`: Poly Haven po gradingu gry), powtórzeń na metr, kolor zastępczy, przyciemnienie,
+## warstwa brudu (`Level3D.make_pbr`: plamy i zacieki ok. 14 m w rzucie świata, jak na reszcie betonu mapy)].
 ## Ściany i słupy: warstwy betonowania; płyta i belki: goły beton z panelami; przekrój: gruboziarnisty; cokół: brudny (porównanie 11 kandydatów 2026-11-09).
 const KINDS := {
-	"bunker": {"wall": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 1.0], "slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 1.0],
-			"back": ["bld_wall", 0.5, Color(0.22, 0.23, 0.24), 0.8], "cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 1.0],
-			"plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 1.0]},
+	"bunker": {"wall": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"], "slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"],
+			"back": ["bld_wall", 0.5, Color(0.22, 0.23, 0.24), 0.8, "stone"], "cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""],
+			"plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"]},
 }
 ## Klucz części → rola materiału; części z siatką fazowaną i UV na element (`_box_mesh`) — w `SOLO` każda bryła z własnym przesunięciem tekstury
 ## (słup, belka, pilaster czytają się jako osobne elementy), reszta w UV świata (kawałki muru wokół otworów łączą się bez szwu).
@@ -41,11 +42,15 @@ const SOLO := ["col", "beam"]
 
 ## Materiał roli z UV siatki w metrach (`uv1_scale` = powtórzeń na metr), bez rzutowania triplanarnego.
 static func _uv_mat(spec: Array) -> Material:
-	var src := Level3D.make_pbr(String(spec[0]), float(spec[1]), spec[2], 0.95)
-	var m := src.duplicate() as StandardMaterial3D                   # make_pbr zwraca materiał ze wspólnej pamięci podręcznej
+	var m := _tinted(spec)
 	m.uv1_triplanar = false
 	m.uv1_world_triplanar = false
 	m.uv1_scale = Vector3(float(spec[1]), float(spec[1]), 1.0)
+	return m
+
+## Kopia materiału z `make_pbr` (wspólna pamięć podręczna) z przyciemnieniem albedo; warstwa brudu (`next_pass`) zostaje w rzucie świata.
+static func _tinted(spec: Array) -> StandardMaterial3D:
+	var m := Level3D.make_pbr(String(spec[0]), float(spec[1]), spec[2], 0.95, 1.0, 1.0, false, String(spec[4])).duplicate() as StandardMaterial3D
 	var k := float(spec[3])
 	m.albedo_color = Color(k, k, k)
 	return m
@@ -242,7 +247,7 @@ static func build_one(parent: Node3D, b: Dictionary, rows: Array) -> int:
 		"steel": Level3D.make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"),
 		"leaf": Level3D.make_pbr("metal", 0.40, Color(0.22, 0.24, 0.22), 0.55, 1.0, 0.7, false, "rust"),
 		"glass": Level3D.make_mat(Color(0.03, 0.035, 0.04), 0.12, 0.06, 0.0),
-		"cut": Level3D.make_pbr(String(cs[0]), float(cs[1]), cs[2], 0.95),   # przekrój: rzut świata — płaszczyzna cięcia jak jeden blok betonu
+		"cut": _tinted(cs),   # przekrój: rzut świata — płaszczyzna cięcia jak jeden blok betonu
 	}
 	for k: String in ROLE:
 		mats[k] = _uv_mat(spec[ROLE[k]])
