@@ -11,6 +11,9 @@ barykady (ile przybitych, ile sekund wytrzymały, kto je rozbił), zawały i czy
 od 1.7.503 także `dig_find` — znajdźki wykopane w strefach wydobycia (D5): ile, czym, co wypadło; od 1.7.504 `dig_fall` —
 spadające wyspy w strefach (ile, jak duże); od 1.7.505 drobnica z wykopanych pul (`dig_find` z rodzajem „small”).
 
+Sekcja „Kryjówka — ruch” (plan układu kryjówki E0, od 1.7.531): `hub_enter`, `hub_pos` (próbka co 1 s) i `hub_station` (otwarty panel) —
+długość pobytów, udział czasu na wierszach podłogi (poziomach), najdłuższe postoje (kafel × wiersz) i otwierane stanowiska.
+
 Pola XP / poziomu / perków (`xp`, `level`, `perks` w `mission_start.equipment`, wiersz `xp`, `players[id].kinds` i `xp_kills`)
 oraz `hub_buy` są w dzienniku od 1.7.391 — starsze pliki dają tylko część raportu (wyniki, czasy, złom od 1.7.347).
 
@@ -67,7 +70,7 @@ def load(args):
         if args.since and name[:10] < args.since:
             continue
         cur = None
-        attempts, buys, hints = [], [], []
+        attempts, buys, hints, hub = [], [], [], []
         last_success = None
         for line in open(path, encoding="utf-8", errors="replace"):
             try:
@@ -92,9 +95,15 @@ def load(args):
                 buys.append(e)
             elif ev == "hint":
                 hints.append(e.get("id"))
+            elif ev == "hub_enter":
+                hub.append({"enter": e, "pos": [], "stations": []})
+            elif ev == "hub_pos" and hub:
+                hub[-1]["pos"].append(e)
+            elif ev == "hub_station" and hub:
+                hub[-1]["stations"].append(e)
         attempts = [a for a in attempts if keep(a, args)]
-        if attempts or buys:
-            sessions.append({"file": name, "attempts": attempts, "buys": buys, "hints": hints})
+        if attempts or buys or hub:
+            sessions.append({"file": name, "attempts": attempts, "buys": buys, "hints": hints, "hub": hub})
     return sessions
 
 
@@ -193,6 +202,8 @@ def report(sessions):
                   "hub_seconds_median": med([float(v["hub_seconds"]) for v in visits]), "visits": len(visits),
                   "bank_first_last": [bank[0], bank[-1]] if bank else None, "bank_max": max(bank) if bank else None}
 
+    rep["hub_moves"] = hub_moves([v for s in sessions for v in s.get("hub", [])])
+
     # --- próbki i badania
     samples = [int(a["start"]["workshop"].get("samples", 0)) for a in campaign if "workshop" in a["start"]]
     rep["samples"] = {"bank_last": samples[-1] if samples else None, "bank_max": max(samples) if samples else None,
@@ -221,6 +232,38 @@ def report(sessions):
     rep["destruction"] = destruction([a for a in attempts if build_version(a["start"].get("build", "")) >= DESTRUCTION_SINCE])
     rep["warnings"] = warnings(rep)
     return rep
+
+
+HUB_TILE = 16.0                                            # level.gd TILE
+HUB_STILL_PX = 6.0                                         # ruch między próbkami poniżej tylu px = postój
+
+
+def hub_moves(visits):
+    """Ruch w kryjówce z `hub_pos` / `hub_station` (plan układu kryjówki E0): pobyty, poziomy, postoje, panele."""
+    visits = [v for v in visits if v["pos"]]
+    rows_s, spots, stations = Counter(), Counter(), Counter()
+    lengths = []
+    for v in visits:
+        lengths.append(float(v["pos"][-1].get("s", 0.0)))
+        last = {}
+        for e in v["pos"]:
+            for q in e.get("p", []):
+                if q.get("bot"):
+                    continue
+                x, y = q.get("pos", [0, 0])
+                row = int(y // HUB_TILE)                   # stopy na podłodze: wiersz kafla nad podłogą
+                rows_s[row] += 1
+                prev = last.get(q.get("who"))
+                if prev is not None and abs(prev[0] - x) < HUB_STILL_PX and abs(prev[1] - y) < HUB_STILL_PX:
+                    spots[(int(x // HUB_TILE), row)] += 1
+                last[q.get("who")] = (x, y)
+        for e in v["stations"]:
+            stations[e.get("station", "?")] += 1
+    total = sum(rows_s.values())
+    return {"visits": len(visits), "seconds_median": med(lengths),
+            "rows_share": {r: round(n / total, 2) for r, n in sorted(rows_s.items())} if total else {},
+            "spots_top": [["%d×%d" % k, n] for k, n in spots.most_common(8)],
+            "stations": dict(stations.most_common())}
 
 
 def destruction(attempts):

@@ -203,7 +203,7 @@ func _physics_process(delta: float) -> void:
 	if phase != Phase.SUCCESS and phase != Phase.FAILED:
 		_pos_t -= delta
 		if _pos_t <= 0.0:
-			_pos_t = SessionLog.POS_EVERY
+			_pos_t = SessionLog.HUB_POS_EVERY if kind == "hub" else SessionLog.POS_EVERY
 			_log_positions()
 	if phase == Phase.OBJECTIVE:
 		peak_noise = maxf(peak_noise, NoiseMgr.level)
@@ -582,6 +582,9 @@ func _log_up(p: Node2D) -> void:
 
 ## Próbka pozycji wszystkich graczy (ludzie i boty) — z niej mapy cieplne czasu i tras (MAPS_PLAN.md P1).
 func _log_positions() -> void:
+	if kind == "hub":
+		_log_hub_positions()
+		return
 	if not SessionLog.recording():
 		return
 	var rows: Array = []
@@ -593,6 +596,17 @@ func _log_positions() -> void:
 			"bat": int(p.bat_pct)})                                        # procent baterii (BATTERY_PLAN.md B0)
 	if not rows.is_empty():
 		SessionLog.event("pos", {"phase": SessionLog.PHASES[phase], "noise": roundi(NoiseMgr.level), "p": rows})
+
+## Próbka pozycji w kryjówce (`hub_pos`, plan układu kryjówki E0): tylko kto i gdzie — z niej mapa cieplna i postoje przy stanowiskach.
+func _log_hub_positions() -> void:
+	if not SessionLog.hub_recording():
+		return
+	var rows: Array = []
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_queued_for_deletion():
+			rows.append({"who": "P%d" % int(p.display_id), "bot": bool(p.is_bot), "pos": SessionLog.xy(p.global_position)})
+	if not rows.is_empty():
+		SessionLog.hub_note("hub_pos", {"p": rows})
 
 ## Zaliczony cel `what` (n-ty z `of`) w punkcie `at`; `by` = gracz, który go zebrał (nieśmiertelnik, skrytka), jeśli wiadomo (MAPS_PLAN.md P2).
 func _log_objective(what: String, n: int, of: int, at: Vector2, by: Node2D = null) -> void:
@@ -611,7 +625,16 @@ func log_start(checkpoint := "") -> void:
 	_down_at.clear()
 	if kind == "hub":
 		_hub_at = Time.get_ticks_msec()
-		SessionLog.leave_mission()
+		var lv := get_tree().get_first_node_in_group("level")
+		var hum := 0
+		var bot := 0
+		for p in get_tree().get_nodes_in_group("players"):
+			if not p.is_queued_for_deletion():
+				if p.is_bot:
+					bot += 1
+				else:
+					hum += 1
+		SessionLog.hub_start({"map": String(lv.map_id) if lv != null else "", "humans": hum, "bots": bot})
 		return
 	var humans := 0
 	var bots := 0
