@@ -55,7 +55,7 @@ const NICHES := [
 ## Pierwszy plan przed płaszczyzną gry (`front3d.gd`, `FOREGROUND_PLAN.md` F2 — pilot): rury, kable i łańcuchy 3,5–5 m przed kamerą
 ## w hali stacji i w tunelu drezyny; pas wpisu od stropu (r0) do podłogi (r1), elementy przycięte do niego w rzucie na płaszczyznę gry.
 const FRONT := [
-	{"set": "station", "c0": 66, "c1": 100, "r0": 18, "r1": 26, "shell": true},     # hala stacji
+	{"set": "station", "c0": 66, "c1": 100, "r0": 18, "r1": 26, "shell": true, "build": "hall"},     # hala stacji (budynek 3D: szkielet z cegłą)
 	{"set": "tunnel", "c0": 8, "c1": 282, "r0": 44, "r1": 51, "shell": true},      # tunel drezyny
 	{"set": "forest", "c0": 2, "c1": 62, "r0": 0, "r1": 26},                       # las od startu do hali stacji (F3, pilot lasu)
 	# las za halą stacji do masztu; bez pni przed szopą na bagnie i pompownią (wnętrza bez przekroju), podłoże ciągłe (dołki przed szybami)

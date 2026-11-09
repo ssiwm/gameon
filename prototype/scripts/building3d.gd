@@ -1,5 +1,5 @@
 extends RefCounted
-## Budynki 3D z mapy (wariant C: posterunek i Skład 1.3; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
+## Budynki 3D z mapy (wariant C: posterunek i Skład 1.3, hala stacji 1.2; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
 ## w prawdziwych wymiarach zamiast pudeł kafli 1,31 m: płaski stropodach żelbetowy 0,25 m na górze kafla dachu z żebrami i podciągami
 ## do dolnej krawędzi kafla (Skoczek dalej wisi „pod sufitem”), attyka, ściany szczytowe 0,4 m z pilastrami, cokołem, okapem i oknami
 ## w głębi, drzwi w ościeżnicach w pasie gry, słupy co 4–6 m przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
@@ -34,7 +34,7 @@ const KINDS := {
 	"bunker": {"wall": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"], "slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"],
 			"back": ["bld_wall", 0.5, Color(0.22, 0.23, 0.24), 0.8, "stone"], "cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""],
 			"plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"]},
-	# hala magazynowa (Skład 1.3): żelbetowy szkielet (słupy, pilastry, strop) z wypełnieniem z cegły — ta sama cegła co mury mapy
+	# hala (Skład 1.3, hala stacji 1.2): żelbetowy szkielet (słupy, pilastry, strop) z wypełnieniem z cegły — ta sama cegła co mury mapy
 	"hall": {"wall": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, "stone"], "col": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"],
 			"slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"], "back": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.85, "stone"],
 			"cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""], "plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"]},
