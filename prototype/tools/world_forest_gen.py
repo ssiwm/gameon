@@ -1,4 +1,4 @@
-"""Tekstury drzew tła widoku 3D (`Level3D.build_forest`): świerki, sosny i brzozy jako karty z kanałem alfa.
+"""Tekstury drzew tła widoku 3D (`Level3D.build_forest`): świerki i sosny jako karty z kanałem alfa.
 
 Wynik: prototype/art/world3d/forest/spruce_{a,b,c}.png (512×1024 RGBA, pień u dołu na środku) oraz runo:
 grass_{a,b}.png i fern_a.png (256×256, kępa od dolnej krawędzi) dla `Level3D.build_undergrowth`, roots_{a,b}.png (korzenie pod krawędzią bryły, `build_front_edge`).
@@ -243,53 +243,30 @@ def bough(seed, side_view, w=512, h=256):
     return im.resize((w, h), Image.LANCZOS)
 
 
-def bark(kind, seed, w=256, h=512):
-    """Kora do pni modeli 3D (`prep_items3d.py: build_pine / build_birch`): u = obwód (powtarzalna w poziomie), v = wysokość (dół obrazu = nasada).
-    pine: dół szarobrązowe, głęboko spękane płyty, ku górze cienka, łuszcząca się rudopomarańczowa kora (sosna zwyczajna);
-    birch: biała kora z czarnymi poziomymi przetchlinkami i ciemnymi łatami, u nasady czarna, spękana."""
+def bark(seed, w=256, h=512):
+    """Kora sosny do pni modeli 3D (`prep_items3d.py: build_pine`): u = obwód (powtarzalna w poziomie), v = wysokość (dół obrazu = nasada);
+    dół szarobrązowe, głęboko spękane płyty, ku górze cienka, łuszcząca się rudopomarańczowa kora (sosna zwyczajna)."""
     rng = random.Random(seed)
     Wd, Hd = w * SS, h * SS
     im = Image.new("RGB", (Wd, Hd), (0, 0, 0))
     d = ImageDraw.Draw(im)
     for y in range(0, Hd, SS):                                 # tło: przejście koloru wzdłuż pnia
         t = 1.0 - y / Hd                                       # 0 = nasada, 1 = wierzchołek
-        if kind == "pine":
-            c = _mix((62, 52, 44), (138, 80, 50), min(1.0, max(0.0, (t - 0.42) / 0.4)))
-        else:
-            c = _mix((34, 32, 30), (206, 204, 196), min(1.0, max(0.0, (t - 0.04) / 0.14)))
+        c = _mix((62, 52, 44), (138, 80, 50), min(1.0, max(0.0, (t - 0.42) / 0.4)))
         d.rectangle([0, y, Wd, y + SS], fill=c)
-    if kind == "pine":
-        for _ in range(900):                                   # płyty kory: ciemne bruzdy pionowe, gęstsze u dołu
-            t = rng.random() ** 1.6
-            y = Hd * (1.0 - t)
-            x = rng.uniform(0, Wd)
-            ln = rng.uniform(10, 40) * SS * (1.4 - t)
-            dark = _mix((26, 20, 16), (90, 46, 26), t)
-            d.line([x, y, x + rng.uniform(-3, 3) * SS, y - ln], fill=dark, width=max(SS, int((1.6 - t) * 3 * SS)))
-        for _ in range(500):                                   # łuszczące się płatki w górnej części
-            t = rng.uniform(0.45, 1.0)
-            y = Hd * (1.0 - t)
-            x = rng.uniform(0, Wd)
-            r = rng.uniform(2, 7) * SS
-            d.ellipse([x - r, y - r * 0.5, x + r, y + r * 0.5], fill=_mix((150, 94, 60), (108, 58, 36), rng.random()))
-    else:
-        for _ in range(420):                                   # przetchlinki: krótkie czarne kreski w poprzek pnia
-            t = rng.uniform(0.1, 1.0)
-            y = Hd * (1.0 - t)
-            x = rng.uniform(0, Wd)
-            ln = rng.uniform(6, 30) * SS
-            d.line([x, y, x + ln, y + rng.uniform(-1, 1) * SS], fill=(28, 26, 24), width=max(SS, int(rng.uniform(1, 2.6) * SS)))
-        for _ in range(26):                                    # ciemne łaty
-            t = rng.uniform(0.12, 0.95)
-            y = Hd * (1.0 - t)
-            x = rng.uniform(0, Wd)
-            r = rng.uniform(8, 26) * SS
-            d.polygon([(x + math.cos(a) * r * rng.uniform(0.5, 1.0), y + math.sin(a) * r * 0.45 * rng.uniform(0.5, 1.0)) for a in [i * 0.7 for i in range(9)]], fill=(40, 38, 34))
-        for _ in range(300):                                   # czarna, spękana nasada
-            t = rng.random() * 0.12
-            y = Hd * (1.0 - t)
-            x = rng.uniform(0, Wd)
-            d.line([x, y, x + rng.uniform(-2, 2) * SS, y - rng.uniform(8, 30) * SS], fill=(14, 13, 12), width=2 * SS)
+    for _ in range(900):                                       # płyty kory: ciemne bruzdy pionowe, gęstsze u dołu
+        t = rng.random() ** 1.6
+        y = Hd * (1.0 - t)
+        x = rng.uniform(0, Wd)
+        ln = rng.uniform(10, 40) * SS * (1.4 - t)
+        dark = _mix((26, 20, 16), (90, 46, 26), t)
+        d.line([x, y, x + rng.uniform(-3, 3) * SS, y - ln], fill=dark, width=max(SS, int((1.6 - t) * 3 * SS)))
+    for _ in range(500):                                       # łuszczące się płatki w górnej części
+        t = rng.uniform(0.45, 1.0)
+        y = Hd * (1.0 - t)
+        x = rng.uniform(0, Wd)
+        r = rng.uniform(2, 7) * SS
+        d.ellipse([x - r, y - r * 0.5, x + r, y + r * 0.5], fill=_mix((150, 94, 60), (108, 58, 36), rng.random()))
     out = im.resize((w, h), Image.LANCZOS).convert("RGBA")
     return out
 
@@ -315,33 +292,6 @@ def pine_tuft(seed, size=256):
         a = rng.uniform(0, math.tau)
         r = S * 0.2 * rng.random() ** 0.7
         _needles(d, rng, cx + math.cos(a) * r, cy + math.sin(a) * r * 0.7, rng.uniform(0, math.tau), S * 0.07, col_d, col_l, 5, 3.0)
-    return im.resize((size, size), Image.LANCZOS)
-
-
-def birch_leaves(seed, size=256):
-    """Zwisające gałązki brzozy z drobnymi liśćmi (nasada u góry, w środku) do korony modelu 3D."""
-    rng = random.Random(seed)
-    S = size * SS
-    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    leaf_d, leaf_l, wood = (18, 28, 16), (50, 64, 32), (40, 34, 30)
-    for _ in range(16):
-        x0 = S * 0.5 + rng.gauss(0, S * 0.16)
-        a = math.radians(90 + rng.gauss(0, 12))
-        ln = S * rng.uniform(0.45, 0.95)
-        x, y = x0, 2 * SS
-        steps = 16
-        for i in range(steps):
-            t = i / steps
-            nx, ny = x + math.cos(a) * ln / steps, y + math.sin(a) * ln / steps
-            d.line([x, y, nx, ny], fill=wood + (255,), width=SS)
-            for _ in range(3):                                 # listki: małe romby
-                lx, ly = nx + rng.uniform(-8, 8) * SS, ny + rng.uniform(-4, 6) * SS
-                r = rng.uniform(3, 5.5) * SS
-                c = _mix(leaf_d, leaf_l, rng.random() ** 1.5)
-                d.polygon([(lx, ly - r * 0.6), (lx + r * 0.55, ly), (lx, ly + r), (lx - r * 0.55, ly)], fill=c + (255,))
-            a += rng.uniform(-0.05, 0.08)
-            x, y = nx, ny
     return im.resize((size, size), Image.LANCZOS)
 
 
@@ -381,63 +331,6 @@ def pine_card(seed):
     return im.resize((W, H), Image.LANCZOS)
 
 
-def birch_card(seed):
-    """Brzoza dalekiego lasu (karta): smukły biały pień z czarnymi znakami, lekko pochylony, jajowata ażurowa korona z wygiętych konarów
-    i zwisających gałązek z drobnymi liśćmi."""
-    rng = random.Random(seed)
-    im = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    cx = W * SS * 0.5
-    base_y = H * SS - 4 * SS
-    top_y = H * SS * 0.12
-    bend = rng.uniform(-1.4, 1.4)
-    _trunk(d, rng, cx, base_y, top_y, 8 * SS, 2 * SS, (150, 150, 144), (214, 212, 204), bend)
-    for _ in range(90):                                        # czarne znaki na korze
-        t = rng.random()
-        y = base_y + (top_y - base_y) * t
-        x = cx + bend * math.sin(t * math.pi) * W * SS * 0.03 + rng.uniform(-6, 6) * SS * (1.0 - t)
-        d.line([x - 5 * SS, y, x + 5 * SS, y], fill=(24, 22, 20, 255), width=SS)
-    leaf_d, leaf_l = (16, 26, 14), (48, 62, 30)
-    wood = (58, 52, 46)
-    crown_lo, crown_hi = 0.36, 0.97                            # korona: jajowata, najszersza w ok. 40% swojej wysokości
-    hanging = []                                               # zwisające gałązki rysowane na końcu, żeby przykryły konary
-    for j in range(13):                                        # konary: łuk skośnie w górę i na boki, końce opadają
-        t = crown_lo + (crown_hi - crown_lo) * (j + rng.random()) / 13
-        q = (t - crown_lo) / (crown_hi - crown_lo)
-        y0 = base_y + (top_y - base_y) * t
-        x0 = cx + bend * math.sin(t * math.pi) * W * SS * 0.03
-        side = (-1 if j % 2 == 0 else 1) if rng.random() < 0.75 else rng.choice((-1, 1))
-        reach = W * SS * 0.36 * math.sin(math.pi * (0.25 + 0.75 * q)) ** 0.7 * rng.uniform(0.75, 1.05) + 20 * SS
-        a0 = math.radians(rng.uniform(28, 48))                 # od pionu
-        steps = 12
-        x, y = x0, y0
-        for i in range(steps):
-            s = (i + 1) / steps
-            a = a0 + s * math.radians(rng.uniform(40, 70))       # wygina się na zewnątrz i w dół
-            nx = x + side * math.sin(a) * reach / steps * 1.1
-            ny = y - math.cos(a) * reach / steps * 1.1
-            d.line([x, y, nx, ny], fill=wood + (255,), width=max(SS, int((1.0 - s) * 3 * SS)))
-            if i >= 2:
-                for _ in range(3):
-                    hanging.append((nx + rng.uniform(-6, 6) * SS, ny + rng.uniform(-3, 6) * SS, rng.uniform(20, 130) * SS * (1.1 - 0.5 * q) * rng.uniform(0.6, 1.2), side))
-            x, y = nx, ny
-    for (x, y, ln, side) in hanging:                           # zwisające gałązki z drobnymi liśćmi, gęstsze ku końcom
-        n = max(5, int(ln / (5 * SS)))
-        sway = rng.uniform(-0.5, 0.5) * SS + side * 0.4 * SS
-        for i in range(n):
-            nx, ny = x + sway + rng.uniform(-0.6, 0.6) * SS, y + ln / n
-            d.line([x, y, nx, ny], fill=(46, 42, 38, 255), width=SS)
-            for _ in range(2):
-                r = rng.uniform(2.5, 4.5) * SS
-                lx, ly = nx + rng.uniform(-5, 5) * SS, ny + rng.uniform(-2, 4) * SS
-                rot = rng.uniform(0, math.pi)
-                pts = [(lx + math.cos(rot + k * math.pi / 2) * r * (1.0 if k % 2 == 0 else 0.55),
-                        ly + math.sin(rot + k * math.pi / 2) * r * (1.0 if k % 2 == 0 else 0.55)) for k in range(4)]
-                d.polygon(pts, fill=_mix(leaf_d, leaf_l, rng.random() ** 1.8) + (255,))
-            x, y = nx, ny
-    return im.resize((W, H), Image.LANCZOS)
-
-
 def main():
     os.makedirs(OUT, exist_ok=True)
     jobs = {
@@ -451,11 +344,8 @@ def main():
         "roots_b": roots(13),
         "pine_a": pine_card(31),
         "pine_b": pine_card(47),
-        "birch_a": birch_card(53),
-        "pine_bark": bark("pine", 61),
-        "birch_bark": bark("birch", 67),
+        "pine_bark": bark(61),
         "pine_tuft": pine_tuft(71),
-        "birch_leaves": birch_leaves(73),
         "bough_side": bough(21, True),
         "bough_top": bough(22, False),
     }

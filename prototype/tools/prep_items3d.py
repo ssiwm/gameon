@@ -203,7 +203,7 @@ def export_glb(obj, name):
     bpy.context.view_layer.objects.active = obj
     path = os.path.join(OUT, name + ".glb")
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                              export_image_format="AUTO" if name.startswith(("tree_spruce", "tree_pine", "tree_birch")) else "JPEG", export_jpeg_quality=88, export_animations=False)
+                              export_image_format="AUTO" if name.startswith(("tree_spruce", "tree_pine")) else "JPEG", export_jpeg_quality=88, export_animations=False)
     print("SAVED", name, os.path.getsize(path) // 1024, "kB", len(obj.data.polygons), "faces")
 
 
@@ -536,10 +536,9 @@ def build_spruce(name, seed, fullness, bare):
     export_glb(trunk, name)
 
 
-# sosny i brzozy lasu w głębi (`Level3D.build_forest`): pień proceduralny z korą z `tools/world_forest_gen.py`, korona z kart z alfą
+# sosny lasu w głębi (`Level3D.build_forest`): pień proceduralny z korą z `tools/world_forest_gen.py`, korona z kart z alfą
 # nazwa → (ziarno, początek korony [część wysokości], wygięcie pnia, liczba konarów)
 PINES = {"tree_pine_a": (101, 0.66, 0.9, 11), "tree_pine_b": (113, 0.72, -1.4, 9), "tree_pine_c": (127, 0.58, 0.4, 13)}
-BIRCHES = {"tree_birch_a": (131, 3.0), "tree_birch_b": (149, -4.5)}           # ziarno, pochylenie [jednostki na 100 wysokości]
 
 
 def _forest_mat(key, alpha):
@@ -655,45 +654,6 @@ def build_pine(name, seed, crown0, bend, arms):
         a = math.tau * k / 3
         side = Vector((math.cos(a), math.sin(a), 0.0))
         quad(top - side * 4.5 - Vector((0, 0, 3.0)), side * 9.0, Vector((0, 0, 6.5)), 1)
-    bm.to_mesh(me)
-    bm.free()
-    me.update()
-    export_glb(obj, name)
-
-
-def build_birch(name, seed, lean):
-    """Brzoza brodawkowata: smukły, pochylony biały pień z czarnymi przetchlinkami, konary skośnie w górę od połowy wysokości i zwisające
-    gałązki z liśćmi (`birch_leaves`, nasada u góry tekstury). Wysokość 100 jednostek, stopy w z = 0."""
-    import random
-    rng = random.Random(seed)
-    obj, me, bm, quad, tube = _tree_builder(name)
-    me.materials.append(_forest_mat("birch_bark", False))
-    me.materials.append(_forest_mat("birch_leaves", True))
-    sp = _spine(rng, 100.0, rng.uniform(-1.2, 1.2), lean, 22)
-    tube(sp, [1.05 * (1.0 - t) ** 0.8 + 0.15 for t in [i / 21 for i in range(22)]], 8, 0, 0.0, 1.0, 1.0)
-
-    def at(t):
-        i = min(int(t * 21), 20)
-        f = t * 21 - i
-        return sp[i].lerp(sp[i + 1], f)
-
-    n_arms = rng.randint(13, 17)
-    for j in range(n_arms):                                    # konary: łuk skośnie w górę i na zewnątrz, końce opadają; korona jajowata
-        t = 0.36 + 0.6 * (j + rng.random()) / n_arms
-        q = (t - 0.36) / 0.6
-        a = rng.uniform(0, math.tau)
-        rise = math.radians(rng.uniform(30, 52))
-        ln = (11.0 + 15.0 * math.sin(math.pi * (0.25 + 0.75 * q)) ** 0.7) * rng.uniform(0.8, 1.1)
-        d = Vector((math.cos(a) * math.cos(rise), math.sin(a) * math.cos(rise), math.sin(rise)))
-        b = at(t)
-        pts = [b + d * ln * k / 3 + Vector((0, 0, -ln * 0.22 * (k / 3) ** 2)) for k in range(4)]
-        tube(pts, [0.3, 0.2, 0.12, 0.05], 4, 0, 0.85, 0.95)
-        for k in (1, 2, 3):                                    # zwisające gałązki z liśćmi (karty pionowe, w dwóch kierunkach)
-            c = pts[k]
-            s = rng.uniform(8.0, 13.0)
-            for ang in (a, a + math.pi * 0.5):
-                side = Vector((math.cos(ang), math.sin(ang), 0.0))
-                quad(c - side * s * 0.5 - Vector((0, 0, s)), side * s, Vector((0, 0, s)), 1)
     bm.to_mesh(me)
     bm.free()
     me.update()
@@ -858,9 +818,6 @@ def main():
     for name, spec in PINES.items():
         if want(name):
             build_pine(name, *spec)
-    for name, spec in BIRCHES.items():
-        if want(name):
-            build_birch(name, *spec)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"

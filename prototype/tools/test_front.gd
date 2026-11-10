@@ -13,7 +13,7 @@ extends SceneTree
 ##     nad torowiskiem drezyny element stoi na podsypce (płyta na wysokości dna koryta), pod dachem z blachy wisi pod płatwią,
 ##     wyciek oleju w hali 1.2 (`Level3D.oil_spills`): plama w zasięgu płyty, przewrócona beczka na płycie przed niecką i niżej niż linia
 ##     podłogi w rzucie, stojące za płaszczyzną gry poza niecką, element nie stoi w plamie,
-## (5) las (zestaw „forest”, F3): pnie sosny, brzozy i martwy, zwisające gałęzie, paprocie i trawa; pas otwarty w pionie (przycięcie tylko
+## (5) las (zestaw „forest”, F3): pnie sosny (martwe pnie i brzozy usunięte w 1.7.542), krzewy, paprocie i trawa; pas otwarty w pionie (przycięcie tylko
 ##     w poziomie, z zapasem OPEN_PAD), pień od podłoża (nasada pod nim, `ywin` na podłożu) nad górny brzeg kadru NORMAL, kępa na podłożu
 ##     bliżej kamery (CLUMP_Z) z wierzchem w rzucie pod linią podłogi, kontra księżyca tylko na materiałach lasu (rury i ściany przekroju
 ##     bez niej), karty z alfą i dwustronne, `set_moon` zmienia tylko las; podłoże przed płaszczyzną gry: płyta w warstwie świata z materiałem

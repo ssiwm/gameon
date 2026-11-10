@@ -48,7 +48,7 @@ const SETS := {
 	# las: w każdej przerwie między pniami dwa małe elementy — gałąź u góry kadru (`small`) i kępa u dołu (`small2`); nie zasłaniają się nawzajem
 	"forest": {"big": ["pine"], "small": ["shrub"], "small2": ["ferns", "grass", "ferns"], "tint": Color(0.62, 0.64, 0.66), "open": true},
 }
-const BIG_KINDS := ["pipe", "pipes2", "pine", "birch"]
+const BIG_KINDS := ["pipe", "pipes2", "pine"]
 const PARTS_GLB := "res://art/world3d/front/pipe_parts.glb"
 const PIPE_TEX := "res://art/items3d/pipes_modular_industrial_pipes_01_group0%d_%s_1k.jpg"   ## %d grupa 1–2, %s diff / arm / nor_gl
 const LAMP_GLB := "res://art/items3d/lamp.glb"
@@ -63,7 +63,6 @@ const FOREST_TEX := "res://art/world3d/forest/%s.png"
 ## Kora to pionowy pas całego drzewa (u dołu ciemna nasada) — pień w kadrze bierze jego środek, bez powtórzeń.
 const TRUNKS := {
 	"pine": ["pine_bark", 0.9, 0.012, Vector2(0.92, 0.18)],
-	"birch": ["birch_bark", 0.55, 0.008, Vector2(0.80, 0.05)],
 }
 const TRUNK_TOP := 16.0                    ## m: koniec pnia nad podłożem — zawsze nad górnym brzegiem kadru NORMAL
 const TRUNK_SINK := 0.3                    ## m: pień, szyja i korzenie zaczynają się tyle pod podłożem (część pod nim odcina `ywin`)
@@ -278,8 +277,8 @@ const FOREST_BARK_BUMP := 9.0              ## siła wypukłości kory z jasnośc
 const FOREST_TRANS := 0.16                 ## prześwit księżyca przez karty igliwia, paproci i trawy
 ## Igliwie przy górnym brzegu kadru wisi na tle ciemnych koron lasu — bez mocniejszego prześwitu znika jak pień w F0.
 const FOREST_TRANS_K := {"bough_side": 2.4, "pine_tuft": 2.2}
-## Jasność tekstur lasu w pierwszym planie (`alb_k`): biała kora brzozy w nocy nie może świecić jak słup.
-const FOREST_ALB := {"birch_bark": 0.3, "grass_a": 0.45, "grass_b": 0.45, "fern_a": 0.7}
+## Jasność tekstur lasu w pierwszym planie (`alb_k`): jasne karty trawy i paproci w nocy nie mogą świecić.
+const FOREST_ALB := {"grass_a": 0.45, "grass_b": 0.45, "fern_a": 0.7}
 const OPEN_PAD := 3.0                      ## m: zapas przycięcia w poziomie dla wpisów otwartych — rzut pnia przy brzegu kadru wychodzi ×1,25 dalej od środka
 
 const SHADER := """
@@ -301,7 +300,7 @@ uniform float trans_k = 0.0;               // karty lasu: prześwit księżyca p
 uniform vec3 rim_col : source_color = vec3(0.62, 0.72, 0.95);
 uniform vec3 moon_dir = vec3(0.34, 0.215, -0.915);   // `Level3D.MOON_DIR`: za lasem, po prawej, nisko
 uniform float moon = 1.0;                  // pogoda i błysk burzy (`set_moon`, jak `MoonRim`)
-uniform float alb_k = 1.0;                 // las: mnożnik jasności tekstury (jasna kora brzozy w nocy szarzeje)
+uniform float alb_k = 1.0;                 // las: mnożnik jasności tekstury (jasne karty runa w nocy szarzeją)
 uniform float bark_bump = 0.0;             // kora pnia: wypukłość z jasności tekstury (bruzdy ciemne = wgłębienia), rozbija też kontrę; 0 = wył.
 uniform bool world_uv = false;             // ściany przekroju (`build_walls`): tekstura świata w rzucie trójpłaszczyznowym jak `Level3D.make_pbr`
 uniform float uv_per_m = 0.33;
@@ -800,7 +799,7 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			hook.ring_segments = 8
 			dark.append_from(hook, 0, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.0, yl - 0.1, 0.0)))
 			used["dark"] = true
-		"pine", "birch":
+		"pine":
 			_trunk(sts, used, kind, band.x, rng)
 		"bough":
 			_bough(sts, used, band.x, rng)
@@ -904,7 +903,7 @@ static func _card(st: SurfaceTool, at: Vector3, w: float, h: float, rz: float, r
 
 
 ## Pień przez cały kadr (podstawa i koniec poza nim): lekko pochylony i wygięty, nierówna kora; sosna z martwym sękiem i czasem
-## gałęzią z igliwiem przy górnym brzegu, brzoza z cienką gałązką. U nasady kępa paproci.
+## gałęzią z igliwiem przy górnym brzegu. U nasady kępa paproci.
 static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: float, rng: RandomNumberGenerator) -> void:
 	var spec: Array = TRUNKS[kind]
 	var key := _forest_mat(String(spec[0]), false)
@@ -949,18 +948,15 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 		# konary w płaszczyźnie kadru (w lewo albo w prawo, lekko ku kamerze lub od niej) — sylwetka czytelna
 		var yb := y_floor + rng.randf_range(3.0, 9.0)
 		var sgn := -1.0 if (i + rng.randi()) % 2 == 0 else 1.0
-		var upk := rng.randf_range(0.6, 1.2) if kind == "birch" else rng.randf_range(0.25, 0.9)
+		var upk := rng.randf_range(0.25, 0.9)
 		var dir := Vector3(sgn, upk, rng.randf_range(-0.35, 0.35)).normalized()
 		var ln := rng.randf_range(0.9, 2.3)
 		if kind == "pine":
 			ln = rng.randf_range(0.25, 0.6)
-		elif kind == "birch":
-			ln = rng.randf_range(1.2, 2.2)
 		var rt := _trunk_r(r0, r1, y0, length, yb)
 		var rb := rt * 0.16
 		var c := _trunk_axis(lean, bend, y0, length, yb)
-		var lv := Vector2(0.98, 0.96) if kind == "birch" else Vector2(v_mid, v_mid - 0.05)      # gałązki brzozy ciemne (czarna nasada kory)
-		_cone(st, c + dir * rt * 0.6, dir, ln, rb, rb * 0.25, 6, 3, lv, 1.0, 0.1, ph + float(i), Vector3(0.0, -0.08 * ln, 0.0))
+		_cone(st, c + dir * rt * 0.6, dir, ln, rb, rb * 0.25, 6, 3, Vector2(v_mid, v_mid - 0.05), 1.0, 0.1, ph + float(i), Vector3(0.0, -0.08 * ln, 0.0))
 	if kind == "pine" and rng.randf() < PINE_BOUGH_P:
 		# gałąź korony przy górnym brzegu kadru: konar w bok z kępami igliwia na końcu (karty `pine_tuft`)
 		var yb := y_floor + rng.randf_range(BOUGH_Y.x - 1.0, BOUGH_Y.y)
