@@ -191,6 +191,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_front.gd 2>&1 | tee front.log
           grep -a "^PASS" front.log
+      - name: Kamera przekroju kryjówki (test_hub_camera.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_hub_camera.gd 2>&1 | tee hub_camera.log
+          grep -a "\[HUB-CAMERA\] PASS" hub_camera.log
       - name: Cienie lamp i graczy (test_shadow_casts.gd)
         run: |
           godot --headless --path prototype -s tools/test_shadow_casts.gd 2>&1 | tee shadow_casts.log

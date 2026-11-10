@@ -42,7 +42,7 @@ Model tras (`hub_layout.py`: bieg 95 px/s, szacowany czas zmiany piętra), obecn
 | E0 | Dziennik kryjówki: `hub_enter`, `hub_pos` co 1 s, `hub_station`; sekcja „Kryjówka — ruch” w `session_progress.py` | PR #637 |
 | E1 | Spike pod flagą `--hub2`: mapa `z1_hub2.gd`, kamera trzymana w pionie (`CAM_LOCK`), słupy na granicach pomieszczeń (`"bays"`), zrzuty | bramka przyjęta 2026-11-09 |
 | E2 | Układ w grze: nowy `z1_hub.gd` (flaga `--hub2` i `z1_hub2.gd` usunięte), test bryły kryjówki (2 kondygnacje, słupy tylko w `bays`), README, GDD §10.3 | 1.7.532 |
-| E3 | Kamera przekroju: płynne przejście przy zbliżeniu CLOSE, test `test_hub_camera.gd` | |
+| E3 | Kamera przekroju: oko kamery 3D z danych mapy (`EYE_UP` 3,4 m zamiast 2,2 m), granice pasa w `section_camera.gd` (bez drgania o 1 px przy WIDE), przy CLOSE kamera za graczem w obrębie pasa, test `test_hub_camera.gd` | 1.7.533 |
 | E4 | Czytelność: tabliczki stanowisk, barwa światła pomieszczeń, uśpione stanowiska ciemne do pierwszego użycia, ściana wyników ×0,7 | |
 | E5 | Kwatery i meble stawiane ręcznie zamiast losowych z `hub_decor.gd`, właz pionu, wnęki | |
 | E6 | Ocena po playteście z danych E0 | |
@@ -57,4 +57,5 @@ Model tras (`hub_layout.py`: bieg 95 px/s, szacowany czas zmiany piętra), obecn
 ## Uwagi z E1 i E2
 
 - Od E2 wszystkie testy kryjówki (`--maptest`, `test_front.gd` z `_check_vault`, `--workshoptest`, gabloty, `--rangetest`, `--nobottest`, bronie) sprawdzają nowy układ.
+- E3: przy oku 2,2 m nad środkiem kadru (środek pasa wypada na stropie między pokładami) oko stało 1,5 m nad podłogą parteru, więc podłoga była kreską. Zrzuty przy 2,2 / 3,4 / 4,6 m: przy 3,4 m parter czyta się jak pokład, przy 4,6 m piwnica się spłaszcza. Dev `--eyeup=M` do porównań. Okno 21:9 i 16:10 nie zmienia kadru (rozciąganie „keep”, pasy po bokach).
 - Do decyzji w E4: krata pionu na parterze czyta się w przekroju jak dziura w stropie; słup przekroju w płaszczyźnie z = SHELL_Z jest czarny i stoi przed całą wysokością obu pokładów.

@@ -11,6 +11,7 @@ const Actions := preload("res://scripts/actions.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
+const SectionCamera := preload("res://scripts/section_camera.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const BloodDecals := preload("res://scripts/blood_decals.gd")
 const WeaponView := preload("res://scripts/weapon_view.gd")
@@ -586,22 +587,15 @@ func _apply_level_bounds() -> void:
 		_camera.limit_bottom = int(b.end.y)
 
 ## Kamera trzymana w pionie (CAM_LOCK z danych mapy, kryjówka „dwa pokłady”): gdy pas mieści się w kadrze, granice kamery to kadr wyśrodkowany
-## na pasie — kamera jedzie tylko w poziomie i oba pokłady są widoczne naraz; przy ciaśniejszym zbliżeniu kamera chodzi za graczem w obrębie pasu.
+## na pasie — kamera jedzie tylko w poziomie i oba pokłady są widoczne naraz; przy ciaśniejszym zbliżeniu (CLOSE) granice to sam pas, więc
+## kamera chodzi za graczem i zatrzymuje się na stropie parteru albo podłodze piwnicy — przejście pionem jest płynne, bo kadr jedzie z graczem.
 func _lock_camera_band() -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl == null or (lvl.cam_lock as Vector2i).x < 0:
 		return
-	var cl: Vector2i = lvl.cam_lock
-	var t := float(lvl.TILE)
-	var top := float(cl.x) * t
-	var bot := float(cl.y + 1) * t
-	var h := get_viewport_rect().size.y / maxf(_camera.zoom.y, 0.01)
-	if h >= bot - top:
-		var mid := (top + bot) * 0.5
-		top = mid - h * 0.5
-		bot = mid + h * 0.5
-	_camera.limit_top = int(floor(top))
-	_camera.limit_bottom = int(ceil(bot))
+	var lim := SectionCamera.band(lvl.cam_lock, float(lvl.TILE), get_viewport_rect().size.y / maxf(_camera.zoom.y, 0.01))
+	_camera.limit_top = lim.x
+	_camera.limit_bottom = lim.y
 
 ## Nowa mapa (level.load_map): punkt startu i granice kamery z nowej mapy, postać wraca na start.
 func _on_map_changed(_id: String) -> void:
