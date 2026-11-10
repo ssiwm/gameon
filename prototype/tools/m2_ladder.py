@@ -74,6 +74,8 @@ if "A" in parts:
     # v2: rekwizyty Poly Haven z włazów (x=648 → kol. 40 na włazie przepustu, x=968 → kol. 60 na włazie studni)
     assert 'Vector2(648, 416)' in head and 'Vector2(968, 416)' in head
     head = head.replace('Vector2(648, 416)', 'Vector2(584, 416)', 1).replace('Vector2(968, 416)', 'Vector2(920, 416)', 1)
+    # płotki przy starcie (akcent 6, model `fence`) zdjęte na prośbę użytkownika 2026-11-10
+    head = head.replace('[Vector2(152, 416), 6], [Vector2(184, 416), 6], ', '', 1)
     move('L', 76, 50, 92, 50)            # Ślepiec dalej od studni
     move('J', 70, 50, 76, 50)
     meta["risers"].append({"name": "A", "top": [62, 25], "bottom": [66, 50], "barrier": "%"})
