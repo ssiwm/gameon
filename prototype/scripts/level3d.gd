@@ -11,12 +11,12 @@ const DEPTH_FRONT := 1.1                   ## m: wysunięcie bryły przed płasz
 const POST_Z := -1.6                       ## m: słupy i pnie (`w`) bez styku z pomostem stoją w głębi, za drogą postaci i drezyny, tuż przed ścianą tła
 const POST_K := 0.036                      ## skala przekroju modelu słupa `post` (100 jednostek wysokości; promień ok. 0,43 m)
 const DECK_H := {"-": 0.176, "=": 0.24}       ## grubość pokładu kładki w kaflach (deski: 17,6 jednostki modelu na odcinek 1 kafla, krata: 8 na 3 kafle)
-## Pnie z mapy (`post_runs`: „tree") jako martwe drzewa z modeli lasu: [model, mnożnik przekroju]. Pień z Tripo i szkielet świerka mają gałęzie
-## krótkie i gęste (nie przypominają kładek, po których się chodzi); martwa sosna z długimi konarami i niski kikut brzozy tu nie pasują.
-const TRUNK_MODELS := [["tree_snag", 0.42], ["tree_snag_spruce", 0.48]]
-const TRUNK_Z := -1.9                      ## m: pień w głębi, za drogą postaci; gałęzie zgniecione w osi z (`TRUNK_DEPTH`), żeby nie wychodziły przed bryłę
-const TRUNK_DEPTH := 0.55                  ## przekrój w głąb względem szerokości (gałęzie rosną głównie w bok)
-const TRUNK_OVER := [1.6, 3.4]             ## m: o tyle złamany wierzchołek wystaje ponad ostatni kafel pnia
+## Pnie z mapy (`post_runs`: „tree") jako pełne sosny z modeli lasu: [model, początek korony (część wysokości, `prep_items3d.py: PINES`)].
+## Ciąg `w` to goły dół pnia, a korona rośnie nad nim, w niebie (martwe pnie z Tripo i proceduralne usunięte w 1.7.542).
+const TRUNK_MODELS := [["tree_pine_a", 0.66], ["tree_pine_b", 0.72], ["tree_pine_c", 0.58]]
+const TRUNK_Z := -1.9                      ## m: pień w głębi, za drogą postaci; konary zgniecione w osi z (`TRUNK_DEPTH`), żeby nie wychodziły przed bryłę
+const TRUNK_DEPTH := 0.55                  ## przekrój w głąb względem szerokości (konary rosną głównie w bok)
+const TRUNK_OVER := [0.4, 1.6]             ## m: o tyle początek korony leży ponad ostatnim kaflem pnia
 const POST_THIN := 0.5                     ## przekrój słupa niosącego kładkę na otwartej przestrzeni (rusztowanie, most, bród) względem modelu
                                            ## (ok. 0,43 zamiast 0,87 m średnicy)
 const POST_PROP := 0.65                    ## przekrój pozostałych słupów — stempli we wnętrzach (tunel drezyny, hale): ok. 0,56 m, grubsze od żerdzi
@@ -327,7 +327,7 @@ static func deck_half(ch: String) -> float:
 	return maxf(-bb.position.z, bb.end.z) * per * T / 100.0
 
 ## Pionowe ciągi słupów: [{"c", "r0", "r1" (wyłącznie), "z" — oś słupa w głąb, "deck" — znak kładki, której dotyka, albo "", "tree" — pień drzewa}].
-## Pień (`tree`): ciąg z gołym niebem nad sobą, którego nie dotyka żadna kładka — w 2D to były drzewa; w 3D stoi tu martwe drzewo (`TRUNK_MODELS`).
+## Pień (`tree`): ciąg z gołym niebem nad sobą, którego nie dotyka żadna kładka — w 2D to były drzewa; w 3D stoi tu sosna (`TRUNK_MODELS`).
 ## "k": mnożnik przekroju modelu (POST_THIN dla słupa kładki pod gołym niebem, inaczej POST_PROP).
 ## Podpora dachu (`roof`): ciąg tuż pod dachem z blachy — rysuje go `_build_roofs` razem z resztą konstrukcji szopy.
 ## Słup dotyka kładki, gdy przez nią przechodzi, kończy się na jej pokładzie, stoi na niej albo kładka dochodzi do niego z boku.
@@ -948,7 +948,7 @@ static func _build_ribs(parent: Node3D, rows: Array, mat: Material) -> void:
 			xf.append(_strut(Vector3(x + sx * 0.3, y_top - 1.0, (-DEPTH_BACK + 0.3 + RIB_Z) * 0.5), Vector3(x + sx * 0.75, y_top - 0.42, (-DEPTH_BACK + 0.3 + RIB_Z) * 0.5), 0.22))
 	_multimesh(parent, BoxMesh.new(), xf, mat)
 
-## Martwe drzewo w miejscu pnia z mapy (kolumna `c`, kafle r0..r1−1): podstawa na dole ciągu, złamany wierzchołek TRUNK_OVER ponad jego górą.
+## Sosna w miejscu pnia z mapy (kolumna `c`, kafle r0..r1−1): podstawa na dole ciągu, korona od TRUNK_OVER ponad jego górą.
 ## Odmiana, obrót i odcień z ziarna kolumny (każdy peer widzi to samo). false — brak modeli (zostaje słup).
 static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
 	var rng := RandomNumberGenerator.new()
@@ -956,12 +956,9 @@ static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
 	var pick: Array = TRUNK_MODELS[rng.randi() % TRUNK_MODELS.size()]
 	var tk: String = pick[0]
 	if model_mesh(tk).is_empty():
-		tk = "tree_snag"
-		pick = TRUNK_MODELS[0]
-		if model_mesh(tk).is_empty():
-			return false
-	var h := float(r1 - r0) * T + rng.randf_range(TRUNK_OVER[0], TRUNK_OVER[1])
-	var sw := h / 100.0 * float(pick[1]) * rng.randf_range(0.9, 1.1)
+		return false
+	var h := (float(r1 - r0) * T + rng.randf_range(TRUNK_OVER[0], TRUNK_OVER[1])) / float(pick[1])
+	var sw := h / 100.0 * rng.randf_range(0.9, 1.1)
 	var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(sw, h / 100.0, sw))
 	basis = Basis().scaled(Vector3(1.0, 1.0, TRUNK_DEPTH)) * basis
 	var foot := cell_pos(c, r1 - 1) + Vector3(0.0, -T * 0.5 - 0.15, TRUNK_Z)        # 0,15 m w ziemi: korzenie nie wiszą nad krawędzią kafla
@@ -3205,14 +3202,12 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 			bp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			parent.add_child(bp)
 
-## Las w głębi: świerki i martwe pnie jako skrzyżowane karty z teksturą (art/world3d/forest, `tools/world_forest_gen.py`) w `MultiMesh`,
+## Las w głębi: sosny, świerki i brzozy jako skrzyżowane karty z teksturą (art/world3d/forest, `tools/world_forest_gen.py`) w `MultiMesh`,
 ## w płaszczyznach z = −3,5 … −60 m nad kolumnami z otwartym niebem. Bliskie rzędy są rzadsze i wyższe (pnie w kadrze), dalekie gęste —
 ## razem z mgłą głębi i wstęgami mgły dają warstwy sylwetek zamiast pustego nieba.
 const FOREST_DIR := "res://art/world3d/forest/"
-const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "snag_a", "snag_b", "pine_a", "pine_b", "birch_a"]
-const FOREST_MODELS := ["tree_snag", "tree_snag_hi", "tree_snag_pine", "tree_snag_spruce", "tree_snag_birch", "tree_log", "tree_spruce_a", "tree_spruce_b", "tree_spruce_c", "tree_pine_a", "tree_pine_b", "tree_pine_c", "tree_birch_a", "tree_birch_b"]
-## martwe drzewa (`prep_items3d.py: build_snag`) obok pnia z Tripo: wysokość względem drzewa w tym miejscu (złamana brzoza to niski kikut)
-const SNAG_H := {"tree_snag": 0.8, "tree_snag_pine": 0.85, "tree_snag_spruce": 0.9, "tree_snag_birch": 0.42}
+const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "pine_a", "pine_b", "birch_a"]
+const FOREST_MODELS := ["tree_log", "tree_spruce_a", "tree_spruce_b", "tree_spruce_c", "tree_pine_a", "tree_pine_b", "tree_pine_c", "tree_birch_a", "tree_birch_b"]
 const FOREST_CHUNK := 96.0                 ## m: las dzielony na odcinki wzdłuż mapy — silnik pomija odcinki poza kadrem (wcześniej jedna siatka na całą mapę).
 ## Pomiar 2026-10-19 (RTX 3080, 1920×1080): czas GPU bez mierzalnej różnicy między 1 odcinkiem, 96 i 48 m (las to ok. 25 tys. prymitywów, koszt robią
 ## karty z alfą), a 48 m dokładało ok. 25 wywołań rysowania więcej niż 96 m.
@@ -3410,12 +3405,12 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	for k in FOREST_KINDS:
 		xf[k] = []
 	# modele 3D w bliskim i środkowym pasie: sosny i brzozy (`prep_items3d.py: build_pine / build_birch`), świerki (pień z Tripo + gałęzie
-	# z igliwiem, `build_spruce`), martwe pnie i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle). Bór: sosna przeważa,
+	# z igliwiem, `build_spruce`) i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle). Bór: sosna przeważa,
 	# świerk jest drugim piętrem, brzoza rośnie pojedynczo. Każde drzewo ma lekko inny odcień (kolor egzemplarza `MultiMesh`).
+	# Bez martwych pni (1.7.542): gołe, srebrzyste pnie między koronami czytały się w grze jak „badyle”.
 	var trees := {}                                       # model → [[Transform3D, Color], …]
 	for tk in FOREST_MODELS:
 		trees[tk] = []
-	var have_models := not model_mesh("tree_snag").is_empty()
 	var have_spruce := not model_mesh("tree_spruce_a").is_empty() and not model_mesh("tree_spruce_b").is_empty() and not model_mesh("tree_spruce_c").is_empty()
 	var have_pine := not model_mesh("tree_pine_a").is_empty() and not model_mesh("tree_pine_b").is_empty() and not model_mesh("tree_pine_c").is_empty()
 	var have_birch := not model_mesh("tree_birch_a").is_empty() and not model_mesh("tree_birch_b").is_empty()
@@ -3437,7 +3432,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 			var lb := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(ll / 100.0, ll / 100.0, ll / 100.0))
 			(trees["tree_log"] as Array).append([Transform3D(lb, Vector3((float(c) + rng.randf()) * T, -float(r0) * T - 0.06, rng.randf_range(-DEPTH_BACK + 0.5, -1.2))), Color.WHITE])
 		var bands := [[DEPTH_BACK + 1.2, 9.0, 0.28, 13.0, 21.0], [9.0, 24.0, 1.4, 11.0, 19.0], [24.0, 60.0, 2.6, 12.0, 24.0]]
-		# drzewostan zmienia się wzdłuż mapy (`forest_stand`): polany i rzadkie miejsca z martwymi pniami, gęste kępy, starsze i młodsze płaty —
+		# drzewostan zmienia się wzdłuż mapy (`forest_stand`): polany i rzadkie miejsca, gęste kępy, starsze i młodsze płaty —
 		# linia czubków dostaje rytm zamiast równego grzebienia; daleki pas zostaje ścianą lasu, tylko trochę rzednie
 		var stand := forest_stand(float(c + 1) * T)
 		var dens: float = stand["dens"]
@@ -3453,12 +3448,9 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 					h *= rng.randf_range(1.25, 1.45)
 				x = out_of_stream(x, -z, 1.4)                          # koryto strumienia (`build_streams`): drzewo staje na brzegu, nie w nurcie
 				var y := forest_ground_y(ft, x, -z)
-				var roll := rng.randf()
-				var snag_p := 0.12 + 0.22 * float(stand["open"])               # na polanach i w rzadkim lesie więcej martwych pni
-				var kind := "snag_a" if roll < snag_p * 0.5 else "snag_b"
-				if roll >= snag_p:
-					var q := (roll - snag_p) / (1.0 - snag_p)
-					kind = "birch" if q < 0.14 else ("pine" if q < 0.6 else "spruce")
+				var q := rng.randf()
+				var pine_q := 0.6 + 0.15 * float(stand["open"])               # na polanach i w rzadkim lesie więcej sosen (światłolubne)
+				var kind := "birch" if q < 0.14 else ("pine" if q < pine_q else "spruce")
 				if kind == "pine":
 					h *= 1.12                                          # sosny wyższe, z koroną w górnej części
 				elif kind == "birch":
@@ -3478,21 +3470,6 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 					var sw := h / 100.0 * rng.randf_range(0.9, 1.15)
 					var sb := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(sw, h / 100.0, sw))
 					(trees[model] as Array).append([Transform3D(sb, Vector3(x, y - 0.3, z)), tint])
-					continue
-				if have_models and bi < 2 and kind.begins_with("snag"):
-					# odmiany martwych drzew: pień z Tripo co trzeci raz, reszta proceduralna — sąsiednie pnie nie są już kopiami tego samego modelu
-					var tk := "tree_snag"
-					var sr := rng.randf()
-					if sr < 0.62:
-						var alt: String = ["tree_snag_pine", "tree_snag_spruce", "tree_snag_birch"][int(sr / 0.62 * 3.0) % 3]
-						if not model_mesh(alt).is_empty():
-							tk = alt
-					var th := h * float(SNAG_H[tk])
-					var tw := th / 100.0 * rng.randf_range(0.9, 1.2)
-					var tb := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(tw, th / 100.0, tw))
-					if tk == "tree_snag" and bi == 0 and not model_mesh(tk + "_hi").is_empty():       # najbliższy rząd: wersja szczegółowa
-						tk += "_hi"
-					(trees[tk] as Array).append([Transform3D(tb, Vector3(x, y - 0.3, z)), tint])
 					continue
 				var card_kind: String = kind
 				if kind == "spruce":

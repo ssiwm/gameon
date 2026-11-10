@@ -1,6 +1,6 @@
-"""Tekstury drzew tła widoku 3D (`Level3D.build_forest`): świerki i martwe pnie jako karty z kanałem alfa.
+"""Tekstury drzew tła widoku 3D (`Level3D.build_forest`): świerki, sosny i brzozy jako karty z kanałem alfa.
 
-Wynik: prototype/art/world3d/forest/spruce_{a,b,c}.png, snag_{a,b}.png (512×1024 RGBA, pień u dołu na środku) oraz runo:
+Wynik: prototype/art/world3d/forest/spruce_{a,b,c}.png (512×1024 RGBA, pień u dołu na środku) oraz runo:
 grass_{a,b}.png i fern_a.png (256×256, kępa od dolnej krawędzi) dla `Level3D.build_undergrowth`, roots_{a,b}.png (korzenie pod krawędzią bryły, `build_front_edge`).
 Kształt: pień + piętra opadających, postrzępionych gałęzi rysowanych igła po igle; jaśniejsze grzbiety gałęzi dają bryłę w świetle flary.
 
@@ -94,38 +94,6 @@ def spruce(seed, fullness=1.0, bare_low=0.18):
                       fill=_mix(need_d, need_l, rng.random() * 0.4) + (255,))
     # czubek
     d.polygon([(cx - 5 * SS, top_y + 60 * SS), (cx + 5 * SS, top_y + 60 * SS), (cx + rng.uniform(-3, 3) * SS, top_y)], fill=need_d + (255,))
-    return im.resize((W, H), Image.LANCZOS)
-
-
-def snag(seed):
-    """Martwy pień: złamany wierzchołek, kilka nagich konarów."""
-    rng = random.Random(seed)
-    im = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    cx = W * SS * 0.5
-    base_y = H * SS - 4 * SS
-    top_y = H * SS * rng.uniform(0.12, 0.3)
-    bark_d, bark_l = (24, 20, 18), (70, 64, 58)
-    _trunk(d, rng, cx, base_y, top_y, 17 * SS, 7 * SS, bark_d, bark_l, rng.uniform(-1.5, 1.5))
-    # poszarpany przełom
-    for _ in range(7):
-        x = cx + rng.uniform(-7, 7) * SS
-        d.polygon([(x - 3 * SS, top_y + 6 * SS), (x + 3 * SS, top_y + 6 * SS), (x + rng.uniform(-3, 3) * SS, top_y - rng.uniform(10, 46) * SS)], fill=bark_d + (255,))
-    for _ in range(rng.randint(6, 10)):
-        t = rng.uniform(0.25, 0.92)
-        y = base_y + (top_y - base_y) * t
-        side = rng.choice((-1, 1))
-        ln = rng.uniform(40, 170) * SS * (1.1 - t * 0.5)
-        px, py = cx, y
-        segs = 6
-        for i in range(1, segs + 1):
-            f = i / segs
-            x = cx + side * ln * f
-            yy = y - ln * 0.25 * f + ln * 0.18 * f * f + rng.uniform(-5, 5) * SS
-            d.line([px, py, x, yy], fill=bark_d + (255,), width=max(1, int((1.0 - f) * 6 * SS) + SS))
-            if rng.random() < 0.5:
-                d.line([x, yy, x + side * rng.uniform(8, 26) * SS, yy + rng.uniform(-30, 20) * SS], fill=bark_d + (255,), width=SS)
-            px, py = x, yy
     return im.resize((W, H), Image.LANCZOS)
 
 
@@ -326,64 +294,6 @@ def bark(kind, seed, w=256, h=512):
     return out
 
 
-def _blob(d, rng, x, y, rw, rh, col_a, col_b):
-    """Nieregularna plama z wielu nakładających się elips (postrzępiony brzeg zamiast wielokąta)."""
-    for _ in range(26):
-        a = rng.uniform(0, math.tau)
-        q = rng.random() ** 0.7
-        cx, cy = x + math.cos(a) * rw * q * 0.75, y + math.sin(a) * rh * q * 0.75
-        r = rng.uniform(0.2, 0.42) * rw
-        d.ellipse([cx - r, cy - r * rh / rw * 0.6, cx + r, cy + r * rh / rw * 0.6], fill=_mix(col_a, col_b, rng.random()))
-
-
-def dead_wood(kind, seed, w=256, h=512):
-    """Drewno martwych drzew do modeli 3D (`prep_items3d.py: build_snag`), układ jak `bark` (u = obwód, v = wysokość, dół = nasada).
-    snag: srebrzystoszare, spękane wzdłuż drewno bez kory, z ciemnymi płatami resztek kory (gęstsze u dołu) i plamami porostów;
-    birch: martwa brzoza — szarawa, brudna kora z przetchlinkami, płaty zbutwiałego brązu i odsłonięte drewno."""
-    rng = random.Random(seed)
-    Wd, Hd = w * SS, h * SS
-    im = Image.new("RGB", (Wd, Hd), (0, 0, 0))
-    d = ImageDraw.Draw(im)
-    base_a, base_b = ((112, 108, 100), (168, 164, 156)) if kind == "snag" else ((120, 116, 108), (176, 172, 162))
-    for y in range(0, Hd, SS):                                 # tło: lekko jaśniejsze ku górze (wyblakłe na słońcu)
-        t = 1.0 - y / Hd
-        d.rectangle([0, y, Wd, y + SS], fill=_mix(base_a, base_b, min(1.0, 0.25 + 0.75 * t)))
-    if kind == "snag":
-        for _ in range(1400):                                  # słoje i pęknięcia wzdłuż pnia, lekko skręcone
-            x = rng.uniform(0, Wd)
-            y = rng.uniform(0, Hd)
-            ln = rng.uniform(20, 120) * SS
-            c = _mix((58, 54, 50), (124, 120, 112), rng.random() ** 0.5)
-            d.line([x, y, x + rng.uniform(-6, 6) * SS, y - ln], fill=c, width=max(SS, int(rng.uniform(0.6, 2.2) * SS)))
-        for _ in range(14):                                    # płaty resztek kory: ciemne, spękane, częściej u nasady
-            t = rng.random() ** 1.8
-            y = Hd * (1.0 - t)
-            x = rng.uniform(0, Wd)
-            rw, rh = rng.uniform(10, 40) * SS, rng.uniform(20, 90) * SS * (1.2 - t)
-            _blob(d, rng, x, y, rw, rh, (40, 34, 28), (62, 52, 42))
-            for _ in range(int(rh / SS / 5)):                  # spękania kory w poprzek płatu
-                yy = y + rng.uniform(-rh, rh) * 0.7
-                d.line([x - rw * 0.5, yy, x + rw * 0.5, yy + rng.uniform(-2, 2) * SS], fill=(24, 20, 16), width=SS)
-        for _ in range(60):                                    # porosty: szarozielone plamki
-            x, y = rng.uniform(0, Wd), rng.uniform(0, Hd)
-            r = rng.uniform(2, 7) * SS
-            d.ellipse([x - r, y - r * 0.7, x + r, y + r * 0.7], fill=_mix((84, 96, 78), (120, 128, 104), rng.random()))
-    else:
-        for _ in range(500):                                   # przetchlinki
-            x, y = rng.uniform(0, Wd), rng.uniform(0, Hd)
-            d.line([x, y, x + rng.uniform(6, 26) * SS, y + rng.uniform(-1, 1) * SS], fill=(36, 32, 28), width=max(SS, int(rng.uniform(1, 2.4) * SS)))
-        for _ in range(22):                                    # zbutwiałe płaty: brązowe, z odsłoniętym, rudym drewnem
-            x, y = rng.uniform(0, Wd), rng.uniform(0, Hd)
-            r = rng.uniform(14, 46) * SS
-            _blob(d, rng, x, y, r, r * 1.4, (64, 48, 36), (108, 78, 52))
-        for _ in range(240):                                   # czarna, spękana nasada
-            t = rng.random() * 0.16
-            y = Hd * (1.0 - t)
-            x = rng.uniform(0, Wd)
-            d.line([x, y, x + rng.uniform(-2, 2) * SS, y - rng.uniform(8, 30) * SS], fill=(16, 14, 12), width=2 * SS)
-    return im.resize((w, h), Image.LANCZOS).convert("RGBA")
-
-
 def pine_tuft(seed, size=256):
     """Kępa igliwia sosny do korony modelu 3D: zbite pęczki długich igieł promieniście z kilku gałązek, gęstsze w środku."""
     rng = random.Random(seed)
@@ -534,8 +444,6 @@ def main():
         "spruce_a": spruce(11, 1.0, 0.16),
         "spruce_b": spruce(23, 0.78, 0.30),
         "spruce_c": spruce(37, 0.92, 0.08),
-        "snag_a": snag(5),
-        "snag_b": snag(9),
         "grass_a": grass(3, 0.25),
         "grass_b": grass(8, 0.6),
         "fern_a": fern(4),
@@ -548,8 +456,6 @@ def main():
         "birch_bark": bark("birch", 67),
         "pine_tuft": pine_tuft(71),
         "birch_leaves": birch_leaves(73),
-        "snag_wood": dead_wood("snag", 79),
-        "birch_dead": dead_wood("birch", 83),
         "bough_side": bough(21, True),
         "bough_top": bough(22, False),
     }

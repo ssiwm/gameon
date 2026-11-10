@@ -46,9 +46,9 @@ const SETS := {
 	# w pionie (pień nie kończy się na linii stropu — koniec zasłania górny brzeg kadru); pnie i kępy stoją na podłożu przed płaszczyzną
 	# gry (`_build_ground`), które wpis otwarty buduje w warstwie świata
 	# las: w każdej przerwie między pniami dwa małe elementy — gałąź u góry kadru (`small`) i kępa u dołu (`small2`); nie zasłaniają się nawzajem
-	"forest": {"big": ["pine", "snag", "pine"], "small": ["shrub"], "small2": ["ferns", "grass", "ferns"], "tint": Color(0.62, 0.64, 0.66), "open": true},
+	"forest": {"big": ["pine"], "small": ["shrub"], "small2": ["ferns", "grass", "ferns"], "tint": Color(0.62, 0.64, 0.66), "open": true},
 }
-const BIG_KINDS := ["pipe", "pipes2", "pine", "birch", "snag"]
+const BIG_KINDS := ["pipe", "pipes2", "pine", "birch"]
 const PARTS_GLB := "res://art/world3d/front/pipe_parts.glb"
 const PIPE_TEX := "res://art/items3d/pipes_modular_industrial_pipes_01_group0%d_%s_1k.jpg"   ## %d grupa 1–2, %s diff / arm / nor_gl
 const LAMP_GLB := "res://art/items3d/lamp.glb"
@@ -64,7 +64,6 @@ const FOREST_TEX := "res://art/world3d/forest/%s.png"
 const TRUNKS := {
 	"pine": ["pine_bark", 0.9, 0.012, Vector2(0.92, 0.18)],
 	"birch": ["birch_bark", 0.55, 0.008, Vector2(0.80, 0.05)],
-	"snag": ["snag_wood", 0.8, 0.018, Vector2(0.95, 0.10)],
 }
 const TRUNK_TOP := 16.0                    ## m: koniec pnia nad podłożem — zawsze nad górnym brzegiem kadru NORMAL
 const TRUNK_SINK := 0.3                    ## m: pień, szyja i korzenie zaczynają się tyle pod podłożem (część pod nim odcina `ywin`)
@@ -73,8 +72,6 @@ const SAPLING_H := Vector2(2.2, 3.6)       ## m: wysokość młodego świerka (`
 const PBR_BARK := {"pine_bark": "res://art/world3d/forest/pine_bark_%s_2k.jpg"}   ## kora 2K (kolor, ARM, normalne)
 const PINE_BOUGH_P := 0.0                  ## gałąź z kartami igliwia (`pine_tuft`) przy górnym brzegu — karty odrzucone przy akceptacji 2026-11-09
 const BARK_TILE := 1.3                     ## m kory na jedno powtórzenie tekstury
-const SNAG_MODEL := "tree_snag_hi"         ## martwy pień: model z korą PBR zamiast proceduralnego
-const SNAG_H := Vector2(11.5, 13.5)        ## m: wysokość martwego pnia (złamany wierzchołek nad górnym brzegiem kadru)
 const SHRUB_MODELS := ["ph_shrub_a", "ph_shrub_b", "ph_shrub_c", "ph_shrub_d"]
 const SHRUB_H := Vector2(1.8, 2.8)         ## m: krzew (`shrub`) na podłożu pierwszego planu
 const FERN_MODELS := ["ph_fern_a", "ph_fern_b", "ph_fern_c", "ph_fern_d"]
@@ -281,8 +278,8 @@ const FOREST_BARK_BUMP := 9.0              ## siła wypukłości kory z jasnośc
 const FOREST_TRANS := 0.16                 ## prześwit księżyca przez karty igliwia, paproci i trawy
 ## Igliwie przy górnym brzegu kadru wisi na tle ciemnych koron lasu — bez mocniejszego prześwitu znika jak pień w F0.
 const FOREST_TRANS_K := {"bough_side": 2.4, "pine_tuft": 2.2}
-## Jasność tekstur lasu w pierwszym planie (`alb_k`): biała kora brzozy i szare drewno martwego pnia w nocy nie mogą świecić jak słup.
-const FOREST_ALB := {"birch_bark": 0.3, "snag_wood": 0.7, "grass_a": 0.45, "grass_b": 0.45, "fern_a": 0.7}
+## Jasność tekstur lasu w pierwszym planie (`alb_k`): biała kora brzozy w nocy nie może świecić jak słup.
+const FOREST_ALB := {"birch_bark": 0.3, "grass_a": 0.45, "grass_b": 0.45, "fern_a": 0.7}
 const OPEN_PAD := 3.0                      ## m: zapas przycięcia w poziomie dla wpisów otwartych — rzut pnia przy brzegu kadru wychodzi ×1,25 dalej od środka
 
 const SHADER := """
@@ -805,9 +802,6 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			used["dark"] = true
 		"pine", "birch":
 			_trunk(sts, used, kind, band.x, rng)
-		"snag":
-			if not _model_tree(sts, used, SNAG_MODEL, band.x, rng):
-				_trunk(sts, used, kind, band.x, rng)
 		"bough":
 			_bough(sts, used, band.x, rng)
 		"sapling":
@@ -910,7 +904,7 @@ static func _card(st: SurfaceTool, at: Vector3, w: float, h: float, rz: float, r
 
 
 ## Pień przez cały kadr (podstawa i koniec poza nim): lekko pochylony i wygięty, nierówna kora; sosna z martwym sękiem i czasem
-## gałęzią z igliwiem przy górnym brzegu, martwy pień z połamanymi konarami, brzoza z cienką gałązką. U nasady kępa paproci.
+## gałęzią z igliwiem przy górnym brzegu, brzoza z cienką gałązką. U nasady kępa paproci.
 static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: float, rng: RandomNumberGenerator) -> void:
 	var spec: Array = TRUNKS[kind]
 	var key := _forest_mat(String(spec[0]), false)
@@ -931,8 +925,7 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 		# kafelkowana kora ze skanu: BARK_TILE m na powtórzenie wzdłuż pnia i całkowita liczba powtórzeń wokół obwodu (bez szwu)
 		vr = Vector2(length / BARK_TILE, 0.0)
 		u_rep = maxf(1.0, roundf(PI * d / BARK_TILE))
-	var rough := 0.11 if kind == "snag" else 0.075
-	_cone(st, Vector3(0.0, y0, 0.0), lean, length, r0, r1, 24, 30, vr, u_rep, rough, ph, bend, false, 0.35 if kind == "pine" else 0.2)
+	_cone(st, Vector3(0.0, y0, 0.0), lean, length, r0, r1, 24, 30, vr, u_rep, 0.075, ph, bend, false, 0.35 if kind == "pine" else 0.2)
 	# nasada na podłożu: szersza szyja (wzdłuż osi pnia z jej wygięciem; u góry chowa się w pniu — 0,82 promienia z nierównością
 	# mniejszą niż najgłębsza bruzda kory) i 3–5 korzeni rozchodzących się płasko, które po ok. pół metra schodzą pod podłoże
 	var neck := 1.5
@@ -951,14 +944,10 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 		var ln := rng.randf_range(0.8, 1.2)
 		_cone(bst, nb + Vector3(0.0, TRUNK_SINK + rng.randf_range(0.3, 0.45), 0.0), dir, ln, r0 * 0.55, r0 * 0.2, 8, 4, v_neck, 1.0, 0.15, ph + float(i) * 2.1, Vector3(0.0, 0.05 * ln, 0.0), true)
 	var v_mid := (vr.x + vr.y) * 0.5
-	var limbs := 1
-	if kind == "snag":
-		limbs = rng.randi_range(3, 5)
-	elif kind == "pine":
-		limbs = rng.randi_range(1, 2)
+	var limbs := rng.randi_range(1, 2) if kind == "pine" else 1
 	for i in limbs:
-		# konary w płaszczyźnie kadru (w lewo albo w prawo, lekko ku kamerze lub od niej) — sylwetka czytelna; martwe konary połamane i krótkie
-		var yb := y_floor + (rng.randf_range(1.5, 8.5) if kind == "snag" else rng.randf_range(3.0, 9.0))
+		# konary w płaszczyźnie kadru (w lewo albo w prawo, lekko ku kamerze lub od niej) — sylwetka czytelna
+		var yb := y_floor + rng.randf_range(3.0, 9.0)
 		var sgn := -1.0 if (i + rng.randi()) % 2 == 0 else 1.0
 		var upk := rng.randf_range(0.6, 1.2) if kind == "birch" else rng.randf_range(0.25, 0.9)
 		var dir := Vector3(sgn, upk, rng.randf_range(-0.35, 0.35)).normalized()
@@ -968,7 +957,7 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 		elif kind == "birch":
 			ln = rng.randf_range(1.2, 2.2)
 		var rt := _trunk_r(r0, r1, y0, length, yb)
-		var rb := rt * (0.22 if kind == "snag" else 0.16)
+		var rb := rt * 0.16
 		var c := _trunk_axis(lean, bend, y0, length, yb)
 		var lv := Vector2(0.98, 0.96) if kind == "birch" else Vector2(v_mid, v_mid - 0.05)      # gałązki brzozy ciemne (czarna nasada kory)
 		_cone(st, c + dir * rt * 0.6, dir, ln, rb, rb * 0.25, 6, 3, lv, 1.0, 0.1, ph + float(i), Vector3(0.0, -0.08 * ln, 0.0))
@@ -1123,32 +1112,6 @@ static func _put_plant(sts: Dictionary, used: Dictionary, name: String, at: Vect
 	return _put_model(sts, used, name, Transform3D(b, at + Vector3(0.0, -0.03, 0.0) - b * Vector3(c.x, ab.position.y, c.z)))
 
 
-## Drzewo z modelu (martwy pień `SNAG_MODEL`): wysokie na SNAG_H, nasada TRUNK_SINK pod podłożem i w osi elementu (środek przekroju
-## pnia przy ziemi, nie środek bryły z konarami), losowy obrót wokół pionu, u stóp paproć. Fałsz bez modelu (wtedy pień proceduralny).
-static func _model_tree(sts: Dictionary, used: Dictionary, name: String, y_floor: float, rng: RandomNumberGenerator) -> bool:
-	var mm := Level3D.model_mesh(name)
-	if mm.is_empty():
-		return false
-	var local: Transform3D = mm[1]
-	var mesh: Mesh = mm[0]
-	var ab := local * mesh.get_aabb()
-	var foot := Vector3.ZERO
-	var nf := 0
-	for si in mesh.get_surface_count():
-		for v: Vector3 in mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]:
-			var w := local * v
-			if w.y < ab.position.y + ab.size.y * 0.03:
-				foot += w
-				nf += 1
-	foot = foot / float(nf) if nf > 0 else ab.get_center()
-	var s := rng.randf_range(SNAG_H.x, SNAG_H.y) / maxf(ab.size.y, 0.001)
-	var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6) + (PI if rng.randf() < 0.5 else 0.0)).scaled(Vector3(s, s, s))
-	_put_model(sts, used, name, Transform3D(b, Vector3(0.0, y_floor - TRUNK_SINK, 0.0) - b * Vector3(foot.x, ab.position.y, foot.z)))
-	if not _world_plants:
-		_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
-	return true
-
-
 ## Buduje elementy pod `parent` (węzeł „Front”). Zwraca liczbę elementów.
 static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Array = []) -> int:
 	_root = null
@@ -1190,7 +1153,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			if kd in ["shrub", "ferns", "grass"]:
 				_clumps.append([float(it["x"]), float(it["z"]), kd])
 				continue
-			if kd in ["pine", "snag"]:
+			if kd == "pine":
 				_clumps.append([float(it["x"]), float(it["z"]) + 0.4, "base"])
 		var rng := RandomNumberGenerator.new()
 		rng.seed = int(float(it["x"]) * 100.0)

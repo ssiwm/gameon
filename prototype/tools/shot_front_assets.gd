@@ -58,7 +58,7 @@ func _initialize() -> void:
 			_jobs.append([k, _model.bind(k), Vector3.ZERO, Vector3.ZERO, 35.0])
 		return
 	# pierwszy plan (front3d.gd): pnie w całości i z bliska, krzew, kępy; rury, łańcuch, kable, lampa (tunele, stacje, kryjówka)
-	for k in ["pine", "snag"]:
+	for k in ["pine"]:
 		_jobs.append([k + "_caly", _elem.bind(k, 1), Vector3(0, 8.0, 26.0), Vector3(0, 8.0, 0), 40.0])
 		_jobs.append([k + "_z_bliska", _elem.bind(k, 1), Vector3(0, 1.4, 4.2), Vector3(0, 1.1, 0), 40.0])
 	for k in ["shrub", "ferns", "grass"]:

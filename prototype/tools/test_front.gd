@@ -334,7 +334,7 @@ func _check_forest() -> void:
 	for c in fr.get_children():
 		var mi := c as MeshInstance3D
 		var kind := String(mi.name).get_slice("_", 0)
-		if not kind in ["pine", "snag", "shrub", "ferns", "grass"]:
+		if not kind in ["pine", "shrub", "ferns", "grass"]:
 			for si in mi.mesh.get_surface_count():                # rury w tunelu: bez kontry księżyca
 				var pm := mi.get_surface_override_material(si) as ShaderMaterial
 				_check(_par(pm, "rim_k", 0.0) == 0.0 and _par(pm, "trans_k", 0.0) == 0.0, "%s: kontra księżyca pod ziemią" % mi.name)
@@ -350,7 +350,7 @@ func _check_forest() -> void:
 		_check(yw is Vector2 and absf((yw as Vector2).x - yg) < 0.001 and absf(yg - y_floor) < 0.001, "%s: nasada nie kończy się na podłożu (ywin %s, podłoże %.3f)" % [mi.name, yw, yg - y_floor])
 		for dx in [-1.0, 0.0, 1.0]:                          # płasko pod elementem (nierówność podłoża nie wchodzi nad nasadę)
 			_check(absf(Front3D.ground_y(mi.position.x + dx, mi.position.z) - yg) < 0.001, "%s: podłoże pod elementem nierówne" % mi.name)
-		if kind in ["pine", "snag"]:
+		if kind == "pine":
 			# nasada (szyja, korzenie) schodzi pod podłoże, koniec nad górnym brzegiem kadru NORMAL (ok. 8 m nad podłogą przy z = 3,5–5 m)
 			_check(bb.position.y < yg - 0.2 and bb.position.y > yg - 1.0 and bb.end.y > y_floor + FRAME_H_NORMAL * 0.75, "%s: pień nie stoi na podłożu albo nie sięga nad kadr (%.1f..%.1f wzgl. podłoża)" % [mi.name, bb.position.y - yg, bb.end.y - yg])
 		elif kind == "shrub":
@@ -380,10 +380,9 @@ func _check_forest() -> void:
 				_check(_par(m, "rim_k", 0.0) > 0.0, "%s: kora bez kontry księżyca" % mi.name)
 		if kind == "pine":
 			_check(rims == 1 and bases == 1, "%s: pień bez osobnej kory nasady (kora %d, nasada %d)" % [mi.name, rims, bases])
-		elif kind == "snag":
-			_check(rims >= 1, "%s: martwy pień (model) bez kory z kontrą" % mi.name)
-	for k in ["pine", "snag"]:
-		_check(kinds.has(k), "las: rodzaj %s nie powstał na długim zakresie" % k)
+	_check(kinds.has("pine"), "las: pień sosny nie powstał na długim zakresie")
+	# martwe pnie usunięte w 1.7.542 (gołe, jasne „badyle” między koronami): zestaw lasu nie może ich już stawiać
+	_check(Front3D.SETS["forest"]["big"] == ["pine"], "las: duże elementy inne niż sosna (%s)" % str(Front3D.SETS["forest"]["big"]))
 	# kępy paproci i pokrzyw w warstwie świata (runo z modeli, oświetlone sceną), nie w pierwszym planie; paproć przy każdym pniu
 	var ck := {}
 	for cl: Array in Front3D._clumps:
@@ -396,7 +395,7 @@ func _check_forest() -> void:
 	for c in fr.get_children():
 		var mi := c as MeshInstance3D
 		var m := mi.get_surface_override_material(0) as ShaderMaterial
-		var forest := String(mi.name).get_slice("_", 0) in ["pine", "snag", "shrub", "ferns", "grass"]
+		var forest := String(mi.name).get_slice("_", 0) in ["pine", "shrub", "ferns", "grass"]
 		_check(is_equal_approx(_par(m, "moon", 1.0), 0.25 if forest else 1.0), "%s: set_moon nie działa tylko na las" % mi.name)
 	Front3D.set_moon(1.0)
 	_check_ground(root, y_floor)
