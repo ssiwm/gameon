@@ -27,6 +27,9 @@ Budynek 3D (`building3d.gd`, od 1.7.527) — Poly Haven (CC0), 1K po gradingu pr
 
 Pierwszy plan (`front/pipe_parts.glb`, od 1.7.519): części rur z modelu Poly Haven `modular_industrial_pipes_01` (CC0) — sama geometria wycięta przez `tools/front_parts.py`; tekstury te same co dekoracji `pipes` w `art/items3d/`.
 
+
+Sosna pierwszego planu (`art/items3d/ph_pine_a`–`c`, od 1.7.543): model Poly Haven `pine_tree_01` (CC0) — pień, konary i tekstury kory ze skanu, igliwie zamienione na karty z atlasem wyrenderowanym z geometrii igieł skanu (`tools/pine_cards.py`). Źródło (ok. 1 GB) nie jest w repo: `python prototype/tools/polyhaven_fetch.py --res=2k pine_tree_01`.
+
 ## Porównania z Poly Haven (2026-10-15, `tools/world_pbr_compare.py`)
 
 Obecna tekstura kontra trzej kandydaci po tym samym gradingu, potem zrzuty w grze przed i po. Wynik:

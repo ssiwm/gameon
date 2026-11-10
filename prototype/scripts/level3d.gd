@@ -12,7 +12,7 @@ const POST_Z := -1.6                       ## m: słupy i pnie (`w`) bez styku z
 const POST_K := 0.036                      ## skala przekroju modelu słupa `post` (100 jednostek wysokości; promień ok. 0,43 m)
 const DECK_H := {"-": 0.176, "=": 0.24}       ## grubość pokładu kładki w kaflach (deski: 17,6 jednostki modelu na odcinek 1 kafla, krata: 8 na 3 kafle)
 ## Pnie z mapy (`post_runs`: „tree") jako pełne sosny z modeli lasu: [model, początek korony (część wysokości, `prep_items3d.py: PINES`)].
-## Ciąg `w` to goły dół pnia, a korona rośnie nad nim, w niebie (martwe pnie z Tripo i proceduralne usunięte w 1.7.542).
+## Ciąg `w` to goły dół pnia, a korona rośnie nad nim, w niebie (martwe pnie z Tripo i proceduralne usunięte w 1.7.543).
 const TRUNK_MODELS := [["tree_pine_a", 0.66], ["tree_pine_b", 0.72], ["tree_pine_c", 0.58]]
 const TRUNK_Z := -1.9                      ## m: pień w głębi, za drogą postaci; konary zgniecione w osi z (`TRUNK_DEPTH`), żeby nie wychodziły przed bryłę
 const TRUNK_DEPTH := 0.55                  ## przekrój w głąb względem szerokości (konary rosną głównie w bok)
@@ -3408,7 +3408,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	# modele 3D w bliskim i środkowym pasie: sosny (`prep_items3d.py: build_pine`), świerki (pień z Tripo + gałęzie
 	# z igliwiem, `build_spruce`) i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle). Bór: sosna przeważa,
 	# świerk jest drugim piętrem. Każde drzewo ma lekko inny odcień (kolor egzemplarza `MultiMesh`).
-	# Bez martwych pni i brzóz (1.7.542): gołe, jasne pnie między koronami (srebrzyste drewno, biała kora brzozy z liśćmi niewidocznymi nocą)
+	# Bez martwych pni i brzóz (1.7.543): gołe, jasne pnie między koronami (srebrzyste drewno, biała kora brzozy z liśćmi niewidocznymi nocą)
 	# czytały się w grze jak „badyle”.
 	var trees := {}                                       # model → [[Transform3D, Color], …]
 	for tk in FOREST_MODELS:

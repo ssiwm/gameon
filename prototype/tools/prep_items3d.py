@@ -110,6 +110,10 @@ TRIPO_MODELS = {
     "ph_nettle_a": ("../polyhaven/nettle_plant__medium_a_lod0.glb", "-Y", 6.0, 4000),
     "ph_nettle_b": ("../polyhaven/nettle_plant__small_a_lod0.glb", "-Y", 5.0, 3000),
     "ph_nettle_c": ("../polyhaven/nettle_plant__tall_a_lod0.glb", "-Y", 6.0, 4000),
+    # sosna pierwszego planu (front3d.gd: `pine`, od 1.7.543): pine_tree_01 z igliwiem zamienionym na karty (tools/pine_cards.py), wysokość 100 jednostek
+    "ph_pine_a": ("../polyhaven/pine_tree_01__a.glb", "-Y", 1000.0, 90000, 100.0),
+    "ph_pine_b": ("../polyhaven/pine_tree_01__b.glb", "-Y", 1000.0, 90000, 100.0),
+    "ph_pine_c": ("../polyhaven/pine_tree_01__c.glb", "-Y", 1000.0, 90000, 100.0),
     "ph_branches_a": ("../polyhaven/dry_branches_medium_01__a.glb", "-Y", 18.0, 3000),
     "ph_branches_b": ("../polyhaven/dry_branches_medium_01__b.glb", "-Y", 18.0, 3000),
     "ph_grass_a": ("../polyhaven/grass_medium_02__a.glb", "-Y", 5.0, 2000),
@@ -203,7 +207,7 @@ def export_glb(obj, name):
     bpy.context.view_layer.objects.active = obj
     path = os.path.join(OUT, name + ".glb")
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_apply=True, export_yup=True,
-                              export_image_format="AUTO" if name.startswith(("tree_spruce", "tree_pine")) else "JPEG", export_jpeg_quality=88, export_animations=False)
+                              export_image_format="AUTO" if name.startswith(("tree_spruce", "tree_pine", "ph_pine")) else "JPEG", export_jpeg_quality=88, export_animations=False)
     print("SAVED", name, os.path.getsize(path) // 1024, "kB", len(obj.data.polygons), "faces")
 
 
@@ -750,8 +754,9 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
                 if nd.type == "NORMAL_MAP":
                     nd.inputs["Strength"].default_value = 0.55
     for img in bpy.data.images:
-        if img.size[0] > TEX:
-            img.scale(TEX, TEX)
+        lim = 2048 if name.startswith("ph_pine") else TEX         # sosna pierwszego planu: kora 2K i atlas igliwia 2048 (kafle 680 px)
+        if img.size[0] > lim:
+            img.scale(lim, lim)
     if name in ROUGH_FLOOR:
         lo = ROUGH_FLOOR[name]
         done = set()

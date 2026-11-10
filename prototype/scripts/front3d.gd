@@ -69,13 +69,17 @@ const TRUNK_SINK := 0.3                    ## m: pień, szyja i korzenie zaczyna
 const SAPLING_H := Vector2(2.2, 3.6)       ## m: wysokość młodego świerka (`_sapling`) na podłożu pierwszego planu
 ## Skany Poly Haven na pierwszym planie (uwaga z gry 2026-11-09: karty 256 px i proceduralne pnie „zbyt słabej jakości”):
 const PBR_BARK := {"pine_bark": "res://art/world3d/forest/pine_bark_%s_2k.jpg"}   ## kora 2K (kolor, ARM, normalne)
-## Korona sosny pierwszego planu (`_pine_crown`, od 1.7.542 — wcześniej pień kończył się nad kadrem bez korony i czytał się jak słup):
-const CROWN_Y := Vector2(5.6, 6.6)          ## m nad podłogą pasa: początek korony — górny brzeg kadru NORMAL leży przy pniu (z ≈ 4 m) ok. 7 m nad nią
-const CROWN_ARMS := Vector2i(10, 14)        ## liczba konarów
-const CROWN_LEN := Vector2(2.0, 3.6)        ## m: długość dolnych konarów (górne o połowę krótsze)
-const CROWN_TUFT := Vector2(1.8, 2.6)       ## m: bok kępy igliwia
-const CROWN_Z := 0.6                        ## skrócenie konarów w osi z (ku kamerze i od niej)
-const TUFT_N := Vector3(0.0, 0.6, 0.8)      ## normalna kart igliwia
+## Sosna pierwszego planu ze skanu (`ph_pine_*`: pine_tree_01 z Poly Haven, igliwie zamienione na karty w `tools/pine_cards.py`; od 1.7.543
+## zamiast pnia proceduralnego, który bez korony czytał się jak słup, a z koroną z kart — jak makieta; uwagi z gry 2026-11-10/11).
+## Skala z dołu korony: najniższe kępy igliwia (PINE_CROWN_Q) wypadają PINE_CROWN m nad podłożem — przy pniu (z ≈ 4 m) to górny brzeg
+## kadru NORMAL, więc w kadrze jest pień i dół korony, jak w prawdziwym borze. PINE_FAT pogrubia pień i koronę w poziomie (skan ma
+## smukły pień). Bez modeli (`--nomodels3d`) zostaje pień proceduralny bez korony.
+const PINE_MODELS := ["ph_pine_a", "ph_pine_b", "ph_pine_c"]
+const PINE_CROWN := Vector2(6.5, 8.0)       ## m nad podłożem: dół korony
+const PINE_CROWN_Q := 0.04                  ## część wierzchołków kart igliwia poniżej „dołu korony” (pojedyncze niskie kępy)
+const PINE_FAT := 1.15                      ## skala w poziomie względem pionu
+const PINE_GRAZE := 0.45                    ## |N·V|, poniżej którego karta igliwia rzednie (shader `graze`)
+const PINE_ALB := 0.45                      ## jasność atlasu igliwia (jak karty runa w FOREST_ALB)
 const BARK_TILE := 1.3                     ## m kory na jedno powtórzenie tekstury
 const SHRUB_MODELS := ["ph_shrub_a", "ph_shrub_b", "ph_shrub_c", "ph_shrub_d"]
 const SHRUB_H := Vector2(1.8, 2.8)         ## m: krzew (`shrub`) na podłożu pierwszego planu
@@ -282,7 +286,7 @@ const FOREST_RIM := 0.55                   ## kontra księżyca na krawędzi pni
 const FOREST_BARK_BUMP := 9.0              ## siła wypukłości kory z jasności tekstury (`bark_bump`)
 const FOREST_TRANS := 0.16                 ## prześwit księżyca przez karty igliwia, paproci i trawy
 ## Igliwie przy górnym brzegu kadru wisi na tle ciemnych koron lasu — bez mocniejszego prześwitu znika jak pień w F0.
-const FOREST_TRANS_K := {"bough_side": 2.4, "pine_tuft": 2.2}
+const FOREST_TRANS_K := {"bough_side": 2.4}
 ## Jasność tekstur lasu w pierwszym planie (`alb_k`): jasne karty trawy i paproci w nocy nie mogą świecić.
 const FOREST_ALB := {"grass_a": 0.45, "grass_b": 0.45, "fern_a": 0.7}
 const OPEN_PAD := 3.0                      ## m: zapas przycięcia w poziomie dla wpisów otwartych — rzut pnia przy brzegu kadru wychodzi ×1,25 dalej od środka
@@ -298,6 +302,8 @@ uniform bool use_tex = true;
 uniform bool has_arm = true;               // las: tekstury kory i kart bez mapy AO / chropowatość / metal — wtedy base_rough, metal 0
 uniform bool arm_ao = true;                // modele ze skanów: kanał R mapy ARM to okluzja tylko w spakowanym ORM (bez niego R bywa pusty)
 uniform bool cutout = false;               // karty lasu (igliwie, paproć, trawa): alfa z tekstury, odcięcie
+uniform float graze = 0.0;                 // karty igliwia sosny ze skanu: > 0 — karta widziana z boku rzednie (igły z alfą poniżej progu
+                                           // przy |N·V| < graze), zamiast smugi rozciągniętej tekstury
 uniform float sway = 0.0;                  // karty: kołysanie [m] — wierzch kępy paproci, koniec gałęzi (`sway_uv`)
 uniform vec2 sway_uv = vec2(0.0, 1.0);     // waga kołysania z UV: (u, 1 − v)
 uniform float sway_h = 0.0;                // > 0: waga kołysania z wysokości nad podłożem (`ywin.x`) zamiast z UV [m do pełnego wychylenia] — modele roślin
@@ -370,6 +376,7 @@ void fragment() {
 	vec2 uv = UV;
 	vec2 guv = UV;
 	if (cutout && texture(albedo_tex, uv).a < 0.42) { discard; }
+	if (graze > 0.0 && texture(albedo_tex, uv).a * smoothstep(0.06, graze, abs(dot(normalize(wnrm), normalize(cam - wpos)))) < 0.42) { discard; }
 	if (world_uv) {
 		vec3 an = abs(normalize(wnrm));
 		vec3 p = wpos * vec3(1.0, -1.0, 1.0);
@@ -911,6 +918,10 @@ static func _card(st: SurfaceTool, at: Vector3, w: float, h: float, rz: float, r
 ## Pień przez cały kadr (podstawa i koniec poza nim): lekko pochylony i wygięty, nierówna kora; sosna z martwym sękiem i czasem
 ## gałęzią z igliwiem przy górnym brzegu. U nasady kępa paproci.
 static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: float, rng: RandomNumberGenerator) -> void:
+	if kind == "pine" and _pine_model(sts, used, y_floor, rng):
+		if not _world_plants:
+			_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
+		return
 	var spec: Array = TRUNKS[kind]
 	var key := _forest_mat(String(spec[0]), false)
 	var st := _st(sts, key)
@@ -963,68 +974,58 @@ static func _trunk(sts: Dictionary, used: Dictionary, kind: String, y_floor: flo
 		var rb := rt * 0.16
 		var c := _trunk_axis(lean, bend, y0, length, yb)
 		_cone(st, c + dir * rt * 0.6, dir, ln, rb, rb * 0.25, 6, 3, Vector2(v_mid, v_mid - 0.05), 1.0, 0.1, ph + float(i), Vector3(0.0, -0.08 * ln, 0.0))
-	if kind == "pine":
-		_pine_crown(sts, used, st, lean, bend, y0, length, r0, r1, y_floor, ph, rng)
 	if not _world_plants:
 		_ferns(sts, used, "ferns", y_floor, rng, 1.2, BASE_FERN_H, 0.7)
 
 
-## Korona sosny na pniu pierwszego planu (jak `prep_items3d.py: build_pine`, z którego są sosny lasu w głębi): konary skośnie w górę
-## od CROWN_Y nad podłogą do wierzchołka pnia, na nich płaskie kępy igliwia (`pine_tuft`) — parasol, nie stożek świerka. Najniższe kępy
-## zaglądają w górny brzeg kadru NORMAL, więc pień czyta się jako drzewo, a nie słup bez końca (uwaga z gry 2026-11-10: „badyle”).
-## Konary ku kamerze są skrócone (CROWN_Z), żeby nie wisiały przed resztą pierwszego planu.
-static func _pine_crown(sts: Dictionary, used: Dictionary, bark: SurfaceTool, lean: Vector3, bend: Vector3, y0: float, length: float, r0: float, r1: float, y_floor: float, ph: float, rng: RandomNumberGenerator) -> void:
-	var tk := _forest_mat("pine_tuft", true)
-	var tst := _st(sts, tk)
-	used[tk] = true
-	var yc := y_floor + rng.randf_range(CROWN_Y.x, CROWN_Y.y)
-	var ytop := y0 + length
-	var arms := rng.randi_range(CROWN_ARMS.x, CROWN_ARMS.y)
-	for j in arms:
-		var q := (float(j) + rng.randf()) / float(arms)                  # 0 = dół korony, 1 = wierzchołek
-		var yb := lerpf(yc, ytop - 0.6, q)
-		var a := rng.randf() * TAU
-		var rise := deg_to_rad(rng.randf_range(12.0, 42.0))
-		var dir := Vector3(cos(a) * cos(rise), sin(rise), sin(a) * cos(rise) * CROWN_Z).normalized()
-		var ln := rng.randf_range(CROWN_LEN.x, CROWN_LEN.y) * (1.15 - 0.5 * q)   # dolne konary dłuższe
-		var c := _trunk_axis(lean, bend, y0, length, yb)
-		var rt := _trunk_r(r0, r1, y0, length, yb)
-		var sag := Vector3(0.0, -0.12 * ln, 0.0)
-		_cone(bark, c, dir, ln, rt * 0.45, rt * 0.1, 6, 4, Vector2(ln / BARK_TILE, 0.0), 1.0, 0.08, ph + float(j), sag)
-		var flat := Vector3(dir.x, 0.0, dir.z).normalized()
-		var side := Vector3(-flat.z, 0.0, flat.x)
-		var spots: Array[Vector3] = []
-		for k: float in [0.4, 0.65, 0.85, 1.0]:                          # kępy wzdłuż konaru (z jego ugięciem) i na końcu
-			spots.append(c + dir * ln * k + sag * sin(k * PI))
-		var tip := c + dir * ln
-		for k in 3:                                                      # zwarta, płaska masa wokół końca zamiast kępek na patykach
-			spots.append(tip - flat * rng.randf_range(0.0, ln * 0.35) + side * rng.randf_range(-0.6, 0.6) + Vector3(0.0, rng.randf_range(-0.15, 0.25), 0.0))
-		for i in spots.size():
-			_needle_tuft(tst, spots[i] + Vector3(0.0, 0.08, 0.0), flat, side, rng.randf_range(CROWN_TUFT.x, CROWN_TUFT.y) * (0.75 + 0.35 * minf(float(i), 3.0) / 3.0))
-	var top := _trunk_axis(lean, bend, y0, length, ytop)
-	for k in 3:                                                          # wierzchołek
-		var sd := Vector3(cos(TAU * float(k) / 3.0), 0.0, sin(TAU * float(k) / 3.0))
-		_quad(tst, top - sd * 0.7 - Vector3(0.0, 0.5, 0.0), sd * 1.4, Vector3(0.0, 1.0, 0.0))
+## Sosna ze skanu (PINE_MODELS) na podłodze pasa: nasada TRUNK_SINK pod podłożem (szyję odcina `ywin`), losowy obrót wokół pionu.
+## false, gdy modelu nie ma.
+static func _pine_model(sts: Dictionary, used: Dictionary, y_floor: float, rng: RandomNumberGenerator) -> bool:
+	var name := String(PINE_MODELS[rng.randi() % PINE_MODELS.size()])
+	var mm := Level3D.model_mesh(name)
+	if mm.is_empty():
+		return false
+	var foot := _model_foot(name)
+	var s := rng.randf_range(PINE_CROWN.x, PINE_CROWN.y) / maxf(foot.w - foot.y, 0.001)
+	var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * PINE_FAT, s, s * PINE_FAT))
+	return _put_model(sts, used, name, Transform3D(b, Vector3(0.0, y_floor - TRUNK_SINK, 0.0) - b * Vector3(foot.x, foot.y, foot.z)))
 
 
-## Kępa igliwia o boku `s` (m) w punkcie `c`: płat prawie poziomy i dwa pionowe na krzyż (`flat` wzdłuż konaru, `side` w poprzek).
-static func _needle_tuft(st: SurfaceTool, c: Vector3, flat: Vector3, side: Vector3, s: float) -> void:
-	_quad(st, c - flat * s * 0.5 - side * s * 0.5, flat * s, side * s + Vector3.UP * s * sin(0.35))
-	_quad(st, c - flat * s * 0.5 - Vector3.UP * s * 0.3, flat * s, Vector3.UP * s * 0.6)
-	_quad(st, c - side * s * 0.5 - Vector3.UP * s * 0.3, side * s, Vector3.UP * s * 0.6)
+static var _feet_cache := {}
 
-
-## Czworokąt karty z pełnym UV: `p0` = lewy dolny róg obrazu, `du` w prawo, `dv` w górę obrazu. Normalna stała, w górę i ku kamerze
-## (jak karty lasu w głębi) — płat widziany od spodu nie łapie kontry postaci zza sceny.
-static func _quad(st: SurfaceTool, p0: Vector3, du: Vector3, dv: Vector3) -> void:
-	var pts := [p0, p0 + du, p0 + du + dv, p0 + dv]
-	var uvs := [Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)]
-	# przód ściany zgodnie z ruchem wskazówek zegara: kolejność zależna od kierunku płata, żeby przód zawsze patrzył jak TUFT_N
-	# (inaczej konary w jedną stronę miały kępy odwrócone tyłem — ciemne, bo shader dwustronny odwraca normalną tyłu)
-	for k in ([0, 1, 2, 0, 2, 3] if du.cross(dv).dot(TUFT_N) < 0.0 else [0, 2, 1, 0, 3, 2]):
-		st.set_normal(TUFT_N)
-		st.set_uv(uvs[k])
-		st.add_vertex(pts[k])
+## Środek nasady modelu (średnia wierzchołków w najniższych 2% wysokości; skan nie stoi pniem w środku ramki — korona jest
+## niesymetryczna) i w `w` dół korony: wysokość, poniżej której leży PINE_CROWN_Q wierzchołków kart z alfą. Jednostki po przekształceniu modelu.
+static func _model_foot(name: String) -> Vector4:
+	if _feet_cache.has(name):
+		return _feet_cache[name]
+	var mm := Level3D.model_mesh(name)
+	var mesh: Mesh = mm[0]
+	var local: Transform3D = mm[1]
+	var lo := INF
+	var hi := -INF
+	var pts: Array[Vector3] = []
+	var leaf_y: Array[float] = []
+	for si in mesh.get_surface_count():
+		var src := mesh.surface_get_material(si)
+		var leaf := src is BaseMaterial3D and (src as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED
+		for v: Vector3 in mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]:
+			var w := local * v
+			pts.append(w)
+			lo = minf(lo, w.y)
+			hi = maxf(hi, w.y)
+			if leaf:
+				leaf_y.append(w.y)
+	var sum := Vector3.ZERO
+	var n := 0
+	for w in pts:
+		if w.y <= lo + 0.02 * (hi - lo):
+			sum += w
+			n += 1
+	leaf_y.sort()
+	var crown := leaf_y[int(PINE_CROWN_Q * leaf_y.size())] if not leaf_y.is_empty() else lerpf(lo, hi, 0.3)
+	var foot := Vector4(sum.x / maxf(n, 1), lo, sum.z / maxf(n, 1), crown)
+	_feet_cache[name] = foot
+	return foot
 
 
 ## Środek pnia na wysokości `y` (bez nierówności kory) i jego promień.
@@ -1123,6 +1124,11 @@ static func _model_mat(name: String, si: int, src: Material, leaf: bool) -> Stri
 		m.set_shader_parameter("trans_k", FOREST_TRANS)
 		m.set_shader_parameter("sway", 0.07)
 		m.set_shader_parameter("sway_h", 1.2)
+		if name.begins_with("ph_pine"):
+			# korona nad kadrem to w nocy ciemna sylwetka: pełna jasność atlasu i prześwit dawały jasną, płaską chmurę nad lasem
+			m.set_shader_parameter("graze", PINE_GRAZE)
+			m.set_shader_parameter("alb_k", PINE_ALB)
+			m.set_shader_parameter("trans_k", FOREST_TRANS * 0.5)
 	else:
 		m.set_shader_parameter("rim_k", FOREST_RIM * 0.7)
 	_mats[key] = m
