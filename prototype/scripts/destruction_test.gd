@@ -895,9 +895,11 @@ func _holes() -> void:
 	g.queue_free()
 	await _frames(0.1)
 
-	# deski na mapie 1.2 (schowek w zachodnim szybie): dziura otwiera kafel siatki dźwięku, reset go zamyka
-	var mp: Node2D = level.get_node_or_null("Planks1")
-	check("deski na 1.2: Planks1 (schowek w ścianie zachodniego szybu), %d kafle" % (int(mp.get("rows")) if mp else 0), mp != null and int(mp.rows) == 3)
+	# deski na mapie 1.2 (schowek w zachodnim szybie, kol. 158): dziura otwiera kafel siatki dźwięku, reset go zamyka. Nazwy przegród idą od lewej,
+	# a od D1 „Drabiny” (MAPS_PLAN.md §4) pierwsze deski stoją w studni stacji (kol. 66) — szukamy po kolumnie, nie po numerze.
+	var stash_name := _planks_at_col(158)
+	var mp: Node2D = level.get_node_or_null(stash_name)
+	check("deski na 1.2: %s (schowek w ścianie zachodniego szybu), %d kafle" % [stash_name, int(mp.get("rows")) if mp else 0], mp != null and int(mp.rows) == 3)
 	if mp == null:
 		return
 	var col := int(mp.global_position.x / 16.0)
@@ -910,8 +912,15 @@ func _holes() -> void:
 		before and not level._is_sound_solid(col, row) and level.sound_grid._open(cell) and level._is_sound_solid(col, row - 1))
 	level.reset_breakables()
 	await _frames(0.1)
-	mp = level.get_node_or_null("Planks1")
+	mp = level.get_node_or_null(stash_name)
 	check("deski na 1.2: reset zabiera dziury i zamyka kafel dźwięku", mp != null and int(mp.hole_total) == 0 and level._is_sound_solid(col, row) and not level.sound_grid._open(cell))
+
+## Nazwa przegrody z deskami (`PlanksN`) stojącej w kolumnie `col` bieżącej mapy ("" gdy brak).
+func _planks_at_col(col: int) -> String:
+	for c in level.get_children():
+		if String(c.name).begins_with("Planks") and c is Node2D and int((c as Node2D).global_position.x / 16.0) == col:
+			return String(c.name)
+	return ""
 
 ## D2b — barykadowanie: pusty otwór `:` na 1.2 (dolny korytarz budynku z generatorem), deski ze skrzyń, złom z łupu bez desek, trzymanie [E]
 ## ~2 s na deskę (serwer: zasięg, koszt, hałas), komplet 3 desek, nadłamana deska się liczy, wróg w otworze blokuje, gracz w otworze

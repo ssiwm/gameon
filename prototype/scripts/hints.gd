@@ -21,6 +21,7 @@ const TIPS := [
 	["noise", "Every shot makes NOISE. Watch the meter in the top-left corner"],
 	["ford", "Water slows you and splashes — running through it is loud. Mud muffles your steps but drags you down. Something big sleeps on the bank: hold {crouch} under it. Crouched in the reeds, eyes slide past you"],
 	["camp", "A pack sleeps under the broken bridge and the gap is too wide to jump. Go up into the branches — or hold {crouch} on the bridge and they stay asleep"],
+	["culvert", "A pack sleeps across the yard. The hatch at your feet drops into an old culvert that runs under them to the station well — {crouch} all the way through: they hear you through the ground"],
 	["sneak", "Something is asleep close by — hold {crouch} and walk: a crouching step is silent and wakes it from half the distance"],
 	["quiet", "Attention is up. Stop shooting — in silence the meter drains fast. Sneaking ({crouch}) is silent too"],
 	["broadcast", "The transmitter is live and HE heard it. Press {overcharge} to throw a lure and pull him away — then run for the exit"],
@@ -29,7 +30,7 @@ const TIPS := [
 	["uneasy", "Something is listening. Stop shooting, sneak ({crouch}) — or press {overcharge} to lure it away"],
 	["revive", "A friend is down — stand next to them and HOLD {interact} to revive"],
 	["downed", "You are down. Stay still — a teammate can revive you before you bleed out"],
-	["downed_solo", "You are down and no one can revive you. Bleed out and you wake up back at the start — fall again and the attempt is lost"],
+	["downed_solo", "You are down and no one can revive you. Bleed out and you wake up further back (the start, the last generator, the handcar) — fall again and the attempt is lost"],
 	["light", "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide"],
 	["battery_low", "The flashlight battery is running low. Flat 4.5 V batteries lie around the map, drop from enemies and from smashed moth nests — and the light slowly recharges while switched off"],
 	["moths", "Moths nest under the watchtower roof and swarm any light they can see — your flashlight, even muzzle flashes. Bullets and fire do not touch them: throw a flare ({flare}) away from you to draw the swarm off, or cut them down with your blade ({melee})"],
@@ -169,6 +170,16 @@ func _collect(p: Node) -> void:
 				camp_asleep = true
 				break
 	_queue("camp", camp_asleep, false)
+	# przepust (misja 1.2, HINT_ZONES „culvert”, MAPS_PLAN.md §4): przed watahą na dziedzińcu, póki śpi — cicha droga pod nią, tylko na kucaka
+	var culvert_zone = lvl_n.get("hint_zones").get("culvert") if lvl_n != null and lvl_n.get("hint_zones") != null else null
+	var yard_asleep := false
+	if culvert_zone is Rect2 and (culvert_zone as Rect2).has_point(p.global_position):
+		for e in p.get_tree().get_nodes_in_group("enemies"):
+			var near_y: bool = e is Node2D and absf((e as Node2D).global_position.x - p.global_position.x) < 400.0 and absf((e as Node2D).global_position.y - p.global_position.y) < 80.0
+			if near_y and e.get("alive") == true and e.get("active") == false and e.get("kind") == "trzosek":
+				yard_asleep = true
+				break
+	_queue("culvert", yard_asleep, false)
 	# strażnica (misja 1.1, HINT_ZONES „moths”): pod wieżą, póki ćmy wiszą pod dachem — lekcja flary
 	var moth_zone = lvl_n.get("hint_zones").get("moths") if lvl_n != null and lvl_n.get("hint_zones") != null else null
 	var moths_hang := false
