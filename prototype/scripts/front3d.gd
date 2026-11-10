@@ -17,6 +17,7 @@ extends RefCounted
 ## Tylko widok: bez kolizji, wzroku, hałasu i wpływu na celowanie.
 
 const Level3D := preload("res://scripts/level3d.gd")
+const Building3D := preload("res://scripts/building3d.gd")
 
 const LAYER_FRONT := 256                   ## warstwa wizualna pierwszego planu (bit 9); kamera świata jej nie widzi
 const LAYER_WALL := 512                    ## ściany przekroju (`build_walls`): widzi je kamera graczy, oświetlają lampy i latarka, ale nie kontra postaci (jasny pas boku ściany w ciemności)
@@ -624,7 +625,7 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 			if not _skipped(xb, sk):
 				var kb: String = st["big"][bi % (st["big"] as Array).size()]
 				bi += 1
-				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
+				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args(), "build": e.has("build")})
 			var nx: float = xs[i + 1] if i + 1 < xs.size() else clip.y - MARGIN
 			var pair := st.has("small2")
 			for si in (2 if pair else 1):
@@ -634,7 +635,7 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 				var ks: String = st[key][rng.randi() % (st[key] as Array).size()]
 				var want := rng.randf() < 0.6
 				if want and not low and xm - xb >= SMALL_MIN and nx - xm >= SMALL_MIN and xm < clip.y - MARGIN and not _skipped(xm, sk):
-					out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()})
+					out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args(), "build": e.has("build")})
 	return out
 
 
@@ -1204,6 +1205,11 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 		var occ_z := Level3D.SHELL_Z
 		if phys and Level3D.in_trench(int(floorf(float(it["x"]) / Level3D.T)), roundi(-clip.z / Level3D.T)):
 			clip.z -= Level3D.TRENCH_D                      # torowisko: płyta przekroju leży na wysokości dna koryta — element stoi na podsypce
+		if phys and bool(it.get("build", false)):
+			# budynek 3D (`building3d.gd`, kryjówka, posterunek): pod płytą 0,25 m tylko żebra co kafel do spodu kafla stropu — element
+			# dochodzi do spodu płyty, nie żeber, i tam też płyta go chowa (`occ`); kończył się na spodzie żeber, a z kamery nad stropem
+			# (piwnica kryjówki) między żebrami prześwitywała ściana nad nim (uwaga z gry 2026-11-10)
+			clip.w += Level3D.T - Building3D.SLAB
 		if phys and not rows.is_empty():
 			# dach z blachy (hala stacji): stropu nie ma — element wisi pod płatwią, na jej głębokości (najbliższa w Z_RANGE z kołnierzem
 			# przed przodem przekroju), i dochodzi do jej spodu; płatew bliżej kamery rzutuje się wyżej, więc rury nie przecina

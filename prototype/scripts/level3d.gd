@@ -1008,7 +1008,9 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				# bryły tylko dla odsłoniętych kafli (sąsiad z powietrzem lub tłem); wnętrza skał zamyka od frontu płaski przekrój (`caps`),
 				# bez niego pod skorupą gruntu widać było pustkę zamiast ziemi (flara czy wybuch nie miały czego oświetlić)
 				# sąsiad-skrzynia (`_build_crates`, płytsza niż kafel) nie zasłania już ścian bryły — kafel obok niej jest odsłonięty
-				var hidden := func(cc: int, rr: int) -> bool: return is_solid_ch(_ch(rows, cc, rr)) and not crate_cells.has(Vector2i(cc, rr))
+				# kafel ściany budynku 3D (`bld_cells`) też nie zasłania: bryła `building3d.gd` ma ścianę szczytową 0,4 m przy krawędzi kafla, więc
+				# podłoga pod nią jest odsłonięta — bez wierzchu wzdłuż ściany biegł czarny pas (kryjówka, uwaga z gry 2026-11-10)
+				var hidden := func(cc: int, rr: int) -> bool: return is_solid_ch(_ch(rows, cc, rr)) and not crate_cells.has(Vector2i(cc, rr)) and not bld_cells.has(Vector2i(cc, rr))
 				if hidden.call(c - 1, r) and hidden.call(c + 1, r) and hidden.call(c, r - 1) and hidden.call(c, r + 1):
 					caps[ch].append(Vector2i(c, r))
 					continue
