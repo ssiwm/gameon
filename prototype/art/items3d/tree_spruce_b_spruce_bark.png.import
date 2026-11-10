@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c1wnfjgvdf3ae"
-path.s3tc="res://.godot/imported/tree_spruce_a_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg-4d836ac31fce63e1c425c1a20cd6456c.s3tc.ctex"
+uid="uid://bqofndasxuuqk"
+path.s3tc="res://.godot/imported/tree_spruce_b_spruce_bark.png-a2056ad2eeb8ce64d1e87af5d01d469b.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "fe531b505f9f38885cbba54570352e18"
+"md5": "959e50fc05ae28dbe5787e936dd9fda2"
 }
 
 [deps]
 
-source_file="res://art/items3d/tree_spruce_a_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg"
-dest_files=["res://.godot/imported/tree_spruce_a_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg-4d836ac31fce63e1c425c1a20cd6456c.s3tc.ctex"]
+source_file="res://art/items3d/tree_spruce_b_spruce_bark.png"
+dest_files=["res://.godot/imported/tree_spruce_b_spruce_bark.png-a2056ad2eeb8ce64d1e87af5d01d469b.s3tc.ctex"]
 
 [params]
 

@@ -271,6 +271,29 @@ def bark(seed, w=256, h=512):
     return out
 
 
+def spruce_bark(seed, w=256, h=512):
+    """Kora świerka do pnia modelu 3D (`prep_items3d.py: build_spruce`, od 1.7.543 zamiast martwego pnia z Tripo, którego srebrzyste
+    drewno świeciło nocą w głębi lasu): ciemna szarobrązowa, drobno łuskowata, bez rudej góry sosny; u = obwód, v = wysokość."""
+    rng = random.Random(seed)
+    Wd, Hd = w * SS, h * SS
+    im = Image.new("RGB", (Wd, Hd), (0, 0, 0))
+    d = ImageDraw.Draw(im)
+    for y in range(0, Hd, SS):
+        t = 1.0 - y / Hd
+        d.rectangle([0, y, Wd, y + SS], fill=_mix((46, 38, 32), (66, 52, 40), t))
+    for _ in range(1600):                                      # okrągłe łuski: ciemny cień pod spodem i jaśniejszy wierzch
+        x = rng.uniform(0, Wd)
+        y = rng.uniform(0, Hd)
+        r = rng.uniform(2, 5) * SS
+        d.ellipse([x - r, y - r * 0.7 + SS, x + r, y + r * 0.7 + SS], fill=(24, 19, 16))
+        d.ellipse([x - r, y - r * 0.7, x + r, y + r * 0.7], fill=_mix((58, 47, 38), (84, 68, 54), rng.random()))
+    for _ in range(140):                                       # pionowe pęknięcia
+        x = rng.uniform(0, Wd)
+        y = rng.uniform(0, Hd)
+        d.line([x, y, x + rng.uniform(-2, 2) * SS, y - rng.uniform(10, 30) * SS], fill=(22, 18, 15), width=SS)
+    return im.resize((w, h), Image.LANCZOS).convert("RGBA")
+
+
 def pine_tuft(seed, size=256):
     """Kępa igliwia sosny do korony modelu 3D: zbite pęczki długich igieł promieniście z kilku gałązek, gęstsze w środku."""
     rng = random.Random(seed)
@@ -345,6 +368,7 @@ def main():
         "pine_a": pine_card(31),
         "pine_b": pine_card(47),
         "pine_bark": bark(61),
+        "spruce_bark": spruce_bark(83),
         "pine_tuft": pine_tuft(71),
         "bough_side": bough(21, True),
         "bough_top": bough(22, False),

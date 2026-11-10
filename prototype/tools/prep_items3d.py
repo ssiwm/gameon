@@ -430,50 +430,25 @@ def reshape_handcar(obj):
     me.update()
 
 
-# świerki: pień z modelu Tripo (martwy pień — kora) + gałęzie z igliwiem jako karty z teksturą (art/world3d/forest/bough_*.png z
-# tools/world_forest_gen.py) rozłożone piętrami wokół pnia. Sam generator 3D robi z igliwia szerokie liście; igły muszą być teksturą.
+# świerki: prosty pień z korą świerka (`spruce_bark` z tools/world_forest_gen.py; do 1.7.542 martwy pień z Tripo, którego srebrzyste drewno
+# świeciło nocą w głębi lasu jak goły „badyl”) + gałęzie z igliwiem jako karty z teksturą (art/world3d/forest/bough_*.png) rozłożone
+# piętrami wokół pnia. Sam generator 3D robi z igliwia szerokie liście; igły muszą być teksturą.
 SPRUCES = {"tree_spruce_a": (11, 1.0, 0.16), "tree_spruce_b": (23, 0.72, 0.34), "tree_spruce_c": (37, 0.9, 0.06)}      # ziarno, pełność, goły dół pnia
 
 
 def build_spruce(name, seed, fullness, bare):
-    import bmesh
     import random
-    src = os.path.join(TRIPO, "tree_snag.glb")
-    if not os.path.exists(src):
-        print("SKIP", name)
-        return
     rng = random.Random(seed)
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.gltf(filepath=src)
-    trunk = next(o for o in bpy.data.objects if o.type == "MESH")
-    bpy.ops.object.select_all(action="DESELECT")
-    trunk.select_set(True)
-    bpy.context.view_layer.objects.active = trunk
-    bpy.ops.object.parent_clear(type="CLEAR_KEEP_TRANSFORM")
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    me = trunk.data
-    me.transform(Matrix.Rotation(rng.uniform(0, math.tau), 4, "Z"))
-    vs = np.array([v.co[:] for v in me.vertices])
-    lo, hi = vs.min(axis=0), vs.max(axis=0)
-    me.transform(Matrix.Translation((-(lo[0] + hi[0]) * 0.5, -(lo[1] + hi[1]) * 0.5, -lo[2])))
-    kz = 100.0 / (hi[2] - lo[2])
-    kxy = 9.0 / max(hi[0] - lo[0], hi[1] - lo[1])                # smukły pień (konary martwego pnia zostają jako suche gałęzie w koronie)
-    me.transform(Matrix.Diagonal((kxy, kxy, kz, 1.0)))
-    for v in me.vertices:                                      # zbieżność ku wierzchołkowi
-        f = 1.0 - 0.8 * (v.co.z / 100.0)
-        v.co.x *= f
-        v.co.y *= f
-    dec = trunk.modifiers.new("dec", "DECIMATE")
-    dec.ratio = 1800.0 / max(len(me.polygons), 1)
-    bpy.ops.object.modifier_apply(modifier="dec")
-    for img in bpy.data.images:
-        if img.size[0] > 512:
-            img.scale(512, 512)
-    for m in bpy.data.materials:
-        if m.node_tree:
-            bs = next((nd for nd in m.node_tree.nodes if nd.type == "BSDF_PRINCIPLED"), None)
-            if bs is not None:
-                bs.inputs["Metallic"].default_value = 0.0
+    trunk, me, bm, quad, tube = _tree_builder(name)
+    me.materials.append(_forest_mat("spruce_bark", False))
+    sp = _spine(rng, 100.0, rng.uniform(-0.4, 0.4), rng.uniform(-0.8, 0.8), 20)
+    tube(sp, [1.5 * (1.0 - t) ** 0.9 + 0.12 for t in [i / 19 for i in range(20)]], 9, 0, 0.0, 1.0, 1.0)
+    for _ in range(rng.randint(4, 8)):                         # krótkie suche kikuty na gołym dole pnia
+        t = rng.uniform(0.12, max(bare, 0.14) + 0.06)
+        a = rng.uniform(0, math.tau)
+        dd = Vector((math.cos(a), math.sin(a), rng.uniform(-0.3, 0.05))).normalized()
+        b = sp[min(int(t * 19), 18)]
+        tube([b, b + dd * rng.uniform(1.5, 3.5)], [0.18, 0.05], 4, 0, 0.5, 0.55)
     # materiały igliwia
     mats = []
     for key in ("bough_side", "bough_top"):
@@ -490,19 +465,7 @@ def build_spruce(name, seed, fullness, bare):
         m.use_backface_culling = False
         me.materials.append(m)
         mats.append(len(me.materials) - 1)
-    bm = bmesh.new()
-    bm.from_mesh(me)
-    uv = bm.loops.layers.uv.verify()
-
-    def quad(p0, du, dv, mat, v0=0.0, v1=1.0):
-        """Czworokąt: p0 = nasada (u = 0, v = v0), du = wektor wzdłuż gałęzi, dv = wektor wysokości / szerokości tekstury."""
-        vv = [bm.verts.new(p0), bm.verts.new(p0 + du), bm.verts.new(p0 + du + dv), bm.verts.new(p0 + dv)]
-        f = bm.faces.new(vv)
-        f.material_index = mat
-        for lp, (a, b) in zip(f.loops, ((0, v0), (1, v0), (1, v1), (0, v1))):
-            lp[uv].uv = (a, b)
-
-    from mathutils import Vector as V
+    V = Vector
     tiers = 30
     z0 = 100.0 * bare
     for k in range(tiers):

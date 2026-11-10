@@ -2,20 +2,17 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://htaqsabhewhm"
-path.s3tc="res://.godot/imported/tree_spruce_b_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg-6615dd618c35b146887cd952dec8b2ea.s3tc.ctex"
+uid="uid://myuhiddgupvr"
+path.s3tc="res://.godot/imported/spruce_bark.png-6d58601985a7d33bfb800e29e393ad4d.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
-generator_parameters={
-"md5": "fe531b505f9f38885cbba54570352e18"
-}
 
 [deps]
 
-source_file="res://art/items3d/tree_spruce_b_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg"
-dest_files=["res://.godot/imported/tree_spruce_b_ORM_a801feb5-bb4e-4df7-8b37-dc07db47c3c5.jpg-6615dd618c35b146887cd952dec8b2ea.s3tc.ctex"]
+source_file="res://art/world3d/forest/spruce_bark.png"
+dest_files=["res://.godot/imported/spruce_bark.png-6d58601985a7d33bfb800e29e393ad4d.s3tc.ctex"]
 
 [params]
 
