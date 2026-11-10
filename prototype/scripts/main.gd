@@ -3945,22 +3945,22 @@ func _gen_test() -> void:
 	check.call("stół konserwacji: modele 3D stanowiska %s (art/items3d)" % str(smodels.map(func(e: Array) -> String: return String(e[0]))),
 		smodels.size() == 3 and smodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
 	var press_nodes := get_tree().get_nodes_in_group("press_bench")
-	check.call("prasa elaboracyjna: %d w kryjówce (dół, kol. 33)" % press_nodes.size(), press_nodes.size() == 1 and int((press_nodes[0] as Node2D).global_position.x / 16.0) == 33)
+	check.call("prasa elaboracyjna: %d w kryjówce (piwnica, kol. 30, pod zbrojownią)" % press_nodes.size(), press_nodes.size() == 1 and _hub_at(press_nodes[0], 30, 14))
 	var pmodels: Array = press_nodes[0].get("station_props") if press_nodes.size() == 1 else []
 	check.call("prasa: modele 3D stanowiska %s (art/items3d)" % str(pmodels.map(func(e: Array) -> String: return String(e[0]))),
 		pmodels.size() == 3 and pmodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
 	var lathe_nodes := get_tree().get_nodes_in_group("lathe_bench")
-	check.call("tokarka: %d w kryjówce (dół, kol. 11)" % lathe_nodes.size(), lathe_nodes.size() == 1 and int((lathe_nodes[0] as Node2D).global_position.x / 16.0) == 11)
+	check.call("tokarka: %d w kryjówce (piwnica, kol. 17, pod ławą)" % lathe_nodes.size(), lathe_nodes.size() == 1 and _hub_at(lathe_nodes[0], 17, 14))
 	var lmodels: Array = lathe_nodes[0].get("station_props") if lathe_nodes.size() == 1 else []
 	check.call("tokarka: modele 3D stanowiska %s (art/items3d)" % str(lmodels.map(func(e: Array) -> String: return String(e[0]))),
 		lmodels.size() == 4 and lmodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
 	var lab_nodes := get_tree().get_nodes_in_group("lab_bench")
-	check.call("pracownia: %d w kryjówce (góra, kol. 45)" % lab_nodes.size(), lab_nodes.size() == 1 and int((lab_nodes[0] as Node2D).global_position.x / 16.0) == 45)
+	check.call("pracownia: %d w kryjówce (piwnica, kol. 12, obok tokarki)" % lab_nodes.size(), lab_nodes.size() == 1 and _hub_at(lab_nodes[0], 12, 14))
 	var cmodels: Array = lab_nodes[0].get("station_props") if lab_nodes.size() == 1 else []
 	check.call("pracownia: modele 3D stanowiska %s (art/items3d)" % str(cmodels.map(func(e: Array) -> String: return String(e[0]))),
 		cmodels.size() == 3 and cmodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
 	var pyro_nodes := get_tree().get_nodes_in_group("pyro_bench")
-	check.call("stół pirotechniczny: %d w kryjówce (dół, kol. 46)" % pyro_nodes.size(), pyro_nodes.size() == 1 and int((pyro_nodes[0] as Node2D).global_position.x / 16.0) == 46)
+	check.call("stół pirotechniczny: %d w kryjówce (piwnica, kol. 36, pod zbrojownią)" % pyro_nodes.size(), pyro_nodes.size() == 1 and _hub_at(pyro_nodes[0], 36, 14))
 	var zmodels: Array = pyro_nodes[0].get("station_props") if pyro_nodes.size() == 1 else []
 	check.call("pirotechnika: modele 3D stanowiska %s (art/items3d)" % str(zmodels.map(func(e: Array) -> String: return String(e[0]))),
 		zmodels.size() == 4 and zmodels.all(func(e: Array) -> bool: return ResourceLoader.exists("res://art/items3d/%s.glb" % String(e[0]))))
@@ -4121,6 +4121,11 @@ func _gen_test() -> void:
 	check.call("kolejność kampanii 1.1 → 1.2 → 1.3 → B1, Nocny Dyżur losuje tylko z 1.2 i 1.3 (pula %s)" % str(level.SHIFT_POOL),
 		level.CAMPAIGN == ["z1_m1", "z1_m2", "z1_m3", "z1_b1"] and level.SHIFT_POOL == ["z1_m2", "z1_m3"])
 	print("[GEN-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
+
+## Testy kryjówki: znacznik `n` stoi w kolumnie `col` na podłodze w wierszu `floor_row` (pokład kryjówki, HUB_LAYOUT_PLAN.md).
+func _hub_at(n: Node, col: int, floor_row: int) -> bool:
+	var p := (n as Node2D).global_position
+	return int(p.x / 16.0) == col and is_equal_approx(p.y, float(floor_row * 16))
 
 ## Długość ścieżki A* między dwoma punktami podłogi (px); 0, gdy brak drogi.
 func _nav_len(nav: AStar2D, from: Vector2, to: Vector2) -> float:

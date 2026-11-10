@@ -2,7 +2,7 @@ extends RefCounted
 ## Budynki 3D z mapy (wariant C: posterunek i Skład 1.3, hala stacji 1.2, kryjówka; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą, „vault” — bunkier w skale). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
 ## w prawdziwych wymiarach zamiast pudeł kafli 1,31 m: płaski stropodach żelbetowy 0,25 m na górze kafla dachu z żebrami i podciągami
 ## do dolnej krawędzi kafla (Skoczek dalej wisi „pod sufitem”), attyka, ściany szczytowe 0,4 m z pilastrami, cokołem, okapem i oknami
-## w głębi, drzwi w ościeżnicach w pasie gry, słupy co 4–6 m przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
+## w głębi, drzwi w ościeżnicach w pasie gry, słupy co 4–6 m (albo w kolumnach z klucza "bays" wpisu) przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
 ## ściana tylna. Wszystko, co przecina płaszczyzna przekroju z = SHELL_Z, ma tam jednolity materiał przekroju (`cut`).
 ## Tylko widok: kolizja, zniszczenia i pierwszy plan zostają na kaflach mapy. Budowane w warstwie świata, w jednym węźle na budynek.
 const Level3D := preload("res://scripts/level3d.gd")
@@ -140,6 +140,10 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	var ncols := c1 - c0 + 1
 	var nbay := maxi(1, roundi((x1 - x0) / BAY))
 	var lines: Array = []
+	for bc in b.get("bays", []):                             # wpis z kluczem "bays": słupy na granicach pomieszczeń (lewa krawędź kolumny mapy)
+		lines.append(float(int(bc)) * T)
+	if b.has("bays"):
+		nbay = 0
 	for i in range(1, nbay):
 		var kk := roundi(float(i) * float(ncols) / float(nbay))
 		for dk in [0, 1, -1, 2, -2]:                         # granica kafli bez otworu wnęki po żadnej stronie (słup zasłoniłby wnękę)

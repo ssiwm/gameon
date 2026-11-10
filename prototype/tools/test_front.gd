@@ -555,7 +555,7 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 func _check_vault(rows: Array) -> void:
 	var T := Level3D.T
 	var zc := Level3D.SHELL_Z
-	_check(Level3D.buildings.size() == 3, "kryjówka: %d budynków 3D zamiast 3" % Level3D.buildings.size())
+	_check(Level3D.buildings.size() == 2, "kryjówka: %d budynków 3D zamiast 2 (parter i piwnica)" % Level3D.buildings.size())
 	_check(Level3D.shell_walls.is_empty() and Level3D.shell_facades.is_empty(), "kryjówka: ściany albo fasady przekroju z kafli przy budynkach 3D")
 	_check(Level3D.interior_ribs(rows).is_empty(), "kryjówka: żebra z kafli w budynku 3D (%s)" % [Level3D.interior_ribs(rows)])
 	for b: Dictionary in Level3D.buildings:
@@ -584,6 +584,14 @@ func _check_vault(rows: Array) -> void:
 			shafts = shafts or not Level3D._ch(rows, c, int(b["r0"])) in Level3D.WALL_CH
 		_check(slabs >= (2 if shafts else 1), "%s: płyta stropu (%d kawałków, szyby: %s)" % [tag, slabs, shafts])
 		_check(not (p["cut"] as Array).is_empty() and not (p["col"] as Array).is_empty(), "%s: brak przekroju albo słupów" % tag)
+		# słupy tylko na granicach pomieszczeń z klucza "bays" (HUB_LAYOUT_PLAN.md), nie co Building3D.BAY
+		var bays: Array = b.get("bays", [])
+		_check(not bays.is_empty(), "%s: brak klucza bays" % tag)
+		for xf: Transform3D in p["col"]:
+			var on_bay := false
+			for bc in bays:
+				on_bay = on_bay or absf(xf.origin.x - float(int(bc)) * T) < 0.01
+			_check(on_bay, "%s: słup x %.2f poza granicą pomieszczenia %s" % [tag, xf.origin.x, bays])
 
 func _check_local_fade() -> void:
 	var T := Level3D.T

@@ -147,6 +147,7 @@ var hp_mult := 1.0               ## mnożnik HP wrogów tej mapy (ENEMY_HP w dan
 var depth_mult := 1.0                                    ## mnożnik ambientu od głębi podziemi (dread.gd)
 var underground_y := 0.0         ## od tej wysokości (px) postać jest w podziemiach
 var bounds := Rect2()
+var cam_lock := Vector2i(-1, -1)          ## CAM_LOCK z danych mapy: [wiersz stropu, wiersz podłogi] pasa, który kamera trzyma w pionie (kryjówka „dwa pokłady”); -1 = kamera jak na misjach
 var spawns: Array[Vector2] = []
 var exits: Array[Vector2] = []
 var stalker_home := Vector2.ZERO
@@ -251,6 +252,8 @@ func _load(id: String) -> void:
 	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
 	_hub_props = ((m as GDScript).get_script_constant_map().get("HUB_PROPS", []) as Array).duplicate()
 	_range_door = ((m as GDScript).get_script_constant_map().get("RANGE_DOOR", []) as Array).duplicate()
+	var cl: Array = (m as GDScript).get_script_constant_map().get("CAM_LOCK", [])
+	cam_lock = Vector2i(int(cl[0]), int(cl[1])) if cl.size() == 2 else Vector2i(-1, -1)
 	hint_zones.clear()
 	var hz: Dictionary = (m as GDScript).get_script_constant_map().get("HINT_ZONES", {})
 	for hid in hz:
@@ -867,6 +870,13 @@ func _spawn_entities() -> void:
 				x1 -= 1
 			var occ: Array = fl["occ"]
 			var quiet: Array = fl["quiet"]
+			for hp in _hub_props:                                # rekwizyty stojące na podłodze (maszynownia, magazyn) i drzwi strzelnicy: bez mebli na nich
+				if int(hp[2]) == fr and String(hp[0]) in ["generator", "compressor", "barrel", "crate", "mil_crate", "scrap_pile", "d7"]:
+					occ.append(int(hp[1]))
+					fl["wide"][int(hp[1])] = 2.2 if String(hp[0]) in ["generator", "d7"] else 1.2
+			if _range_door.size() == 2 and int(_range_door[1]) == fr:
+				occ.append(int(_range_door[0]))
+				fl["wide"][int(_range_door[0])] = 2.0
 			for sh in _shafts:                                   # szyb: dwa znaczniki na brzegach i cisza między nimi
 				occ.append(int(sh[0]))
 				occ.append(int(sh[1]))

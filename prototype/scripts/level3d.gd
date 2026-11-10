@@ -1846,7 +1846,10 @@ static func _plan_building(e: Dictionary, rows: Array) -> void:
 			if not win and r < r1:
 				kind = "hole"                                       # otwór w połowie wysokości (pomost): przejście bez skrzydeł
 			open.append({"side": side, "rt": rt, "rb": r - 1, "kind": kind})
-	buildings.append({"c0": c0, "c1": c1, "r0": r0, "r1": r1, "kind": String(e["build"]), "open": open})
+	var bld := {"c0": c0, "c1": c1, "r0": r0, "r1": r1, "kind": String(e["build"]), "open": open}
+	if e.has("bays"):
+		bld["bays"] = (e["bays"] as Array).duplicate()          # słupy tylko na osiach pomieszczeń (kolumny mapy), zamiast co BAY
+	buildings.append(bld)
 
 ## Otwory kolumny wejścia → `shell_facades`: ciąg wierszy bez muru nad podłogą pasa to drzwi (do 2 kafli) albo brama (wyżej),
 ## ciąg okien `|` to okno; otwór w połowie wysokości bez okna (np. pomost) zostaje gładką ścianą.
