@@ -38,6 +38,7 @@ const TURN_ACCEL := 2400.0     ## zwrot w przeciwną stronę
 const AIR_ACCEL := 650.0       ## kontrola w powietrzu
 const FALL_MULT := 1.35        ## grawitacja przy opadaniu
 const Surfaces := preload("res://scripts/surfaces.gd")
+const Prop := preload("res://scripts/prop.gd")
 const MAX_HP := 3
 ## Apteczki kumulują się ponad MAX_HP aż do tego sufitu (złote serca); respawn i nowa misja wracają do MAX_HP.
 const STACK_HP := 6
@@ -130,6 +131,9 @@ var crouching := false
 ## `dead` znaczy „down": gracz leży i wykrwawia się, ale można go podnieść.
 var dead := false
 var is_reviving := false        ## podnosi leżącego towarzysza (replikowane; kosmetyka — klęczenie widzą wszyscy, serwer niczego z tego nie liczy)
+## Pchanie skrzyni / beczki (replikowane; kosmetyka — ruch rekwizytu rozstrzyga serwer w prop.gd): 0 — nie pcha, ±1 — napiera w stronę znaku
+## i rekwizyt jedzie, ±2 — napiera, a rekwizyt stoi (zaparty o ścianę albo inny rekwizyt). Liczy ten, kto symuluje gracza: właściciel, a bota serwer.
+var push_state := 0
 var grabbed := false            ## chwycony przez Pijawkę (leech.gd): przypięty w miejscu, nie chodzi ani nie skacze, ale może strzelać i bić
 var taken := false               ## porwany (leżący) przez Żercę (F4d): ciągnięty z pozycją `grab_pos`, wykrwawianie wstrzymane, nie da się go podnieść; replikowane
 var taken_t := 0.0               ## s do „zjedzenia” (kary), ustawia Żerca co tik — widzi je HUD wszystkich graczy
@@ -406,27 +410,45 @@ var _c3_was_air := false
 var _c3_air_vy := 0.0                  ## największa prędkość spadania w ostatnim locie (siła lądowania)
 var _c3_climbed := false               ## podciągnięcie już odegrane w tym locie
 
-## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
-func _update_char3d() -> void:
+## Stan animacji postaci 3D z (replikowanego) stanu gracza: [anim, prędkość pozioma do kroku (px/s, ze znakiem)]; ustawia też `_facing`.
+## Osobno od `_update_char3d`, żeby test headless (bez modelu) sprawdzał ten sam wybór — także u zdalnego gracza i bota.
+func _char_anim() -> Array:
+	var grounded := is_on_floor() if not _is_remote else absf(velocity.y) < 5.0
+	# pchanie: `velocity` po zderzeniu ze skrzynią jest zerowa, więc krok liczymy z tempa skrzyni (prop.gd PUSH_SPEED), a napór bez ruchu stoi
+	var pd := float(signi(push_state)) if not dead and grounded else 0.0
+	var vx := velocity.x
+	if pd != 0.0:
+		vx = pd * Prop.PUSH_SPEED if absi(push_state) == 1 else 0.0
 	if absf(aim_dir.x) > 0.1:
 		_facing = signf(aim_dir.x)
-	elif absf(velocity.x) > 10.0:
-		_facing = signf(velocity.x)
-	var grounded := is_on_floor() if not _is_remote else absf(velocity.y) < 5.0
+	elif pd != 0.0:
+		_facing = pd                                         # celuje pionowo: postać zwrócona do skrzyni
+	elif absf(vx) > 10.0:
+		_facing = signf(vx)
 	var anim := "idle"
 	if dead:
 		anim = "down"
 	elif not grounded:
 		anim = "jump" if velocity.y < 0.0 else "fall"
 	elif crouching:
-		anim = "crouch_walk" if absf(velocity.x) > 8.0 else "crouch"
+		anim = "crouch_walk" if absf(vx) > 8.0 else "crouch"
 	elif is_reviving:
 		anim = "revive"                                    # reanimuje: klęka przy rannym (bez klipu — przysiad), twarzą do niego
 		var rt := _revive_target()
 		if rt != null and absf(rt.global_position.x - global_position.x) > 1.0:
 			_facing = signf(rt.global_position.x - global_position.x)
-	elif absf(velocity.x) > 10.0:
-		anim = "run"
+	elif pd != 0.0 and pd == _facing and not _c3d_busy():
+		anim = "push"                                      # przodem do skrzyni: pochylony, dłonie na skrzyni (krok z tempa skrzyni, napór — w miejscu)
+	elif absf(vx) > 10.0:
+		anim = "run"                                       # także pchanie plecami (celuje w drugą stronę): chód tyłem w tempie skrzyni
+	return [anim, vx]
+
+## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
+func _update_char3d() -> void:
+	var grounded := is_on_floor() if not _is_remote else absf(velocity.y) < 5.0
+	var st := _char_anim()
+	var anim := String(st[0])
+	var vx := float(st[1])
 	# zdarzenia dla animacji 3D: rekoil po utracie zdrowia, amortyzacja lądowania, bieg tyłem (z replikowanego stanu — także zdalni gracze)
 	if hp < _c3_hp and not dead:
 		c3d.hit_t = 0.0
@@ -451,7 +473,8 @@ func _update_char3d() -> void:
 				_c3_climbed = true
 	if grounded:
 		_c3_climbed = false
-	c3d.back_run = absf(velocity.x) > 10.0 and signf(velocity.x) != _facing and grounded
+	c3d.back_run = absf(vx) > 10.0 and signf(vx) != _facing and grounded
+	c3d.push_strain = absi(push_state) == 2
 	c3d.grabbed = grabbed
 	c3d.dying = clampf(1.0 - bleed_left / 1.0, 0.0, 1.0) if dead else 0.0     # ostatnia sekunda wykrwawiania: drgawki i zapadanie się
 	if not is_bot:
@@ -462,7 +485,13 @@ func _update_char3d() -> void:
 		if c3d.throw_t >= 1.0:
 			c3d.throw_t = -1.0
 	c3d.scale = squash
-	c3d.update(get_process_delta_time(), anim, _facing, aim_dir, absf(velocity.x), true, _tint_color())
+	c3d.update(get_process_delta_time(), anim, _facing, aim_dir, absf(vx), true, _tint_color())
+
+## Ręce zajęte bronią (strzał, przeładowanie, cios, rzut): pchanie oburącz ustępuje wtedy zwykłej pozie z bronią — krok zostaje.
+func _c3d_busy() -> bool:
+	if c3d == null:
+		return w_firing
+	return w_firing or c3d.reload_t >= 0.0 or c3d.swing_t >= 0.0 or c3d.throw_t >= 0.0 or (c3d.fire_t >= 0.0 and c3d.fire_t < 0.5)
 
 ## Kolor ciała: błysk po trafieniu i migotanie nietykalności (broń dostaje ten sam).
 func _tint_color() -> Color:
@@ -491,7 +520,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_action", ":w_action_clock", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving", ":in_range", ":range_pose", ":range_shots"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_action", ":w_action_clock", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving", ":push_state", ":in_range", ":range_pose", ":range_shots"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -639,12 +668,45 @@ func _fx_root() -> Node:
 ## która przyciemnia i brudzi widok. Emitowane w świecie, jak pył.
 
 ## Popychanie skrzyń/beczek: CharacterBody2D sam nie pcha ciał fizycznych.
-func _push_props(_delta: float) -> void:
+## Przy okazji stan animacji pchania (`push_state`): po `move_and_slide` prędkość pozioma gracza przy skrzyni spada do zera (zderzenie
+## ją zjada), choć postać jedzie razem ze skrzynią — animacja z samej prędkości stała więc w miejscu i postać sunęła w pozie stojącej.
+func _push_props(delta: float) -> void:
+	var dir := 0.0
 	for i in get_slide_collision_count():
 		var col := get_slide_collision(i)
 		var b := col.get_collider()
 		if b != null and b.is_in_group("props") and absf(col.get_normal().x) > 0.6:
-			b.push(-signf(col.get_normal().x))
+			dir = -signf(col.get_normal().x)
+			b.push(dir)
+	_update_push_state(delta, dir)
+
+const PUSH_HOLD := 0.25              ## s: stan pchania trwa tyle po ostatnim styku (u klienta skrzynia z serwera odjeżdża skokami co 50 ms)
+const PUSH_MOVING := 12.0            ## px/s: szybciej (w stronę pchania) = rekwizyt jedzie, wolniej = sam napór
+var _push_dir := 0.0
+var _push_hold := 0.0
+var _push_spd := 0.0                 ## px/s wygładzona prędkość rzeczywista w stronę pchania (z przesunięcia, nie z `velocity`)
+var _push_px := INF
+
+## Napór na rekwizyt `dir` (±1, 0 = brak styku w tej klatce) → `push_state`. Odejście od skrzyni kończy stan od razu, bez czekania na PUSH_HOLD.
+func _update_push_state(delta: float, dir: float) -> void:
+	if dir != 0.0:
+		_push_dir = dir
+		_push_hold = PUSH_HOLD
+	else:
+		_push_hold = maxf(0.0, _push_hold - delta)
+		if _push_hold <= 0.0 or velocity.x * _push_dir < -10.0 or not is_on_floor():
+			_push_dir = 0.0
+	var real := 0.0
+	if delta > 0.0 and is_finite(_push_px):
+		real = clampf((global_position.x - _push_px) / delta, -400.0, 400.0)
+	_push_px = global_position.x
+	if _push_dir == 0.0 or dead:
+		_push_dir = 0.0
+		_push_spd = 0.0
+		push_state = 0
+		return
+	_push_spd = lerpf(_push_spd, real * _push_dir, 1.0 - exp(-12.0 * delta))
+	push_state = int(_push_dir) * (1 if _push_spd > PUSH_MOVING else 2)
 
 ## Czy stoi w trzcinie przy cieczy (`level.in_reeds`) — kucającego tam wrogowie widzą z mniejszej odległości (enemy.gd `_sight_mult`).
 func in_reeds() -> bool:
@@ -1274,6 +1336,7 @@ func _down_physics(delta: float) -> void:
 	velocity.x = 0.0
 	velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
 	move_and_slide()
+	_update_push_state(delta, 0.0)
 	_revive_hold = 0.0
 	if bleed_left <= 0.0:
 		# kara dystansem i czasem, nie ekranem „game over" (GDD §4)
