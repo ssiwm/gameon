@@ -137,7 +137,7 @@ Wątek poboczny: HARD w kopalni (6 upadków, 208 s na ostatnim odcinku) warto st
 - **Błąd:** w ewakuacji przechodzący Stalker wychodził „za plecami” liczonymi z zachodu, czyli przed drużyną, przy wyjściu (x = 120). Poprawione w 1.7.284 (`stalker.behind_side`).
 - HARD: oba wipe'y przy wejściu do sali kopalni (Wołek pod rampą z M1c, Skoczek nad wejściem, Trzoski w sali). Do strojenia osobno, np. Wołek pod rampą tylko na EASY/NORMAL albo dalej w sali.
 
-### 1.6 Układ „Pętla” (analiza 2026-11-10 na 1.7.535; L1 w 1.7.536, L2 w 1.7.537)
+### 1.6 Układ „Pętla” (analiza 2026-11-10 na 1.7.535; L1 w 1.7.536, L2 w 1.7.537, L3 w 1.7.538)
 
 **Diagnoza** (siatka 308 × 48, graf `nav.gd` przy marszu 95 px/s, 42 pełne przejścia od 1.7.404 bez bota, 33 udane; wszystkie autora, solo, głównie NORMAL):
 
@@ -181,7 +181,10 @@ Kontrola na grafie nawigacji (narzędzia poza repozytorium: `map_analysis/tools/
   Porada `adit` przy otworze, póki nie jest zabity; dwa Trzoski finału w komorze; w komorze boczny chodnik z lampą (`NICHES` drift 117–119).
   `--passtest`: w ewakuacji sztolnią przechodzący Stalker wychodzi za drużyną w tunelu (dx 487 px). Graf przechodzi lej w obie strony (`--maptest`, `m1_loop_route.gd`).
   Do playtestu: wataha w niecce nad włazem przy walce, czytelność porady; kryterium: powrót sztolnią ≥ 70 s i zdarzenie (walka, Stalker, zabicie otworu) w 2 z 3 przejść.
-- **L3 — sztolnia zachodnia (komora → szyb przy brodzie)**, jeśli pomiar po L2 pokaże, że sztolnia jest wybierana.
+- **L3 — sztolnia zachodnia (komora → szyb przy brodzie; 1.7.538, zrobione bez pomiaru po L2 — na prośbę, przed playtestem).** Stary chodnik z dwoma Trzoskami finału,
+  mijanka ze Skoczkiem, skrzynią, złomem i bocznym chodnikiem z lampą (`NICHES` drift 80–82), deski `%` w kol. 50 (skrót przez deski na drodze ewakuacji,
+  BARRIER_FIX_PLAN B4) i szyb z podestami do włazu `-` między błotem brodu a polaną (kol. 40–43). Do playtestu: czy sztolnia jest wybierana
+  (`session_heatmap.py --build 1.7.538`), czy drużyna rozbija deski, czy powrót nie jest za krótki (cel misji 300–360 s).
 - **L4 — po playteście:** pościg po zawale bez progu Uwagi (§1.2 M1b wariant 2); GDD §9 wiersz 1.1, `BRIEF`, szczelina tunelu Elite (wschodnia ściana galerii, kol. 249–251).
 
 Ryzyka: wejście nawrotem może być nieczytelne (zamiennik: krótszy pomost i latarnia na wschodnim końcu); kolejność celów przestaje być wymuszona po L2;
