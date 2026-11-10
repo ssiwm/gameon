@@ -168,19 +168,22 @@ func _ladder() -> void:
 		e.set_physics_process(false)
 		e.set_process(false)
 	var start: Vector2 = player._spawn_point
-	# stopień w wierszu 49 (kol. 68–71) nad komorą tunelu przy studni
+	# stopnie w wierszu 49 nad komorami tunelu: przy studni (kol. 68–71) i pod magazynem (kol. 213–215, etap D2)
 	var car_x0: float = car.position.x
-	var step := Vector2(69 * 16 + 8, 49 * 16)
-	car.position.x = step.x
-	player.global_position = step + Vector2(0, -2)
-	player.velocity = Vector2.ZERO
-	await _frames(12)
-	check("Drabina: stojący na stopniu (y %.0f, tor %.0f) nie jest pasażerem drezyny" % [player.global_position.y, car.global_position.y],
-		player.is_on_floor() and absf(player.global_position.y - step.y) < 2.0 and not car.aboard(player))
-	player.global_position = Vector2(step.x, car.global_position.y - 2.0)
-	player.velocity = Vector2.ZERO
-	await _frames(12)
-	check("Drabina: stojący na torze pod stopniem jest pasażerem", car.aboard(player))
+	for sc in [69, 214]:
+		if not lvl._is_platform_cell(sc, 49):
+			continue
+		var step := Vector2(sc * 16 + 8, 49 * 16)
+		car.position.x = step.x
+		player.global_position = step + Vector2(0, -2)
+		player.velocity = Vector2.ZERO
+		await _frames(12)
+		check("Drabina: stojący na stopniu w kol. %d (y %.0f, tor %.0f) nie jest pasażerem drezyny" % [sc, player.global_position.y, car.global_position.y],
+			player.is_on_floor() and absf(player.global_position.y - step.y) < 2.0 and not car.aboard(player))
+		player.global_position = Vector2(step.x, car.global_position.y - 2.0)
+		player.velocity = Vector2.ZERO
+		await _frames(12)
+		check("Drabina: stojący na torze pod stopniem w kol. %d jest pasażerem" % sc, car.aboard(player))
 	car.position.x = car_x0
 	player.global_position = start
 	player.velocity = Vector2.ZERO
