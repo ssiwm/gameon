@@ -29,6 +29,7 @@ const SessionLog := preload("res://scripts/session_log.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
 const Parts := preload("res://scripts/parts.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
+const HubSigns := preload("res://scripts/hub_signs.gd")
 const Weather := preload("res://scripts/weather.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
@@ -158,6 +159,11 @@ var _gun_warm_t := 0.0                   ## s do następnego przeglądu ekwipunk
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
 var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
+var _hub_signs: Array = []                ## tabliczki kryjówki (HUB_LAYOUT_PLAN.md E4): [płyta Node3D, napis Label3D, stanowisko Node2D albo null, kolumna, wiersz podłogi]
+var _tarps := {}                          ## id uśpionego stanowiska → plandeka (Node3D w geometrii mapy)
+const DORMANT_SIGN := Color(0.42, 0.4, 0.36)        ## napis uśpionego stanowiska: przygaszona farba
+const SIGN_PAINT := Color(0.9, 0.84, 0.68)          ## napis tabliczki: kremowa farba
+const SIGN_ARROW := Color(0.92, 0.66, 0.16)         ## strzałka przy pionie: żółta farba
 var _globs := {}                         ## id plwociny / kwasu → [węzeł 2D, kula 3D]
 var _boulders := {}                      ## id głazu Wołka → [węzeł 2D, model 3D]
 var _fp := 0.0                           ## 0..1: przejście kamery do widoku z oczu gracza (oględziny broni)
@@ -2597,6 +2603,166 @@ func _build_hub_prop(n: Node2D) -> Dictionary:
 		d["light"] = wl
 	return d
 
+# ---------------------------------------------------------------- tabliczki i uśpione stanowiska kryjówki
+
+## Światła lampy stanowiska w barwie pomieszczenia (`ROOMS`, level.gd `room_tint`); energia z budowy zostaje w meta „e0” (uśpienie ją gasi).
+func _tint_lamp(root: Node3D, col: Color) -> void:
+	for ch in root.get_children():
+		if ch is Light3D:
+			(ch as Light3D).light_color = col
+			ch.set_meta("e0", (ch as Light3D).light_energy)
+
+## Tabliczki z `SIGNS` mapy (HUB_LAYOUT_PLAN.md E4): ciemna płyta na ścianie tylnej z napisem farbą (tekst przez tr(), wymiary z hub_signs.gd),
+## przy pionie z żółtą strzałką w dół albo w górę. Tabliczka stanowiska wie, nad którym stoi (do 2 kafli od kolumny, ten sam pokład).
+## Budowane razem z geometrią mapy; po zmianie języka przebudowa przy następnej zmianie mapy.
+func _sync_hub_signs() -> void:
+	var defs: Array = _level.get("signs") if _level != null and _level.get("signs") != null else []
+	if defs.is_empty() or _geo_key == "":
+		_hub_signs.clear()
+		return
+	if _hub_signs.size() == defs.size() and is_instance_valid(_hub_signs[0][0]):
+		return
+	_hub_signs.clear()
+	var font := UiTheme.heading_font()
+	var plate_mat := _hp_mat(Color(0.07, 0.075, 0.07), 0.3, 0.75)
+	var rim_mat := _hp_mat(Color(0.2, 0.19, 0.17), 0.7, 0.5)
+	var arrow_mat := _hp_mat(SIGN_ARROW, 0.0, 0.8)
+	for sg in defs:
+		var col := int(sg[0])
+		var fr := int(sg[1])
+		var txt := tr(String(sg[2]))
+		var arrow := String(sg[3])
+		var w := HubSigns.plate_w(font, txt, arrow != "")
+		var root := Node3D.new()
+		root.name = "HubSign"
+		_geo.add_child(root)
+		root.position = Vector3(HubSigns.x_m(col), -float(fr) * Level3D.T + HubSigns.UP_M, HubSigns.Z)
+		var h := 0.46
+		_ld_box(root, Vector3(w + 0.06, h + 0.06, 0.03), Vector3(0.0, 0.0, -0.02), rim_mat)
+		_ld_box(root, Vector3(w, h, 0.03), Vector3.ZERO, plate_mat)
+		var lab := Label3D.new()
+		lab.text = txt
+		lab.font_size = HubSigns.FONT_SIZE
+		lab.pixel_size = HubSigns.PIXEL
+		lab.shaded = true
+		lab.modulate = SIGN_PAINT
+		lab.layers = LAYER_WORLD
+		lab.position = Vector3((HubSigns.ARROW_M + HubSigns.PAD_M) * 0.5 if arrow != "" else 0.0, 0.0, 0.02)
+		if font != null:
+			lab.font = font
+		root.add_child(lab)
+		if arrow != "":
+			# strzałka z trzech pasów farby: trzon i dwa ramiona grotu, w dół albo w górę
+			var ax := -w * 0.5 + HubSigns.PAD_M + HubSigns.ARROW_M * 0.5
+			var dir := -1.0 if arrow == "down" else 1.0
+			var a := HubSigns.ARROW_M
+			_ld_box(root, Vector3(0.07, a * 0.8, 0.01), Vector3(ax, 0.0, 0.02), arrow_mat)
+			for side in [-1.0, 1.0]:
+				# ramię od grotu (koniec trzonu) w tył i na bok: „V” przy grocie
+				var arm_l := a * 0.5
+				var tip := dir * a * 0.4
+				var ang := deg_to_rad(40.0)
+				var arm := _ld_box(root, Vector3(0.07, arm_l, 0.01),
+					Vector3(ax + side * sin(ang) * arm_l * 0.5, tip - dir * cos(ang) * arm_l * 0.5, 0.021), arrow_mat)
+				arm.rotation.z = side * dir * ang
+		_hub_signs.append([root, lab, null, col, fr])
+
+## Uśpione stanowiska (`dormant()`: konserwacja bez zużycia broni, pracownia bez próbek, tokarka bez schematu): lampa zgaszona, meble pod
+## plandeką, tabliczka przygaszona. Gdy stanowisko się budzi (pierwsza próbka, schemat, włączone zużycie), wszystko wraca od razu.
+func _sync_dormant() -> void:
+	for g in ["service_bench", "lab_bench", "lathe_bench"]:
+		for n in get_tree().get_nodes_in_group(g):
+			if not (n is Node2D) or not n.has_method("dormant"):
+				continue
+			var d: bool = n.dormant()
+			var wl = _ws_lamps.get(n.get_instance_id())
+			if wl != null and is_instance_valid(wl):
+				for ch in (wl as Node3D).get_children():
+					if ch is Light3D and ch.has_meta("e0"):
+						(ch as Light3D).light_energy = 0.0 if d else float(ch.get_meta("e0"))
+			var tp = _tarps.get(n.get_instance_id())
+			if d and (tp == null or not is_instance_valid(tp)) and _geo_key != "":
+				tp = _build_tarp(n as Node2D)
+				_tarps[n.get_instance_id()] = tp
+			if tp != null and is_instance_valid(tp):
+				(tp as Node3D).visible = d
+	for hs in _hub_signs:
+		var st = hs[2]
+		if st == null or not is_instance_valid(st):
+			st = _sign_station(int(hs[3]), int(hs[4]))
+			hs[2] = st
+		if st != null and is_instance_valid(st) and is_instance_valid(hs[1]):
+			(hs[1] as Label3D).modulate = DORMANT_SIGN if st.dormant() else SIGN_PAINT
+
+## Stanowisko pod tabliczką: do 2,5 kafla od jej kolumny, znacznik na pokładzie tabliczki (wiersz nad podłogą albo sama podłoga).
+## Szukane leniwie — węzły stanowisk mogą dołączyć do grup dopiero po zbudowaniu geometrii.
+func _sign_station(col: int, fr: int) -> Node2D:
+	for g in ["service_bench", "lab_bench", "lathe_bench"]:
+		for n in get_tree().get_nodes_in_group(g):
+			if not (n is Node2D) or not n.has_method("dormant"):
+				continue
+			var p := (n as Node2D).global_position
+			if absf(p.x / 16.0 - (float(col) + 0.5)) <= 2.5 and absf(p.y / 16.0 - float(fr)) <= 2.0:
+				return n
+	return null
+
+## Plandeka na meblach uśpionego stanowiska: zszarzały brezent narzucony na zakres `station_props` (od skrajnego modelu do skrajnego,
+## z zapasem), z rozchodzącymi się bokami i zagięciami — podzielony prostopadłościan przesunięty szumem.
+func _build_tarp(n: Node2D) -> Node3D:
+	var props: Array = n.get("station_props") if n.get("station_props") != null else []
+	var x0 := -14.0
+	var x1 := 14.0
+	var z0 := -1.5
+	var z1 := -0.6
+	if not props.is_empty():
+		x0 = INF
+		x1 = -INF
+		for pr in props:
+			x0 = minf(x0, float(pr[1]) - 11.0)
+			x1 = maxf(x1, float(pr[1]) + 11.0)
+			z0 = minf(z0, float(pr[2]) - 0.5)
+			z1 = maxf(z1, float(pr[2]) + 0.35)
+	var wx := (x1 - x0) * PX
+	var hy := 1.08
+	var dz := z1 - z0
+	var bm := BoxMesh.new()
+	bm.size = Vector3(wx, hy, dz)
+	bm.subdivide_width = 18
+	bm.subdivide_height = 6
+	bm.subdivide_depth = 6
+	var arr := bm.get_mesh_arrays()
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var noise := FastNoiseLite.new()
+	noise.seed = int(n.get_instance_id() % 997)
+	noise.frequency = 1.6
+	for i in verts.size():
+		var v := verts[i]
+		var up := (v.y + hy * 0.5) / hy                              # 0 u dołu, 1 na wierzchu
+		var k := noise.get_noise_3d(v.x, v.y, v.z)
+		v.y += k * 0.06 * up
+		var flare := 1.0 + 0.06 * (1.0 - up)                       # brezent rozchodzi się u dołu
+		v.x = v.x * flare + k * 0.03
+		v.z *= flare
+		verts[i] = v
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = null
+	arr[Mesh.ARRAY_TANGENT] = null
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var st := SurfaceTool.new()
+	st.create_from(am, 0)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = _hp_mat(Color(0.2, 0.21, 0.16), 0.0, 0.95)
+	mi.layers = LAYER_WORLD
+	var root := Node3D.new()
+	root.name = "Tarp"
+	_geo.add_child(root)
+	root.position = Level3D.px_to_m(n.global_position) + Vector3((x0 + x1) * 0.5 * PX, hy * 0.5 - 0.02, (z0 + z1) * 0.5)
+	root.add_child(mi)
+	return root
+
 # ---------------------------------------------------------------- radiostacja i zamurowane przejścia
 
 ## Obiekty rysowane w 2D kodem (`_draw`), bez sprite'a przedmiotu: radiostacja kryjówki dostaje model, a zamurowane przejście — bryłę z cegły
@@ -2619,7 +2785,12 @@ func _sync_drawn() -> void:
 			continue
 		var wl = _ws_lamps.get(n.get_instance_id())
 		if wl == null or not is_instance_valid(wl):
-			_ws_lamps[n.get_instance_id()] = _add_rack_lamp(n as Node2D, WS_LAMP_PX, WS_LAMP_Z, 9.0, 46.0)
+			wl = _add_rack_lamp(n as Node2D, WS_LAMP_PX, WS_LAMP_Z, 9.0, 46.0)
+			_ws_lamps[n.get_instance_id()] = wl
+			if wl != null and _level != null and _level.has_method("room_tint"):
+				_tint_lamp(wl, _level.room_tint((n as Node2D).global_position, Color(1.0, 0.76, 0.46)))
+	_sync_hub_signs()
+	_sync_dormant()
 	for n in get_tree().get_nodes_in_group("exit_flares"):     # flara wyjścia: tuba wbita w ziemię jako model, płomień i iskry zostają w 2D
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D):
 			continue
@@ -6307,7 +6478,7 @@ func _sync_world_fx(delta: float) -> void:
 			var board := MeshInstance3D.new()
 			board.name = "ResultsText"
 			var bq := QuadMesh.new()
-			bq.size = rect.size * PX
+			bq.size = rect.size * PX * _rw_scale(rw)
 			board.mesh = bq
 			var bmat := StandardMaterial3D.new()
 			bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -6329,12 +6500,17 @@ func _sync_world_fx(delta: float) -> void:
 		bd.visible = not is_nan(float(wf["z"]))
 		if bd.visible:
 			var rc: Rect2 = wf["rect"]
-			bd.position = Level3D.px_to_m((rw as Node2D).global_position + rc.get_center())
+			bd.position = Level3D.px_to_m((rw as Node2D).global_position + rc.get_center() * _rw_scale(rw))
 			bd.position.z = float(wf["z"]) + 0.012
 		if refresh:
 			var vp2 := wf["nodes"][0] as SubViewport
 			(vp2.get_child(0) as Node2D).queue_redraw()
 			vp2.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+## Skala ściany wyników (`results_wall.gd` SCALE; 1 bez stałej).
+func _rw_scale(rw: Node) -> float:
+	var sc = rw.get("SCALE")
+	return float(sc) if sc != null else 1.0
 
 # ---------------------------------------------------------------- gniazda, pierścień alarmu, pył w powietrzu
 

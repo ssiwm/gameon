@@ -1130,6 +1130,12 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				var x := float(c) * T + seg * (float(i) + 0.5)
 				var b := Basis(Vector3.UP, PI if (i + c + r) % 2 == 1 else 0.0).scaled(Vector3(seg / 100.0, per * T / 100.0, per * T / 100.0))
 				(decks[ch] as Array).append(Transform3D(b, Vector3(x, -float(r) * T + 0.01 - hgt, 0.0)))
+				if ch == "=" and _in_shell_band(int(x / T), r):
+					# krata w przekroju (pion kryjówki): kolejne odcinki w głąb ku kamerze aż do przodu płyty — jak pokład, nie dziura w stropie
+					var zz := SHELL_Z - per * T * 0.5                     # ostatni odcinek równo z przodem płyty, kolejne w głąb do odcinka w pasie gry
+					while zz > per * T * 0.5 - 0.01:
+						(decks[ch] as Array).append(Transform3D(b, Vector3(x, -float(r) * T + 0.01 - hgt, zz)))
+						zz -= per * T
 			c = c1
 	if not _multimodel(parent, "walkway_plank", decks["-"]):
 		_multimesh(parent, plb, planks, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"))
@@ -1849,6 +1855,8 @@ static func _plan_building(e: Dictionary, rows: Array) -> void:
 	var bld := {"c0": c0, "c1": c1, "r0": r0, "r1": r1, "kind": String(e["build"]), "open": open}
 	if e.has("bays"):
 		bld["bays"] = (e["bays"] as Array).duplicate()          # słupy tylko na osiach pomieszczeń (kolumny mapy), zamiast co BAY
+	if e.has("cut_cols"):
+		bld["cut_cols"] = bool(e["cut_cols"])                    # false: bez słupa w płaszczyźnie przekroju (kryjówka, HUB_LAYOUT_PLAN.md E4)
 	buildings.append(bld)
 
 ## Otwory kolumny wejścia → `shell_facades`: ciąg wierszy bez muru nad podłogą pasa to drzwi (do 2 kafli) albo brama (wyżej),
@@ -1904,6 +1912,14 @@ static var rail_trench := {}
 ## aż do `SHELL_Z` — pełna płyta przed korytem zasłoniłaby szyny i koła drezyny (z każdej kamery, gdy zaczyna się bliżej niż ok. 4,5 m).
 static func in_trench(c: int, r: int) -> bool:
 	return not rail_trench.is_empty() and r == int(rail_trench["row"]) and c >= int(rail_trench["c0"]) and c <= int(rail_trench["c1"])
+
+## Czy kafel leży w płycie stropu albo podłogi wpisu z przekrojem (`shell_bands`) — krata pionu w płycie między pokładami; podesty w pasie
+## gry zostają w płaszczyźnie gry.
+static func _in_shell_band(c: int, r: int) -> bool:
+	for e in shell_bands:
+		if c >= int(e["c0"]) and c <= int(e["c1"]) and (r == int(e["r0"]) or r == int(e["r1"])):
+			return true
+	return false
 
 static func in_shell(c: int, r: int) -> bool:
 	return shell_cells.has(Vector2i(c, r))

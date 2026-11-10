@@ -43,6 +43,8 @@ const TIPS := [
 	["firemode", "{firemode} switches the M-83 between full auto and a quiet 3-round burst"],
 	["jam", "Jammed! Tap {reload} to clear it. A dirty gun jams more often — clean it at the maintenance table in the safe room"],
 	["samples", "SAMPLES (from elites, bosses and side goals) go to the LAB bench here in the safe room ({interact}): they research parts for special weapons"],
+	["service_open", "Weapon wear is on: the MAINTENANCE table ({interact}) cleans your guns and swaps worn barrels and springs. Dirty guns jam"],
+	["lathe_open", "The LATHE downstairs is running ({interact}): it machines parts from schematics and sharpens blades"],
 	["magdrop", "A quick tap of {reload} drops the magazine with the rounds still in it — crouch ({crouch}) over it to get them back. Hold {reload} for a slower reload that keeps them"],
 ]
 
@@ -106,6 +108,9 @@ func _collect(p: Node) -> void:
 	_queue("hub", mn != null and mn.kind == "hub" and _session > 4.0, true)
 	# próbki (opinia testera 2026-10-29: „nie wiem, do czego służą próbki”): pierwsza wizyta w kryjówce z próbkami w banku
 	_queue("samples", mn != null and mn.kind == "hub" and _session > 12.0 and Scrap.samples > 0, true)
+	# stanowiska uśpione do pierwszego otwarcia (HUB_LAYOUT_PLAN.md E4): raz, przy pierwszym pobycie, w którym działają; pracownię zapowiada „samples”
+	_queue("service_open", mn != null and mn.kind == "hub" and _session > 16.0 and Settings.reliability_mult() > 0.0, true)
+	_queue("lathe_open", mn != null and mn.kind == "hub" and _session > 20.0 and Scrap.lathe_open(), true)
 	_queue("noise", NoiseMgr.level >= 8.0, true)
 	var lvl_n = p.get_tree().get_first_node_in_group("level")
 	var below: bool = lvl_n != null and p.global_position.y > float(lvl_n.underground_y) and float(lvl_n.underground_y) > 0.0

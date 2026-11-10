@@ -9,6 +9,8 @@ const PauseMenu := preload("res://scripts/pause_menu.gd")
 const OperatorsScreen := preload("res://scripts/operators_screen.gd")
 const Codex := preload("res://scripts/codex.gd")
 const MainMenu := preload("res://scripts/main_menu.gd")
+const HubSigns := preload("res://scripts/hub_signs.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
 const Actions := preload("res://scripts/actions.gd")
 const MENU_SIZES := [Vector2i(1280, 720), Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(1280, 800)]
 const MENU_WORDS := 70                 ## MAIN_MENU_PLAN.md §7: tekst w spoczynku
@@ -89,11 +91,34 @@ func run(host: Node) -> int:
 		await tree.process_frame
 	await _operators_checks(host)
 	await _main_menu_checks(host)
+	_hub_signs_checks()
 	TranslationServer.set_locale(keep)
 	_bestiary_checks()
 	_new_marks_checks()
 	print("[UI-FIT] %s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	return _fails
+
+
+## Tabliczki kryjówki w świecie (HUB_LAYOUT_PLAN.md E4, `SIGNS` w z1_hub.gd): po angielsku i po polsku każda płyta najwyżej HubSigns.MAX_W,
+## sąsiednie na jednym pokładzie z odstępem, każdy napis przetłumaczony na polski.
+func _hub_signs_checks() -> void:
+	var signs: Array = (load("res://scripts/maps/z1_hub.gd") as Script).get_script_constant_map().get("SIGNS", [])
+	if signs.size() < 10:
+		_fail("tabliczki kryjówki: w SIGNS jest %d wpisów" % signs.size())
+		return
+	for loc in LOCALES:
+		TranslationServer.set_locale(loc)
+		var bad: Array = HubSigns.problems(signs, UiTheme.heading_font())
+		for b in bad:
+			_fail("tabliczki kryjówki (%s): %s" % [loc, b])
+		if loc == "pl":
+			for sg in signs:
+				var tr_pl := TranslationServer.get_translation_object("pl")
+				if tr_pl == null or String(tr_pl.get_message(StringName(String(sg[2])))) == "":     # „RADIO” zostaje „RADIO” — liczy się wiersz w ui.csv
+					_fail("tabliczka „%s” bez tłumaczenia" % sg[2])
+					bad.append(sg[2])
+		if bad.is_empty():
+			print("[UI-FIT] PASS  tabliczki kryjówki (%s): %d płyt, najszersza do %.1f m, odstępy co najmniej %.1f m" % [loc, signs.size(), HubSigns.MAX_W, HubSigns.GAP_M])
 
 
 ## Ekran OPERATORZY (PROFILES_PLAN.md E3) po angielsku i po polsku: sześć kart z najszerszymi kryptonimami mieści się w karcie i na ekranie,

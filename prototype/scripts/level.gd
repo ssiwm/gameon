@@ -137,6 +137,8 @@ var launch_zone := Rect2()                ## strefa startu kryjówki w pikselach
 ## HINT_ZONES z danych mapy: id podpowiedzi (hints.gd) → Rect2 w pikselach świata, gdzie ta podpowiedź ma sens (1.1: podejście do obozu).
 var hint_zones: Dictionary = {}
 var _range_door: Array = []               ## RANGE_DOOR z danych mapy: [kolumna, wiersz podłogi] drzwi strzelnicy FPP (range_door.gd); puste poza kryjówką
+var rooms: Array = []                      ## ROOMS z danych mapy: [c0, c1, wiersz podłogi, barwa światła] (kryjówka, HUB_LAYOUT_PLAN.md E4)
+var signs: Array = []                      ## SIGNS z danych mapy: [kolumna, wiersz podłogi, tekst, strzałka] — tabliczki w świecie (view3d.gd)
 var _hub_props: Array = []                ## HUB_PROPS z danych mapy: [rodzaj, kolumna, wiersz podłogi, parametry] (hub_prop.gd)
 var _shafts: Array = []                ## SHAFTS z danych mapy: [pierwsza, ostatnia] kolumna szybów między poziomami (bez mebli z hub_decor.gd)
 const CABINET_DROP_GAP := 54.0         ## px od środka skrajnej gabloty: broń oddana przy gablocie leży poza zasięgiem jej [E] (26 px)
@@ -252,6 +254,8 @@ func _load(id: String) -> void:
 	_cab_slots = int((m as GDScript).get_script_constant_map().get("CABINET_SLOTS", 0))
 	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
 	_hub_props = ((m as GDScript).get_script_constant_map().get("HUB_PROPS", []) as Array).duplicate()
+	rooms = ((m as GDScript).get_script_constant_map().get("ROOMS", []) as Array).duplicate()
+	signs = ((m as GDScript).get_script_constant_map().get("SIGNS", []) as Array).duplicate()
 	_range_door = ((m as GDScript).get_script_constant_map().get("RANGE_DOOR", []) as Array).duplicate()
 	var cl: Array = (m as GDScript).get_script_constant_map().get("CAM_LOCK", [])
 	cam_lock = Vector2i(int(cl[0]), int(cl[1])) if cl.size() == 2 else Vector2i(-1, -1)
@@ -626,6 +630,20 @@ func _build_reed_cells() -> void:
 func in_reeds(pos: Vector2) -> bool:
 	return _reed_cells.has(_solid.local_to_map(_solid.to_local(pos + Vector2(0, 3))))
 
+## Barwa światła pomieszczenia (ROOMS), w którym leży punkt `p` [px świata]: pokój z kolumną punktu i podłogą — pierwszym litym kaflem pod nim.
+## Poza pomieszczeniami `fallback`.
+func room_tint(p: Vector2, fallback: Color) -> Color:
+	if rooms.is_empty():
+		return fallback
+	var c := int(p.x / float(TILE))
+	var fr := int(p.y / float(TILE))
+	while fr < _map.size() and not _is_solid(c, fr):
+		fr += 1
+	for rm in rooms:
+		if c >= int(rm[0]) and c <= int(rm[1]) and fr == int(rm[2]):
+			return rm[3] as Color
+	return fallback
+
 func _is_solid(c: int, r: int) -> bool:
 	# poza mapą = bryła (krawędzie mapy nie świecą)
 	if r < 0 or r >= _map.size() or c < 0 or c >= (_map[0] as String).length():
@@ -826,6 +844,7 @@ func _spawn_entities() -> void:
 		var lp: Node2D = LAMP.new()
 		lp.name = "Lamp%d" % (i + 1)
 		lp.position = _hang_pos(found["l"][i], 0.0)
+		lp.tint = room_tint(lp.position, lp.tint)
 		add_child(lp)
 	for i in found["I"].size():
 		var ml: Node2D = LAMP.new()                            # lampa misji do zestrzelenia (DESTRUCTION_PLAN.md D1)
