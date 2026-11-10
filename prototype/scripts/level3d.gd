@@ -1554,6 +1554,10 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 			if pick <= 0.0:
 				name = nm
 				break
+		if name == "d_plaster" and kind == "b" and _under_terrain(rows, k):
+			# odprysk tynku zakłada otynkowany mur: w sztolni pod gruntem jego jasny brzeg świecił w ciemności jak obrys chmury (uwaga z gry
+			# 2026-11-10, komora pod obozem 1.1). Pęknięcie ma ten sam rozmiar i odbicie — losowanie dalej bez zmian, reszta dekali na miejscu.
+			name = "d_crack_a"
 		var d: Array = DECALS[name]
 		for sc in [1.0, 0.5]:
 			var wt := maxi(1, int(round(float(d[0]) * sc)))
@@ -1603,6 +1607,13 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 		mi.material_override = m
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)
+
+## Czy nad kaflem `k` w jego kolumnie jest grunt `#` (sztolnia, tunel, piwnica pod ziemią).
+static func _under_terrain(rows: Array, k: Vector2i) -> bool:
+	for r in range(k.y - 1, -1, -1):
+		if _ch(rows, k.x, r) == "#":
+			return true
+	return false
 
 ## Czy grafiti `nm` stoi już w pobliżu kafla `k` (DECAL_SAME_GAP w poziomie, 16 kafli w pionie). Plamy, pęknięcia i zacieki mogą się powtarzać.
 static func _decal_repeats(placed: Dictionary, nm: String, k: Vector2i) -> bool:

@@ -154,7 +154,8 @@ wrogowie i pion skupione na wschodnim końcu. Zostaje kolejność lekcji na powi
 
 **Układ:** powierzchnia od startu do strażnicy (kol. 0–243) bez zmian, szerokość 262 kolumny.
 1. **Kopalnia w lustrze pod strażnicą.** Blok kopalni (stare kol. 238–305, wiersze 23–47) odbity wzorem `nowa = 497 − stara`.
-   Pochylnia zostaje w kol. 244–253, ale schodzi na zachód (wejście nawrotem: pomost z desek `-` w wierszu 23, kol. 244–249);
+   Pochylnia zostaje w kol. 244–253, ale schodzi na zachód (wejście nawrotem: otwarty wykop w kol. 244–253 — pomost z desek `-`
+   nad nim zdjęty po grze 2026-11-10, wyglądał źle nad schodami; wchodzi się zeskokiem do wykopu);
    sala 193–241 (wiersze 29–33), dolna galeria 202–256 (38–42), szyb serwisowy 218–221, strefa wydobycia 192–201.
 2. **Szyb wentylacyjny** (dawny wyjściowy) wychodzi w kol. 193–197 przy wylocie jaskini, pod włazem z desek `-` w wierszu 23
    (bez włazu otwór przecina główną ścieżkę i graf nie przechodzi go na zachód).
