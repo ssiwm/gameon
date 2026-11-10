@@ -1619,7 +1619,7 @@ static func _decal_fits(k: Vector2i, wt: int, ht: int, kind: String, surf: Dicti
 			var p := Vector2i(k.x + dx, k.y + dy)
 			if used.has(p) or not surf.has(p) or String(surf[p]) != kind:
 				return false
-			if kind == "b" and niche_cells.has(p):
+			if kind == "b" and (niche_cells.has(p) or decal_skip.has(p)):         # decal_skip: tabliczki i meble kryjówki
 				return false                                    # w otworze wnęki nie ma ściany, na której wisiałby dekal
 	return true
 
@@ -1693,6 +1693,7 @@ static func set_streams(list: Array) -> void:
 ## Wnęki w tylnej ścianie (`niches3d.gd`, NICHES z danych mapy): kafle otworów (bez płyt ściany tła, pilastrów i dekali) i prostokąty x–z,
 ## w których las nie stawia drzew. Ustawia widok przed budową (`set_niches`, krok „level”); pusta lista = mapa bez wnęk.
 static var niche_cells := {}
+static var decal_skip := {}                ## kafle ściany tła bez dekali (view3d.gd `_decal_skip`: tabliczki i NO_DECALS kryjówki); ustawiane przed `build_decals`
 static var niche_holes: Array = []
 
 static func set_niches(cells: Dictionary, holes: Array) -> void:

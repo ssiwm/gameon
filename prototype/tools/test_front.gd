@@ -209,6 +209,7 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		_check_building(rows, "1.3 Skład", 112, 142, 18, 26, ["-1:gate", "1:gate", "-1:window", "1:window"])
 	if map_id == "z1_hub":
 		_check_vault(rows)
+		_check_hub_furniture(rows)
 	if map_id == "z1_m3":
 		# 1.3: nadproże nad niskim tunelem obok sali (skała między stropem tunelu a stropem sali) to płyta świata, nie ściana pierwszego planu
 		_check(Level3D.shell_cells.has(Vector2i(91, 32)) and not Level3D.shell_walls.has(Vector2i(91, 32)), "1.3: nadproże nad tunelem 91–108 nie jest płytą przekroju")
@@ -552,6 +553,46 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 ## Kryjówka: trzy kondygnacje bunkra w skale (`"vault"`, `buried`) jedna nad drugą. Bez ścian przekroju i fasad z kafli; płyta stropu tylko nad
 ## murem wiersza dachu (otwory szybów `=` wolne), nic poza ścianami szczytowymi (okap, cokół, pilastry weszłyby w skałę), słupy poza otworami
 ## w stropie i podłodze, wszystko za płaszczyzną przekroju i z jej materiałem, żeber `interior_ribs` w budynku nie ma.
+## Meble kryjówki stawiane ręcznie (HUB_LAYOUT_PLAN.md E5, HUB_PROPS): rodzaje z hub_prop.gd FURNITURE, w kwaterach dwie prycze piętrowe
+## (cztery miejsca), piecyk i stół, nic w pionie poza włazem i kanałem kablowym; właz na parterze w kolumnach pionu, kanał od włazu do
+## radiostacji (R); meble nie wchodzą na znaczniki stanowisk; wnęki w danych.
+func _check_hub_furniture(rows: Array) -> void:
+	var consts: Dictionary = (load("res://scripts/maps/z1_hub.gd") as Script).get_script_constant_map()
+	var src := FileAccess.get_file_as_string("res://scripts/hub_prop.gd")    # hub_prop.gd używa autoloadu Audio — stałą czytamy z tekstu
+	var rx := RegEx.create_from_string(r"const FURNITURE := (\[[^\]]*\])")
+	var mt := rx.search(src)
+	var furniture: Array = str_to_var(mt.get_string(1)) if mt != null else []
+	_check(furniture.has("bunk") and furniture.has("stove"), "kryjówka: hub_prop.gd FURNITURE bez pryczy i piecyka (%s)" % [furniture])
+	var shaft := [21, 26]
+	var bunks := 0
+	var quarters := {}
+	var hatch := -1
+	var cables: Array = []
+	var radio := String(rows[9 - 1]).find("R")
+	for hp: Array in consts.get("HUB_PROPS", []):
+		var kind := String(hp[0])
+		var c := int(hp[1])
+		var fr := int(hp[2])
+		if furniture.has(kind):
+			_check(c < shaft[0] or c > shaft[1], "kryjówka: mebel %s w pionie (kolumna %d)" % [kind, c])
+			var mark := String(rows[fr - 1]).substr(c, 1)
+			_check(mark == "b" or (mark == "v" and kind == "table"), "kryjówka: mebel %s na znaczniku '%s' (%d, %d)" % [kind, mark, c, fr - 1])     # stół stoi pod wiszącą tablicą wyników
+			_check(not Level3D.is_solid_ch(mark), "kryjówka: mebel %s w ścianie (%d, %d)" % [kind, c, fr - 1])
+			if fr == 14 and c <= 9:
+				quarters[kind] = int(quarters.get(kind, 0)) + 1
+				bunks += int(kind == "bunk")
+		elif kind == "hatch":
+			hatch = c
+			_check(fr == 9 and c >= shaft[0] and c <= shaft[1], "kryjówka: właz poza stropem pionu (%d, %d)" % [c, fr])
+		elif kind == "cables":
+			cables = [c, int((hp[3] as Array)[0]), fr]
+	_check(bunks * 2 >= 4, "kwatery: %d prycz piętrowych — mniej miejsc niż graczy" % bunks)
+	_check(quarters.has("stove") and quarters.has("table"), "kwatery bez piecyka albo stołu (%s)" % [quarters])
+	_check(hatch >= 0, "kryjówka: brak włazu w stropie pionu")
+	_check(cables.size() == 3 and int(cables[0]) == hatch and absi(int(cables[1]) - radio) <= 1 and int(cables[2]) == 9,
+		"kryjówka: kanał kablowy nie biegnie od włazu (%d) do radiostacji (%d): %s" % [hatch, radio, cables])
+	_check(not (consts.get("NICHES", []) as Array).is_empty(), "kryjówka: brak wnęk")
+
 func _check_vault(rows: Array) -> void:
 	var T := Level3D.T
 	var zc := Level3D.SHELL_Z
