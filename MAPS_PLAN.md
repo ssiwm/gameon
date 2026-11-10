@@ -137,7 +137,7 @@ Wątek poboczny: HARD w kopalni (6 upadków, 208 s na ostatnim odcinku) warto st
 - **Błąd:** w ewakuacji przechodzący Stalker wychodził „za plecami” liczonymi z zachodu, czyli przed drużyną, przy wyjściu (x = 120). Poprawione w 1.7.284 (`stalker.behind_side`).
 - HARD: oba wipe'y przy wejściu do sali kopalni (Wołek pod rampą z M1c, Skoczek nad wejściem, Trzoski w sali). Do strojenia osobno, np. Wołek pod rampą tylko na EASY/NORMAL albo dalej w sali.
 
-### 1.6 Układ „Pętla” (analiza 2026-11-10 na 1.7.535; L1 w 1.7.536)
+### 1.6 Układ „Pętla” (analiza 2026-11-10 na 1.7.535; L1 w 1.7.536, L2 w 1.7.537)
 
 **Diagnoza** (siatka 308 × 48, graf `nav.gd` przy marszu 95 px/s, 42 pełne przejścia od 1.7.404 bez bota, 33 udane; wszystkie autora, solo, głównie NORMAL):
 
@@ -176,9 +176,11 @@ Kontrola na grafie nawigacji (narzędzia poza repozytorium: `map_analysis/tools/
   `level._push_players_out` wypycha spod zawału na stronę z wolnym miejscem (sala leży teraz na zachód od zawału, wschód to skała).
   Testy przepisane: `--finaletest` (sala 223,34; zawał 232–239; ucieczka szybem przy kol. 193–197), `--tagtest` (galeria 244,43), `--sneaktest` (podpowiedź światła 223,33).
   Kryterium do playtestu: czas do piątego nieśmiertelnika ±15 s; wejście nawrotem zrozumiałe bez podpowiedzi w 3 przejściach.
-- **L2 — sztolnia wschodnia (sala → komora → lej).** Decyzja przed wdrożeniem: `--destructiontest` pilnuje, że 1.1 nie ma `:` ani `+`
-  (BARRIER_FIX_PLAN, decyzja 3) — otwór w kol. 189 wymaga świadomej zmiany testu albo rezygnacji. Sprawdzić: przechodzący Stalker za plecami drużyny w tunelu,
-  bot przechodzi lej w obie strony, wataha nie spada przez właz, podpowiedź przy pierwszym włazie. Kryterium: powrót sztolnią ≥ 70 s i zdarzenie w 2 z 3 przejść.
+- **L2 — sztolnia wschodnia (sala → komora → lej; 1.7.537, zrobione).** Otwór `:` w kol. 189 zostaje: decyzja 3 BARRIER_FIX_PLAN dopuszcza otwór tam,
+  gdzie zabicie go zatrzymuje pościg na drodze ucieczki (Stalker musi barykadę rozbić) — `--destructiontest` sprawdza teraz brak `+` i jedyny `:` w (189, 33).
+  Porada `adit` przy otworze, póki nie jest zabity; dwa Trzoski finału w komorze; w komorze boczny chodnik z lampą (`NICHES` drift 117–119).
+  `--passtest`: w ewakuacji sztolnią przechodzący Stalker wychodzi za drużyną w tunelu (dx 487 px). Graf przechodzi lej w obie strony (`--maptest`, `m1_loop_route.gd`).
+  Do playtestu: wataha w niecce nad włazem przy walce, czytelność porady; kryterium: powrót sztolnią ≥ 70 s i zdarzenie (walka, Stalker, zabicie otworu) w 2 z 3 przejść.
 - **L3 — sztolnia zachodnia (komora → szyb przy brodzie)**, jeśli pomiar po L2 pokaże, że sztolnia jest wybierana.
 - **L4 — po playteście:** pościg po zawale bez progu Uwagi (§1.2 M1b wariant 2); GDD §9 wiersz 1.1, `BRIEF`, szczelina tunelu Elite (wschodnia ściana galerii, kol. 249–251).
 
