@@ -480,8 +480,9 @@ func _apply_blocks(rects: Array) -> void:
 		_push_players_out(rr)
 	_refresh_region(dirty)
 
-## Gracze (własni na tym peerze) uwięzieni w obszarze, który zaraz stanie się skałą, lądują tuż za nim — po stronie wschodniej
-## (zawał finału: po stronie sali). `nearer` — na bliższą stronę (zamykana przegroda: przybijający deskę stoi obok otworu
+## Gracze (własni na tym peerze) uwięzieni w obszarze, który zaraz stanie się skałą, lądują tuż za nim — na stronie, gdzie na ich
+## wysokości jest wolne miejsce (zawał finału 1.1 w skosie pochylni: po stronie sali, bo od strony wykopu ta wysokość to już skała);
+## gdy wolne są obie, na wschód. `nearer` — na bliższą stronę (zamykana przegroda: przybijający deskę stoi obok otworu
 ## i nie może zostać przerzucony na drugą stronę barykady).
 func _push_players_out(rc: Rect2i, nearer := false) -> void:
 	var area := Rect2(rc.position * TILE, rc.size * TILE)
@@ -489,9 +490,18 @@ func _push_players_out(rc: Rect2i, nearer := false) -> void:
 		if p.is_queued_for_deletion() or not p.is_multiplayer_authority():
 			continue
 		if area.grow(4.0).has_point(p.global_position + Vector2(0, -8)):
-			var right: bool = not nearer or p.global_position.x >= area.get_center().x
-			p.global_position = Vector2(area.end.x + 10.0 if right else area.position.x - 10.0, p.global_position.y)
+			var y: float = p.global_position.y
+			var east := Vector2(area.end.x + 10.0, y)
+			var west := Vector2(area.position.x - 10.0, y)
+			var right: bool = p.global_position.x >= area.get_center().x if nearer else (_free_at(east) or not _free_at(west))
+			p.global_position = east if right else west
 			p.velocity = Vector2.ZERO
+
+## Czy postać ze stopami w `feet` (px) mieści się tam bez wchodzenia w bryłę: kafel stóp i kafel nad nim są wolne.
+func _free_at(feet: Vector2) -> bool:
+	var c := int(floorf(feet.x / TILE))
+	var r := int(floorf((feet.y - 1.0) / TILE))
+	return not _is_solid(c, r) and not _is_solid(c, r - 1)
 
 ## Odświeża kafle (z ramką 1) i graf nawigacji po zmianie `_map`.
 func _refresh_region(rc: Rect2i) -> void:

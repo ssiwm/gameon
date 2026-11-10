@@ -137,6 +137,54 @@ Wątek poboczny: HARD w kopalni (6 upadków, 208 s na ostatnim odcinku) warto st
 - **Błąd:** w ewakuacji przechodzący Stalker wychodził „za plecami” liczonymi z zachodu, czyli przed drużyną, przy wyjściu (x = 120). Poprawione w 1.7.284 (`stalker.behind_side`).
 - HARD: oba wipe'y przy wejściu do sali kopalni (Wołek pod rampą z M1c, Skoczek nad wejściem, Trzoski w sali). Do strojenia osobno, np. Wołek pod rampą tylko na EASY/NORMAL albo dalej w sali.
 
+### 1.6 Układ „Pętla” (analiza 2026-11-10 na 1.7.535; L1 w 1.7.536)
+
+**Diagnoza** (siatka 308 × 48, graf `nav.gd` przy marszu 95 px/s, 42 pełne przejścia od 1.7.404 bez bota, 33 udane; wszystkie autora, solo, głównie NORMAL):
+
+| Miara | Wartość |
+|---|---|
+| Udana misja, mediana | 323 s (faza celu 234 s, powrót 87 s) |
+| Powrót, marsz | 5775 px, 61 s; ok. 81% po drodze już przebytej; 0 upadków w 33 powrotach |
+| Wrogowie | 35, z czego 16 w kolumnach 260–299 (kopalnia na wschodnim końcu) |
+| Lita skała pod powierzchnią | kol. 0–239, wiersze 23–47: 41% siatki poza grą (1.3: 26%) |
+| Połączenia powierzchni z podziemiem | 2 (pochylnia, szyb wyjściowy), oba na wschodnim końcu |
+
+Wnioski: powrót jest biegiem po własnych śladach (jedna piąta misji bez decyzji i zagrożenia); mapa jest linią bez pętli;
+wrogowie i pion skupione na wschodnim końcu. Zostaje kolejność lekcji na powierzchni, czas misji (300–360 s osiągnięty), trudne wejście do sali, skrytki.
+
+**Układ:** powierzchnia od startu do strażnicy (kol. 0–243) bez zmian, szerokość 262 kolumny.
+1. **Kopalnia w lustrze pod strażnicą.** Blok kopalni (stare kol. 238–305, wiersze 23–47) odbity wzorem `nowa = 497 − stara`.
+   Pochylnia zostaje w kol. 244–253, ale schodzi na zachód (wejście nawrotem: pomost z desek `-` w wierszu 23, kol. 244–249);
+   sala 193–241 (wiersze 29–33), dolna galeria 202–256 (38–42), szyb serwisowy 218–221, strefa wydobycia 192–201.
+2. **Szyb wentylacyjny** (dawny wyjściowy) wychodzi w kol. 193–197 przy wylocie jaskini, pod włazem z desek `-` w wierszu 23
+   (bez włazu otwór przecina główną ścieżkę i graf nie przechodzi go na zachód).
+3. **Sztolnia odwadniająca** (L2/L3, wiersze 31–33) od zachodniej ściany sali do szybu przy brodzie: otwór `:` do zabicia deskami (kol. 189),
+   zalany odcinek z gniazdem ciem (150–175), wnęka z baterią (137–141), komora pod niecką obozu z lejem i włazem (100–125), mijanka ze Skoczkiem (76–84), szyb przy brodzie (40–43).
+4. **Finał:** ostatni nieśmiertelnik na wschodnim końcu dolnej galerii (kol. 241), zawał `[[232, 25, 239, 33]]`, wyjście przy starcie.
+
+Kontrola na grafie nawigacji (narzędzia poza repozytorium: `map_analysis/tools/m1_loop.py`, `m1_loop_route.gd`):
+
+| Miara | 1.7.535 | Pętla |
+|---|---|---|
+| Faza celu | 5865 px, 62 s | 5280 px, 56 s |
+| Powrót najkrótszy | 5775 px, 61 s | 3853 px, 41 s (88% pod ziemią, po L2) |
+| Powrót powierzchnią | 5775 px, 61 s | 4150 px, 44 s |
+| Odwrót pochylnią przed zawałem | 963 px | 872 px (przez nawrót) |
+
+**Etapy** (każdy osobny PR z numerem wersji; po L1 i L2 pomiar `session_heatmap.py --map z1_m1 --build <wersja>`):
+- **L1 — złożenie kopalni (1.7.536, zrobione).** Siatka i stałe jak wyżej (`FINALE_SPAWNS`, `COLLAPSE`, `DIG_ZONES`, `NICHES`, `FRONT`);
+  `level._push_players_out` wypycha spod zawału na stronę z wolnym miejscem (sala leży teraz na zachód od zawału, wschód to skała).
+  Testy przepisane: `--finaletest` (sala 223,34; zawał 232–239; ucieczka szybem przy kol. 193–197), `--tagtest` (galeria 244,43), `--sneaktest` (podpowiedź światła 223,33).
+  Kryterium do playtestu: czas do piątego nieśmiertelnika ±15 s; wejście nawrotem zrozumiałe bez podpowiedzi w 3 przejściach.
+- **L2 — sztolnia wschodnia (sala → komora → lej).** Decyzja przed wdrożeniem: `--destructiontest` pilnuje, że 1.1 nie ma `:` ani `+`
+  (BARRIER_FIX_PLAN, decyzja 3) — otwór w kol. 189 wymaga świadomej zmiany testu albo rezygnacji. Sprawdzić: przechodzący Stalker za plecami drużyny w tunelu,
+  bot przechodzi lej w obie strony, wataha nie spada przez właz, podpowiedź przy pierwszym włazie. Kryterium: powrót sztolnią ≥ 70 s i zdarzenie w 2 z 3 przejść.
+- **L3 — sztolnia zachodnia (komora → szyb przy brodzie)**, jeśli pomiar po L2 pokaże, że sztolnia jest wybierana.
+- **L4 — po playteście:** pościg po zawale bez progu Uwagi (§1.2 M1b wariant 2); GDD §9 wiersz 1.1, `BRIEF`, szczelina tunelu Elite (wschodnia ściana galerii, kol. 249–251).
+
+Ryzyka: wejście nawrotem może być nieczytelne (zamiennik: krótszy pomost i latarnia na wschodnim końcu); kolejność celów przestaje być wymuszona po L2;
+dane z jednego gracza.
+
 ## 2. Pomiar tras: pozycje graczy w logu sesji
 
 Dziś `SessionLog` zapisuje upadki (`down` z `pos`), ale nie wiadomo, gdzie drużyna spędza czas ani którędy idzie.
