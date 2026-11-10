@@ -406,7 +406,7 @@ obiektyw i reflektor IR (`optic`); SPECTER-1: większe kondensatory (`mag`), że
 trzecia para gum, grot z dwoma zadziorami i obejmą linki (`tip`); maczeta: długi chwyt (`grip`), cięższa i szersza głownia (`blade`); kilof:
 ciężka głowa i głowa sejsmiczna z obuchem (`head`); SPREAD-12 (od 1.7.387): obrzynek (lufa ucięta za blokiem gazowym, muszka na bloku) i lufa
 z dławikiem (+60 mm) zastępują przód z lufą (`front`). Od 1.7.456 jeszcze 9 widocznych części: P-83 — przedłużka magazynka z nasadką z tworzywa (`mag`),
-długa lufa wystająca 40 mm przed zamek (wylot dalej, tłumik nakręca się na jej koniec), drewniana kabura-kolba z klapą i okuciem; PELLET-8 — gruba
+długa lufa wystająca 40 mm przed zamek (wylot dalej, tłumik nakręca się na jej koniec), drewniana kabura-kolba z klapą, zaczepiona stalową stopką na dole grzbietu chwytu i opadająca skośnie w dół ku ramieniu, długa jak pistolet (od 1.7.543); PELLET-8 — gruba
 stopka amortyzująca z wentylacjami (część „Slick pump, recoil pad”), przedłużka lufy +80 mm z kulką (mocowanie na wylocie); LR-7 — wysoka oprawa
 ze szczelinową soczewką rozpraszającą (`muzzle`); HKM-9 — płaska dysza „kaczy dziób” na fabrycznym przodzie (`front`, wylot +32 mm); SPECTER-1 —
 ciemne szyny wolframowe po bokach rury z obejmami; maczeta — krótka rękojeść z dwoma nitami (`grip`). Bez modelu zostają części bez widocznej zmiany

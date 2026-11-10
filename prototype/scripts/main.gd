@@ -2633,6 +2633,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				gp.weapons.slot = 0
 				gp.weapons.mags[gid] = 10
 				gp.weapons.state = 0
+				for fa in OS.get_cmdline_user_args():
+					if fa.begins_with("--shotfit="):                   # dev: z --shotgunid części tej broni (np. --shotfit=p64_stock) — podgląd części w dłoniach
+						var fids := Array(fa.substr("--shotfit=".length()).split(","))
+						if gid < gp.fits.size():
+							gp.fits[gid] = preload("res://scripts/parts.gd").encode_ids(String(Weapons.def(gid).key), fids)
 				gp.weapons._sync_player()
 	if "--shotlight" in OS.get_cmdline_user_args():
 		var lp: Node2D = _players.get_node_or_null("1")      # --shotlight: flara tuż przed graczem (podgląd oświetlenia z mapą normalnych)
