@@ -683,17 +683,20 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
 			var cc := clampi(c, 0, cols - 1)
 			var top := int(e["r0"]) + 1
-			while top < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, cc, top)):
+			while top < rows.size() and not Level3D.is_solid_ch(Level3D._ch(rows, cc, top)) \
+					and not (top >= int(e["r1"]) and Front3D.ground_stop(Level3D._ch(rows, cc, top))):   # właz z desek w wierszu gruntu = podłoga
 				top += 1
 			top = mini(top, int(e["r1"]) + 8)
 			var r := int(e["r1"])
-			while r < mini(int(e["r1"]) + 8, rows.size() - 1) and not Level3D.is_solid_ch(Level3D._ch(rows, cc, r)):
+			while r < mini(int(e["r1"]) + 8, rows.size() - 1) and not Front3D.ground_stop(Level3D._ch(rows, cc, r)):
 				r += 1                                       # szyb głębszy niż r1 + 8: dołek kończy się na tej głębokości (kamera jest już pod powierzchnią, `SURF_FADE`)
 			for fx in [0.02, 0.5, 0.98]:
 				var y := Front3D.ground_y((float(c) + fx) * T, Level3D.DEPTH_FRONT)
 				if y > -INF:
 					_check(y <= -float(top) * T + 0.001, "%s kolumna %d: podłoże %.2f m nad gruntem kolumny" % [map_id, c, y + float(top) * T])
 					_check(absf(y + float(r) * T) < 0.001, "%s kolumna %d: podłoże %.2f m od gruntu kolumny od r1" % [map_id, c, y + float(r) * T])
+					if Level3D._ch(rows, cc, int(e["r1"])) == "-":   # właz z desek: płyta na powierzchni, nie w sztolni pod nim (1.1, 2026-11-10)
+						_check(absf(y + float(int(e["r1"])) * T) < 0.001, "%s kolumna %d: podłoże zjeżdża pod właz z desek (%.2f m)" % [map_id, c, y])
 		for o: Dictionary in front:
 			if bool(o.get("shell", false)) and absi(int(o["r1"]) - int(e["r1"])) <= 4:
 				for x in [float(o["c0"]) * T + 0.3, float(int(o["c1"]) + 1) * T - 0.3]:
