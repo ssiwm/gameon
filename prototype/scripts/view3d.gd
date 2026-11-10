@@ -1040,7 +1040,9 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 			Level3D.build_liquids(root, rows)],
 		["liquid_props", func() -> void: Level3D.build_liquid_props(root, rows)],
 		["wade_veils", func() -> void: Level3D.build_wade_veils(root, rows, LAYER_ACTORS)],
-		["decals", func() -> void: Level3D.build_decals(root, rows)],
+		["decals", func() -> void:
+			Level3D.decal_skip = _decal_skip()
+			Level3D.build_decals(root, rows)],
 		["undergrowth", func() -> void: Level3D.build_undergrowth(root, rows)],
 		["front_edge", func() -> void: Level3D.build_front_edge(root, rows)],
 		["deco", func() -> void: _build_deco(root)],
@@ -2439,6 +2441,8 @@ func _sync_hub_props() -> void:
 				var k := float(n.get("knock_flash"))
 				(d["mat"] as StandardMaterial3D).emission_energy_multiplier = 1.2 + 3.0 * k
 				(d["light"] as OmniLight3D).light_energy = 0.5 + 1.6 * k
+			"stove":
+				(d["light"] as OmniLight3D).light_energy = 1.3 * HubProp.stove_light(t)
 			"window":
 				var fc: String = Weather.forecast
 				var kind_i := 0 if fc == "clear" else (1 if fc == "rain" else (2 if fc == "storm" else 3))
@@ -2601,9 +2605,187 @@ func _build_hub_prop(n: Node2D) -> Dictionary:
 		root.add_child(wl)
 		d["mat"] = gm
 		d["light"] = wl
+	elif HubProp.FURNITURE.has(kind):
+		_build_furniture(root, kind, args, d)
+	elif kind == "hatch":
+		_build_hatch(root, d)
+	elif kind == "cables":
+		_build_cables(root, n, args)
 	return d
 
+# ---------------------------------------------------------------- meble, właz i kable kryjówki (HUB_LAYOUT_PLAN.md E5)
+
+const HUB_WALL_Z := -1.8                  ## głębia przy ścianie tylnej (meble, drabinka, kable)
+const BUNK_UP := 1.15                     ## górna prycza: tyle nad dolną [m]
+
+## Mebel z HUB_PROPS: model z art/items3d/ w skali przedmiotów (ITEM_SCALE), stopami na podłodze, na głębi z parametrów (domyślnie przy ścianie);
+## „bunk” — dwie prycze jedna nad drugą na czterech stalowych słupkach, „stove” — piecyk z beczki z rurą do stropu i żarem (światło w d["light"]).
+func _build_furniture(root: Node3D, kind: String, args: Array, d: Dictionary) -> void:
+	var z := float(args[1]) if args.size() > 1 else -1.3
+	var flip := bool(args[2]) if args.size() > 2 else false
+	var steel := _hp_mat(Color(0.16, 0.17, 0.16), 0.7, 0.45)
+	match kind:
+		"bunk":
+			var k := float(ITEM_SCALE.get("cot", 1.0))
+			for y in [0.0, BUNK_UP]:
+				var cot := _item_model("cot")
+				if cot != null:
+					cot.scale = Vector3(PX, PX, PX) * k
+					cot.position = Vector3(0.0, y, z)
+					root.add_child(cot)
+			var hx := 15.5 * k * PX - 0.04                        # słupki w narożnikach pryczy (model: 31 × 13 × 16 px)
+			var hz := 8.2 * k * PX - 0.04
+			for sx in [-1.0, 1.0]:
+				for sz in [-1.0, 1.0]:
+					_ld_box(root, Vector3(0.05, BUNK_UP + 0.95, 0.05), Vector3(sx * hx, (BUNK_UP + 0.95) * 0.5, z + sz * hz), steel)
+				_ld_box(root, Vector3(0.04, 0.04, hz * 2.0), Vector3(sx * hx, BUNK_UP + 0.9, z), steel)     # poprzeczka u wezgłowia
+		"stove":
+			var st := _item_model("barrel_stove")
+			if st != null:
+				st.scale = Vector3(PX, PX, PX)
+				st.position = Vector3(0.0, 0.0, z)
+				root.add_child(st)
+			var top := 10.55 * PX
+			var pipe_y := 3.55                                   # rura w górę i kolanem w ścianę pod stropem kwater
+			var soot := _hp_mat(Color(0.07, 0.065, 0.06), 0.6, 0.6)
+			_ld_cyl(root, 0.07, pipe_y - top, Vector3(0.0, (top + pipe_y) * 0.5, z), soot)
+			var back := _ld_cyl(root, 0.07, absf(HUB_WALL_Z - 0.1 - z), Vector3(0.0, pipe_y, (z + HUB_WALL_Z - 0.1) * 0.5), soot)
+			back.rotation = Vector3(deg_to_rad(90.0), 0.0, 0.0)
+			var ember := StandardMaterial3D.new()                 # żar w szczelinie drzwiczek
+			ember.albedo_color = Color(0.2, 0.05, 0.0)
+			ember.emission_enabled = true
+			ember.emission = Color(1.0, 0.42, 0.1)
+			ember.emission_energy_multiplier = 2.4
+			_ld_box(root, Vector3(0.22, 0.05, 0.02), Vector3(0.0, 0.32, z + 3.66 * PX + 0.005), ember)
+			var lt := OmniLight3D.new()
+			lt.light_color = Color(1.0, 0.5, 0.2)
+			lt.omni_range = 3.6
+			lt.light_energy = 1.3
+			lt.layers = LAYER_WORLD | LAYER_ACTORS
+			lt.position = Vector3(0.0, 0.45, z + 0.6)
+			root.add_child(lt)
+			d["light"] = lt
+		_:
+			var m := _item_model(kind)
+			if m != null:
+				m.scale = Vector3(PX, PX, PX) * float(ITEM_SCALE.get(kind, 1.0))
+				m.position = Vector3(0.0, 0.0, z)
+				if flip:
+					m.rotation.y = PI
+				root.add_child(m)
+
+## Pionowy walec w `parent`.
+func _ld_cyl(parent: Node3D, r: float, h: float, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var cm := CylinderMesh.new()
+	cm.top_radius = r
+	cm.bottom_radius = r
+	cm.height = maxf(h, 0.01)
+	cm.radial_segments = 12
+	var mi := MeshInstance3D.new()
+	mi.mesh = cm
+	mi.material_override = mat
+	mi.layers = LAYER_WORLD
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
+
+## Zamknięty właz w stropie pionu (zapowiedź poziomu wyżej, GDD §16.0a): kołnierz i pokrywa z kołem pod stropem parteru, kłódka, czerwona lampka
+## i drabinka na ścianie tylnej zaczynająca się poza zasięgiem (2,4 m) — widać, że tam jest wyjście, ale nie dziś. Bez kolizji i interakcji.
+func _build_hatch(root: Node3D, d: Dictionary) -> void:
+	var ceil_y := 4.0 * Level3D.T                               # strop parteru: 4 kafle światła nad podłogą
+	var z := -1.25
+	var steel := _hp_mat(Color(0.2, 0.21, 0.19), 0.75, 0.45)
+	var dark := _hp_mat(Color(0.1, 0.1, 0.095), 0.7, 0.5)
+	_ld_box(root, Vector3(1.6, 0.22, 1.2), Vector3(0.0, ceil_y - 0.11, z), dark)               # kołnierz w stropie
+	_ld_box(root, Vector3(1.4, 0.08, 1.0), Vector3(0.0, ceil_y - 0.26, z), steel)              # pokrywa
+	for sx in [-0.55, 0.55]:
+		_ld_box(root, Vector3(0.1, 0.06, 0.95), Vector3(sx, ceil_y - 0.32, z), dark)            # żebra pokrywy
+	var tm := TorusMesh.new()                                    # koło zamka
+	tm.inner_radius = 0.2
+	tm.outer_radius = 0.25
+	var wheel := MeshInstance3D.new()
+	wheel.mesh = tm
+	wheel.material_override = _hp_mat(Color(0.45, 0.08, 0.05), 0.5, 0.55)
+	wheel.layers = LAYER_WORLD
+	wheel.position = Vector3(0.0, ceil_y - 0.36, z)
+	root.add_child(wheel)
+	var pad := _item_model("padlock")
+	if pad != null:
+		pad.scale = Vector3(PX, PX, PX) * float(ITEM_SCALE.get("padlock", 0.4)) * 1.6
+		pad.position = Vector3(0.62, ceil_y - 0.62, z + 0.4)
+		root.add_child(pad)
+	var red := StandardMaterial3D.new()                         # lampka „zamknięte”
+	red.albedo_color = Color(0.5, 0.05, 0.03)
+	red.emission_enabled = true
+	red.emission = Color(1.0, 0.1, 0.05)
+	red.emission_energy_multiplier = 3.0
+	_ld_box(root, Vector3(0.1, 0.1, 0.1), Vector3(-0.85, ceil_y - 0.12, HUB_WALL_Z + 0.06), red)
+	var rl := OmniLight3D.new()
+	rl.light_color = Color(1.0, 0.12, 0.06)
+	rl.omni_range = 1.8
+	rl.light_energy = 0.6
+	rl.layers = LAYER_WORLD
+	rl.position = Vector3(-0.85, ceil_y - 0.3, HUB_WALL_Z + 0.3)
+	root.add_child(rl)
+	var y0 := 2.4                                               # drabinka na ścianie od 2,4 m do włazu
+	for sx in [-0.24, 0.24]:
+		_ld_box(root, Vector3(0.05, ceil_y - y0, 0.05), Vector3(sx, (y0 + ceil_y) * 0.5, HUB_WALL_Z + 0.12), steel)
+	var y := y0 + 0.15
+	while y < ceil_y - 0.2:
+		_ld_box(root, Vector3(0.48, 0.035, 0.035), Vector3(0.0, y, HUB_WALL_Z + 0.12), steel)
+		y += 0.3
+	d["light"] = rl
+
+## Kanał kablowy do anteny: koryto pod stropem parteru od włazu do radiostacji (`args[0]` — jej kolumna), trzy przewody w korycie, wieszaki
+## co 2,6 m; przy włazie przewody wchodzą w strop, przy radiostacji schodzą po ścianie za stół.
+func _build_cables(root: Node3D, n: Node2D, args: Array) -> void:
+	var c0 := int(n.position.x / 16.0)
+	var c1 := int(args[0]) if not args.is_empty() else c0 + 10
+	var span := float(c1 - c0) * Level3D.T
+	var ceil_y := 4.0 * Level3D.T
+	var y := ceil_y - 0.4
+	var z := HUB_WALL_Z + 0.25
+	var tray := _hp_mat(Color(0.24, 0.25, 0.23), 0.7, 0.5)
+	var rubber := _hp_mat(Color(0.03, 0.03, 0.03), 0.0, 0.7)
+	var x0 := 1.1                                               # koryto zaczyna się obok kołnierza włazu
+	var run_l := span - x0
+	_ld_box(root, Vector3(run_l + 0.3, 0.03, 0.34), Vector3(x0 + run_l * 0.5, y - 0.06, z), tray)
+	_ld_box(root, Vector3(run_l + 0.3, 0.1, 0.02), Vector3(x0 + run_l * 0.5, y - 0.02, z + 0.16), tray)
+	var k := x0
+	while k <= span + 0.01:
+		_ld_box(root, Vector3(0.03, 0.4, 0.03), Vector3(k, y + 0.14, z), tray)
+		k += 2.6
+	for i in 3:
+		var cz := z - 0.1 + float(i) * 0.1
+		var run := _ld_cyl(root, 0.025, run_l, Vector3(x0 + run_l * 0.5, y, cz), rubber)
+		run.rotation = Vector3(0.0, 0.0, deg_to_rad(90.0))
+		_ld_cyl(root, 0.025, ceil_y - y, Vector3(x0 - 0.1 + float(i) * 0.05, (y + ceil_y) * 0.5, cz), rubber)                    # w strop obok włazu
+		_ld_cyl(root, 0.025, y - 1.1, Vector3(span + 0.05 + float(i) * 0.05, (y + 1.1) * 0.5, HUB_WALL_Z + 0.04), rubber)       # w dół za radiostację
+
+
 # ---------------------------------------------------------------- tabliczki i uśpione stanowiska kryjówki
+
+## Kafle ściany tła bez dekali (HUB_LAYOUT_PLAN.md E5): prostokąty `NO_DECALS` z danych mapy (właz z drabinką, tablica wyników) i pas za każdą
+## tabliczką z `SIGNS` (grafiti tuż obok napisu „PIWNICA” czytało się jak część tabliczki).
+func _decal_skip() -> Dictionary:
+	var out := {}
+	if _level == null:
+		return out
+	var rects: Array = _level.get("no_decals") if _level.get("no_decals") != null else []
+	for rc in rects:
+		for c in range(int(rc[0]), int(rc[1]) + 1):
+			for r in range(int(rc[2]), int(rc[3]) + 1):
+				out[Vector2i(c, r)] = true
+	var signs: Array = _level.get("signs") if _level.get("signs") != null else []
+	var font := UiTheme.heading_font()
+	for sg in signs:
+		var w := HubSigns.plate_w(font, tr(String(sg[2])), String(sg[3]) != "")
+		var x := HubSigns.x_m(int(sg[0]))
+		var r := int(sg[1]) - int(ceil(HubSigns.UP_M / Level3D.T))           # wiersz tabliczki
+		for c in range(int(floor((x - w * 0.5) / Level3D.T)) - 1, int(floor((x + w * 0.5) / Level3D.T)) + 2):
+			for rr in [r - 1, r, r + 1]:
+				out[Vector2i(c, rr)] = true
+	return out
 
 ## Światła lampy stanowiska w barwie pomieszczenia (`ROOMS`, level.gd `room_tint`); energia z budowy zostaje w meta „e0” (uśpienie ją gasi).
 func _tint_lamp(root: Node3D, col: Color) -> void:
@@ -6300,7 +6482,7 @@ func _hide2d(n) -> void:
 
 ## Przód (największe Z) modelu 3D postawionego przez `_sync_items` dla sprite'a `hd_name` będącego dzieckiem `owner`; NAN, gdy modelu jeszcze nie ma.
 func _model_front(owner: Node, hd_name: String) -> float:
-	for ch in owner.get_children():
+	for ch in owner.find_children("*", "", true, false):          # także głębiej (tablica wyników wisi na węźle „Hang”)
 		if not (ch is ItemsHd.ItemMark) or String(ch.get_meta("hd_name", "")) != hd_name or not _items.has(ch.get_instance_id()):
 			continue
 		var root := _items[ch.get_instance_id()][1] as Node3D
@@ -6500,7 +6682,7 @@ func _sync_world_fx(delta: float) -> void:
 		bd.visible = not is_nan(float(wf["z"]))
 		if bd.visible:
 			var rc: Rect2 = wf["rect"]
-			bd.position = Level3D.px_to_m((rw as Node2D).global_position + rc.get_center() * _rw_scale(rw))
+			bd.position = Level3D.px_to_m((ov as Node2D).global_position + rc.get_center() * _rw_scale(rw))      # nakładka wisi z tablicą (LIFT_PX)
 			bd.position.z = float(wf["z"]) + 0.012
 		if refresh:
 			var vp2 := wf["nodes"][0] as SubViewport

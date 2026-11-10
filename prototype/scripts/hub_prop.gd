@@ -7,11 +7,21 @@ const KNOCK_MIN := 30.0               ## odstęp między stukaniami zza drzwi D-
 const KNOCK_MAX := 80.0
 const KNOCKS := ["amb_thud_1", "amb_thud_2"]
 
-var kind := ""                        ## "generator", "compressor", "pipes", "crate", "mil_crate", "scrap_pile", "barrel", "d7", "window"
-var args: Array = []                  ## parametry rodzaju: pipes [ostatnia kolumna], window [szerokość w kaflach], reszta []
+## Meble kryjówki stawiane ręcznie z HUB_PROPS (HUB_LAYOUT_PLAN.md E5, zamiast losowania): parametry [przesunięcie x w px od środka kolumny,
+## głębia z w m (brak = przy ścianie), odbicie w poziomie]. „bunk” to prycza piętrowa (dwie prycze i stalowe słupki), „stove” — piecyk
+## z beczki z rurą do stropu i migoczącym żarem; reszta to modele z art/items3d/ o tej samej nazwie.
+const FURNITURE := ["bunk", "stove", "table", "chair", "stool", "shelf", "shelf_b", "locker"]
+
+var kind := ""                        ## "generator", "compressor", "pipes", "crate", "mil_crate", "scrap_pile", "barrel", "d7", "window",
+                                      ## "hatch", "cables" i meble z FURNITURE
+var args: Array = []                  ## parametry rodzaju: pipes / cables [ostatnia kolumna], window [szerokość w kaflach], meble jak wyżej, reszta []
 var knock_flash := 0.0                ## d7: 1 w chwili stuknięcia, zanika do 0 (view3d rozjaśnia czerwony pas pod drzwiami)
 
 var _knock_t := 0.0
+
+## Żar piecyka w kwaterach (mnożnik jasności): powolne falowanie z drobnym migotaniem.
+static func stove_light(t: float) -> float:
+	return 0.8 + 0.12 * sin(t * 2.3) * sin(t * 0.7 + 1.3) + 0.08 * sin(t * 13.0) * sin(t * 7.1)
 
 ## Lampa przy generatorze (mnożnik jasności): buczy i lekko pulsuje, a w burzy co jakiś czas siada (widok 3D gasi nią światło generatora).
 static func generator_light(t: float, storm: bool) -> float:

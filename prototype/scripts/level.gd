@@ -83,7 +83,6 @@ const WORKSHOP := preload("res://scripts/workshop.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const GibArt := preload("res://scripts/gib_art.gd")
 const LEECH := preload("res://scripts/leech.gd")
-const HUB_DECOR := preload("res://scripts/hub_decor.gd")
 const LOCKER_STATION := preload("res://scripts/locker_station.gd")
 const SERVICE_BENCH := preload("res://scripts/service_bench.gd")
 const PRESS_BENCH := preload("res://scripts/press_bench.gd")
@@ -138,9 +137,9 @@ var launch_zone := Rect2()                ## strefa startu kryjówki w pikselach
 var hint_zones: Dictionary = {}
 var _range_door: Array = []               ## RANGE_DOOR z danych mapy: [kolumna, wiersz podłogi] drzwi strzelnicy FPP (range_door.gd); puste poza kryjówką
 var rooms: Array = []                      ## ROOMS z danych mapy: [c0, c1, wiersz podłogi, barwa światła] (kryjówka, HUB_LAYOUT_PLAN.md E4)
+var no_decals: Array = []                  ## NO_DECALS z danych mapy: [c0, c1, r0, r1] — ściana tła bez grafiti i plam (view3d.gd `_decal_skip`)
 var signs: Array = []                      ## SIGNS z danych mapy: [kolumna, wiersz podłogi, tekst, strzałka] — tabliczki w świecie (view3d.gd)
 var _hub_props: Array = []                ## HUB_PROPS z danych mapy: [rodzaj, kolumna, wiersz podłogi, parametry] (hub_prop.gd)
-var _shafts: Array = []                ## SHAFTS z danych mapy: [pierwsza, ostatnia] kolumna szybów między poziomami (bez mebli z hub_decor.gd)
 const CABINET_DROP_GAP := 54.0         ## px od środka skrajnej gabloty: broń oddana przy gablocie leży poza zasięgiem jej [E] (26 px)
 var _cab_slots := 0                   ## CABINET_SLOTS z danych mapy: > 0 = każde „g" to gablota na tyle broni (cabinet.gd), 0 = stojaki
 var _gun_cab: Array = []              ## Vector2i(gablota, rząd) dla kolejnych przedmiotów broni z „g" (puste bez gablot)
@@ -252,10 +251,10 @@ func _load(id: String) -> void:
 	radio = m.RADIO
 	_racks = m.RACKS
 	_cab_slots = int((m as GDScript).get_script_constant_map().get("CABINET_SLOTS", 0))
-	_shafts = ((m as GDScript).get_script_constant_map().get("SHAFTS", []) as Array).duplicate()
 	_hub_props = ((m as GDScript).get_script_constant_map().get("HUB_PROPS", []) as Array).duplicate()
 	rooms = ((m as GDScript).get_script_constant_map().get("ROOMS", []) as Array).duplicate()
 	signs = ((m as GDScript).get_script_constant_map().get("SIGNS", []) as Array).duplicate()
+	no_decals = ((m as GDScript).get_script_constant_map().get("NO_DECALS", []) as Array).duplicate()
 	_range_door = ((m as GDScript).get_script_constant_map().get("RANGE_DOOR", []) as Array).duplicate()
 	var cl: Array = (m as GDScript).get_script_constant_map().get("CAM_LOCK", [])
 	cam_lock = Vector2i(int(cl[0]), int(cl[1])) if cl.size() == 2 else Vector2i(-1, -1)
@@ -788,6 +787,8 @@ func _spawn_entities() -> void:
 		pr2.kind = String(hp[0])
 		pr2.args = hp[3]
 		pr2.position = Vector2(float(hp[1]) * TILE + TILE * 0.5, float(hp[2]) * TILE)
+		if HUB_PROP.FURNITURE.has(pr2.kind) and not pr2.args.is_empty():
+			pr2.position.x += float(pr2.args[0])                     # mebel: przesunięcie w px od środka kolumny (HUB_LAYOUT_PLAN.md E5)
 		add_child(pr2)
 	if _range_door.size() == 2:
 		var rd: Node2D = RANGE_DOOR.new()
@@ -852,62 +853,6 @@ func _spawn_entities() -> void:
 		ml.shootable = true
 		ml.position = _hang_pos(found["I"][i], 0.0)
 		add_child(ml)
-	if found["l"].size() > 0 and found["h"].size() > 0:
-		# kryjówka (mapa z warsztatem): meble w tle (hub_decor.gd) osobno dla każdego poziomu ze stanowiskami (v, h, n, R, g, S); lampy na innych mapach (B1) mebli nie stawiają
-		var floors := {}                                         # wiersz podłogi → [kolumny znaczników]
-		for k in found:
-			if k == "l":
-				continue                                         # lampy wiszą wysoko — nie blokują podłogi
-			for pos in found[k]:
-				var pc := int(float((pos as Vector2).x) / float(TILE))
-				var fr := int(float((pos as Vector2).y) / float(TILE))
-				for rr in range(fr, _map.size()):
-					if _is_solid(pc, rr):
-						fr = rr
-						break
-				if not floors.has(fr):
-					floors[fr] = {"occ": [], "wide": {}, "quiet": [], "station": false}
-				var fl: Dictionary = floors[fr]
-				fl["occ"].append(pc)
-				if k in ["v", "h", "n", "R", "g", "S", "p", "j"]:
-					fl["station"] = true
-				if k == "v" or k == "n":
-					fl["wide"][pc] = 4.6                      # tablice (wyniki, odprawa) są szersze niż reszta znaczników
-				if k == "g":
-					fl["quiet"].append(pc)                    # między stojakami zostaje goła ściana — tam patrzy się na broń
-					if _cab_slots > 0:
-						fl["wide"][pc] = 2.0                  # gablota ma 1,7 m szerokości
-		var ncols := (_map[0] as String).length()
-		var decor_n := 0
-		for fr in floors:
-			var fl: Dictionary = floors[fr]
-			if not fl["station"]:
-				continue                                         # poziom bez stanowisk (maszynownia, magazyn): bez losowych mebli
-			var x0 := 0
-			while x0 < ncols - 1 and (_is_solid(x0, fr - 1) or not _is_solid(x0, fr) and not _is_platform_cell(x0, fr)):
-				x0 += 1
-			var x1 := ncols - 1
-			while x1 > x0 and (_is_solid(x1, fr - 1) or not _is_solid(x1, fr) and not _is_platform_cell(x1, fr)):
-				x1 -= 1
-			var occ: Array = fl["occ"]
-			var quiet: Array = fl["quiet"]
-			for hp in _hub_props:                                # rekwizyty stojące na podłodze (maszynownia, magazyn) i drzwi strzelnicy: bez mebli na nich
-				if int(hp[2]) == fr and String(hp[0]) in ["generator", "compressor", "barrel", "crate", "mil_crate", "scrap_pile", "d7"]:
-					occ.append(int(hp[1]))
-					fl["wide"][int(hp[1])] = 2.2 if String(hp[0]) in ["generator", "d7"] else 1.2
-			if _range_door.size() == 2 and int(_range_door[1]) == fr:
-				occ.append(int(_range_door[0]))
-				fl["wide"][int(_range_door[0])] = 2.0
-			for sh in _shafts:                                   # szyb: dwa znaczniki na brzegach i cisza między nimi
-				occ.append(int(sh[0]))
-				occ.append(int(sh[1]))
-				quiet.append(int(sh[0]))
-				quiet.append(int(sh[1]))
-			var dc: Node2D = HUB_DECOR.new()
-			dc.name = "HubDecor" if decor_n == 0 else "HubDecor%d" % (decor_n + 1)
-			decor_n += 1
-			add_child(dc)
-			dc.setup(occ, fl["wide"], quiet, x0, x1, float(fr * TILE), float(TILE))
 	var guns_at: Array = found["g"]
 	_gun_cab.clear()
 	_gun_cab_x.clear()

@@ -26,8 +26,6 @@ const UNDERGROUND_ROW := 99               ## poza mapą: bez „głębi" (ambien
 ## Broń w gablotach („g": CABINET_SLOTS sztuk na gablotę, od lewej gabloty i od górnego rzędu): drużyna wymienia ekwipunek przed misją.
 const WEAPONS := [Weapons.SPREAD12, Weapons.SRUT8, Weapons.LR7, Weapons.HKM9, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6]
 const ACCENTS := []
-## Pion między pokładami: [pierwsza, ostatnia] kolumna mapy. Meble z hub_decor.gd go nie zastawiają.
-const SHAFTS := [[21, 26]]
 ## Strefa startu przed drzwiami wyjścia na prawym końcu parteru: [pierwsza kolumna, ostatnia kolumna, wiersz podłogi].
 const LAUNCH_ZONE := [46, 51, 9]
 ## Kamera w pionie: [wiersz stropu parteru, wiersz podłogi piwnicy] — pas, który kamera trzyma w kadrze (player.gd `_lock_camera_band`).
@@ -42,11 +40,24 @@ const HUB_PROPS := [
 	["crate", 32, 14, []], ["crate", 33, 14, []], ["mil_crate", 35, 14, []], ["barrel", 38, 14, []], ["scrap_pile", 40, 14, []],
 	["generator", 43, 14, []], ["compressor", 46, 14, []], ["d7", 48, 14, []],
 	["window", 45, 9, [3]],
+	# meble stawiane ręcznie (HUB_LAYOUT_PLAN.md E5, hub_prop.gd FURNITURE): [rodzaj, kolumna, wiersz podłogi, [przesunięcie px, głębia z m, odbicie]]
+	# kwatery: piecyk przy ścianie, skrytka (H), dwie prycze piętrowe (cztery miejsca, tyle co graczy), stół ze stołkami pod tablicą wyników (v)
+	["stove", 1, 14, [-1, -1.3]], ["bunk", 3, 14, [4, -1.3]], ["bunk", 5, 14, [-3, -1.3]],
+	["table", 7, 14, [0, -0.95]], ["stool", 6, 14, [-2, -0.7]], ["stool", 8, 14, [2, -0.7]],
+	["shelf_b", 1, 9, [-3, -1.5]],                           # śluza: regał na sprzęt przy wejściu
+	["chair", 43, 9, [10, -0.95, true]],                     # krzesło przy radiostacji
+	# pion: zamknięty właz w stropie (zapowiedź poziomu wyżej) i kanał kablowy od niego do radiostacji (antena)
+	["hatch", 25, 9, []], ["cables", 25, 9, [42]],
 ]
 ## Drzwi strzelnicy FPP (range_door.gd): na parterze tuż za pionem, krok od ławy (próba części zaraz po montażu).
 const RANGE_DOOR := [29, 9]
-## Wnęki w tylnej ścianie (`niches3d.gd`): na razie bez wnęk — wrócą z ręcznie ustawionymi meblami (HUB_LAYOUT_PLAN.md E5).
-const NICHES := []
+## Wnęki w tylnej ścianie (`niches3d.gd`, HUB_LAYOUT_PLAN.md E5): oświetlony schowek za kratą pod podestem pionu w piwnicy (pion był ciemną ścianą),
+## kratki wentylacji wysoko w warsztacie i w maszynowni. Kwatery i zbrojownia bez wnęk — tam patrzy się na meble i broń.
+const NICHES := [
+	{"kind": "grate", "c0": 21, "c1": 23, "r0": 12, "r1": 13, "lit": "bulb"},
+	{"kind": "vent", "c0": 19, "c1": 19, "r0": 6, "r1": 6, "lit": "lamp"},
+	{"kind": "vent", "c0": 50, "c1": 50, "r0": 11, "r1": 11, "lit": "lamp"},
+]
 ## Pomieszczenia (HUB_LAYOUT_PLAN.md E4): [pierwsza kolumna, ostatnia kolumna, wiersz podłogi, barwa światła] — lampy sufitowe „l” i lampy
 ## stanowisk w pomieszczeniu świecą jego barwą (level.gd `room_tint`), żeby pokoje różniły się bez czytania tabliczek.
 const ROOMS := [
@@ -66,10 +77,13 @@ const ROOMS := [
 ## ją przygaszoną. Strzałki przy pionie: w dół na parterze, w górę w piwnicy.
 const SIGNS := [
 	[7, 9, "LOCKER", ""], [12, 9, "MAINTENANCE", ""], [16, 9, "WORKSHOP", ""], [35, 9, "ARMORY", ""], [43, 9, "RADIO", ""],
-	[5, 14, "QUARTERS", ""], [12, 14, "LAB", ""], [17, 14, "LATHE", ""], [30, 14, "AMMO PRESS", ""], [36, 14, "PYROTECHNICS", ""],
+	[4, 14, "QUARTERS", ""], [12, 14, "LAB", ""], [17, 14, "LATHE", ""], [30, 14, "AMMO PRESS", ""], [36, 14, "PYROTECHNICS", ""],
 	[46, 14, "ENGINE ROOM", ""],
 	[23, 9, "BASEMENT", "down"], [25, 14, "GROUND FLOOR", "up"],
 ]
+## Ściana tła bez dekali (grafiti, plamy): [c0, c1, r0, r1] — drabinka do włazu w pionie i tablica wyników w kwaterach; za tabliczkami z SIGNS
+## widok czyści pas sam (view3d.gd `_decal_skip`).
+const NO_DECALS := [[24, 26, 5, 8], [5, 9, 10, 13]]
 ## Pierwszy plan z przekrojem (`front3d.gd`) i bryły bunkra (`building3d.gd`, typ „vault”): dwie kondygnacje jedna nad drugą; słupy tylko
 ## na granicach pomieszczeń (klucz "bays": śluza | warsztat | pion | zbrojownia | radiostacja i odprawa), nie co 5 m.
 const FRONT := [
@@ -98,7 +112,7 @@ const MAP := [
 	"CbbblbbbbbbbbblbbbblbbbbbbbblbbbbbblbbbbbbblbbbbblbbC",
 	"Cbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
 	"Cbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbC",
-	"CbHbbbvbbbbbcbbbbdbbbbbbbbbbbbxbbbbbzbbbbbbbbbbbbbbHC",
+	"CbHbbbbvbbbbcbbbbdbbbbbbbbbbbbxbbbbbzbbbbbbbbbbbbbbHC",
 	"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
 	"#####################################################",
 	"#####################################################",

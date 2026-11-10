@@ -11,7 +11,9 @@ const REACH_X := 70.0
 const REACH_Y := 40.0
 const ROWS := 4                       ## tyle ostatnich misji mieści tablica
 const FONT := 8
-const SCALE := 0.7                    ## tablica w kwaterach mniejsza (HUB_LAYOUT_PLAN.md E4, decyzja 3): wynik misji pokazuje już raport po akcji
+const SCALE := 0.4                    ## tablica w kwaterach mniejsza (HUB_LAYOUT_PLAN.md E4, decyzja 3: wynik misji pokazuje już raport po akcji);
+                                      ## w E5 z 0,7 (5,7 m, zasłaniała tabliczkę KWATERY) do 0,4 (3,8 × 2,2 m) — wisi na ścianie nad stołem
+const LIFT_PX := 13.0                 ## tablica wisi tyle nad podłogą (ok. 1,05 m, nad blatem stołu kwater)
 
 const CHALK := Color(0.86, 0.87, 0.82)
 const CHALK_GOLD := Color(0.93, 0.82, 0.5)
@@ -28,9 +30,14 @@ func _ready() -> void:
 	z_index = 0
 	if Sprites.newitem and ItemsHd.has("results_board"):
 		_hd = true
-		ItemsHd.make("results_board", self, SCALE)
+		var hang := Node2D.new()
+		hang.name = "Hang"
+		hang.position = Vector2(0.0, -LIFT_PX)
+		add_child(hang)
+		ItemsHd.make("results_board", hang, SCALE)
 		_ov = Node2D.new()
 		_ov.scale = Vector2(SCALE, SCALE)
+		_ov.position = Vector2(0.0, -LIFT_PX)
 		_ov.draw.connect(func() -> void: _draw_content(_ov))
 		add_child(_ov)
 
