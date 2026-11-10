@@ -4,6 +4,7 @@ Status: plan z 2026-10-17. **M1a–M1d (misja 1.1) w main**: obóz patrolu 1.7.2
 **P1–P3 (pomiar)** w main (#348, #349). **Playtest 1.1 (2026-10-18, 9 podejść)** → poprawki 1.7.281 (§1.3), drugi playtest potwierdził cichą drogę.
 **Wydłużenie 1.1 (§1.4):** W2 strażnica (1.7.282), W1 powrót przez obudzony las (1.7.283) i W3 bród (1.7.284) w grze; playtest 1.7.283 w §1.5.
 **Do decyzji:** B1 (§3); wejście do kopalni na HARD (§1.5).
+**1.2 „Drabina” (§4):** analiza i plan 2026-11-10, etapy D0–D4.
 Podstawa: analiza map (lokalnie, poza repo: rzuty map z upadkami, `stats.json`) i logi sesji 1.7.211–1.7.277 (63 podejścia, 1 człowiek + bot).
 
 **Decyzje użytkownika:**
@@ -220,3 +221,61 @@ Działa też na starych logach (same upadki i wyniki). Wymaga Pillow tylko do ob
 - Komentarz przy stałej zakłada dla duetu ok. 77 efektywnych DPS, czyli ok. 130 s walki. W logach (11 podejść, wszystkie EASY) drużyna zadała łącznie 700–2600 obrażeń w 42–120 s,
   czyli ok. 15–25 DPS. Liczby obejmują też Trzoski z brzegów i nie mówią, ile z tego dostała sama Pijawka. Nikt nie zbił 3500 HP z EASY.
 - Do decyzji: czy skalować HP pod rzeczywisty DPS (ok. 20), czy zmienić okna obrażeń (dłużej wynurzona, 40% → 60% w świetle). Najpierw pomiar z §2.
+
+## 4. Misja 1.2 Przerwa w Nadawaniu: układ „Drabina” (analiza 2026-11-10 na 1.7.539)
+
+**Diagnoza** (siatka 288 × 56, graf `nav.gd` przy marszu 95 px/s, 31 przejść od 1.7.423 bez bota, 29.10–09.11.2026, 8 udanych; wszystkie autora, solo, głównie NORMAL):
+
+| Miara | Wartość |
+|---|---|
+| Udana misja, mediana | 536 s (cel GDD: 10 min) |
+| Odcinki do generatorów (mediana) | 119 s, 167 s, 96 s, 32 s przy marszu 15, 16, 11, 10,5 s |
+| Cel poboczny „Uwaga < 40” | zaliczony 1 raz na 31 (EASY); Uwaga > 40 po 25 s, przy kol. 42 — wataha z Wołkiem w poprzek jedynej drogi |
+| Stalker | budzi się w każdym przejściu, zwykle w 34. s |
+| Wykrwawienie | 12 razy; odrodzenie w kol. 5, powrót na miejsce 38–105 s (mediana 60 s), 4 razy wyjście z gry; w ewakuacji ok. 8200 px do drezyny |
+| Tunel drezyny | 250 kolumn, 23 z 57 wrogów, jedno wejście (szyb masztu); w fazie celu < 1% czasu, w ewakuacji ok. 120 s, z tego blisko połowa na postojach |
+| Hala podziemna | 105 s (mediana) i 10 z 21 upadków; jej dwa szyby to jedyna pętla na mapie |
+
+Zostaje: długość misji, kolejność miejsc, drezyna jako finał, budynki 3D hali stacji i pompowni, szerokość mapy.
+
+**Układ:** trzy wysokie komory tunelu (kol. 60–78, 130–150, 200–216, wiersze 41–43) leżą kafel pod studnią stacji, skrytką i magazynem hali.
+Każda dostaje zejście za inną przegrodą, która już jest na tej mapie. Same wykopy w litej skale i kilka przestawionych znaczników.
+
+| Zejście | Gdzie | Przegroda | Kafle |
+|---|---|---|---|
+| A — przepust i studnia stacji | właz `-` przed watahą (kol. 39–42), przepust w wierszach 28–29 pod dziedzińcem, studnia kol. 60–65 przy drzwiach hali stacji, deski (66, 38), podest kol. 67–70 nad komorą 1 | `%` maczeta / śrut | 176 |
+| C — magazyn | właz w podłodze magazynu za kratką (kol. 215–216, w. 40), stopnie do toru przy kol. 206 | `+` kilof | 27 |
+| B — zsyp w skrytce | właz w skrytce za murem (kol. 145–146, w. 40) do komory 2 | `q` kilof | 22 |
+
+Zasady, których układ potrzebuje:
+1. **Zawał przy nadawaniu** (decyzja 2026-11-10). Ewakuacja liczy tylko ludzi przy E, nie drezynę, a studnia pozwalałaby po ostatnim generatorze dojść do E pieszo
+   wyczyszczoną powierzchnią (4545 px, ok. 48 s, wobec ok. 120 s w tunelu). Dlatego `COLLAPSE [[67, 36, 70, 40]]`: podest między studnią a tunelem zasypuje się
+   2,5 s po ostatnim generatorze, potem do E prowadzi tylko tor. Bez flagi `mission.finale` (radio patrolu, pył ze stropów i flara wyjścia zostają w 1.1).
+2. **Cicha droga tylko na kucaka.** `wake_near` liczy odległość w linii prostej, także przez skałę; przepust leży 64 px pod watahą (Trzosek 90 px, kucając 45; HARD × 1,25).
+   Wołek przechodzi z kol. 58 (2 kolumny od włazu studni) na środek watahy (kol. 49). Porada `culvert` przy włazie mówi, że trzeba kucnąć.
+3. **Odrodzenie przy ostatnim generatorze**, w ewakuacji przy drezynie (nie przy G4 — drezyna już odjechała, a studnia jest zasypana).
+4. **Drezyna nie wozi stojących na stopniach.** Najniższy stopień zejścia wisi 32 px nad torem (wyżej graf nie wchodzi z toru na schody), a `handcar.aboard()` brał każdego do 40 px nad pokładem.
+
+Narzędzia w `prototype/tools/`: `m2_ladder.py` (siatka z `z1_m2.gd` sprzed układu, `--parts=A|C|B`), `m2_legs.py` (odcinki), `m2_route.gd` (kontrola trasy na grafie gry:
+`godot --headless --path prototype -s res://tools/m2_route.gd -- <json>`), `m2_sess.py`, `m2_stats.py`, `m2_stats2.py` (dziennik sesji), `m2_dump.py` (znaczniki siatki).
+
+| Miara (graf, 95 px/s) | 1.7.539 | po A | po A + C + B |
+|---|---|---|---|
+| Wejścia do tunelu | 1 | 2 | 4 |
+| Start → G1 | 1451 px, 15 s | przepustem 1510 px, 16 s | — |
+| Studnia ↔ tor | — | 441 / 470 px | — |
+| Start → tor przy kol. 56 (odrodzenie w ewakuacji przed zawałem) | ok. 8200 px | 1475 px | — |
+| G4 → E pieszo bez szybu masztu | brak | 4545 px przed zawałem, brak po zawale | — |
+| G1 → G2 tunelem (przegrody rozbite) | — | — | 2695 px (A+B), 3878 px (A+C) |
+| Hala → tor | 3039 px szybem masztu | — | 842 px przez magazyn |
+
+**Etapy** (każdy osobny PR z wersją; po D1 i D2 pomiar `m2_sess.py` + `m2_stats*.py`):
+- **D0 — plan i narzędzia** (ten rozdział, bez zmian w grze).
+- **D1 — przepust, studnia, zawał, odrodzenie.** Siatka `--parts=A`, zasady 1–4, porada przy włazie, rekwizyty `ACCENTS` z włazów.
+  Kryterium do playtestu: testy zielone; w 3 z 5 przejść Uwaga < 40 przy pierwszym generatorze; czas do G1 119 s ± 20 s; po wykrwawieniu powrót do walki < 20 s.
+- **D2 — magazyn za kratką** (`--parts=C`), po pomiarze D1: przed nadawaniem samo zejście niewiele daje (G4 i drezyna stoją przy maszcie).
+- **D3 — zsyp w skrytce** (`--parts=B`), gdy pomiar pokaże, że tunel jest używany w fazie celu. Inaczej D1–D2 to stan docelowy.
+- **D4 — strojenie po playteście:** grupy finału przy zejściach (`FINALE_SPAWNS`), rozstaw śpiących w tunelu, próg celu pobocznego (generatory i alarm to 24% hałasu misji, strzały 44%), tempo G3 → G4 (28 kolumn).
+
+Ryzyka: po rozbiciu przegród 23 śpiących z tunelu ma drogę na górę (kratka przepuszcza dźwięk także cała); kto wyczyści tunel pieszo, pojedzie pustym korytarzem;
+cicha droga może skrócić misję poniżej 8 minut; żwir strefy wydobycia (kol. 133–142) kończy się dwie kolumny od zsypu; dane z jednego gracza.
