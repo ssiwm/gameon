@@ -1277,7 +1277,7 @@ func _down_physics(delta: float) -> void:
 	_revive_hold = 0.0
 	if bleed_left <= 0.0:
 		# kara dystansem i czasem, nie ekranem „game over" (GDD §4)
-		_respawn(1)
+		_respawn(1, false, true)
 
 func bleed_time() -> float:
 	return BLEED_TIME * Difficulty.m("bleed")
@@ -1393,7 +1393,8 @@ func _do_revive() -> void:
 	if not is_bot:
 		Feel.shake(1.5)
 
-func _respawn(hp_amount: int, quiet := false) -> void:
+## `bled` — po wykrwawieniu (albo porwaniu przez Żercę) w trakcie próby, a nie przy restarcie: wtedy w ewakuacji z drezyną wstaje przy niej.
+func _respawn(hp_amount: int, quiet := false, bled := false) -> void:
 	dead = false
 	hp = hp_amount
 	chip = 0.0
@@ -1401,7 +1402,7 @@ func _respawn(hp_amount: int, quiet := false) -> void:
 	taken_t = 0.0
 	bleed_left = 0.0
 	revive_progress = 0.0
-	global_position = _spawn_point
+	global_position = _respawn_at() if bled else _spawn_point
 	velocity = Vector2.ZERO
 	_invuln = 1.5
 	weapons.on_down()
@@ -1413,6 +1414,15 @@ func _respawn(hp_amount: int, quiet := false) -> void:
 	bat_pct = battery_pct()
 	if not quiet:
 		Audio.play("revive", Audio.BUS_PLAYER, -9.0)
+
+## Gdzie wstaje wykrwawiony: w ewakuacji misji z drezyną (zasilona, 1.2) przy niej na torze — start i ostatni generator są wtedy za odjeżdżającą
+## drezyną, a studnia stacji jest zasypana (MAPS_PLAN.md §4, zasada 3). Miejsce jak slot bota na pokładzie (trzy, żeby nie stać w jednym punkcie).
+## W pozostałych przypadkach `_spawn_point`: start mapy, punkt kontrolny bossa albo ostatni uruchomiony generator.
+func _respawn_at() -> Vector2:
+	for car in get_tree().get_nodes_in_group("handcar"):
+		if bool(car.get("enabled")) and car.has_method("slot_x"):
+			return Vector2(float(car.slot_x(player_id)), (car as Node2D).global_position.y)
+	return _spawn_point
 
 ## Restart po wipe (wszyscy leżą): pełne zdrowie w punkcie startu. `quiet` = bez dźwięku odrodzenia (wejście do kryjówki).
 func full_reset(keep_loadout := false, quiet := false) -> void:
@@ -2292,7 +2302,7 @@ func deliver_devour() -> void:
 func apply_devour() -> void:
 	if not is_multiplayer_authority() or not _from_server() or not taken:
 		return
-	_respawn(1)
+	_respawn(1, false, true)
 	weapons.reset()
 	Feel.shake(2.0)
 

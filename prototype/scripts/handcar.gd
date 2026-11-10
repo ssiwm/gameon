@@ -36,6 +36,7 @@ const NOISE_AMOUNT := 0.8            ## ≥ progu budzenia wrogów (0,5) — jaz
 const SYNC_INTERVAL := 0.066
 const SNAP_PX := 48.0
 const CARRY_MAX_STEP := 12.0         ## większy skok położenia w jednej klatce (reset, snap do serwera) to teleport — nikogo nie wozimy
+const STEP_CLEAR := 12.0             ## stopy wyżej niż tyle nad torem na kładce = nie pasażer (stoi na stopniu, a drezyna przejeżdża pod nim)
 const RIDER_RANGE := 220.0           ## człowiek bliżej drezyny niż HALF_W + tyle = boty wsiadają i jadą
 
 var enabled := false                 ## zasilanie (włącza je koniec celu głównego — mission.gd)
@@ -112,8 +113,20 @@ func _init_track() -> void:
 	_inited = true
 
 func aboard(p: Node2D) -> bool:
-	return absf(p.global_position.x - global_position.x) <= HALF_W - 4.0 and p.global_position.y <= global_position.y + 6.0 \
-		and p.global_position.y >= global_position.y - 40.0
+	if not (absf(p.global_position.x - global_position.x) <= HALF_W - 4.0 and p.global_position.y <= global_position.y + 6.0 \
+			and p.global_position.y >= global_position.y - 40.0):
+		return false
+	# kto stoi na kładce nad torem (najniższy stopień zejścia 1.2 wisi 32 px nad torem, MAPS_PLAN.md §4 zasada 4), nie jest pasażerem —
+	# pasażer stoi na torze (pokład bez kolizji) albo skacze nad pokładem
+	return p.global_position.y >= global_position.y - STEP_CLEAR or not _on_platform(p)
+
+## Czy stopy gracza leżą na wierzchu kładki (jednokierunkowej platformy) mapy.
+func _on_platform(p: Node2D) -> bool:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or not lvl.has_method("_is_platform_cell"):
+		return false
+	var r := roundi(p.global_position.y / 16.0)
+	return absf(p.global_position.y - float(r) * 16.0) < 2.0 and bool(lvl._is_platform_cell(int(p.global_position.x / 16.0), r))
 
 ## Boty jadą, gdy drezyna jest zasilona i jedzie (jeszcze nie dojechała), a któryś żywy człowiek jest przy niej.
 func wants_riders() -> bool:
