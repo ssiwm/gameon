@@ -362,6 +362,9 @@ func _first_steps() -> void:
 	check("zużycie OFF: stół konserwacji nie reaguje", not await in_range.call("service_bench"))
 	check("zużycie OFF: pracownia zamknięta bez próbek", not await in_range.call("lab_bench"))
 	check("zużycie OFF: tokarka zamknięta bez schematu", not await in_range.call("lathe_bench"))
+	var dormant := func(group: String) -> bool:
+		return bool(get_tree().get_first_node_in_group(group).dormant())
+	check("uśpione (E4): konserwacja, pracownia i tokarka pod plandeką", dormant.call("service_bench") and dormant.call("lab_bench") and dormant.call("lathe_bench"))
 	check("zużycie OFF: ława, prasa i pirotechnika działają", await in_range.call("workshop") and await in_range.call("press_bench") and await in_range.call("pyro_bench"))
 	station("workshop")
 	ui.open("bench")
@@ -389,9 +392,11 @@ func _first_steps() -> void:
 	Scrap.samples = 1
 	check("pierwsza próbka otwiera pracownię", await in_range.call("lab_bench"))
 	check("sama próbka nie otwiera tokarki", not await in_range.call("lathe_bench"))
+	check("aktywne (E4): pracownia budzi się po próbce, tokarka i konserwacja śpią", not dormant.call("lab_bench") and dormant.call("lathe_bench") and dormant.call("service_bench"))
 	Scrap.samples = 0
 	Scrap.schematics["lr7_coil"] = true
 	check("schemat otwiera tokarkę i zostawia pracownię otwartą", await in_range.call("lathe_bench") and await in_range.call("lab_bench"))
+	check("aktywne (E4): tokarka budzi się po schemacie", not dormant.call("lathe_bench"))
 	Scrap.schematics = {}
 	Scrap.parts = {"lr7_coil": true}
 	check("gotowa część z pracowni zostawia oba stanowiska otwarte", await in_range.call("lathe_bench") and await in_range.call("lab_bench"))
@@ -405,6 +410,7 @@ func _first_steps() -> void:
 	Settings.reliability_idx = 1
 	Scrap.parts = {}
 	check("zużycie ON: stół konserwacji i szlifierka działają", await in_range.call("service_bench") and await in_range.call("lathe_bench"))
+	check("aktywne (E4): zużycie budzi konserwację i szlifierkę", not dormant.call("service_bench") and not dormant.call("lathe_bench"))
 	station("workshop")
 	ui.open("bench")
 	kinds = ui._supply_kinds()

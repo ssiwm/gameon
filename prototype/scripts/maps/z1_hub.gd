@@ -47,11 +47,34 @@ const HUB_PROPS := [
 const RANGE_DOOR := [29, 9]
 ## Wnęki w tylnej ścianie (`niches3d.gd`): na razie bez wnęk — wrócą z ręcznie ustawionymi meblami (HUB_LAYOUT_PLAN.md E5).
 const NICHES := []
+## Pomieszczenia (HUB_LAYOUT_PLAN.md E4): [pierwsza kolumna, ostatnia kolumna, wiersz podłogi, barwa światła] — lampy sufitowe „l” i lampy
+## stanowisk w pomieszczeniu świecą jego barwą (level.gd `room_tint`), żeby pokoje różniły się bez czytania tabliczek.
+const ROOMS := [
+	[1, 9, 9, Color(0.86, 0.88, 0.95)],      # śluza: chłodne, „wejście z zewnątrz”
+	[10, 20, 9, Color(1.0, 0.8, 0.52)],      # warsztat: ciepłe żarówki nad ławą
+	[21, 26, 9, Color(0.95, 0.9, 0.8)],      # pion
+	[27, 40, 9, Color(0.9, 0.93, 1.0)],      # zbrojownia i drzwi strzelnicy: neutralne, broń w gablotach w prawdziwym kolorze
+	[41, 51, 9, Color(1.0, 0.66, 0.42)],     # radiostacja i odprawa: bursztyn
+	[1, 9, 14, Color(1.0, 0.7, 0.42)],       # kwatery: przygaszone, ciepłe
+	[10, 20, 14, Color(0.82, 0.96, 0.9)],    # pracownia i tokarka: zimne, „laboratoryjne”
+	[21, 26, 14, Color(0.95, 0.9, 0.8)],     # pion
+	[27, 40, 14, Color(1.0, 0.74, 0.46)],    # prasa i pirotechnika
+	[41, 51, 14, Color(1.0, 0.56, 0.38)],    # maszynownia: czerwonawe
+]
+## Tabliczki w świecie (view3d.gd `_build_hub_signs`): [kolumna środka, wiersz podłogi, tekst (klucz ui.csv), strzałka: "" / "down" / "up"].
+## Tabliczka stanowiska stoi nad nim na ścianie tylnej; uśpione stanowisko (zużycie wyłączone, pracownia bez próbek, tokarka bez schematu) ma
+## ją przygaszoną. Strzałki przy pionie: w dół na parterze, w górę w piwnicy.
+const SIGNS := [
+	[7, 9, "LOCKER", ""], [12, 9, "MAINTENANCE", ""], [16, 9, "WORKSHOP", ""], [35, 9, "ARMORY", ""], [43, 9, "RADIO", ""],
+	[5, 14, "QUARTERS", ""], [12, 14, "LAB", ""], [17, 14, "LATHE", ""], [30, 14, "AMMO PRESS", ""], [36, 14, "PYROTECHNICS", ""],
+	[46, 14, "ENGINE ROOM", ""],
+	[23, 9, "BASEMENT", "down"], [25, 14, "GROUND FLOOR", "up"],
+]
 ## Pierwszy plan z przekrojem (`front3d.gd`) i bryły bunkra (`building3d.gd`, typ „vault”): dwie kondygnacje jedna nad drugą; słupy tylko
 ## na granicach pomieszczeń (klucz "bays": śluza | warsztat | pion | zbrojownia | radiostacja i odprawa), nie co 5 m.
 const FRONT := [
-	{"set": "bunker", "c0": 0, "c1": 52, "r0": 4, "r1": 9, "shell": true, "build": "vault", "bays": [10, 20, 28, 41]},       # parter
-	{"set": "bunker", "c0": 0, "c1": 52, "r0": 9, "r1": 14, "shell": true, "build": "vault", "bays": [10, 20, 28, 41]},      # piwnica
+	{"set": "bunker", "c0": 0, "c1": 52, "r0": 4, "r1": 9, "shell": true, "build": "vault", "bays": [10, 20, 28, 41], "cut_cols": false},       # parter
+	{"set": "bunker", "c0": 0, "c1": 52, "r0": 9, "r1": 14, "shell": true, "build": "vault", "bays": [10, 20, 28, 41], "cut_cols": false},      # piwnica
 ]
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Radio: kolejne linie pokazuje HUD w pierwszych sekundach pobytu.
@@ -72,7 +95,7 @@ const MAP := [
 	"CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
 	"CbSbSbbpbbbbjbbbhbbbbbbbbbbbbbbbabgbbgbabbRbbbbbbnbbC",
 	"CCCCCCCCCCCCCCCCCCCCC======CCCCCCCCCCCCCCCCCCCCCCCCCC",
-	"CbbblbbbbbbbbblbbbbbbbbbbbbblbbbbbblbbbbbbblbbbbblbbC",
+	"CbbblbbbbbbbbblbbbblbbbbbbbblbbbbbblbbbbbbblbbbbblbbC",
 	"Cbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbbbbC",
 	"Cbbbbbbbbbbbbbbbbbbbbbbb===bbbbbbbbbbbbbbbbbbbbbbbbbC",
 	"CbHbbbvbbbbbcbbbbdbbbbbbbbbbbbxbbbbbzbbbbbbbbbbbbbbHC",

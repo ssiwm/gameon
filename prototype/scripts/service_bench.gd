@@ -34,6 +34,11 @@ func _ready() -> void:
 			add_child(st)
 			ItemsHd.make("stool", st)
 
+## Uśpione stanowisko (HUB_LAYOUT_PLAN.md E4): zużycie broni wyłączone — [E] nic nie robi, a widok 3D gasi lampę nad nim, nakrywa je plandeką
+## i przygasza tabliczkę (view3d.gd `_sync_dormant`).
+func dormant() -> bool:
+	return Settings.reliability_mult() <= 0.0
+
 func _physics_process(_delta: float) -> void:
 	local_in_range = false
 	var me: Node2D = null
@@ -41,7 +46,7 @@ func _physics_process(_delta: float) -> void:
 		if not p.is_bot and p.is_multiplayer_authority() and not p.dead and not p.is_queued_for_deletion():
 			me = p
 			break
-	if me == null or Settings.reliability_mult() <= 0.0:     # zużycie wyłączone: nie ma co czyścić ani wymieniać, stół jest tylko meblem
+	if me == null or dormant():     # zużycie wyłączone: nie ma co czyścić ani wymieniać, stół jest tylko meblem
 		return
 	local_in_range = absf(me.global_position.x - global_position.x) <= REACH_X and absf(me.global_position.y - global_position.y) <= REACH_Y
 	if local_in_range and Input.is_action_just_pressed("interact"):

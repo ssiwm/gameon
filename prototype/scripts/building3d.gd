@@ -160,9 +160,10 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	var zin := zb + BACK
 	for x: float in lines:
 		box.call("col", Vector3(x - COL * 0.5, yf, zin), Vector3(x + COL * 0.5, yc, zin + COL))          # słup przy ścianie tylnej
-		box.call("col", Vector3(x - COL * 0.5, yf, zc - COL), Vector3(x + COL * 0.5, yc, zc))           # słup w płaszczyźnie przekroju (wariant A)
+		if b.get("cut_cols", true):                                  # kryjówka bez niego: przed oboma pokładami stał czarny pas na całą wysokość kadru
+			box.call("col", Vector3(x - COL * 0.5, yf, zc - COL), Vector3(x + COL * 0.5, yc, zc))       # słup w płaszczyźnie przekroju (wariant A)
 		box.call("beam", Vector3(x - GIRDER * 0.5, yc, zin), Vector3(x + GIRDER * 0.5, ys, zc))         # podciąg w głąb
-		for zz in [zin + COL, zc - COL]:                             # wuty pod podciągiem przy słupach
+		for zz in ([zin + COL, zc - COL] if b.get("cut_cols", true) else [zin + COL]):     # wuty pod podciągiem przy słupach
 			var zd := 0.45 if zz < 0.0 else -0.45
 			box.call("beam", Vector3(x - COL * 0.5, yc - 0.3, minf(zz, zz + zd)), Vector3(x + COL * 0.5, yc, maxf(zz, zz + zd)))
 	# podciąg wzdłuż ściany tylnej; w płaszczyźnie przekroju bez podciągu — pas 1,3 m nad salą zasłaniał strop z żebrami

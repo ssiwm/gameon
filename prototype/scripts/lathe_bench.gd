@@ -36,6 +36,11 @@ func _ready() -> void:
 			add_child(h)
 			ItemsHd.make(String(pr[0]), h)                   # widok 3D zamienia przedmiot HD na model z art/items3d/
 
+## Uśpione stanowisko (HUB_LAYOUT_PLAN.md E4): tokarka bez schematu i bez zużycia — [E] nic nie robi, a widok 3D gasi lampę nad nim, nakrywa je plandeką
+## i przygasza tabliczkę (view3d.gd `_sync_dormant`).
+func dormant() -> bool:
+	return not Scrap.lathe_open()
+
 func _physics_process(_delta: float) -> void:
 	local_in_range = false
 	var me: Node2D = null
@@ -43,7 +48,7 @@ func _physics_process(_delta: float) -> void:
 		if not p.is_bot and p.is_multiplayer_authority() and not p.dead and not p.is_queued_for_deletion():
 			me = p
 			break
-	if me == null or not Scrap.lathe_open():
+	if me == null or dormant():
 		return
 	local_in_range = absf(me.global_position.x - global_position.x) <= REACH_X and absf(me.global_position.y - global_position.y) <= REACH_Y
 	if local_in_range and Input.is_action_just_pressed("interact"):

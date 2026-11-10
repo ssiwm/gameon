@@ -29,6 +29,7 @@ class LampBody extends StaticBody2D:
 		return lamp.take_hit(info)
 
 var shootable := false              ## lampa misji (znacznik „I")
+var tint := Color(1.0, 0.78, 0.5)  ## barwa światła (level.gd `room_tint`: barwa pomieszczenia kryjówki)
 var lit := true
 var _light: Lights.GameLight
 var _shadow_check := 0.0
@@ -38,7 +39,7 @@ func _ready() -> void:
 	add_to_group("lamps")                                 # cień kontaktowy postaci (player.gd) szuka najbliższej lampy
 	z_index = 2
 	_t = randf() * 20.0
-	_light = Lights.make_light(Lights.radial(), RADIUS_M, Color(1.0, 0.78, 0.5), ENERGY, false)
+	_light = Lights.make_light(Lights.radial(), RADIUS_M, tint, ENERGY, false)
 	_light.position = BULB
 	add_child(_light)
 	if Sprites.newitem and ItemsHd.has("lamp"):
