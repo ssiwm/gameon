@@ -3402,7 +3402,7 @@ func _tag_test() -> void:
 		String(brief["title"]) != "" and int(brief["tags"]) == 6 and int(counts.get("trzosek", 0)) >= 8 and int(counts.get("wolek", 0)) >= 2 and not bool(brief["stalker"]) and not bool(brief["boss"]))
 	var gallery: Array = get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return e is CharacterBody2D and e.global_position.y > 37.0 * 16.0)
 	var scrap_caches := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "scrap")
-	var gallery_nav: Array = level.nav.find_path(Vector2(274.0 * 16.0 + 8.0, 34.0 * 16.0), Vector2(253.0 * 16.0 + 8.0, 43.0 * 16.0))
+	var gallery_nav: Array = level.nav.find_path(Vector2(223.0 * 16.0 + 8.0, 34.0 * 16.0), Vector2(244.0 * 16.0 + 8.0, 43.0 * 16.0))
 	check.call("podziemia: dolna galeria (wrogów %d, skrytek złomu na mapie %d), droga z sali szybem serwisowym (%d węzłów)" % [gallery.size(), scrap_caches.size(), gallery_nav.size()],
 		gallery.size() >= 7 and scrap_caches.size() >= 5 and not gallery_nav.is_empty())
 	# przedmioty nie wpadają w ściany: podskok w stronę skały zatrzymuje się przed nią, a przedmiot zaczęty w skale jest wypychany
@@ -3663,7 +3663,7 @@ func _sneak_test() -> void:
 	p.global_position = Vector2(300.0, floor_y - 2.0)
 	hh._collect(p)
 	check.call("podpowiedź quiet: Uwaga 30, nic nie goni", hh._queued.has("quiet"))
-	p.global_position = Vector2(4028.0, 33.0 * 16.0)
+	p.global_position = Vector2(223.0 * 16.0 + 8.0, 33.0 * 16.0)       # sala kopalni pod strażnicą
 	p.flashlight = false
 	hh._collect(p)
 	check.call("podpowiedź light: gracz w podziemiach bez latarki", hh._queued.has("light"))
@@ -3701,17 +3701,17 @@ func _finale_test() -> void:
 		e.set_process(false)
 	check.call("dane finału w mapie 1.1: obszar zawału (%d), bez „e” (%d), wyjście „E” przy starcie (%d), grupy finału (%d)" % [level.collapse_rects.size(), level.exits_alt.size(), level.exits.size(), level.finale_spawns.size()],
 		level.collapse_rects.size() == 1 and level.exits_alt.is_empty() and level.exits.size() == 1 and level.exits[0].x < 400.0 and not level.finale_spawns.is_empty())
-	var hall := Vector2(274.0 * 16.0 + 8.0, 34.0 * 16.0)
+	var hall := Vector2(223.0 * 16.0 + 8.0, 34.0 * 16.0)          # sala pod strażnicą (od 1.7.536 kopalnia odbita: kolumna = 497 − dawna)
 	var start: Vector2 = level.spawns[0]
-	var ramp_pre := Vector2(254.0 * 16.0 + 8.0, 29.0 * 16.0)
-	var area := Rect2(258.0 * 16.0, 25.0 * 16.0, 8.0 * 16.0, 9.0 * 16.0)
+	var ramp_pre := Vector2(243.0 * 16.0 + 8.0, 29.0 * 16.0)
+	var area := Rect2(232.0 * 16.0, 25.0 * 16.0, 8.0 * 16.0, 9.0 * 16.0)
 	var through := func(path: Array) -> bool:           # czy trasa przechodzi przez obszar zawału
 		for n in path:
 			if area.has_point(n.pos):
 				return true
 		return false
-	check.call("przed zawałem: rampa wolna (%s), droga z sali w górę rampy biegnie przez nią" % level._ch(260, 30),
-		not level._is_solid(260, 30) and through.call(level.nav.find_path(hall, ramp_pre)))
+	check.call("przed zawałem: rampa wolna (%s), droga z sali w górę rampy biegnie przez nią" % level._ch(237, 30),
+		not level._is_solid(237, 30) and through.call(level.nav.find_path(hall, ramp_pre)))
 	var tags_now := func() -> Array: return get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "tag" and not n.is_queued_for_deletion())
 	for i in 6:
 		var near: Array = tags_now.call()
@@ -3725,7 +3725,7 @@ func _finale_test() -> void:
 	check.call("obudzony las: finał wypuścił grupy na drogę powrotną (%d z %d)" % [finale_foes.size(), level.finale_spawns.size()],
 		finale_foes.size() == level.finale_spawns.size() and finale_foes.size() >= 4)
 	# gracz „uwięziony" w obszarze zawału: ma wylądować za skałą (po stronie sali)
-	p.global_position = Vector2(261.0 * 16.0, 32.0 * 16.0)
+	p.global_position = Vector2(237.0 * 16.0, 32.0 * 16.0)
 	p.velocity = Vector2.ZERO
 	var prepared = level._nav_after                       # graf „po zawale” policzony przy wczytaniu mapy (zawał bez przestoju)
 	await get_tree().create_timer(2.6).timeout
@@ -3735,10 +3735,10 @@ func _finale_test() -> void:
 	var p_fresh: Array = fresh.find_path(hall, mission.exit_pos)
 	check.call("zawał: graf nawigacji gotowy z wczytania mapy (%s), trasa jak w grafie zbudowanym od nowa (%d / %d węzłów)" % [str(prepared != null and level.nav == prepared), p_now.size(), p_fresh.size()],
 		prepared != null and level.nav == prepared and p_now.size() == p_fresh.size() and not p_now.is_empty())
-	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(260, 30), p.global_position.x],
-		level._is_solid(260, 30) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x > 266.0 * 16.0)
+	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(237, 30), p.global_position.x],
+		level._is_solid(237, 30) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x < 232.0 * 16.0)
 	var back_path: Array = level.nav.find_path(hall, mission.exit_pos)
-	var via_shaft := back_path.any(func(n: Dictionary) -> bool: return (n.pos as Vector2).x > 290.0 * 16.0)
+	var via_shaft := back_path.any(func(n: Dictionary) -> bool: return (n.pos as Vector2).x < 198.0 * 16.0 and (n.pos as Vector2).y > 23.0 * 16.0 and (n.pos as Vector2).y < 29.0 * 16.0)   # szyb wentylacyjny kol. 193–197
 	check.call("po zawale: z sali szybem na powierzchnię i lasem do wyjścia przy starcie (ścieżka %d węzłów, przez szyb=%s)" % [back_path.size(), str(via_shaft)],
 		not back_path.is_empty() and via_shaft)
 	check.call("radio patrolu: linie 0 s / 3 s / 6 s / 9 s i cisza po %.1f s" % mission.FINALE_RADIO_END,
@@ -3753,7 +3753,7 @@ func _finale_test() -> void:
 	check.call("restart: radio zresetowane", mission.finale_radio_line() == "" and mission.finale_clock == 0.0)
 	check.call("restart: grupy finału zniknęły", level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with("Finale")).is_empty())
 	check.call("restart: rampa znów wolna, droga wraca, finał zresetowany (finale=%s)" % str(mission.finale),
-		not level._is_solid(260, 30) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
+		not level._is_solid(237, 30) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
 	check.call("restart: graf „po zawale” przygotowany znowu (następny zawał też bez przestoju)", level._nav_after != null)
 	print("[FINALE-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
