@@ -80,7 +80,7 @@ const DIG_ZONES := [[192, 36, 201, 44, "rock", 1101, 0.3]]
 ## pod skalnym sufitem i przed strażnicą. Nad płytką kopalnią (rampa, sala, szyb wentylacyjny) las i podłoże gasną, kiedy kamera schodzi
 ## pod powierzchnię (`Front3D.SURF_FADE`).
 const FRONT := [
-	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[148, 191], [210, 223]]},
+	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[39, 44], [110, 115], [148, 191], [192, 198], [210, 223]]},   # L3: bez drzew nad włazami szybów (pień widać w przekroju)
 ]
 const NICHES := [
 	{"kind": "corridor", "c0": 227, "c1": 229, "r0": 31, "r1": 33, "lit": "cage"},
