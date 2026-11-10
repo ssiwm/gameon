@@ -33,6 +33,7 @@ const TIPS := [
 	["light", "{flashlight} toggles the flashlight. Light is noise too — turn it off to hide"],
 	["battery_low", "The flashlight battery is running low. Flat 4.5 V batteries lie around the map, drop from enemies and from smashed moth nests — and the light slowly recharges while switched off"],
 	["moths", "Moths nest under the watchtower roof and swarm any light they can see — your flashlight, even muzzle flashes. Bullets and fire do not touch them: throw a flare ({flare}) away from you to draw the swarm off, or cut them down with your blade ({melee})"],
+	["adit", "An old drainage adit runs west under the camp and comes up through a hatch in its hollow. Board this opening up behind you (hold {interact}) — whatever hunts you will have to smash through"],
 	["moths_on", "Moths are smothering your flashlight: the beam dims, the battery drains and their fluttering is loud. Swing your blade ({melee}) through them or switch the light off ({flashlight}) to shake them — killed at your face, they raise dust that makes you cough"],
 	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
 	["scream", "{scream} screams: a burst of NOISE that pulls every enemy nearby — and HIM. Turn on the microphone in the lobby and the game hears your real scream"],
@@ -178,6 +179,15 @@ func _collect(p: Node) -> void:
 				moths_hang = true
 				break
 	_queue("moths", moths_hang, false)
+	# sztolnia (misja 1.1, HINT_ZONES „adit”, MAPS_PLAN.md §1.6 L2): przy pustym otworze, póki nie jest zabity deskami — po co go zabijać
+	var adit_zone = lvl_n.get("hint_zones").get("adit") if lvl_n != null and lvl_n.get("hint_zones") != null else null
+	var adit_open := false
+	if adit_zone is Rect2 and (adit_zone as Rect2).has_point(p.global_position) and lvl_n.has_method("boards_of"):
+		for sp in p.get_tree().get_nodes_in_group("barricade_spots"):
+			if (adit_zone as Rect2).grow(16.0).has_point((sp as Node2D).global_position) and int(lvl_n.boards_of(String(sp.get("wall_name")))) < int(lvl_n.BOARDS):
+				adit_open = true
+				break
+	_queue("adit", adit_open, false)
 	_queue("moths_on", int(p.get("moth_cover")) > 0, false)        # rój na latarce: jak go strząsnąć
 	_queue("quiet", NoiseMgr.level >= 22.0 and NoiseMgr.level < NoiseMgr.AWAKE_THRESHOLD and not threat_near, false)
 	var friend_down := false

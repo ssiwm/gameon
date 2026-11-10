@@ -38,7 +38,7 @@ extends "res://scripts/stalker_test.gd"
 ##     liczy kilof (zestaw startowy = odniesienie); 1.2 bez kilofa na ziemi; kilof z ziemi niczego nie podmienia.
 ## 16. Poprawki po playteście 1.1 (BARRIER_FIX_PLAN.md B0): kratkę rozbija jeden granat na brzegu promienia, gruz dwa (jeden nie);
 ##    granat dalej niż SUPPORT_BLAST_R od stempla go nie rusza, bliski tak, ładunek burzący (`demolition`) pełnym promieniem;
-##    cios, który się odbił, daje strzelcowi komunikat raz na przegrodę (bot i wróg — nic); na 1.1 nie ma otworu `:` ani kratki.
+##    cios, który się odbił, daje strzelcowi komunikat raz na przegrodę (bot i wróg — nic); na 1.1 nie ma kratki, a jedyny otwór `:` stoi w sztolni (kol. 189, MAPS_PLAN.md §1.6 L2 — zabity zatrzymuje pościg).
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -1409,11 +1409,17 @@ func _barrier_fixes() -> void:
 				break
 	check("mapy kampanii bez stref zawału `^` i stempli `!` (%s)" % (", ".join(caves) if not caves.is_empty() else "żadna"), caves.is_empty())
 
-	# mapa 1.1: bez pustego otworu i kratki (decyzja 3)
+	# mapa 1.1: bez kratki i bez otworów bez celu (BARRIER_FIX_PLAN decyzja 3); jedyny otwór `:` to wejście do sztolni z sali (MAPS_PLAN.md §1.6 L2) —
+	# zabity deskami za sobą zatrzymuje pościg na drodze powrotu, czyli ten cel, dla którego decyzja 3 dopuszcza otwory
 	var m11: Script = load("res://scripts/maps/z1_m1.gd")
 	var rows: Array = m11.get_script_constant_map().get("MAP", [])
-	var marks := 0
-	for row in rows:
-		marks += String(row).count(":") + String(row).count("+")
-	check("mapa 1.1 bez pustego otworu `:` i kratki `+` (%d znaczników)" % marks, not rows.is_empty() and marks == 0)
+	var grates := 0
+	var openings: Array = []
+	for ri in rows.size():
+		grates += String(rows[ri]).count("+")
+		for ci in String(rows[ri]).length():
+			if String(rows[ri])[ci] == ":":
+				openings.append(Vector2i(ci, ri))
+	check("mapa 1.1 bez kratki `+`, jedyny otwór `:` w sztolni przy sali (kratki %d, otwory %s)" % [grates, str(openings)],
+		not rows.is_empty() and grates == 0 and openings == [Vector2i(189, 33)])
 	await _frames(0.1)

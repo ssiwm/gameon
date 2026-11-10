@@ -3558,6 +3558,18 @@ func _pass_test() -> void:
 	check.call("ewakuacja (extract w STALKER_PASS): wychodzi za plecami względem wyjścia (wyjście x %.0f, gracz x %.0f, Stalker dx %.0f)" % [mission.exit_pos.x, p.global_position.x, ev_dx],
 		st.awake and signf(ev_dx) == -signf(mission.exit_pos.x - p.global_position.x) and absf(ev_dx) >= 380.0)
 	st.reset_enemy()
+	# sztolnia (MAPS_PLAN.md §1.6 L2): drużyna wraca pod ziemią na zachód — Stalker wychodzi za nią w tunelu, nie na powierzchni nad nią
+	p.global_position = Vector2(130.0 * 16.0 + 8.0, 34.0 * 16.0)
+	p.velocity = Vector2.ZERO
+	mission.on_tag_taken(p, p.global_position)
+	NoiseMgr.level = 50.0
+	await get_tree().create_timer(0.3).timeout
+	shout.call(95.0)
+	await get_tree().create_timer(0.4).timeout
+	var ad_dx: float = st.global_position.x - p.global_position.x
+	check.call("ewakuacja sztolnią: wychodzi za plecami w tunelu (dx %.0f, wiersz %.1f)" % [ad_dx, st.global_position.y / 16.0],
+		st.awake and ad_dx >= 380.0 and st.global_position.y > 29.0 * 16.0 and st.global_position.y <= 36.0 * 16.0)
+	st.reset_enemy()
 	mission.phase = MISSION_SCRIPT.Phase.SUCCESS
 	NoiseMgr.level = 50.0
 	await get_tree().create_timer(0.3).timeout
