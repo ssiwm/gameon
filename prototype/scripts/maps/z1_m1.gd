@@ -18,13 +18,15 @@ extends RefCounted
 ## strażnica przed rampą kopalni (kol. 197–240, MAPS_PLAN.md §1.4 W2; nieśmiertelnik 4): wieża z zygzakiem podestów co 2 kafle i włazem w piętrze,
 ## pod dachem 3 Ćmy i Skoczek, nieśmiertelnik na wschodnim końcu górnego piętra. Lekcja flary: ćmy lecą do każdego światła (latarka, błysk
 ## strzału), flara rzucona w bok je odciąga, zabija je tylko cios wręcz; skrzynka z flarami przy podejściu, porada „moths” w HINT_ZONES; zejście zeskokiem ze wschodniej krawędzi →
-## kopalnia pod strażnicą (od 1.7.536, MAPS_PLAN.md §1.6 L1: blok kopalni odbity lustrzanie, kolumna = 497 − dawna): wejście nawrotem — pomost z desek
-## nad wykopem (kol. 244–249) albo zeskok za nim, potem pochylnią pod pomostem na zachód; sala pod wieżą (nieśmiertelnik 5, Wołek i Trzoski
+## kopalnia pod strażnicą (od 1.7.536, MAPS_PLAN.md §1.6 L1: blok kopalni odbity lustrzanie, kolumna = 497 − dawna): wejście nawrotem — zeskok do otwartego
+## wykopu (kol. 244–253; pomost z desek nad nim zdjęty 2026-11-10), potem pochylnią pod gruntem na zachód; sala pod wieżą (nieśmiertelnik 5, Wołek i Trzoski
 ## w ciemności: latarka pomaga, ale budzi; pod sufitem Skoczki i Ćmy; M1c: drugi Wołek tuż pod rampą i Skoczek nad wejściem do sali). Pod salą druga kondygnacja — dolna galeria (szyb serwisowy z podestami, Trzoski na dojściu z szybu do nieśmiertelnika 6, Ćmy i Skoczki; w zachodnim ślepym końcu tylko złom — wrogowie stamtąd przeszli na trasę w M1c). Ostatni nieśmiertelnik zawala rampę — wyjście to szyb na zachodnim końcu sali, pod włazem z desek przy wylocie jaskini (kol. 193–197).
 ## Sztolnia odwadniająca (od 1.7.537, MAPS_PLAN.md §1.6 L2; wiersze 31–33, podłoga 34): druga droga powrotu z zachodniej ściany sali — pusty otwór `:`
 ## w kol. 189 (zabity deskami za sobą zatrzymuje pościg, Stalker musi go rozbić; porada „adit”), zalany odcinek z gniazdem ciem (kol. 150–175),
 ## wnęka z baterią i amunicją (137–141), komora pod niecką obozu (100–125, wiersze 27–33; skrzynia, złom) i lej z podestami co 2 kafle
-## do włazu z desek w dnie niecki (kol. 111–114) — wychodzi się pod śpiącą watahą. Faza B: samouczek ciszy i latarki. Mapa jest generowana programem pomocniczym —
+## do włazu z desek w dnie niecki (kol. 111–114) — wychodzi się pod śpiącą watahą. Od 1.7.538 (L3) sztolnia biegnie dalej na zachód: stary chodnik,
+## mijanka ze Skoczkiem, skrzynią i złomem (kol. 76–84, wiersze 29–33, boczny chodnik z lampą), deski `%` w kol. 50 (skrót przez deski na drodze
+## ewakuacji, BARRIER_FIX_PLAN B4: rozbić kosztuje hałas) i szyb z podestami do włazu z desek między błotem brodu a polaną (kol. 40–43). Faza B: samouczek ciszy i latarki. Mapa jest generowana programem pomocniczym —
 ## po zmianach uruchom `--maptest`.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -58,8 +60,8 @@ const STALKER_PASS := {"noise": 80.0, "noise_hard": 95.0, "after_goal": 1, "extr
 const HINT_ZONES := {"ford": [14, 0, 37, 23], "camp": [80, 0, 97, 23], "moths": [203, 0, 223, 23], "adit": [184, 29, 196, 34]}
 ## Obudzony las (MAPS_PLAN.md §1.4 W1, od 1.7.283): finał wypuszcza na drogę powrotną śpiące grupy [rodzaj, kolumna, wiersz podłogi] —
 ## dwa Trzoski w jaskini (pierwszy kontakt po wyjściu szybem), Wołek między jaskinią a obozem, trzy Trzoski na zachodnim skraju polany tuż przed wyjściem,
-## dwa w komorze sztolni pod obozem (od 1.7.537: kto wraca pod ziemią, też ma kontakt).
-const FINALE_SPAWNS := [["trzosek", 176, 22], ["trzosek", 180, 22], ["wolek", 145, 22], ["trzosek", 30, 22], ["trzosek", 33, 22], ["trzosek", 36, 22], ["trzosek", 104, 33], ["trzosek", 120, 33]]
+## dwa w komorze sztolni pod obozem (od 1.7.537: kto wraca pod ziemią, też ma kontakt) i dwa w starym chodniku za mijanką (od 1.7.538).
+const FINALE_SPAWNS := [["trzosek", 176, 22], ["trzosek", 180, 22], ["wolek", 145, 22], ["trzosek", 30, 22], ["trzosek", 33, 22], ["trzosek", 36, 22], ["trzosek", 104, 33], ["trzosek", 120, 33], ["trzosek", 66, 33], ["trzosek", 70, 33]]
 const COLLAPSE := [[232, 25, 239, 33]]
 
 ## Strumień (kosmetyka, `Level3D.build_streams`): bród jest przejściem przez strumień, który wypływa z lasu w głębi i przecina płaszczyznę
@@ -78,7 +80,7 @@ const DIG_ZONES := [[192, 36, 201, 44, "rock", 1101, 0.3]]
 ## pod skalnym sufitem i przed strażnicą. Nad płytką kopalnią (rampa, sala, szyb wentylacyjny) las i podłoże gasną, kiedy kamera schodzi
 ## pod powierzchnię (`Front3D.SURF_FADE`).
 const FRONT := [
-	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[148, 191], [210, 223]]},
+	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[39, 44], [110, 115], [148, 191], [192, 198], [210, 223]]},   # L3: bez drzew nad włazami szybów (pień widać w przekroju)
 ]
 const NICHES := [
 	{"kind": "corridor", "c0": 227, "c1": 229, "r0": 31, "r1": 33, "lit": "cage"},
@@ -87,6 +89,7 @@ const NICHES := [
 	{"kind": "vent", "c0": 239, "c1": 239, "r0": 27, "r1": 27, "lit": "lamp"},     # N4: kratka pod stropem rampy w dół do kopalni
 	{"kind": "window", "c0": 204, "c1": 207, "r0": 40, "r1": 41, "lit": "bulb"},   # N4: okno dyspozytorni na ślepym zachodnim końcu dolnej galerii
 	{"kind": "drift", "c0": 117, "c1": 119, "r0": 31, "r1": 33, "d": 8.0, "lit": "mine"},   # L2: boczny chodnik z lampą w komorze sztolni pod obozem
+	{"kind": "drift", "c0": 80, "c1": 82, "r0": 31, "r1": 33, "d": 8.0, "lit": "mine"},     # L3: boczny chodnik z lampą w mijance
 ]
 
 const MAP := [
@@ -113,17 +116,17 @@ const MAP := [
 	"##............................w......w...................................................########...w..w.....w......w....w...########..............................................................................w..........w..........w....w.....................##",
 	"##..........................--w......w...................---...........................##########--.w..w.....w......w....w.--##########.........................---.........---.........---........................w---.......w..........w....w.....................##",
 	"##....S..S....E...............w......wa.....kk....T....T......F...T...T..u...........############...wT.w.T..Tw......T....T...############....................................................F.........u...f.......w..........w......a...w....w.....................##",
-	"##################~~~~~~~~~mmmmmmmmmmm#########################################################################----##############################################################################-----##############################################------bbbb########",
-	"##################~~~~~~~~~####################################################################################b---##############################################################################bb---############################################bbbbbbbbbb##########",
-	"###############################################################################################################bbbb##############################################################################bbbbb##########################################bbbbbbbbbb############",
-	"###############################################################################################################---b##############################################################################---bb########################################bbbbbbbbbb##############",
-	"####################################################################################################bbbbbbbbbbbbbbbbbbbbbbbbbb###################################################################bbbbb######################################bbbbbbbbbb################",
-	"####################################################################################################bbbbbbbbbbbb---bbbbbbbbbbb###################################################################bb---####################################bbbbbbbJbb##################",
-	"####################################################################################################bbbbbbbbbbbbbbbbbbbbbbbbbb###################################################################bbbbbbbZbbbbbZbbbbbbJbbbIbbbJbbbbbbbbbbbbbbbbbbbb####################",
-	"####################################################################################################bbbbbbbbbbb---bbbbbbbbbbbb###########bbbbb########bbbbbbbbbbZbbZbbbbbbbbbbbb#################---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb######################",
-	"####################################################################################################bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb########################",
-	"####################################################################################################bbbbbbbbbbbb---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##########################",
-	"####################################################################################################bbbubbbbbbbbbbbbbbbbbbkbbbbbbbbbbbbbbbybabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:bbbbbbbbbbbbubFbbbbTbbbWbbTbbbbbbbbTbbbbWbbb############################",
+	"##################~~~~~~~~~mmmmmmmmmmm##----###################################################################----##############################################################################-----##############################################bbbbbbbbbb########",
+	"##################~~~~~~~~~#############b---###################################################################b---##############################################################################bb---############################################bbbbbbbbbb##########",
+	"########################################bbbb###################################################################bbbb##############################################################################bbbbb##########################################bbbbbbbbbb############",
+	"########################################---b###################################################################---b##############################################################################---bb########################################bbbbbbbbbb##############",
+	"########################################bbbb########################################################bbbbbbbbbbbbbbbbbbbbbbbbbb###################################################################bbbbb######################################bbbbbbbbbb################",
+	"########################################b---########################################################bbbbbbbbbbbb---bbbbbbbbbbb###################################################################bb---####################################bbbbbbbJbb##################",
+	"########################################bbbb################################bbbbJbbbb###############bbbbbbbbbbbbbbbbbbbbbbbbbb###################################################################bbbbbbbZbbbbbZbbbbbbJbbbIbbbJbbbbbbbbbbbbbbbbbbbb####################",
+	"########################################---b################################bbbbbbbbb###############bbbbbbbbbbb---bbbbbbbbbbbb###########bbbbb########bbbbbbbbbbZbbZbbbbbbbbbbbb#################---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb######################",
+	"########################################bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb########################",
+	"########################################b---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##########################",
+	"########################################bbbbbbbubb%bbbbbbbbbbbbbbbbbbbbbbbbbbbkbbbbubbbbbbbbbbbbbbbbbbbubbbbbbbbbbbbbbbbbbkbbbbbbbbbbbbbbbybabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:bbbbbbbbbbbbubFbbbbTbbbWbbTbbbbbbbbTbbbbWbbb############################",
 	"########################################################################################################################################################~~~~~~~~~~~~~~~~~~~~~~############################################bbbb########################################",
 	"########################################################################################################################################################~~~~~~~~~~~~~~~~~~~~~~############################################---b########################################",
 	"##########################################################################################################################################################################################################################bbbb########################################",

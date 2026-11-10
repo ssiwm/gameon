@@ -1338,11 +1338,18 @@ static func _span(rows: Array, c0: int, c1: int, r1: int, z0: float, drop := GRO
 		var r := r1
 		if nrows > 0:
 			var cc := clampi(c, 0, cols - 1)
-			while r < mini(r1 + 8, nrows - 1) and not Level3D.is_solid_ch(Level3D._ch(rows, cc, r)):
+			while r < mini(r1 + 8, nrows - 1) and not ground_stop(Level3D._ch(rows, cc, r)):
 				r += 1
 		ys.append(-float(r) * T)
 	return {"x0": float(c0) * T, "x1": float(c1 + 1) * T, "c0": c0, "ys": ys, "z0": z0, "base": -float(r1) * T, "drop": drop,
 			"zb": z0 + 0.04 + float(GROUND_Z[0]) - Level3D.DEPTH_FRONT}
+
+
+## Kafel, na którym kończy się szukanie gruntu kolumny w dół (`_span`): lity albo deska `-`. Właz z desek nad szybem to podłoga — płyta
+## podłoża zostaje na powierzchni; wcześniej spadała o 8 wierszy do sztolni pod włazem i wisiała w komorze jak skośna półka (uwaga z gry
+## 2026-11-10: komora pod obozem 1.1, też szyb brodu i wentylacji).
+static func ground_stop(ch: String) -> bool:
+	return Level3D.is_solid_ch(ch) or ch == "-"
 
 
 ## y podłoża (m) w punkcie x i z (m przed płaszczyzną gry) albo -INF poza podłożem.
