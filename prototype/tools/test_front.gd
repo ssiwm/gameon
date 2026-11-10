@@ -767,7 +767,8 @@ func _check_trench() -> void:
 	root.queue_free()
 
 ## Hala stacji 1.2 jako budynek 3D (`building3d.gd`, od 1.7.529; wcześniej dach z blachy na płatwiach): nad pasem nie ma dachu z blachy
-## (`Level3D.roof_purlins` puste), a element pierwszego planu kończy się na spodzie kafla dachu — tam, gdzie spód żeber i podciągów stropu.
+## (`Level3D.roof_purlins` puste), a element pierwszego planu dochodzi do spodu płyty stropu (`Building3D.SLAB` pod górą kafla dachu), nie do
+## spodu żeber — między żebrami nad elementem prześwitywała ściana (piwnica kryjówki, uwaga z gry 2026-11-10).
 func _check_roof() -> void:
 	var consts: Dictionary = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()
 	var rows: Array = consts["MAP"]
@@ -790,7 +791,7 @@ func _check_roof() -> void:
 				continue
 			n += 1
 			_check(Level3D.roof_purlins(rows, int(floorf(mi.position.x / Level3D.T)), int(e["r0"])).is_empty(), "%s: dach z blachy nad budynkiem 3D" % mi.name)
-			var yc := -float(int(e["r0"]) + 1) * Level3D.T
+			var yc := -float(int(e["r0"])) * Level3D.T - float((load("res://scripts/building3d.gd") as Script).get_script_constant_map()["SLAB"])
 			_check(absf((yw as Vector2).y - yc) < 0.001, "%s: góra %.3f m zamiast spodu stropu %.3f" % [mi.name, (yw as Vector2).y, yc])
 	_check(n > 0, "hala stacji: brak elementów pierwszego planu z przekrojem")
 	# zasłanianie płytą (shader `occ`): każdy element z przekrojem i jego płytka znają spód stropu / dachu i przód płyty
