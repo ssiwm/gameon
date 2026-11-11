@@ -530,6 +530,12 @@ func _spawn_brood(n: String, pos: Vector2) -> void:
 	if e != null and NoiseMgr.is_server():
 		_brood.append(e)                  # listę czyści tylko serwer (_tick_brood) — u klientów rosłaby bez końca
 
+## Serwer: dołączający w trakcie walki dostaje żywe potomstwo (bez tego RPC-e Trzosków `BroodN` trafiały u niego w próżnię).
+func send_brood_to(peer_id: int) -> void:
+	for b in _brood:
+		if is_instance_valid(b) and b.alive:
+			_spawn_brood.rpc_id(peer_id, String(b.name), b.global_position)
+
 @rpc("authority", "call_local", "reliable")
 func _clear_brood() -> void:
 	_clear_summoned("Brood")

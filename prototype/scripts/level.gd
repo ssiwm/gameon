@@ -458,6 +458,8 @@ func vein_entry(i := 0) -> Vector2:
 
 ## Otwór bramy z korzeni [px].
 func vein_gate_rect() -> Rect2:
+	if vein_arena.is_empty():
+		return Rect2()
 	var g: Array = vein_arena["gate"]
 	return Rect2(float(g[0]) * TILE, float(g[1]) * TILE, TILE, float(int(g[2]) - int(g[1]) + 1) * TILE)
 

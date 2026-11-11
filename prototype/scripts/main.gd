@@ -645,8 +645,27 @@ func _battery_net_step() -> void:
 ## Test sieci hali Żyły (--veinnet=N, tools/test_net_session.sh, VEIN_PLAN.md E1; mapa z1_m3). Host po N s niszczy gniazda, staje
 ## w przedsionku, po 1 s wchodzi do hali (Żyła się budzi) i po ARENA_GATE_DELAY + 1 s wypisuje stan bramy i to, czy klient (został
 ## w przedsionku) jest już w hali. Klient po N s wypisuje bramę, kolizję w otworze, stan Żyły, swoje położenie i kamerę areny.
+## --veinnet: własna postać (autorytet tego peera) nietykalna przez cały test — bez tego Żyła kładzie stojących bezczynnie graczy,
+## wipe wraca do punktu kontrolnego i otwiera bramę przed pomiarem (CI wolniejsze niż lokalnie).
+func _vein_net_guard() -> void:
+	while is_inside_tree():
+		var me: Node = _players.get_node_or_null(str(multiplayer.get_unique_id())) if multiplayer.has_multiplayer_peer() else null
+		if me != null:
+			me._invuln = 1.0
+		await get_tree().create_timer(0.5).timeout
+
 func _vein_net_step() -> void:
 	if not multiplayer.is_server():
+		for _i in 150:                                # CI: krok liczy się od startu procesu, a mapa i stan walki mogą jeszcze nie dojść
+			var bw: Node = get_tree().get_first_node_in_group("boss")
+			if not level.vein_arena.is_empty() and bw != null and int(bw.state) == 1 \
+					and _players.get_node_or_null(str(multiplayer.get_unique_id())) != null:
+				break
+			await get_tree().create_timer(0.1).timeout
+		await get_tree().create_timer(2.0).timeout    # wciąganie za bramę (co ARENA_PULL_EVERY s)
+		if level.vein_arena.is_empty():
+			print("[VEIN-NET] client: brak hali Żyły na mapie %s" % level.map_id)
+			return
 		var me: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
 		var boss: Node = get_tree().get_first_node_in_group("boss")
 		var q := PhysicsPointQueryParameters2D.new()
@@ -893,6 +912,7 @@ func _handle_cmdline() -> void:
 			get_tree().create_timer(float(sa.substr("--resultnet=".length()))).timeout.connect(_result_net_step)
 		if sa.begins_with("--veinnet="):                   # test sieci: hala Żyły — brama, wciąganie i stan bossa u klienta i dołączającego
 			get_tree().create_timer(float(sa.substr("--veinnet=".length()))).timeout.connect(_vein_net_step)
+			_vein_net_guard()
 		if sa.begins_with("--chargernet="):                # test sieci: ładowarka — klient ładuje się u siebie, serwer widzi, że pracuje
 			get_tree().create_timer(float(sa.substr("--chargernet=".length()))).timeout.connect(_charger_net_step)
 		if sa.begins_with("--destructionnet="):            # test sieci: zniszczenia — rany, rozbicie, punkt kontrolny i wipe u wszystkich
@@ -1351,6 +1371,9 @@ func _mission_test() -> void:
 		n.take_bullet(n.global_position + Vector2(-10, 0), 999.0)
 	await get_tree().create_timer(0.3).timeout
 	print("[TEST] mission: faza=%s nests_left=%d q=%d->%d" % [PH[mission.phase], mission.nests_left, q_before, NoiseMgr.overcharge_charges])
+	if boss != null and kp != null and not level.vein_arena.is_empty():
+		kp.global_position = level.vein_entry(0)       # hala Żyły (VEIN_PLAN.md E1): walka rusza dopiero z wejściem człowieka
+		kp.velocity = Vector2.ZERO
 	if boss != null:
 		await get_tree().create_timer(3.5).timeout
 		var brood := level.get_children().filter(func(n: Node) -> bool: return n.name.begins_with("Brood"))
@@ -4739,6 +4762,9 @@ func _on_peer_connected(id: int) -> void:
 		level.send_collapse_to(id)                   # zawały, które już się wydarzyły w tej misji
 		level.send_walls_to(id)                      # rozbite zamurowane przejścia
 		level.send_vein_gate_to(id)                  # brama z korzeni hali Żyły (VEIN_PLAN.md §6.3)
+		for vb in get_tree().get_nodes_in_group("boss"):
+			if vb.has_method("send_brood_to"):
+				vb.send_brood_to(id)                 # potomstwo Żyły, które już chodzi po hali
 		level.send_cabinets_to(id)
 		_spawn_player(id)
 
