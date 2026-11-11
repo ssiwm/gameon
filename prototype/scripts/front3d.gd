@@ -21,6 +21,17 @@ const Building3D := preload("res://scripts/building3d.gd")
 
 const LAYER_FRONT := 256                   ## warstwa wizualna pierwszego planu (bit 9); kamera świata jej nie widzi
 const LAYER_WALL := 512                    ## ściany przekroju (`build_walls`): widzi je kamera graczy, oświetlają lampy i latarka, ale nie kontra postaci (jasny pas boku ściany w ciemności)
+## Las pierwszego planu (wpisy otwarte: sosny, kępy, podrost): jak LAYER_WALL — kamera graczy, lampy i latarka, bez kontry postaci. Uwaga z gry
+## 2026-11-11: trzy światła kontry graczy (`view3d.gd`) kładły na pniu sosny ze skanu ciągły jasny pas przez cały kadr i białą nasadę,
+## niezależnie od księżyca i lamp — drzewo wyglądało na przyklejone do ekranu. Kontrę lasu daje sam shader (`rim_k`, od strony księżyca).
+const LAYER_TREE := 1024
+## Zamglenie lasu pierwszego planu (`haze`): obraz graczy nie ma mgły świata, więc pień przed graczem był ostrzejszy i jaśniejszy niż las
+## za nim. Część koloru zastępuje ciemny kolor mgły świata (`Level3D` fog_light_color), drzewo czyta się jak sylwetka w nocnym powietrzu.
+const FOREST_HAZE := 0.4
+const HAZE_COL := Color(0.020, 0.030, 0.050)
+## Miękkość lasu pierwszego planu (`soft`): rozmycie głębi kamery nie działa w obrazie graczy (Godot wyłącza DoF w viewporcie
+## z przezroczystym tłem), więc nieostrość bliskiego planu daje shader — igliwie z rozmytej mipmapy z płynną alfą, miękki brzeg pnia.
+const FOREST_SOFT := 0.7
 const MAX_PTS := 16
 const MIN_A := 0.3                         ## krycie elementu na sylwetce postaci
 const FADE_M := 0.6                        ## m: miękki brzeg wygaszania wokół prostokąta sylwetki
@@ -79,6 +90,7 @@ const PINE_CROWN := Vector2(6.5, 8.0)       ## m nad podłożem: dół korony
 const PINE_CROWN_Q := 0.04                  ## część wierzchołków kart igliwia poniżej „dołu korony” (pojedyncze niskie kępy)
 const PINE_FAT := 1.15                      ## skala w poziomie względem pionu
 const PINE_GRAZE := 0.45                    ## |N·V|, poniżej którego karta igliwia rzednie (shader `graze`)
+const PINE_RIM := 1.2                       ## kontra księżyca na pniu ze skanu (część FOREST_RIM, tylko na łuskach kory: `rim_ridge`)
 const PINE_ALB := 0.45                      ## jasność atlasu igliwia (jak karty runa w FOREST_ALB)
 const BARK_TILE := 1.3                     ## m kory na jedno powtórzenie tekstury
 const SHRUB_MODELS := ["ph_shrub_a", "ph_shrub_b", "ph_shrub_c", "ph_shrub_d"]
@@ -308,6 +320,11 @@ uniform float sway = 0.0;                  // karty: kołysanie [m] — wierzch 
 uniform vec2 sway_uv = vec2(0.0, 1.0);     // waga kołysania z UV: (u, 1 − v)
 uniform float sway_h = 0.0;                // > 0: waga kołysania z wysokości nad podłożem (`ywin.x`) zamiast z UV [m do pełnego wychylenia] — modele roślin
 uniform float rim_k = 0.0;                 // kontra księżyca (las): obrys krawędzi zwróconej ku księżycowi; 0 = brak
+uniform bool rim_ridge = false;            // kontra tylko na wypukłościach kory także bez `bark_bump` (pień ze skanu z mapą normalnych)
+uniform float haze = 0.0;                  // las: część koloru zastąpiona ciemną mgłą nocy (`FOREST_HAZE`); 0 = brak
+uniform vec3 haze_col : source_color = vec3(0.020, 0.030, 0.050);
+uniform float soft = 0.0;                  // las: miękki bliski plan zamiast rozmycia kamery (`FOREST_SOFT`) — karty z rozmytej mipmapy
+                                           // z płynną alfą, krawędź bryły widziana z boku przechodzi w przezroczystość; 0 = ostro
 uniform float trans_k = 0.0;               // karty lasu: prześwit księżyca przez igliwie i liście
 uniform vec3 rim_col : source_color = vec3(0.62, 0.72, 0.95);
 uniform vec3 moon_dir = vec3(0.34, 0.215, -0.915);   // `Level3D.MOON_DIR`: za lasem, po prawej, nisko
@@ -375,8 +392,14 @@ void fragment() {
 	}
 	vec2 uv = UV;
 	vec2 guv = UV;
-	if (cutout && texture(albedo_tex, uv).a < 0.42) { discard; }
-	if (graze > 0.0 && texture(albedo_tex, uv).a * smoothstep(0.06, graze, abs(dot(normalize(wnrm), normalize(cam - wpos)))) < 0.42) { discard; }
+	float lod_b = soft * 2.5;
+	float ca = 1.0;                                // alfa karty po odcięciu (przy `soft` płynna zamiast progu)
+	if (cutout) {
+		float ta = texture(albedo_tex, uv, lod_b).a;
+		if (graze > 0.0) { ta *= smoothstep(0.06, graze, abs(dot(normalize(wnrm), normalize(cam - wpos)))); }
+		ca = soft > 0.0 ? smoothstep(0.42 - 0.3 * soft, 0.42 + 0.15 * soft, ta) : step(0.42, ta);
+		if (ca < 0.03) { discard; }
+	}
 	if (world_uv) {
 		vec3 an = abs(normalize(wnrm));
 		vec3 p = wpos * vec3(1.0, -1.0, 1.0);
@@ -385,7 +408,7 @@ void fragment() {
 		guv = pp * 0.07;
 	}
 	if (use_tex) {
-		vec3 alb = texture(albedo_tex, uv).rgb;
+		vec3 alb = texture(albedo_tex, uv, lod_b).rgb;
 		if (grime_a > 0.0) {
 			vec4 g = texture(grime_tex, guv);
 			alb = mix(alb, g.rgb, g.a * grime_a);
@@ -431,10 +454,19 @@ void fragment() {
 		float side = smoothstep(0.1, 0.85, dot(normalize(n.xy + vec2(1e-4)), normalize(mv.xy)));
 		// prześwit niezależny od samej jasności tekstury (+0,06): ciemnozielone igliwie ma albedo liniowe ok. 0,03 i bez tego by nie świeciło
 		// kora: kontra tylko na wypukłościach (jasne łuski), w bruzdach gaśnie — zamiast gładkiej świecącej linii wzdłuż pnia
-		float ridge = bark_bump > 0.0 ? mix(0.15, 1.7, smoothstep(0.03, 0.35, dot(ALBEDO / max(alb_k, 0.01), vec3(0.3, 0.59, 0.11)))) : 1.0;
+		float ridge = (bark_bump > 0.0 || rim_ridge) ? mix(0.15, 1.7, smoothstep(0.03, 0.35, dot(ALBEDO / max(alb_k, 0.01), vec3(0.3, 0.59, 0.11)))) : 1.0;
 		EMISSION += rim_col * moon * (rim_k * fr * side * ridge + trans_k * (ALBEDO + vec3(0.06)));
 	}
-	ALPHA = a * vmask;
+	if (haze > 0.0) {
+		// mgła nocy jak w obrazie świata (pierwszy plan rysuje kamera graczy, bez mgły): światło na bryle słabnie, a w miejsce ubytku
+		// wchodzi stały, ciemny kolor mgły — drzewo nie jest czarniejsze ani ostrzejsze od lasu za nim
+		ALBEDO *= 1.0 - haze;
+		EMISSION = EMISSION * (1.0 - haze) + haze_col * haze;
+	}
+	if (soft > 0.0 && !cutout) {
+		a *= mix(1.0, smoothstep(0.0, 0.45, abs(dot(normalize(NORMAL), VIEW))), soft);   // pień: brzeg sylwetki miękki, środek pełny
+	}
+	ALPHA = a * ca * vmask;
 }
 """
 
@@ -1130,7 +1162,9 @@ static func _model_mat(name: String, si: int, src: Material, leaf: bool) -> Stri
 			m.set_shader_parameter("alb_k", PINE_ALB)
 			m.set_shader_parameter("trans_k", FOREST_TRANS * 0.5)
 	else:
-		m.set_shader_parameter("rim_k", FOREST_RIM * 0.7)
+		# pień ze skanu: kontra tylko na łuskach kory i słabsza — 0,7 FOREST_RIM dawało ciągły jasny pas przez cały kadr (uwaga z gry 2026-11-11)
+		m.set_shader_parameter("rim_k", FOREST_RIM * PINE_RIM)
+		m.set_shader_parameter("rim_ridge", true)
 	_mats[key] = m
 	_moon_mats.append(m)
 	return key
@@ -1247,7 +1281,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 		var keys: Array = res[1]
 		for si in keys.size():
 			mi.set_surface_override_material(si, mats[keys[si]])
-		mi.layers = LAYER_FRONT
+		mi.layers = LAYER_TREE if open else LAYER_FRONT
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 		mi.position = Vector3(float(it["x"]), 0.0, float(it["z"]))
@@ -1287,6 +1321,9 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 	for m: ShaderMaterial in _moon_mats:                  # pnie i kępy lasu gasną z kolumną podłoża pod nimi
 		m.set_shader_parameter("gmask", gmask_tex())
 		m.set_shader_parameter("gmask_t", Level3D.T)
+		m.set_shader_parameter("haze", 0.0 if "--nohaze" in OS.get_cmdline_user_args() else FOREST_HAZE)
+		m.set_shader_parameter("haze_col", HAZE_COL)
+		m.set_shader_parameter("soft", 0.0 if "--nofrontsoft" in OS.get_cmdline_user_args() else FOREST_SOFT)
 	_build_ground(parent, rows, merge)
 	_build_floors(parent, front, rows)
 	return items.size()

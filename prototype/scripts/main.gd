@@ -3767,7 +3767,7 @@ func _finale_test() -> void:
 	# gracz „uwięziony" w obszarze zawału: ma wylądować za skałą (po stronie sali)
 	p.global_position = Vector2(237.0 * 16.0, 32.0 * 16.0)
 	p.velocity = Vector2.ZERO
-	# wróg na dnie wykopu pochylni (od 1.7.547 wykop zasypuje się do gruntu): ginie pod zawałem albo stoi poza skałą
+	# wróg na dnie wykopu pochylni (od 1.7.548 wykop zasypuje się do gruntu): ginie pod zawałem albo stoi poza skałą
 	var pit_foe := finale_foes[0] as Node2D
 	pit_foe.global_position = Vector2(248.0 * 16.0 + 8.0, 26.0 * 16.0)
 	var prepared = level._nav_after                       # graf „po zawale” policzony przy wczytaniu mapy (zawał bez przestoju)

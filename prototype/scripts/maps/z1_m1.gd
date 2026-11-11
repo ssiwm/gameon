@@ -20,7 +20,7 @@ extends RefCounted
 ## strzału), flara rzucona w bok je odciąga, zabija je tylko cios wręcz; skrzynka z flarami przy podejściu, porada „moths” w HINT_ZONES; zejście zeskokiem ze wschodniej krawędzi →
 ## kopalnia pod strażnicą (od 1.7.536, MAPS_PLAN.md §1.6 L1: blok kopalni odbity lustrzanie, kolumna = 497 − dawna): wejście nawrotem — zeskok do otwartego
 ## wykopu (kol. 244–253; pomost z desek nad nim zdjęty 2026-11-10), potem pochylnią pod gruntem na zachód; sala pod wieżą (nieśmiertelnik 5, Wołek i Trzoski
-## w ciemności: latarka pomaga, ale budzi; pod sufitem Skoczki i Ćmy; M1c: drugi Wołek tuż pod rampą i Skoczek nad wejściem do sali). Pod salą druga kondygnacja — dolna galeria (szyb serwisowy z podestami, Trzoski na dojściu z szybu do nieśmiertelnika 6, Ćmy i Skoczki; w zachodnim ślepym końcu tylko złom — wrogowie stamtąd przeszli na trasę w M1c). Ostatni nieśmiertelnik zawala rampę razem z wykopem (od 1.7.547 wykop zasypuje się do gruntu) — wyjście to szyb na zachodnim końcu sali, pod włazem z desek przy wylocie jaskini (kol. 193–197).
+## w ciemności: latarka pomaga, ale budzi; pod sufitem Skoczki i Ćmy; M1c: drugi Wołek tuż pod rampą i Skoczek nad wejściem do sali). Pod salą druga kondygnacja — dolna galeria (szyb serwisowy z podestami, Trzoski na dojściu z szybu do nieśmiertelnika 6, Ćmy i Skoczki; w zachodnim ślepym końcu tylko złom — wrogowie stamtąd przeszli na trasę w M1c). Ostatni nieśmiertelnik zawala rampę razem z wykopem (od 1.7.548 wykop zasypuje się do gruntu) — wyjście to szyb na zachodnim końcu sali, pod włazem z desek przy wylocie jaskini (kol. 193–197).
 ## Sztolnia odwadniająca (od 1.7.537, MAPS_PLAN.md §1.6 L2; wiersze 31–33, podłoga 34): druga droga powrotu z zachodniej ściany sali — pusty otwór `:`
 ## w kol. 189 (zabity deskami za sobą zatrzymuje pościg, Stalker musi go rozbić; porada „adit”), zalany odcinek z gniazdem ciem (kol. 150–175),
 ## wnęka z baterią i amunicją (137–141), komora pod niecką obozu (100–125, wiersze 27–33; skrzynia, złom) i lej z podestami co 2 kafle
@@ -62,7 +62,7 @@ const HINT_ZONES := {"ford": [14, 0, 37, 23], "camp": [80, 0, 97, 23], "moths": 
 ## dwa Trzoski w jaskini (pierwszy kontakt po wyjściu szybem), Wołek między jaskinią a obozem, trzy Trzoski na zachodnim skraju polany tuż przed wyjściem,
 ## dwa w komorze sztolni pod obozem (od 1.7.537: kto wraca pod ziemią, też ma kontakt) i dwa w starym chodniku za mijanką (od 1.7.538).
 const FINALE_SPAWNS := [["trzosek", 176, 22], ["trzosek", 180, 22], ["wolek", 145, 22], ["trzosek", 30, 22], ["trzosek", 33, 22], ["trzosek", 36, 22], ["trzosek", 104, 33], ["trzosek", 120, 33], ["trzosek", 66, 33], ["trzosek", 70, 33]]
-## Od 1.7.547 zawał zasypuje też cały wykop pochylni aż do gruntu (drugi obszar): bez niego dno wykopu, pochylnia nad zawałem i pas powierzchni
+## Od 1.7.548 zawał zasypuje też cały wykop pochylni aż do gruntu (drugi obszar): bez niego dno wykopu, pochylnia nad zawałem i pas powierzchni
 ## na wschód od wykopu były kieszenią bez wyjścia (zachodnia ściana wykopu to nawis, a pomost zdjęto 2026-11-10) — gracz, który po finale zszedł
 ## do wykopu albo w nim stał, utykał do końca misji. `--maptest` sprawdza, że po zawale z danych mapy każdy punkt ma drogę do wyjścia.
 const COLLAPSE := [[232, 25, 239, 33], [240, 23, 253, 30]]
@@ -83,7 +83,7 @@ const DIG_ZONES := [[192, 36, 201, 44, "rock", 1101, 0.3]]
 ## pod skalnym sufitem i przed strażnicą. Nad płytką kopalnią (rampa, sala, szyb wentylacyjny) las i podłoże gasną, kiedy kamera schodzi
 ## pod powierzchnię (`Front3D.SURF_FADE`).
 const FRONT := [
-	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[39, 44], [110, 115], [148, 191], [192, 198], [210, 223], [242, 255]]},   # L3: bez drzew nad włazami szybów (pień widać w przekroju); 1.7.547: ani na wykopie, który zawał zasypuje (drzewo wyrosłoby w chwili zawału)
+	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[39, 44], [110, 115], [148, 191], [192, 198], [210, 223], [242, 255]]},   # L3: bez drzew nad włazami szybów (pień widać w przekroju); 1.7.548: ani na wykopie, który zawał zasypuje (drzewo wyrosłoby w chwili zawału)
 ]
 const NICHES := [
 	{"kind": "corridor", "c0": 227, "c1": 229, "r0": 31, "r1": 33, "lit": "cage"},
