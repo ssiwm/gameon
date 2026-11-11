@@ -7,6 +7,7 @@ extends Node
 ## Misja: bez bota w drużynie; przełącznik zablokowany (zmiana tylko w lobby i kryjówce); samotny człowiek pompuje drezynę z mocą 1,5;
 ## stojący na jadącej drezynie nie tupie (idący po pokładzie tak); przy wysokiej Uwadze nie bije serce;
 ## pierwszy upadek nie kończy próby — wykrwawienie i powrót na start z 1 HP; drugi upadek w tej samej próbie = wipe.
+## Układ „Drabina” 1.2 (MAPS_PLAN.md §4, D1): stopień nad torem, odrodzenie przy generatorze i przy drezynie, zawał podestu po nadawaniu, restart.
 ## Kryjówka: włączenie towarzysza dodaje bota od razu, wyłączenie go usuwa. Wynik: linie [NOBOT-TEST] i kod wyjścia.
 
 var main: Node2D
@@ -35,6 +36,7 @@ func run(m: Node2D) -> void:
 		check("w misji przełącznik zablokowany (zmiana tylko w lobby i kryjówce)", not m.companion_editable())
 		await _handcar()
 		await _heart()
+		await _ladder()
 		await _falls()
 	_finish()
 
@@ -151,3 +153,78 @@ func _falls() -> void:
 	player.deliver_hit(player.hp + 3, player.global_position + Vector2(10, 0), "test", true)
 	await _frames(120)
 	check("nowa próba: znów pierwszy upadek bez wipe'u", player.dead and main.wipe_left <= 0.0)
+
+## Układ „Drabina” 1.2 (MAPS_PLAN.md §4, D1). Stojący na najniższym stopniu zejścia (32 px nad torem) nie jest pasażerem drezyny, stojący
+## na torze pod nim tak. Uruchomiony generator staje się punktem odrodzenia. Po ostatnim podest między studnią stacji a tunelem zasypuje się
+## po FINALE_DELAY s (bez flagi finału 1.1), a wykrwawiony w ewakuacji wstaje przy drezynie. Wipe przywraca podest, start i drezynę.
+func _ladder() -> void:
+	var lvl: Node = get_tree().get_first_node_in_group("level")
+	var car: Node2D = get_tree().get_first_node_in_group("handcar")
+	if lvl == null or car == null or (lvl.collapse_rects as Array).is_empty():
+		print("[NOBOT-TEST] INFO  mapa bez zawału przy nadawaniu — pomijam układ „Drabina”")
+		return
+	var frozen: Array = get_tree().get_nodes_in_group("enemies")
+	for e in frozen:
+		e.set_physics_process(false)
+		e.set_process(false)
+	var start: Vector2 = player._spawn_point
+	# stopnie w wierszu 49 nad komorami tunelu: przy studni (kol. 68–71) i pod magazynem (kol. 213–215, etap D2)
+	var car_x0: float = car.position.x
+	for sc in [69, 214]:
+		if not lvl._is_platform_cell(sc, 49):
+			continue
+		var step := Vector2(sc * 16 + 8, 49 * 16)
+		car.position.x = step.x
+		player.global_position = step + Vector2(0, -2)
+		player.velocity = Vector2.ZERO
+		await _frames(12)
+		check("Drabina: stojący na stopniu w kol. %d (y %.0f, tor %.0f) nie jest pasażerem drezyny" % [sc, player.global_position.y, car.global_position.y],
+			player.is_on_floor() and absf(player.global_position.y - step.y) < 2.0 and not car.aboard(player))
+		player.global_position = Vector2(step.x, car.global_position.y - 2.0)
+		player.velocity = Vector2.ZERO
+		await _frames(12)
+		check("Drabina: stojący na torze pod stopniem w kol. %d jest pasażerem" % sc, car.aboard(player))
+	car.position.x = car_x0
+	player.global_position = start
+	player.velocity = Vector2.ZERO
+	await _frames(3)
+	# generatory od zachodu: każdy uruchomiony to nowy punkt odrodzenia
+	var gens: Array = get_tree().get_nodes_in_group("generators")
+	gens.sort_custom(func(a: Node2D, b: Node2D) -> bool: return a.global_position.x < b.global_position.x)
+	var podest_open: bool = not lvl._is_solid(68, 38) and not lvl._is_solid(69, 40)
+	gens[0]._start()
+	await _frames(5)
+	check("Drabina: po pierwszym generatorze odrodzenie przy nim (%s)" % str(player._spawn_point),
+		player._spawn_point.distance_to((gens[0] as Node2D).global_position) < 1.0)
+	for i in range(1, gens.size()):
+		gens[i]._start()
+	await _frames(5)
+	var mission: Node = main.mission
+	check("Drabina: po ostatnim generatorze EXTRACT, drezyna zasilona, odrodzenie przy ostatnim generatorze, bez flagi finału 1.1",
+		mission.phase == mission.Phase.EXTRACT and car.enabled and not mission.finale
+		and player._spawn_point.distance_to((gens[gens.size() - 1] as Node2D).global_position) < 1.0)
+	check("Drabina: tuż po nadawaniu podest jeszcze wolny", podest_open and not lvl._is_solid(68, 38))
+	await get_tree().create_timer(float(mission.FINALE_DELAY) + 0.5).timeout
+	check("Drabina: po %.1f s podest pod studnią zasypany (do wyjścia tylko torem)" % float(mission.FINALE_DELAY), lvl._is_solid(68, 38) and lvl._is_solid(69, 40))
+	for e in get_tree().get_nodes_in_group("enemies"):    # Stalker obudzony przez nadawanie i grupy finału
+		e.set_physics_process(false)
+		e.set_process(false)
+	# wykrwawienie w ewakuacji: wstaje przy drezynie, nie przy generatorze ani na starcie
+	player.global_position = (gens[0] as Node2D).global_position
+	player.velocity = Vector2.ZERO
+	await _frames(3)
+	player.deliver_hit(player.hp + 3, player.global_position + Vector2(10, 0), "test", true)
+	await _frames(30)
+	player.bleed_left = 0.05
+	await _frames(10)
+	check("Drabina: wykrwawiony w ewakuacji wstaje przy drezynie (dx %.0f, dy %.0f)" % [player.global_position.x - car.global_position.x, player.global_position.y - car.global_position.y],
+		not player.dead and absf(player.global_position.x - car.global_position.x) <= 30.0 and absf(player.global_position.y - car.global_position.y) <= 4.0)
+	await main._restart_mission(false)
+	await _frames(10)
+	check("Drabina: restart przywraca podest, start i drezynę bez zasilania",
+		not lvl._is_solid(68, 38) and not lvl._is_solid(69, 40) and player._spawn_point.distance_to(start) < 1.0 and not car.enabled)
+	for e in frozen:
+		if is_instance_valid(e):
+			e.set_physics_process(true)
+			e.set_process(true)
+	await get_tree().create_timer(1.6).timeout             # nietykalność po restarcie

@@ -2293,6 +2293,27 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		Input.action_press("move_right")                      # --shotrun: gracz 1 biegnie w prawo przez cały podgląd (ocena animacji biegu)
 	if "--shotcrouch" in OS.get_cmdline_user_args():
 		Input.action_press("crouch")                          # --shotcrouch: gracz 1 skrada się przez cały podgląd
+	for pa in OS.get_cmdline_user_args():
+		if pa == "--shotpush" or pa == "--shotpush=back":     # dev: gracz 1 przy najbliższej skrzyni i pcha ją w prawo (=back: plecami, celuje w lewo)
+			var pp: Node2D = _players.get_node_or_null("1")
+			var best: Node2D = null
+			var props := get_tree().get_nodes_in_group("props")
+			for pr in props:
+				if pp == null or String(pr.get("kind")) != "crate" or bool(pr.get("exploded")):
+					continue
+				var free := true                                  # skrzynia z wolnym miejscem po prawej (nie zaparta o sąsiednią)
+				for o in props:
+					if o != pr and absf(o.global_position.y - pr.global_position.y) < 16.0 and o.global_position.x > pr.global_position.x 							and o.global_position.x - pr.global_position.x < 60.0:
+						free = false
+				if free and (best == null or pr.global_position.distance_to(pp.global_position) < best.global_position.distance_to(pp.global_position)):
+					best = pr
+			if pp != null and best != null:
+				pp.global_position = best.global_position + Vector2(-14.0, -1.0)
+				pp.velocity = Vector2.ZERO
+				Input.action_press("move_right")
+				Input.action_press("aim_left" if pa.ends_with("=back") else "aim_right")
+				get_tree().create_timer(maxf(0.5, delay - 0.05)).timeout.connect(func() -> void:
+					print("[SHOT] pchanie: push_state=%d anim=%s" % [pp.push_state, pp._char_anim()[0]]))
 	for fa in OS.get_cmdline_user_args():
 		if fa.begins_with("--shotfit="):                       # dev: --shotfit=id,id… — drużyna ma te części, gracz je montuje (podgląd modelu z częściami, parts.gd)
 			for pid in fa.substr("--shotfit=".length()).split(","):
