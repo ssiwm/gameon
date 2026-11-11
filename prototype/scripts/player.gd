@@ -100,6 +100,13 @@ const BATTERY_TAKE_BELOW := 0.9
 ## przejściu progu właściciel słyszy cichy klik — bez patrzenia na HUD wiadomo, że czas szukać baterii. Widzą to wszyscy (z `bat_pct`).
 const BATTERY_LOW := 0.2
 const BATTERY_FLICKER_EVERY := 3.5
+## Żarówka latarki na baterię 4,5 V (1.7.549): ciepłe światło żarnika, nie biel diody. Z baterią słabnącą poniżej BULB_SAG_FROM
+## spada napięcie — żarnik czerwienieje i świeci słabiej (do BULB_SAG_DIM przy pustej), jeszcze przed mruganiem poniżej BATTERY_LOW.
+const BULB_COL := Color(1.0, 0.83, 0.60)
+const BULB_COL_LOW := Color(1.0, 0.62, 0.34)
+const BULB_SAG_FROM := 0.5
+const BULB_SAG_DIM := 0.65
+const BULB_COL_OLD := Color(1.0, 0.96, 0.84)    ## dev `--oldtorch`: dawna kremowa biel
 const LIGHT_NOISE_EVERY := 10.0   ## +1 Uwagi co tyle sekund świecenia
 ## Ćmy na szkle latarki (enemy_moth.gd, rój od 1.7.442): każda skraca i przyciemnia snop i szybciej drenuje baterię. Liczone na każdym peerze
 ## z replikowanych pozycji ćm i ich `_sp`, bez osobnego RPC — właściciel liczy z tego baterię, wszyscy widzą przygaszony snop.
@@ -173,6 +180,7 @@ var _clean_hp := 0
 var _wade_surface := ""               ## powierzchnia pod stopami w poprzedniej klatce (zużycie broni przy wejściu w wodę / błoto)
 var _climb_rot := 0.0                 ## lokalnie: o ile (rad) podrzut obrócił aim_dir w tej klatce — cofany przed wyborem kierunku w następnej
 var mouse_aim := false                ## lokalnie: tryb celowania myszą (włącza go mysz, wyłącza spust z klawiatury i pad — `aim_mode_after`)
+var shot_aim_lock := false            ## dev (`--shottorch`): mysz nie przejmuje celowania — zrzuty snopu powtarzalne niezależnie od kursora
 const MOUSE_AIM_MOVE := 3.0           ## px ruchu myszy w jednym zdarzeniu, od których mysz przejmuje celowanie (drżenie ręki nie przełącza)
 const MOUSE_AIM_MIN := 6.0            ## px: kursor bliżej dłoni nie zmienia kierunku
 var _crouch_latched := false          ## ustawienie „Crouch: TOGGLE": skradanie włączone do kolejnego naciśnięcia
@@ -194,6 +202,7 @@ var battery := BATTERY_MAX
 var bat_pct := 100
 var moth_cover := 0               ## ćmy na latarce (patrz MOTH_COVER_*)
 var beam_mult := 1.0              ## zasięg snopu latarki jako ułamek pełnego (Lights.flashlight_on, widok 3D)
+var _old_torch := false           ## dev `--oldtorch`: dawny kolor latarki, bez słabnięcia żarówki
 var _moth_cover_t := 0.0
 
 var _run_noise_tick := 0.0
@@ -276,6 +285,7 @@ func _enter_tree() -> void:
 		set_multiplayer_authority(player_id)
 
 func _ready() -> void:
+	_old_torch = "--oldtorch" in OS.get_cmdline_user_args()
 	add_to_group("players")
 	_spawn_point = position
 	_setup_lights()
@@ -290,7 +300,7 @@ func _setup_lights() -> void:
 	_aura = Lights.make_light(Lights.radial(), Lights.BASE_M, Color(1.0, 0.9, 0.78), Lights.AURA_ENERGY, true)
 	_aura.position = chest
 	add_child(_aura)
-	_beam = Lights.make_light(Lights.cone(), Lights.FLASHLIGHT_M, Color(1.0, 0.96, 0.84), 0.85, true)
+	_beam = Lights.make_light(Lights.cone(), Lights.FLASHLIGHT_M, BULB_COL_OLD if _old_torch else BULB_COL, 0.85, true)
 	_beam.position = chest
 	_beam.enabled = false
 	add_child(_beam)
@@ -763,7 +773,9 @@ func _update_lights() -> void:
 		# lekkie drżenie snopu — latarka w ręku, nie reflektor; ćmy na szkle przygaszają i skracają snop i rzucają drgające cienie
 		_update_moth_cover()
 		var flick := 0.04 * sin(Time.get_ticks_msec() * 0.023) + (0.07 * float(moth_cover) * sin(Time.get_ticks_msec() * 0.09) if moth_cover > 0 else 0.0)
-		_beam.energy = (0.85 + flick) * fl * beam_mult * low_battery_dim(float(Time.get_ticks_msec()) * 0.001)
+		var sag := 0.0 if _old_torch else bulb_sag(battery_level())
+		_beam.color = (BULB_COL_OLD if _old_torch else BULB_COL.lerp(BULB_COL_LOW, sag))
+		_beam.energy = (0.85 + flick) * fl * beam_mult * low_battery_dim(float(Time.get_ticks_msec()) * 0.001) * lerpf(1.0, BULB_SAG_DIM, sag)
 		_beam.range_px = Lights.FLASHLIGHT_M * Lights.PX_PER_M * beam_mult
 	elif moth_cover > 0:
 		moth_cover = 0
@@ -815,6 +827,10 @@ func low_battery_dim(t: float) -> float:
 	if ph < 0.12 or (ph > 0.22 and ph < 0.3):
 		return 0.3
 	return 1.0
+
+## Spadek napięcia żarówki 0..1 przy poziomie baterii `level` (0..1): 0 od BULB_SAG_FROM w górę, 1 przy pustej.
+static func bulb_sag(level: float) -> float:
+	return 1.0 - smoothstep(0.0, BULB_SAG_FROM, level)
 
 ## Procent baterii u właściciela (zaokrąglony w górę: 1 s świecenia to jeszcze nie 0%).
 func battery_pct() -> int:
@@ -2425,7 +2441,7 @@ static func aim_mode_after(mouse: bool, event: InputEvent) -> bool:
 func _input(event: InputEvent) -> void:
 	if is_bot or not is_multiplayer_authority():
 		return
-	mouse_aim = aim_mode_after(mouse_aim, event)
+	mouse_aim = aim_mode_after(mouse_aim, event) and not shot_aim_lock
 	if _throw_armed and event is InputEventKey and event.is_pressed() and not event.is_echo() and not event.is_action("throw"):
 		_throw_armed = false                 # Alt+Tab / Alt+Enter / Alt+F4: skrót, nie rzut
 

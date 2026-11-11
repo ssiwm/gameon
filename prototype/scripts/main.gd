@@ -2669,6 +2669,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if tp != null:
 			tp.set("flashlight", true)
 			tp.set("battery", 999.0)
+			tp.set("shot_aim_lock", true)
+			tp.set("mouse_aim", false)
 			if tp.get("aim_dir") != null and "--shotaimup" in OS.get_cmdline_user_args():
 				tp.set("aim_dir", Vector2(0.8, -0.6))
 			elif tp.get("aim_dir") != null and "--shotaimleft" in OS.get_cmdline_user_args():
