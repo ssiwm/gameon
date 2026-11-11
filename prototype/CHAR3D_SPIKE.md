@@ -106,6 +106,7 @@ na wierzchu klipu.
 | `crouch` | `Crouch_Idle_Loop` | zegar postaci | 0,35 | `drop` 0,05 m |
 | `crouch_walk` | `Crouch_Fwd_Loop` | faza kroku | 0,5 | `drop` 0,06 m |
 | `revive` | `Fixing_Kneeling` | czas od wejścia w stan (`hold`) | 1 | `arms` — ręce z klipu, broń schowana |
+| `push` | `Push_Loop` | faza kroku (`PUSH_CYCLES` 1,5 cyklu/s przy prędkości skrzyni; napór bez ruchu dochodzi do rozkroku `PUSH_HOLD_PHASE` i stoi) | 1 | `arms` — broń schowana, dłonie IK-iem płasko na ścianie skrzyni (`_pose_push_hands`); od 1.7.542 |
 | upadek (`down`) | `Death01` | postęp upadku (`scrub` 0,15–1,65 s) | 1 | `drop` −0,05 m |
 | wstawanie (`getup`) | `LayToIdle` (druga paczka, `art_src/animations/ual2/`) | postęp wstawania (`scrub` 0,1–1,5 s) | 1 | — |
 

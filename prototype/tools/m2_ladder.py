@@ -47,7 +47,7 @@ if "C" in parts:
     plat(213, 216, 42); plat(213, 216, 44); plat(212, 215, 46); plat(209, 212, 48); plat(213, 215, 49)   # skok w górę wymaga wolnych 2 kafli nad celem: stopnie w. 42 i 44 pod włazem; stemple w kol. 208 i 216 zostają
     # Stopień w w. 49 (32 px nad torem) mieści się w handcar.aboard() (do 40 px nad pokładem) — stojący na nim jechałby z drezyną.
     # Wyżej się nie da: bez w. 49 graf nie wchodzi z toru na schody (sprawdzone w v2). Poprawka w kodzie: handcar.aboard() (MAPS_PLAN.md §4, zasada 4).
-    move('J', 208, 50, 202, 50); move('Z', 214, 50, 207, 50)      # wiszące pod stropem komory: poza schodami; v2: Ćma w kol. 207, 10 kol. od wnęki 195-197 (zasada 4)
+    move('J', 208, 50, 202, 50, back='w'); move('Z', 214, 50, 207, 50)   # Skoczek stał na stopie stempla kol. 208 — stempel zostaje do toru      # wiszące pod stropem komory: poza schodami; v2: Ćma w kol. 207, 10 kol. od wnęki 195-197 (zasada 4)
     meta["risers"].append({"name": "C", "top": [218, 39], "bottom": [206, 50], "barrier": "+"})
 
 if "A" in parts:
@@ -74,6 +74,8 @@ if "A" in parts:
     # v2: rekwizyty Poly Haven z włazów (x=648 → kol. 40 na włazie przepustu, x=968 → kol. 60 na włazie studni)
     assert 'Vector2(648, 416)' in head and 'Vector2(968, 416)' in head
     head = head.replace('Vector2(648, 416)', 'Vector2(584, 416)', 1).replace('Vector2(968, 416)', 'Vector2(920, 416)', 1)
+    # płotki przy starcie (akcent 6, model `fence`) zdjęte na prośbę użytkownika 2026-11-10
+    head = head.replace('[Vector2(152, 416), 6], [Vector2(184, 416), 6], ', '', 1)
     move('L', 76, 50, 92, 50)            # Ślepiec dalej od studni
     move('J', 70, 50, 76, 50)
     meta["risers"].append({"name": "A", "top": [62, 25], "bottom": [66, 50], "barrier": "%"})

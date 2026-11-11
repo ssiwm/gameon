@@ -1,9 +1,10 @@
 extends SceneTree
 ## Porównanie ruchu postaci 3D: ta sama postać w trzech wersjach — pozy z kodu | klip surowy | klip z tłumieniem tułowia (char_clips.gd), z IK na wierzchu.
 ## Zapisuje klatki PNG (30 kl./s) do katalogu; film składa ffmpeg:
-##   godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch|revive|getup --out=/tmp/anim [--frames=90] [--zoom=8]
+##   godot --path prototype --script tools/shot_anim3d.gd -- --set=run|stand|crouch|revive|getup|push --out=/tmp/anim [--frames=90] [--zoom=8]
 ##   ffmpeg -y -framerate 30 -i /tmp/anim/f_%03d.png -pix_fmt yuv420p /tmp/anim/run.mp4
-## Wiersz: {char, gun, anim, aim (°), speed (px/s), back (bieg tyłem), alt + toggle (co `toggle` s zmiana anim ↔ alt), label}
+## Wiersz: {char, gun, anim, aim (°), speed (px/s), back (bieg tyłem), alt + toggle (co `toggle` s zmiana anim ↔ alt), crate (zarys skrzyni
+## 14 px przed postacią — ściana skrzyni tam, gdzie styka się z nią hitbox gracza), label}. Anim „push_strain” = „push” z naporem na stojącą skrzynię.
 const Char3D := preload("res://scripts/char3d.gd")
 const DT := 1.0 / 60.0
 const MODES := ["KOD", "KLIP surowy", "KLIP + IK"]
@@ -31,6 +32,12 @@ const SETS := {
 		{"char": "female_medic", "gun": "p64", "anim": "revive", "aim": 30, "label": "inny model"},
 		{"char": "male_hazmat", "gun": "srut8", "anim": "idle", "alt": "revive", "toggle": 1.2, "aim": 0, "label": "postój / reanimacja"},
 		{"char": "female_scav", "gun": "lr7", "anim": "run", "alt": "revive", "toggle": 1.2, "aim": 0, "label": "bieg / reanimacja"},
+	],
+	"push": [
+		{"char": "male_scav", "gun": "m83", "anim": "push", "aim": 0, "speed": 45.0, "crate": true, "label": "pchanie skrzyni, karabin"},
+		{"char": "female_medic", "gun": "p64", "anim": "push_strain", "aim": 0, "crate": true, "label": "napór na stojącą skrzynię"},
+		{"char": "male_hazmat", "gun": "srut8", "anim": "push", "alt": "push_strain", "toggle": 1.2, "aim": 0, "speed": 45.0, "crate": true, "label": "pcha / skrzynia staje"},
+		{"char": "female_scav", "gun": "lr7", "anim": "run", "aim": 0, "back": true, "speed": 45.0, "label": "pchanie plecami (chód tyłem w tempie skrzyni)"},
 	],
 	"getup": [
 		{"char": "male_scav", "gun": "m83", "anim": "down", "alt": "idle", "toggle": 1.8, "aim": 0, "label": "upadek i wstawanie"},
@@ -73,6 +80,13 @@ func _initialize() -> void:
 		ground.position = cell + Vector2(10.0, 312.0)
 		ground.size = Vector2(620.0, 2.0)
 		root.add_child(ground)
+		if bool(cfg.get("crate", false)):
+			for k in MODES.size():
+				var crate := ColorRect.new()                      # skrzynia 14 px: ściana 5 px przed środkiem postaci (pół szerokości hitboxu)
+				crate.color = Color(0.42, 0.3, 0.18, 0.55)
+				crate.position = cell + Vector2(105.0 + 210.0 * k + 5.0 * zoom, 312.0 - 14.0 * zoom)
+				crate.size = Vector2(14.0 * zoom, 14.0 * zoom)
+				root.add_child(crate)
 		var title := Label.new()
 		title.text = cfg["label"]
 		title.position = cell + Vector2(14.0, 338.0)
@@ -106,8 +120,12 @@ func _process(_d: float) -> bool:
 		var anim := String(cfg["anim"])
 		if tg > 0.0 and int(t / tg) % 2 == 1:
 			anim = String(cfg["alt"])
-		var moving := anim == "run" or anim == "crouch_walk"
-		var speed := (float(cfg.get("speed", 95.0)) if anim == "crouch_walk" else 95.0) if moving else 0.0
+		var strain := anim == "push_strain"
+		c.push_strain = strain
+		if strain:
+			anim = "push"
+		var moving := anim == "run" or anim == "crouch_walk" or (anim == "push" and not strain)
+		var speed := float(cfg.get("speed", 45.0 if anim == "crouch_walk" else 95.0)) if moving else 0.0
 		c.back_run = bool(cfg.get("back", false)) and moving
 		c.update(DT, anim, 1.0, Vector2(cos(a), -sin(a)), speed, anim != "down")
 	if _tick > 20 and _tick % 2 == 0:

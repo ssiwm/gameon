@@ -337,13 +337,30 @@ func _on_generator_started(_gen: Node) -> void:
 	_log_objective("generator", goal_total - goal_left, goal_total, _last_generator_pos(_gen))
 	print("[MISSION] generator started, left=%d/%d peak=%.0f" % [goal_left, goal_total, peak_noise])
 	_event.rpc("generator")
+	if _gen is Node2D:
+		for p in get_tree().get_nodes_in_group("players"):
+			if not p.is_queued_for_deletion():
+				p.deliver_spawn((_gen as Node2D).global_position)    # wykrwawienie odradza przy ostatnim uruchomionym generatorze (MAPS_PLAN.md §4, zasada 3)
 	if goal_left == 0 and phase == Phase.OBJECTIVE:
 		peak_noise = maxf(peak_noise, NoiseMgr.level)
 		var src := _last_generator_pos(_gen)
 		_open_extraction()
 		NoiseMgr.script_spike(BROADCAST_NOISE, src)
 		_event.rpc("broadcast")
+		_start_broadcast_collapse()
 	_broadcast()
+
+## Misja 1.2 (MAPS_PLAN.md §4, zasada 1): po nadawaniu zasypuje się podest między studnią stacji a tunelem drezyny (`COLLAPSE` mapy),
+## żeby do wyjścia prowadził tylko tor — inaczej drużyna wracałaby pieszo wyczyszczoną powierzchnią i drezyna przestałaby być finałem.
+## Ten sam zegar co zawał finału 1.1 (`_tick_finale`), ale bez flagi `finale`: radio patrolu, pył ze stropów i flara wyjścia należą do 1.1.
+func _start_broadcast_collapse() -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or lvl.collapse_rects.is_empty():
+		return
+	_finale_t = FINALE_DELAY
+	lvl.spawn_finale()
+	_event.rpc("rumble")
+	print("[MISSION] broadcast: collapse in %.1fs" % FINALE_DELAY)
 
 func _last_generator_pos(gen: Node) -> Vector2:
 	return (gen as Node2D).global_position if gen is Node2D else exit_pos
