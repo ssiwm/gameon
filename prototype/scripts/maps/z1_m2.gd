@@ -9,11 +9,11 @@ extends RefCounted
 ## podziemną halą (generator 2, Wołek, Ślepiec, dom Stalkera, dwa szyby) → pompownia o dwóch kondygnacjach
 ## (generator 3 na piętrze, Rzeźnik i dwie beczki na parterze — ELITE_PLACEMENT_PLAN.md E2) → maszt z pomostem (generator 4). Po nadawaniu: szyb przy maszcie →
 ## głęboki tunel (wiersze 44-51) → DREZYNA (znacznik D) jedzie torem na zachód do wyjścia E (pompuj [E] na pokładzie).
-## Układ „Drabina” (MAPS_PLAN.md §4, D1 od 1.7.540): cicha droga pod dziedzińcem — właz z desek `-` przed watahą (kol. 39–42), niski przepust
+## Układ „Drabina” (MAPS_PLAN.md §4, D1 od 1.7.543): cicha droga pod dziedzińcem — właz z desek `-` przed watahą (kol. 39–42), niski przepust
 ## (wiersze 28–29, 64 px pod watahą: tylko na kucaka, bo `wake_near` liczy odległość przez ziemię; porada „culvert”) i studnia stacji z podestami
 ## (kol. 60–65) wychodząca włazem przy drzwiach hali. Z dna studni deski `%` (66, 38) na podest nad komorą tunelu (kol. 67–70) i stopnie do toru.
 ## Po nadawaniu podest zasypuje się (`COLLAPSE`, mission._start_broadcast_collapse): do wyjścia prowadzi już tylko tor, drezyna zostaje finałem.
-## D2 (od 1.7.541): w podłodze magazynu hali za kratką `+` metalowy właz `=` (kol. 215–216, w. 40) i stopnie (w. 42–49) do toru przy kol. 206 — nie zasypuje się.
+## D2 (od 1.7.544): w podłodze magazynu hali za kratką `+` metalowy właz `=` (kol. 215–216, w. 40) i stopnie (w. 42–49) do toru przy kol. 206 — nie zasypuje się.
 ## Mapa jest generowana programem pomocniczym (zejścia: `tools/m2_ladder.py`) — po zmianach uruchom `--maptest`.
 
 const Weapons := preload("res://scripts/weapons.gd")
