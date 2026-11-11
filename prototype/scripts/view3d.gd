@@ -69,6 +69,25 @@ const PICKUP_GLOW_Z := 0.05
 const PICKUP_GLOW_RANGE := Vector2(1.2, 4.0)
 const AURA_WORLD := 1.0                    ## mnożnik energii aury gracza dla terenu (zwykłe światło omni: 4)
 const AURA_ACTOR := 0.55                    ## mnożnik energii aury gracza dla modeli graczy
+## Aura na modelu gracza świeci jak światło odbite od plamy na ziemi (uwaga z gry 2026-11-11: postać „naklejona”, równo i płasko jasna
+## od butów po głowę, jaśniejsza niż plama pod nią): źródło nisko przy stopach i trochę ku kamerze, krótki zasięg — nogi jaśniej, głowa ciemniej.
+const AURA_ACTOR_POS := Vector2(0.15, 0.55)   ## m: wysokość nad stopami i wysunięcie ku kamerze źródła aury dla modeli
+const AURA_ACTOR_RANGE := 2.4                ## m: zasięg aury dla modeli (głowa ~1,8 m od źródła dostaje mało)
+const AURA_ACTOR_ATT := 1.4                  ## spadek z odległością (OmniLight3D.omni_attenuation)
+const AURA_BOUNCE := Color(0.80, 0.60, 0.42)  ## kolor odbicia od gruntu (ziemia, drewno), domieszany do koloru aury
+const AURA_BOUNCE_K := 0.4
+## Poświata latarki na dłoniach, broni i twarzy: słabe światło przy wylocie, tylko na modele graczy (snop świeci przed siebie, nie na trzymającego)
+const FLASH_SPILL := 0.35                   ## część energii światła latarki 2D
+const FLASH_SPILL_RANGE := 1.1              ## m
+## Kontra i otoczenie modeli graczy zależne od miejsca: pod otwartym niebem pełne (księżyc), pod dachem, skałą i w tunelu słabsze
+## i cieplejsze — wcześniej niebieski obrys księżyca świecił tak samo w tunelu pod ziemią. Przejście płynne (ACTOR_SKY_T s).
+const ACTOR_RIM_INDOOR := 0.5               ## mnożnik kontry postaci bez nieba nad głową
+const ACTOR_RIM_INDOOR_COL := Color(0.85, 0.78, 0.68)
+const ACTOR_AMB_INDOOR := 0.55              ## mnożnik otoczenia postaci bez nieba (dodatkowo głębia podziemi `depth_mult`)
+const ACTOR_SKY_T := 0.5
+## Plama styku pod stopami gracza (warstwa świata): postać stoi na gruncie, a nie wisi nad nim; gaśnie w skoku i w wodzie
+const ACTOR_CONTACT := 0.55
+const ACTOR_CONTACT_SIZE := Vector2(1.1, 0.8)
 const FOG_BEGIN_M := 2.0                    ## mgła głębi: początek za płaszczyzną gry [m]
 const FOG_END_M := 62.0                     ## mgła głębi: pełna gęstość [m za płaszczyzną gry]
 const WADE_SHOT_BLEND_M := 3.0              ## m: na tym odcinku lotu smuga pocisku brodzącego strzelca wraca z wysokości lufy modelu na tor symulacji
@@ -133,6 +152,9 @@ var _wade := {}                          ## mapa brodzenia (`Level3D.wade_map`):
 var _geo_t := 0.0
 var _cam_a: Camera3D
 var _cam_b: Camera3D
+var _actor_dl: Array = []                     ## [DirectionalLight3D, energia, kolor] — kontra postaci (`_sync_actor_light`)
+var _actor_sky := 1.0                         ## 0..1: niebo nad graczem (płynnie)
+var _flat_aura := false                       ## dev `--flatactorlight`: dawne światło postaci (aura przed postacią, kontra stała) do porównań
 var _spr_bg: Sprite2D
 var _spr_fg: Sprite2D
 var _rigs := {}                          ## Node gracza → {actor, model, gun, root}
@@ -291,6 +313,8 @@ func setup(level: Node2D, players: Node2D) -> void:
 		dl.light_volumetric_fog_energy = 0.0               # mgła wolumetryczna nie zna masek warstw — kontra postaci nie może jej rozświetlać
 		dl.layers = LAYER_WORLD | LAYER_ACTORS             # Forward+: kamera odcina też same światła maską warstw — światło musi być widoczne dla obu kamer
 		_world.add_child(dl)
+		_actor_dl.append([dl, dl.light_energy, dl.light_color])
+	_flat_aura = "--flatactorlight" in OS.get_cmdline_user_args()
 	_spr_bg = Sprite2D.new()
 	_spr_bg.name = "WorldImage"
 	_spr_bg.z_index = Z_BG
@@ -608,6 +632,7 @@ func _tick(delta: float) -> void:
 		_scan_lights()
 		tp = _tp("scan_lights", tp)
 	_sync_lights()
+	_sync_actor_light(delta)
 	_atlas_warm_sync()
 	tp = _tp("lights", tp)
 	_sway_lamps(delta)
@@ -1130,6 +1155,7 @@ func _sync_rigs() -> void:
 		actor.position = Level3D.px_to_m(p.global_position) + Vector3(0.0, -float(c3.sink_m) - float(rig["wade"]), float(rig["lift"]))
 		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS, float(rig["wade"]))
 		rig["casts"] = ShadowCasts.sync(rig["casts"])
+		_actor_contact(rig, p, actor)
 		actor.basis = Basis(Vector3.UP, float(c3.model_yaw))         # zwrot postaci: obrót z animacją (Char3D.TURN_TIME), nie odbicie lustrzane
 		c3._on_screen = true                       # poza liczymy zawsze (bez powiadomień o ekranie 2D)
 	for p in _rigs.keys():
@@ -1170,6 +1196,8 @@ func _release_rig(p) -> void:
 		if is_instance_valid(rig["wfx"]["root"]):
 			(rig["wfx"]["root"] as Node).queue_free()
 	ShadowCasts.clear(rig.get("casts", []))                       # kopie cienia nie wracają do świata Char3D
+	if rig.get("contact") != null and is_instance_valid(rig["contact"]):
+		(rig["contact"] as Node).queue_free()
 	var c3 = p.get("c3d") if is_instance_valid(p) else null
 	if c3 != null and is_instance_valid(c3):
 		var root: Node = rig["root"]
@@ -8246,7 +8274,16 @@ func _scan_lights() -> void:
 			l3.layers = LAYER_WORLD | LAYER_ACTORS
 			var l3a: Light3D = null
 			if is_cone:
-				pass                                              # reflektor oświetla i teren, i graczy (cień: `_pick_shadows`)
+				# reflektor oświetla i teren, i graczy (cień: `_pick_shadows`); latarka gracza dostaje też poświatę na samego trzymającego
+				if li.get_parent() != null and (li.get_parent() as Node).is_in_group("players"):
+					l3a = OmniLight3D.new()
+					l3a.light_cull_mask = LAYER_ACTORS
+					l3a.shadow_enabled = false
+					l3a.light_volumetric_fog_energy = 0.0
+					l3a.layers = LAYER_WORLD | LAYER_ACTORS
+					(l3a as OmniLight3D).omni_range = FLASH_SPILL_RANGE
+					(l3a as OmniLight3D).omni_attenuation = 1.6
+					_world.add_child(l3a)
 			else:
 				# światło omni jest rozdzielone na dwie warstwy: świat (z cieniami dla kilku najbliższych) i gracze (bez cieni, osobne światło) —
 				# cień światła omni w tej samej warstwie co modele graczy gubił je w warstwie z maską kamery (Compatibility)
@@ -8297,6 +8334,64 @@ func _pick_shadows() -> void:
 		if is_instance_valid(l3) and l3.shadow_enabled != want.has(id):
 			l3.shadow_enabled = want.has(id)
 
+## Kontra i otoczenie modeli graczy zależne od miejsca (niebo nad graczem tego okna, płynnie): pod niebem kontra księżyca idzie za pogodą,
+## pod dachem, skałą i w tunelu słabnie i ociepla się (ACTOR_RIM_INDOOR), otoczenie gaśnie z głębią podziemi (`depth_mult`).
+func _sync_actor_light(delta: float) -> void:
+	var focus: Node2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if is_instance_valid(p) and p.get("is_bot") == false and (p as Node).is_multiplayer_authority():
+			focus = p
+			break
+	var sky := 1.0
+	if focus != null and _level != null and _level.has_method("sky_open_at") and not _flat_aura:
+		sky = 1.0 if _level.sky_open_at(focus.global_position + Vector2(0.0, -8.0)) else 0.0
+	_actor_sky = move_toward(_actor_sky, sky, delta / ACTOR_SKY_T)
+	var moon_k := 1.0
+	var mr: DirectionalLight3D = null
+	if _geo != null:
+		mr = _geo.get_node_or_null("MoonRim") as DirectionalLight3D
+	if mr != null and not _flat_aura:
+		moon_k = clampf(mr.light_energy / Level3D.MOON_RIM, 0.3, 2.0)      # pogoda i błysk burzy (`_sync_weather`)
+	for e in _actor_dl:
+		var dl := e[0] as DirectionalLight3D
+		if is_instance_valid(dl):
+			dl.light_energy = float(e[1]) * lerpf(ACTOR_RIM_INDOOR, moon_k, _actor_sky)
+			dl.light_color = ACTOR_RIM_INDOOR_COL.lerp(e[2] as Color, _actor_sky)
+	var env := _cam_b.environment if _cam_b != null else null
+	if env != null:
+		var deep = _level.get("depth_mult") if _level != null and not _flat_aura else null
+		env.ambient_light_energy = ACTOR_AMBIENT * lerpf(ACTOR_AMB_INDOOR, 1.0, _actor_sky) * (float(deep) if deep != null else 1.0)
+
+static var _contact_shader: Shader = null
+
+## Plama styku pod stopami gracza w warstwie świata (ten sam shader co plama pod rurą przekroju, `Front3D.CONTACT_SHADER`).
+func _actor_contact(rig: Dictionary, p: Node, actor: Node3D) -> void:
+	var blob = rig.get("contact")
+	if blob == null or not is_instance_valid(blob):
+		if _contact_shader == null:
+			_contact_shader = Shader.new()
+			_contact_shader.code = Front3D.CONTACT_SHADER
+		var q := PlaneMesh.new()
+		q.size = ACTOR_CONTACT_SIZE
+		var mi := MeshInstance3D.new()
+		mi.name = "Contact_" + String(p.name)
+		mi.mesh = q
+		var m := ShaderMaterial.new()
+		m.shader = _contact_shader
+		mi.material_override = m
+		mi.layers = LAYER_WORLD
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(mi)
+		rig["contact"] = mi
+		blob = mi
+	var on_floor := p.has_method("is_on_floor") and bool(p.call("is_on_floor"))
+	var k := 0.0 if _flat_aura or not on_floor or float(rig.get("wade", 0.0)) > 0.05 else 1.0
+	var bm := (blob as MeshInstance3D).material_override as ShaderMaterial
+	var cur := float(bm.get_shader_parameter("strength")) if bm.get_shader_parameter("strength") != null else 0.0
+	bm.set_shader_parameter("strength", move_toward(cur, ACTOR_CONTACT * k, 0.12))
+	(blob as MeshInstance3D).visible = cur > 0.01 or k > 0.0
+	(blob as MeshInstance3D).position = Level3D.px_to_m((p as Node2D).global_position) + Vector3(0.0, 0.012, actor.position.z)
+
 func _sync_lights() -> void:
 	for id in _lights.keys():
 		var pair: Array = _lights[id]
@@ -8322,13 +8417,20 @@ func _sync_lights() -> void:
 			gp.y += Level3D.TRENCH_D / PX                      # latarnia drezyny zjeżdża z nią do koryta toru (jak model)
 		var lrange := clampf(rng_px * PX, PICKUP_GLOW_RANGE.x, PICKUP_GLOW_RANGE.y) if pick else clampf(rng_px * PX, 3.0, 24.0)
 		l3.light_color = li.color
-		if l3a != null and is_instance_valid(l3a):
+		if l3a != null and is_instance_valid(l3a) and not (l3 is SpotLight3D):
 			var la := l3a as OmniLight3D
 			la.visible = true
 			la.light_color = li.color
 			la.position = Level3D.px_to_m(gp) + Vector3(0.0, 0.0, lz)
 			la.light_energy = li.energy * (AURA_ACTOR if pair[3] else 4.0)
 			la.omni_range = lrange
+			la.omni_attenuation = 1.0
+			var feet_p := li.get_parent() as Node2D
+			if pair[3] and feet_p != null and not _flat_aura:
+				la.position = Level3D.px_to_m(feet_p.global_position) + Vector3(0.0, AURA_ACTOR_POS.x, AURA_ACTOR_POS.y)
+				la.light_color = li.color.lerp(AURA_BOUNCE, AURA_BOUNCE_K)
+				la.omni_range = AURA_ACTOR_RANGE
+				la.omni_attenuation = AURA_ACTOR_ATT
 		if l3 is SpotLight3D:
 			var a := li.global_rotation
 			var d := Vector3(cos(a), -sin(a), 0.0)
@@ -8346,6 +8448,12 @@ func _sync_lights() -> void:
 			l3.position = src
 			l3.basis = Basis.looking_at(d + Vector3(0.0, 0.0, -0.04), Vector3.UP)
 			l3.light_energy = li.energy * 13.0
+			if l3a != null and is_instance_valid(l3a):
+				var sp_l := l3a as OmniLight3D
+				sp_l.visible = not _flat_aura
+				sp_l.light_color = li.color
+				sp_l.position = src - d * 0.25 + Vector3(0.0, 0.0, 0.25)      # tuż za wylotem, ku kamerze: dłonie, broń, twarz
+				sp_l.light_energy = li.energy * FLASH_SPILL
 			# dolna granica 8 m skaluje się z ćmami na szkle (`beam_mult`): inaczej rój przyciemniał snop, ale go nie skracał (przy 12 ćmach 8 m zamiast ok. 1,5)
 			var min_r := 8.0 * (float(owner_p.get("beam_mult")) if owner_p != null and owner_p.get("beam_mult") != null else 1.0)
 			(l3 as SpotLight3D).spot_range = clampf(rng_px * PX * 1.35, min_r, 30.0)
