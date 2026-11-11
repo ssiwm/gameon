@@ -41,6 +41,8 @@ const CombatMotion := preload("res://art/char3d/anim/combat_motion.gd")
 static var _combat_motion: Dictionary = CombatMotion.CURVES
 
 ## Materiał modelu z paletą kolorów (look.gd, PALETTES): kolor + normalne + ORM z modelu, metaliczność 0 (bez sondy odbić czarna).
+## Zużycie stroju w shaderze palety (`grime`): mniej nasycona, ciemniejsza tkanina i błoto od butów; dev `--noactorgrime`.
+const GRIME := 0.6
 const PALETTE_SHADER := """
 shader_type spatial;
 uniform sampler2D albedo_tex : source_color, hint_default_white, filter_linear_mipmap, repeat_enable;
@@ -54,6 +56,7 @@ uniform float sat_mul = 1.0;
 uniform float val_mul = 1.0;
 uniform float damage = 0.0;               // 0..1: ilość krwi na stroju (player.gd, z zdrowia); maska w przestrzeni UV — przyklejona do ciała przy animacji
 uniform float blood_seed = 0.0;
+uniform float grime = 0.0;                // 0..1: zużycie stroju — barwna tkanina traci nasycenie i jasność, błoto od butów w górę (GRIME)
 varying float wy;                         // wysokość w świecie (m): krew gęstsza na tułowiu i ramionach niż na łydkach
 float bh(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -79,8 +82,13 @@ vec3 hsv2rgb(vec3 c) {
 	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
 	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
+varying float ly;                         // wysokość nad początkiem modelu (stopy) [m]: błoto na nogawkach
+float skin_k(vec3 h) {
+	return smoothstep(0.01, 0.03, h.x) * (1.0 - smoothstep(0.085, 0.115, h.x)) * smoothstep(0.15, 0.25, h.y) * (1.0 - smoothstep(0.65, 0.8, h.y)) * smoothstep(0.25, 0.4, h.z);
+}
 void vertex() {
 	wy = (MODEL_MATRIX * vec4(VERTEX, 1.0)).y;
+	ly = wy - MODEL_MATRIX[3].y;
 }
 void fragment() {
 	vec3 c = texture(albedo_tex, UV).rgb * albedo_mul.rgb;
@@ -98,6 +106,18 @@ void fragment() {
 		vec3 t = vec3(nh, clamp(h.y * sat_mul, 0.0, 1.0), clamp(h.z * val_mul, 0.0, 1.0));
 		c = mix(c, hsv2rgb(t), k);
 		c *= mix(1.0, val_mul, (1.0 - skin) * (1.0 - colored));
+	}
+	if (grime > 0.0) {
+		// zużycie (uwaga z gry 2026-11-11: czysty, jaskrawy kombinezon świecił w nocnej scenie jak naklejka): barwna tkanina
+		// szarzeje i ciemnieje, skóra i szarości zostają; plamy błota z szumu w UV gęstnieją ku butom
+		vec3 hg = rgb2hsv(c);
+		float cloth = 1.0 - skin_k(hg);
+		float lum = dot(c, vec3(0.3, 0.59, 0.11));
+		vec3 dull = mix(vec3(lum), c, 1.0 - 0.32 * grime) * (1.0 - 0.2 * grime);
+		c = mix(c, dull, cloth * smoothstep(0.15, 0.45, hg.y));
+		float mn = bn(UV * 13.0 + 3.0) * 0.65 + bn(UV * 41.0 + 7.0) * 0.35;
+		float mud = (1.0 - smoothstep(0.1, 0.95, ly)) * smoothstep(0.42, 0.72, mn);
+		c = mix(c, vec3(0.055, 0.045, 0.032), mud * grime * 0.75 * cloth);
 	}
 	float wet = 0.0;
 	if (damage > 0.001) {
@@ -609,6 +629,7 @@ func _prepare_materials(root: Node) -> void:
 				sm.shader = sh_cut if src.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else sh
 				sm.set_shader_parameter("albedo_tex", src.albedo_texture)
 				sm.set_shader_parameter("albedo_mul", src.albedo_color)
+				sm.set_shader_parameter("grime", 0.0 if "--noactorgrime" in OS.get_cmdline_user_args() else GRIME)
 				if src.normal_texture != null:
 					sm.set_shader_parameter("normal_tex", src.normal_texture)
 					sm.set_shader_parameter("has_normal", true)
