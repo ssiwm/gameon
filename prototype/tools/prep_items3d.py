@@ -111,6 +111,18 @@ TRIPO_MODELS = {
     "ph_nettle_b": ("../polyhaven/nettle_plant__small_a_lod0.glb", "-Y", 5.0, 3000),
     "ph_nettle_c": ("../polyhaven/nettle_plant__tall_a_lod0.glb", "-Y", 6.0, 4000),
     # sosna pierwszego planu (front3d.gd: `pine`, od 1.7.543): pine_tree_01 z igliwiem zamienionym na karty (tools/pine_cards.py), wysokość 100 jednostek
+    # las w głębi (level3d.gd: FOREST_MODELS, TRUNK_MODELS; od 1.7.543 zamiast proceduralnych sosen i świerków z kart 256 px): te same skany
+    # w wersji lekkiej (`pine_cards.py --lite`, kilka tysięcy trójkątów, atlas igliwia 1024); „świerki” to jodły fir_tree_01
+    "tree_pine_a": ("../polyhaven/pine_tree_01__a_lite.glb", "-Y", 1000.0, 20000, 100.0),
+    "tree_pine_b": ("../polyhaven/pine_tree_01__b_lite.glb", "-Y", 1000.0, 20000, 100.0),
+    "tree_pine_c": ("../polyhaven/pine_tree_01__c_lite.glb", "-Y", 1000.0, 20000, 100.0),
+    "tree_spruce_a": ("../polyhaven/fir_tree_01__a_lite.glb", "-Y", 1000.0, 20000, 100.0),
+    "tree_spruce_b": ("../polyhaven/fir_tree_01__b_lite.glb", "-Y", 1000.0, 20000, 100.0),
+    "tree_spruce_c": ("../polyhaven/fir_tree_01__c_lite.glb", "-Y", 1000.0, 20000, 100.0),
+    # podrost: młode świerki ze skanu Poly Haven `fir_sapling_medium` (pine_cards.py --src=fir_sapling_medium --lite)
+    "tree_spruce_young_a": ("../polyhaven/fir_sapling_medium__a_lite.glb", "-Y", 1000.0, 20000, 100.0),
+    "tree_spruce_young_b": ("../polyhaven/fir_sapling_medium__b_lite.glb", "-Y", 1000.0, 20000, 100.0),
+    "tree_spruce_young_c": ("../polyhaven/fir_sapling_medium__c_lite.glb", "-Y", 1000.0, 20000, 100.0),
     "ph_pine_a": ("../polyhaven/pine_tree_01__a.glb", "-Y", 1000.0, 90000, 100.0),
     "ph_pine_b": ("../polyhaven/pine_tree_01__b.glb", "-Y", 1000.0, 90000, 100.0),
     "ph_pine_c": ("../polyhaven/pine_tree_01__c.glb", "-Y", 1000.0, 90000, 100.0),
@@ -430,203 +442,6 @@ def reshape_handcar(obj):
     me.update()
 
 
-# świerki: prosty pień z korą świerka (`spruce_bark` z tools/world_forest_gen.py; do 1.7.542 martwy pień z Tripo, którego srebrzyste drewno
-# świeciło nocą w głębi lasu jak goły „badyl”) + gałęzie z igliwiem jako karty z teksturą (art/world3d/forest/bough_*.png) rozłożone
-# piętrami wokół pnia. Sam generator 3D robi z igliwia szerokie liście; igły muszą być teksturą.
-SPRUCES = {"tree_spruce_a": (11, 1.0, 0.16), "tree_spruce_b": (23, 0.72, 0.34), "tree_spruce_c": (37, 0.9, 0.06)}      # ziarno, pełność, goły dół pnia
-
-
-def build_spruce(name, seed, fullness, bare):
-    import random
-    rng = random.Random(seed)
-    trunk, me, bm, quad, tube = _tree_builder(name)
-    me.materials.append(_forest_mat("spruce_bark", False))
-    sp = _spine(rng, 100.0, rng.uniform(-0.4, 0.4), rng.uniform(-0.8, 0.8), 20)
-    tube(sp, [1.5 * (1.0 - t) ** 0.9 + 0.12 for t in [i / 19 for i in range(20)]], 9, 0, 0.0, 1.0, 1.0)
-    for _ in range(rng.randint(4, 8)):                         # krótkie suche kikuty na gołym dole pnia
-        t = rng.uniform(0.12, max(bare, 0.14) + 0.06)
-        a = rng.uniform(0, math.tau)
-        dd = Vector((math.cos(a), math.sin(a), rng.uniform(-0.3, 0.05))).normalized()
-        b = sp[min(int(t * 19), 18)]
-        tube([b, b + dd * rng.uniform(1.5, 3.5)], [0.18, 0.05], 4, 0, 0.5, 0.55)
-    # materiały igliwia
-    mats = []
-    for key in ("bough_side", "bough_top"):
-        m = bpy.data.materials.new(key)
-        m.use_nodes = True
-        nt = m.node_tree
-        bs = next(nd for nd in nt.nodes if nd.type == "BSDF_PRINCIPLED")
-        t = nt.nodes.new("ShaderNodeTexImage")
-        t.image = bpy.data.images.load(os.path.join(ROOT, "prototype", "art", "world3d", "forest", key + ".png"))
-        nt.links.new(t.outputs["Color"], bs.inputs["Base Color"])
-        nt.links.new(t.outputs["Alpha"], bs.inputs["Alpha"])
-        bs.inputs["Roughness"].default_value = 1.0
-        m.blend_method = "CLIP"
-        m.use_backface_culling = False
-        me.materials.append(m)
-        mats.append(len(me.materials) - 1)
-    V = Vector
-    tiers = 30
-    z0 = 100.0 * bare
-    for k in range(tiers):
-        t = k / (tiers - 1)
-        z = z0 + (98.0 - z0) * t
-        L = (2.0 + 16.0 * (1.0 - t) ** 0.85) * fullness + 2.0
-        n = 7 if t < 0.8 else 5
-        base_phi = rng.uniform(0, math.tau)
-        for i in range(n):
-            if rng.random() < 0.07:
-                continue                                           # przerwa po złamanej gałęzi
-            phi = base_phi + math.tau * i / n + rng.uniform(-0.25, 0.25)
-            ln = L * rng.uniform(0.75, 1.1)
-            droop = math.radians(rng.uniform(8, 22) * (1.0 - 0.6 * t))
-            r = V((math.cos(phi), math.sin(phi), 0.0))
-            tan = V((-r.y, r.x, 0.0))
-            up = V((0, 0, 1))
-            root = r * (1.2 * (1.0 - t) + 0.2) + up * (z + rng.uniform(-1.2, 1.2))
-            d = (r * math.cos(droop) - up * math.sin(droop)) * ln
-            # profil z boku: tekstura 2:1, nasada na 0,84 wysokości
-            hq = ln * 0.5
-            vdir = (up * math.cos(droop) + r * math.sin(droop)) * hq
-            quad(root - vdir * 0.84, d, vdir, mats[0])
-            # wachlarz z góry (lekko skręcony), szerokość = połowa długości
-            wv = (tan * math.cos(0.25) + up * math.sin(0.25) * rng.choice((-1, 1))) * (ln * 0.5)
-            quad(root - wv * 0.5 - up * 0.3, d, wv, mats[1])
-    for i in range(5):                                         # czubek: krótkie gałązki ku górze
-        phi = math.tau * i / 5
-        r = V((math.cos(phi), math.sin(phi), 0.0))
-        d = (r * 0.45 + V((0, 0, 1)) * 0.9) * 6.0
-        quad(V((0, 0, 96.0)) - r.cross(V((0, 0, 1))) * 1.5, d, r.cross(V((0, 0, 1))) * 3.0, mats[1])
-    bm.to_mesh(me)
-    bm.free()
-    me.update()
-    export_glb(trunk, name)
-
-
-# sosny lasu w głębi (`Level3D.build_forest`): pień proceduralny z korą z `tools/world_forest_gen.py`, korona z kart z alfą
-# nazwa → (ziarno, początek korony [część wysokości], wygięcie pnia, liczba konarów)
-PINES = {"tree_pine_a": (101, 0.66, 0.9, 11), "tree_pine_b": (113, 0.72, -1.4, 9), "tree_pine_c": (127, 0.58, 0.4, 13)}
-
-
-def _forest_mat(key, alpha):
-    m = bpy.data.materials.new(key)
-    m.use_nodes = True
-    nt = m.node_tree
-    bs = next(nd for nd in nt.nodes if nd.type == "BSDF_PRINCIPLED")
-    t = nt.nodes.new("ShaderNodeTexImage")
-    t.image = bpy.data.images.load(os.path.join(ROOT, "prototype", "art", "world3d", "forest", key + ".png"))
-    nt.links.new(t.outputs["Color"], bs.inputs["Base Color"])
-    bs.inputs["Roughness"].default_value = 1.0 if alpha else 0.9
-    bs.inputs["Metallic"].default_value = 0.0
-    if alpha:
-        nt.links.new(t.outputs["Alpha"], bs.inputs["Alpha"])
-        m.blend_method = "CLIP"
-        m.use_backface_culling = False
-    return m
-
-
-def _tree_builder(name):
-    """Pusty obiekt siatki i bmesh z warstwą UV; zwraca (obj, bm, uv, quad, tube)."""
-    import bmesh
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    me = bpy.data.meshes.new(name)
-    obj = bpy.data.objects.new(name, me)
-    bpy.context.scene.collection.objects.link(obj)
-    bm = bmesh.new()
-    uv = bm.loops.layers.uv.new()
-
-    def quad(p0, du, dv, mat, flip=False):
-        """Czworokąt z pełnym UV: p0 = róg (u = 0, v = 0), du wzdłuż u, dv wzdłuż v (flip: tekstura do góry nogami)."""
-        vv = [bm.verts.new(p0), bm.verts.new(p0 + du), bm.verts.new(p0 + du + dv), bm.verts.new(p0 + dv)]
-        f = bm.faces.new(vv)
-        f.material_index = mat
-        for lp, (a, b) in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
-            lp[uv].uv = (a, 1.0 - b) if flip else (a, b)
-
-    def tube(pts, radii, sides, mat, v0=0.0, v1=1.0, u_rep=1.0):
-        """Rura wzdłuż łamanej `pts` o promieniach `radii`; u wokół obwodu (powtórzone u_rep razy), v od v0 do v1 wzdłuż."""
-        rings = []
-        for i, p in enumerate(pts):
-            fwd = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
-            side = fwd.cross(Vector((0.0, 0.0, 1.0)) if abs(fwd.z) < 0.95 else Vector((1.0, 0.0, 0.0))).normalized()
-            up = side.cross(fwd).normalized()
-            ring = []
-            for k in range(sides + 1):                       # ostatni wierzchołek powtarza pierwszy (szew UV)
-                a = math.tau * k / sides
-                ring.append(bm.verts.new(p + (side * math.cos(a) + up * math.sin(a)) * radii[i]))
-            rings.append(ring)
-        for i in range(len(pts) - 1):
-            va = v0 + (v1 - v0) * i / (len(pts) - 1)
-            vb = v0 + (v1 - v0) * (i + 1) / (len(pts) - 1)
-            for k in range(sides):
-                f = bm.faces.new([rings[i][k], rings[i][k + 1], rings[i + 1][k + 1], rings[i + 1][k]])
-                f.material_index = mat
-                for lp, (a, b) in zip(f.loops, ((k / sides, va), ((k + 1) / sides, va), ((k + 1) / sides, vb), (k / sides, vb))):
-                    lp[uv].uv = (a * u_rep, b)
-    return obj, me, bm, quad, tube
-
-
-def _spine(rng, h, bend, lean, n):
-    """Oś pnia: lekkie S (wygięcie `bend`) i pochylenie `lean` (jednostki na całą wysokość)."""
-    ph = rng.uniform(0, math.tau)
-    return [Vector((lean * t + bend * math.sin(t * math.pi * 1.3 + ph) * 0.8, bend * 0.5 * math.sin(t * math.pi * 0.9 + ph * 0.7), h * t))
-            for t in [i / (n - 1) for i in range(n)]]
-
-
-def build_pine(name, seed, crown0, bend, arms):
-    """Sosna zwyczajna: prosty, lekko wygięty pień (kora szara u dołu, ruda u góry), kilka suchych kikutów, korona w górnej części
-    z konarów skośnie w górę i płaskich kęp igliwia (`pine_tuft`) — parasol, nie stożek świerka. Wysokość 100 jednostek, stopy w z = 0."""
-    import random
-    rng = random.Random(seed)
-    obj, me, bm, quad, tube = _tree_builder(name)
-    me.materials.append(_forest_mat("pine_bark", False))
-    me.materials.append(_forest_mat("pine_tuft", True))
-    sp = _spine(rng, 100.0, bend, rng.uniform(-1.5, 1.5), 24)
-    tube(sp, [1.55 * (1.0 - t) ** 0.75 + 0.25 for t in [i / 23 for i in range(24)]], 9, 0, 0.0, 1.0, 1.0)
-
-    def at(t):
-        i = min(int(t * 23), 22)
-        f = t * 23 - i
-        return sp[i].lerp(sp[i + 1], f)
-
-    for _ in range(rng.randint(5, 9)):                         # suche kikuty gałęzi pod koroną
-        t = rng.uniform(0.25, crown0 - 0.04)
-        a = rng.uniform(0, math.tau)
-        d = Vector((math.cos(a), math.sin(a), rng.uniform(-0.1, 0.25))).normalized()
-        b = at(t)
-        tube([b, b + d * rng.uniform(2.0, 5.0)], [0.22, 0.06], 4, 0, 0.7, 0.75)
-    for j in range(arms):                                      # konary korony
-        t = crown0 + (0.97 - crown0) * (j + rng.random()) / arms
-        a = rng.uniform(0, math.tau)
-        rise = math.radians(rng.uniform(12, 42))
-        ln = rng.uniform(10.0, 22.0) * (1.15 - 0.5 * (t - crown0) / (1.0 - crown0))
-        d = Vector((math.cos(a) * math.cos(rise), math.sin(a) * math.cos(rise), math.sin(rise)))
-        b = at(t)
-        pts = [b + d * ln * k / 4 + Vector((0, 0, -1.2 * math.sin(k / 4 * math.pi))) for k in range(5)]
-        tube(pts, [0.42, 0.32, 0.24, 0.16, 0.08], 5, 0, 0.8, 0.95)
-        side = Vector((-d.y, d.x, 0.0)).normalized()
-        fl = Vector((d.x, d.y, 0.0)).normalized()
-        spots = [pts[k] for k in (1, 2, 3, 4)]
-        for _ in range(3):                                     # dodatkowe kępy wokół końca konaru: zwarta, płaska masa zamiast kępek na patykach
-            spots.append(pts[4] - fl * rng.uniform(0.0, ln * 0.35) + side * rng.uniform(-3.5, 3.5) + Vector((0, 0, rng.uniform(-1.0, 1.5))))
-        for i, c0 in enumerate(spots):                         # płaskie kępy igliwia wzdłuż konaru i na końcu
-            c = c0 + Vector((0, 0, 0.6))
-            s = rng.uniform(9.0, 14.0) * (0.75 + 0.35 * min(i, 3) / 3)
-            tilt = Vector((0, 0, 1)) * math.sin(0.35)
-            quad(c - fl * s * 0.5 - side * s * 0.5, fl * s, side * s + tilt * s, 1)          # prawie poziomo
-            quad(c - fl * s * 0.5 - Vector((0, 0, s * 0.3)), fl * s, Vector((0, 0, s * 0.6)), 1)
-            quad(c - side * s * 0.5 - Vector((0, 0, s * 0.3)), side * s, Vector((0, 0, s * 0.6)), 1)
-    top = sp[-1]
-    for k in range(3):                                         # wierzchołek
-        a = math.tau * k / 3
-        side = Vector((math.cos(a), math.sin(a), 0.0))
-        quad(top - side * 4.5 - Vector((0, 0, 3.0)), side * 9.0, Vector((0, 0, 6.5)), 1)
-    bm.to_mesh(me)
-    bm.free()
-    me.update()
-    export_glb(obj, name)
-
-
 def _join(meshes):
     bpy.ops.object.select_all(action="DESELECT")
     for o in meshes:
@@ -718,6 +533,8 @@ def build_tripo(name, fname, cam, width_wp, faces, height_wp=None, stretch=False
                     nd.inputs["Strength"].default_value = 0.55
     for img in bpy.data.images:
         lim = 2048 if name.startswith("ph_pine") else TEX         # sosna pierwszego planu: kora 2K i atlas igliwia 2048 (kafle 680 px)
+        if name.startswith(("tree_pine", "tree_spruce")) and "needles" not in img.name:
+            lim = 512                                               # las w głębi: pień ma kilka pikseli szerokości, atlas igliwia zostaje 1024
         if img.size[0] > lim:
             img.scale(lim, lim)
     if name in ROUGH_FLOOR:
@@ -780,12 +597,6 @@ def main():
     for name, spec in TRIPO_MODELS.items():
         if want(name):
             build_tripo(name, *spec)
-    for name, spec in SPRUCES.items():
-        if want(name):
-            build_spruce(name, *spec)
-    for name, spec in PINES.items():
-        if want(name):
-            build_pine(name, *spec)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"

@@ -1,8 +1,9 @@
-"""Tekstury drzew tła widoku 3D (`Level3D.build_forest`): świerki i sosny jako karty z kanałem alfa.
+"""Tekstury lasu widoku 3D: runo i karty pierwszego planu (PIL).
 
-Wynik: prototype/art/world3d/forest/spruce_{a,b,c}.png (512×1024 RGBA, pień u dołu na środku) oraz runo:
-grass_{a,b}.png i fern_a.png (256×256, kępa od dolnej krawędzi) dla `Level3D.build_undergrowth`, roots_{a,b}.png (korzenie pod krawędzią bryły, `build_front_edge`).
-Kształt: pień + piętra opadających, postrzępionych gałęzi rysowanych igła po igle; jaśniejsze grzbiety gałęzi dają bryłę w świetle flary.
+Wynik w prototype/art/world3d/forest/: grass_{a,b}.png i fern_a.png (256×256, kępa od dolnej krawędzi) dla `Level3D.build_undergrowth`,
+roots_{a,b}.png (korzenie pod krawędzią bryły, `build_front_edge`), pine_bark.png (kora pnia proceduralnego pierwszego planu bez modeli) i
+bough_side.png (gałąź świerka, `Front3D._bough`). Karty drzew dalekiego pasa (spruce_{a,b,c}.png, pine_{a,b}.png) od 1.7.543 renderuje
+ze skanów Poly Haven `tools/pine_cards.py --far=…` — te same drzewa co modele lasu bliżej.
 
     python prototype/tools/world_forest_gen.py
 """
@@ -20,81 +21,6 @@ OUT = os.path.join(os.path.dirname(__file__), "..", "art", "world3d", "forest")
 
 def _mix(a, b, t):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
-
-
-def _trunk(d, rng, cx, base_y, top_y, r_base, r_top, col_dark, col_light, bend):
-    """Pień jako pasy poziome (zwężenie, lekkie wygięcie, jaśniejszy lewy bok)."""
-    n = 220
-    for i in range(n):
-        t = i / (n - 1)
-        y = base_y + (top_y - base_y) * t
-        r = r_base + (r_top - r_base) * t ** 0.8
-        x = cx + bend * math.sin(t * math.pi) * W * SS * 0.03
-        d.rectangle([x - r, y - 3 * SS, x + r, y + 3 * SS], fill=col_dark + (255,))
-        d.rectangle([x - r, y - 3 * SS, x - r * 0.35, y + 3 * SS], fill=_mix(col_dark, col_light, 0.5) + (255,))
-    for _ in range(140):                  # spękania kory
-        t = rng.random()
-        y = base_y + (top_y - base_y) * t
-        r = r_base + (r_top - r_base) * t ** 0.8
-        x = cx + rng.uniform(-r, r) * 0.9
-        d.line([x, y, x + rng.uniform(-2, 2) * SS, y - rng.uniform(10, 34) * SS], fill=_mix(col_dark, (0, 0, 0), 0.5) + (255,), width=SS)
-
-
-def _bough(d, rng, x0, y0, length, droop, side, col_a, col_b):
-    """Jedna gałąź: oś opadająca łukiem, wzdłuż niej kępki igieł zwisające w dół."""
-    steps = max(6, int(length / (7 * SS)))
-    px, py = x0, y0
-    for i in range(steps + 1):
-        t = i / steps
-        x = x0 + side * length * t
-        y = y0 + droop * (t ** 1.6) - length * 0.10 * math.sin(t * math.pi)
-        d.line([px, py, x, y], fill=_mix(col_a, (20, 14, 10), 0.6) + (255,), width=max(1, int((1.0 - t) * 3 * SS)))
-        tuft = (1.0 - 0.55 * t) * length * 0.36 + 8 * SS
-        for _ in range(5):
-            a = math.radians(rng.uniform(60, 120)) + side * 0.35
-            ln = tuft * rng.uniform(0.5, 1.0)
-            ex = x + math.cos(a) * ln * 0.5 * side + rng.uniform(-3, 3) * SS
-            ey = y + math.sin(a) * ln
-            c = _mix(col_a, col_b, rng.random() ** 2 * (0.25 + 0.75 * (1.0 - t)))
-            d.polygon([(x - 3 * SS, y), (x + 3 * SS, y), (ex, ey)], fill=c + (255,))
-        # jaśniejszy grzbiet (światło z góry)
-        d.line([px, py - SS, x, y - SS], fill=_mix(col_a, col_b, 0.9) + (255,), width=SS)
-        px, py = x, y
-
-
-def spruce(seed, fullness=1.0, bare_low=0.18):
-    rng = random.Random(seed)
-    im = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    cx = W * SS * 0.5
-    base_y = H * SS - 4 * SS
-    top_y = H * SS * 0.03
-    bark_d, bark_l = (26, 20, 16), (58, 48, 40)
-    need_d = (12, 26, 22)
-    need_l = (46, 78, 58)
-    _trunk(d, rng, cx, base_y, top_y + 40 * SS, 15 * SS, 2 * SS, bark_d, bark_l, rng.uniform(-1, 1))
-    tiers = rng.randint(26, 32)
-    for k in range(tiers):                # od dołu do góry: dolne gałęzie rysowane pierwsze, wyższe je przykrywają
-        t = k / (tiers - 1)
-        y = base_y - (base_y - top_y) * (bare_low + (1.0 - bare_low) * t)
-        half = W * SS * 0.46 * ((1.0 - t) ** 0.8) * fullness + 10 * SS
-        for side in (-1, 1):
-            for _ in range(2 if t < 0.85 else 1):
-                ln = half * rng.uniform(0.62, 1.0)
-                if rng.random() < 0.08 and t < 0.6:
-                    continue              # przerwa po złamanej gałęzi
-                _bough(d, rng, cx, y + rng.uniform(-10, 10) * SS, ln, ln * rng.uniform(0.30, 0.55), side, need_d, need_l)
-        # środek korony zasłania pień
-        for _ in range(10):
-            ang = rng.uniform(0, math.tau)
-            rr = half * 0.25 * rng.random()
-            x = cx + math.cos(ang) * rr
-            yy = y + math.sin(ang) * rr * 0.5
-            d.polygon([(x - 5 * SS, yy), (x + 5 * SS, yy), (x + rng.uniform(-6, 6) * SS, yy + rng.uniform(14, 40) * SS)],
-                      fill=_mix(need_d, need_l, rng.random() * 0.4) + (255,))
-    # czubek
-    d.polygon([(cx - 5 * SS, top_y + 60 * SS), (cx + 5 * SS, top_y + 60 * SS), (cx + rng.uniform(-3, 3) * SS, top_y)], fill=need_d + (255,))
-    return im.resize((W, H), Image.LANCZOS)
 
 
 def grass(seed, dry=0.3, size=256):
@@ -215,7 +141,7 @@ def _twig(d, rng, x0, y0, ang, length, depth, col_d, col_l, wood, sag=0.0):
 
 
 def bough(seed, side_view, w=512, h=256):
-    """Gałąź świerka z igliwiem dla modelu 3D drzewa (`tools/prep_items3d.py: build_spruce`). Nasada na lewej krawędzi.
+    """Gałąź świerka z igliwiem (karta pierwszego planu `Front3D._bough`). Nasada na lewej krawędzi.
     side_view: profil z boku — gałąź opada, gałązki zwisają pod nią (nasada u góry po lewej); inaczej widok z góry — wachlarz (nasada w połowie wysokości)."""
     rng = random.Random(seed)
     im = Image.new("RGBA", (w * SS, h * SS), (0, 0, 0, 0))
@@ -244,7 +170,7 @@ def bough(seed, side_view, w=512, h=256):
 
 
 def bark(seed, w=256, h=512):
-    """Kora sosny do pni modeli 3D (`prep_items3d.py: build_pine`): u = obwód (powtarzalna w poziomie), v = wysokość (dół obrazu = nasada);
+    """Kora sosny do pnia proceduralnego pierwszego planu bez modeli (`Front3D._trunk`): u = obwód (powtarzalna w poziomie), v = wysokość (dół obrazu = nasada);
     dół szarobrązowe, głęboko spękane płyty, ku górze cienka, łuszcząca się rudopomarańczowa kora (sosna zwyczajna)."""
     rng = random.Random(seed)
     Wd, Hd = w * SS, h * SS
@@ -271,107 +197,16 @@ def bark(seed, w=256, h=512):
     return out
 
 
-def spruce_bark(seed, w=256, h=512):
-    """Kora świerka do pnia modelu 3D (`prep_items3d.py: build_spruce`, od 1.7.543 zamiast martwego pnia z Tripo, którego srebrzyste
-    drewno świeciło nocą w głębi lasu): ciemna szarobrązowa, drobno łuskowata, bez rudej góry sosny; u = obwód, v = wysokość."""
-    rng = random.Random(seed)
-    Wd, Hd = w * SS, h * SS
-    im = Image.new("RGB", (Wd, Hd), (0, 0, 0))
-    d = ImageDraw.Draw(im)
-    for y in range(0, Hd, SS):
-        t = 1.0 - y / Hd
-        d.rectangle([0, y, Wd, y + SS], fill=_mix((46, 38, 32), (66, 52, 40), t))
-    for _ in range(1600):                                      # okrągłe łuski: ciemny cień pod spodem i jaśniejszy wierzch
-        x = rng.uniform(0, Wd)
-        y = rng.uniform(0, Hd)
-        r = rng.uniform(2, 5) * SS
-        d.ellipse([x - r, y - r * 0.7 + SS, x + r, y + r * 0.7 + SS], fill=(24, 19, 16))
-        d.ellipse([x - r, y - r * 0.7, x + r, y + r * 0.7], fill=_mix((58, 47, 38), (84, 68, 54), rng.random()))
-    for _ in range(140):                                       # pionowe pęknięcia
-        x = rng.uniform(0, Wd)
-        y = rng.uniform(0, Hd)
-        d.line([x, y, x + rng.uniform(-2, 2) * SS, y - rng.uniform(10, 30) * SS], fill=(22, 18, 15), width=SS)
-    return im.resize((w, h), Image.LANCZOS).convert("RGBA")
-
-
-def pine_tuft(seed, size=256):
-    """Kępa igliwia sosny do korony modelu 3D: zbite pęczki długich igieł promieniście z kilku gałązek, gęstsze w środku."""
-    rng = random.Random(seed)
-    S = size * SS
-    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    col_d, col_l, wood = (14, 30, 24), (58, 88, 60), (40, 26, 18)
-    cx, cy = S * 0.5, S * 0.55
-    for _ in range(9):                                         # gałązki od środka
-        a = rng.uniform(0, math.tau)
-        ln = S * rng.uniform(0.18, 0.42)
-        ex, ey = cx + math.cos(a) * ln, cy + math.sin(a) * ln * 0.7
-        d.line([cx, cy, ex, ey], fill=wood + (255,), width=2 * SS)
-        for k in range(10):
-            t = (k + 1) / 10
-            x, y = cx + (ex - cx) * t, cy + (ey - cy) * t
-            _needles(d, rng, x, y, a, S * rng.uniform(0.06, 0.11), col_d, col_l, 9, 1.4)
-    for _ in range(140):                                       # gęsty środek
-        a = rng.uniform(0, math.tau)
-        r = S * 0.2 * rng.random() ** 0.7
-        _needles(d, rng, cx + math.cos(a) * r, cy + math.sin(a) * r * 0.7, rng.uniform(0, math.tau), S * 0.07, col_d, col_l, 5, 3.0)
-    return im.resize((size, size), Image.LANCZOS)
-
-
-def pine_card(seed):
-    """Sosna dalekiego lasu (karta): wysoki, prawie nagi pień, rudy u góry, i płaska, nieregularna korona z kęp w górnej ćwiartce."""
-    rng = random.Random(seed)
-    im = Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    cx = W * SS * (0.5 + rng.uniform(-0.04, 0.04))
-    base_y = H * SS - 4 * SS
-    crown_y = H * SS * rng.uniform(0.24, 0.34)
-    top_y = H * SS * 0.04
-    _trunk(d, rng, cx, base_y, top_y + 30 * SS, 11 * SS, 3 * SS, (40, 32, 26), (118, 72, 44), rng.uniform(-1.6, 1.6))
-    for _ in range(rng.randint(3, 6)):                         # suche kikuty pod koroną
-        y = rng.uniform(crown_y, base_y * 0.7)
-        side = rng.choice((-1, 1))
-        d.line([cx, y, cx + side * rng.uniform(12, 34) * SS, y - rng.uniform(2, 12) * SS], fill=(36, 28, 22, 255), width=2 * SS)
-    need_d, need_l = (12, 26, 22), (46, 72, 52)
-    clumps = []
-    for _ in range(rng.randint(9, 13)):                        # konary korony i płaskie kępy wzdłuż nich (parasol, nie miotła)
-        side = rng.choice((-1, 1))
-        y0 = rng.uniform(crown_y + 40 * SS, top_y + 70 * SS)
-        ln = rng.uniform(60, 190) * SS
-        ex, ey = cx + side * ln, y0 - rng.uniform(5, 60) * SS
-        d.line([cx, y0, ex, ey], fill=(54, 34, 24, 255), width=4 * SS)
-        for k in range(3):
-            t = 0.45 + 0.27 * k
-            clumps.append((cx + (ex - cx) * t, y0 + (ey - y0) * t - 8 * SS, rng.uniform(34, 62) * SS))
-    for _ in range(4):
-        clumps.append((cx + rng.uniform(-40, 40) * SS, top_y + rng.uniform(40, 110) * SS, rng.uniform(50, 75) * SS))
-    for (x, y, r) in clumps:
-        for _ in range(int(r / SS * 5)):
-            a = rng.uniform(0, math.tau)
-            rr = r * rng.random() ** 0.5
-            px, py = x + math.cos(a) * rr, y + math.sin(a) * rr * 0.42
-            _needles(d, rng, px, py, rng.uniform(0, math.tau), rng.uniform(8, 15) * SS, need_d, need_l, 5, 3.0)
-    return im.resize((W, H), Image.LANCZOS)
-
-
 def main():
     os.makedirs(OUT, exist_ok=True)
     jobs = {
-        "spruce_a": spruce(11, 1.0, 0.16),
-        "spruce_b": spruce(23, 0.78, 0.30),
-        "spruce_c": spruce(37, 0.92, 0.08),
         "grass_a": grass(3, 0.25),
         "grass_b": grass(8, 0.6),
         "fern_a": fern(4),
         "roots_a": roots(6),
         "roots_b": roots(13),
-        "pine_a": pine_card(31),
-        "pine_b": pine_card(47),
         "pine_bark": bark(61),
-        "spruce_bark": spruce_bark(83),
-        "pine_tuft": pine_tuft(71),
         "bough_side": bough(21, True),
-        "bough_top": bough(22, False),
     }
     only = next((a[7:].split(",") for a in sys.argv[1:] if a.startswith("--only=")), None)        # --only=roots_a,roots_b: tylko te pliki
     for name, im in jobs.items():

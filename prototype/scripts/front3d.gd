@@ -57,7 +57,7 @@ const LAMP_EMI := "res://art/items3d/lamp_lamp_emi.jpg"
 ## Materiały elementu w kolejności powierzchni siatki.
 const MATS := ["g1", "g2", "dark", "lamp"]
 
-## Las (zestaw „forest”): tekstury kory i kart z `art/world3d/forest/` (te same co karty dalekiego lasu, `world_forest_gen.py`).
+## Las (zestaw „forest”): tekstury kory i kart z `art/world3d/forest/` (`world_forest_gen.py`; karty dalekiego lasu ze skanów, `pine_cards.py --far`).
 const FOREST_TEX := "res://art/world3d/forest/%s.png"
 ## Pień: rodzaj → [kora, średnica przy podłodze pasa (m), zbieg (m średnicy na m wysokości), v kory na dole i na górze pnia].
 ## Kora to pionowy pas całego drzewa (u dołu ciemna nasada) — pień w kadrze bierze jego środek, bez powtórzeń.

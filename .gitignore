@@ -32,3 +32,6 @@ prototype/addons/Tripo3d_Godot_Bridge/
 
 # źródło sosny Poly Haven pine_tree_01 (~1 GB, tools/pine_cards.py) — tylko lokalnie, do repo idą pine_tree_01__a/b/c.glb
 art_src/world/polyhaven/pine_tree_01.glb
+art_src/world/polyhaven/fir_tree_01.glb
+art_src/world/polyhaven/fir_sapling_medium.glb
+art_src/world/polyhaven/*_lite.glb

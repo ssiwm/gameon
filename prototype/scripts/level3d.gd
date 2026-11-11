@@ -3203,12 +3203,17 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 			bp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			parent.add_child(bp)
 
-## Las w głębi: sosny i świerki jako skrzyżowane karty z teksturą (art/world3d/forest, `tools/world_forest_gen.py`) w `MultiMesh`,
+## Las w głębi: sosny i świerki jako skrzyżowane karty z teksturą (art/world3d/forest, boczne rendery skanów Poly Haven z `tools/pine_cards.py --far`) w `MultiMesh`,
 ## w płaszczyznach z = −3,5 … −60 m nad kolumnami z otwartym niebem. Bliskie rzędy są rzadsze i wyższe (pnie w kadrze), dalekie gęste —
 ## razem z mgłą głębi i wstęgami mgły dają warstwy sylwetek zamiast pustego nieba.
 const FOREST_DIR := "res://art/world3d/forest/"
 const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "pine_a", "pine_b"]
-const FOREST_MODELS := ["tree_log", "tree_spruce_a", "tree_spruce_b", "tree_spruce_c", "tree_pine_a", "tree_pine_b", "tree_pine_c"]
+const FOREST_MODELS := ["tree_log", "tree_spruce_a", "tree_spruce_b", "tree_spruce_c", "tree_pine_a", "tree_pine_b", "tree_pine_c",
+		"tree_spruce_young_a", "tree_spruce_young_b", "tree_spruce_young_c"]
+## Podrost (od 1.7.543): młode świerki 3,5–8,5 m (skan `fir_sapling_medium`) pod koronami sosen w bliskim i środkowym pasie — stożki
+## rozbijają jednolity dach koron; na polanach i w rzadkim lesie gęściej (odnowienie w lukach). Liczba na 2 kolumny: [bliski, środkowy].
+const YOUNG_PER := [0.3, 1.7]
+const YOUNG_H := Vector2(3.5, 8.5)
 const FOREST_CHUNK := 96.0                 ## m: las dzielony na odcinki wzdłuż mapy — silnik pomija odcinki poza kadrem (wcześniej jedna siatka na całą mapę).
 ## Pomiar 2026-10-19 (RTX 3080, 1920×1080): czas GPU bez mierzalnej różnicy między 1 odcinkiem, 96 i 48 m (las to ok. 25 tys. prymitywów, koszt robią
 ## karty z alfą), a 48 m dokładało ok. 25 wywołań rysowania więcej niż 96 m.
@@ -3405,8 +3410,8 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	var xf := {}
 	for k in FOREST_KINDS:
 		xf[k] = []
-	# modele 3D w bliskim i środkowym pasie: sosny (`prep_items3d.py: build_pine`), świerki (pień z Tripo + gałęzie
-	# z igliwiem, `build_spruce`) i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle). Bór: sosna przeważa,
+	# modele 3D w bliskim i środkowym pasie: sosny i świerki ze skanów Poly Haven `pine_tree_01` / `fir_tree_01` (lekkie wersje z
+	# `tools/pine_cards.py --lite`: pień i konary skanu, igliwie na kartach) i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle). Bór: sosna przeważa,
 	# świerk jest drugim piętrem. Każde drzewo ma lekko inny odcień (kolor egzemplarza `MultiMesh`).
 	# Bez martwych pni i brzóz (1.7.543): gołe, jasne pnie między koronami (srebrzyste drewno, biała kora brzozy z liśćmi niewidocznymi nocą)
 	# czytały się w grze jak „badyle”.
@@ -3415,6 +3420,9 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 		trees[tk] = []
 	var have_spruce := not model_mesh("tree_spruce_a").is_empty() and not model_mesh("tree_spruce_b").is_empty() and not model_mesh("tree_spruce_c").is_empty()
 	var have_pine := not model_mesh("tree_pine_a").is_empty() and not model_mesh("tree_pine_b").is_empty() and not model_mesh("tree_pine_c").is_empty()
+	var have_young := not model_mesh("tree_spruce_young_a").is_empty() and not model_mesh("tree_spruce_young_b").is_empty() 			and not model_mesh("tree_spruce_young_c").is_empty()
+	var yrng := RandomNumberGenerator.new()               # osobne losowanie: podrost nie przesuwa reszty lasu
+	yrng.seed = 0x5A9
 	var ft := forest_terrain(rows)
 	if ft.is_empty():
 		return
@@ -3475,6 +3483,18 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 					card_kind = "pine_" + "ab"[rng.randi() % 2]
 				var b := Basis(Vector3.UP, rng.randf_range(-0.5, 0.5)).scaled(Vector3(w, h, w))
 				(xf[card_kind] as Array).append([Transform3D(b, Vector3(x, y - 0.3, z)), tint])
+			if have_young and bi < 2:
+				var yper := float(YOUNG_PER[bi]) * dens * lerpf(0.7, 1.6, float(stand["open"]))
+				var yn := int(yper) + (1 if yrng.randf() < fmod(yper, 1.0) else 0)
+				for i in yn:
+					var yz := -yrng.randf_range(float(band[0]), float(band[1]))
+					var yx := out_of_stream((float(c) + yrng.randf() * 2.0) * T + yrng.randf_range(-1.5, 1.5), -yz, 1.0)
+					var yh := yrng.randf_range(YOUNG_H.x, YOUNG_H.y)
+					var yv := yrng.randf_range(0.8, 1.05)
+					var ysw := yh / 100.0 * yrng.randf_range(0.9, 1.15)
+					var yb := Basis(Vector3.UP, yrng.randf_range(0.0, TAU)).scaled(Vector3(ysw, yh / 100.0, ysw))
+					(trees["tree_spruce_young_" + "abc"[yrng.randi() % 3]] as Array).append(
+							[Transform3D(yb, Vector3(yx, forest_ground_y(ft, yx, -yz) - 0.15, yz)), Color(yv * 0.97, yv, yv * 0.98)])
 	if not niche_holes.is_empty():                       # korytarze wnęk (`niches3d.gd`): bez drzew w środku; filtr po losowaniu — reszta lasu bez zmian
 		for lists in [trees, xf]:
 			for k in lists:
