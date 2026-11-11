@@ -645,6 +645,8 @@ func _battery_net_step() -> void:
 ## Test sieci hali Żyły (--veinnet=N, tools/test_net_session.sh, VEIN_PLAN.md E1; mapa z1_m3). Host po N s niszczy gniazda, staje
 ## w przedsionku, po 1 s wchodzi do hali (Żyła się budzi) i po ARENA_GATE_DELAY + 1 s wypisuje stan bramy i to, czy klient (został
 ## w przedsionku) jest już w hali. Klient po N s wypisuje bramę, kolizję w otworze, stan Żyły, swoje położenie i kamerę areny.
+## E2: host 7 s po zamknięciu bramy (gdy Żyła wynurzona) każe jej się zanurzyć i po 6 s wypisuje, do której gardzieli przeszła; klient przez 10 s po swoim
+## wpisie zbiera ruchy Żyły z `_sync`, największe przesunięcie i zanurzenie obrazu.
 func _vein_net_step() -> void:
 	if not multiplayer.is_server():
 		var me: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
@@ -658,6 +660,23 @@ func _vein_net_step() -> void:
 		print("[VEIN-NET] client gate=%s blocks=%s boss=%d in=%s cam=%s" % [str(level.vein_gate_closed), str(blocks),
 			int(boss.state) if boss != null else -1, str(me != null and level.in_vein_arena(me.global_position)),
 			str(me != null and me.arena_cam_on())])
+		if boss == null:
+			return
+		var seen := {}
+		var x_lo: float = boss.global_position.x
+		var x_hi: float = x_lo
+		var vis := 0.0
+		for _i in 200:
+			await get_tree().create_timer(0.05).timeout
+			if not is_instance_valid(boss):
+				return
+			seen[int(boss.move)] = true
+			x_lo = minf(x_lo, boss.global_position.x)
+			x_hi = maxf(x_hi, boss.global_position.x)
+			vis = maxf(vis, float(boss._sink_vis))
+		var mv: Array = seen.keys()
+		mv.sort()
+		print("[VEIN-NET] client moves=%s shift=%d sinkvis=%.1f" % [",".join(mv.map(func(m: int) -> String: return str(m))), roundi(x_hi - x_lo), vis])
 		return
 	var host: Node2D = _players.get_node_or_null("1")
 	if host == null or level.vein_arena.is_empty():
@@ -676,6 +695,17 @@ func _vein_net_step() -> void:
 			cl_in = level.in_vein_arena(c.global_position)
 	var b: Node = get_tree().get_first_node_in_group("boss")
 	print("[VEIN-NET] host gate=%s boss=%d client_in=%s" % [str(level.vein_gate_closed), int(b.state) if b != null else -1, str(cl_in)])
+	if b == null:
+		return
+	await get_tree().create_timer(7.0).timeout
+	for _i in 100:                                    # Żyła mogła sama zejść pod podłogę — czekamy, aż się wynurzy
+		if int(b.move) == int(b.Move.UP):
+			break
+		await get_tree().create_timer(0.05).timeout
+	var a0: int = b.anchor
+	b._begin_sink("test")
+	await get_tree().create_timer(6.0).timeout
+	print("[VEIN-NET] host moved=%s anchor=%d->%d" % [str(int(b.anchor) != a0), a0, int(b.anchor)])
 
 ## Test sieci ładowarki (--chargernet=N, tools/test_net_session.sh, BATTERY_PLAN.md B3; mapa z1_b1): klient po N s staje przy ładowarce
 ## ze zgaszoną latarką i 20% baterii — ładuje się u siebie (właściciel), a stan „pracuje” rozstrzyga serwer. Po 3 s klient wypisuje
@@ -2295,8 +2325,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		mission._start_boss()               # podgląd walki z bossem: budzi bossa i rzuca flarę nad jego cień
 		await get_tree().create_timer(0.6).timeout
 		var bs := get_tree().get_first_node_in_group("boss")
-		if bs != null:
+		if bs != null and not "--shotsink" in OS.get_cmdline_user_args():       # --shotsink: bez flary (jej czerwień zasłania znacznik wynurzenia)
 			level.spawn_flare(Vector2(bs.global_position.x + 30.0, bs.global_position.y - 20.0), Vector2.ZERO)
+		if bs != null:
 			for ca in OS.get_cmdline_user_args():
 				if ca.begins_with("--shotclip="):                 # --shotboss --shotclip=death|hit: zdarzenie bossa 1 s po starcie (podgląd klipów modelu 3D)
 					get_tree().create_timer(1.0).timeout.connect(_dev_clip.bind(bs, ca.substr("--shotclip=".length())))
@@ -2314,6 +2345,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				get_tree().create_timer(0.3).timeout.connect(func() -> void:
 					if sp2 != null:
 						bs.call("_begin_spit", sp2, 2.0))
+			if "--shotsink" in OS.get_cmdline_user_args() and bs.has_method("_begin_sink"):
+				get_tree().create_timer(0.3).timeout.connect(func() -> void:     # --shotsink: Żyła w hali od razu schodzi pod podłogę (VEIN_PLAN.md E2;
+					bs.call("_begin_sink", "shot"))                              # --shotdelay≈0.5 zanurzanie, ≈1.5 przejście, ≈3.0 zapowiedź wynurzenia)
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
 	for sa in OS.get_cmdline_user_args():

@@ -7,9 +7,13 @@ extends Node
 ## gnieździe, start walki z wejściem człowieka, brama z korzeni (kolizja, wciąganie bota, odrodzenie za bramą), kamera areny
 ## (kadr hali, zoom), Stalker trzymany z dala do fazy 3, restart od punktu kontrolnego bez wskrzeszania zabitych przed walką,
 ## krzyk fazy 3 otwiera bramę, śmierć → ekstrakcja.
+## E2: cykl wynurzenie → ryk → seria → zanurzenie → przejście pod podłogą → zapowiedź → wynurzenie w innej gardzieli; pod podłogą
+## nietrafialna i bez celu dla botów; cios wynurzenia w stojącego na gardzieli; wybór gardzieli przeciw kampieniu i za obrażenia; „ból”.
 ## Mapa 1.3. Wynik: linie [VEIN-TEST] i kod wyjścia (0 = OK) — nadaje się do CI.
 
 const Mission := preload("res://scripts/mission.gd")
+const Combat := preload("res://scripts/combat.gd")
+const Weapons := preload("res://scripts/weapons.gd")
 
 var main: Node2D
 var level: Node2D
@@ -63,6 +67,9 @@ func run(m: Node2D) -> void:
 	await _wait_and_start()
 	await _camera()
 	await _stalker_hold()
+	await _movement()
+	await _anchor_choice()
+	await _pain()
 	await _checkpoint_restart()
 	await _phase3_release()
 	await _death()
@@ -188,6 +195,108 @@ func _stalker_hold() -> void:
 		not bool(stalker.awake) and stalker.global_position.distance_to(stalker._home) < 2.0)
 	NoiseMgr.level = lvl0
 
+# ---------------------------------------------------------------- E2: ruch
+
+## Wycisza ataki (cooldowny), żeby test liczył tylko ruch.
+func _calm() -> void:
+	boss._set_atk(boss.Atk.NONE)
+	boss._wave_r = -1.0
+	boss.stunned = false
+	boss._lash_cd = 99.0
+	boss._spit_cd = 99.0
+	boss._sweep_cd = 99.0
+	boss._atk_gap = 99.0
+	boss._brood_t = 99.0
+	boss._spits.clear()
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if String(e.name).begins_with("Brood"):
+			e.queue_free()                            # potomstwo gryzie gracza stojącego na gardzieli
+
+func _dealt(open: bool) -> float:
+	var hp0: float = boss.hp
+	boss.maw_open = open
+	var info := Combat.make_info(Weapons.M83, 10.0, boss.global_position + Vector2(-60, -24), Vector2.RIGHT, 1, "bullet")
+	var r: Dictionary = boss.take_hit(info)
+	var d := float(r.get("dealt", 0.0))
+	boss.hp = hp0
+	return d
+
+func _movement() -> void:
+	_place(player, level.vein_entry(0) + Vector2(4, 0))
+	await _ticks(2)
+	check("Żyła wynurzona po ryku, zagrożenie dla botów (ruch %d)" % int(boss.move), int(boss.move) == int(boss.Move.UP) and boss.is_threat())
+	_calm()
+	var a0: int = boss.anchor
+	boss._burst_n = boss.BURST
+	boss._maw_t = 0.0
+	await _ticks(2)
+	check("po serii %d ataków zanurza się, paszcza zamknięta" % boss.BURST, int(boss.move) == int(boss.Move.SINK) and not bool(boss.maw_open))
+	await get_tree().create_timer(boss.SINK_T + 0.1).timeout
+	check("pod podłogą: przejście, poza celami botów, bez strefy trafień", int(boss.move) == int(boss.Move.TRAVEL) and not boss.is_threat()
+		and not bool(boss._hurt_on))
+	check("pod podłogą kula nic nie robi (%.1f)" % _dealt(true), is_zero_approx(_dealt(true)))
+	var from: Vector2 = boss._travel_from
+	var to: Vector2 = boss._travel_to
+	check("przejście do innej gardzieli (%d → %d), %.1f s (%.1f–%.1f)" % [a0, boss.anchor, boss._travel_dur, boss.TRAVEL_MIN, boss.TRAVEL_MAX],
+		boss.anchor != a0 and absf(from.x - to.x) >= 120.0 and boss._travel_dur >= boss.TRAVEL_MIN - 0.01 and boss._travel_dur <= boss.TRAVEL_MAX + 0.01)
+	_place(player, to + Vector2(12, 0))           # gracz stoi tam, gdzie wyjdzie
+	player.hp = player.max_hp()
+	player._invuln = 0.0
+	var hp0: int = player.hp
+	await get_tree().create_timer(boss._travel_dur * 0.5).timeout
+	var mid: float = boss.global_position.x
+	check("garb sunie pod podłogą (x %.0f między %.0f a %.0f)" % [mid, from.x, to.x], mid > minf(from.x, to.x) + 8.0 and mid < maxf(from.x, to.x) - 8.0)
+	await get_tree().create_timer(boss._travel_dur * 0.5 + 0.1).timeout
+	check("zapowiedź wynurzenia: znacznik na gardzieli docelowej, dalej nietrafialna", int(boss.move) == int(boss.Move.EMERGE)
+		and boss.emerge_mark == to and not boss.is_threat())
+	player._invuln = 0.0
+	await get_tree().create_timer(boss.EMERGE_T * Difficulty.m("boss_cd") + 0.1).timeout
+	check("wynurzenie rani stojącego na gardzieli (HP %d → %d)" % [hp0, player.hp], player.hp == hp0 - 1)
+	check("po wynurzeniu ryk z otwartą paszczą: pełne obrażenia (%.1f)" % _dealt(true),
+		int(boss.move) == int(boss.Move.ROAR) and bool(boss.maw_open) and is_equal_approx(_dealt(true), 10.0))
+	player.hp = player.max_hp()
+	_place(player, level.vein_entry(0) + Vector2(4, 0))
+	await get_tree().create_timer(boss.ROAR_T + 0.1).timeout
+	check("po ryku znów walczy (seria od zera)", int(boss.move) == int(boss.Move.UP) and int(boss._burst_n) == 0)
+
+func _anchor_choice() -> void:
+	var now := Time.get_ticks_msec()
+	var save: int = boss.anchor
+	boss._dmg_by.clear()
+	boss._camp.clear()
+	boss._camp[player.name] = [boss._anchors[0], now - int(boss.CAMP_T * 1000.0) - 1000]
+	boss.anchor = 2
+	var hits := 0
+	for _i in 20:
+		hits += 1 if boss._pick_anchor() == 0 else 0
+	check("gracz stoi 7 s przy zachodniej gardzieli → Żyła wychodzi tam (%d/20)" % hits, hits == 20)
+	boss.anchor = 0
+	var same := 0
+	for _i in 20:
+		same += 1 if boss._pick_anchor() == 0 else 0
+	check("nigdy ta sama gardziel dwa razy z rzędu (%d/20)" % same, same == 0)
+	boss._camp.clear()
+	boss._dmg_by.append([now, int(player.player_id), 50.0])
+	_place(player, boss._anchors[2] + Vector2(-6, 0))
+	boss.anchor = 1
+	var dealer := 0
+	for _i in 40:
+		dealer += 1 if boss._pick_anchor() == 2 else 0
+	info("najwięcej obrażeń przy wschodniej gardzieli: tam %d/40 wyborów (+1, los między dwiema najlepszymi)" % dealer)
+	check("bez kampienia i obrażeń — losowo między dwiema pozostałymi", dealer > 0)
+	boss._dmg_by.clear()
+	boss.anchor = save
+	_place(player, level.vein_entry(0) + Vector2(4, 0))
+	await _ticks(2)
+
+func _pain() -> void:
+	_calm()
+	boss._burst_n = 0
+	boss._up_t = 0.0
+	boss._pain = [[Time.get_ticks_msec(), boss.max_hp * 0.13]]
+	await _ticks(2)
+	check("„ból” (13%% maks. HP w %.0f s) → zanurza się od razu, przed końcem serii" % boss.PAIN_WINDOW, int(boss.move) == int(boss.Move.SINK))
+
 # ---------------------------------------------------------------- E1: punkt kontrolny
 
 func _checkpoint_restart() -> void:
@@ -216,6 +325,8 @@ func _checkpoint_restart() -> void:
 	_place(player, level.vein_entry(0) + Vector2(48, 0))
 	await _ticks(4)
 	check("ponowne wejście: walka i brama od nowa", int(boss.state) == 1 and bool(level.vein_gate_closed) and NoiseMgr.stalker_hold)
+	check("po restarcie Żyła znów nad środkową gardzielą, wynurzona (x %.0f)" % boss.global_position.x,
+		boss.global_position.distance_to(boss._home) < 1.0 and is_zero_approx(float(boss.sink)) and int(boss.move) != int(boss.Move.TRAVEL))
 
 # ---------------------------------------------------------------- E1: faza 3 i śmierć
 

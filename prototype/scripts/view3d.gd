@@ -6129,6 +6129,9 @@ func _sync_boss_fx() -> void:
 		var km := _add_mat()
 		km.no_depth_test = true
 		_imm(root, km).name = "SpitMark"
+		var em := _add_mat()
+		em.no_depth_test = true
+		_imm(root, em).name = "EmergeMark"                # hala Żyły (E2): gdzie się wynurzy — pęknięcia i żar spod podłogi
 		_bossfx[n.get_instance_id()] = [n, root]
 	var t := Time.get_ticks_msec() / 1000.0
 	for id in _bossfx.keys():
@@ -6159,6 +6162,8 @@ func _sync_boss_fx() -> void:
 		elif b.maw_open:
 			maw = Color(1.0, 0.6, 0.25, 0.75 + 0.25 * pulse)
 			r = 8.5
+		var under: float = clampf(float(b.get("_sink_vis")) if b.get("_sink_vis") != null else 0.0, 0.0, 1.0)
+		maw.a *= 1.0 - under                                   # pod podłogą żar paszczy gaśnie razem z nią
 		var mp: Vector2 = b.call("_maw_point")
 		var mpos := Vector3(mp.x * PX, -mp.y * PX, MAW_Z)
 		var glow := root.get_node("Maw") as MeshInstance3D
@@ -6171,6 +6176,9 @@ func _sync_boss_fx() -> void:
 		ml.light_energy = 4.0 * maw.a * r / 9.0
 		# znacznik lądowania plwociny
 		_draw_spit_mark((root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh, b.spit_mark, base, float(b.SPIT_HIT_R) * PX, not b.spitting, t)
+		var emk: Variant = b.get("emerge_mark")
+		_draw_spit_mark((root.get_node("EmergeMark") as MeshInstance3D).mesh as ImmediateMesh, emk if emk is Vector2 else Vector2.INF, base,
+			float(b.get("EMERGE_R")) * PX if b.get("EMERGE_R") != null else 1.0, true, t, 1.0, Color(1.0, 0.42, 0.18))
 		# łuk zasięgu macki
 		var arc := (root.get_node("Arc") as MeshInstance3D).mesh as ImmediateMesh
 		arc.clear_surfaces()
@@ -6253,13 +6261,14 @@ const LEECH_SPIT_GLOW := 0.3            ## B1 jest prawie czarna, więc pełna p
 
 ## Znacznik lądowania plwociny (Żyła, Pijawka): plama na podłodze, pionowa poświata nad nią i krąg zasięgu trafienia. `sm` w pikselach świata, INF = brak.
 ## Kamera patrzy prawie poziomo, więc sam krąg na podłodze był kreską.
-func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float, glow := 1.0) -> void:
+## Znacznik na podłodze: plwocina (zielony kwas) albo — z `col` — miejsce wynurzenia Żyły (pomarańczowy żar spod pęknięć).
+func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float, glow := 1.0, col := Color(0.55, 1.0, 0.25)) -> void:
 	mark.clear_surfaces()
-	if sm == Vector2.INF:
+	if not sm.is_finite():
 		return
 	var c := Level3D.px_to_m(sm) - base + Vector3(0.0, 0.06, 0.0)
 	var mp2 := 0.5 + 0.5 * sin(t * (16.0 if flying else 8.0))
-	var acid := Color(0.55, 1.0, 0.25)
+	var acid := col
 	var rr := hit_r * 1.6
 	mark.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in 24:

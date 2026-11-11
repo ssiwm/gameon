@@ -343,6 +343,14 @@ func _checkpoint() -> void:
 	check("przy zamkniętej bramie wykrwawiony wstaje za nią (%.0f px od wejścia)" % player._spawn_point.distance_to(level.vein_entry(0)),
 		player._spawn_point.distance_to(level.vein_entry(0)) < 2.0)
 	level.set_vein_gate(false, false)             # dalsze testy stawiają gracza poza halą (skrytka, dalekie plucie) — bez wciągania
+	var vb: Node2D = get_tree().get_first_node_in_group("boss")
+	if vb != null:
+		vb._anchors.clear()                       # obrażenia i dalekie plucie sprawdzają Żyłę na stojąco (ruch: --veintest)
+		vb.move = vb.Move.UP
+		vb.sink = 0.0
+		vb.emerge_mark = Vector2.INF
+		vb.global_position = vb._home
+		vb._set_hurt(true)
 	for p in get_tree().get_nodes_in_group("players"):
 		if p != player:
 			p.global_position = Vector2(-4000, -4000)  # bot wciągnięty przez bramę wraca poza mapę (jak w _quiet_world)

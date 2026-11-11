@@ -1715,6 +1715,10 @@ func _bot_dodge_acid() -> void:
 ## bot podnosił leżącego pod ostrzałem i padał od plucia — teraz najpierw schodzi ze znacznika, a podnosi po rozbryzgu.
 func _spit_danger_x() -> float:
 	for b in get_tree().get_nodes_in_group("boss"):
+		var em: Variant = b.get("emerge_mark")            # hala Żyły (VEIN_PLAN.md E2): pęknięcia wynurzenia — zejść z nich jak ze znacznika
+		if em is Vector2 and (em as Vector2).is_finite() and absf((em as Vector2).x - global_position.x) < float(b.EMERGE_R) + BOT_SPIT_MARGIN \
+				and absf((em as Vector2).y - global_position.y) < 30.0:
+			return (em as Vector2).x
 		var sm: Variant = b.get("spit_mark")
 		if sm == null or sm == Vector2.INF:
 			continue
