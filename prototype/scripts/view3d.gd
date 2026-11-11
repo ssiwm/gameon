@@ -47,7 +47,16 @@ const ENEMY_CULL_R := 3.5                ## m: promień sfery wroga przy teście
 const MAX_LIGHTS := 14
 const SHADOW_LIGHTS := 5
 const SHADOW_KEEP := 1                     ## histereza cieni: światło z cieniem zachowuje go, dopóki jest wśród SHADOW_LIGHTS + SHADOW_KEEP najbliższych
-const BEAM_FOG_ENERGY := 6.0              ## snop latarki we mgle wolumetrycznej przy gęstości bazowej (bez pogody)
+const BEAM_FOG_ENERGY := 6.0              ## snop latarki we mgle wolumetrycznej przy gęstości bazowej (bez pogody) — dawny, `--oldtorch`
+## Latarka jak żarówka w odbłyśniku (1.7.549): jasny środek łagodnie przechodzący w słaby, szeroki rozlew do brzegu stożka
+## (`spot_angle_attenuation` 3 zamiast dawnej równej plamy z ostrym brzegiem), światło słabnące z odległością jak prawdziwe (dawniej
+## 0,55: plama na 15 m prawie tak jasna jak na 3 m), w powietrzu słaby snop — objętość niosą drobinki pyłu w smudze. Maska odbłyśnika
+## (`light_projector`) sprawdzona i odrzucona: na zrzucie z tarczą testową środek maski nie trafiał w oś światła (skała na osi zostawała ciemna).
+const TORCH_ANGLE := 28.0                 ## stopnie od osi: brzeg rozlewu (rozgrywka liczy stożek 2D Lights.CONE_HALF_DEG = 24°)
+const TORCH_CONE_EXP := 3.0               ## `spot_angle_attenuation`: w Godocie 4.7 większa wartość = jasność skupiona w środku i miękki brzeg; 0,25 dawało płaską plamę z ostrą krawędzią (sprawdzone na zrzutach)
+const TORCH_DECAY := 1.0                  ## wykładnik spadku z odległością (fizycznie 2; dawniej 0,55)
+const TORCH_ENERGY := 48.0                ## × energia światła 2D; ziemia 6–10 m przed graczem podobnie jasna jak dawniej, bliżej jaśniej, dalej ciemniej
+const TORCH_FOG_ENERGY := 0.8             ## snop we mgle (energia źródła wyższa niż dawniej, więc mnożnik dużo niższy)
 const FOG_LIGHT_EXP := 0.8                ## światła gry w gęstszej mgle (pogoda MGŁA do ok. 10× gęstości): energia we mgle × gęstość^−wykładnik — snop dalej widać, ale się nie przepala
 const LAYER_WORLD := 1                     ## warstwa wizualna terenu, lasu, wrogów
 const LAYER_ACTORS := 2                    ## warstwa wizualna graczy (modele 3D)
@@ -155,6 +164,7 @@ var _cam_b: Camera3D
 var _actor_dl: Array = []                     ## [DirectionalLight3D, energia, kolor] — kontra postaci (`_sync_actor_light`)
 var _actor_sky := 1.0                         ## 0..1: niebo nad graczem (płynnie)
 var _flat_aura := false                       ## dev `--flatactorlight`: dawne światło postaci (aura przed postacią, kontra stała) do porównań
+var _old_torch := false                       ## dev `--oldtorch`: dawna latarka (równa plama, wolny spadek, gęsty snop) do porównań
 var _spr_bg: Sprite2D
 var _spr_fg: Sprite2D
 var _rigs := {}                          ## Node gracza → {actor, model, gun, root}
@@ -315,6 +325,7 @@ func setup(level: Node2D, players: Node2D) -> void:
 		_world.add_child(dl)
 		_actor_dl.append([dl, dl.light_energy, dl.light_color])
 	_flat_aura = "--flatactorlight" in OS.get_cmdline_user_args()
+	_old_torch = "--oldtorch" in OS.get_cmdline_user_args()
 	_spr_bg = Sprite2D.new()
 	_spr_bg.name = "WorldImage"
 	_spr_bg.z_index = Z_BG
@@ -8267,6 +8278,10 @@ func _scan_lights() -> void:
 				var sp := SpotLight3D.new()
 				sp.spot_angle = 24.0
 				sp.spot_attenuation = 0.55
+				if not _old_torch:
+					sp.spot_angle = TORCH_ANGLE
+					sp.spot_attenuation = TORCH_DECAY
+					sp.spot_angle_attenuation = TORCH_CONE_EXP
 				l3 = sp
 			else:
 				l3 = OmniLight3D.new()
@@ -8408,7 +8423,8 @@ func _sync_lights() -> void:
 		l3.visible = true
 		# w gęstszej mgle (pogoda MGŁA) to samo światło rozświetlało jej bryłę kilka razy mocniej: snop latarki zalewał pół kadru bielą
 		var fog_k := pow(maxf(_fog_dens, 1.0), -FOG_LIGHT_EXP)
-		l3.light_volumetric_fog_energy = (BEAM_FOG_ENERGY if l3 is SpotLight3D else (0.12 if pair[3] else 0.7)) * fog_k
+		var beam_fog := BEAM_FOG_ENERGY if _old_torch else TORCH_FOG_ENERGY
+		l3.light_volumetric_fog_energy = (beam_fog if l3 is SpotLight3D else (0.12 if pair[3] else 0.7)) * fog_k
 		var rng_px := li.range_px
 		var gp := li.global_position
 		var pick := pair.size() > 4 and bool(pair[4])
@@ -8447,7 +8463,7 @@ func _sync_lights() -> void:
 					src = (rig["gun"] as Node3D).global_transform * (c3._gun_info["muzzle"] as Vector3) + d * 0.05 + Vector3(0.0, 0.0, 0.5)      # lekko ku kamerze: snop oświetla też fronty przeszkód na drodze
 			l3.position = src
 			l3.basis = Basis.looking_at(d + Vector3(0.0, 0.0, -0.04), Vector3.UP)
-			l3.light_energy = li.energy * 13.0
+			l3.light_energy = li.energy * (13.0 if _old_torch else TORCH_ENERGY)
 			if l3a != null and is_instance_valid(l3a):
 				var sp_l := l3a as OmniLight3D
 				sp_l.visible = not _flat_aura
