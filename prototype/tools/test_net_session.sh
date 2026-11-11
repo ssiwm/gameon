@@ -112,15 +112,15 @@ grep -a -q "\[RESULT-NET\] client ready=\[[0-9]\+\] levels=2 gain=[0-9]\+ report
 echo "== hala Żyły =="
 # VEIN_PLAN.md E1: host po 6 s niszczy gniazda i wchodzi do hali; klient A został w przedsionku — brama zamyka się po 4 s i wciąga go
 # do hali. Klient B dołącza przy zamkniętej bramie — stan bramy dostaje z `send_vein_gate_to`, stan Żyły z `_sync`, a serwer wciąga go
-# do hali (`pull_into_arena`, co ARENA_PULL_EVERY s). E2: host 7 s po zamknięciu bramy zanurza Żyłę — klient A widzi zanurzenie (Move 2),
+# do hali (`pull_into_arena`, co ARENA_PULL_EVERY s). E2: host 10 s po zamknięciu bramy zanurza Żyłę — klient A widzi zanurzenie (Move 2),
 # przejście (3) i zapowiedź (4), przesunięcie o gardziel, a Żyła wychodzi w innej gardzieli.
-godot --headless --path . -- --host --mission=z1_m3 --port=8972 --veinnet=6 --autoquit=34 >"$LOG/vnet_host.log" 2>&1 &
+godot --headless --path . -- --host --mission=z1_m3 --port=8972 --veinnet=6 --autoquit=38 >"$LOG/vnet_host.log" 2>&1 &
 HOST=$!
 sleep 3
-godot --headless --path . -- --join=127.0.0.1 --port=8972 --veinnet=14 --autoquit=31 >"$LOG/vnet_a.log" 2>&1 &
+godot --headless --path . -- --join=127.0.0.1 --port=8972 --veinnet=14 --autoquit=35 >"$LOG/vnet_a.log" 2>&1 &
 CA=$!
 sleep 11
-godot --headless --path . -- --join=127.0.0.1 --port=8972 --veinnet=6 --autoquit=12 >"$LOG/vnet_b.log" 2>&1
+godot --headless --path . -- --join=127.0.0.1 --port=8972 --veinnet=6 --autoquit=16 >"$LOG/vnet_b.log" 2>&1
 wait $CA $HOST
 grep -a -q "\[VEIN-NET\] host gate=true boss=1 client_in=true" "$LOG/vnet_host.log" && ok "host: Żyła walczy, brama zamknięta, klient z przedsionka wciągnięty" || fail "host: $(grep -a "\[VEIN-NET\]" "$LOG/vnet_host.log")"
 grep -a -q "\[VEIN-NET\] client gate=true blocks=true boss=1 in=true cam=true" "$LOG/vnet_a.log" && ok "klient: brama i jej kolizja, Żyła przebudzona, sam w hali, kamera areny" || fail "klient A: $(grep -a "\[VEIN-NET\]" "$LOG/vnet_a.log")"
