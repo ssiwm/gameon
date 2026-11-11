@@ -229,6 +229,8 @@ var hit_t := -1.0                            ## 0..1 reakcji na trafienie (rekoi
 var land_t := -1.0                           ## 0..1 amortyzacji lądowania (ugięcie kolan), <0 = brak (player.gd)
 var land_str := 0.6                          ## siła lądowania 0..1 (z prędkości spadania)
 var back_run := false                        ## biegnie tyłem względem kierunku celowania: krok w przeciwną stronę, tułów odchylony
+var push_strain := false                     ## stan „push”: napiera, a skrzynia stoi — krok kończy się w rozkroku i postać zapiera się mocniej (player.gd)
+var _strain_w := 0.0                         ## 0..1 waga zaparcia (płynne wejście i wyjście)
 var dying := 0.0                             ## 0..1 ostatnie sekundy wykrwawiania: drgawki i zapadanie się w ziemię (player.gd)
 var charge_t := 0.0                          ## 0..1 ładowania szyny (widmo1): drżenie, odchylenie tułowia
 var cycle_t := -1.0                          ## 0..1 cyklu po strzale (pompka, zamek), <0 = brak (weapon_view.gd)
@@ -247,7 +249,19 @@ var climb_t := -1.0                          ## 0..1 podciągnięcia przy wskaki
 var _air_t := 0.0                            ## s w powietrzu (od odbicia)
 var sink_m := 0.0                            ## m: o tyle opuszczamy model pod podłoże (czyta view3d.gd)
 var _mc := {}                                ## bieżący cios bronią białą (krzywe ruchu), puste = brak ciosu
-const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk", "revive"]
+const AW_STATES := ["idle", "run", "jump", "fall", "crouch", "crouch_walk", "revive", "push"]
+## Pchanie skrzyni (stan „push”): cykle kroku na sekundę przy prędkości skrzyni (prop.gd PUSH_SPEED). Klip Push_Loop przesuwa stopę ok. 0,8 m
+## na cykl, a skrzynia jedzie 3,7 m/s — pełne dopasowanie dawałoby dreptanie, więc krok jest szybszy niż w klipie, ale stopy trochę suną.
+const PUSH_CYCLES := 1.5
+const PUSH_SPEED_PX := 45.0                  ## = prop.gd PUSH_SPEED (tu bez preloadu: char3d.gd ładują też narzędzia bez gry)
+const PUSH_HOLD_PHASE := 0.625               ## ułamek cyklu klipu pchania z obiema stopami na ziemi (lewa z przodu, prawa z tyłu) — poza naporu
+const PUSH_STRAIN_LEAN := 7.0                ## ° dodatkowego pochylenia przy naporze na stojącą skrzynię
+## Dłonie na ścianie pchanej skrzyni (m, szkielet: +x przód, +y góra, +z lewa strona): ściana 5 px (pół szerokości hitboxu gracza) przed osią ciała,
+## skrzynia ma 14 px (1,15 m) — środek dłoni kawałek pod górną krawędzią, dłoń płasko na deskach, palce w górę.
+const PUSH_FACE_X := 5.0 * 0.082
+const PUSH_HAND_Y := 0.90
+const PUSH_HAND_Z := 0.17
+var _push_w := 0.0                           ## 0..1 udział stanu „push” w tej klatce (dłonie dociągane do skrzyni)
 ## Pozy specyficzne dla broni: promień początku układu broni od barku (m) i opuszczenie względem linii celowania (− = wyżej, na ramieniu), rodzaj przeładowania
 ## (mag / shell / cell / rail / bolt / pistol), cykl po strzale (pump / bolt), mnożniki wznosu lufy (climb) i cofnięcia ciała (body), odchylenie tułowia (lean, °),
 ## side — przesunięcie broni w poprzek ciała względem prawego barku (m, − = ku środkowi; domyślnie −0,13), wrist — kąt śródręcza dłoni tylnej względem lufy
@@ -1342,7 +1356,7 @@ func aim_points(aim: Vector2, side: float, crouching: bool, gun_key: String, fit
 
 # ---------------------------------------------------------------- klatka
 
-## anim: idle | run | jump | fall | crouch | crouch_walk | revive | down. aim: kierunek celowania na ekranie (y w dół).
+## anim: idle | run | jump | fall | crouch | crouch_walk | revive | push | down. aim: kierunek celowania na ekranie (y w dół).
 ## speed: |prędkość pozioma| w px/s (tempo kroku). armed=false chowa broń (leżenie).
 func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.0, armed := true, tint := Color.WHITE) -> void:
 	if not ready_ok:
@@ -1414,6 +1428,8 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		_pose_arms(_vis_aim)
 	else:
 		_pose_arms_relaxed(_clip_down < 0.5 and _clip_arms < 0.5)   # z klipem upadku albo klęczenia ręce zostają z klipu
+		if _push_w > 0.01:
+			_pose_push_hands()
 	_apply_fingers()
 	if holding and _parts_pose != null:
 		var hand := _gp(_b["LeftHand"])
@@ -1449,6 +1465,10 @@ func _body_state(a: String) -> Dictionary:
 		"crouch", "revive":                                       # „revive" bez klipu to zwykły przysiad
 			lean = 6.0                                                # przysiad: tułów prawie pionowo, kolana do przodu
 			drop = CROUCH_DROP                                               # głęboki przysiad: sylwetka ok. 0,65 wysokości stojącej, jak hitbox kucania
+		"push":                                                   # bez klipu: pochylenie w stronę skrzyni, biodra niżej
+			lean = 24.0
+			drop = 0.08
+			bob = -0.012 * absf(sin(_phase))
 		"crouch_walk":
 			lean = 6.0
 			drop = CROUCH_DROP
@@ -1475,6 +1495,17 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	var stand_offset := Vector3.ZERO
 	if anim == "run" or anim == "crouch_walk":
 		_phase += (-1.0 if back_run else 1.0) * delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
+	elif anim == "push":
+		# krok w tempie skrzyni; napór bez ruchu dochodzi krokiem (tylko w przód) do rozkroku PUSH_HOLD_PHASE i tam stoi
+		var adv := delta * TAU * PUSH_CYCLES
+		if speed > 1.0:
+			_phase += adv * clampf(speed / PUSH_SPEED_PX, 0.4, 1.4)
+		else:
+			var to_hold := fposmod(PUSH_HOLD_PHASE * TAU - _phase, TAU)
+			if to_hold < TAU * 0.98:
+				_phase += minf(adv, to_hold)
+	_strain_w = move_toward(_strain_w, 1.0 if (anim == "push" and push_strain) else 0.0, delta / 0.25)
+	_push_w = float(_aw["push"]) / maxf(sum, 0.0001) * (1.0 - smoothstep(0.0, 0.12, _down))
 	# klipy: drzewo ustawia biodra, tułów, głowę i nogi w stanach, które mają klip; zapamiętujemy stopy i kolana z klipu, zanim nakładki ruszą biodra.
 	# Upadek: klip „down" przejmuje całą pozę (postęp = _down, wstawanie gra go wstecz); bez niego udział klipów znika i upadek liczy kod.
 	_clip_w = 0.0
@@ -1544,6 +1575,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	var w_run := (float(_aw["run"]) + float(_aw["crouch_walk"])) / maxf(sum, 0.0001)
 	if back_run:
 		lean -= 9.0 * w_run                                           # bieg tyłem: tułów odchylony do tyłu
+	lean += PUSH_STRAIN_LEAN * _strain_w * float(_aw["push"]) / maxf(sum, 0.0001)     # zaparcie się o stojącą skrzynię
 	var lunge := 0.0
 	if not _mc.is_empty() and _combat_clip.is_empty():             # fallback bez klipów: wypad bioder, pochylenie i ugięcie wg krzywej ruchu
 		lunge = float(_mc["step"]) * 0.45
@@ -1670,6 +1702,8 @@ func _leg_state(a: String, side: String) -> Array:
 			tilt = deg_to_rad(-14.0) * (1.0 - float(ap["ext"])) + deg_to_rad(12.0) * float(ap["tk"])
 		"crouch", "revive":
 			off = Vector3(0.10 if sgn > 0 else -0.10, 0.0, 0.0)
+		"push":                                                   # bez klipu: krótki krok, stopy za biodrami (ciało pochylone nad skrzynią)
+			off = Vector3(0.16 * sin(ph) - 0.14, 0.09 * maxf(0.0, cos(ph)), 0.0)
 		"crouch_walk":
 			off = Vector3(0.13 * sin(ph) + (0.06 if sgn > 0 else -0.06), 0.07 * maxf(0.0, cos(ph)), 0.0)
 	return [off * own, tilt * own]
@@ -2113,6 +2147,24 @@ func _pose_left_relaxed() -> void:
 	if climb_t >= 0.0:                                                # podciągnięcie: ręka wyciągnięta w dół i w przód, na krawędź
 		tgt = tgt.lerp(sl + Vector3(0.22, -reach * 0.98, 0.08), sin(PI * climb_t))
 	_arm_ik("Left", tgt, Vector3(-0.3, -1.0, -0.5))
+
+## Pchanie: obie dłonie na ścianie skrzyni (łokcie w dół i na zewnątrz). Klip Push_Loop trzyma ręce wyżej niż nasza skrzynia,
+## więc dociągamy je IK-iem — z wagą stanu, żeby wejście i wyjście z pchania było płynne.
+func _pose_push_hands() -> void:
+	for side in ["Left", "Right"]:
+		if not _hand.has(side):
+			continue
+		var sz := 1.0 if side == "Left" else -1.0
+		var hd: Dictionary = _hand[side]
+		var palm := Vector3(_origin_x + PUSH_FACE_X, PUSH_HAND_Y, PUSH_HAND_Z * sz)
+		var fw := Vector3(0.15, 1.0, 0.25 * sz).normalized()        # palce w górę, lekko na zewnątrz
+		var bw := Vector3(-1.0, 0.0, 0.0)
+		bw = (bw - fw * bw.dot(fw)).normalized()                     # wierzch dłoni do gracza, wnętrze na deskach
+		var wrist := palm - fw * (float(hd["len"]) * PALM_AT) + bw * float(hd["thick"])
+		var hand := _gp(_b[side + "Hand"]).origin
+		_arm_ik(side, hand.lerp(wrist, _push_w), Vector3(-0.35, -1.0, 0.45 * sz))
+		_set_hand(side, Basis(fw, bw, fw.cross(bw)) * (hd["fix"] as Basis), _push_w)
+		_curl[side] = lerpf(CURL_RELAX, 0.1, _push_w)                # palce rozłożone na deskach
 
 func _pose_arms_relaxed(both: bool) -> void:
 	muzzle_px = Vector2(0.0, -10.0)
