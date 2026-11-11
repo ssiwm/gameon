@@ -221,6 +221,9 @@ var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 
 var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata żarówki]
 var _winfx := {}                         ## id okna (window_glass.gd) → [węzeł 2D, model, szyba, resztki szkła]
 var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
+var _vein_gate3d: Node3D                  ## brama z korzeni hali Żyły (level.gd `vein_gate_closed`)
+var _vein_gate_k := 0.0                   ## 0 = korzenie w ziemi, 1 = brama zamknięta (wzrost w VEIN_GATE_GROW s)
+const VEIN_GATE_GROW := 0.4
 var _mine_dust: Array = []               ## pył finału kopalni: [drobny pył, strużki] (CPUParticles3D)
 var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyznaczono punkty stropu
 var _rain_open := 0.0                    ## 0..1: gracz jest nad poziomem podziemi (deszcz widać)
@@ -612,6 +615,7 @@ func _tick(delta: float) -> void:
 	_sync_boulders()
 	tp = _tp("boulders", tp)
 	_sync_boss_fx()
+	_sync_vein_gate(delta)
 	tp = _tp("boss_fx", tp)
 	_sync_leech_fx()
 	tp = _tp("leech_fx", tp)
@@ -6042,6 +6046,54 @@ func _sync_boulders() -> void:
 ##  - fala: dwa grzbiety wody biegnące od Żyły — bryły o stromym czole i łagodnym ogonie, z pianą na grzbiecie;
 ##  - plucie: kwasowo-zielony krąg na podłodze tam, gdzie spadnie plwocina (`spit_mark`) — od zapowiedzi do rozbryzgu, zaciska się
 ##    i pulsuje szybciej w locie.
+## Brama z korzeni hali Żyły (`VEIN_PLAN.md` §6.3): pęk stożkowych korzeni w otworze zachodniej ściany przez całą głębię bryły,
+## wyrasta z podłogi przy zamknięciu i chowa się przy otwarciu. Mapa bez hali — nic.
+func _sync_vein_gate(delta: float) -> void:
+	var has := _level != null and not (_level.get("vein_arena") as Dictionary).is_empty()
+	if not has:
+		if _vein_gate3d != null and is_instance_valid(_vein_gate3d):
+			_vein_gate3d.queue_free()
+		_vein_gate3d = null
+		_vein_gate_k = 0.0
+		return
+	var r: Rect2 = _level.vein_gate_rect()
+	if _vein_gate3d == null or not is_instance_valid(_vein_gate3d) or not _vein_gate3d.is_inside_tree():
+		_vein_gate3d = _build_vein_gate(r)
+	_vein_gate3d.position = Level3D.px_to_m(Vector2(r.get_center().x, r.end.y))
+	_vein_gate_k = move_toward(_vein_gate_k, 1.0 if bool(_level.vein_gate_closed) else 0.0, delta / VEIN_GATE_GROW)
+	_vein_gate3d.visible = _vein_gate_k > 0.001
+	_vein_gate3d.scale = Vector3(1.0, maxf(ease(_vein_gate_k, 0.4), 0.001), 1.0)
+
+func _build_vein_gate(r: Rect2) -> Node3D:
+	var root := Node3D.new()
+	root.name = "VeinGate"
+	_world.add_child(root)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.2, 0.07, 0.08)
+	mat.roughness = 0.5
+	mat.emission_enabled = true
+	mat.emission = Color(0.45, 0.07, 0.05)
+	mat.emission_energy_multiplier = 0.35
+	var h := r.size.y * PX
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1987
+	for i in 12:
+		var hh := h * rng.randf_range(0.9, 1.2)
+		var cm := CylinderMesh.new()
+		cm.height = hh
+		cm.bottom_radius = rng.randf_range(0.11, 0.19)
+		cm.top_radius = 0.025
+		cm.radial_segments = 7
+		cm.rings = 2
+		var mi := MeshInstance3D.new()
+		mi.mesh = cm
+		mi.material_override = mat
+		mi.layers = LAYER_WORLD
+		mi.position = Vector3(rng.randf_range(-0.4, 0.4) * r.size.x * PX, hh * 0.45, lerpf(-Level3D.DEPTH_BACK + 0.3, Level3D.DEPTH_FRONT - 0.15, float(i) / 11.0))
+		mi.rotation = Vector3(rng.randf_range(-0.12, 0.12), rng.randf() * TAU, rng.randf_range(-0.3, 0.3))
+		root.add_child(mi)
+	return root
+
 func _sync_boss_fx() -> void:
 	for n in get_tree().get_nodes_in_group("boss"):
 		if not (n is Node2D) or n.is_queued_for_deletion() or _bossfx.has(n.get_instance_id()) or not n.has_method("_tick_wave_spray"):

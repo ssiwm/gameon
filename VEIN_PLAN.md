@@ -1,6 +1,7 @@
 # Żyła w centrum — walka z ruchem bossa (plan)
 
-Status: **plan z 2026-11-11 (main 1.7.550, 6e0789bf; uwzględnia otwarty PR #658 1.7.551)**. Nic nie wdrożone.
+Status: **plan z 2026-11-11 (main 1.7.550, 6e0789bf; uwzględnia otwarty PR #658 1.7.551)**. **E1 wdrożony w 1.7.552** (hala, brama, kamera,
+punkt kontrolny, Stalker do F3; kadr kamery obniżony o 32 px względem §6.2, bo dolny pasek HUD-u zasłaniał podłogę).
 Decyzje D1–D5 (§19) **przyjęte 2026-11-11 według zaleceń**: hala zamknięta bramą z korzeni, stały kadr areny, Stalker od F3,
 faza sufitowa ze strąceniem światłem, ogień w E5 po playteście 3. Kolejność: najpierw scalić #658, potem etapy E0–E7 (§18),
 playtest po E1, E2 i E4.

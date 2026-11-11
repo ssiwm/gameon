@@ -78,6 +78,7 @@ const N_SCREAM := 15.0            ## przebudzenie: krzyk słychać w całym tart
 const N_STUN := 4.0
 const N_SPLASH := 2.0
 const N_DEATH := 20.0
+const WAIT_ROAR := 12.0           ## hala Żyły: co tyle s ryk z dna, gdy gniazda padły, a nikt nie wszedł (`VEIN_PLAN.md` §6.3)
 
 ## Sprite vein (tools/char_boss.py, klatka 128x80): wiersz 74 arkusza = y 0 w swiecie, paszcza w (64, 60).
 const SPRITE_DROP := 6.0              ## o tyle w dol przesuwamy klatke (korzenie leza tuz pod y 0)
@@ -96,6 +97,11 @@ var atk: int = Atk.NONE           ## trwająca zapowiedź ataku (synchronizowane
 var maw_open := false
 var stunned := false
 var nests_left := 3
+## Hala Żyły (`VEIN_PLAN.md` §6.3, stan CZEKA): gniazda zniszczone, ale żaden człowiek nie wszedł do hali — śpi dalej (nietykalna),
+## co WAIT_ROAR s ryczy. Budzi ją mission.gd `_tick_arena`.
+var waiting := false
+var _wait_roar := 0.0
+var _hurt_on := true                  ## strefa trafień włączona (tylko przebudzona — uśpiona stoi przy gnieździe i zasłaniałaby je)
 ## zgodność z wcześniejszymi testami / rysowaniem
 var winding := false
 var spitting := false
@@ -142,6 +148,7 @@ func _ready() -> void:
 	_light.position = Vector2(0, -20)
 	add_child(_light)
 	_overlay = Lights.add_overlay(self)
+	_set_hurt(false)
 	if Sprites.has(Sprites.enemy_sheet("vein")):
 		_spr = Sprites.attach(self, Sprites.enemy_sheet("vein"))
 		for l in _spr:
@@ -174,12 +181,36 @@ func on_nest_lost(left: int) -> void:
 	Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -6.0, 0.9)
 	_send_state(true)
 
+## Serwer: gniazda zniszczone, ale walka w hali rusza dopiero z wejściem człowieka (mission.gd `_tick_arena`).
+func begin_wait() -> void:
+	if not NoiseMgr.is_server() or state != State.DORMANT:
+		return
+	waiting = true
+	nests_left = 0
+	_wait_roar = 1.5
+	_send_state(true)
+
+func _tick_wait(delta: float) -> void:
+	_wait_roar -= delta
+	if _wait_roar <= 0.0:
+		_wait_roar = WAIT_ROAR
+		_event.rpc("wait_roar")
+
+## Strefa trafień i ciało: włączone tylko u przebudzonej (każdy peer, przy zmianie stanu).
+func _set_hurt(on: bool) -> void:
+	if on == _hurt_on:
+		return
+	_hurt_on = on
+	Hurtbox.set_enabled(self, on)
+
 func awaken() -> void:
 	if not NoiseMgr.is_server() or state != State.DORMANT:
 		return
+	waiting = false
 	max_hp = scaled_hp(BASE_HP, HP_PER_EXTRA_HUMAN, _humans())
 	hp = max_hp
 	state = State.AWAKE
+	_set_hurt(true)
 	phase = 1
 	_atk_gap = 1.5
 	_lash_cd = 0.0
@@ -211,7 +242,9 @@ func reset_enemy() -> void:
 	_wave_r = -1.0
 	_wave_start_ms = -1
 	visible = true
-	Hurtbox.set_enabled(self, true)
+	waiting = false
+	_hurt_on = true
+	_set_hurt(false)                  # po śmierci ciało było wyłączone bez `_set_hurt` — wymuszamy stan
 	if NoiseMgr.is_server():
 		_clear_brood.rpc()
 		_send_state(true)
@@ -228,6 +261,8 @@ func _physics_process(delta: float) -> void:
 		_tick_flashlight(delta)
 		_tick_attacks(delta)
 		_tick_brood(delta)
+	elif state == State.DORMANT and waiting:
+		_tick_wait(delta)
 	_tick_spits(delta)
 	if spit_mark != Vector2.INF and atk != Atk.SPIT and _spits.is_empty():
 		spit_mark = Vector2.INF                      # rozbryzg albo przerwana zapowiedź (oślepienie)
@@ -565,6 +600,9 @@ func _phase3() -> void:
 	_spawn_one()
 	print("[BOSS] faza 3 — krzyk, Uwaga %.0f" % NoiseMgr.level)
 	_event.rpc("phase3")
+	var mis := get_tree().get_first_node_in_group("mission")
+	if mis != null and mis.has_method("on_vein_release"):
+		mis.on_vein_release("phase3")              # hala Żyły: brama się otwiera, Stalker rusza (VEIN_PLAN.md §12)
 
 @rpc("authority", "call_local", "unreliable")
 func _armor_fx(pos: Vector2) -> void:
@@ -621,7 +659,8 @@ func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl:
 	spit_mark = sm
 	if s != State.DEAD and not visible:
 		visible = true
-		Hurtbox.set_enabled(self, true)
+	if s != State.DEAD:
+		_set_hurt(s == State.AWAKE)
 
 @rpc("authority", "call_local", "reliable")
 func _event(kind: String) -> void:
@@ -642,6 +681,11 @@ func _event(kind: String) -> void:
 			_wave_start_ms = Time.get_ticks_msec()
 			Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, 2.0, 0.6)
 			_shake_near(2.0)
+		"wait_roar":
+			# czeka w hali: ryk z dna, korzenie drgają — „wejdź”
+			_flinch = 0.8
+			Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -3.0, 0.8)
+			Audio.play_variant_at("amb_thud", 2, global_position, Audio.BUS_STALKER, 0.0, 0.5)
 		"blinded":
 			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, -6.0, 1.2)
 		"enrage":
@@ -660,6 +704,7 @@ func _event(kind: String) -> void:
 			_death_fx()
 			Vfx.gibs(get_parent(), global_position + Vector2(0, -24), Color(0.4, 0.1, 0.14), 26)
 			visible = false
+			_hurt_on = false
 			Hurtbox.set_enabled(self, false)
 
 func _death_fx() -> void:

@@ -636,6 +636,44 @@ func _lock_camera_band() -> void:
 	_camera.limit_top = lim.x
 	_camera.limit_bottom = lim.y
 
+const ARENA_CAM_T := 0.6                ## s przejścia do kadru hali Żyły i z powrotem
+var _arena_k := 0.0                     ## 0 = zwykła kamera, 1 = kadr hali Żyły
+var _cam_home := Vector2.INF            ## pozycja kamery z player.tscn (nad głową), czytana przy pierwszym użyciu
+
+## Kamera areny (`VEIN_PLAN.md` §6.2, decyzja D2: stały kadr): w walce z Żyłą, gdy lokalny człowiek stoi w hali, kadr obejmuje całą halę —
+## środek stały, zoom dopasowany do `arena_view` (najwyżej ustawienie gracza, ok. 1,5 przy NORMAL), przejście ARENA_CAM_T. Do 1.7.551 kamera
+## jechała za graczem bez wyprzedzenia i paszcza była w kadrze 1,7% walki. Widok 3D (view3d.gd) idzie za Camera2D — nic więcej nie trzeba.
+func _arena_camera(delta: float) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or not (lvl.arena_view as Rect2).has_area():
+		if _arena_k > 0.0:
+			_arena_k = 0.0
+			_camera.position = _cam_home
+			_apply_cam_zoom()
+		return
+	var mis := get_tree().get_first_node_in_group("mission")
+	var want := 1.0 if mis != null and mis.vein_fight() and lvl.in_vein_arena(global_position) else 0.0
+	if want == 0.0 and _arena_k == 0.0:
+		return
+	if not _cam_home.is_finite():
+		_cam_home = _camera.position
+	_arena_k = move_toward(_arena_k, want, delta / ARENA_CAM_T)
+	var view: Rect2 = lvl.arena_view
+	var base := Settings.cam_zoom()
+	var vp := get_viewport_rect().size
+	var fit := minf(vp.x / view.size.x, vp.y / view.size.y)
+	var k := smoothstep(0.0, 1.0, _arena_k)
+	var z := lerpf(base, minf(base, fit), k)
+	_camera.zoom = Vector2(z, z)
+	_camera.position = _cam_home.lerp(view.get_center() - global_position, k)
+	if _arena_k <= 0.0:
+		_camera.position = _cam_home
+		_apply_cam_zoom()
+
+## Czy kamera lokalnego gracza trzyma teraz kadr hali Żyły (test `--veintest`).
+func arena_cam_on() -> bool:
+	return _arena_k >= 1.0
+
 ## Nowa mapa (level.load_map): punkt startu i granice kamery z nowej mapy, postać wraca na start.
 func _on_map_changed(_id: String) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
@@ -656,6 +694,7 @@ func _process(delta: float) -> void:
 	if _camera.enabled:
 		_camera.offset = Feel.shake_offset()
 		_lock_camera_band()
+		_arena_camera(delta)
 	if _is_remote or is_bot:
 		_update_footsteps_passive()
 	_update_lights()

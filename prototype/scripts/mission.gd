@@ -113,6 +113,14 @@ var _boss: Node = null
 ## Wipe w fazie BOSS wraca tu (main._restart_from_checkpoint) zamiast na start mapy; czyści go zwykły restart.
 var _checkpoint := {}
 const CHECKPOINT_GRACE := 2.5         ## s od powrotu do punktu kontrolnego do przebudzenia bossa
+var _dead_cp := {}                     ## serwer: nazwy wrogów martwych w chwili zapisu punktu kontrolnego — restart ich nie wskrzesza
+## Hala Żyły (`VEIN_PLAN.md` §6.3, mapa z `VEIN_ARENA`): walka rusza z wejściem człowieka do hali, brama z korzeni zamyka się
+## ARENA_GATE_DELAY s później albo od razu, gdy w hali są wszyscy żywi ludzie.
+const ARENA_GATE_DELAY := 4.0
+var _arena_engaged := false            ## serwer: ktoś wszedł, Żyła walczy (do restartu)
+var _arena_t := -1.0                   ## serwer: odliczanie do zamknięcia bramy; < 0 = nie liczy
+const ARENA_PULL_EVERY := 1.5          ## s: przy zamkniętej bramie co tyle żywy spoza hali (dołączający, maruder) zostaje wciągnięty
+var _pull_t := 0.0
 var finale := false                    ## misja 1.1: ostatni nieśmiertelnik wziął kopalnię w obroty (zawał + wyjście po drugiej stronie)
 var finale_clock := 0.0               ## s od startu finału (wszystkie peery liczą lokalnie — radio na HUD)
 var _finale_t := -1.0                  ## serwer: odliczanie do zawału (s); < 0 = brak
@@ -214,6 +222,8 @@ func _physics_process(delta: float) -> void:
 			_silent_lost_sent = true
 			_event.rpc("silent_lost")
 		_tick_boss_start(delta)
+	if phase == Phase.BOSS:
+		_tick_arena(delta)
 	if phase == Phase.EXTRACT:
 		_tick_extract(delta)
 		_tick_finale(delta)
@@ -416,21 +426,107 @@ func silent_ok() -> bool:
 func _start_boss() -> void:
 	phase = Phase.BOSS
 	NoiseMgr.objective_bonus()
-	_boss.awaken()
+	if _arena():
+		_arena_engaged = false
+		_arena_t = -1.0
+		_boss.begin_wait()                   # hala Żyły: czeka na wejście człowieka (ostatnie gniazdo padło w hali — start w tej samej klatce)
+	else:
+		_boss.awaken()
 	mark("boss")
 	if kind != "boss":
 		_save_checkpoint()
+	if _arena():
+		_tick_arena(0.0)
 	print("[MISSION] gniazda zniszczone -> Żyła")
+
+## Czy ta misja ma halę Żyły (`VEIN_ARENA` w danych mapy).
+func _arena() -> bool:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return kind == "nests" and lvl != null and not (lvl.vein_arena as Dictionary).is_empty() and _boss != null and is_instance_valid(_boss)
+
+## Czy trwa walka w hali Żyły (kamera areny w player.gd liczy się lokalnie u każdego człowieka).
+func vein_fight() -> bool:
+	return phase == Phase.BOSS and kind == "nests"
+
+## Serwer, faza BOSS w hali Żyły: pierwszy człowiek w hali budzi Żyłę i trzyma Stalkera z dala (`NoiseMgr.stalker_hold`) do fazy 3;
+## brama zamyka się po ARENA_GATE_DELAY s albo gdy weszli wszyscy żywi ludzie i wciąga resztę. Wykrwawieni wstają wtedy za bramą.
+func _tick_arena(delta: float) -> void:
+	if not _arena() or not _boss.is_alive():
+		return
+	var lvl := get_tree().get_first_node_in_group("level")
+	var alive := 0
+	var inside := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.is_queued_for_deletion() or p.dead:
+			continue
+		alive += 1
+		if lvl.in_vein_arena((p as Node2D).global_position):
+			inside += 1
+	if not _arena_engaged:
+		if inside == 0:
+			return
+		_arena_engaged = true
+		_arena_t = ARENA_GATE_DELAY
+		NoiseMgr.stalker_hold = true
+		_boss.awaken()
+		SessionLog.event("vein", {"what": "start", "humans": alive, "bots": get_tree().get_nodes_in_group("players").size() - _humans_count(),
+			"diff": Difficulty.level_name(), "attempt": attempts})
+		print("[MISSION] hala Żyły: start walki (%d/%d ludzi w hali)" % [inside, alive])
+	if _arena_t >= 0.0:
+		_arena_t -= delta
+		if _arena_t <= 0.0 or inside >= alive:
+			_arena_t = -1.0
+			lvl.set_vein_gate(true)
+			var i := 0
+			for p in get_tree().get_nodes_in_group("players"):
+				if not p.is_queued_for_deletion():
+					p.deliver_spawn(lvl.vein_entry(i))   # wykrwawienie przy zamkniętej bramie: wstaje za nią, nie w przedsionku
+					i += 1
+			SessionLog.event("vein", {"what": "gate", "closed": true, "inside": inside, "alive": alive})
+			print("[MISSION] hala Żyły: brama zamknięta")
+	if lvl.vein_gate_closed:
+		_pull_t -= delta
+		if _pull_t <= 0.0:
+			_pull_t = ARENA_PULL_EVERY
+			for p in get_tree().get_nodes_in_group("players"):
+				if not p.is_queued_for_deletion() and not p.dead and not lvl.in_vein_arena((p as Node2D).global_position):
+					lvl.pull_into_arena(p)
+
+func _humans_count() -> int:
+	var n := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot:
+			n += 1
+	return n
+
+## Serwer: krzyk fazy 3 albo śmierć Żyły — brama się otwiera, Stalker wolny (`VEIN_PLAN.md` §12).
+func on_vein_release(why: String) -> void:
+	if not NoiseMgr.is_server() or not _arena():
+		return
+	NoiseMgr.stalker_hold = false
+	var lvl := get_tree().get_first_node_in_group("level")
+	lvl.set_vein_gate(false, false)
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_queued_for_deletion():
+			p.deliver_spawn(checkpoint_pos(p))           # brama otwarta: wykrwawienie znów w przedsionku
+	SessionLog.event("vein", {"what": "stalker_release", "why": why})
 
 func _save_checkpoint() -> void:
 	_checkpoint.clear()
+	_dead_cp.clear()
 	Scrap.save_checkpoint_loot()                     # łup sprzed walki przetrwa wipe na bossie
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl != null and lvl.has_method("save_breakables_checkpoint"):
 		lvl.save_breakables_checkpoint()             # zniszczenia też (DESTRUCTION_PLAN.md D0)
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not e.is_in_group("nests") and not e.is_in_group("boss") and e.get("alive") == false:
+			_dead_cp[String(e.name)] = true
+	var i := 0
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.is_queued_for_deletion():
-			_checkpoint[p.name] = (p as Node2D).global_position
+			# hala Żyły: stały punkt w przedsionku (VEIN_PLAN.md §6.3); inne mapy — gdzie kto stał przy przebudzeniu
+			_checkpoint[p.name] = lvl.vein_checkpoint(i) if _arena() else (p as Node2D).global_position
+			i += 1
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.is_queued_for_deletion():
 			p.deliver_spawn(checkpoint_pos(p))       # wykrwawienie w walce odradza przy arenie, nie na starcie mapy
@@ -440,6 +536,10 @@ func _save_checkpoint() -> void:
 ## Czy wipe ma wrócić do punktu kontrolnego (tylko w trakcie walki z bossem).
 func has_checkpoint() -> bool:
 	return not _checkpoint.is_empty() and phase == Phase.BOSS
+
+## Serwer: czy wróg był martwy przy zapisie punktu kontrolnego (restart od punktu kontrolnego go nie wskrzesza).
+func dead_at_checkpoint(e: Node) -> bool:
+	return _dead_cp.has(String(e.name))
 
 ## Pozycja postaci w punkcie kontrolnym; kto dołączył później, staje tam, gdzie pierwszy z zapisanych.
 func checkpoint_pos(p: Node) -> Vector2:
@@ -454,12 +554,17 @@ func on_checkpoint() -> void:
 	attempts += 1
 	_was_dead.clear()
 	stalker_woke = false
+	_arena_engaged = false
+	_arena_t = -1.0
 	_count_goal()
 	log_start("boss")
 	_broadcast()
 
 ## Serwer: boss budzi się po CHECKPOINT_GRACE s od powrotu do punktu kontrolnego (drużyna zdąży stanąć na nogi).
 func wake_boss_after_checkpoint() -> void:
+	if _arena():
+		_boss.begin_wait()                   # hala Żyły: znów czeka, aż ktoś wejdzie (drużyna stoi w przedsionku)
+		return
 	var att := attempts
 	await get_tree().create_timer(CHECKPOINT_GRACE).timeout
 	if att == attempts and phase == Phase.BOSS and _boss != null and is_instance_valid(_boss):
@@ -469,6 +574,7 @@ func wake_boss_after_checkpoint() -> void:
 func _on_boss_died() -> void:
 	if NoiseMgr.is_server() and _boss != null and is_instance_valid(_boss):
 		_log_objective("boss", 1, 1, (_boss as Node2D).global_position)
+		on_vein_release("death")
 	if phase == Phase.BOSS:
 		_open_extraction(false)
 		_broadcast()
@@ -1011,6 +1117,9 @@ func on_restart(new_run: bool) -> void:
 	stalker_woke = false
 	batteries = 0
 	_checkpoint.clear()
+	_dead_cp.clear()
+	_arena_engaged = false
+	_arena_t = -1.0
 	_boss_wait = 0.0
 	_tags_taken = 0
 	stashes_found = 0

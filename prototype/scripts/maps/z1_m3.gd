@@ -3,7 +3,7 @@ extends RefCounted
 ## Dane mapy dla level.gd; legenda znaczników w level.gd. Rozmiar 192 × 44 kafli.
 ##
 ## Układ: las + posterunek → arena z kładkami → Skład (hala z antresolą, dach, schody z rusztowań) →
-## tartak z bossem; pod całą mapą biegną podziemia (sale i niskie tunele) połączone trzema szybami.
+## hala Żyły z przedsionkiem (od 1.7.552, `VEIN_ARENA`); pod całą mapą biegną podziemia (sale i niskie tunele) połączone trzema szybami.
 ## Ewakuacja: zachodni skraj (jedyne „E" od 1.7.551 — wschodnie, przy tartaku, nigdy nie było wybierane,
 ## bo ekstrakcja bierze wyjście najdalsze od drużyny, a ta stoi wtedy przy bossie).
 ## Cel poboczny (od 1.7.551): dwie skrytki „H" poza główną trasą (szyb 1 w dół, szyb 3 w górę) —
@@ -25,7 +25,7 @@ const UNDERGROUND_ROW := 31               ## od tego rzędu postać jest w podzi
 const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.HKM9, Weapons.GNIEW4]
 ## Ręczne akcenty dekoracji: [pozycja stóp, indeks z art/props.png] — kłody w tartaku, regały i beczki w Składzie.
 ## (8+) Poly Haven: koksownik wartowników przed posterunkiem. Start w lesie bez płotu i zapory (porządek po playteście F3).
-const ACCENTS := [[Vector2(1432, 416), 7], [Vector2(2872, 416), 7], [Vector2(584, 416), 11], [Vector2(1864, 416), 15], [Vector2(1928, 416), 20], [Vector2(1960, 416), 16], [Vector2(2024, 416), 19], [Vector2(2072, 416), 15], [Vector2(2120, 416), 20], [Vector2(2184, 416), 16], [Vector2(2216, 416), 15], [Vector2(2248, 416), 17], [Vector2(1880, 353), 15], [Vector2(1928, 353), 17], [Vector2(2008, 353), 20], [Vector2(2056, 353), 16], [Vector2(2136, 353), 15], [Vector2(2200, 353), 20], [Vector2(2088, 416), 21], [Vector2(1896, 405), 22]]
+const ACCENTS := [[Vector2(1432, 416), 7], [Vector2(584, 416), 11], [Vector2(1864, 416), 15], [Vector2(1928, 416), 20], [Vector2(1960, 416), 16], [Vector2(2024, 416), 19], [Vector2(2072, 416), 15], [Vector2(2120, 416), 20], [Vector2(2184, 416), 16], [Vector2(2216, 416), 15], [Vector2(2248, 416), 17], [Vector2(1880, 353), 15], [Vector2(1928, 353), 17], [Vector2(2008, 353), 20], [Vector2(2056, 353), 16], [Vector2(2136, 353), 15], [Vector2(2200, 353), 20], [Vector2(2088, 416), 21], [Vector2(1896, 405), 22]]
 
 ## Tło 3D (`backdrop3d.gd`, kosmetyka): ta sama linia energetyczna co w 1.2 i daleki maszt radiostacji za lasem.
 const BACKDROP := [{"kind": "power", "c0": -20, "c1": 215, "z": -82.0}, {"kind": "mast", "col": 30, "z": -170.0, "h": 110.0}]
@@ -67,9 +67,27 @@ const FRONT := [
 	# las z podłożem (F3) na powierzchni poza przekrojami posterunku i Składu: skraj lasu przy starcie, arena z kładkami, tartak nad stawem
 	{"set": "forest", "c0": 2, "c1": 17, "r0": 0, "r1": 26},
 	{"set": "forest", "c0": 38, "c1": 111, "r0": 0, "r1": 26},
-	{"set": "forest", "c0": 143, "c1": 189, "r0": 0, "r1": 26},
+	{"set": "forest", "c0": 143, "c1": 163, "r0": 0, "r1": 26},
+	{"set": "station", "c0": 164, "c1": 189, "r0": 11, "r1": 26, "shell": true},   # hala Żyły (VEIN_PLAN.md §6.1): przekrój, bez lasu przed areną
 ]
 const FRONT_SKIP := []
+
+## Hala Żyły (`VEIN_PLAN.md` §6, od 1.7.552): dane areny bossa zamiast nowych liter mapy. Kafle włącznie.
+## `rect` — wnętrze hali [c0, r0, c1, r1]; kamera areny (player.gd) i start walki liczą się od wejścia człowieka do tego prostokąta.
+## `view` — kadr kamery areny w px świata [x0, y0, x1, y1]: hala ze ścianami od najwyższej kładki z zapasem na głowy po podłogę z pasem
+## pod nią (pasek broni HUD zasłania dół ekranu, a dwa górne rzędy hali są puste); zoom dopasowany do kadru, najwyżej ustawienie gracza.
+## `gate` — brama z korzeni [kolumna, r0, r1]: otwór w zachodniej ścianie hali, zamyka się po wejściu drużyny, otwiera w fazie 3 i po śmierci.
+## `checkpoint` — stały punkt kontrolny w przedsionku [kolumna, wiersz podłogi]; kolejni gracze stają co 16 px na zachód.
+## `entry` — miejsce za bramą [kolumna, wiersz podłogi]: tu bramę przechodzą wciągnięci i tu wstają wykrwawieni, gdy brama jest zamknięta.
+## `anchors` — gardziele fazy 1 na podłodze (kolumny), między którymi Żyła przechodzi pod podłogą (E2).
+const VEIN_ARENA := {
+	"rect": [165, 12, 189, 25],
+	"view": [2632, 216, 3048, 456],
+	"gate": [164, 23, 25],
+	"checkpoint": [162, 25],
+	"entry": [167, 25],
+	"anchors": [169, 177, 185],
+}
 
 const MAP := [
 	"##............................................................................................................................................................................................##",
@@ -83,21 +101,21 @@ const MAP := [
 	"##............................................................................................................................................................................................##",
 	"##............................................................................................................................................................................................##",
 	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##............................................................................................................................................................................................##",
-	"##........................................................................................................................................................................................N...##",
-	"##.............................................................................................................................................................w.........w.........w---------.##",
-	"##.............................................................................................................................................................w.........w........Tw..........##",
-	"##.............................................................................................................................................................w.........w......---------.....##",
-	"##.......................................................................................................................P..MM..T..M...........................w.........wk.T......w..........##",
-	"##..............................................................................................................CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC................w........-------....w..........##",
-	"##..............................................................................................................|bbbbbbbbbbbbbbbbbbbbbbbbbbbbb|................w...g.....w.........w..........##",
-	"##........................................................=========.........................................----|bbbbbbbbbbbbbbbbbJbbbbbbbbbbb|----............w-------..w.........w..........##",
-	"##................CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbHbbbbbbbTbbbbbbC................w.........w.........w..........##",
-	"##................CbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w......-------......w..........##",
-	"##................CbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
-	"##................bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----......-------....w.........w..........##",
-	"##.ESg.S..........bbbbkkobTbTbTbbNbb.u......a.....L...M..ok.W.a....u..X...M.......TaT...u..............k....kko..bYbbbTbbTbbubbabbbkbWbbbbbbPb....o...k........w..a......w.o..W.aykw...B......##",
+	"##..................................................................................................................................................................MMMMMMMMMMMMMMMMMMMMMMMMMM##",
+	"##.............................................................................................................................................................w....M........w.......w........##",
+	"##.............................................................................................................................................................w....M........w.......w........##",
+	"##.............................................................................................................................................................w....M........w.......w........##",
+	"##.............................................................................................................................................................w....M........w.......w........##",
+	"##.............................................................................................................................................................w....M........w.......w........##",
+	"##.......................................................................................................................P..MM..T..M...........................w....M........w.......w........##",
+	"##..............................................................................................................CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC................w....M------..w.......w...-----##",
+	"##..............................................................................................................|bbbbbbbbbbbbbbbbbbbbbbbbbbbbb|................w....M........w.......w........##",
+	"##........................................................=========.........................................----|bbbbbbbbbbbbbbbbbJbbbbbbbbbbb|----............w....M........----------.......##",
+	"##................CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbHbbbbbbbTbbbbbbC................w....M........w.......w........##",
+	"##................CbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w....M-------.w.......w.-------##",
+	"##................CbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.............w.......w........##",
+	"##................bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----.......w.....---.....w.......w.....---##",
+	"##.ESg.S..........bbbbkkobTbTbTbbNbb.u......a.....L...M..ok.W.a....u..X...M.......TaT...u..............k....kko..bYbbbTbbTbbubbabbbkbWbbbbbbPb....o...k........wgay..........w...BN..w........##",
 	"##############mmm#CCCCCCCCCCCCCCCCCCCCbbbbbbCCCCCCCCCCOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"################################bbbbbCbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"################################bbbbbb======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======CC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",

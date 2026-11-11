@@ -29,6 +29,7 @@ const BOT_TEST := preload("res://scripts/bot_test.gd")
 const HITCH_TEST := preload("res://scripts/hitch_test.gd")
 const NOBOT_TEST := preload("res://scripts/nobot_test.gd")
 const FUN_TEST := preload("res://scripts/fun_test.gd")
+const VEIN_TEST := preload("res://scripts/vein_test.gd")
 const BATTERY_TEST := preload("res://scripts/battery_test.gd")
 const DESTRUCTION_TEST := preload("res://scripts/destruction_test.gd")
 const FOG_SHADOW_TEST := preload("res://scripts/fog_shadow_test.gd")
@@ -267,6 +268,7 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 		car.reset_handcar()
 	level.reset_collapse()
 	level.reset_breakables()                 # rozbite ściany i ślady trafień wracają do stanu z mapy (DESTRUCTION_PLAN.md D0)
+	level.set_vein_gate(false, false)        # brama z korzeni hali Żyły otwarta
 	for c in _players.get_children():
 		if not carry and not c.is_bot:
 			level.register_weapon_kit(int(c.player_id))
@@ -296,8 +298,9 @@ func _restart_from_checkpoint() -> void:
 	Arsenal.reset_mission()
 	Director.reset()
 	for e in get_tree().get_nodes_in_group("enemies"):
-		if not e.is_in_group("nests") and e.has_method("reset_enemy"):
-			e.reset_enemy()
+		if not e.is_in_group("nests") and e.has_method("reset_enemy") and not mission.dead_at_checkpoint(e):
+			e.reset_enemy()                          # zabici przed walką zostają martwi (VEIN_PLAN.md §6.3; do 1.7.551 wstawali wszyscy)
+	level.set_vein_gate(false, false)                # hala Żyły: brama otwarta, drużyna w przedsionku — walka rusza z wejściem
 	for c in _players.get_children():
 		if not c.is_bot:
 			level.register_weapon_kit(int(c.player_id))
@@ -639,6 +642,41 @@ func _battery_net_step() -> void:
 	var still: Node = level.get_node_or_null(item_name)
 	print("[BATTERY-NET] host client_pct=%d taken=%s" % [int(cl.bat_pct), str(still == null or still.is_queued_for_deletion())])
 
+## Test sieci hali Żyły (--veinnet=N, tools/test_net_session.sh, VEIN_PLAN.md E1; mapa z1_m3). Host po N s niszczy gniazda, staje
+## w przedsionku, po 1 s wchodzi do hali (Żyła się budzi) i po ARENA_GATE_DELAY + 1 s wypisuje stan bramy i to, czy klient (został
+## w przedsionku) jest już w hali. Klient po N s wypisuje bramę, kolizję w otworze, stan Żyły, swoje położenie i kamerę areny.
+func _vein_net_step() -> void:
+	if not multiplayer.is_server():
+		var me: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
+		var boss: Node = get_tree().get_first_node_in_group("boss")
+		var q := PhysicsPointQueryParameters2D.new()
+		q.position = level.vein_gate_rect().get_center()
+		q.collision_mask = 1
+		var blocks := false
+		for h in level.get_world_2d().direct_space_state.intersect_point(q):
+			blocks = blocks or h.get("collider") == level._vein_gate
+		print("[VEIN-NET] client gate=%s blocks=%s boss=%d in=%s cam=%s" % [str(level.vein_gate_closed), str(blocks),
+			int(boss.state) if boss != null else -1, str(me != null and level.in_vein_arena(me.global_position)),
+			str(me != null and me.arena_cam_on())])
+		return
+	var host: Node2D = _players.get_node_or_null("1")
+	if host == null or level.vein_arena.is_empty():
+		print("[VEIN-NET] host: brak hali Żyły na mapie %s" % level.map_id)
+		return
+	host.global_position = level.vein_checkpoint(0)
+	for n in get_tree().get_nodes_in_group("nests"):
+		n.take_bullet(n.global_position + Vector2(-10, 0), 999.0)
+	await get_tree().create_timer(1.0).timeout
+	host.global_position = level.vein_entry(0) + Vector2(48, 0)
+	host.velocity = Vector2.ZERO
+	await get_tree().create_timer(mission.ARENA_GATE_DELAY + 1.0).timeout
+	var cl_in := false
+	for c in _players.get_children():
+		if not c.is_bot and int(c.player_id) != 1:
+			cl_in = level.in_vein_arena(c.global_position)
+	var b: Node = get_tree().get_first_node_in_group("boss")
+	print("[VEIN-NET] host gate=%s boss=%d client_in=%s" % [str(level.vein_gate_closed), int(b.state) if b != null else -1, str(cl_in)])
+
 ## Test sieci ładowarki (--chargernet=N, tools/test_net_session.sh, BATTERY_PLAN.md B3; mapa z1_b1): klient po N s staje przy ładowarce
 ## ze zgaszoną latarką i 20% baterii — ładuje się u siebie (właściciel), a stan „pracuje” rozstrzyga serwer. Po 3 s klient wypisuje
 ## przyrost baterii i stan ładowarki z RPC; host po N + 2 s — stan ładowarki i `bat_pct` klienta.
@@ -853,6 +891,8 @@ func _handle_cmdline() -> void:
 			get_tree().create_timer(float(sa.substr("--printsquad=".length()))).timeout.connect(_print_squad)
 		if sa.begins_with("--resultnet="):                 # test sieci: raport po akcji — host kończy misję po N s, klient po N s zgłasza gotowość
 			get_tree().create_timer(float(sa.substr("--resultnet=".length()))).timeout.connect(_result_net_step)
+		if sa.begins_with("--veinnet="):                   # test sieci: hala Żyły — brama, wciąganie i stan bossa u klienta i dołączającego
+			get_tree().create_timer(float(sa.substr("--veinnet=".length()))).timeout.connect(_vein_net_step)
 		if sa.begins_with("--chargernet="):                # test sieci: ładowarka — klient ładuje się u siebie, serwer widzi, że pracuje
 			get_tree().create_timer(float(sa.substr("--chargernet=".length()))).timeout.connect(_charger_net_step)
 		if sa.begins_with("--destructionnet="):            # test sieci: zniszczenia — rany, rozbicie, punkt kontrolny i wipe u wszystkich
@@ -871,6 +911,7 @@ func _handle_cmdline() -> void:
 	var bottest := false
 	var nobottest := false
 	var funtest := false
+	var veintest := false
 	var batterytest := false
 	var destructiontest := false
 	var fogshadowtest := false
@@ -966,7 +1007,7 @@ func _handle_cmdline() -> void:
 	if _start_map == "":
 		for a in args:
 			if a.begins_with("--stealthtest") or a.begins_with("--wipetest") or a == "--missiontest" or a == "--shifttest" \
-					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient" 					or a == "--stalkertest" or a == "--bottest" or a == "--enemytest" or a == "--funtest":
+					or a == "--weapontest" or a.begins_with("--weaponshots=") or a == "--weaptestnet" or a == "--weaptestclient" 					or a == "--stalkertest" or a == "--bottest" or a == "--enemytest" or a == "--funtest" or a == "--veintest":
 				_start_map = "z1_m3"
 	for a in args:
 		if a == "--host":
@@ -999,6 +1040,8 @@ func _handle_cmdline() -> void:
 			nobottest = true
 		elif a == "--funtest":
 			funtest = true
+		elif a == "--veintest":
+			veintest = true
 		elif a == "--batterytest":
 			batterytest = true
 		elif a == "--destructiontest":
@@ -1172,6 +1215,11 @@ func _handle_cmdline() -> void:
 		ft.name = "FunTest"
 		add_child(ft)
 		ft.run(self)
+	if veintest:
+		var vt := VEIN_TEST.new()
+		vt.name = "VeinTest"
+		add_child(vt)
+		vt.run(self)
 	if batterytest:
 		var bat := BATTERY_TEST.new()
 		bat.name = "BatteryTest"
@@ -4690,6 +4738,7 @@ func _on_peer_connected(id: int) -> void:
 		_load_map_rpc.rpc_id(id, level.map_id)       # mapa zanim pojawi się postać
 		level.send_collapse_to(id)                   # zawały, które już się wydarzyły w tej misji
 		level.send_walls_to(id)                      # rozbite zamurowane przejścia
+		level.send_vein_gate_to(id)                  # brama z korzeni hali Żyły (VEIN_PLAN.md §6.3)
 		level.send_cabinets_to(id)
 		_spawn_player(id)
 

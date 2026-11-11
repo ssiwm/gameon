@@ -68,6 +68,9 @@ var last_noise_amount := 0.0
 var noise_serial := 0
 var _noise_frame := -1                ## klatka fizyki ostatniego zapisanego zdarzenia (patrz `_apply`)
 var stalker_awake := false
+## Serwer: walka w hali Żyły przed fazą 3 (`VEIN_PLAN.md` §12) — hałas nie budzi Stalkera, a obudzony wcześniej wraca do legowiska.
+## Ustawia mission.gd przy starcie walki, zdejmuje krzyk fazy 3, śmierć Żyły i każdy restart (`reset_mission`).
+var stalker_hold := false
 
 # Przesterowanie: ładunek startuje w misji, regeneruje się, max 3 (GDD §8.4)
 var overcharge_charges := 2
@@ -233,6 +236,7 @@ func seconds_since_overcharge() -> float:
 
 func reset_mission() -> void:
 	_last_overcharge = -INF
+	stalker_hold = false
 	lure_left = 0.0
 	_enemy_budget = ENEMY_NOISE_CAP
 	_peak_t = 0.0
