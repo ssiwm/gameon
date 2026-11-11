@@ -290,7 +290,7 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_cam_b.fov = FOV
 	_cam_b.near = 0.3
 	_cam_b.far = 160.0
-	_cam_b.cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT | Front3D.LAYER_WALL          # pierwszy plan (front3d.gd) w obrazie graczy: przed nimi z testem głębi
+	_cam_b.cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT | Front3D.LAYER_WALL | Front3D.LAYER_TREE   # pierwszy plan (front3d.gd) w obrazie graczy: przed nimi z testem głębi
 	_cam_b.current = true
 	_vp_fg.add_child(_cam_b)
 	_geo = Node3D.new()
@@ -8290,7 +8290,7 @@ func _scan_lights() -> void:
 				l3.light_cull_mask = LAYER_WORLD
 				l3a = OmniLight3D.new()
 				l3a.light_color = li.color
-				l3a.light_cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT | Front3D.LAYER_WALL   # lampy oświetlają też pierwszy plan (front3d.gd)
+				l3a.light_cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT | Front3D.LAYER_WALL | Front3D.LAYER_TREE   # lampy oświetlają też pierwszy plan (front3d.gd)
 				l3a.shadow_enabled = false
 				l3a.light_volumetric_fog_energy = 0.0
 				l3a.layers = LAYER_WORLD | LAYER_ACTORS
