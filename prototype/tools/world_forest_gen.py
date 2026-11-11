@@ -2,7 +2,7 @@
 
 Wynik w prototype/art/world3d/forest/: grass_{a,b}.png i fern_a.png (256×256, kępa od dolnej krawędzi) dla `Level3D.build_undergrowth`,
 roots_{a,b}.png (korzenie pod krawędzią bryły, `build_front_edge`), pine_bark.png (kora pnia proceduralnego pierwszego planu bez modeli) i
-bough_side.png (gałąź świerka, `Front3D._bough`). Karty drzew dalekiego pasa (spruce_{a,b,c}.png, pine_{a,b}.png) od 1.7.543 renderuje
+bough_side.png (gałąź świerka, `Front3D._bough`). Karty drzew dalekiego pasa (spruce_{a,b,c}.png, pine_{a,b}.png) od 1.7.545 renderuje
 ze skanów Poly Haven `tools/pine_cards.py --far=…` — te same drzewa co modele lasu bliżej.
 
     python prototype/tools/world_forest_gen.py

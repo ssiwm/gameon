@@ -12,7 +12,7 @@ const POST_Z := -1.6                       ## m: słupy i pnie (`w`) bez styku z
 const POST_K := 0.036                      ## skala przekroju modelu słupa `post` (100 jednostek wysokości; promień ok. 0,43 m)
 const DECK_H := {"-": 0.176, "=": 0.24}       ## grubość pokładu kładki w kaflach (deski: 17,6 jednostki modelu na odcinek 1 kafla, krata: 8 na 3 kafle)
 ## Pnie z mapy (`post_runs`: „tree") jako pełne sosny z modeli lasu: [model, początek korony (część wysokości, `prep_items3d.py: PINES`)].
-## Ciąg `w` to goły dół pnia, a korona rośnie nad nim, w niebie (martwe pnie z Tripo i proceduralne usunięte w 1.7.543).
+## Ciąg `w` to goły dół pnia, a korona rośnie nad nim, w niebie (martwe pnie z Tripo i proceduralne usunięte w 1.7.545).
 const TRUNK_MODELS := [["tree_pine_a", 0.66], ["tree_pine_b", 0.72], ["tree_pine_c", 0.58]]
 const TRUNK_Z := -1.9                      ## m: pień w głębi, za drogą postaci; konary zgniecione w osi z (`TRUNK_DEPTH`), żeby nie wychodziły przed bryłę
 const TRUNK_DEPTH := 0.55                  ## przekrój w głąb względem szerokości (konary rosną głównie w bok)
@@ -3210,7 +3210,7 @@ const FOREST_DIR := "res://art/world3d/forest/"
 const FOREST_KINDS := ["spruce_a", "spruce_b", "spruce_c", "pine_a", "pine_b"]
 const FOREST_MODELS := ["tree_log", "tree_spruce_a", "tree_spruce_b", "tree_spruce_c", "tree_pine_a", "tree_pine_b", "tree_pine_c",
 		"tree_spruce_young_a", "tree_spruce_young_b", "tree_spruce_young_c"]
-## Podrost (od 1.7.543): młode świerki 3,5–8,5 m (skan `fir_sapling_medium`) pod koronami sosen w bliskim i środkowym pasie — stożki
+## Podrost (od 1.7.545): młode świerki 3,5–8,5 m (skan `fir_sapling_medium`) pod koronami sosen w bliskim i środkowym pasie — stożki
 ## rozbijają jednolity dach koron; na polanach i w rzadkim lesie gęściej (odnowienie w lukach). Liczba na 2 kolumny: [bliski, środkowy].
 const YOUNG_PER := [0.3, 1.7]
 const YOUNG_H := Vector2(3.5, 8.5)
@@ -3413,7 +3413,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	# modele 3D w bliskim i środkowym pasie: sosny i świerki ze skanów Poly Haven `pine_tree_01` / `fir_tree_01` (lekkie wersje z
 	# `tools/pine_cards.py --lite`: pień i konary skanu, igliwie na kartach) i powalone kłody; daleki pas zostaje płaskimi kartami (ginie we mgle). Bór: sosna przeważa,
 	# świerk jest drugim piętrem. Każde drzewo ma lekko inny odcień (kolor egzemplarza `MultiMesh`).
-	# Bez martwych pni i brzóz (1.7.543): gołe, jasne pnie między koronami (srebrzyste drewno, biała kora brzozy z liśćmi niewidocznymi nocą)
+	# Bez martwych pni i brzóz (1.7.545): gołe, jasne pnie między koronami (srebrzyste drewno, biała kora brzozy z liśćmi niewidocznymi nocą)
 	# czytały się w grze jak „badyle”.
 	var trees := {}                                       # model → [[Transform3D, Color], …]
 	for tk in FOREST_MODELS:

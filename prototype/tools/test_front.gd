@@ -13,7 +13,7 @@ extends SceneTree
 ##     nad torowiskiem drezyny element stoi na podsypce (płyta na wysokości dna koryta), pod dachem z blachy wisi pod płatwią,
 ##     wyciek oleju w hali 1.2 (`Level3D.oil_spills`): plama w zasięgu płyty, przewrócona beczka na płycie przed niecką i niżej niż linia
 ##     podłogi w rzucie, stojące za płaszczyzną gry poza niecką, element nie stoi w plamie,
-## (5) las (zestaw „forest”, F3): pnie sosny (martwe pnie i brzozy usunięte w 1.7.543), krzewy, paprocie i trawa; pas otwarty w pionie (przycięcie tylko
+## (5) las (zestaw „forest”, F3): pnie sosny (martwe pnie i brzozy usunięte w 1.7.545), krzewy, paprocie i trawa; pas otwarty w pionie (przycięcie tylko
 ##     w poziomie, z zapasem OPEN_PAD), pień od podłoża (nasada pod nim, `ywin` na podłożu) nad górny brzeg kadru NORMAL, kępa na podłożu
 ##     bliżej kamery (CLUMP_Z) z wierzchem w rzucie pod linią podłogi, kontra księżyca tylko na materiałach lasu (rury i ściany przekroju
 ##     bez niej), karty z alfą i dwustronne, `set_moon` zmienia tylko las; podłoże przed płaszczyzną gry: płyta w warstwie świata z materiałem
@@ -383,10 +383,10 @@ func _check_forest() -> void:
 		if kind == "pine" and Level3D.model_mesh(String(Front3D.PINE_MODELS[0])).is_empty():
 			_check(rims == 1 and bases == 1, "%s: pień bez osobnej kory nasady (kora %d, nasada %d)" % [mi.name, rims, bases])
 		elif kind == "pine":
-			# sosna ze skanu (1.7.543): kora pnia i konarów z kontrą, igliwie na kartach z wycinaniem i prześwitem
+			# sosna ze skanu (1.7.545): kora pnia i konarów z kontrą, igliwie na kartach z wycinaniem i prześwitem
 			_check(rims >= 1 and cards >= 1, "%s: sosna ze skanu bez kory albo igliwia (kora %d, karty %d)" % [mi.name, rims, cards])
 	_check(kinds.has("pine"), "las: pień sosny nie powstał na długim zakresie")
-	# martwe pnie usunięte w 1.7.543 (gołe, jasne „badyle” między koronami): zestaw lasu nie może ich już stawiać
+	# martwe pnie usunięte w 1.7.545 (gołe, jasne „badyle” między koronami): zestaw lasu nie może ich już stawiać
 	_check(Front3D.SETS["forest"]["big"] == ["pine"], "las: duże elementy inne niż sosna (%s)" % str(Front3D.SETS["forest"]["big"]))
 	# kępy paproci i pokrzyw w warstwie świata (runo z modeli, oświetlone sceną), nie w pierwszym planie; paproć przy każdym pniu
 	var ck := {}

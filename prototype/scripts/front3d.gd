@@ -69,7 +69,7 @@ const TRUNK_SINK := 0.3                    ## m: pień, szyja i korzenie zaczyna
 const SAPLING_H := Vector2(2.2, 3.6)       ## m: wysokość młodego świerka (`_sapling`) na podłożu pierwszego planu
 ## Skany Poly Haven na pierwszym planie (uwaga z gry 2026-11-09: karty 256 px i proceduralne pnie „zbyt słabej jakości”):
 const PBR_BARK := {"pine_bark": "res://art/world3d/forest/pine_bark_%s_2k.jpg"}   ## kora 2K (kolor, ARM, normalne)
-## Sosna pierwszego planu ze skanu (`ph_pine_*`: pine_tree_01 z Poly Haven, igliwie zamienione na karty w `tools/pine_cards.py`; od 1.7.543
+## Sosna pierwszego planu ze skanu (`ph_pine_*`: pine_tree_01 z Poly Haven, igliwie zamienione na karty w `tools/pine_cards.py`; od 1.7.545
 ## zamiast pnia proceduralnego, który bez korony czytał się jak słup, a z koroną z kart — jak makieta; uwagi z gry 2026-11-10/11).
 ## Skala z dołu korony: najniższe kępy igliwia (PINE_CROWN_Q) wypadają PINE_CROWN m nad podłożem — przy pniu (z ≈ 4 m) to górny brzeg
 ## kadru NORMAL, więc w kadrze jest pień i dół korony, jak w prawdziwym borze. PINE_FAT pogrubia pień i koronę w poziomie (skan ma

@@ -28,9 +28,9 @@ Budynek 3D (`building3d.gd`, od 1.7.527) — Poly Haven (CC0), 1K po gradingu pr
 Pierwszy plan (`front/pipe_parts.glb`, od 1.7.519): części rur z modelu Poly Haven `modular_industrial_pipes_01` (CC0) — sama geometria wycięta przez `tools/front_parts.py`; tekstury te same co dekoracji `pipes` w `art/items3d/`.
 
 
-Sosna pierwszego planu (`art/items3d/ph_pine_a`–`c`, od 1.7.543): model Poly Haven `pine_tree_01` (CC0) — pień, konary i tekstury kory ze skanu, igliwie zamienione na karty z atlasem wyrenderowanym z geometrii igieł skanu (`tools/pine_cards.py`). Źródło (ok. 1 GB) nie jest w repo: `python prototype/tools/polyhaven_fetch.py --res=2k pine_tree_01`.
+Sosna pierwszego planu (`art/items3d/ph_pine_a`–`c`, od 1.7.545): model Poly Haven `pine_tree_01` (CC0) — pień, konary i tekstury kory ze skanu, igliwie zamienione na karty z atlasem wyrenderowanym z geometrii igieł skanu (`tools/pine_cards.py`). Źródło (ok. 1 GB) nie jest w repo: `python prototype/tools/polyhaven_fetch.py --res=2k pine_tree_01`.
 
-Las w głębi (od 1.7.543): sosny `tree_pine_a`–`c` i świerki `tree_spruce_a`–`c` (`art/items3d/`) to lekkie wersje tych samych skanów Poly Haven `pine_tree_01` i `fir_tree_01` (CC0; `pine_cards.py --lite`, pośrednie `art_src/world/polyhaven/*__X_lite.glb` tylko lokalnie, jak źródła), a karty dalekiego pasa `art/world3d/forest/pine_a`, `pine_b`, `spruce_a`–`c` to boczne rendery pełnych skanów (`pine_cards.py --far`). Podrost `tree_spruce_young_a`–`c`: skan Poly Haven `fir_sapling_medium` (CC0) tą samą drogą. Źródła `fir_tree_01` (ok. 570 MB) i `fir_sapling_medium` (ok. 90 MB, `--res=2k`) też tylko lokalnie.
+Las w głębi (od 1.7.545): sosny `tree_pine_a`–`c` i świerki `tree_spruce_a`–`c` (`art/items3d/`) to lekkie wersje tych samych skanów Poly Haven `pine_tree_01` i `fir_tree_01` (CC0; `pine_cards.py --lite`, pośrednie `art_src/world/polyhaven/*__X_lite.glb` tylko lokalnie, jak źródła), a karty dalekiego pasa `art/world3d/forest/pine_a`, `pine_b`, `spruce_a`–`c` to boczne rendery pełnych skanów (`pine_cards.py --far`). Podrost `tree_spruce_young_a`–`c`: skan Poly Haven `fir_sapling_medium` (CC0) tą samą drogą. Źródła `fir_tree_01` (ok. 570 MB) i `fir_sapling_medium` (ok. 90 MB, `--res=2k`) też tylko lokalnie.
 
 ## Porównania z Poly Haven (2026-10-15, `tools/world_pbr_compare.py`)
 
@@ -44,4 +44,4 @@ Obecna tekstura kontra trzej kandydaci po tym samym gradingu, potem zrzuty w grz
 | wall (cegła) | zostaje Bricks097 | `dark_brick_wall`, `red_brick_03`, `worn_brick_wall` są bardziej jednolite od obecnej ściany z łatami tynku |
 | plank, post, grate | bez porównania | to tylko zapas, gdy brak modelu kładki lub słupa |
 
-Modele: las ze skanów z samą decymacją (`fir_tree_01` 7,8 mln trójkątów — od 1.7.543 użyty po zamianie igieł na karty, patrz wyżej; `fir_sapling` i `pine_sapling_small` po uproszczeniu do 9 tys. to wiotkie szkielety) i lampy (modele Poly Haven nie mają emisji, a lampy map są spięte z `lamp.gd`, `_sync_lamps` i `_scan_lights`) odrzucone — zostają świerki z kart i lampa z Tripo.
+Modele: las ze skanów z samą decymacją (`fir_tree_01` 7,8 mln trójkątów — od 1.7.545 użyty po zamianie igieł na karty, patrz wyżej; `fir_sapling` i `pine_sapling_small` po uproszczeniu do 9 tys. to wiotkie szkielety) i lampy (modele Poly Haven nie mają emisji, a lampy map są spięte z `lamp.gd`, `_sync_lamps` i `_scan_lights`) odrzucone — zostają świerki z kart i lampa z Tripo.

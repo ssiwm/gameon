@@ -110,8 +110,8 @@ TRIPO_MODELS = {
     "ph_nettle_a": ("../polyhaven/nettle_plant__medium_a_lod0.glb", "-Y", 6.0, 4000),
     "ph_nettle_b": ("../polyhaven/nettle_plant__small_a_lod0.glb", "-Y", 5.0, 3000),
     "ph_nettle_c": ("../polyhaven/nettle_plant__tall_a_lod0.glb", "-Y", 6.0, 4000),
-    # sosna pierwszego planu (front3d.gd: `pine`, od 1.7.543): pine_tree_01 z igliwiem zamienionym na karty (tools/pine_cards.py), wysokość 100 jednostek
-    # las w głębi (level3d.gd: FOREST_MODELS, TRUNK_MODELS; od 1.7.543 zamiast proceduralnych sosen i świerków z kart 256 px): te same skany
+    # sosna pierwszego planu (front3d.gd: `pine`, od 1.7.545): pine_tree_01 z igliwiem zamienionym na karty (tools/pine_cards.py), wysokość 100 jednostek
+    # las w głębi (level3d.gd: FOREST_MODELS, TRUNK_MODELS; od 1.7.545 zamiast proceduralnych sosen i świerków z kart 256 px): te same skany
     # w wersji lekkiej (`pine_cards.py --lite`, kilka tysięcy trójkątów, atlas igliwia 1024); „świerki” to jodły fir_tree_01
     "tree_pine_a": ("../polyhaven/pine_tree_01__a_lite.glb", "-Y", 1000.0, 20000, 100.0),
     "tree_pine_b": ("../polyhaven/pine_tree_01__b_lite.glb", "-Y", 1000.0, 20000, 100.0),
