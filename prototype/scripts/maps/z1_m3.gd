@@ -4,6 +4,11 @@ extends RefCounted
 ##
 ## Układ: las + posterunek → arena z kładkami → Skład (hala z antresolą, dach, schody z rusztowań) →
 ## tartak z bossem; pod całą mapą biegną podziemia (sale i niskie tunele) połączone trzema szybami.
+## Ewakuacja: zachodni skraj (jedyne „E" od 1.7.551 — wschodnie, przy tartaku, nigdy nie było wybierane,
+## bo ekstrakcja bierze wyjście najdalsze od drużyny, a ta stoi wtedy przy bossie).
+## Cel poboczny (od 1.7.551): dwie skrytki „H" poza główną trasą (szyb 1 w dół, szyb 3 w górę) —
+## antresola Składu i ślepa wschodnia sala podziemi pod tartakiem. Wyjście z szybu 3: sucha półka
+## (kol. 158–159) zamiast wody, Podsłuchacz cofnięty do wschodniego końca Składu (kol. 140).
 
 const Weapons := preload("res://scripts/weapons.gd")
 
@@ -12,7 +17,7 @@ const TITLE := "1.3  THE NEST"
 const RADIO := []
 const RACKS := false                      ## true: każde „g" dostaje stojak (zbrojownia)
 const AMBIENT := Color(0, 0, 0, 0)         ## kolor ciemności mapy; alfa 0 = domyślny z lights.gd
-const BRIEF := "Destroy every nest, kill The Vein when she wakes, then get the whole squad to the green flare."
+const BRIEF := "Destroy every nest, kill The Vein when she wakes, then get the whole squad to the green flare. Side goal: two hidden stashes off the main route."
 const ENEMY_HP := 1.0                     ## mnożnik HP wrogów tej mapy
 const OBJECTIVE := "nests"                ## nests = gniazda + boss; generators = generatory radiostacji
 const UNDERGROUND_ROW := 31               ## od tego rzędu postać jest w podziemiach (ambient, straszaki)
@@ -58,7 +63,7 @@ const FRONT := [
 	{"set": "tunnel", "c0": 91, "c1": 108, "r0": 35, "r1": 40, "shell": true},     # tunel ze środkowym szybem
 	{"set": "tunnel", "c0": 109, "c1": 143, "r0": 30, "r1": 40, "shell": true},    # wschodnia sala (niecka oleju)
 	{"set": "tunnel", "c0": 144, "c1": 170, "r0": 35, "r1": 40, "shell": true},    # tunel z trzecim szybem
-	{"set": "tunnel", "c0": 171, "c1": 191, "r0": 30, "r1": 40, "shell": true},    # sala ewakuacji z końcową ścianą
+	{"set": "tunnel", "c0": 171, "c1": 191, "r0": 30, "r1": 40, "shell": true},    # ślepa wschodnia sala pod tartakiem z końcową ścianą (skrytka — cel poboczny)
 	# las z podłożem (F3) na powierzchni poza przekrojami posterunku i Składu: skraj lasu przy starcie, arena z kładkami, tartak nad stawem
 	{"set": "forest", "c0": 2, "c1": 17, "r0": 0, "r1": 26},
 	{"set": "forest", "c0": 38, "c1": 111, "r0": 0, "r1": 26},
@@ -88,19 +93,19 @@ const MAP := [
 	"##..............................................................................................................CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC................w........-------....w..........##",
 	"##..............................................................................................................|bbbbbbbbbbbbbbbbbbbbbbbbbbbbb|................w...g.....w.........w..........##",
 	"##........................................................=========.........................................----|bbbbbbbbbbbbbbbbbJbbbbbbbbbbb|----............w-------..w.........w..........##",
-	"##................CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbbbbbbbbbTbbbbbbC................w.........w.........w..........##",
+	"##................CCCCCCCCCCCCCCCCCCC.............................T...k.........................................CbbbbbbbbbbgbbbHbbbbbbbTbbbbbbC................w.........w.........w..........##",
 	"##................CbbbbbbbbbbbbbbbbbC...........=========.....===========...=========....................----....bb=========================bb....----.........w......-------......w..........##",
 	"##................CbbbbbbbbbbbbbbbbbC............................................................................bbbbbbbbbbbbbbbbbbbbbbbbbbbbb.................w.........w.........w..........##",
 	"##................bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----......-------....w.........w..........##",
-	"##.ESg.S..........bbbbkkobTbTbTbbNbb.u......a.....L...M..ok.W.a....u..X...M.......TaT...u..............k....kko..bYbbbTbbTbbubbabbbkbWbbbbbbbb....oP..k........w..a......w.o..W.aykw...B....E.##",
-	"##############mmm#CCCCCCCCCCCCCCCCCCCCbbbbbbCCCCCCCCCCOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"################################bbbbbCbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"################################bbbbbb======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"################################bybub+bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbb~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"##.ESg.S..........bbbbkkobTbTbTbbNbb.u......a.....L...M..ok.W.a....u..X...M.......TaT...u..............k....kko..bYbbbTbbTbbubbabbbkbWbbbbbbPb....o...k........w..a......w.o..W.aykw...B......##",
+	"##############mmm#CCCCCCCCCCCCCCCCCCCCbbbbbbCCCCCCCCCCOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"################################bbbbbCbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"################################bbbbbb======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======CC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"################################bybub+bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"######################################====bb################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bb====################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbb====CCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbb====CCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
-	"######bbbbZbbbbbbbbgbbbbbbZbbbb#######bbbbbb################CCCbbbZbZbbbbbbbNbbbbbbbbbbbZbbCCCCbbbbbbCCCCCCCCbbbZbbbbbbbbbbbbbNbbbbbbbbbbbbbZbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
+	"######bbbbZbbbbbbbbgbbbbbbZbbbb#######bbbbbb################CCCbbbZbZbbbbbbbNbbbbbbbbbbbZbbCCCCbbbbbbCCCCCCCCbbbZbbbbbbbbbbbbbNbbbbbbbbbbbbbZbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbHbbCCC##",
 	"######bbbbbbbbb=========bbbbbbb#######====bb################CCCbbbbbbbbb=========bbbbbbbbbbCCCC====bbCCCCCCCCbbbbbbbbb=================bbbbbbbbbCCCCCCCC====bbCCCCCCCCCCCCCbbbbbbbbb======bCCC##",
 	"######bbbbbbbPbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
 	"######bbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbb=======bbbbbbbbbbbbb=======bbbbbbbbbbbbbb====bbbbbbbbbbbbbbbbb=======bbbbbCCC##",

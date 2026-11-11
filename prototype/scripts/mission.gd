@@ -238,9 +238,9 @@ func _tick_boss_start(delta: float) -> void:
 		_start_boss()
 		_broadcast()
 
-## Ukryta skrytka znaleziona (pickup.gd, serwer) — cel poboczny misji 1.1; za komplet jest bonus złomu.
+## Ukryta skrytka znaleziona (pickup.gd, serwer) — cel poboczny misji 1.1 i 1.3 (od 1.7.551); za komplet jest bonus złomu i próbka.
 func on_stash_found(by: Node2D = null, at := Vector2.ZERO) -> void:
-	if not NoiseMgr.is_server() or kind != "tags":
+	if not NoiseMgr.is_server() or not stash_side():
 		return
 	stashes_found += 1
 	_log_objective("stash", stashes_found, stash_total, at, by)
@@ -248,9 +248,17 @@ func on_stash_found(by: Node2D = null, at := Vector2.ZERO) -> void:
 	_event.rpc("generator")
 	_broadcast()
 
-## Czy cel poboczny jest zaliczony: 1.1 — komplet skrytek, 1.2 — cicho (Uwaga poniżej progu); inne misje nie mają celu pobocznego.
+## Czy celem pobocznym misji są ukryte skrytki („H”): 1.1 (nieśmiertelniki) i 1.3 (gniazda, od 1.7.551 — wcześniej 1.3 nie miała celu pobocznego).
+func stash_side() -> bool:
+	return kind == "tags" or kind == "nests"
+
+## Czy misja ma cel poboczny (dziennik przebiegów `RunLog`): skrytki (1.1; 1.3, gdy mapa je ma) albo cisza (1.2).
+func has_side() -> bool:
+	return kind == "tags" or kind == "generators" or (kind == "nests" and stash_total > 0)
+
+## Czy cel poboczny jest zaliczony: 1.1 i 1.3 — komplet skrytek, 1.2 — cicho (Uwaga poniżej progu); inne misje nie mają celu pobocznego.
 func side_done() -> bool:
-	if kind == "tags":
+	if stash_side():
 		return stash_total > 0 and stashes_found >= stash_total
 	if kind == "generators":
 		return stealth_ok()
@@ -342,6 +350,10 @@ func _on_nest_destroyed(nest: Node) -> void:
 	_count_goal()
 	_log_objective("nest", nests_total - nests_left, nests_total, (nest as Node2D).global_position if nest is Node2D else Vector2.ZERO)
 	print("[MISSION] nest destroyed, left=%d/%d" % [nests_left, nests_total])
+	if nest is Node2D and phase == Phase.OBJECTIVE:
+		for p in get_tree().get_nodes_in_group("players"):
+			if not p.is_queued_for_deletion():
+				p.deliver_spawn((nest as Node2D).global_position)     # wykrwawienie odradza przy ostatnim zniszczonym gnieździe (jak generator w 1.2); do 1.7.550 — start mapy
 	if _boss != null and phase == Phase.OBJECTIVE:
 		_boss.on_nest_lost(nests_left)
 	if nests_left == 0 and phase == Phase.OBJECTIVE:
@@ -553,7 +565,7 @@ func _record_result() -> void:
 		return
 	var id := String(lvl.map_id)
 	var title := String(lvl.MAPS[id].TITLE) if lvl.MAPS.has(id) else id
-	var stealth := (1 if side_done() else 0) if (kind == "generators" or kind == "tags") else -1
+	var stealth := (1 if side_done() else 0) if has_side() else -1
 	RunLog.add(id, title, elapsed, downs, attempts, stealth, Scrap.last_gain)
 
 ## Upadki ludzi (statystyka). Liczone na serwerze z replikowanego `dead`; „revived” = wstał po upadku.
@@ -1169,6 +1181,8 @@ func objective_hint() -> String:
 				if not stealth_ok():
 					return Actions.fmt(tr("Hold {interact} at a generator  ·  a running one keeps humming  ·  stealth bonus lost"))
 				return Actions.fmt(tr("Hold {interact} at a generator  ·  it is loud  ·  bonus: stay under %d%% Attention")) % int(STEALTH_CAP)
+			if stash_total > 0:
+				return tr_n("Nests are loud when destroyed  ·  side goal: %d hidden stash (%d / %d)", "Nests are loud when destroyed  ·  side goal: %d hidden stashes (%d / %d)", stash_total) % [stash_total, stashes_found, stash_total]      # formy mnogie: translations/plural.csv
 			return "Nests are loud when destroyed — they wake what's nearby"
 		Phase.BOSS:
 			if kind == "boss":

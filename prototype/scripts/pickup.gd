@@ -9,7 +9,7 @@ extends Node2D
 ##   cache   skrzynia z mapy: dodaje amunicję do WSZYSTKICH broni głównych noszonych przez drużynę
 ##   scrap   złom (rounds = wartość): dotknięcie przez dowolnego żywego gracza dodaje do łupu misji (scrap.gd)
 ##   tag     nieśmiertelnik (misja 1.1): dotknięcie przez dowolnego żywego gracza zalicza cel główny (mission.on_tag_taken)
-##   stash   ukryta skrytka (cel poboczny misji 1.1): jak złom (rounds = wartość), a do tego zalicza skrytkę w misji (mission.on_stash_found)
+##   stash   ukryta skrytka (cel poboczny misji 1.1 i 1.3): jak złom (rounds = wartość), a do tego zalicza skrytkę w misji (mission.on_stash_found)
 ##   flares  skrzynka z flarami (arena Pijawki): +rounds flar do wspólnej puli (NoiseMgr.add_flare), o ile pula nie jest pełna
 ##   supply  zrzut zaopatrzenia (arg = indeks w Throwables.ORDER): +1 przedmiot do wspólnego zapasu, o ile nie jest pełny; leży jako
 ##           sam przedmiot (granat, mina, skaner…) z poświatą w jego kolorze

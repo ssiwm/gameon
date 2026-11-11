@@ -101,8 +101,11 @@ func _model_checks() -> void:
 	# warianty
 	var gen: Dictionary = ResultScreen.build_model(_ctx({"kind": "generators", "silent_counts": false, "side_done": false, "peak": 77.0}))
 	check("1.2: pieczątka UKRYCIE stracona (szczyt 77)", (gen["tiles"] as Array).size() == 3 and String(gen["tiles"][1]["id"]) == "side" and not bool(gen["tiles"][1]["ok"]))
-	var nests: Dictionary = ResultScreen.build_model(_ctx({"kind": "nests", "nests_total": 4, "silent_counts": false}))
-	check("1.3: gniazda, Żyła, bez upadków", (nests["tiles"] as Array).map(func(t: Dictionary) -> String: return String(t["id"])) == ["main", "vein", "no_downs"])
+	var nests: Dictionary = ResultScreen.build_model(_ctx({"kind": "nests", "nests_total": 4, "silent_counts": false, "stash_found": 1, "side_done": false}))
+	check("1.3: gniazda, Żyła, skrytki 1 / 2 (niezaliczone), bez upadków", (nests["tiles"] as Array).map(func(t: Dictionary) -> String: return String(t["id"])) == ["main", "vein", "side", "no_downs"]
+		and String(nests["tiles"][2]["value"]) == "1 / 2" and not bool(nests["tiles"][2]["ok"]))
+	var nests0: Dictionary = ResultScreen.build_model(_ctx({"kind": "nests", "nests_total": 4, "silent_counts": false, "stash_total": 0, "stash_found": 0}))
+	check("1.3 bez skrytek (Nocny Dyżur, stary zapis): gniazda, Żyła, bez upadków", (nests0["tiles"] as Array).map(func(t: Dictionary) -> String: return String(t["id"])) == ["main", "vein", "no_downs"])
 	var boss: Dictionary = ResultScreen.build_model(_ctx({"kind": "boss", "silent_counts": false}))
 	check("B1: tytuł o Pijawce, dwie pieczątki", String(boss["title"]) == tr("THE LEECH IS DEAD") and (boss["tiles"] as Array).size() == 2
 		and int(boss["tiles"][0]["xp"]) == Profile.XP_MISSION + Profile.XP_BOSS)
