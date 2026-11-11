@@ -18,6 +18,10 @@ extends "res://scripts/boss_base.gd"
 ##              Q zamiast w graczy, nie smaga, nie zamiata (filar 2)
 ##   ATAKI      macka (blisko), zamach ogonem po ziemi (przeskocz albo stań na
 ##              kładce), plucie zarodnikami (dalej / wyżej) — każdy z zapowiedzią
+##   DYSTANS    gdy nikt nie stoi w zasięgu żadnego ataku przez IDLE_FAR, plucie
+##              sięga SPIT_RANGE_FAR (1.7.551: do 1.7.550 gracze stali poza 300 px
+##              przez 41% walki, Żyła milczała, paszcza się nie otwierała, a walka
+##              ciągnęła się ~170 s)
 ##   FAZY       66%: furia (szybciej); 33%: krzyk — Uwaga 100%, światła migoczą,
 ##              budzi się Stalker (kulminacja grozy przed ekstrakcją)
 ##   GRZBIET    pocisk z góry pod stromym kątem zawsze 5% (kampienie z półek)
@@ -52,6 +56,8 @@ const LASH_RANGE_Y := 70.0
 const LASH_WINDUP := 0.75
 const LASH_CD := 2.6
 const SPIT_RANGE := 300.0
+const SPIT_RANGE_FAR := 460.0     ## zasięg plucia, gdy nikt nie stoi w zwykłym zasięgu od IDLE_FAR s
+const IDLE_FAR := 3.0
 const SPIT_WINDUP := 0.8
 const SPIT_CD := 3.4
 const SPIT_GRAVITY := 520.0
@@ -99,6 +105,7 @@ var _atk_t := 0.0
 var _atk_gap := 0.0
 var _lash_cd := 0.0
 var _spit_cd := 0.0
+var _idle_t := 0.0                ## ile sekund nikt nie stoi w zasięgu macki, ogona ani zwykłego plucia
 var _sweep_cd := 0.0
 var _maw_t := 0.0
 var _stun_cd := 0.0
@@ -178,6 +185,7 @@ func awaken() -> void:
 	_lash_cd = 0.0
 	_spit_cd = 1.0
 	_sweep_cd = 3.0
+	_idle_t = 0.0
 	_brood_t = 2.0
 	_stun_cd = 0.0                    # po wipe poprzednia próba nie może zostawić cooldownu oślepienia
 	_light_check = 0.0
@@ -197,6 +205,7 @@ func reset_enemy() -> void:
 	maw_open = false
 	stunned = false
 	enraged = false
+	_idle_t = 0.0
 	_spits.clear()
 	spit_mark = Vector2.INF
 	_wave_r = -1.0
@@ -278,6 +287,10 @@ func _tick_attacks(delta: float) -> void:
 	_lash_cd -= delta
 	_spit_cd -= delta
 	_sweep_cd -= delta
+	if not _players_in_reach(0.0).is_empty() or _ground_players_near() or _spit_candidate(SPIT_RANGE) != null:
+		_idle_t = 0.0
+	else:
+		_idle_t += delta
 	if atk != Atk.NONE:
 		_atk_t -= delta
 		if _atk_t <= 0.0:
@@ -297,7 +310,7 @@ func _tick_attacks(delta: float) -> void:
 	elif _sweep_cd <= 0.0 and _ground_players_near():
 		_begin(Atk.SWEEP, SWEEP_WINDUP, Vector2.ZERO)
 	elif _spit_cd <= 0.0:
-		var p := _spit_candidate()
+		var p := _spit_candidate(SPIT_RANGE_FAR if _idle_t >= IDLE_FAR else SPIT_RANGE)
 		if p != null:
 			# cel ustalony NA POCZĄTKU zapowiedzi — kto się ruszy, ten unika
 			_begin(Atk.SPIT, SPIT_WINDUP, p.global_position + Vector2(0, -8))
@@ -362,14 +375,14 @@ func _ground_players_near() -> bool:
 			return true
 	return false
 
-## Cel plucia: najwyżej stojący żywy gracz poza zasięgiem macki, w SPIT_RANGE.
-func _spit_candidate() -> Node2D:
+## Cel plucia: najwyżej stojący żywy gracz poza zasięgiem macki, nie dalej niż range (SPIT_RANGE albo SPIT_RANGE_FAR).
+func _spit_candidate(range_px: float) -> Node2D:
 	var best: Node2D = null
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.dead:
 			continue
 		var d: Vector2 = p.global_position - global_position
-		if d.length() > SPIT_RANGE:
+		if d.length() > range_px:
 			continue
 		if absf(d.x) <= LASH_RANGE_X and d.y <= 8.0 and d.y >= -LASH_RANGE_Y:
 			continue

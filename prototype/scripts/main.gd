@@ -304,7 +304,7 @@ func _restart_from_checkpoint() -> void:
 		c.deliver_spawn(mission.checkpoint_pos(c))
 		c.request_full_reset(false)
 	level.reset_breakables(level.breakables_checkpoint())    # zniszczenia z chwili przebudzenia bossa
-	level.clear_pickups()
+	level.clear_pickups(true)            # znalezione skrytki (cel poboczny 1.3) nie wracają
 	Scrap.restore_checkpoint_loot()
 	mission.on_checkpoint()
 	NoiseMgr.objective_bonus()           # jak przy pierwszym przebudzeniu bossa

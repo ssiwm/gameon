@@ -961,6 +961,7 @@ func _spawn_entities() -> void:
 			pr.position = found[k[0]][i] + Vector2(0, -1)
 			add_child(pr)
 	_map_items = {"a": found["a"], "g": guns_at, "u": found["u"], "F": found["F"], "H": found["H"], "f": found["f"], "y": found["y"]}
+	_stashes_taken.clear()
 	_spawn_map_items()
 	if stalker_home != Vector2.ZERO:         # kryjówka (bez znacznika X) nie ma Stalkera
 		var s := STALKER_SCENE.instantiate()
@@ -990,7 +991,7 @@ func _spawn_entities() -> void:
 		b.position = boss_home
 		add_child(b)
 
-## Ile ukrytych skrytek (znaczniki „H") ma bieżąca mapa — cel poboczny misji 1.1.
+## Ile ukrytych skrytek (znaczniki „H") ma bieżąca mapa — cel poboczny misji 1.1 i 1.3.
 func stash_total() -> int:
 	return (_map_items.get("H", []) as Array).size() if Scrap.enabled() else 0
 
@@ -1099,6 +1100,9 @@ func _add_enemy(n: String, kind: String, p: Vector2) -> void:
 ## miejscach, do których trzeba się dostać. „g” = broń (lista w danych mapy), „a” = skrzynka
 ## z amunicją dla wszystkich noszonych broni głównych (zapas jest wspólny).
 var _map_items := {}
+## Nazwy znalezionych skrytek („MapStash%d”). Restart od punktu kontrolnego bossa (1.3) przywraca przedmioty mapy, ale nie te
+## skrytki — inaczej dałoby się je zebrać drugi raz. Czyszczone przy wczytaniu mapy i pełnym restarcie (clear_pickups).
+var _stashes_taken := {}
 
 ## Broń mapy nr `i` („MapGun<i>”); w gablocie z numerem gabloty, rzędem i środkiem gabloty (wybór, obraz 3D).
 func _spawn_map_gun(i: int) -> Node2D:
@@ -1121,7 +1125,8 @@ func _spawn_map_items() -> void:
 	if Scrap.enabled():
 		var stash: Array = _map_items.get("H", [])
 		for i in stash.size():
-			_add_map_item("MapStash%d" % i, "stash", 0, stash[i], Scrap.STASH_VALUE)
+			if not _stashes_taken.has("MapStash%d" % i):
+				_add_map_item("MapStash%d" % i, "stash", 0, stash[i], Scrap.STASH_VALUE)
 	for i in _power_crates.size():
 		var pc: Array = _power_crates[i]
 		# punkt na podłodze jak przy znacznikach mapy: środek kafla w poziomie, dół kafla w pionie
@@ -2193,19 +2198,24 @@ func _take_item_rpc(n: String, quiet := false) -> void:
 		return
 	if not quiet:
 		Audio.play_at(String(PICKUP_SOUND.get(h.kind, "item_pickup")), h.global_position, Audio.BUS_WORLD, -8.0)
+	if h.kind == "stash":
+		_stashes_taken[n] = true
 	h.queue_free()
 
 ## Serwer: restart misji czyści przedmioty.
-func clear_pickups() -> void:
+## keep_stashes: restart od punktu kontrolnego — znalezione skrytki nie wracają (cel poboczny liczy się raz).
+func clear_pickups(keep_stashes := false) -> void:
 	if not NoiseMgr.is_server():
 		return
 	if NoiseMgr.has_network():
-		_clear_pickups_rpc.rpc()
+		_clear_pickups_rpc.rpc(keep_stashes)
 	else:
-		_clear_pickups_rpc()
+		_clear_pickups_rpc(keep_stashes)
 
 @rpc("authority", "call_local", "reliable")
-func _clear_pickups_rpc() -> void:
+func _clear_pickups_rpc(keep_stashes := false) -> void:
+	if not keep_stashes:
+		_stashes_taken.clear()
 	_cabinet_issued.clear()
 	_cabinet_owner.clear()
 	for cabinet in get_tree().get_nodes_in_group("cabinets"):

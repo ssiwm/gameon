@@ -19,6 +19,10 @@ extends "res://scripts/stalker_test.gd"
 ##    otwarcie dodaje łup i łoskot, odejście przerywa pracę, restart zamyka sejf.
 ## Opinia testera 2026-10-29: 12. obrażenia Żyły — wybuch nie jest „z góry”, w zamkniętą paszczę wchodzi BLAST_CLOSED_MULT, pocisk
 ##    z góry nadal 5%, śrucina waży PELLET_MULT.
+## Analiza 1.3 (2026-11-11, 1.7.551): 13. zniszczone gniazdo → odrodzenie po wykrwawieniu przy nim, nie na starcie mapy;
+##    14. dwie skrytki (cel poboczny) — znaleziona przed wipe'em w walce z Żyłą nie wraca po restarcie od punktu kontrolnego,
+##    nieznaleziona zostaje, obie → cel poboczny zaliczony; 15. Żyła pluje dalej (SPIT_RANGE_FAR), gdy nikt nie stoi w zasięgu
+##    jej ataków przez IDLE_FAR s, a wcześniej milczy.
 ## Mapa 1.3 (gniazda, Żyła, Stalker). Zwykli wrogowie usunięci, bot i Dyrektor stoją. Wynik: linie [FUN-TEST] i kod wyjścia.
 
 const Mission := preload("res://scripts/mission.gd")
@@ -64,8 +68,12 @@ func run(m: Node2D) -> void:
 	await _power_crate()
 	await _silent_run()
 	await _strongbox()
+	await _nest_respawn()
+	await _stash_first()
 	await _checkpoint()
+	await _stash_second()
 	await _vein_damage()
+	await _vein_far_spit()
 	await _skip_hub()
 	_finish()
 
@@ -328,6 +336,82 @@ func _checkpoint() -> void:
 	check("Żyła budzi się po %.1f s" % mission.CHECKPOINT_GRACE, boss != null and int(boss.state) == 1)
 	# wykrwawienie w walce też odradza w punkcie kontrolnym (spawn właściciela postaci)
 	check("odrodzenie po wykrwawieniu też w punkcie kontrolnym", player._spawn_point.distance_to(cp) < 2.0)
+
+# ---------------------------------------------------------------- 13. odrodzenie przy gnieździe (1.7.551)
+
+func _nest_respawn() -> void:
+	var mission: Node = main.mission
+	stalker.set_physics_process(false)            # hałas gniazda nie może sprowadzić Stalkera na gracza w trakcie testu
+	var nests := get_tree().get_nodes_in_group("nests")
+	var nest: Node2D = nests[nests.size() - 1]
+	var left0: int = mission.nests_left
+	nest.take_bullet(nest.global_position + Vector2(-10, 0), 999.0)
+	await _ticks(3)
+	var d: float = player._spawn_point.distance_to(nest.global_position)
+	check("1.3: zniszczone gniazdo (zostało %d z %d) → odrodzenie po wykrwawieniu przy nim (%.0f px), nie na starcie mapy" % [mission.nests_left, left0, d],
+		mission.nests_left == left0 - 1 and mission.phase == Mission.Phase.OBJECTIVE and d < 2.0)
+
+# ---------------------------------------------------------------- 14. skrytki 1.3 (1.7.551)
+
+func _stashes_now() -> Array:
+	return get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "stash" and not n.is_queued_for_deletion())
+
+func _take_stash(sn: Node2D) -> void:
+	_place_player(sn.global_position + Vector2(0, -4))
+	await get_tree().create_timer(0.8).timeout
+
+func _stash_first() -> void:
+	var mission: Node = main.mission
+	var st := _stashes_now()
+	var brief: Dictionary = level.briefing("z1_m3")
+	check("1.3: %d skrytki na mapie, cel poboczny 0 / %d, odprawa liczy %d" % [st.size(), mission.stash_total, int(brief.get("stashes", 0))],
+		st.size() == 2 and mission.stash_total == 2 and int(brief.get("stashes", 0)) == 2 and mission.stashes_found == 0 and mission.has_side() and not mission.side_done())
+	if st.is_empty():
+		return
+	var hint0: String = mission.objective_hint()
+	await _take_stash(st[0])
+	check("1.3: pierwsza skrytka → 1 / 2, cel poboczny jeszcze nie (podpowiedź: %s)" % hint0,
+		mission.stashes_found == 1 and not mission.side_done() and _stashes_now().size() == 1 and "(0 / 2)" in hint0)
+
+func _stash_second() -> void:
+	var mission: Node = main.mission
+	var st := _stashes_now()
+	check("1.3: po restarcie od punktu kontrolnego znaleziona skrytka nie wraca (na mapie %d, znalezione %d)" % [st.size(), mission.stashes_found],
+		st.size() == 1 and mission.stashes_found == 1)
+	if st.is_empty():
+		return
+	await _take_stash(st[0])
+	check("1.3: obie skrytki → cel poboczny zaliczony (%d / %d)" % [mission.stashes_found, mission.stash_total],
+		mission.stashes_found == 2 and mission.side_done())
+
+# ---------------------------------------------------------------- 15. dalekie plucie Żyły (1.7.551)
+
+func _vein_far_spit() -> void:
+	var boss: Node2D = get_tree().get_first_node_in_group("boss")
+	if boss == null or int(boss.state) != 1:
+		check("Żyła przebudzona do testu dalekiego plucia", false)
+		return
+	var flash0: bool = player.flashlight
+	player.flashlight = false                     # snop w paszczę w trakcie zapowiedzi przerwałby plucie
+	var spot: Vector2 = boss.global_position + Vector2(-400.0, 0.0)
+	_place_player(spot)
+	boss._set_atk(boss.Atk.NONE)
+	boss._atk_gap = 0.0
+	boss._spit_cd = 0.0
+	boss._lash_cd = 99.0
+	boss._sweep_cd = 99.0
+	boss._stun_cd = 99.0
+	boss._idle_t = 0.0
+	await get_tree().create_timer(1.0).timeout
+	var quiet: bool = int(boss.atk) == int(boss.Atk.NONE)
+	await get_tree().create_timer(boss.IDLE_FAR - 1.0 + 0.4).timeout
+	var target: Vector2 = boss._spit_target
+	check("Żyła: gracz 400 px od niej (poza %.0f) — przez pierwszą sekundę cisza=%s, po %.0f s pluje dalej (atak %d, cel %.0f px od gracza)"
+		% [boss.SPIT_RANGE, str(quiet), boss.IDLE_FAR, int(boss.atk), target.distance_to(player.global_position)],
+		quiet and int(boss.atk) == int(boss.Atk.SPIT) and absf(target.x - spot.x) < 24.0)
+	boss._set_atk(boss.Atk.NONE)
+	boss._stun_cd = 0.0
+	player.flashlight = flash0
 
 # ---------------------------------------------------------------- 12. obrażenia Żyły (opinia testera 2026-10-29)
 

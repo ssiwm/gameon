@@ -369,16 +369,16 @@ static func build_model(ctx: Dictionary) -> Dictionary:
 			main_val = "%d / %d" % [int(ctx["nests_total"]), int(ctx["nests_total"])]
 		tiles.append({"id": "main", "label": _tr("MAIN OBJECTIVE"), "what": _tr(main_what), "value": main_val, "ok": true,
 			"xp": Profile.XP_MISSION + (Profile.XP_BOSS if kind == "boss" else 0), "scrap": Scrap.BONUS_CLEAR, "stamp": true})
-		if kind == "tags" and int(ctx["stash_total"]) > 0:
+		if kind == "nests":
+			tiles.append({"id": "vein", "label": _tr("THE VEIN"), "what": _tr("Brood mother"), "value": _tr("slain"), "ok": true, "xp": 0, "scrap": 0,
+				"stamp": true})
+		if (kind == "tags" or kind == "nests") and int(ctx["stash_total"]) > 0:       # skrytki: 1.1, od 1.7.551 też 1.3
 			tiles.append({"id": "side", "label": _tr("SIDE OBJECTIVE"), "what": _tr("Hidden stashes"),
 				"value": "%d / %d" % [int(ctx["stash_found"]), int(ctx["stash_total"])], "ok": bool(ctx["side_done"]), "xp": Profile.XP_SIDE,
 				"scrap": Scrap.BONUS_SIDE, "stamp": true})
 		elif kind == "generators":
 			tiles.append({"id": "side", "label": _tr("STEALTH"), "what": _tr("Attention below %d") % int(ctx["stealth_cap"]),
 				"value": _tr("peak %d") % int(ctx["peak"]), "ok": bool(ctx["side_done"]), "xp": Profile.XP_SIDE, "scrap": Scrap.BONUS_SIDE, "stamp": true})
-		elif kind == "nests":
-			tiles.append({"id": "vein", "label": _tr("THE VEIN"), "what": _tr("Brood mother"), "value": _tr("slain"), "ok": true, "xp": 0, "scrap": 0,
-				"stamp": true})
 		tiles.append({"id": "no_downs", "label": _tr("NO DOWNS"), "what": _tr("Squad downs"), "value": str(int(ctx["downs"])), "ok": int(ctx["downs"]) == 0,
 			"xp": Profile.XP_NO_DOWNS, "scrap": Scrap.BONUS_NO_DOWNS, "stamp": true})
 		if bool(ctx["silent_counts"]):

@@ -5,10 +5,12 @@ Status: plan z 2026-10-17. **M1a–M1d (misja 1.1) w main**: obóz patrolu 1.7.2
 **Wydłużenie 1.1 (§1.4):** W2 strażnica (1.7.282), W1 powrót przez obudzony las (1.7.283) i W3 bród (1.7.284) w grze; playtest 1.7.283 w §1.5.
 **Do decyzji:** B1 (§3); wejście do kopalni na HARD (§1.5).
 **1.2 „Drabina” (§4):** analiza i plan 2026-11-10, etapy D0–D4; D1 (przepust, studnia, zawał, odrodzenie) w 1.7.543; D2 (magazyn za kratką) w 1.7.544.
+**1.3 (§5):** analiza 2026-11-11; P0 (odrodzenie przy gnieździe, dalekie plucie Żyły, wylot szybu 3, bez martwego `E`) i P1 (dwie skrytki) w 1.7.551.
 Podstawa: analiza map (lokalnie, poza repo: rzuty map z upadkami, `stats.json`) i logi sesji 1.7.211–1.7.277 (63 podejścia, 1 człowiek + bot).
 
 **Decyzje użytkownika:**
 - **1.3 The Nest zostaje bez zmian** („najlepsza mapa”). Nie ruszamy areny Żyły, kolejności gniazd ani domu Stalkera.
+  (2026-11-11: po analizie §5 użytkownik zlecił poprawki P0 + skrytki — arena, kolejność gniazd i dom Stalkera nadal bez zmian.)
 - B1: na razie tylko diagnoza HP (§3), bez zmian.
 - Do zrobienia: **1.1** (wielkość, konsekwencja hałasu, zadanie skradania) i **pomiar tras** (§2).
 
@@ -288,3 +290,29 @@ Narzędzia w `prototype/tools/`: `m2_ladder.py` (siatka z `z1_m2.gd` sprzed ukł
 
 Ryzyka: po rozbiciu przegród 23 śpiących z tunelu ma drogę na górę (kratka przepuszcza dźwięk także cała); kto wyczyści tunel pieszo, pojedzie pustym korytarzem;
 cicha droga może skrócić misję poniżej 8 minut; żwir strefy wydobycia (kol. 133–142) kończy się dwie kolumny od zsypu; dane z jednego gracza.
+
+## 5. Misja 1.3 The Nest: trasa, Żyła, cel poboczny (analiza 2026-11-11 na 1.7.550; P0 + P1 w 1.7.551)
+
+**Diagnoza** (graf `nav.gd` przy marszu 95 px/s, 131 startów 1.3 w dziennikach, 23 podejścia z pozycjami 1.7.321–1.7.469; wszystkie autora, solo z botem albo bez):
+
+| Miara | Wartość |
+|---|---|
+| Trasa | jedna w 100% podejść: posterunek N1 → szyb 1 (kol. 38–43) → tunele N2, N3 → szyb 3 (kol. 152–157) → tartak N4 → Żyła (kol. 183) → bieg powierzchnią do `E` kol. 3 |
+| Środek powierzchni (arena kładek, Skład) | ok. 1% czasu celu; szyb 2 nieużywany |
+| NORMAL od 1.7.341 | 0 sukcesów na 15 podejść, 10 wipe'ów: 5 przy Żyle, 2 na wylocie szybu 3 (Podsłuchacz P147 cztery kafle od krawędzi, wyjście prosto do wody), 1 w ślepej sali pod tartakiem, 1 w sali środkowej, 1 w tunelu wschodnim |
+| Walka z Żyłą | 163–174 s; ludzie stoją ≤ 300 px od niej przez 55% czasu, 300–460 px przez 38%, dalej przez 7% |
+| Poza 300 px | Żyła nie atakuje, więc paszcza się nie otwiera (5% obrażeń) — walka stoi |
+| Cel poboczny | brak (`side_done()` false dla `nests`): bez premii, XP i próbki za cel |
+| Wykrwawienie | powrót na start mapy, na zachodnim skraju (w 1.2 — przy ostatnim generatorze) |
+| Drugie `E` (kol. 188, przy tartaku) | martwe: ekstrakcja bierze wyjście najdalsze od drużyny, a ta stoi wtedy przy Żyle |
+
+**Zmiany 1.7.551:**
+1. **Odrodzenie przy ostatnim zniszczonym gnieździe** (`mission._on_nest_destroyed` → `deliver_spawn`, jak generator w 1.2); w walce nadal przy arenie (punkt kontrolny), wipe w fazie celu — od startu.
+2. **Dalekie plucie Żyły:** gdy przez `IDLE_FAR` = 3 s nikt nie stoi w zasięgu macki, ogona ani zwykłego plucia (300 px), cel plucia szuka do `SPIT_RANGE_FAR` = 460 px. Po każdym pluciu paszcza otwiera się jak zwykle, więc strzelający z daleka mają okno. Ryk z otwartą paszczą (wariant z analizy) odrzucony: dawałby obrażenia za darmo.
+3. **Wylot szybu 3:** sucha półka z betonu w kol. 158–159 (w. 26–29) zamiast wody tuż przy krawędzi; Podsłuchacz z kol. 147 przeniesiony na wschodni koniec Składu (kol. 140) — słuch 170 px kończy się przed krawędzią szybu (176 px), wzrok 240 px przed wschodnim wyjściem z wody (288 px).
+4. **Bez martwego `E` kol. 188** — jedyne wyjście na zachodnim skraju.
+5. **Cel poboczny: dwie skrytki `H`** (jak 1.1) — antresola Składu (kol. 127, w. 21; objazd z N2 do N3 +1247 px, ok. 13 s marszu, obok Podsłuchacza) i ślepa wschodnia sala podziemi pod tartakiem (kol. 184, w. 33; objazd z N3 do N4 +1045 px, ok. 11 s). Obie dają premię, XP i próbkę za cel poboczny; pieczątka na ekranie wyniku po pieczątce Żyły. Restart od punktu kontrolnego bossa nie przywraca znalezionych skrytek (`level.clear_pickups(true)`).
+
+Test: `--funtest` (punkty 13–15). **Do playtestu:** czas walki z Żyłą (cel < 120 s), ile podejść bierze skrytki i czy objazd przez Skład budzi Podsłuchacza, wipe'y na wylocie szybu 3.
+Odrzucone: mur w tunelu (cegła to 3 ciosy kilofem, więc nie daje wyboru trasy) i zmiana ucieczki przed playtestem.
+Narzędzia analizy lokalnie, poza repo (`map_analysis/tools/m3_*.py`, `m3_route.gd`).

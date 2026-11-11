@@ -15,6 +15,9 @@ keys,?plural,pl,_comment
 "Walk over a dog tag to take it  ·  side goal: %d hidden stash (%d / %d)","Walk over a dog tag to take it  ·  side goal: %d hidden stashes (%d / %d)","Podejdź do nieśmiertelnika, by go zabrać  ·  cel poboczny: %d skrytka (%d / %d)",Misja 1.1: cel w HUD
 ,,"Podejdź do nieśmiertelnika, by go zabrać  ·  cel poboczny: %d skrytki (%d / %d)",
 ,,"Podejdź do nieśmiertelnika, by go zabrać  ·  cel poboczny: %d skrytek (%d / %d)",
+"Nests are loud when destroyed  ·  side goal: %d hidden stash (%d / %d)","Nests are loud when destroyed  ·  side goal: %d hidden stashes (%d / %d)","Gniazda są głośne po zniszczeniu  ·  cel poboczny: %d skrytka (%d / %d)",Misja 1.3: cel w HUD
+,,"Gniazda są głośne po zniszczeniu  ·  cel poboczny: %d skrytki (%d / %d)",
+,,"Gniazda są głośne po zniszczeniu  ·  cel poboczny: %d skrytek (%d / %d)",
 "The lab is busy — %d project per mission.","The lab is busy — %d projects per mission.","Pracownia zajęta — %d badanie na misję.",Pracownia: komunikat
 ,,"Pracownia zajęta — %d badania na misję.",
 ,,"Pracownia zajęta — %d badań na misję.",
