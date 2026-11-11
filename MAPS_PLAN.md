@@ -162,7 +162,15 @@ wrogowie i pion skupione na wschodnim końcu. Zostaje kolejność lekcji na powi
    (bez włazu otwór przecina główną ścieżkę i graf nie przechodzi go na zachód).
 3. **Sztolnia odwadniająca** (L2/L3, wiersze 31–33) od zachodniej ściany sali do szybu przy brodzie: otwór `:` do zabicia deskami (kol. 189),
    zalany odcinek z gniazdem ciem (150–175), wnęka z baterią (137–141), komora pod niecką obozu z lejem i włazem (100–125), mijanka ze Skoczkiem (76–84), szyb przy brodzie (40–43).
-4. **Finał:** ostatni nieśmiertelnik na wschodnim końcu dolnej galerii (kol. 241), zawał `[[232, 25, 239, 33]]`, wyjście przy starcie.
+4. **Finał:** ostatni nieśmiertelnik na wschodnim końcu dolnej galerii (kol. 241), zawał `[[232, 25, 239, 33], [240, 23, 253, 30]]`
+   (od 1.7.550 zasypuje też wykop pochylni do gruntu), wyjście przy starcie.
+   **Kieszeń po zawale (1.7.546, poprawione w 1.7.550).** Po zdjęciu pomostu zachodnia ściana wykopu (nawis nad pochylnią) nie miała wyjścia:
+   po zawale samej rampy dno wykopu, pochylnia nad zawałem i pas powierzchni w kol. 254–259 (20 punktów grafu) nie miały drogi do wyjścia.
+   Playtest 2026-11-11: ostatni nieśmiertelnik na strażnicy, radio kazało szukać szybu „na wschodzie”, gracz zszedł do wykopu, utknął
+   i wyszedł z misji. W co-op jeden uwięziony blokuje ewakuację (przy `E` muszą stać wszyscy żywi ludzie). Poprawka: zawał zasypuje wykop,
+   `level._escape_point` stawia wypychanych (gracze, wrogowie, którzy przeżyli) w miejscu z drogą do wyjścia, wrogowie pod zawałem giną jak w D3,
+   radio mówi o szybie na zachodzie, a słuchającemu na powierzchni — żeby nie schodził. `--maptest` sprawdza każdą mapę z `COLLAPSE`:
+   punkt, z którego przed zawałem było wyjście, ma je też po zawale.
 
 Kontrola na grafie nawigacji (narzędzia poza repozytorium: `map_analysis/tools/m1_loop.py`, `m1_loop_route.gd`):
 

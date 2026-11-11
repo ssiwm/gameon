@@ -380,10 +380,37 @@ func _place_cell(c: int, r: int) -> void:
 func collapse(rects: Array) -> void:
 	if not NoiseMgr.is_server():
 		return
+	var zones: Array[Rect2] = []
+	for rc in rects:
+		zones.append(Rect2(float(rc[0]) * TILE, float(rc[1]) * TILE, float(int(rc[2]) - int(rc[0]) + 1) * TILE, float(int(rc[3]) - int(rc[1]) + 1) * TILE))
+	var in_zone := func(en: Node2D) -> bool:
+		for z in zones:
+			if z.grow(4.0).has_point(en.global_position + Vector2(0, -4)):
+				return true
+		return false
+	for e in get_tree().get_nodes_in_group("enemies"):       # wrogowie pod zawałem giną jak w strefie „^” (D3); Stalker i boss przeżyją
+		var en := e as Node2D
+		if en == null or en.is_queued_for_deletion() or not en.visible or en.get("dead") == true or en.get("alive") == false or not in_zone.call(en):
+			continue
+		var info := Combat.make_info(0, CAVE_CRUSH, en.global_position + Vector2(0, -8), Vector2.DOWN, -1, "blast")
+		info["knock"] = 0.0
+		info["stun"] = 0.0
+		info["heavy"] = true
+		Combat.apply(en, info)
 	if NoiseMgr.has_network():
 		_collapse_rpc.rpc(map_id, rects)
 	else:
 		_collapse_rpc(map_id, rects)
+	for e in get_tree().get_nodes_in_group("enemies"):       # ci, co przeżyli, nie mogą stać w skale (graf już po zawale)
+		var en := e as Node2D
+		if en == null or en.is_queued_for_deletion() or not in_zone.call(en):
+			continue
+		for z in zones:
+			if z.grow(4.0).has_point(en.global_position + Vector2(0, -4)):
+				en.global_position = _escape_point(en.global_position, z)
+				break
+		if en.get("velocity") != null:
+			en.set("velocity", Vector2.ZERO)
 
 @rpc("authority", "call_local", "reliable")
 func _collapse_rpc(id: String, rects: Array) -> void:
@@ -467,7 +494,7 @@ func _prepare_collapse_nav() -> void:
 
 func _apply_blocks(rects: Array) -> void:
 	var dirty := Rect2i()
-	var first := true
+	var areas: Array[Rect2i] = []
 	_map = blocked_rows(_map, rects)
 	for rc in rects:
 		var c0 := int(rc[0])
@@ -475,27 +502,65 @@ func _apply_blocks(rects: Array) -> void:
 		var c1 := int(rc[2])
 		var r1 := int(rc[3])
 		var rr := Rect2i(c0, r0, c1 - c0 + 1, r1 - r0 + 1)
-		dirty = rr if first else dirty.merge(rr)
-		first = false
+		dirty = rr if areas.is_empty() else dirty.merge(rr)
+		areas.append(rr)
+	_refresh_region(dirty)                                    # najpierw graf po zawale: wypychanie szuka miejsca z drogą do wyjścia
+	for rr in areas:
 		_push_players_out(rr)
-	_refresh_region(dirty)
 
-## Gracze (własni na tym peerze) uwięzieni w obszarze, który zaraz stanie się skałą, lądują tuż za nim — na stronie, gdzie na ich
-## wysokości jest wolne miejsce (zawał finału 1.1 w skosie pochylni: po stronie sali, bo od strony wykopu ta wysokość to już skała);
-## gdy wolne są obie, na wschód. `nearer` — na bliższą stronę (zamykana przegroda: przybijający deskę stoi obok otworu
-## i nie może zostać przerzucony na drugą stronę barykady).
+## Gracze (własni na tym peerze) uwięzieni w obszarze, który zaraz stanie się skałą (zawał z danych mapy), lądują poza nim w miejscu,
+## z którego da się dojść do wyjścia (`_escape_point`). `nearer` — tuż za skałą na bliższą stronę (zamykana przegroda: przybijający
+## deskę stoi obok otworu i nie może zostać przerzucony na drugą stronę barykady).
 func _push_players_out(rc: Rect2i, nearer := false) -> void:
 	var area := Rect2(rc.position * TILE, rc.size * TILE)
 	for p in get_tree().get_nodes_in_group("players"):
 		if p.is_queued_for_deletion() or not p.is_multiplayer_authority():
 			continue
 		if area.grow(4.0).has_point(p.global_position + Vector2(0, -8)):
-			var y: float = p.global_position.y
-			var east := Vector2(area.end.x + 10.0, y)
-			var west := Vector2(area.position.x - 10.0, y)
-			var right: bool = p.global_position.x >= area.get_center().x if nearer else (_free_at(east) or not _free_at(west))
-			p.global_position = east if right else west
+			if nearer:
+				var y: float = p.global_position.y
+				p.global_position = Vector2(area.end.x + 10.0, y) if p.global_position.x >= area.get_center().x else Vector2(area.position.x - 10.0, y)
+			else:
+				p.global_position = _escape_point(p.global_position, area)
 			p.velocity = Vector2.ZERO
+
+## Dokąd przenieść postać ze stopami w `feet`, kiedy obszar `area` (px) staje się skałą: tuż za skałą na tej samej wysokości (najpierw wschód,
+## potem zachód), jeśli tam jest wolne miejsce z drogą do wyjścia; inaczej najbliższy punkt nawigacji poza obszarem, z którego do wyjścia
+## dojść się da. Do 1.7.546 zawsze tuż za skałą: zawał wykopu pochylni 1.1 zostawiał postać w skale (obie strony dołu to grunt)
+## albo w kieszeni bez wyjścia. Wymaga grafu `nav` już po zmianie kafli.
+func _escape_point(feet: Vector2, area: Rect2) -> Vector2:
+	var east := Vector2(area.end.x + 10.0, feet.y)
+	var west := Vector2(area.position.x - 10.0, feet.y)
+	if nav == null:
+		return east if _free_at(east) or not _free_at(west) else west
+	var exit_ids: Array = []
+	for e in exits + exits_alt:
+		var eid := nav.get_closest_point(e)
+		if eid >= 0:
+			exit_ids.append(eid)
+	var reaches := func(pid: int) -> bool:
+		if exit_ids.is_empty():
+			return true                                       # mapa bez wyjścia (kryjówka): wystarczy wolne miejsce
+		for eid in exit_ids:
+			if pid == eid or not nav.get_id_path(pid, eid).is_empty():
+				return true
+		return false
+	for side in [east, west]:
+		if _free_at(side):
+			var sid := nav.get_closest_point(side)
+			if sid >= 0 and nav.get_point_position(sid).distance_to(side) <= ESCAPE_SNAP and reaches.call(sid):
+				return side
+	var ids: Array = Array(nav.get_point_ids())
+	ids.sort_custom(func(a: int, b: int) -> bool: return nav.get_point_position(a).distance_squared_to(feet) < nav.get_point_position(b).distance_squared_to(feet))
+	var keep_out := area.grow(2.0)
+	for pid in ids:
+		var pos := nav.get_point_position(pid)
+		if not keep_out.has_point(pos + Vector2(0, -8)) and reaches.call(pid):
+			return pos + Vector2(0, -0.5)
+	return east if _free_at(east) or not _free_at(west) else west
+
+## px: jak daleko od najbliższego punktu nawigacji może stać postać przeniesiona tuż za skałę zawału (spadnie na podłogę pod sobą).
+const ESCAPE_SNAP := 48.0
 
 ## Czy postać ze stopami w `feet` (px) mieści się tam bez wchodzenia w bryłę: kafel stóp i kafel nad nim są wolne.
 func _free_at(feet: Vector2) -> bool:

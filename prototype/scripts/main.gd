@@ -2359,6 +2359,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 							ip.weapons.inspect_item = null)
 	if "--shotfinale" in OS.get_cmdline_user_args():
 		mission.finale = true                                 # --shotfinale: finał kopalni bez przenoszenia gracza (pył ze stropu; użyj z --shotat/--shotrow)
+	if "--shotcollapse" in OS.get_cmdline_user_args():
+		get_tree().create_timer(1.0).timeout.connect(func() -> void: level.collapse(level.collapse_rects))   # dev: zawał z danych mapy po 1 s (podgląd zasypanego wykopu 1.1)
 	if _has_arg_prefix("--shotwall"):
 		var sw := get_tree().get_first_node_in_group("breakables")      # --shotwall: gracz tuż przed zamurowanym przejściem (mapa 1.2);
 		for a in OS.get_cmdline_user_args():                            # --shotwall=NAZWA: przed wybraną przegrodą (Planks1, Grate1…)
@@ -3740,7 +3742,7 @@ func _finale_test() -> void:
 		e.set_physics_process(false)
 		e.set_process(false)
 	check.call("dane finału w mapie 1.1: obszar zawału (%d), bez „e” (%d), wyjście „E” przy starcie (%d), grupy finału (%d)" % [level.collapse_rects.size(), level.exits_alt.size(), level.exits.size(), level.finale_spawns.size()],
-		level.collapse_rects.size() == 1 and level.exits_alt.is_empty() and level.exits.size() == 1 and level.exits[0].x < 400.0 and not level.finale_spawns.is_empty())
+		level.collapse_rects.size() == 2 and level.exits_alt.is_empty() and level.exits.size() == 1 and level.exits[0].x < 400.0 and not level.finale_spawns.is_empty())
 	var hall := Vector2(223.0 * 16.0 + 8.0, 34.0 * 16.0)          # sala pod strażnicą (od 1.7.536 kopalnia odbita: kolumna = 497 − dawna)
 	var start: Vector2 = level.spawns[0]
 	var ramp_pre := Vector2(243.0 * 16.0 + 8.0, 29.0 * 16.0)
@@ -3767,6 +3769,9 @@ func _finale_test() -> void:
 	# gracz „uwięziony" w obszarze zawału: ma wylądować za skałą (po stronie sali)
 	p.global_position = Vector2(237.0 * 16.0, 32.0 * 16.0)
 	p.velocity = Vector2.ZERO
+	# wróg na dnie wykopu pochylni (od 1.7.550 wykop zasypuje się do gruntu): ginie pod zawałem albo stoi poza skałą
+	var pit_foe := finale_foes[0] as Node2D
+	pit_foe.global_position = Vector2(248.0 * 16.0 + 8.0, 26.0 * 16.0)
 	var prepared = level._nav_after                       # graf „po zawale” policzony przy wczytaniu mapy (zawał bez przestoju)
 	await get_tree().create_timer(2.6).timeout
 	var fresh := NavGraph.new()
@@ -3777,12 +3782,22 @@ func _finale_test() -> void:
 		prepared != null and level.nav == prepared and p_now.size() == p_fresh.size() and not p_now.is_empty())
 	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(237, 30), p.global_position.x],
 		level._is_solid(237, 30) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x < 232.0 * 16.0)
+	var pit := Rect2(240.0 * 16.0, 23.0 * 16.0, 14.0 * 16.0, 8.0 * 16.0)
+	var foe_ok: bool = not is_instance_valid(pit_foe) or pit_foe.get("dead") == true or pit_foe.get("alive") == false or not pit.has_point(pit_foe.global_position + Vector2(0, -4))
+	check.call("po zawale: wykop zasypany do gruntu (%s / %s), po wierzchu ścieżka na wschód i z powrotem, wróg z dna wykopu nie stoi w skale (%s)" % [level._ch(248, 25), level._ch(250, 23), str(foe_ok)],
+		level._is_solid(248, 25) and level._is_solid(250, 23) and not level.nav.find_path(Vector2(238.0 * 16.0 + 8.0, 23.0 * 16.0), Vector2(256.0 * 16.0 + 8.0, 23.0 * 16.0)).is_empty()
+		and not level.nav.find_path(Vector2(256.0 * 16.0 + 8.0, 23.0 * 16.0), mission.exit_pos).is_empty() and foe_ok)
+	# gracz, który stał na dnie wykopu, nie zostaje w skale: ląduje w miejscu z drogą do wyjścia (wcześniej tylko ±10 px w poziomie)
+	var esc: Vector2 = level._escape_point(Vector2(248.0 * 16.0 + 8.0, 26.0 * 16.0), pit)
+	check.call("po zawale: wypchnięcie z dna wykopu → (%.0f, %.0f), wolne miejsce poza wykopem z drogą do wyjścia" % [esc.x, esc.y],
+		level._free_at(esc) and not pit.has_point(esc + Vector2(0, -8)) and not level.nav.find_path(esc, mission.exit_pos).is_empty())
 	var back_path: Array = level.nav.find_path(hall, mission.exit_pos)
 	var via_shaft := back_path.any(func(n: Dictionary) -> bool: return (n.pos as Vector2).x < 198.0 * 16.0 and (n.pos as Vector2).y > 23.0 * 16.0 and (n.pos as Vector2).y < 29.0 * 16.0)   # szyb wentylacyjny kol. 193–197
 	check.call("po zawale: z sali szybem na powierzchnię i lasem do wyjścia przy starcie (ścieżka %d węzłów, przez szyb=%s)" % [back_path.size(), str(via_shaft)],
 		not back_path.is_empty() and via_shaft)
 	check.call("radio patrolu: linie 0 s / 3 s / 6 s / 9 s i cisza po %.1f s" % mission.FINALE_RADIO_END,
-		mission.radio_line_at(0.0).begins_with("…Seven") and mission.radio_line_at(3.5).contains("mine") and mission.radio_line_at(6.5).contains("shaft")
+		mission.radio_line_at(0.0).begins_with("…Seven") and mission.radio_line_at(3.5).contains("mine") and mission.radio_line_at(6.5).contains("shaft on the west")
+		and mission.radio_line_at(6.5, true).contains("Don't go down") and mission.radio_line_at(9.5, true).contains("woods")
 		and mission.radio_line_at(9.5).contains("woods") and mission.radio_line_at(mission.FINALE_RADIO_END) == "" and mission.radio_line_at(-1.0) == "")
 	check.call("radio na HUD tylko w finale (clock %.1f, linia '%s')" % [mission.finale_clock, mission.finale_radio_line().substr(0, 20)], mission.finale and mission.finale_radio_line() != "")
 	p.global_position = mission.exit_pos + Vector2(0, -2)
@@ -4450,12 +4465,62 @@ func _map_test() -> void:
 				far_exit = level.exits_alt[0]                # finał: wyjście po zawale zamiast powrotu na start
 			route += _nav_len(nav, cur, far_exit)
 			print("[MAPTEST] %s: trasa start → %d celów → wyjście ≈ %.0f px, sam marsz ≈ %.0f s (%.1f min)" % [id, goals.size(), route, route / 95.0, route / 95.0 / 60.0])
+		if not level.collapse_rects.is_empty():   # zawał z danych mapy (finał 1.1, nadawanie 1.2) nie zostawia kieszeni bez wyjścia
+			var lost := _collapse_pockets()
+			print("[MAPTEST] %s: po zawale z danych mapy (%d obszarów) bez drogi do wyjścia: %s" % [id, level.collapse_rects.size(), str(lost) if not lost.is_empty() else "nic"])
+			if not lost.is_empty():
+				bad.append("po zawale %d punktów, z których przed zawałem było wyjście, nie ma drogi do wyjścia (kieszeń): %s" % [lost.size(), str(lost)])
 		for b in bad:
 			print("[MAPTEST]   BŁĄD: %s" % b)
 		fails += bad.size()
 		print("[MAPTEST] %s: %d punktów sprawdzonych, błędów %d" % [id, points.size(), bad.size()])
 	level.load_map(original)
 	print("[MAPTEST] %s (%d błędów)" % ["PASS" if fails == 0 else "FAIL", fails])
+
+## Test map: kafle (kolumna, wiersz podłogi), z których przed zawałem z danych mapy (`COLLAPSE`) dało się dojść do któregoś wyjścia,
+## a w grafie po zawale (`level._nav_after`, policzony przy wczytaniu) już nie — kieszenie, w których gracz utknąłby do końca misji
+## (1.7.546: wykop pochylni 1.1). Punkty pod samym zawałem znikają z grafu i nie liczą się (gracz jest z nich wypychany).
+## Oba grafy liczone tu od nowa: graf „po zawale” z wczytania mapy mógł powstać przy innym stanie ścian niż bieżący.
+func _collapse_pockets() -> Array:
+	var cols: int = (level._map[0] as String).length()
+	var before := NavGraph.new()                           # oba grafy z tego samego stanu ścian i stref (różni je tylko zawał)
+	before.build(cols, level._map.size(), level._is_solid, level._is_platform_cell)
+	var keep: Array = level._map
+	level._map = level.rows_after(level.collapse_rects)
+	var after := NavGraph.new()
+	after.build(cols, level._map.size(), level._is_solid, level._is_platform_cell)
+	level._map = keep
+	var ok_before := _reaching_exits(before)
+	var ok_after := _reaching_exits(after)
+	var lost: Array = []
+	for pid in ok_before:
+		if after.has_point(pid) and not ok_after.has(pid):
+			var p := after.get_point_position(pid)
+			lost.append(Vector2i(int(p.x) / 16, int(p.y) / 16))
+	return lost
+
+## Punkty grafu `nav`, z których da się dojść do któregoś wyjścia mapy (przeszukanie wstecz po krawędziach jednokierunkowych).
+func _reaching_exits(nav: AStar2D) -> Dictionary:
+	var back := {}
+	for a in nav.get_point_ids():
+		for b in nav.get_point_connections(a):
+			if not back.has(b):
+				back[b] = []
+			(back[b] as Array).append(a)
+	var seen := {}
+	var todo: Array = []
+	for e in level.exits + level.exits_alt:
+		var eid := nav.get_closest_point(e)
+		if eid >= 0 and not seen.has(eid):
+			seen[eid] = true
+			todo.append(eid)
+	while not todo.is_empty():
+		var cur: int = todo.pop_back()
+		for prev in back.get(cur, []):
+			if not seen.has(prev):
+				seen[prev] = true
+				todo.append(prev)
+	return seen
 
 func _is_enemy_point(label: String) -> bool:
 	for e in get_tree().get_nodes_in_group("enemies"):
