@@ -5,7 +5,7 @@ extends SceneTree
 ##     między wpisami, których pasy mieszczą się razem w kadrze (najwyżej jeden duży element w kadrze NORMAL; piętra z przekrojem
 ##     rozdzielone płytą liczą się osobno — `Front3D.apart`), mały element
 ##     co najmniej SMALL_MIN od dużego, `FRONT_SKIP` pusty, na LOW bez małych, ten sam układ przy każdym wywołaniu,
-## (3) bryły: tylko warstwa `LAYER_FRONT` (rozłączna z warstwami świata, lasu, dna lasu i wnęk), bez cienia, bez kolizji,
+## (3) bryły: tylko warstwa `LAYER_FRONT`, las `LAYER_TREE` z zamgleniem `haze` (rozłączne z warstwami świata, lasu, dna lasu i wnęk), bez cienia, bez kolizji,
 ##     części rur z `pipe_parts.glb` (odcinek, zawór, trójnik, cienka rura) i tekstury zestawu, każda powierzchnia z materiałem
 ##     pierwszego planu (półprzezroczysty, z wygaszaniem), pas przycięcia w parametrze instancji; OFF chowa całość,
 ## (4) przekrój budynku (F2b): kafle strefy tylko w stropie i podłodze z fundamentem (nigdy ściany w pasie gry ani strefy wydobycia),
@@ -261,6 +261,8 @@ func _check_layers() -> void:
 		_check(lf & int(other) == 0, "LAYER_FRONT nachodzi na warstwę %d" % other)
 	for other in [LAYER_WORLD, LAYER_ACTORS, Level3D.LAYER_FOREST, Level3D.LAYER_FAR, Niches3D.LAYER_NICHE, lf]:
 		_check(Front3D.LAYER_WALL & int(other) == 0, "LAYER_WALL nachodzi na warstwę %d" % other)
+	for other in [LAYER_WORLD, LAYER_ACTORS, Level3D.LAYER_FOREST, Level3D.LAYER_FAR, Niches3D.LAYER_NICHE, lf, Front3D.LAYER_WALL]:
+		_check(Front3D.LAYER_TREE & int(other) == 0, "LAYER_TREE nachodzi na warstwę %d" % other)
 	var root := Node3D.new()
 	get_root().add_child(root)
 	var front := [{"set": "station", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}, {"set": "tunnel", "c0": 0, "c1": 120, "r0": 30, "r1": 37}]
@@ -340,7 +342,11 @@ func _check_forest() -> void:
 				_check(_par(pm, "rim_k", 0.0) == 0.0 and _par(pm, "trans_k", 0.0) == 0.0, "%s: kontra księżyca pod ziemią" % mi.name)
 			continue
 		kinds[kind] = true
-		_check(mi.layers == Front3D.LAYER_FRONT and mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: warstwa albo cień" % mi.name)
+		# las na własnej warstwie: bez kontry postaci (jasny pas na pniu), z zamgleniem nocy w shaderze
+		_check(mi.layers == Front3D.LAYER_TREE and mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: warstwa albo cień" % mi.name)
+		for si in mi.mesh.get_surface_count():
+			var hm := mi.get_surface_override_material(si) as ShaderMaterial
+			_check(is_equal_approx(_par(hm, "haze", 0.0), Front3D.FOREST_HAZE), "%s: las bez zamglenia (haze)" % mi.name)
 		var clip: Vector4 = mi.get_instance_shader_parameter("clip")
 		_check(clip.z < -1e5 and clip.w > 1e5, "%s: las przycięty w pionie" % mi.name)
 		_check(is_equal_approx(clip.x, clip0.x - Front3D.OPEN_PAD) and is_equal_approx(clip.y, clip0.y + Front3D.OPEN_PAD), "%s: przycięcie w poziomie bez zapasu OPEN_PAD" % mi.name)
