@@ -44,9 +44,12 @@ const FINALE_NOISE := 14.0            ## skok Uwagi przy wstrząsie (budzi to, c
 const FINALE_RADIO := [
 	[0.0, "…Seven, last transmission. If you can hear this — you found our tags."],
 	[3.0, "It was never the woods listening. It's the mine. It woke when we dug."],
-	[6.0, "Don't go back up the ramp. There's an old shaft on the east side — climb."],
+	[6.0, "Don't go back up the ramp. There's an old shaft on the west side — climb."],
 	[9.0, "Then back through the woods to where you came in. Everything out there is awake now… run."],
 ]
+## Linia 6 s dla słuchającego na powierzchni (`radio_line_at` z `above`): kopalnia się zawala, do wykopu nie schodzić.
+## Do 1.7.546 radio zawsze kazało szukać szybu „na wschodzie” (od L1 szyb jest na zachodzie) — gracz ze strażnicy schodził do wykopu.
+const FINALE_RADIO_ABOVE := "The mine's caving in behind you. Don't go down there — the way out is west."
 const FINALE_RADIO_END := 12.5
 const BROADCAST_NOISE := 70.0          ## skok Uwagi po uruchomieniu ostatniego generatora
 
@@ -289,18 +292,38 @@ func _start_finale(lvl: Node) -> void:
 	_event.rpc("rumble")
 	print("[MISSION] finale: collapse in %.1fs, exit -> %s" % [FINALE_DELAY, str(exit_pos)])
 
-## Linia radia patrolu dla sekundy `t` od startu finału ("" po zakończeniu transmisji).
-func radio_line_at(t: float) -> String:
+## Linia radia patrolu dla sekundy `t` od startu finału ("" po zakończeniu transmisji). `above` — słuchający jest na powierzchni
+## (ostatni nieśmiertelnik wzięty na strażnicy albo w jaskini): zamiast szybu z kopalni linia każe nie schodzić i wracać lasem.
+func radio_line_at(t: float, above := false) -> String:
 	if t < 0.0 or t >= FINALE_RADIO_END:
 		return ""
 	var line := ""
 	for e in FINALE_RADIO:
 		if t >= float(e[0]):
 			line = String(e[1])
+	if above and line == String(FINALE_RADIO[2][1]):
+		line = FINALE_RADIO_ABOVE
 	return line
 
+## Linia radia dla gracza tego peera. Gdzie jest (pod ziemią czy na powierzchni), sprawdza raz, na początku transmisji.
 func finale_radio_line() -> String:
-	return radio_line_at(finale_clock) if finale else ""
+	if not finale:
+		_radio_above = -1
+		return ""
+	if _radio_above < 0:
+		_radio_above = 1 if _local_above_ground() else 0
+	return radio_line_at(finale_clock, _radio_above == 1)
+
+var _radio_above := -1                 ## -1 = jeszcze nie sprawdzone w tym finale; 1 = gracz tego peera na powierzchni
+
+func _local_above_ground() -> bool:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null:
+		return false
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and int(p.get("player_id")) == NoiseMgr.local_id():
+			return (p as Node2D).global_position.y <= float(lvl.underground_y)
+	return false
 
 func _tick_finale(delta: float) -> void:
 	if _finale_t < 0.0:
