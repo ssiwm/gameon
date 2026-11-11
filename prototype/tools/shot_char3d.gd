@@ -1,9 +1,10 @@
 extends SceneTree
 ## Zrzut kontrolny postaci 3D: zestawy póz / broni / wyglądów / stanów broni (przeładowanie, cios, odrzut).
-## godot --path prototype --script tools/shot_char3d.gd -- --set=poses|weapons|looks|states|palettes [--part=N] [--zoom=6] [--out=/tmp/char3d.png] [--wait=40]
+## godot --path prototype --script tools/shot_char3d.gd -- --set=poses|weapons|looks|states|palettes|stocks [--part=N] [--zoom=6] [--out=/tmp/char3d.png] [--wait=40]
 ##       [--charset=mpfb] — zestaw modeli (Char3D.charset: katalog w art/char3d/), np. do porównania wersji
 ## Wiersz konfiguracji: {anim, aim (°), dir (+1 prawo / −1 lewo), speed, gun, char, extra (rad), kick (px), reload (0..1), swing (0..1)}
 const Char3D := preload("res://scripts/char3d.gd")
+const Parts := preload("res://scripts/parts.gd")
 const WEAPONS := ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6", "maczeta", "kilof"]
 const LOOKS := ["male_scav", "male_hazmat", "male_medic", "female_scav", "female_hazmat", "female_medic"]
 var _frames := 0
@@ -68,6 +69,18 @@ func _initialize() -> void:
 					var row := _row("idle", 0, 1, 0, "m83", ch)
 					row["pal"] = pi
 					all.append(row)
+		"stocks":                                             # kolby z modelem w dłoniach (P-83 z kaburą-kolbą, M-83 z AKMS): pozy i celowanie w obie strony
+			for r in [_row("idle", 0), _row("idle", 40), _row("run", -30, 1, 95), _row("crouch", 0, -1)]:
+				r["gun"] = "p64"
+				r["fit"] = ["p64_stock"]
+				all.append(r)
+			var p2 := _row("idle", -45, -1, 0, "p64")
+			p2["fit"] = ["p64_stock"]
+			var m1 := _row("idle", 0, 1, 0, "m83")
+			m1["fit"] = ["m83_akms"]
+			var m2 := _row("idle", 0, -1, 0, "m83")
+			m2["fit"] = ["m83_akms"]
+			all += [p2, _row("idle", 0, 1, 0, "p64"), m1, m2]
 		"looks":
 			for c in LOOKS:
 				all.append(_row("idle", 0, 1, 0, "m83", c))
@@ -93,6 +106,8 @@ func _initialize() -> void:
 		root.add_child(c)
 		if not c.setup(cfg["char"], cfg["gun"]):
 			push_error("setup nie powiodło się: %s" % cfg)
+		if cfg.has("fit"):
+			c.set_gun(cfg["gun"], Parts.encode_ids(cfg["gun"], cfg["fit"]))
 		c.set_palette(int(cfg.get("pal", 0)))
 		_chars.append(c)
 		if _light:                                           # światło z prawej-góry każdej postaci (sprawdza relief z mapy normalnych i odbicie flip_h)

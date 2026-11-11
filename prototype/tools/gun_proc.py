@@ -2048,28 +2048,37 @@ def part_p64_long(spec):
 
 
 def part_p64_stock(spec):
-    """Kabura-kolba (jak przy APS): wąska szyjka przy chwycie, płaski korpus rozszerzony ku trzewikowi, stalowe okucie z zaczepem w grzbiecie chwytu,
-    klapa kabury na zawiasie i stalowy trzewik ze strzemiączkiem. Linia grzbietu prawie równoległa do lufy, ok. 1,3 długości pistoletu."""
+    """Kabura-kolba (jak przy APS): stalowa stopka nasunięta na dół grzbietu chwytu (zaczep w piętce, dwa policzki obejmują chwyt), od niej płaska
+    kabura idzie skośnie w dół i do tyłu, ku ramieniu (oś ok. 23° pod lufą), rozszerza się ku trzewikowi. Długość ok. długości pistoletu (~175 mm
+    wzdłuż osi), cieńsza od chwytu; zawias klapy przy trzewiku, strzemiączko pasa pod spodem. Do 1.7.541 kolba szła poziomo ze środka chwytu
+    i była dłuższa i wyższa niż pistolet — wyglądała jak kolba karabinu."""
     wd = M(wood, "p64_holster", tone=((0.016, 0.008, 0.004), (0.075, 0.036, 0.015)))
     small = mat("p83_small")
-    x0, x1 = -222.0, -30.0
-    top = lambda x: 62.0 + (x + 30.0) * 0.045
-    bot = lambda x: 30.0 - 56.0 * (max(0.0, -30.0 - x) / 192.0) ** 0.75
-    wid = lambda x: 8.5 + 4.5 * (max(0.0, -30.0 - x) / 192.0)
-    oval_loft("holster", x0, x1, top, bot, wid, wd, n=20, bv=1.2)
-    # okucie szyjki i zaczep: pierścień na drewnie, dwa policzki obejmujące grzbiet chwytu
-    oval_loft("holster_ferrule", -38.0, -22.0, lambda x: top(x) + 1.2, lambda x: bot(x) - 1.2, lambda x: wid(x) + 1.2, small, n=4, bv=0.6)
-    box("holster_lug", -24.0, -6.0, 34.0, 58.0, 5.0, small, bv=0.5, r=1.5)
+    bx = lambda z: -9.5 + (z - 7.0) * 0.17                   # linia grzbietu chwytu (okładzina) w build_p83: (-9.5, 7) → (0, 63)
+    xs, xe = -15.0, -175.0                                   # początek drewna przy stopce i trzewik
+    slope = 0.42                                             # spadek osi na milimetr w tył (ok. 23°)
+    tt = lambda x: min(1.0, max(0.0, (xs - x) / (xs - xe)))
+    zc = lambda x: 15.0 - slope * (xs - x)
+    hh = lambda x: 12.5 + 15.0 * tt(x) ** 0.85               # połowa wysokości: 25 mm przy szyjce → 55 mm przy trzewiku
+    top = lambda x: zc(x) + hh(x)
+    bot = lambda x: zc(x) - hh(x)
+    wid = lambda x: 8.0 + 3.5 * tt(x)                        # połowa grubości 8 → 11,5 mm (chwyt ma 14,5)
+    oval_loft("holster", xe, xs, top, bot, wid, wd, n=20, bv=1.2)
+    # stopka: stalowy klin nasunięty na dół grzbietu chwytu, z zaczepem pod piętką, i dwa policzki obejmujące dół chwytu po bokach
+    prism("holster_shoe", fillet([(bx(30.0) + 0.6, 30.0, 1.5), (bx(30.0) - 7.0, 30.0, 2.0), (-24.0, 8.0, 3.0), (-24.0, -1.0, 1.5), (bx(0.0) + 0.5, -1.0, 1.0),
+                                  (bx(2.0) + 0.6, 2.0)]), -7.5, 7.5, small, bv=0.5, seg=1)
     for sy in (-1.0, 1.0):
-        box("holster_cheek", -24.0, -3.0, 40.0, 54.0, 1.4, small, bv=0.3, seg=1, y=sy * 7.4)
-    # klapa kabury: zawias w poprzek korpusu i zatrzask na boku
-    xh = -146.0
+        prism("holster_cheek", fillet([(-14.0, 3.0, 1.5), (2.0, 3.0, 1.5), (0.0, 15.0, 2.0), (-12.0, 17.0, 2.0)]), sy * 14.2, sy * 15.6, small, bv=0.3, seg=1)
+    oval_loft("holster_ferrule", -30.0, -14.0, lambda x: top(x) + 1.0, lambda x: bot(x) - 1.0, lambda x: wid(x) + 1.0, small, n=4, bv=0.5)
+    # klapa kabury: zawias w poprzek korpusu przy trzewiku i nity zatrzasku na bokach
+    xh = -150.0
     oval_loft("holster_hinge", xh - 3.0, xh + 3.0, lambda x: top(x) + 0.8, lambda x: bot(x) - 0.8, lambda x: wid(x) + 0.8, small, n=3, bv=0.4)
     for sy in (-1.0, 1.0):
-        revolve("holster_rivet", [(sy * wid(-90.0), 0.0), (sy * wid(-90.0), 2.6), (sy * (wid(-90.0) + 1.3), 2.2), (sy * (wid(-90.0) + 1.3), 0.0)], (-90.0, 36.0), small, axis="Y", seg=12, bv=0.2)
-    # trzewik i strzemiączko pasa
-    oval_loft("butt_cap", x0 - 7.0, x0 + 3.0, lambda x: top(x0) + 1.5, lambda x: bot(x0) - 1.5, lambda x: wid(x0) + 1.2, small, n=4, bv=0.8)
-    swivel(-198.0, bot(-198.0) - 4.5, small, r=6.0)            # górny łuk wchodzi w drewno: kółko wisi na korpusie, nie w powietrzu
+        revolve("holster_rivet", [(sy * wid(-95.0), 0.0), (sy * wid(-95.0), 2.6), (sy * (wid(-95.0) + 1.3), 2.2), (sy * (wid(-95.0) + 1.3), 0.0)],
+                (-95.0, zc(-95.0) + 4.0), small, axis="Y", seg=12, bv=0.2)
+    # trzewik i strzemiączko pasa pod spodem przy trzewiku
+    oval_loft("butt_cap", xe - 6.0, xe + 3.0, lambda x: top(xe) + 1.5, lambda x: bot(xe) - 1.5, lambda x: wid(xe) + 1.2, small, n=4, bv=0.8)
+    swivel(-160.0, bot(-160.0) - 4.0, small, r=5.5)          # górny łuk wchodzi w drewno: kółko wisi na korpusie, nie w powietrzu
     return {"mount": "frame", "hides": []}
 
 
