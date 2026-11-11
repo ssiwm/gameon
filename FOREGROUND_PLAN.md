@@ -676,6 +676,20 @@ i tunelami”, „dodaj kompletne ściany (te, gdzie się wchodzi do budynku i w
   stoją 20,2 m od kamery i zostają ostrzy, pierwszy plan przy 15–17 m się rozmywa. Sprawdzić koszt w 4K i krawędzie
   na przezroczystym tle `VpActors`. Zamiennik: miękkie tekstury i mipmapy przesunięte w górę.
 
+### Las bez kontry postaci, z mgłą nocy i miękki (2026-11-11, 1.7.547)
+
+Uwaga z gry na 1.1: sosna ze skanu przed graczem „wygląda jak przyklejona do ekranu, nienaturalnie oświetlona”. Przyczyny: trzy światła
+kontry postaci (`view3d.gd`) świeciły też na `LAYER_FRONT` — na pniu ciągły jasny pas przez cały kadr, a z góry biała nasada; do tego
+kontra księżyca z shadera (0,7 `FOREST_RIM`, na pniu ze skanu bez przerw na korze) i brak mgły świata w obrazie graczy.
+
+- Wpisy otwarte (las) leżą na `LAYER_TREE` = 1024: kamera graczy, lampy `l3a` i latarka, bez kontry postaci (jak `LAYER_WALL`).
+- `haze` = `FOREST_HAZE` 0,4: część koloru zastępuje ciemny kolor mgły świata (`HAZE_COL`); dev `--nohaze`.
+- Pień ze skanu: kontra księżyca `PINE_RIM` × `FOREST_RIM`, tylko na łuskach kory (`rim_ridge`) — sylwetka z przerywanym obrysem.
+- F4 zamiennikiem: `soft` = `FOREST_SOFT` 0,7 — igliwie z mipmapy o 1,75 poziomu wyżej i z płynną alfą, brzeg pnia z boku
+  przechodzi w przezroczystość; dev `--nofrontsoft`. DoF kamery sprawdzony ponownie: Godot 4.7 wyłącza go w viewporcie
+  z przezroczystym tłem (ostrzeżenie w logu).
+- Zrzuty przed i po: `C:\deadair87\shots_pine` (1.1, kol. 6 i 26).
+
 ## Kolejność i rozmiar
 
 | Etap | Co | Rozmiar | Wersja |
