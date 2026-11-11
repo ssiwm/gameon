@@ -33,6 +33,7 @@ const CLIPS := {
 	"crouch": {"file": "crouch", "upper": 0.35, "drop": 0.05},
 	"crouch_walk": {"file": "crouch_walk", "step": true, "phase0": 0.0, "upper": 0.5, "drop": 0.06},
 	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
+	"push": {"file": "push", "step": true, "phase0": 0.0, "arms": true},          # Push_Loop (UAL1): pchanie skrzyni oburącz, broń schowana
 	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05},
 	"getup": {"file": "getup", "scrub": [0.1, 1.5]},
 	"combat_chop": {"file": "combat_chop", "scrub": [0.0, 1.0], "additive": true},
