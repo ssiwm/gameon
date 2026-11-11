@@ -32,8 +32,17 @@ const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 enum Atk { NONE, LASH, SPIT, SWEEP }
+## Ruch w hali (`VEIN_PLAN.md` §7, E2): wynurzona walczy w gardzieli, potem zanurza się i przechodzi pod podłogą do innej.
+##   UP      wynurzona — seria ataków (3, w fazie 2+ 4) albo do FIGHT_MAX s, potem SINK; „ból” skraca serię
+##   ROAR    ryk po wynurzeniu, paszcza otwarta (pełne obrażenia) — nagroda za ustawienie się przed wynurzeniem
+##   SINK    zanurzanie, paszcza zamknięta (5%)
+##   TRAVEL  pod podłogą (nietrafialna, znika z celów botów), garb sunie do następnej gardzieli
+##   EMERGE  zapowiedź wynurzenia w gardzieli (pęknięcia, dudnienie); na końcu cios w stojących na podłodze w EMERGE_R
+## Bez danych hali (`VEIN_ARENA`) Żyła stoi w miejscu (UP bez końca), jak do 1.7.552.
+enum Move { UP, ROAR, SINK, TRAVEL, EMERGE }
 
 const BASE_HP := 750.0
 const HP_PER_EXTRA_HUMAN := 250.0
@@ -78,6 +87,24 @@ const N_SCREAM := 15.0            ## przebudzenie: krzyk słychać w całym tart
 const N_STUN := 4.0
 const N_SPLASH := 2.0
 const N_DEATH := 20.0
+const ROAR_T := 0.6
+const FIGHT_MAX := 12.0           ## s wynurzenia bez względu na serię
+const BURST := 3                  ## ataków na wynurzenie (faza 1)
+const BURST_ENRAGED := 4
+const SINK_T := 0.7
+const EMERGE_T := 1.2             ## zapowiedź wynurzenia (× `boss_cd`: EASY ok. 1,5 s, HARD ok. 1,0 s)
+const EMERGE_R := 40.0            ## promień ciosu wynurzenia na podłodze
+const TRAVEL_SPEED := 160.0
+const TRAVEL_MIN := 1.5           ## oddech drużyny między wynurzeniami (s)
+const TRAVEL_MAX := 2.5
+const SINK_VIS_RATE := 4.0        ## /s: wygładzanie zanurzenia w obrazie (wynurzenie ok. 0,25 s)
+const SINK_DEPTH := 84.0          ## px, o ile model schodzi pod podłogę (więcej niż jego wysokość — znika cały)
+const PAIN_FRAC := 0.12           ## ≥ tyle maks. HP w PAIN_WINDOW s = „ból”: zanurza się od razu
+const PAIN_WINDOW := 5.0
+const CAMP_R := 48.0              ## gracz, który stoi w tym promieniu ≥ CAMP_T s, „kampi” — gardziel najbliżej niego +2
+const CAMP_T := 6.0
+const DMG_WINDOW := 10.0          ## +1 gardzieli najbliżej tego, kto zadał najwięcej obrażeń w tylu ostatnich s
+const WAIT_ROAR := 12.0           ## hala Żyły: co tyle s ryk z dna, gdy gniazda padły, a nikt nie wszedł (`VEIN_PLAN.md` §6.3)
 
 ## Sprite vein (tools/char_boss.py, klatka 128x80): wiersz 74 arkusza = y 0 w swiecie, paszcza w (64, 60).
 const SPRITE_DROP := 6.0              ## o tyle w dol przesuwamy klatke (korzenie leza tuz pod y 0)
@@ -96,6 +123,32 @@ var atk: int = Atk.NONE           ## trwająca zapowiedź ataku (synchronizowane
 var maw_open := false
 var stunned := false
 var nests_left := 3
+## Hala Żyły (`VEIN_PLAN.md` §6.3, stan CZEKA): gniazda zniszczone, ale żaden człowiek nie wszedł do hali — śpi dalej (nietykalna),
+## co WAIT_ROAR s ryczy. Budzi ją mission.gd `_tick_arena`.
+var waiting := false
+var _wait_roar := 0.0
+var _hurt_on := true                  ## strefa trafień włączona (tylko przebudzona — uśpiona stoi przy gnieździe i zasłaniałaby je)
+var move: int = Move.UP               ## stan ruchu (synchronizowany)
+var sink := 0.0                       ## 0 = wynurzona, 1 = cała pod podłogą (serwer; klienci dostają w `_sync`)
+var _sink_vis := 0.0                  ## każdy peer: wygładzone `sink` do rysowania (sprite, model 3D, paszcza)
+## Gdzie się wynurzy (środek gardzieli na podłodze) od początku zapowiedzi do wynurzenia; INF = brak. Synchronizowane — widok 3D
+## rysuje pęknięcia, bot schodzi z tego miejsca (`player.gd` `_spit_danger_x`).
+var emerge_mark := Vector2.INF
+var anchor := -1                      ## indeks bieżącej gardzieli (−1 = mapa bez hali)
+var _anchors: Array[Vector2] = []     ## gardziele F1 z danych hali (stopy na podłodze)
+var _home := Vector2.ZERO
+var _move_t := 0.0
+var _up_t := 0.0                      ## s od wynurzenia
+var _burst_n := 0                     ## ataków w tym wynurzeniu
+var _travel_from := Vector2.ZERO
+var _travel_to := Vector2.ZERO
+var _travel_dur := 1.0
+var _pain: Array = []                 ## serwer: [czas ms, obrażenia] z ostatnich PAIN_WINDOW s
+var _dmg_by: Array = []               ## serwer: [czas ms, id strzelca, obrażenia] z ostatnich DMG_WINDOW s
+var _camp := {}                       ## serwer: nazwa gracza → [punkt zakotwiczenia, od kiedy tam stoi (ms)]
+var _remote_pos := Vector2.ZERO
+var _fx_t := 0.0
+var _emerge_reason := "cycle"
 ## zgodność z wcześniejszymi testami / rysowaniem
 var winding := false
 var spitting := false
@@ -142,6 +195,14 @@ func _ready() -> void:
 	_light.position = Vector2(0, -20)
 	add_child(_light)
 	_overlay = Lights.add_overlay(self)
+	_set_hurt(false)
+	_home = position
+	_remote_pos = position
+	var lvl := get_parent()
+	if lvl != null and lvl.get("vein_arena") is Dictionary and not (lvl.vein_arena as Dictionary).is_empty():
+		for c in lvl.vein_arena.get("anchors", []):
+			_anchors.append(Vector2(float(c) * 16.0 + 8.0, position.y))
+		anchor = _nearest_anchor(position)
 	if Sprites.has(Sprites.enemy_sheet("vein")):
 		_spr = Sprites.attach(self, Sprites.enemy_sheet("vein"))
 		for l in _spr:
@@ -154,9 +215,18 @@ func _is_hd() -> bool:
 
 ## Punkt, w który celuje latarka / który podświetla nakładka: paszcza sprite'a (HD wyżej niż w klasycznym arkuszu).
 func _maw_point() -> Vector2:
+	var down := Vector2(0.0, _sink_vis * SINK_DEPTH)          # zanurzona: paszcza schodzi razem z modelem
 	if _spr.is_empty():
-		return Vector2(0, -8)
-	return MAW_POS_HD if _is_hd() else MAW_POS
+		return Vector2(0, -8) + down
+	return (MAW_POS_HD if _is_hd() else MAW_POS) + down
+
+## Czy da się ją trafić: wynurzona, w ryku albo w trakcie zanurzania (pod podłogą i w zapowiedzi wynurzenia — nie).
+func _hittable() -> bool:
+	return state == State.AWAKE and (move == Move.UP or move == Move.ROAR or move == Move.SINK)
+
+## Zagrożenie dla botów i Dyrektora tylko nad podłogą — pod nią boty nie marnują amunicji.
+func is_threat() -> bool:
+	return state == State.AWAKE and move != Move.TRAVEL and move != Move.EMERGE
 
 ## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info. `winding` to zapowiedź macki (inne ataki mają własne pozy z animacji).
 func view_info() -> Dictionary:
@@ -174,12 +244,44 @@ func on_nest_lost(left: int) -> void:
 	Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -6.0, 0.9)
 	_send_state(true)
 
+## Serwer: gniazda zniszczone, ale walka w hali rusza dopiero z wejściem człowieka (mission.gd `_tick_arena`).
+func begin_wait() -> void:
+	if not NoiseMgr.is_server() or state != State.DORMANT:
+		return
+	waiting = true
+	nests_left = 0
+	_wait_roar = 1.5
+	_send_state(true)
+
+func _tick_wait(delta: float) -> void:
+	_wait_roar -= delta
+	if _wait_roar <= 0.0:
+		_wait_roar = WAIT_ROAR
+		_event.rpc("wait_roar")
+
+## Strefa trafień i ciało: włączone tylko u przebudzonej (każdy peer, przy zmianie stanu).
+func _set_hurt(on: bool) -> void:
+	if on == _hurt_on:
+		return
+	_hurt_on = on
+	Hurtbox.set_enabled(self, on)
+
 func awaken() -> void:
 	if not NoiseMgr.is_server() or state != State.DORMANT:
 		return
+	waiting = false
 	max_hp = scaled_hp(BASE_HP, HP_PER_EXTRA_HUMAN, _humans())
 	hp = max_hp
 	state = State.AWAKE
+	_pain.clear()
+	_dmg_by.clear()
+	_camp.clear()
+	if not _anchors.is_empty():
+		_emerge_reason = "wake"
+		_set_move(Move.ROAR, ROAR_T)                # pierwszy ryk z gardzieli, nad którą spała — otwarta paszcza od razu
+		_open_maw(ROAR_T, false)
+		_log_emerge()
+	_set_hurt(_hittable())
 	phase = 1
 	_atk_gap = 1.5
 	_lash_cd = 0.0
@@ -211,7 +313,19 @@ func reset_enemy() -> void:
 	_wave_r = -1.0
 	_wave_start_ms = -1
 	visible = true
-	Hurtbox.set_enabled(self, true)
+	waiting = false
+	position = _home
+	_remote_pos = _home
+	move = Move.UP
+	sink = 0.0
+	_sink_vis = 0.0
+	emerge_mark = Vector2.INF
+	anchor = _nearest_anchor(_home)
+	_pain.clear()
+	_dmg_by.clear()
+	_camp.clear()
+	_hurt_on = true
+	_set_hurt(false)                  # po śmierci ciało było wyłączone bez `_set_hurt` — wymuszamy stan
 	if NoiseMgr.is_server():
 		_clear_brood.rpc()
 		_send_state(true)
@@ -222,12 +336,22 @@ func _physics_process(delta: float) -> void:
 	_flash = maxf(0.0, _flash - delta)
 	_flinch = maxf(0.0, _flinch - delta)
 	if not NoiseMgr.is_server():
+		position = position.lerp(_remote_pos, 0.25)
+		_sink_vis = move_toward(_sink_vis, sink, delta * SINK_VIS_RATE)
 		return
 	if state == State.AWAKE:
 		_tick_maw(delta)
-		_tick_flashlight(delta)
-		_tick_attacks(delta)
-		_tick_brood(delta)
+		if move == Move.UP or move == Move.ROAR:
+			_tick_flashlight(delta)
+		if move == Move.UP:
+			_tick_attacks(delta)
+			_tick_brood(delta)
+		if not _anchors.is_empty():
+			_tick_move(delta)
+			_track_camp()
+	elif state == State.DORMANT and waiting:
+		_tick_wait(delta)
+	_sink_vis = move_toward(_sink_vis, sink, delta * SINK_VIS_RATE)
 	_tick_spits(delta)
 	if spit_mark != Vector2.INF and atk != Atk.SPIT and _spits.is_empty():
 		spit_mark = Vector2.INF                      # rozbryzg albo przerwana zapowiedź (oślepienie)
@@ -236,6 +360,179 @@ func _physics_process(delta: float) -> void:
 	_net_t -= delta
 	if _net_t <= 0.0:
 		_send_state(false)
+
+# ---------------------------------------------------------------- ruch w hali (VEIN_PLAN.md §7, E2)
+
+func _set_move(m: int, t: float) -> void:
+	move = m
+	_move_t = t
+	_set_hurt(_hittable())
+	_send_state(true)
+
+func _nearest_anchor(p: Vector2) -> int:
+	var best := -1
+	for i in _anchors.size():
+		if best < 0 or absf(_anchors[i].x - p.x) < absf(_anchors[best].x - p.x):
+			best = i
+	return best
+
+## Serwer: maszyna stanów ruchu. Wynurzona schodzi po serii, po FIGHT_MAX s albo po „bólu”, ale nie w trakcie zapowiedzi ataku
+## (ból ją przerywa), oślepienia ani biegnącej fali (fala liczy się od pozycji Żyły).
+func _tick_move(delta: float) -> void:
+	_move_t -= delta
+	match move:
+		Move.ROAR:
+			if _move_t <= 0.0:
+				_up_t = 0.0
+				_burst_n = 0
+				_set_move(Move.UP, 0.0)
+		Move.UP:
+			_up_t += delta
+			var limit := BURST_ENRAGED if phase >= 2 else BURST
+			var why := ""
+			if _pain_taken() >= max_hp * PAIN_FRAC:
+				why = "pain"
+			elif _burst_n >= limit and _maw_t <= 0.0:
+				why = "burst"
+			elif _up_t >= FIGHT_MAX:
+				why = "time"
+			if why == "" or stunned or _wave_r >= 0.0 or (atk != Atk.NONE and why != "pain"):
+				return
+			_begin_sink(why)
+		Move.SINK:
+			sink = clampf(1.0 - _move_t / SINK_T, 0.0, 1.0)
+			if _move_t <= 0.0:
+				sink = 1.0
+				_begin_travel()
+		Move.TRAVEL:
+			var k := clampf(1.0 - _move_t / _travel_dur, 0.0, 1.0)
+			position = _travel_from.lerp(_travel_to, smoothstep(0.0, 1.0, k))
+			if _move_t <= 0.0:
+				position = _travel_to
+				emerge_mark = _travel_to
+				_set_move(Move.EMERGE, EMERGE_T * Difficulty.m("boss_cd"))
+				_event.rpc("emerge_warn")
+		Move.EMERGE:
+			sink = clampf(_move_t / (EMERGE_T * Difficulty.m("boss_cd")), 0.0, 1.0) * 0.35 + 0.65   # tuż pod podłogą, wypycha ją
+			if _move_t <= 0.0:
+				_emerge_hit()
+				emerge_mark = Vector2.INF
+				sink = 0.0
+				_set_move(Move.ROAR, ROAR_T)
+				_open_maw(ROAR_T, false)
+				_event.rpc("emerge")
+				_log_emerge()
+
+func _begin_sink(why: String) -> void:
+	_set_atk(Atk.NONE)
+	_maw_t = 0.0
+	maw_open = false
+	stunned = false
+	_pain.clear()
+	_emerge_reason = "pain" if why == "pain" else "cycle"
+	SessionLog.event("vein", {"what": "sink", "why": why, "up_s": snappedf(_up_t, 0.1), "attacks": _burst_n, "anchor": anchor,
+		"hp": roundi(hp), "phase": phase})
+	_set_move(Move.SINK, SINK_T)
+	_event.rpc("sink")
+
+func _begin_travel() -> void:
+	var nxt := _pick_anchor()
+	_travel_from = position
+	_travel_to = _anchors[nxt]
+	anchor = nxt
+	_travel_dur = clampf(_travel_from.distance_to(_travel_to) / TRAVEL_SPEED, TRAVEL_MIN, TRAVEL_MAX)
+	_set_move(Move.TRAVEL, _travel_dur)
+	_event.rpc("travel")
+
+## Wybór gardzieli (§7): nigdy ta sama dwa razy z rzędu; +2 najbliższa graczowi, który najdłużej stoi w jednym miejscu (≥ CAMP_T s
+## w CAMP_R px — przeciw kampieniu), +1 najbliższa temu, kto zadał najwięcej obrażeń w DMG_WINDOW s; przy wyniku różnym o mniej niż 1
+## losowanie między dwiema najlepszymi.
+func _pick_anchor() -> int:
+	var score := {}
+	for i in _anchors.size():
+		if i != anchor:
+			score[i] = 0.0
+	var camper := _camper()
+	if camper != null:
+		_score_add(score, _nearest_anchor(camper.global_position), 2.0)
+	var dealer := _top_dealer()
+	if dealer != null:
+		_score_add(score, _nearest_anchor(dealer.global_position), 1.0)
+	var keys: Array = score.keys()
+	keys.shuffle()                                       # remis rozstrzyga los
+	keys.sort_custom(func(a, b) -> bool: return float(score[a]) > float(score[b]))
+	if keys.size() >= 2 and float(score[keys[0]]) - float(score[keys[1]]) < 1.0:
+		return int(keys[randi() % 2])
+	return int(keys[0])
+
+static func _score_add(score: Dictionary, i: int, v: float) -> void:
+	if score.has(i):
+		score[i] = float(score[i]) + v
+
+## Serwer: kto stoi w miejscu (żywi gracze w hali; punkt zakotwiczenia przesuwa się, gdy gracz odejdzie dalej niż CAMP_R).
+func _track_camp() -> void:
+	var now := Time.get_ticks_msec()
+	var lvl := get_parent()
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or not lvl.in_vein_arena(p.global_position):
+			_camp.erase(p.name)
+			continue
+		var c: Array = _camp.get(p.name, [])
+		if c.is_empty() or (c[0] as Vector2).distance_to(p.global_position) > CAMP_R:
+			_camp[p.name] = [p.global_position, now]
+
+## Gracz, który najdłużej stoi w jednym miejscu (≥ CAMP_T s), albo null.
+func _camper() -> Node2D:
+	var now := Time.get_ticks_msec()
+	var best: Node2D = null
+	var best_t := CAMP_T * 1000.0
+	for p in get_tree().get_nodes_in_group("players"):
+		if not _camp.has(p.name):
+			continue
+		var t := float(now - int(_camp[p.name][1]))
+		if t >= best_t:
+			best_t = t
+			best = p
+	return best
+
+func _top_dealer() -> Node2D:
+	var now := Time.get_ticks_msec()
+	_dmg_by = _dmg_by.filter(func(e: Array) -> bool: return now - int(e[0]) <= int(DMG_WINDOW * 1000.0))
+	var sum := {}
+	for e in _dmg_by:
+		sum[int(e[1])] = float(sum.get(int(e[1]), 0.0)) + float(e[2])
+	var best_id := -1
+	for id in sum:
+		if best_id < 0 or float(sum[id]) > float(sum[best_id]):
+			best_id = id
+	if best_id < 0:
+		return null
+	for p in get_tree().get_nodes_in_group("players"):
+		if int(p.player_id) == best_id and not p.dead:
+			return p
+	return null
+
+func _pain_taken() -> float:
+	var now := Time.get_ticks_msec()
+	_pain = _pain.filter(func(e: Array) -> bool: return now - int(e[0]) <= int(PAIN_WINDOW * 1000.0))
+	var s := 0.0
+	for e in _pain:
+		s += float(e[1])
+	return s
+
+## Koniec zapowiedzi: kto stoi na podłodze w EMERGE_R od gardzieli, dostaje 1 HP (z odrzutem od niej).
+func _emerge_hit() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead:
+			continue
+		var d: Vector2 = p.global_position - position
+		if absf(d.x) <= EMERGE_R and absf(d.y) < 4.0:
+			p.deliver_hit(1, position, "vein")
+			SessionLog.event("vein", {"what": "emerge_hit", "who": String(p.name), "bot": bool(p.is_bot)})
+
+func _log_emerge() -> void:
+	SessionLog.event("vein", {"what": "emerge", "anchor": anchor, "reason": _emerge_reason, "pos": SessionLog.xy(position), "phase": phase})
+	_emerge_reason = "cycle"
 
 func _cd(base: float) -> float:
 	return base * (ENRAGED_CD if phase >= 2 else 1.0) * Difficulty.m("boss_cd")
@@ -342,6 +639,7 @@ func _resolve_attack() -> void:
 			_event.rpc("sweep_go")
 			_sweep_cd = _cd(SWEEP_CD)
 	# po każdym ataku paszcza się otwiera — okno na ostrzał
+	_burst_n += 1
 	_open_maw(MAW_WINDOW, false)
 	_atk_gap = (ATK_GAP_ENRAGED if phase >= 2 else ATK_GAP) * Difficulty.m("boss_cd")
 
@@ -475,7 +773,9 @@ class SpitGlob extends Node2D:
 # ---------------------------------------------------------------- potomstwo
 
 func _tick_brood(delta: float) -> void:
-	_brood = _brood.filter(func(b: Node) -> bool: return is_instance_valid(b) and b.alive)
+	for i in range(_brood.size() - 1, -1, -1):          # pętla zamiast filter(): zwolniony węzeł w tablicy typowanej psuł przypisanie
+		if not is_instance_valid(_brood[i]) or not _brood[i].alive:
+			_brood.remove_at(i)
 	_brood_t -= delta
 	if _brood_t > 0.0:
 		return
@@ -494,6 +794,12 @@ func _spawn_brood(n: String, pos: Vector2) -> void:
 	var e := _summon(n, pos, 0.55)
 	if e != null and NoiseMgr.is_server():
 		_brood.append(e)                  # listę czyści tylko serwer (_tick_brood) — u klientów rosłaby bez końca
+
+## Serwer: dołączający w trakcie walki dostaje żywe potomstwo (bez tego RPC-e Trzosków `BroodN` trafiały u niego w próżnię).
+func send_brood_to(peer_id: int) -> void:
+	for b in _brood:
+		if is_instance_valid(b) and b.alive:
+			_spawn_brood.rpc_id(peer_id, String(b.name), b.global_position)
 
 @rpc("authority", "call_local", "reliable")
 func _clear_brood() -> void:
@@ -531,6 +837,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 		amount *= PELLET_MULT
 	var before := hp
 	_hit(pos, amount, from_above, false, BLAST_CLOSED_MULT if blast else CLOSED_MULT)
+	if before > hp:
+		_dmg_by.append([Time.get_ticks_msec(), int(info.get("shooter", -1)), before - hp])
 	return {"hit": true, "dealt": before - hp, "killed": state == State.DEAD,
 		"mat": Arsenal.Mat.ARMOR if armored else Arsenal.Mat.FLESH}
 
@@ -539,6 +847,8 @@ func _hit(from_pos: Vector2, dmg: float, from_above: bool, fx := true, closed_mu
 		if state == State.DORMANT and fx:
 			Audio.play_variant_at("ricochet", 2, global_position, Audio.BUS_WORLD, -16.0)
 		return
+	if not _hittable():
+		return                                    # pod podłogą (przejście, zapowiedź wynurzenia) — nic jej nie sięga
 	if from_above or not maw_open:
 		dmg *= closed_mult
 		if fx:
@@ -546,6 +856,7 @@ func _hit(from_pos: Vector2, dmg: float, from_above: bool, fx := true, closed_mu
 	else:
 		_flash = 0.08
 	hp -= dmg
+	_pain.append([Time.get_ticks_msec(), dmg])
 	if phase == 1 and hp <= max_hp * 0.66:
 		phase = 2
 		enraged = true
@@ -565,6 +876,9 @@ func _phase3() -> void:
 	_spawn_one()
 	print("[BOSS] faza 3 — krzyk, Uwaga %.0f" % NoiseMgr.level)
 	_event.rpc("phase3")
+	var mis := get_tree().get_first_node_in_group("mission")
+	if mis != null and mis.has_method("on_vein_release"):
+		mis.on_vein_release("phase3")              # hala Żyły: brama się otwiera, Stalker rusza (VEIN_PLAN.md §12)
 
 @rpc("authority", "call_local", "unreliable")
 func _armor_fx(pos: Vector2) -> void:
@@ -601,10 +915,18 @@ func _send_state(now: bool) -> void:
 	if not now and _net_t > 0.0:
 		return
 	_net_t = 0.1
-	_sync.rpc(state, hp, max_hp, atk, maw_open, stunned, phase, nests_left, spit_mark)
+	_sync.rpc(state, hp, max_hp, atk, maw_open, stunned, phase, nests_left, spit_mark, position, move, sink, emerge_mark)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl: int, sm := Vector2.INF) -> void:
+func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl: int, sm := Vector2.INF, pos := Vector2.INF,
+		mv := 0, sk := 0.0, em := Vector2.INF) -> void:
+	if pos.is_finite():
+		if _remote_pos.distance_to(pos) > 200.0:
+			position = pos                       # dołączający / restart: bez przeciągania przez halę
+		_remote_pos = pos
+	move = mv
+	sink = sk
+	emerge_mark = em
 	if h < hp - 0.01 and mo:
 		_flash = 0.08
 	state = s
@@ -621,7 +943,8 @@ func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl:
 	spit_mark = sm
 	if s != State.DEAD and not visible:
 		visible = true
-		Hurtbox.set_enabled(self, true)
+	if s != State.DEAD:
+		_set_hurt(_hittable())
 
 @rpc("authority", "call_local", "reliable")
 func _event(kind: String) -> void:
@@ -642,6 +965,28 @@ func _event(kind: String) -> void:
 			_wave_start_ms = Time.get_ticks_msec()
 			Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, 2.0, 0.6)
 			_shake_near(2.0)
+		"wait_roar":
+			# czeka w hali: ryk z dna, korzenie drgają — „wejdź”
+			_flinch = 0.8
+			Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -3.0, 0.8)
+			Audio.play_variant_at("amb_thud", 2, global_position, Audio.BUS_STALKER, 0.0, 0.5)
+		"sink":
+			# zanurzanie: mlaśnięcie i rozbryzg
+			Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, 0.0, 0.5)
+			Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -8.0, 0.7)
+			Vfx.splash(get_parent(), global_position + Vector2(0, -2), 1.4)
+		"travel":
+			Audio.play_variant_at("amb_thud", 2, global_position, Audio.BUS_STALKER, -4.0, 0.7)
+		"emerge_warn":
+			# „zaraz tu wyjdzie”: dudnienie narastające do wynurzenia
+			Audio.play_variant_at("amb_thud", 2, global_position, Audio.BUS_STALKER, 4.0, 0.55)
+			Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -6.0, 0.75)
+			_shake_near(1.5)
+		"emerge":
+			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, -2.0, 1.0)
+			Audio.play_variant_at("step_water", 3, global_position, Audio.BUS_WORLD, 4.0, 0.6)
+			_burst(global_position + Vector2(0, -4), Color(0.7, 0.85, 0.95), 28)
+			_shake_near(3.0)
 		"blinded":
 			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, -6.0, 1.2)
 		"enrage":
@@ -660,6 +1005,7 @@ func _event(kind: String) -> void:
 			_death_fx()
 			Vfx.gibs(get_parent(), global_position + Vector2(0, -24), Color(0.4, 0.1, 0.14), 26)
 			visible = false
+			_hurt_on = false
 			Hurtbox.set_enabled(self, false)
 
 func _death_fx() -> void:
@@ -672,6 +1018,7 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	_tick_wave_spray(delta)
+	_tick_move_fx(delta)
 	var t := Time.get_ticks_msec() / 1000.0
 	var awake := state == State.AWAKE
 	_light.energy = (0.9 if awake else 0.35) + 0.25 * sin(t * (5.0 if enraged else 2.0))
@@ -682,6 +1029,24 @@ func _process(delta: float) -> void:
 	_overlay.queue_redraw()
 
 var _spray_t := 0.0
+
+## Kosmetyka ruchu (każdy peer): garb pod podłogą rozpycha wodę w przejściu, w zapowiedzi wynurzenia z gardzieli pryska woda i pył.
+func _tick_move_fx(delta: float) -> void:
+	if state != State.AWAKE or (move != Move.TRAVEL and move != Move.EMERGE):
+		_fx_t = 0.0
+		return
+	_fx_t -= delta
+	if _fx_t > 0.0:
+		return
+	if move == Move.TRAVEL:
+		_fx_t = 0.09
+		Vfx.burst(get_parent(), global_position + Vector2(0.0, -3.0), Color(0.72, 0.9, 1.0, 0.8), 4, 25.0, 80.0, Vector2.UP, 50.0, 320.0,
+			0.45, Vector2(0.8, 1.6), true)
+	else:
+		_fx_t = 0.12
+		var m := emerge_mark if emerge_mark.is_finite() else global_position
+		Vfx.burst(get_parent(), m + Vector2(randf_range(-EMERGE_R, EMERGE_R) * 0.8, -2.0), Color(0.55, 0.45, 0.4, 0.9), 3, 30.0, 90.0,
+			Vector2.UP, 35.0, 300.0, 0.5, Vector2(0.8, 1.4), true)
 
 ## Bryzg z grzbietów fali (lokalna kosmetyka): kilka miękkich kropel co ułamek sekundy z czoła fali po obu stronach.
 func _tick_wave_spray(delta: float) -> void:
@@ -721,7 +1086,7 @@ func _animate_sprite(t: float, awake: bool) -> void:
 	var flash := Color(2.4, 2.2, 2.2) if _flash > 0.0 else Color.WHITE
 	for l in _spr:
 		if l != null:
-			l.position.x = shake
+			l.position = Vector2(shake, SPRITE_DROP + _sink_vis * SINK_DEPTH)   # zanurzona: obraz (i model 3D za nim) schodzi pod podłogę
 	body.modulate = flash
 	# furia / krzyk: oczy i zar mocniej swieca
 	var glow: AnimatedSprite2D = _spr[1]

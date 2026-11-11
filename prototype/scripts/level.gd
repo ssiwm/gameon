@@ -154,6 +154,12 @@ var spawns: Array[Vector2] = []
 var exits: Array[Vector2] = []
 var stalker_home := Vector2.ZERO
 var boss_home := Vector2.ZERO
+## Hala Żyły (VEIN_ARENA z danych mapy, `VEIN_PLAN.md` §6): puste poza 1.3. Prostokąty w px świata.
+var vein_arena: Dictionary = {}
+var arena_rect := Rect2()                  ## wnętrze hali: kamera areny i start walki (wejście człowieka)
+var arena_view := Rect2()                  ## kadr kamery areny (player.gd `_arena_camera`)
+var vein_gate_closed := false              ## brama z korzeni zamknięta (u wszystkich peerów: `_vein_gate_rpc`)
+var _vein_gate: StaticBody2D               ## kolizja bramy (warstwa bryły); kształt wyłączony, gdy otwarta
 ## Graf A* platformówki (nav.gd) — bot i Stalker.
 var nav: AStar2D
 ## Siatka propagacji dźwięku (sound_grid.gd): którędy dźwięk zza ściany dociera do słuchacza — czyta ją AudioDirector.
@@ -259,6 +265,15 @@ func _load(id: String) -> void:
 	var cl: Array = (m as GDScript).get_script_constant_map().get("CAM_LOCK", [])
 	cam_lock = Vector2i(int(cl[0]), int(cl[1])) if cl.size() == 2 else Vector2i(-1, -1)
 	eye_up = float((m as GDScript).get_script_constant_map().get("EYE_UP", -1.0))
+	vein_arena = ((m as GDScript).get_script_constant_map().get("VEIN_ARENA", {}) as Dictionary).duplicate(true)
+	arena_rect = Rect2()
+	arena_view = Rect2()
+	vein_gate_closed = false
+	if not vein_arena.is_empty():
+		var ar: Array = vein_arena["rect"]
+		arena_rect = Rect2(float(ar[0]) * TILE, float(ar[1]) * TILE, float(int(ar[2]) - int(ar[0]) + 1) * TILE, float(int(ar[3]) - int(ar[1]) + 1) * TILE)
+		var av: Array = vein_arena["view"]
+		arena_view = Rect2(float(av[0]), float(av[1]), float(av[2]) - float(av[0]), float(av[3]) - float(av[1]))
 	hint_zones.clear()
 	var hz: Dictionary = (m as GDScript).get_script_constant_map().get("HINT_ZONES", {})
 	for hid in hz:
@@ -302,6 +317,7 @@ func _load(id: String) -> void:
 	sound_grid = SoundGrid.new()
 	sound_grid.build((_map[0] as String).length(), _map.size(), _is_sound_solid)
 	_spawn_entities()
+	_spawn_vein_gate()
 
 
 # ---------------------------------------------------------------- mapa
@@ -423,6 +439,96 @@ func _collapse_rpc(id: String, rects: Array) -> void:
 	for wd in _wall_defs:                                    # wstrząs zawału z danych mapy (finał 1.1) rozsypuje gruz wszystkich stref „^” (D3):
 		if String(wd["material"]) == "rubble" and not _opened_walls.has(String(wd["name"])):   # droga powrotna po finale nigdy nie jest zasypana
 			_open_wall(String(wd["name"]), true)
+
+# ---------------------------------------------------------------- hala Żyły (VEIN_PLAN.md §6)
+
+## Czy postać ze stopami w `feet` jest w hali Żyły. Mapa bez hali — zawsze false.
+func in_vein_arena(feet: Vector2) -> bool:
+	return arena_rect.has_area() and arena_rect.grow(2.0).has_point(feet + Vector2(0.0, -4.0))
+
+## Stały punkt kontrolny walki w przedsionku (stopy): `i`-ty gracz stoi i·16 px na zachód od znacznika.
+func vein_checkpoint(i: int) -> Vector2:
+	var cp: Array = vein_arena["checkpoint"]
+	return Vector2(float(cp[0]) * TILE + TILE * 0.5 - 16.0 * float(i), (float(cp[1]) + 1.0) * TILE)
+
+## Miejsce tuż za bramą (stopy): tu staje wciągnięty przy zamknięciu i wstaje wykrwawiony, gdy brama jest zamknięta.
+func vein_entry(i := 0) -> Vector2:
+	var en: Array = vein_arena["entry"]
+	return Vector2(float(en[0]) * TILE + TILE * 0.5 + 14.0 * float(i % 3), (float(en[1]) + 1.0) * TILE)
+
+## Otwór bramy z korzeni [px].
+func vein_gate_rect() -> Rect2:
+	if vein_arena.is_empty():
+		return Rect2()
+	var g: Array = vein_arena["gate"]
+	return Rect2(float(g[0]) * TILE, float(g[1]) * TILE, TILE, float(int(g[2]) - int(g[1]) + 1) * TILE)
+
+## Kolizja bramy z korzeni: bryła na warstwie terenu w otworze zachodniej ściany hali, na starcie otwarta. Siatki nawigacji i dźwięku
+## jej nie znają — gdy jest zamknięta, ludzie i boty są w środku, a Stalker trzymany z dala (`NoiseMgr.stalker_hold`) do fazy 3.
+func _spawn_vein_gate() -> void:
+	_vein_gate = null
+	if vein_arena.is_empty():
+		return
+	var r := vein_gate_rect()
+	var body := StaticBody2D.new()
+	body.name = "VeinGate"
+	body.collision_layer = LAYER_SOLID
+	body.collision_mask = 0
+	body.position = r.get_center()
+	var cs := CollisionShape2D.new()
+	var sh := RectangleShape2D.new()
+	sh.size = r.size
+	cs.shape = sh
+	cs.disabled = true
+	body.add_child(cs)
+	add_child(body)
+	_vein_gate = body
+
+## Serwer: brama z korzeni zamknięta / otwarta u wszystkich peerów. Zamknięcie z `pull` wciąga do hali wszystkich spoza niej
+## (także leżących — kolega w środku może ich podnieść); każdy peer przenosi postacie, nad którymi ma władzę.
+func set_vein_gate(closed: bool, pull := true) -> void:
+	if not NoiseMgr.is_server() or vein_arena.is_empty() or closed == vein_gate_closed:
+		return
+	if NoiseMgr.has_network():
+		_vein_gate_rpc.rpc(map_id, closed, pull)
+	else:
+		_vein_gate_rpc(map_id, closed, pull)
+
+@rpc("authority", "call_local", "reliable")
+func _vein_gate_rpc(id: String, closed: bool, pull: bool) -> void:
+	if id != map_id or _vein_gate == null:
+		return
+	vein_gate_closed = closed
+	(_vein_gate.get_child(0) as CollisionShape2D).set_deferred("disabled", not closed)
+	var r := vein_gate_rect()
+	Audio.play_variant_at("impact_flesh", 3, r.get_center(), Audio.BUS_WORLD, 0.0, 0.55)
+	Vfx.burst_fx(Vector2(r.get_center().x, r.end.y - 2.0), {"color": Color(0.3, 0.1, 0.08), "amount": 18, "life": 0.6, "dir": Vector2.UP,
+		"spread": 60.0, "vmin": 30.0, "vmax": 90.0, "gravity": Vector2(0, 260)})
+	if not closed or not pull:
+		return
+	var i := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_queued_for_deletion() or not p.is_multiplayer_authority() or in_vein_arena((p as Node2D).global_position):
+			continue
+		(p as Node2D).global_position = vein_entry(i)
+		p.velocity = Vector2.ZERO
+		i += 1
+
+## Serwer: wciąga do hali postać `p` spoza niej przy zamkniętej bramie (dołączający w trakcie walki, maruder) — ponowne „zamknięcie”
+## u peera, który ma nad nią władzę (on przenosi swoje postacie spoza hali).
+func pull_into_arena(p: Node) -> void:
+	if not NoiseMgr.is_server() or not vein_gate_closed:
+		return
+	var peer := p.get_multiplayer_authority()
+	if not NoiseMgr.has_network() or peer == multiplayer.get_unique_id():
+		_vein_gate_rpc(map_id, true, true)
+	else:
+		_vein_gate_rpc.rpc_id(peer, map_id, true, true)
+
+## Dołączający gracz dostaje stan bramy z korzeni (bez wciągania — o jego pozycji decyduje punkt odrodzenia).
+func send_vein_gate_to(peer_id: int) -> void:
+	if NoiseMgr.is_server() and NoiseMgr.has_network() and vein_gate_closed:
+		_vein_gate_rpc.rpc_id(peer_id, map_id, true, false)
 
 ## Dołączający gracz dostaje już zastosowane zawały (po tym, jak załadował mapę) i wrogów wypuszczonych przez finał.
 func send_collapse_to(peer_id: int) -> void:

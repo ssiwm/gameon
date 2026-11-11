@@ -109,6 +109,25 @@ wait $HOST
 grep -a -q "\[RESULT-NET\] host ready=\[[0-9]\+\] levels=2 gain=[0-9]\+ report=true" "$LOG/result_host.log" && ok "host widzi gotowość klienta i poziomy obu graczy" || fail "host: $(grep -a "\[RESULT-NET\]" "$LOG/result_host.log")"
 grep -a -q "\[RESULT-NET\] client ready=\[[0-9]\+\] levels=2 gain=[0-9]\+ report=true" "$LOG/result_client.log" && ok "klient: raport otwarty, złom od serwera, własna gotowość odbita" || fail "klient: $(grep -a "\[RESULT-NET\]" "$LOG/result_client.log")"
 
+echo "== hala Żyły =="
+# VEIN_PLAN.md E1: host po 6 s niszczy gniazda i wchodzi do hali; klient A został w przedsionku — brama zamyka się po 4 s i wciąga go
+# do hali. Klient B dołącza przy zamkniętej bramie — stan bramy dostaje z `send_vein_gate_to`, stan Żyły z `_sync`, a serwer wciąga go
+# do hali (`pull_into_arena`, co ARENA_PULL_EVERY s). E2: host 10 s po zamknięciu bramy zanurza Żyłę — klient A widzi zanurzenie (Move 2),
+# przejście (3) i zapowiedź (4), przesunięcie o gardziel, a Żyła wychodzi w innej gardzieli.
+godot --headless --path . -- --host --mission=z1_m3 --port=8972 --veinnet=6 --autoquit=38 >"$LOG/vnet_host.log" 2>&1 &
+HOST=$!
+sleep 3
+godot --headless --path . -- --join=127.0.0.1 --port=8972 --veinnet=14 --autoquit=35 >"$LOG/vnet_a.log" 2>&1 &
+CA=$!
+sleep 11
+godot --headless --path . -- --join=127.0.0.1 --port=8972 --veinnet=6 --autoquit=16 >"$LOG/vnet_b.log" 2>&1
+wait $CA $HOST
+grep -a -q "\[VEIN-NET\] host gate=true boss=1 client_in=true" "$LOG/vnet_host.log" && ok "host: Żyła walczy, brama zamknięta, klient z przedsionka wciągnięty" || fail "host: $(grep -a "\[VEIN-NET\]" "$LOG/vnet_host.log")"
+grep -a -q "\[VEIN-NET\] client gate=true blocks=true boss=1 in=true cam=true" "$LOG/vnet_a.log" && ok "klient: brama i jej kolizja, Żyła przebudzona, sam w hali, kamera areny" || fail "klient A: $(grep -a "\[VEIN-NET\]" "$LOG/vnet_a.log")"
+grep -a -q "\[VEIN-NET\] host moved=true" "$LOG/vnet_host.log" && ok "host: Żyła zanurzona przeszła do innej gardzieli" || fail "host: $(grep -a "\[VEIN-NET\] host moved" "$LOG/vnet_host.log")"
+grep -a -q "\[VEIN-NET\] client moves=.*2,3,4.* shift=\([1-9][0-9][0-9]\) sinkvis=1.0" "$LOG/vnet_a.log" && ok "klient: przejście i zapowiedź z _sync, przesunięcie o gardziel, model pod podłogą" || fail "klient A: $(grep -a "\[VEIN-NET\] client moves" "$LOG/vnet_a.log")"
+grep -a -q "\[VEIN-NET\] client gate=true blocks=true boss=1 in=true" "$LOG/vnet_b.log" && ok "dołączający przy zamkniętej bramie: brama, kolizja, stan Żyły, wciągnięty do hali" || fail "klient B: $(grep -a "\[VEIN-NET\]" "$LOG/vnet_b.log")"
+
 echo "== bateria 4,5 V =="
 # BATTERY_PLAN.md B1: serwer rozstrzyga podniesienie po replikowanym `bat_pct` klienta, a baterię dolicza właściciel postaci (RPC apply_battery)
 godot --headless --path . -- --host --mission=z1_m1 --port=8967 --batterynet=9 --autoquit=16 >"$LOG/battery_host.log" 2>&1 &

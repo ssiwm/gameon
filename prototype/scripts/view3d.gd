@@ -221,6 +221,9 @@ var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 
 var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata żarówki]
 var _winfx := {}                         ## id okna (window_glass.gd) → [węzeł 2D, model, szyba, resztki szkła]
 var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
+var _vein_gate3d: Node3D                  ## brama z korzeni hali Żyły (level.gd `vein_gate_closed`)
+var _vein_gate_k := 0.0                   ## 0 = korzenie w ziemi, 1 = brama zamknięta (wzrost w VEIN_GATE_GROW s)
+const VEIN_GATE_GROW := 0.4
 var _mine_dust: Array = []               ## pył finału kopalni: [drobny pył, strużki] (CPUParticles3D)
 var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyznaczono punkty stropu
 var _rain_open := 0.0                    ## 0..1: gracz jest nad poziomem podziemi (deszcz widać)
@@ -612,6 +615,7 @@ func _tick(delta: float) -> void:
 	_sync_boulders()
 	tp = _tp("boulders", tp)
 	_sync_boss_fx()
+	_sync_vein_gate(delta)
 	tp = _tp("boss_fx", tp)
 	_sync_leech_fx()
 	tp = _tp("leech_fx", tp)
@@ -6042,6 +6046,54 @@ func _sync_boulders() -> void:
 ##  - fala: dwa grzbiety wody biegnące od Żyły — bryły o stromym czole i łagodnym ogonie, z pianą na grzbiecie;
 ##  - plucie: kwasowo-zielony krąg na podłodze tam, gdzie spadnie plwocina (`spit_mark`) — od zapowiedzi do rozbryzgu, zaciska się
 ##    i pulsuje szybciej w locie.
+## Brama z korzeni hali Żyły (`VEIN_PLAN.md` §6.3): pęk stożkowych korzeni w otworze zachodniej ściany przez całą głębię bryły,
+## wyrasta z podłogi przy zamknięciu i chowa się przy otwarciu. Mapa bez hali — nic.
+func _sync_vein_gate(delta: float) -> void:
+	var has := _level != null and not (_level.get("vein_arena") as Dictionary).is_empty()
+	if not has:
+		if _vein_gate3d != null and is_instance_valid(_vein_gate3d):
+			_vein_gate3d.queue_free()
+		_vein_gate3d = null
+		_vein_gate_k = 0.0
+		return
+	var r: Rect2 = _level.vein_gate_rect()
+	if _vein_gate3d == null or not is_instance_valid(_vein_gate3d) or not _vein_gate3d.is_inside_tree():
+		_vein_gate3d = _build_vein_gate(r)
+	_vein_gate3d.position = Level3D.px_to_m(Vector2(r.get_center().x, r.end.y))
+	_vein_gate_k = move_toward(_vein_gate_k, 1.0 if bool(_level.vein_gate_closed) else 0.0, delta / VEIN_GATE_GROW)
+	_vein_gate3d.visible = _vein_gate_k > 0.001
+	_vein_gate3d.scale = Vector3(1.0, maxf(ease(_vein_gate_k, 0.4), 0.001), 1.0)
+
+func _build_vein_gate(r: Rect2) -> Node3D:
+	var root := Node3D.new()
+	root.name = "VeinGate"
+	_world.add_child(root)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.2, 0.07, 0.08)
+	mat.roughness = 0.5
+	mat.emission_enabled = true
+	mat.emission = Color(0.45, 0.07, 0.05)
+	mat.emission_energy_multiplier = 0.35
+	var h := r.size.y * PX
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1987
+	for i in 12:
+		var hh := h * rng.randf_range(0.9, 1.2)
+		var cm := CylinderMesh.new()
+		cm.height = hh
+		cm.bottom_radius = rng.randf_range(0.11, 0.19)
+		cm.top_radius = 0.025
+		cm.radial_segments = 7
+		cm.rings = 2
+		var mi := MeshInstance3D.new()
+		mi.mesh = cm
+		mi.material_override = mat
+		mi.layers = LAYER_WORLD
+		mi.position = Vector3(rng.randf_range(-0.4, 0.4) * r.size.x * PX, hh * 0.45, lerpf(-Level3D.DEPTH_BACK + 0.3, Level3D.DEPTH_FRONT - 0.15, float(i) / 11.0))
+		mi.rotation = Vector3(rng.randf_range(-0.12, 0.12), rng.randf() * TAU, rng.randf_range(-0.3, 0.3))
+		root.add_child(mi)
+	return root
+
 func _sync_boss_fx() -> void:
 	for n in get_tree().get_nodes_in_group("boss"):
 		if not (n is Node2D) or n.is_queued_for_deletion() or _bossfx.has(n.get_instance_id()) or not n.has_method("_tick_wave_spray"):
@@ -6077,6 +6129,9 @@ func _sync_boss_fx() -> void:
 		var km := _add_mat()
 		km.no_depth_test = true
 		_imm(root, km).name = "SpitMark"
+		var em := _add_mat()
+		em.no_depth_test = true
+		_imm(root, em).name = "EmergeMark"                # hala Żyły (E2): gdzie się wynurzy — pęknięcia i żar spod podłogi
 		_bossfx[n.get_instance_id()] = [n, root]
 	var t := Time.get_ticks_msec() / 1000.0
 	for id in _bossfx.keys():
@@ -6107,6 +6162,8 @@ func _sync_boss_fx() -> void:
 		elif b.maw_open:
 			maw = Color(1.0, 0.6, 0.25, 0.75 + 0.25 * pulse)
 			r = 8.5
+		var under: float = clampf(float(b.get("_sink_vis")) if b.get("_sink_vis") != null else 0.0, 0.0, 1.0)
+		maw.a *= 1.0 - under                                   # pod podłogą żar paszczy gaśnie razem z nią
 		var mp: Vector2 = b.call("_maw_point")
 		var mpos := Vector3(mp.x * PX, -mp.y * PX, MAW_Z)
 		var glow := root.get_node("Maw") as MeshInstance3D
@@ -6119,6 +6176,9 @@ func _sync_boss_fx() -> void:
 		ml.light_energy = 4.0 * maw.a * r / 9.0
 		# znacznik lądowania plwociny
 		_draw_spit_mark((root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh, b.spit_mark, base, float(b.SPIT_HIT_R) * PX, not b.spitting, t)
+		var emk: Variant = b.get("emerge_mark")
+		_draw_spit_mark((root.get_node("EmergeMark") as MeshInstance3D).mesh as ImmediateMesh, emk if emk is Vector2 else Vector2.INF, base,
+			float(b.get("EMERGE_R")) * PX if b.get("EMERGE_R") != null else 1.0, true, t, 1.0, Color(1.0, 0.42, 0.18))
 		# łuk zasięgu macki
 		var arc := (root.get_node("Arc") as MeshInstance3D).mesh as ImmediateMesh
 		arc.clear_surfaces()
@@ -6201,13 +6261,14 @@ const LEECH_SPIT_GLOW := 0.3            ## B1 jest prawie czarna, więc pełna p
 
 ## Znacznik lądowania plwociny (Żyła, Pijawka): plama na podłodze, pionowa poświata nad nią i krąg zasięgu trafienia. `sm` w pikselach świata, INF = brak.
 ## Kamera patrzy prawie poziomo, więc sam krąg na podłodze był kreską.
-func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float, glow := 1.0) -> void:
+## Znacznik na podłodze: plwocina (zielony kwas) albo — z `col` — miejsce wynurzenia Żyły (pomarańczowy żar spod pęknięć).
+func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float, glow := 1.0, col := Color(0.55, 1.0, 0.25)) -> void:
 	mark.clear_surfaces()
-	if sm == Vector2.INF:
+	if not sm.is_finite():
 		return
 	var c := Level3D.px_to_m(sm) - base + Vector3(0.0, 0.06, 0.0)
 	var mp2 := 0.5 + 0.5 * sin(t * (16.0 if flying else 8.0))
-	var acid := Color(0.55, 1.0, 0.25)
+	var acid := col
 	var rr := hit_r * 1.6
 	mark.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in 24:

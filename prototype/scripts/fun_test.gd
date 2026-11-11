@@ -299,7 +299,7 @@ func _checkpoint() -> void:
 	var nest0: Node2D = nests[0]
 	_place_player(nest0.global_position + Vector2(0, -8))
 	await get_tree().create_timer(1.0).timeout
-	var cp: Vector2 = player.global_position
+	var cp: Vector2 = level.vein_checkpoint(0)    # hala Żyły (VEIN_PLAN.md §6.3): stały punkt w przedsionku, nie pozycja gracza
 	Scrap.reset_loot()
 	Scrap.add_loot(20)                            # łup sprzed walki: zostaje po wipe'ie na bossie (opinia testera 2026-10-29)
 	var cands: Array = Scrap.find_candidates()
@@ -311,8 +311,11 @@ func _checkpoint() -> void:
 	await _ticks(5)
 	Scrap.add_loot(7)                             # łup z samej walki: przepada
 	player.battery = 10.0
+	var boss: Node = get_tree().get_first_node_in_group("boss")
 	check("zniszczone gniazda → faza BOSS z punktem kontrolnym", mission.phase == Mission.Phase.BOSS and mission.has_checkpoint())
-	check("punkt kontrolny = pozycja w chwili przebudzenia Żyły", mission.checkpoint_pos(player).distance_to(cp) < 2.0)
+	check("punkt kontrolny = stałe miejsce w przedsionku hali (%.0f px od niego)" % mission.checkpoint_pos(player).distance_to(cp),
+		mission.checkpoint_pos(player).distance_to(cp) < 2.0 and not level.in_vein_arena(cp))
+	check("gracz poza halą: Żyła czeka (śpi, nikt nie wszedł)", boss != null and int(boss.state) == 0 and bool(boss.waiting))
 	var spawn: Vector2 = level.spawn_for(int(player.display_id))
 	check("punkt kontrolny daleko od startu mapy (%.0f px)" % cp.distance_to(spawn), cp.distance_to(spawn) > 120.0)
 	var att: int = mission.attempts
@@ -320,7 +323,6 @@ func _checkpoint() -> void:
 	for c in main.get_node("Players").get_children():
 		c.deliver_hit(99, c.global_position, "test")
 	await get_tree().create_timer(main.WIPE_DELAY + 0.6).timeout
-	var boss: Node = get_tree().get_first_node_in_group("boss")
 	var alive := 0
 	for n in get_tree().get_nodes_in_group("nests"):
 		alive += 1 if n.alive else 0
@@ -328,14 +330,30 @@ func _checkpoint() -> void:
 	check("gniazda zostały zniszczone (żywe: %d)" % alive, alive == 0)
 	check("gracz w punkcie kontrolnym (%.0f px od niego), żywy" % player.global_position.distance_to(cp),
 		player.global_position.distance_to(cp) < 24.0 and not player.dead)
-	check("Żyła śpi chwilę po powrocie", boss != null and int(boss.state) == 0)
+	check("Żyła śpi po powrocie", boss != null and int(boss.state) == 0)
 	check("łup sprzed walki zostaje (złom %d, część %s znaleziona=%s), z walki przepada" % [Scrap.loot, part_id, str(Scrap.found.has(part_id))],
 		Scrap.loot == 20 and (part_id == "" or Scrap.found.has(part_id)))
 	check("po wipe'ie pełna bateria latarki (%.0f s)" % player.battery, is_equal_approx(player.battery, player.BATTERY_MAX))
 	await get_tree().create_timer(mission.CHECKPOINT_GRACE + 0.5).timeout
-	check("Żyła budzi się po %.1f s" % mission.CHECKPOINT_GRACE, boss != null and int(boss.state) == 1)
-	# wykrwawienie w walce też odradza w punkcie kontrolnym (spawn właściciela postaci)
+	check("Żyła czeka w hali, póki nikt nie wejdzie", boss != null and int(boss.state) == 0 and bool(boss.waiting))
 	check("odrodzenie po wykrwawieniu też w punkcie kontrolnym", player._spawn_point.distance_to(cp) < 2.0)
+	_place_player(level.vein_entry(0) + Vector2(40, 0))
+	await _ticks(4)
+	check("wejście do hali budzi Żyłę i zamyka bramę (jedyny człowiek w środku)", boss != null and int(boss.state) == 1 and bool(level.vein_gate_closed))
+	check("przy zamkniętej bramie wykrwawiony wstaje za nią (%.0f px od wejścia)" % player._spawn_point.distance_to(level.vein_entry(0)),
+		player._spawn_point.distance_to(level.vein_entry(0)) < 2.0)
+	level.set_vein_gate(false, false)             # dalsze testy stawiają gracza poza halą (skrytka, dalekie plucie) — bez wciągania
+	var vb: Node2D = get_tree().get_first_node_in_group("boss")
+	if vb != null:
+		vb._anchors.clear()                       # obrażenia i dalekie plucie sprawdzają Żyłę na stojąco (ruch: --veintest)
+		vb.move = vb.Move.UP
+		vb.sink = 0.0
+		vb.emerge_mark = Vector2.INF
+		vb.global_position = vb._home
+		vb._set_hurt(true)
+	for p in get_tree().get_nodes_in_group("players"):
+		if p != player:
+			p.global_position = Vector2(-4000, -4000)  # bot wciągnięty przez bramę wraca poza mapę (jak w _quiet_world)
 
 # ---------------------------------------------------------------- 13. odrodzenie przy gnieździe (1.7.551)
 

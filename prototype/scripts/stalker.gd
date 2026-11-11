@@ -229,7 +229,9 @@ func _physics_process(delta: float) -> void:
 
 	var noise := NoiseMgr.level
 
-	if pass_mode:
+	if NoiseMgr.stalker_hold:
+		_hold_away()
+	elif pass_mode:
 		_tick_pass(delta, noise)
 	elif not awake and noise >= NightShift.awake_threshold(AWAKE_THRESHOLD):
 		awake = true
@@ -423,6 +425,26 @@ func _emerge(at: Vector2, noise: float) -> void:
 	_path_goal = Vector2.INF
 	print("[STALKER] passing: emerges at %s (noise %.0f)" % [str(at.round()), noise])
 	SessionLog.event("stalker", {"what": "pass_in", "noise": roundi(noise), "pos": SessionLog.xy(at)})
+
+## Walka w hali Żyły przed fazą 3 (`NoiseMgr.stalker_hold`, `VEIN_PLAN.md` §12): nie budzi się, a obudzony (także przechodzący
+## w Nocnym Dyżurze) wraca do legowiska — dziś Uwaga przekraczała próg po ~20 s walki i Stalker wchodził do niej od początku.
+func _hold_away() -> void:
+	if pass_mode and pass_state != Pass.IDLE:
+		_vanish()
+		return
+	if not awake:
+		return
+	awake = false
+	winding = false
+	_windup = 0.0
+	_windup_target = null
+	global_position = _home
+	_remote_pos = _home
+	target_pos = _home
+	_path = []
+	_path_goal = Vector2.INF
+	print("[STALKER] held off (vein arena)")
+	SessionLog.event("stalker", {"what": "hold", "noise": roundi(NoiseMgr.level)})
 
 func _vanish() -> void:
 	print("[STALKER] passing: gone at %s" % str(global_position.round()))
