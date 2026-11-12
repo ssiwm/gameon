@@ -6132,6 +6132,10 @@ func _sync_boss_fx() -> void:
 		var em := _add_mat()
 		em.no_depth_test = true
 		_imm(root, em).name = "EmergeMark"                # hala Żyły (E2): gdzie się wynurzy — pęknięcia i żar spod podłogi
+		_build_vein_hump(root)
+		var trm := _add_mat()
+		trm.blend_mode = BaseMaterial3D.BLEND_MODE_MIX
+		_imm(root, trm).name = "HumpTrail"
 		_bossfx[n.get_instance_id()] = [n, root]
 	var t := Time.get_ticks_msec() / 1000.0
 	for id in _bossfx.keys():
@@ -6179,15 +6183,23 @@ func _sync_boss_fx() -> void:
 		var emk: Variant = b.get("emerge_mark")
 		_draw_spit_mark((root.get_node("EmergeMark") as MeshInstance3D).mesh as ImmediateMesh, emk if emk is Vector2 else Vector2.INF, base,
 			float(b.get("EMERGE_R")) * PX if b.get("EMERGE_R") != null else 1.0, true, t, 1.0, Color(1.0, 0.42, 0.18))
+		if b.get("hump_lit") != null:
+			_sync_vein_hump(b, root, base, t)
 		# łuk zasięgu macki
 		var arc := (root.get_node("Arc") as MeshInstance3D).mesh as ImmediateMesh
 		arc.clear_surfaces()
 		if b.winding:
 			var rad: float = float(b.LASH_RANGE_X) * PX
 			var ac := Color(1.0, 0.15, 0.1, 0.4 + 0.5 * pulse)
+			var fc: float = float(b.get("face")) if b.get("face") != null and not (b.get("_anchors") as Array).is_empty() else 0.0
+			var a0 := 0.05 if fc >= 0.0 else 0.45                 # hala, D6: macka bije tylko przed siebie — łuk po stronie obrotu
+			var a1 := 0.95 if fc <= 0.0 else 0.55
+			if absf(fc) < 0.5:
+				a0 = 0.05
+				a1 = 0.95
 			arc.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 			for i in 33:
-				var a := PI * (0.05 + 0.9 * float(i) / 32.0)
+				var a := PI * (a0 + (a1 - a0) * float(i) / 32.0)
 				var d := Vector3(cos(a), sin(a), 0.0)
 				arc.surface_set_color(ac)
 				arc.surface_add_vertex(Vector3(0.0, 10.0 * PX, 0.3) + d * (rad - 0.05))
@@ -6261,6 +6273,95 @@ const LEECH_SPIT_GLOW := 0.3            ## B1 jest prawie czarna, więc pełna p
 
 ## Znacznik lądowania plwociny (Żyła, Pijawka): plama na podłodze, pionowa poświata nad nią i krąg zasięgu trafienia. `sm` w pikselach świata, INF = brak.
 ## Kamera patrzy prawie poziomo, więc sam krąg na podłodze był kreską.
+const HUMP_RISE := 5.0                   ## /s: garb wysuwa się spod podłogi i chowa (ok. 0,2 s)
+const HUMP_TRAIL_S := 0.8                ## s: tyle zostaje ciemny ślad za garbem
+const HUMP_SINK_M := 0.42                ## m: schowany garb jest tyle pod podłogą
+
+## Garb Żyły w przejściu pod podłogą (VEIN_PLAN.md §18a): kilka spłaszczonych guzów w materiale ciała, bez cienia — wystaje ok. 40%.
+func _build_vein_hump(root: Node3D) -> void:
+	var hump := Node3D.new()
+	hump.name = "Hump"
+	hump.visible = false
+	root.add_child(hump)
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.20, 0.045, 0.06)
+	m.roughness = 0.3
+	m.metallic_specular = 0.7
+	m.emission_enabled = true
+	m.emission = Color(0.55, 0.10, 0.05)
+	m.emission_energy_multiplier = 0.15
+	m.rim_enabled = true
+	m.rim = 0.4
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1987
+	for i in 4:
+		var mi := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 1.0
+		sm.height = 2.0
+		sm.radial_segments = 16
+		sm.rings = 8
+		mi.mesh = sm
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.layers = LAYER_WORLD
+		mi.position = Vector3(-0.42 + 0.28 * float(i) + rng.randf_range(-0.04, 0.04), -0.05, rng.randf_range(-0.06, 0.06))
+		mi.scale = Vector3(rng.randf_range(0.26, 0.34), rng.randf_range(0.22, 0.32), rng.randf_range(0.26, 0.34))
+		mi.set_meta("sy", mi.scale.y)
+		hump.add_child(mi)
+	hump.set_meta("mat", m)
+	hump.set_meta("k", 0.0)
+	hump.set_meta("trail", [])
+
+## Garb: wysuwa się w przejściu i w zapowiedzi wynurzenia, chowa po wynurzeniu; przechył w stronę ruchu, falowanie guzów; oświetlony —
+## żar i obwódka („teraz go trafisz”). Za nim ciemny, gasnący ślad na podłodze.
+func _sync_vein_hump(b: Node, root: Node3D, base: Vector3, t: float) -> void:
+	var hump := root.get_node("Hump") as Node3D
+	var mv := int(b.get("move"))
+	var up := mv == int(b.Move.TRAVEL) or mv == int(b.Move.EMERGE)
+	var dt := get_physics_process_delta_time()
+	var k := move_toward(float(hump.get_meta("k")), 1.0 if up else 0.0, dt * HUMP_RISE)
+	hump.set_meta("k", k)
+	hump.visible = k > 0.01
+	var lx := float(hump.get_meta("lx", base.x))
+	var vx := (base.x - lx) / maxf(dt, 0.001)
+	hump.set_meta("lx", base.x)
+	if hump.visible:
+		hump.position = Vector3(0.0, -HUMP_SINK_M * (1.0 - smoothstep(0.0, 1.0, k)), 0.3)
+		hump.rotation.z = clampf(-vx * 0.035, -0.22, 0.22)
+		var i := 0
+		for c in hump.get_children():
+			var mi := c as MeshInstance3D
+			mi.scale.y = float(mi.get_meta("sy")) * (1.0 + 0.12 * sin(t * 7.0 + float(i) * 1.7))
+			i += 1
+		var lit := bool(b.get("hump_lit"))
+		var m := hump.get_meta("mat") as StandardMaterial3D
+		var pulse := 0.5 + 0.5 * sin(t * 10.0)
+		m.emission = Color(1.0, 0.45, 0.15) if lit else Color(0.55, 0.10, 0.05)
+		m.emission_energy_multiplier = (0.9 + 0.6 * pulse) if lit else 0.15
+		m.rim_tint = 0.9 if lit else 0.2
+	# ślad: punkt co 0,1 s w przejściu, gasnący po HUMP_TRAIL_S
+	var trail: Array = hump.get_meta("trail")
+	var now := t
+	if mv == int(b.Move.TRAVEL) and (trail.is_empty() or now - float(trail[-1][1]) > 0.1):
+		trail.append([base, now])
+	while not trail.is_empty() and now - float(trail[0][1]) > HUMP_TRAIL_S:
+		trail.pop_front()
+	var im := (root.get_node("HumpTrail") as MeshInstance3D).mesh as ImmediateMesh
+	im.clear_surfaces()
+	if trail.size() < 2:
+		return
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for e in trail:
+		var p: Vector3 = (e[0] as Vector3) - base
+		var a := 0.55 * (1.0 - (now - float(e[1])) / HUMP_TRAIL_S)
+		var col := Color(0.06, 0.02, 0.02, a)
+		im.surface_set_color(col)
+		im.surface_add_vertex(p + Vector3(0.0, 0.02, 0.3 - 0.22))
+		im.surface_set_color(col)
+		im.surface_add_vertex(p + Vector3(0.0, 0.02, 0.3 + 0.22))
+	im.surface_end()
+
 ## Znacznik na podłodze: plwocina (zielony kwas) albo — z `col` — miejsce wynurzenia Żyły (pomarańczowy żar spod pęknięć).
 func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float, glow := 1.0, col := Color(0.55, 1.0, 0.25)) -> void:
 	mark.clear_surfaces()

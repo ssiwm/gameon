@@ -40,6 +40,19 @@ static func set_enabled(body: Node, on: bool) -> void:
 	if is_instance_valid(s):
 		(s as CollisionShape2D).set_deferred("disabled", not on)
 
+## Sama strefa trafień (bez ciała ruchu): rozmiar `size` px nad stopami i włączenie — np. garb Żyły pod podłogą (VEIN_PLAN.md §18a).
+## Nic nie robi, gdy ciało nie ma strefy.
+static func set_area(body: Node, size: Vector2, on: bool) -> void:
+	if not body.has_meta("hurt_shape"):
+		return
+	var s = body.get_meta("hurt_shape")
+	if not is_instance_valid(s):
+		return
+	var cs := s as CollisionShape2D
+	(cs.shape as RectangleShape2D).size = size
+	cs.position = Vector2(0.0, -size.y * 0.5)
+	cs.set_deferred("disabled", not on)
+
 ## Wyłączenia zapytania: do RID-ów ciał dokłada RID-y ich stref (wróg już przebity albo przewinięty nie trafia drugi raz strefą).
 static func with_areas(ex: Array[RID]) -> Array[RID]:
 	if _area_of.is_empty():

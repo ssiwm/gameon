@@ -14,6 +14,7 @@ extends Node
 const Mission := preload("res://scripts/mission.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Hurtbox := preload("res://scripts/hurtbox.gd")
 
 var main: Node2D
 var level: Node2D
@@ -67,7 +68,9 @@ func run(m: Node2D) -> void:
 	await _wait_and_start()
 	await _camera()
 	await _stalker_hold()
+	await _turn()
 	await _movement()
+	await _hump()
 	await _anchor_choice()
 	await _pain()
 	await _checkpoint_restart()
@@ -208,6 +211,8 @@ func _calm() -> void:
 	boss._atk_gap = 99.0
 	boss._brood_t = 99.0
 	boss._spits.clear()
+	for p in get_tree().get_nodes_in_group("players"):
+		p.flashlight = false                      # snop latarki oświetliłby garb w przejściu (E2b) albo oślepił paszczę
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if String(e.name).begins_with("Brood"):
 			e.queue_free()                            # potomstwo gryzie gracza stojącego na gardzieli
@@ -258,6 +263,120 @@ func _movement() -> void:
 	_place(player, level.vein_entry(0) + Vector2(4, 0))
 	await get_tree().create_timer(boss.ROAR_T + 0.1).timeout
 	check("po ryku znów walczy (seria od zera)", int(boss.move) == int(boss.Move.UP) and int(boss._burst_n) == 0)
+
+# ---------------------------------------------------------------- E2b: obrót, garb
+
+func _turn() -> void:
+	_calm()
+	var cd := Difficulty.m("boss_cd")
+	boss._up_t = 0.0
+	boss._burst_n = 0
+	boss._pain.clear()
+	boss._dmg_by.clear()
+	boss.face = 0.0
+	boss._face_goal = 0.0
+	var bot := _bot()
+	if bot != null:
+		_place(bot, Vector2(-4000, -4000))
+	_place(player, boss.global_position + Vector2(-40, 0))
+	await get_tree().create_timer(boss.TURN_T * cd * 0.5 + 0.15).timeout
+	check("między atakami obraca się do najbliższego człowieka (lewo, face %.2f)" % boss.face, is_equal_approx(float(boss.face), -1.0))
+	check("paszcza przesunięta w stronę obrotu (x %.1f)" % boss._maw_point().x, boss._maw_point().x < -boss.MAW_SIDE_PX + 0.5)
+	boss._begin(boss.Atk.LASH, boss.LASH_WINDUP, boss.global_position + Vector2(40, 0))
+	var extra: float = float(boss._atk_t) - boss.LASH_WINDUP * cd
+	check("atak na drugą stronę: zapowiedź dłuższa o pełny obrót (+%.2f s, obrót %.2f s)" % [extra, boss.TURN_T * cd],
+		absf(extra - boss.TURN_T * cd) < 0.02)
+	await get_tree().create_timer(boss.TURN_T * cd + 0.1).timeout
+	check("obrót w prawo w %.2f s (face %.2f)" % [boss.TURN_T * cd, boss.face], is_equal_approx(float(boss.face), 1.0))
+	player.hp = player.max_hp()
+	player._invuln = 0.0
+	var hp0: int = player.hp
+	boss._atk_t = 0.01
+	await _ticks(3)
+	check("macka nie trafia gracza za plecami (D6, HP %d → %d)" % [hp0, player.hp], player.hp == hp0)
+	_place(player, boss.global_position + Vector2(40, 0))
+	await _ticks(2)
+	boss._begin(boss.Atk.LASH, boss.LASH_WINDUP, player.global_position)
+	check("atak na tę samą stronę bez obrotu (%.2f s)" % boss._atk_t, absf(float(boss._atk_t) - boss.LASH_WINDUP * cd) < 0.02)
+	player._invuln = 0.0
+	boss._atk_t = 0.01
+	await _ticks(3)
+	check("macka trafia przed sobą (HP %d → %d)" % [hp0, player.hp], player.hp == hp0 - 1)
+	player.hp = player.max_hp()
+	_calm()
+	boss._up_t = 0.0
+	boss._burst_n = 0
+	_place(player, level.vein_entry(0) + Vector2(4, 0))
+	await _ticks(2)
+
+## Trzyma gracza `dx` px od garbu na podłodze, z latarką na garb (gracz idzie za garbem, który sunie 160 px/s).
+func _light_hump(dx: float, frames: int) -> void:
+	for _i in frames:
+		var pt: Vector2 = boss.global_position + Vector2(0, -4)
+		_place(player, Vector2(boss.global_position.x + dx, boss.global_position.y))
+		player.aim_dir = (pt - (player.global_position + Vector2(0, -9))).normalized()
+		await get_tree().physics_frame
+
+func _hump() -> void:
+	_calm()
+	var bot := _bot()
+	if bot != null:
+		_place(bot, Vector2(-4000, -4000))
+	boss._burst_n = 0
+	boss._up_t = 0.0
+	boss._begin_sink("test")
+	await get_tree().create_timer(boss.SINK_T + 0.1).timeout
+	boss._travel_dur = 6.0                        # wolne przejście — kilka prób światła w jednym
+	boss._move_t = 6.0
+	await _ticks(3)
+	var hs: CollisionShape2D = boss.get_meta("hurt_shape")
+	check("garb w ciemności: nieoświetlony, bez strefy trafień, kula nic nie robi (%.1f)" % _dealt(true),
+		int(boss.move) == int(boss.Move.TRAVEL) and not bool(boss.hump_lit) and hs.disabled and is_zero_approx(_dealt(true)))
+	player.flashlight = true
+	await _light_hump(-60.0, 12)
+	check("snop latarki z 60 px oświetla garb (%s)" % boss._hump_by, bool(boss.hump_lit) and boss._hump_by == "torch")
+	var sz: Vector2 = (hs.shape as RectangleShape2D).size
+	check("strefa trafień zmniejszona do garbu (%.0f×%.0f) i włączona, ciało ruchu nie" % [sz.x, sz.y],
+		sz == boss.HUMP_SIZE and not hs.disabled and (boss.get_node("CollisionShape2D") as CollisionShape2D).disabled)
+	var q := PhysicsRayQueryParameters2D.create(boss.global_position + Vector2(-60, -10), boss.global_position + Vector2(60, -10), boss.collision_layer)
+	q.collide_with_areas = true
+	var hit := Hurtbox.resolve(level.get_world_2d().direct_space_state.intersect_ray(q))
+	check("strzał z biodra (10 px nad podłogą) trafia strefę garbu", hit.get("collider") == boss)
+	var pain0: int = boss._pain.size()
+	var d := _dealt(false)
+	check("oświetlony garb: 20%% obrażeń (%.1f z 10), bez reguł paszczy" % d, is_equal_approx(d, 10.0 * boss.HUMP_MULT))
+	check("trafienie w garb nie liczy się do „bólu”", boss._pain.size() == pain0)
+	player.flashlight = false
+	await _light_hump(-60.0, 12)
+	check("latarka zgaszona — garb znów w ciemności", not bool(boss.hump_lit))
+	level.spawn_flare(boss.global_position + Vector2(-48, -6), Vector2.ZERO)
+	await _ticks(2)
+	var fl: Node2D = null
+	for f in get_tree().get_nodes_in_group("flares"):
+		fl = f
+	for _i in 12:
+		if fl != null:
+			fl.global_position = boss.global_position + Vector2(-48, -4)
+		_place(player, level.vein_entry(0) + Vector2(4, 0))
+		await get_tree().physics_frame
+	check("flara 48 px od garbu go oświetla (%s)" % boss._hump_by, bool(boss.hump_lit) and boss._hump_by == "flare")
+	for _i in 12:
+		if fl != null:
+			fl.global_position = boss.global_position + Vector2(-90, -4)
+		await get_tree().physics_frame
+	check("flara 90 px — za daleko", not bool(boss.hump_lit))
+	if fl != null:
+		fl.queue_free()
+	player.flashlight = true
+	await _light_hump(-60.0, 12)
+	boss._move_t = 0.01                           # koniec przejścia przy oświetlonym garbie
+	await _ticks(3)
+	sz = (hs.shape as RectangleShape2D).size
+	check("po przejściu: garb zgaszony, strefa wraca do %.0f×%.0f" % [sz.x, sz.y], not bool(boss.hump_lit) and sz == boss.HURT_SIZE)
+	player.flashlight = false
+	_place(player, level.vein_entry(0) + Vector2(4, 0))
+	await get_tree().create_timer(boss.EMERGE_T * Difficulty.m("boss_cd") + boss.ROAR_T + 0.3).timeout
+	check("po wynurzeniu strefa trafień pełna i włączona", not hs.disabled and int(boss.move) == int(boss.Move.UP))
 
 func _anchor_choice() -> void:
 	var now := Time.get_ticks_msec()

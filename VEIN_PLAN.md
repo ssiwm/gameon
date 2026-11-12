@@ -1,7 +1,7 @@
 # Żyła w centrum — walka z ruchem bossa (plan)
 
 Status: **plan z 2026-11-11 (main 1.7.550, 6e0789bf; uwzględnia otwarty PR #658 1.7.551)**. **E1 wdrożony w 1.7.552** (hala, brama, kamera,
-punkt kontrolny, Stalker do F3; kadr kamery obniżony o 32 px względem §6.2, bo dolny pasek HUD-u zasłaniał podłogę). **E2 wdrożony w 1.7.553** (cykl z §7, trzy gardziele F1, wybór gardzieli, „ból”, cios wynurzenia, pęknięcia i zanurzanie w 3D, sieć, bot) — **bez** obrotu do celu, garbu jako bryły 3D i trafienia 20% w oświetlony garb (przejście pokazuje ślad wody; zostają na E3–E4).
+punkt kontrolny, Stalker do F3; kadr kamery obniżony o 32 px względem §6.2, bo dolny pasek HUD-u zasłaniał podłogę). **E2 wdrożony w 1.7.553** (cykl z §7, trzy gardziele F1, wybór gardzieli, „ból”, cios wynurzenia, pęknięcia i zanurzanie w 3D, sieć, bot) — **bez** obrotu do celu, garbu jako bryły 3D i trafienia 20% w oświetlony garb (przejście pokazuje ślad wody) — **plan domknięcia: E2b, §18a** (2026-11-12, decyzje D6–D8 przyjęte 2026-11-12 według zaleceń). **E2b wdrożony w 1.7.554** (obrót ±35° z dłuższą zapowiedzią ataku na drugą stronę, D6, garb 3D z śladem, trafienie 20% w oświetlony garb, sieć, testy).
 Decyzje D1–D5 (§19) **przyjęte 2026-11-11 według zaleceń**: hala zamknięta bramą z korzeni, stały kadr areny, Stalker od F3,
 faza sufitowa ze strąceniem światłem, ogień w E5 po playteście 3. Kolejność: najpierw scalić #658, potem etapy E0–E7 (§18),
 playtest po E1, E2 i E4.
@@ -309,6 +309,8 @@ Każdy etap = osobny PR z podbiciem wersji i wierszem w `CHANGELOG.md`; dokument
 - **E2 — ruch (MVP 2).** Stany z §7, gardziele F1, wybór gardzieli, obrót, obrażenia wynurzenia, garb; 3D: zanurzanie, pęknięcia, garb;
   sieć: pozycja w `_sync`; bot omija pęknięcia. Test: cykl, wybór gardzieli przeciw kampieniu, „ból”, sieć.
   **Playtest 2:** czy ruch wymusza zmianę pozycji bez frustracji.
+- **E2b — domknięcie ruchu** (plan 2026-11-12, §18a; **wdrożony w 1.7.554**): obrót do celu, garb jako bryła 3D, trafienie w oświetlony garb. Przed playtestem 2,
+  bo bez garbu przejście czyta się tylko jako rozbryzgi, a bez obrotu nie widać, kogo Żyła bierze na cel.
 - **E3 — ataki i słabe punkty.** Strefy trafień (§9), worek, fala na całą halę, kałuże kwasu, rotacja celów, tabela trudności (§14),
   język zapowiedzi (§15). Aktualizacja `fun_test` (obrażenia Żyły) i `bot_test` (znaczniki).
 - **E4 — fazy.** F2 (gardziele ścienne, korzenie z wyrywaniem pomostu, potomstwo), F3 (sufit, deszcz, chwyt, strącenie), przejścia;
@@ -320,7 +322,84 @@ Każdy etap = osobny PR z podbiciem wersji i wierszem w `CHANGELOG.md`; dokument
 
 MVP do pierwszej oceny na żywo to **E1 + E2** (hala, kamera, ruch). E3–E4 dopiero po playteście 2.
 
-## 19. Decyzje (rozstrzygnięte 2026-11-11: według zaleceń)
+## 18a. E2b — obrót, garb, trafienie w garb (plan 2026-11-12)
+
+Domknięcie E2 (1.7.553, PR #661): trzy rzeczy z §7, §9 i §15, które nie weszły. Jeden PR na gałęzi z E2, wersja **1.7.554**.
+
+**Stan wyjściowy (kod 1.7.553):** model Żyły (`enemy3d.gd`, `deform: "vein"`) stoi przodem do kamery i nigdy się nie obraca — modele
+z `deform` tylko odbijają się lustrem po `flip_h` (`scale.x`), a Żyła `flip_h` nie ustawia. Paszcza i jej punkt trafień leżą na środku
+(`MAW_POS_HD`, `_maw_point()`). Macka bije w obie strony naraz (`_players_in_reach`: `absf(d.x)`). W przejściu Żyła nie ma strefy trafień
+(`_hittable()`), a garb to tylko rozbryzgi wody (`_tick_move_fx`). Strefa trafień jest jedna na ciało (`hurtbox.gd`: meta `hurt_shape`).
+
+### 1. Obrót do celu
+
+- **Cel:** serwer trzyma `face` ∈ [−1, 1] (−1 w lewo, +1 w prawo, 0 przodem do kamery) i `_face_goal`. Cel obrotu: przy zapowiedzi —
+  strona celu ataku (plwocina: `target.x`; macka: najbliższy w zasięgu; fala: najbliższy na podłodze); między atakami — gracz
+  z największymi obrażeniami w 10 s (`_top_dealer()`), a bez obrażeń najbliższy człowiek. W RYKU i WYNURZENIU przodem (0).
+- **Zapowiedź 0,3 s:** obrót z jednej strony na drugą trwa `TURN_T = 0,3 s` (× tempo trudności). Gdy cel ataku jest po drugiej stronie,
+  zapowiedź ataku zaczyna się **po** obrocie (o tyle dłuższa) — to jest sygnał „bierze na cel ciebie”; po tej samej stronie bez zmian.
+  Daje to nagrodę za rozejście się na dwie strony (filar 3: kooperacja), a solo nic nie zmienia, gdy gracz stoi w miejscu.
+- **Kierunek ataków (D6):** macka bije tylko w stronę `face` (z luzem 16 px za plecami na hitbox), fala i plucie bez zmian.
+- **Paszcza:** `_maw_point()` przesuwa się o `MAW_SIDE_PX × face` (ok. 10 px) w stronę obrotu — strefa „strzał w paszczę” i oślepienie
+  latarką (`_tick_flashlight`) idą za nią. Heurystyka „z góry” bez zmian (zastąpi ją E3).
+- **Model 3D:** `enemy3d.gd` dla `vein` obraca `_pivot` w osi Y o `face × FACE_YAW` (**35°**, nie 90° — paszcza ma zostać widoczna
+  z kamery, a model nie ma szkieletu; kierunek znaku sprawdzić zrzutem). Wartość przychodzi z `view_info()` (`"face"`), u klienta
+  wygładzana tym samym tempem co na serwerze.
+- **Sieć:** `face` (float) dopisany do `_sync`; dołączający dostaje go z pierwszym `_sync`.
+- **Dziennik:** `vein` `turn` tylko przy zmianie strony (kto, ile trwała zapowiedź) — do oceny w playteście, czy obrót jest czytelny.
+
+### 2. Garb jako bryła 3D
+
+- **Bryła:** proceduralna w `view3d.gd` (bez nowego GLB i bez kredytów Meshy): spłaszczona półelipsoida ok. 1,2 × 0,35 × 0,6 m
+  (szer. × wys. × głęb.) z 3–4 nierównymi guzami (kilka `SphereMesh` w jednym węźle albo `ArrayMesh` z szumem z ziarna), wynurzona
+  ponad podłogę w ok. 40%, przechylona w stronę ruchu. Materiał jak ciało Żyły (ciemne wino, mokry, `roughness` ok. 0,35, słaba emisja
+  żył), żeby czytało się „to ta sama istota”.
+- **Ruch:** tylko w PRZEJŚCIU (a w ZANURZENIU / ZAPOWIEDZI — wsuwanie i wysuwanie spod podłogi w 0,2 s); pozycja z `position` bossa
+  (u klienta już wygładzana w `_physics_process`), lekkie falowanie wysokości i ślad: istniejące rozbryzgi wody + 2–3 drzazgi z podłogi
+  co ~0,3 s (`Vfx.burst`, deski) i krótkie pęknięcia za garbem (ten sam `ImmediateMesh` co `EmergeMark`, wygaszany po 0,8 s).
+- **Oświetlony:** gdy serwer mówi „oświetlony” (pkt 3), garb dostaje obwódkę/żar (jak `FLARE_LEAD` w `enemy3d.gd`) — sygnał
+  „teraz go trafisz”. Bez światła garb jest ciemny i czyta się tylko w mroku hali po wodzie i drzazgach (to zamierzone).
+- **Dźwięk:** szum w żyłach w pętli w czasie przejścia (jest `amb_thud`; do sprawdzenia, czy wystarcza) — bez nowych nagrań.
+- **Koszt:** jedna bryła w kadrze, bez cienia (`cast_shadow = OFF`), ok. 0 ms GPU; sprawdzić `--perf` w hali.
+
+### 3. Trafienie w oświetlony garb (×0,2)
+
+- **Oświetlenie (serwer, co 0,1 s w PRZEJŚCIU):** punkt garbu `position + (0, −4)`; oświetlony, gdy `Lights.flashlight_on()` (stożek
+  8 m, ±24°, z linią wzroku) albo zapalona flara z grupy `flares` w promieniu `HUMP_FLARE_R = 64 px` z czystą linią wzroku.
+  Stan `hump_lit` idzie w `_sync` (obwódka u klienta). Gracz trzymający latarkę na garbie musi go **prowadzić** (160 px/s) — to jest
+  umiejętność, a w duecie podział ról: jeden świeci, drugi strzela.
+- **Strefa trafień:** `hurtbox.gd` dostaje `set_area(body, size, offset, on)` — sama strefa (`Hurt`), bez ciała ruchu, przestawiona
+  na garb (ok. 36 × 14 px nad podłogą); wraca do 70 × 66 przy wynurzeniu. Nie trzeba drugiej strefy na encję (to zostaje na E3, §9).
+- **Obrażenia:** w `_hit()` w PRZEJŚCIU przy `hump_lit` — `dmg × HUMP_MULT (0,2)` dla każdego rodzaju (kula, śrut, wybuch), bez reguł
+  paszczy i „z góry”. Nieoświetlony garb — jak dziś: nic (kula przelatuje). „Ból” z obrażeń w garb **nie** liczy się do kolejnego
+  zanurzenia (`_pain` tylko poza przejściem), żeby trafienia w garb nie skracały okien w paszczę.
+- **Skala:** przy DPS ~20 na człowieka i 1,5–2,5 s przejścia to ok. 6–10 HP na przejście (1–1,5% HP) — mała nagroda za światło,
+  nie nowa główna droga obrażeń. Strojenie w E7 z dziennika.
+- **Bot (D7):** w E2b nie celuje w garb (`is_threat()` w przejściu zostaje `false`) — garb to nagroda za ludzką współpracę; boty
+  dostają to w E6, jeśli playtest pokaże, że solo z botem brakuje tej drogi.
+- **Dziennik:** `vein` `hump_hit` (kto, czym, ile, czym oświetlony) i licznik w raporcie walki.
+
+### 4. Testy (`--veintest`, `test_net_session.sh`)
+
+- Obrót: cel po lewej → `face` dochodzi do −1 w 0,3 s (± klatka); zapowiedź ataku na drugą stronę dłuższa o czas obrotu, na tę samą — nie;
+  macka nie trafia gracza za plecami (D6), trafia przed sobą; `_maw_point()` przesunięty w stronę obrotu; w RYKU `face` → 0.
+- Garb: oświetlony latarką z przodu (gracz 60 px obok, `aim_dir` w stronę garbu) → `hump_lit`, kula zadaje 20% (pełne × 0,2);
+  bez latarki → 0; flara 48 px → oświetlony, 90 px → nie; strefa trafień ma rozmiar garbu w przejściu i wraca po wynurzeniu;
+  trafienie w garb nie dopisuje „bólu”.
+- Sieć: klient dostaje `face` i `hump_lit` (`--veinnet`: klient wypisuje zakres `face` i to, czy widział `hump_lit`).
+- Regresja jak w E2 (`--funtest`, `--bottest`, `--leechtest`, `--missiontest`, `--enemytest`).
+- Zrzuty 3D (okno, `override.cfg`): obrót w lewo i w prawo, garb w przejściu w mroku i w snopie latarki (`--shotsink` + nowa flaga
+  `--shotlit` — gracz świeci na garb).
+
+### 5. Kolejność i ryzyka
+
+Kolejność w PR: (1) obrót + D6 + testy, (2) garb 3D + zrzuty, (3) oświetlenie, strefa, ×0,2 + testy, (4) dokumenty (README, GDD §7.1,
+CHANGELOG, CLAUDE.md, ten plik). Ryzyka: obrót o 35° bryły bez szkieletu może wyglądać sztywno (wtedy 25° i drżenie skali w obrocie);
+lustrzane odbicie `scale.x` z `deform` nie może się nałożyć na obrót (Żyła nie ustawia `flip_h` — zostawić tak i sprawdzić); stożek
+latarki ±24° na garb przy podłodze działa tylko z bliska i przy celowaniu w dół — jeśli w playteście nikt go nie oświetli, poszerzyć
+warunek do „snop przecina garb” (odcinek kontra prostokąt garbu) zamiast punktu.
+
+## 19. Decyzje (D1–D5 rozstrzygnięte 2026-11-11, D6–D8 2026-11-12: według zaleceń)
 
 | # | Pytanie | Warianty | Przyjęte |
 |---|---|---|---|
@@ -329,6 +408,9 @@ MVP do pierwszej oceny na żywo to **E1 + E2** (hala, kamera, ruch). E3–E4 dop
 | D3 | Stalker | A: dopiero od F3 (wyścig) · B: jak dziś (od hałasu) | **A** — dziś jest w walce od ~30 s i zabiera kulminację |
 | D4 | Faza sufitowa F3 | A: sufit + strącenie światłem · B: F3 na podłodze (wszystkie gardziele naraz, szybciej) | **A** — model macki i pozy w E4; B tylko, jeśli wycena grafiki E4 okaże się za duża |
 | D5 | Ogień | A: wejdzie w E5 (granaty fosforowe w przedsionku) · B: bez ognia | **A**, po playteście 3 |
+| D6 | Macka po obrocie (E2b) | A: tylko w stronę obrotu · B: jak dziś w obie strony | **A** — nagroda za rozejście się |
+| D7 | Bot a garb (E2b) | A: bot nie strzela w garb · B: strzela, gdy ktoś go oświetli | **A** — w E6 do ponownej oceny |
+| D8 | Obrót (E2b) | A: ±35° bryły przodem do kamery · B: pełny profil 90° | **A** — paszcza musi być widoczna z kamery |
 
 ## 20. Ryzyka
 
