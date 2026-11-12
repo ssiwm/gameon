@@ -288,10 +288,13 @@ static var _shader_cache: Dictionary = {}
 ## Ścieżka modelu → PackedScene trzymana przez sesję: egzemplarze nie trzymają sceny, więc każdy wróg wypuszczony w grze (finał 1.1, gniazda)
 ## czytał GLB z dysku od nowa.
 static var _scene_cache: Dictionary = {}
+var _vein_face := 0.0                        ## Żyła w hali (VEIN_PLAN.md §18a): −1…1 → obrót bryły o ±VEIN_FACE_YAW wokół pionu
+const VEIN_FACE_YAW := 35.0                  ## °: nie pełny profil — paszcza ma zostać widoczna z kamery (D8)
 var _blade: Array = []                       ## SPEC `death_blade`: [kość dłoni, oś ostrza, jego szerokość] w przestrzeni kości
 
 ## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
 func motion_context(info: Dictionary) -> void:
+	_vein_face = float(info.get("face", 0.0))
 	_grounded_hint = int(bool(info["grounded"])) if info.has("grounded") else -1
 	_target_world_y = -float(info.get("target_y", NAN)) * PX
 	_motion_remaining = float(info.get("windup_remaining", NAN)) if bool(info.get("winding", false)) else NAN
@@ -1198,6 +1201,7 @@ func _pose_deform(delta: float, anim: String, fr: float, nfr: int, loop: bool) -
 		"nest":
 			prm["pulse"] = sin(ph * TAU)
 		"vein":
+			_pivot.rotation.y = deg_to_rad(VEIN_FACE_YAW) * _vein_face      # obrót do celu (hala Żyły, E2b)
 			var k := sin(ph * TAU)
 			var jaw := -1.0
 			var sx := 1.0

@@ -642,11 +642,28 @@ func _battery_net_step() -> void:
 	var still: Node = level.get_node_or_null(item_name)
 	print("[BATTERY-NET] host client_pct=%d taken=%s" % [int(cl.bat_pct), str(still == null or still.is_queued_for_deletion())])
 
+## Dev (--shotsink --shotlit): w przejściu gracz 1 idzie 50 px za garbem Żyły z latarką skierowaną na garb — zrzut oświetlonego garbu.
+func _shot_light_hump(bs: Node) -> void:
+	var p: Node2D = _players.get_node_or_null("1")
+	if p == null:
+		return
+	for _i in 400:
+		await get_tree().physics_frame
+		if not is_instance_valid(bs) or not is_instance_valid(p):
+			return
+		if int(bs.move) != int(bs.Move.TRAVEL):
+			continue
+		p.global_position = Vector2(bs.position.x - 50.0, bs.position.y)
+		p.velocity = Vector2.ZERO
+		p.flashlight = true
+		p.aim_dir = (bs.position + Vector2(0, -4) - p.global_position - Vector2(0, -9)).normalized()
+
 ## Test sieci hali Żyły (--veinnet=N, tools/test_net_session.sh, VEIN_PLAN.md E1; mapa z1_m3). Host po N s niszczy gniazda, staje
 ## w przedsionku, po 1 s wchodzi do hali (Żyła się budzi) i po ARENA_GATE_DELAY + 1 s wypisuje stan bramy i to, czy klient (został
 ## w przedsionku) jest już w hali. Klient po N s wypisuje bramę, kolizję w otworze, stan Żyły, swoje położenie i kamerę areny.
 ## E2: host 10 s po zamknięciu bramy (gdy Żyła wynurzona) każe jej się zanurzyć i po 6 s wypisuje, do której gardzieli przeszła; klient przez 10 s po swoim
-## wpisie zbiera ruchy Żyły z `_sync`, największe przesunięcie i zanurzenie obrazu.
+## wpisie zbiera ruchy Żyły z `_sync`, największe przesunięcie i zanurzenie obrazu. E2b: host w przejściu świeci latarką na garb;
+## klient wypisuje największy obrót (`face`) i to, czy widział oświetlony garb.
 ## --veinnet: własna postać (autorytet tego peera) nietykalna przez cały test — bez tego Żyła kładzie stojących bezczynnie graczy,
 ## wipe wraca do punktu kontrolnego i otwiera bramę przed pomiarem (CI wolniejsze niż lokalnie).
 func _vein_net_guard() -> void:
@@ -685,6 +702,8 @@ func _vein_net_step() -> void:
 		var x_lo: float = boss.global_position.x
 		var x_hi: float = x_lo
 		var vis := 0.0
+		var turn := 0.0
+		var hump := false
 		for _i in 200:
 			await get_tree().create_timer(0.05).timeout
 			if not is_instance_valid(boss):
@@ -693,9 +712,12 @@ func _vein_net_step() -> void:
 			x_lo = minf(x_lo, boss.global_position.x)
 			x_hi = maxf(x_hi, boss.global_position.x)
 			vis = maxf(vis, float(boss._sink_vis))
+			turn = maxf(turn, absf(float(boss._face_vis)))
+			hump = hump or bool(boss.hump_lit)
 		var mv: Array = seen.keys()
 		mv.sort()
-		print("[VEIN-NET] client moves=%s shift=%d sinkvis=%.1f" % [",".join(mv.map(func(m: int) -> String: return str(m))), roundi(x_hi - x_lo), vis])
+		print("[VEIN-NET] client moves=%s shift=%d sinkvis=%.1f turn=%.1f hump=%s" % [",".join(mv.map(func(m: int) -> String: return str(m))),
+			roundi(x_hi - x_lo), vis, turn, str(hump)])
 		return
 	var host: Node2D = _players.get_node_or_null("1")
 	if host == null or level.vein_arena.is_empty():
@@ -723,8 +745,18 @@ func _vein_net_step() -> void:
 		await get_tree().create_timer(0.05).timeout
 	var a0: int = b.anchor
 	b._begin_sink("test")
-	await get_tree().create_timer(6.0).timeout
-	print("[VEIN-NET] host moved=%s anchor=%d->%d" % [str(int(b.anchor) != a0), a0, int(b.anchor)])
+	await get_tree().create_timer(b.SINK_T + 0.1).timeout
+	var lit := false
+	host.flashlight = true                            # E2b: host idzie za garbem z latarką — garb oświetlony, klient dostaje `hump_lit`
+	for _i in 30:
+		host.global_position = Vector2(b.position.x - 50.0, b.position.y)
+		host.velocity = Vector2.ZERO
+		host.aim_dir = (b.position + Vector2(0, -4) - host.global_position - Vector2(0, -9)).normalized()
+		lit = lit or bool(b.hump_lit)
+		await get_tree().physics_frame
+	host.flashlight = false
+	await get_tree().create_timer(5.0).timeout
+	print("[VEIN-NET] host moved=%s anchor=%d->%d lit=%s" % [str(int(b.anchor) != a0), a0, int(b.anchor), str(lit)])
 
 ## Test sieci ładowarki (--chargernet=N, tools/test_net_session.sh, BATTERY_PLAN.md B3; mapa z1_b1): klient po N s staje przy ładowarce
 ## ze zgaszoną latarką i 20% baterii — ładuje się u siebie (właściciel), a stan „pracuje” rozstrzyga serwer. Po 3 s klient wypisuje
@@ -2351,7 +2383,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		mission._start_boss()               # podgląd walki z bossem: budzi bossa i rzuca flarę nad jego cień
 		await get_tree().create_timer(0.6).timeout
 		var bs := get_tree().get_first_node_in_group("boss")
-		if bs != null and not "--shotsink" in OS.get_cmdline_user_args():       # --shotsink: bez flary (jej czerwień zasłania znacznik wynurzenia)
+		if bs != null and not ("--shotsink" in OS.get_cmdline_user_args() or "--shotface" in OS.get_cmdline_user_args()):   # --shotsink / --shotface (obrót, E2b): bez flary — jej czerwień zasłania znacznik i paszczę
 			level.spawn_flare(Vector2(bs.global_position.x + 30.0, bs.global_position.y - 20.0), Vector2.ZERO)
 		if bs != null:
 			for ca in OS.get_cmdline_user_args():
@@ -2374,6 +2406,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			if "--shotsink" in OS.get_cmdline_user_args() and bs.has_method("_begin_sink"):
 				get_tree().create_timer(0.3).timeout.connect(func() -> void:     # --shotsink: Żyła w hali od razu schodzi pod podłogę (VEIN_PLAN.md E2;
 					bs.call("_begin_sink", "shot"))                              # --shotdelay≈0.5 zanurzanie, ≈1.5 przejście, ≈3.0 zapowiedź wynurzenia)
+			if "--shotlit" in OS.get_cmdline_user_args() and bs.has_method("_begin_sink"):
+				_shot_light_hump(bs)                                         # --shotsink --shotlit: gracz idzie za garbem z latarką (E2b)
 			if "--shotup" in OS.get_cmdline_user_args() and bs.has_method("_surface"):
 				bs.call("_surface")         # --shotup: Pijawka od razu wynurzona (podgląd arkusza, z chwytem, jeśli gracz stoi w zasięgu)
 	for sa in OS.get_cmdline_user_args():

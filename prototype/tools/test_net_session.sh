@@ -124,8 +124,8 @@ godot --headless --path . -- --join=127.0.0.1 --port=8972 --veinnet=6 --autoquit
 wait $CA $HOST
 grep -a -q "\[VEIN-NET\] host gate=true boss=1 client_in=true" "$LOG/vnet_host.log" && ok "host: Żyła walczy, brama zamknięta, klient z przedsionka wciągnięty" || fail "host: $(grep -a "\[VEIN-NET\]" "$LOG/vnet_host.log")"
 grep -a -q "\[VEIN-NET\] client gate=true blocks=true boss=1 in=true cam=true" "$LOG/vnet_a.log" && ok "klient: brama i jej kolizja, Żyła przebudzona, sam w hali, kamera areny" || fail "klient A: $(grep -a "\[VEIN-NET\]" "$LOG/vnet_a.log")"
-grep -a -q "\[VEIN-NET\] host moved=true" "$LOG/vnet_host.log" && ok "host: Żyła zanurzona przeszła do innej gardzieli" || fail "host: $(grep -a "\[VEIN-NET\] host moved" "$LOG/vnet_host.log")"
-grep -a -q "\[VEIN-NET\] client moves=.*2,3,4.* shift=\([1-9][0-9][0-9]\) sinkvis=1.0" "$LOG/vnet_a.log" && ok "klient: przejście i zapowiedź z _sync, przesunięcie o gardziel, model pod podłogą" || fail "klient A: $(grep -a "\[VEIN-NET\] client moves" "$LOG/vnet_a.log")"
+grep -a -q "\[VEIN-NET\] host moved=true anchor=[0-9]->[0-9] lit=true" "$LOG/vnet_host.log" && ok "host: Żyła zanurzona przeszła do innej gardzieli, garb oświetlony latarką" || fail "host: $(grep -a "\[VEIN-NET\] host moved" "$LOG/vnet_host.log")"
+grep -a -q "\[VEIN-NET\] client moves=.*2,3,4.* shift=\([1-9][0-9][0-9]\) sinkvis=1.0 turn=\(0.9\|1.0\) hump=true" "$LOG/vnet_a.log" && ok "klient: przejście i zapowiedź z _sync, przesunięcie o gardziel, model pod podłogą, obrót i oświetlony garb" || fail "klient A: $(grep -a "\[VEIN-NET\] client moves" "$LOG/vnet_a.log")"
 grep -a -q "\[VEIN-NET\] client gate=true blocks=true boss=1 in=true" "$LOG/vnet_b.log" && ok "dołączający przy zamkniętej bramie: brama, kolizja, stan Żyły, wciągnięty do hali" || fail "klient B: $(grep -a "\[VEIN-NET\]" "$LOG/vnet_b.log")"
 
 echo "== bateria 4,5 V =="

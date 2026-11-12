@@ -1,7 +1,7 @@
 # Żyła w centrum — walka z ruchem bossa (plan)
 
 Status: **plan z 2026-11-11 (main 1.7.550, 6e0789bf; uwzględnia otwarty PR #658 1.7.551)**. **E1 wdrożony w 1.7.552** (hala, brama, kamera,
-punkt kontrolny, Stalker do F3; kadr kamery obniżony o 32 px względem §6.2, bo dolny pasek HUD-u zasłaniał podłogę). **E2 wdrożony w 1.7.553** (cykl z §7, trzy gardziele F1, wybór gardzieli, „ból”, cios wynurzenia, pęknięcia i zanurzanie w 3D, sieć, bot) — **bez** obrotu do celu, garbu jako bryły 3D i trafienia 20% w oświetlony garb (przejście pokazuje ślad wody) — **plan domknięcia: E2b, §18a** (2026-11-12, decyzje D6–D8 przyjęte 2026-11-12 według zaleceń).
+punkt kontrolny, Stalker do F3; kadr kamery obniżony o 32 px względem §6.2, bo dolny pasek HUD-u zasłaniał podłogę). **E2 wdrożony w 1.7.553** (cykl z §7, trzy gardziele F1, wybór gardzieli, „ból”, cios wynurzenia, pęknięcia i zanurzanie w 3D, sieć, bot) — **bez** obrotu do celu, garbu jako bryły 3D i trafienia 20% w oświetlony garb (przejście pokazuje ślad wody) — **plan domknięcia: E2b, §18a** (2026-11-12, decyzje D6–D8 przyjęte 2026-11-12 według zaleceń). **E2b wdrożony w 1.7.554** (obrót ±35° z dłuższą zapowiedzią ataku na drugą stronę, D6, garb 3D z śladem, trafienie 20% w oświetlony garb, sieć, testy).
 Decyzje D1–D5 (§19) **przyjęte 2026-11-11 według zaleceń**: hala zamknięta bramą z korzeni, stały kadr areny, Stalker od F3,
 faza sufitowa ze strąceniem światłem, ogień w E5 po playteście 3. Kolejność: najpierw scalić #658, potem etapy E0–E7 (§18),
 playtest po E1, E2 i E4.
@@ -309,7 +309,7 @@ Każdy etap = osobny PR z podbiciem wersji i wierszem w `CHANGELOG.md`; dokument
 - **E2 — ruch (MVP 2).** Stany z §7, gardziele F1, wybór gardzieli, obrót, obrażenia wynurzenia, garb; 3D: zanurzanie, pęknięcia, garb;
   sieć: pozycja w `_sync`; bot omija pęknięcia. Test: cykl, wybór gardzieli przeciw kampieniu, „ból”, sieć.
   **Playtest 2:** czy ruch wymusza zmianę pozycji bez frustracji.
-- **E2b — domknięcie ruchu** (plan 2026-11-12, §18a): obrót do celu, garb jako bryła 3D, trafienie w oświetlony garb. Przed playtestem 2,
+- **E2b — domknięcie ruchu** (plan 2026-11-12, §18a; **wdrożony w 1.7.554**): obrót do celu, garb jako bryła 3D, trafienie w oświetlony garb. Przed playtestem 2,
   bo bez garbu przejście czyta się tylko jako rozbryzgi, a bez obrotu nie widać, kogo Żyła bierze na cel.
 - **E3 — ataki i słabe punkty.** Strefy trafień (§9), worek, fala na całą halę, kałuże kwasu, rotacja celów, tabela trudności (§14),
   język zapowiedzi (§15). Aktualizacja `fun_test` (obrażenia Żyły) i `bot_test` (znaczniki).

@@ -30,6 +30,7 @@ extends "res://scripts/boss_base.gd"
 
 const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Lights := preload("res://scripts/lights.gd")
+const Sight := preload("res://scripts/sight.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
@@ -104,6 +105,13 @@ const PAIN_WINDOW := 5.0
 const CAMP_R := 48.0              ## gracz, który stoi w tym promieniu ≥ CAMP_T s, „kampi” — gardziel najbliżej niego +2
 const CAMP_T := 6.0
 const DMG_WINDOW := 10.0          ## +1 gardzieli najbliżej tego, kto zadał najwięcej obrażeń w tylu ostatnich s
+const HURT_SIZE := Vector2(70.0, 66.0)   ## strefa trafień wynurzonej (wysokość modelu, enemy3d.gd SPEC „fit")
+const HUMP_SIZE := Vector2(36.0, 14.0)   ## strefa trafień garbu w przejściu (VEIN_PLAN.md §18a)
+const HUMP_MULT := 0.2            ## oświetlony garb: 20% obrażeń z każdej broni, bez reguł paszczy
+const HUMP_FLARE_R := 64.0        ## px: flara tak blisko garbu (z linią wzroku) go oświetla
+const TURN_T := 0.3               ## s: obrót z jednej strony na drugą (× tempo trudności) — zapowiedź „bierze na cel ciebie” (E2b)
+const MAW_SIDE_PX := 10.0         ## px: o tyle paszcza (strefa strzału i oślepienia) przesuwa się w stronę obrotu
+const LASH_BACK := 16.0           ## px: macka po obrocie bije tylko przed siebie (D6), z takim luzem za plecami na szerokość postaci
 const WAIT_ROAR := 12.0           ## hala Żyły: co tyle s ryk z dna, gdy gniazda padły, a nikt nie wszedł (`VEIN_PLAN.md` §6.3)
 
 ## Sprite vein (tools/char_boss.py, klatka 128x80): wiersz 74 arkusza = y 0 w swiecie, paszcza w (64, 60).
@@ -149,6 +157,12 @@ var _camp := {}                       ## serwer: nazwa gracza → [punkt zakotwi
 var _remote_pos := Vector2.ZERO
 var _fx_t := 0.0
 var _emerge_reason := "cycle"
+var hump_lit := false                 ## garb w przejściu oświetlony latarką albo flarą — da się go trafić (synchronizowane)
+var _hump_by := ""                    ## serwer: czym oświetlony („torch” / „flare”) — do dziennika
+var _hump_check := 0.0
+var face := 0.0                       ## −1 w lewo, +1 w prawo, 0 przodem do kamery (serwer; klienci dostają cel w `_sync`) — tylko w hali
+var _face_goal := 0.0                 ## serwer: dokąd się obraca
+var _face_vis := 0.0                  ## każdy peer: wygładzony obrót do rysowania (model 3D, paszcza)
 ## zgodność z wcześniejszymi testami / rysowaniem
 var winding := false
 var spitting := false
@@ -189,7 +203,7 @@ func _init() -> void:
 func _ready() -> void:
 	add_to_group("enemies")
 	add_to_group("boss")
-	Hurtbox.add(self, 70.0, 66.0)                             # strefa trafień na wysokość modelu (enemy3d.gd SPEC „fit")
+	Hurtbox.add(self, HURT_SIZE.x, HURT_SIZE.y)               # strefa trafień na wysokość modelu (enemy3d.gd SPEC „fit")
 	nests_left = _nest_count()
 	_light = Lights.make_light(Lights.radial(), 3.5, Color(1.0, 0.35, 0.25), 0.5, false)
 	_light.position = Vector2(0, -20)
@@ -215,10 +229,40 @@ func _is_hd() -> bool:
 
 ## Punkt, w który celuje latarka / który podświetla nakładka: paszcza sprite'a (HD wyżej niż w klasycznym arkuszu).
 func _maw_point() -> Vector2:
-	var down := Vector2(0.0, _sink_vis * SINK_DEPTH)          # zanurzona: paszcza schodzi razem z modelem
+	var down := Vector2(_face_vis * MAW_SIDE_PX, _sink_vis * SINK_DEPTH)   # zanurzona: paszcza schodzi z modelem; obrócona: idzie w bok
 	if _spr.is_empty():
 		return Vector2(0, -8) + down
 	return (MAW_POS_HD if _is_hd() else MAW_POS) + down
+
+## Garb: w przejściu oświetlony — strefa trafień zmniejszona do garbu i włączona bez ciała ruchu (każdy peer, przy zmianie).
+func _set_hump(on: bool) -> void:
+	hump_lit = on
+	if on:
+		Hurtbox.set_area(self, HUMP_SIZE, true)
+	else:
+		Hurtbox.set_area(self, HURT_SIZE, _hurt_on)
+
+## Serwer, przejście: co 0,1 s — czy snop latarki albo flara oświetla garb.
+func _tick_hump(delta: float) -> void:
+	_hump_check -= delta
+	if _hump_check > 0.0:
+		return
+	_hump_check = 0.1
+	var pt := position + Vector2(0.0, -4.0)
+	var space := get_world_2d().direct_space_state
+	var by := ""
+	if Lights.flashlight_on(pt, get_tree(), space) != null:
+		by = "torch"
+	else:
+		for f in get_tree().get_nodes_in_group("flares"):
+			if f is Node2D and is_instance_valid(f) and (f as Node2D).global_position.distance_to(pt) <= HUMP_FLARE_R \
+					and Sight.clear(space, (f as Node2D).global_position, pt):
+				by = "flare"
+				break
+	_hump_by = by
+	if (by != "") != hump_lit:
+		_set_hump(by != "")
+		_send_state(true)
 
 ## Czy da się ją trafić: wynurzona, w ryku albo w trakcie zanurzania (pod podłogą i w zapowiedzi wynurzenia — nie).
 func _hittable() -> bool:
@@ -230,7 +274,7 @@ func is_threat() -> bool:
 
 ## Kontrakt widoku (view3d.gd) — patrz enemy.gd: view_info. `winding` to zapowiedź macki (inne ataki mają własne pozy z animacji).
 func view_info() -> Dictionary:
-	return {"kind": "vein", "alive": state != State.DEAD, "winding": winding, "sp": 0, "flash": _flash > 0.0}
+	return {"kind": "vein", "alive": state != State.DEAD, "winding": winding, "sp": 0, "flash": _flash > 0.0, "face": _face_vis}
 
 # ---------------------------------------------------------------- misja (serwer)
 
@@ -321,6 +365,10 @@ func reset_enemy() -> void:
 	_sink_vis = 0.0
 	emerge_mark = Vector2.INF
 	anchor = _nearest_anchor(_home)
+	face = 0.0
+	_face_goal = 0.0
+	_face_vis = 0.0
+	_set_hump(false)
 	_pain.clear()
 	_dmg_by.clear()
 	_camp.clear()
@@ -338,6 +386,7 @@ func _physics_process(delta: float) -> void:
 	if not NoiseMgr.is_server():
 		position = position.lerp(_remote_pos, 0.25)
 		_sink_vis = move_toward(_sink_vis, sink, delta * SINK_VIS_RATE)
+		_face_vis = move_toward(_face_vis, face, delta * 2.0 / TURN_T)
 		return
 	if state == State.AWAKE:
 		_tick_maw(delta)
@@ -349,9 +398,11 @@ func _physics_process(delta: float) -> void:
 		if not _anchors.is_empty():
 			_tick_move(delta)
 			_track_camp()
+			_tick_face(delta)
 	elif state == State.DORMANT and waiting:
 		_tick_wait(delta)
 	_sink_vis = move_toward(_sink_vis, sink, delta * SINK_VIS_RATE)
+	_face_vis = face
 	_tick_spits(delta)
 	if spit_mark != Vector2.INF and atk != Atk.SPIT and _spits.is_empty():
 		spit_mark = Vector2.INF                      # rozbryzg albo przerwana zapowiedź (oślepienie)
@@ -407,7 +458,10 @@ func _tick_move(delta: float) -> void:
 		Move.TRAVEL:
 			var k := clampf(1.0 - _move_t / _travel_dur, 0.0, 1.0)
 			position = _travel_from.lerp(_travel_to, smoothstep(0.0, 1.0, k))
+			_tick_hump(delta)
 			if _move_t <= 0.0:
+				if hump_lit:
+					_set_hump(false)
 				position = _travel_to
 				emerge_mark = _travel_to
 				_set_move(Move.EMERGE, EMERGE_T * Difficulty.m("boss_cd"))
@@ -422,6 +476,41 @@ func _tick_move(delta: float) -> void:
 				_open_maw(ROAR_T, false)
 				_event.rpc("emerge")
 				_log_emerge()
+
+## Serwer (hala): obrót do celu (`VEIN_PLAN.md` §18a). W zapowiedzi — strona celu ataku; między atakami — kto zadaje najwięcej obrażeń,
+## bez obrażeń najbliższy człowiek; w ryku i pod podłogą przodem do kamery. Pełny obrót z jednej strony na drugą: TURN_T.
+func _tick_face(delta: float) -> void:
+	if move == Move.UP and atk == Atk.NONE:
+		var t := _top_dealer()
+		if t == null:
+			t = _nearest_human()
+		if t != null and absf(t.global_position.x - position.x) > 6.0:
+			_face_goal = signf(t.global_position.x - position.x)
+	elif move != Move.UP and move != Move.SINK:
+		_face_goal = 0.0
+	var f := move_toward(face, _face_goal, delta * 2.0 / (TURN_T * Difficulty.m("boss_cd")))
+	if not is_equal_approx(f, face):
+		face = f
+		_send_state(false)
+
+func _nearest_human() -> Node2D:
+	var best: Node2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.dead or p.is_bot:
+			continue
+		if best == null or p.global_position.distance_to(position) < best.global_position.distance_to(position):
+			best = p
+	return best
+
+## Serwer (hala): obrót przed atakiem na stronę `side` — zwraca czas obrotu, o który wydłuża się zapowiedź (0, gdy już tam patrzy).
+func _turn_for_attack(side: float) -> float:
+	if _anchors.is_empty() or side == 0.0:
+		return 0.0
+	var turn := absf(side - face) * 0.5 * TURN_T * Difficulty.m("boss_cd")
+	_face_goal = side
+	if turn > 0.05:
+		SessionLog.event("vein", {"what": "turn", "to": int(side), "extra_s": snappedf(turn, 0.01)})
+	return turn
 
 func _begin_sink(why: String) -> void:
 	_set_atk(Atk.NONE)
@@ -565,7 +654,7 @@ func _tick_flashlight(delta: float) -> void:
 	if _light_check > 0.0 or _stun_cd > 0.0 or stunned or atk == Atk.NONE:
 		return
 	_light_check = 0.1
-	var lighter := Lights.flashlight_on(global_position + (MAW_POS_HD if _is_hd() else Vector2(0, -8)), get_tree(), get_world_2d().direct_space_state)
+	var lighter := Lights.flashlight_on(global_position + _maw_point(), get_tree(), get_world_2d().direct_space_state)
 	if lighter == null:
 		return
 	_stun_cd = STUN_CD
@@ -602,10 +691,12 @@ func _tick_attacks(delta: float) -> void:
 		if _spit_cd <= 0.0:
 			_begin(Atk.SPIT, SPIT_WINDUP, NoiseMgr.last_overcharge_pos)
 		return
-	if _lash_cd <= 0.0 and not _players_in_reach(0.0).is_empty():
-		_begin(Atk.LASH, LASH_WINDUP, Vector2.ZERO)
+	var near := _players_in_reach(0.0)
+	if _lash_cd <= 0.0 and not near.is_empty():
+		_begin(Atk.LASH, LASH_WINDUP, _closest(near).global_position)
 	elif _sweep_cd <= 0.0 and _ground_players_near():
-		_begin(Atk.SWEEP, SWEEP_WINDUP, Vector2.ZERO)
+		var g := _ground_target()
+		_begin(Atk.SWEEP, SWEEP_WINDUP, g.global_position if g != null else Vector2.ZERO)
 	elif _spit_cd <= 0.0:
 		var p := _spit_candidate(SPIT_RANGE_FAR if _idle_t >= IDLE_FAR else SPIT_RANGE)
 		if p != null:
@@ -614,7 +705,8 @@ func _tick_attacks(delta: float) -> void:
 
 func _begin(a: int, windup: float, target: Vector2) -> void:
 	_set_atk(a)
-	_atk_t = windup * Difficulty.m("boss_cd")
+	var side := 0.0 if target == Vector2.ZERO or absf(target.x - position.x) < 6.0 else signf(target.x - position.x)
+	_atk_t = windup * Difficulty.m("boss_cd") + _turn_for_attack(side)     # cel po drugiej stronie: najpierw obrót (E2b)
 	_spit_target = target
 	if a == Atk.SPIT:
 		spit_mark = _floor_below(target + Vector2(0, 8))
@@ -627,7 +719,8 @@ func _resolve_attack() -> void:
 	match a:
 		Atk.LASH:
 			for p in _players_in_reach(6.0):
-				p.deliver_hit(1, global_position, "vein")
+				if _anchors.is_empty() or face == 0.0 or (p.global_position.x - position.x) * signf(face) >= -LASH_BACK:
+					p.deliver_hit(1, global_position, "vein")       # hala: tylko przed sobą (D6) — za plecami bezpiecznie
 			Audio.play_variant_at("impact_flesh", 3, global_position, Audio.BUS_WORLD, -4.0, 0.5)
 			_lash_cd = _cd(LASH_CD)
 		Atk.SPIT:
@@ -662,6 +755,21 @@ func _players_in_reach(slack: float) -> Array:
 		if absf(d.x) <= LASH_RANGE_X + slack and d.y <= 8.0 and d.y >= -LASH_RANGE_Y:
 			out.append(p)
 	return out
+
+func _closest(ps: Array) -> Node2D:
+	var best: Node2D = null
+	for p in ps:
+		if best == null or absf(p.global_position.x - position.x) < absf(best.global_position.x - position.x):
+			best = p
+	return best
+
+## Najbliższy gracz na podłodze w zasięgu ogona (strona obrotu przed falą).
+func _ground_target() -> Node2D:
+	var ps := []
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.dead and absf(p.global_position.y - position.y) < 8.0:
+			ps.append(p)
+	return _closest(ps)
 
 ## Ktoś stoi na podłodze w zasięgu ogona.
 func _ground_players_near() -> bool:
@@ -831,7 +939,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	var pos: Vector2 = info["pos"]
 	var blast := String(info.get("type", "")) == "blast"
 	var from_above := not blast and dir.y > ARMOR_DOWN and pos.y < global_position.y - 26.0
-	var armored := state != State.AWAKE or from_above or not maw_open
+	var armored := (state != State.AWAKE or from_above or not maw_open) and not (move == Move.TRAVEL and hump_lit)
 	var amount := float(info["amount"])
 	if int(info.get("pellets", 1)) > 1:
 		amount *= PELLET_MULT
@@ -847,16 +955,22 @@ func _hit(from_pos: Vector2, dmg: float, from_above: bool, fx := true, closed_mu
 		if state == State.DORMANT and fx:
 			Audio.play_variant_at("ricochet", 2, global_position, Audio.BUS_WORLD, -16.0)
 		return
-	if not _hittable():
-		return                                    # pod podłogą (przejście, zapowiedź wynurzenia) — nic jej nie sięga
-	if from_above or not maw_open:
+	var hump := move == Move.TRAVEL and hump_lit
+	if not _hittable() and not hump:
+		return                                    # pod podłogą (przejście bez światła, zapowiedź wynurzenia) — nic jej nie sięga
+	if hump:
+		dmg *= HUMP_MULT                          # oświetlony garb: 20%, bez reguł paszczy i „z góry” (§18a)
+		_flash = 0.08
+		SessionLog.event("vein", {"what": "hump_hit", "dmg": snappedf(dmg, 0.1), "lit": _hump_by})
+	elif from_above or not maw_open:
 		dmg *= closed_mult
 		if fx:
 			_armor_fx.rpc(from_pos)
 	else:
 		_flash = 0.08
 	hp -= dmg
-	_pain.append([Time.get_ticks_msec(), dmg])
+	if not hump:
+		_pain.append([Time.get_ticks_msec(), dmg])    # trafienia w garb nie skracają wynurzenia („ból”)
 	if phase == 1 and hp <= max_hp * 0.66:
 		phase = 2
 		enraged = true
@@ -915,11 +1029,11 @@ func _send_state(now: bool) -> void:
 	if not now and _net_t > 0.0:
 		return
 	_net_t = 0.1
-	_sync.rpc(state, hp, max_hp, atk, maw_open, stunned, phase, nests_left, spit_mark, position, move, sink, emerge_mark)
+	_sync.rpc(state, hp, max_hp, atk, maw_open, stunned, phase, nests_left, spit_mark, position, move, sink, emerge_mark, face, hump_lit)
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl: int, sm := Vector2.INF, pos := Vector2.INF,
-		mv := 0, sk := 0.0, em := Vector2.INF) -> void:
+		mv := 0, sk := 0.0, em := Vector2.INF, fc := 0.0, hl := false) -> void:
 	if pos.is_finite():
 		if _remote_pos.distance_to(pos) > 200.0:
 			position = pos                       # dołączający / restart: bez przeciągania przez halę
@@ -927,6 +1041,9 @@ func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl:
 	move = mv
 	sink = sk
 	emerge_mark = em
+	face = fc
+	if hl != hump_lit:
+		_set_hump(hl)
 	if h < hp - 0.01 and mo:
 		_flash = 0.08
 	state = s
@@ -1029,6 +1146,7 @@ func _process(delta: float) -> void:
 	_overlay.queue_redraw()
 
 var _spray_t := 0.0
+var _chip_n := 0
 
 ## Kosmetyka ruchu (każdy peer): garb pod podłogą rozpycha wodę w przejściu, w zapowiedzi wynurzenia z gardzieli pryska woda i pył.
 func _tick_move_fx(delta: float) -> void:
@@ -1042,6 +1160,10 @@ func _tick_move_fx(delta: float) -> void:
 		_fx_t = 0.09
 		Vfx.burst(get_parent(), global_position + Vector2(0.0, -3.0), Color(0.72, 0.9, 1.0, 0.8), 4, 25.0, 80.0, Vector2.UP, 50.0, 320.0,
 			0.45, Vector2(0.8, 1.6), true)
+		_chip_n += 1
+		if _chip_n % 3 == 0:                      # drzazgi z desek podłogi co ~0,3 s — garb rozpycha podłogę (§18a)
+			Vfx.burst(get_parent(), global_position + Vector2(0.0, -2.0), Color(0.42, 0.30, 0.18), 3, 40.0, 110.0, Vector2.UP, 60.0, 420.0,
+				0.6, Vector2(1.0, 2.2), true)
 	else:
 		_fx_t = 0.12
 		var m := emerge_mark if emerge_mark.is_finite() else global_position
