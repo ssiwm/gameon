@@ -46,6 +46,8 @@ extends "res://scripts/stalker_test.gd"
 ## 19. Pasy desek (S2): pas na kafel wysokości, cios i kula w pas na swojej wysokości, wybuch po równo; szczelina po odpadłym pasie tylko
 ##     na jego wysokości (wzrok, promień, kula, dźwięk), ruch i nawigacja zamknięte do ostatniego pasu; barykada — przybicie wraca najniższy
 ##     pas, dołączający, migawka i wipe dostają pasy.
+## 20. Wrogowie i bot przy ostrzale desek (S3): ostrzał ściąga Trzoska, który drapie barykadę i nie utyka (też przy szczelinie u dołu); bot
+##     nie strzela przez deski, bez nich tak; Stalker przez barykadę z jednym pasem po jednym ciosie.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -115,6 +117,7 @@ func run(m: Node2D) -> void:
 	await _tool_for_all()
 	await _shooting()
 	await _bands()
+	await _s3_enemies()
 	_session_log()
 	_finish()
 
@@ -1873,5 +1876,131 @@ func _bands() -> void:
 	await _frames(Breakable.SPLAT_GAP + 0.05)
 	check("pasy: ostatni pas zestrzelony — przejście otwarte, nawigacja = pełna budowa (%s)" % level.nav_diff_vs_full(),
 		level._opened_walls.has(on) and not level._wall_cells.has(cell) and level.nav_diff_vs_full() == "")
+	level.reset_breakables()
+	await _frames(0.1)
+
+# ---------------------------------------------------------------- 20. wrogowie i bot przy ostrzale desek (S3)
+
+## S3: ostrzał desek ściąga Trzoska pod barykadę i ten się do niej dobija (nie utyka po swojej stronie), także gdy dolne pasy już odpadły
+## (pazury na wysokości szczeliny przechodzą na stojący pas); bot nie strzela we wroga za deskami (promień linii ognia trafia w przegrodę,
+## decyzja 7), bez desek — strzela; Stalker przez barykadę z jednym pasem przechodzi po jednym ciosie.
+func _s3_enemies() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	for n in level.get_children():
+		if n is RigidBody2D:
+			n.queue_free()
+	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
+	_place_player(base + Vector2(-60.0, 0.0))
+	player.aim_dir = Vector2.RIGHT
+	var pl := _barrier("S3Planks1", base)
+	await _frames(0.1)
+	var tz := _enemy("trzosek", base + Vector2(120.0, 0.0))
+	await _frames(0.2)
+	tz.wake()
+	var muzzle := Vector2(base.x - 24.0, base.y - 40.0)
+	for k in 3:
+		await _fire(Weapons.M83, 0, _aim_row(muzzle, k, pl), 40 + k)
+	var hp0 := float(pl.hp)
+	await _frames(5.0)
+	var hp1 := float(pl.hp) if is_instance_valid(pl) else 0.0
+	check("S3: trzy kule M-83 w deski ściągają Trzoska pod barykadę (x %+.0f) i ten drapie po ostrzale (HP %.0f → %.0f), nie utyka" % [tz.global_position.x - base.x, hp0, hp1],
+		is_instance_valid(pl) and hp1 <= hp0 - 8.0 and tz.global_position.x > base.x + 8.0 and tz.global_position.x < base.x + 30.0)
+	if is_instance_valid(pl):
+		var b := (pl.bands as PackedFloat32Array).duplicate()
+		b[4] = 0.0
+		b[5] = 0.0
+		pl.set_bands(b)
+		var hp2 := float(pl.hp)
+		await _frames(4.0)
+		check("S3: dolne dwa pasy odpadły — Trzosek dalej drapie (HP %.0f → %.0f, pazury na wysokości szczeliny idą w stojący pas) i nie przechodzi szczeliną (x %+.0f)" % [hp2, float(pl.hp) if is_instance_valid(pl) else 0.0, tz.global_position.x - base.x],
+			(not is_instance_valid(pl) or float(pl.hp) <= hp2 - 8.0) and tz.global_position.x > base.x + 4.0)
+	tz.queue_free()
+	if is_instance_valid(pl):
+		pl.queue_free()
+	level._opened_walls.erase("S3Planks1")
+	await _frames(0.1)
+
+	# bot nie strzela przez deski: wróg za nimi (zatrzymany — nie drapie), deski stoją; z odpadłym górnym pasem też; bez desek — strzela
+	var bot: CharacterBody2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot:
+			bot = p
+	if bot == null:
+		check("S3: bot w drużynie", false)
+		return
+	_place_player(base + Vector2(-70.0, 0.0))
+	var pb := _barrier("S3Planks2", base)
+	await _frames(0.1)
+	bot.global_position = base + Vector2(-36.0, 0.0)
+	bot.velocity = Vector2.ZERO
+	bot.set_physics_process(true)                  # sekcja 11 zostawia bota zamrożonego
+	var te := _enemy("trzosek", base + Vector2(36.0, 0.0))
+	await _frames(0.2)
+	te.wake()
+	te.set_physics_process(false)
+	var shots := [0]                                 # strzały bota (hałas `shot:` — gracz w tej próbie nie strzela)
+	var on_shot := func(_a: float, _p: Vector2, tag: String) -> void:
+		if tag.begins_with("shot:"):
+			shots[0] += 1
+	NoiseMgr.noise_added.connect(on_shot)
+	var e0 := float(te.hp)
+	var p0 := float(pb.hp)
+	await _frames(3.0)
+	var los := int(bot._los_state(te, Vector2.RIGHT))
+	var b2 := (pb.bands as PackedFloat32Array).duplicate()
+	b2[0] = 0.0
+	pb.set_bands(b2)
+	var p1 := float(pb.hp)
+	await _frames(2.0)
+	var blocked_shots := int(shots[0])
+	check("S3: bot nie strzela we wroga za deskami (strzałów %d, linia ognia %d = ściana; deski %.0f → %.0f, z odpadłym górnym pasem %.0f → %.0f)" % [blocked_shots, los, p0, p1 + 10.0, p1, float(pb.hp)],
+		blocked_shots == 0 and los == bot.Los.WALL and float(pb.hp) == p1 and p1 == p0 - 10.0)
+	pb.queue_free()
+	level._opened_walls.erase("S3Planks2")
+	await _frames(3.0)
+	NoiseMgr.noise_added.disconnect(on_shot)
+	check("S3: bez desek bot strzela w tego samego wroga (strzałów %d)" % int(shots[0]), int(shots[0]) > 0)
+	if is_instance_valid(te):
+		te.queue_free()
+	bot.set_physics_process(false)
+	await _frames(0.1)
+
+	# Stalker: barykada `:` z jednym pasem (dwa górne zestrzelone) pada po jednym ciosie
+	var on := "Opening1"
+	var wd: Dictionary = level.wall_def(on)
+	if wd.is_empty():
+		return
+	var feet: Vector2 = wd["pos"]
+	level.plank_stock = 3
+	for k in 3:
+		level.nail_board(on)
+	var w: Node2D = level.get_node_or_null(on)
+	if w == null:
+		check("S3: barykada do próby Stalkera", false)
+		return
+	w.set_bands(PackedFloat32Array([0.0, 0.0, 20.0]))
+	_place_player(feet + Vector2(400, -2000))
+	var s: CharacterBody2D = level.STALKER_SCENE.instantiate()
+	s.name = "S3Stalker"
+	s.position = feet + Vector2(-160, 0)
+	level.add_child(s)
+	await _frames(0.1)
+	var goal := feet + Vector2(120, 0)
+	s.awake = true
+	s.target_pos = goal
+	s._seen_serial = NoiseMgr.noise_serial
+	var tb := -1.0
+	var t := 0.0
+	while t < 10.0 and s.global_position.x <= feet.x + 40.0:
+		NoiseMgr.level = maxf(float(NoiseMgr.level), 70.0)
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		if tb < 0.0 and level._opened_walls.has(on):
+			tb = t
+	check("S3: Stalker przez barykadę z jednym pasem — rozbita po %.1f s (dojście + jeden cios; pełna 2,5–8 s) i idzie dalej (x %+.0f)" % [tb, s.global_position.x - feet.x],
+		tb > 0.0 and tb <= 4.5 and s.global_position.x > feet.x + 40.0)
+	s.queue_free()
+	NoiseMgr.level = 0.0
 	level.reset_breakables()
 	await _frames(0.1)

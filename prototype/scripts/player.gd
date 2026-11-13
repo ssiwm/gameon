@@ -1942,7 +1942,8 @@ func _bot_may_fire(d: Vector2) -> bool:
 
 enum Los { CLEAR, WALL, TEAMMATE }
 
-## Linia strzału bota: ściana (strzał w nią to sam hałas) albo stojący kolega.
+## Linia strzału bota: ściana (strzał w nią to sam hałas) albo stojący kolega. Deski (warstwa 1) to dla bota ściana także przy odpadłym
+## pasie albo dziurze — bot nie strzela we wroga za barykadą i jej nie zestrzeliwuje (SHOOT_DESTRUCTION_PLAN.md decyzja 7, pomiar S3).
 ## Sprawdzamy tor, którym naprawdę poleci kula: od wylotu lufy wzdłuż `dir` (kierunek przycięty do 8 stron), na odległość
 ## wroga. Promień prosto do wroga mijał głowę dowódcy, gdy wróg był kilkanaście stopni wyżej, a kula leciała poziomo
 ## w jego plecy (dziennik 1.7.399: 61 trafień bota w człowieka w jednej sesji). Dwa skrajne promienie łapią kolegę, którego

@@ -4,7 +4,7 @@ Stan wyjścia: main 1.7.554 (761ec1d9, 2026-11-13). Kontynuacja `DESTRUCTION_PLA
 Prośba autora: „strzały z broni powinny niszczyć drewniane przeszkody i ściany”. Ten plik to analiza i plan — **nic nie jest wdrożone**.
 
 **Stan (2026-11-13):** decyzje 1–8 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). S0 zrobione w 1.7.555 (#665), S1 w 1.7.556
-(#666), S2 w 1.7.557 (gałąź `feat/shoot-s2`). Następny krok: S3.
+(#666), S2 w 1.7.557 (#667), S3 bez zmian w grze (gałąź `feat/shoot-s3`, same testy i dokumenty). Następny krok: S4 po playteście.
 
 Skala: kafel 16 px ≈ 1,31 m, więc 1 px ≈ 8 cm.
 
@@ -219,6 +219,16 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
   deski jak każde (decyzja 6). `--bottest`: bot broni barykady i nie zestrzeliwuje jej w całości przed falą (miara, bez progu do playtestu).
 - **Dyrektor** (`_pick_spot`): bez zmian — wymaga drogi nav, a ta otwiera się dopiero przy rozbiciu.
 - **Ukończone, gdy:** `--enemytest`, `--stalkertest`, `--bottest`, `--nobottest` zielone z override.cfg na świeżym katalogu.
+- **Zrobione (bez numeru wersji — logika gry bez zmian):** pomiar pokazał, że S1–S2 wystarczają. `--destructiontest` sekcja 20:
+  trzy kule M-83 w deski ściągają przebudzonego Trzoska spod 120 px pod barykadę i ten drapie ją po ostrzale (46 → 34 HP w 5 s), nie
+  utyka; przy dwóch dolnych pasach na zero drapie dalej (pazury na wysokości szczeliny przechodzą na stojący pas) i nie przechodzi
+  szczeliną. Bot nie oddaje strzału we wroga za deskami — 0 strzałów w 5 s, także przy odpadłym górnym pasie: promień linii ognia
+  (`player._los_state`, maska 1 | 2) trafia w kolizję desek (warstwa 1), więc „ściana”; bez desek ten sam bot strzela (15 strzałów w 3 s).
+  To surowsze niż decyzja 6 zakładała (bot nie rani własnej barykady wcale, nie strzela też przez szczeliny) — zostawione do playtestu.
+  Stalker przez barykadę `:` z jednym pasem przechodzi po 2,0 s (dojście + jeden cios; pełna 2,5–8 s). Dyrektor bez zmian. `--enemytest`
+  353, `--stalkertest` 10, `--bottest` 21, `--nobottest` 24 + 5 zielone z override.cfg na świeżym katalogu. Limit `--destructiontest`
+  w CI 180 → 240 s (lokalnie ok. 105 s). Odstępstwo: miara „bot broni barykady” w `--destructiontest`, nie w `--bottest` (tam są pomocnicze
+  przegrody i wrogowie).
 
 ### S4 — mapy i balans (1 PR, po playteście S1–S3)
 
