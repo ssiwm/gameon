@@ -1538,14 +1538,14 @@ func wall_pos(wall_name: String) -> Vector2:
 			return wd["pos"]
 	return Vector2.INF
 
-## Stan zniszczeń: nazwy rozbitych elementów i plamy (z wytrzymałością) tych, które stoją, a oberwały.
+## Stan zniszczeń: nazwy rozbitych elementów i plamy (z wytrzymałością i dziurami — osobno, bo lista plam jest przycięta) tych, które stoją, a oberwały.
 func breakables_state() -> Dictionary:
 	var dmg := {}
 	for wd in _wall_defs:
 		var n := String(wd["name"])
 		var w := get_node_or_null(n)
 		if w != null and not _opened_walls.has(n) and not w.is_queued_for_deletion() and (not (w.splats as PackedFloat32Array).is_empty() or float(w.hp) < float(w.max_hp())):
-			dmg[n] = [(w.splats as PackedFloat32Array).duplicate(), float(w.hp) / float(w.max_hp())]
+			dmg[n] = [(w.splats as PackedFloat32Array).duplicate(), float(w.hp) / float(w.max_hp()), (w.holes as PackedFloat32Array).duplicate()]
 	var dig := {}
 	for z in dig_zones():
 		var st: PackedByteArray = z.state()
@@ -1614,7 +1614,7 @@ func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionar
 			var w := get_node_or_null(n)
 			var d: Array = dmg.get(n, [])
 			if w != null and w.has_method("reset_damage"):
-				w.reset_damage(d[0] if d.size() == 2 else PackedFloat32Array(), float(d[1]) if d.size() == 2 else 1.0)
+				w.reset_damage(d[0] if d.size() >= 2 else PackedFloat32Array(), float(d[1]) if d.size() >= 2 else 1.0, d[2] if d.size() >= 3 else null)
 
 ## Rozbity element wraca: kafle znów bryłą dla nawigacji, nowy węzeł (widok 3D zdejmuje gruz w tym miejscu), gracze wypchnięci z kafli.
 func _close_wall(wd: Dictionary, frac := 1.0) -> void:

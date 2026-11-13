@@ -7,7 +7,8 @@
 # 5. Raport po akcji (RESULTS_PLAN.md): gotowość klienta dochodzi do hosta, poziomy z misji i rozbicie złomu do wszystkich.
 # 6. Bateria 4,5 V (BATTERY_PLAN.md): klient z 20% baterii bierze baterię z ziemi — rozstrzyga serwer, dolicza właściciel.
 # 7. Ładowarka (BATTERY_PLAN.md B3): klient przy ładowarce B1 ładuje się u siebie, serwer widzi, że ładowarka pracuje.
-# 8. Zniszczenia (DESTRUCTION_PLAN.md D0–D3): rany ściany, rozbicie, powrót do migawki z przebudzenia bossa i wipe na 1.2, a złamany stempel
+# 8. Zniszczenia (DESTRUCTION_PLAN.md D0–D3): rany ściany, deski ostrzelane kulami (HP i przestrzeliny, SHOOT_DESTRUCTION_PLAN.md S1), rozbicie,
+#    powrót do migawki z przebudzenia bossa i wipe na 1.2, a złamany stempel
 #    i zawał na mapie testowej t_mine, wykopy, wybuch, wykopana znajdźka, osypany żwir, spadła wyspa i pula znajdziek hosta w strefach wydobycia (D5) na mapie testowej t_dig — u klienta obecnego od początku
 #    (RPC na żywo) i u dołączającego później (`send_walls_to`) stan taki sam jak u hosta.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
@@ -165,7 +166,10 @@ CB=$!
 wait $CB $CA $HOST
 # stany na mapie misji jako „S;S;…” (przed dołączeniem i po utracie hosta klient jest w lobby — pomijane)
 # strefa wydobycia 1.2 (D5 część 3) nie należy do tej sekcji — skrót stref („ dig1=…” na końcu stanu) odcięty, strefy sprawdza sekcja t_dig
-dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //; s/ dig[0-9]*=.*$//" | tr '\n' ';'; }
+# deski schowka ostrzelane kulami (` pl=HP/dziur/suma`, SHOOT_DESTRUCTION_PLAN.md S1) sprawdza osobno `pnet` — w `dnet` odcięte, a powtórzone
+# po odcięciu stany zlane (`uniq`)
+dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //; s/ dig[0-9]*=.*$//; s/ pl=[^ ]*//" | uniq | tr '\n' ';'; }
+pnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | grep -a -o " pl=[^ ]*" | uniq | tr '\n' ';'; }
 H=$(dnet host "$LOG/dnet_host.log")
 IFS=';' read -r S0 SC S1 S2 S3 S4 _ <<<"$H"
 S0X="${S0% bar=0 crate=ok lamp=lit win=ok}"          # stan bez desek, skrzyni, lampy i okna
@@ -180,6 +184,19 @@ else
 	[ "$A" = "$H" ] && ok "klient od początku: te same plamy, HP, rozbicie, skrzynia, migawka i wipe co host" || fail "klient A: $A (host: $H)"
 	B=$(dnet client "$LOG/dnet_b.log")
 	[ "$B" = "$S1;$S2;$S3;$S4;" ] && ok "dołączający po ciosach: plamy, HP, rozbita skrzynia, stłuczona lampa i okno, zabity otwór z synchronizacji, potem rozbicie, migawka i wipe jak u hosta" || fail "klient B: $B (host: $H)"
+fi
+# ostrzał (S1): trzy kule M-83 w deski schowka — całe → ranne z 3 przestrzelinami (migawka je trzyma) → całe po wipe; u klienta to samo na żywo,
+# u dołączającego od stanu z `send_walls_to`
+PH=$(pnet host "$LOG/dnet_host.log")
+IFS=';' read -r P0 P1 P2 _ <<<"$PH"
+if [ "${P0#* pl=60/0/}" = "$P0" ] || [ "${P1#* pl=4[0-9]/3/}" = "$P1" ] || [ "$P2" != "$P0" ] || [ "$PH" != "$P0;$P1;$P2;" ]; then
+	fail "host: deski schowka — zły przebieg ($PH)"
+else
+	ok "host: deski schowka całe → 3 kule M-83: HP i 3 przestrzeliny (migawka je trzyma) → całe po wipe ($PH)"
+	PA=$(pnet client "$LOG/dnet_a.log")
+	[ "$PA" = "$PH" ] && ok "klient od początku: te same HP i przestrzeliny desek co host" || fail "klient A deski: $PA (host: $PH)"
+	PB=$(pnet client "$LOG/dnet_b.log")
+	[ "$PB" = "$P1;$P2;" ] && ok "dołączający: przestrzeliny desek z synchronizacji (osobno od plam), potem wipe jak u hosta" || fail "klient B deski: $PB (host: $PH)"
 fi
 
 echo "== zawał (t_mine) =="

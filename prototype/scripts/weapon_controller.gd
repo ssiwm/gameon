@@ -38,6 +38,7 @@ const FX_REPORT_EVERY := 0.2      ## efekt trafienia promieniem/płomieniem nie 
 const NOISE_RELOAD := 0.25
 const NOISE_DRY := 0.12
 const FIRE_DROP_MAX := 40.0       ## px w dół od końca płomienia, w których szukamy podłogi
+const RAIL_BREAKS := 3            ## tyle rozbitych przegród jeden strzał szyny może przebić (`_server_rail`)
 ## Obsługa broni (GUNSMITH_PLAN.md etap 3a, od 1.7.324; ustawienie „Weapon handling”, Settings.realistic_handling).
 ## Podrzut: przy celowaniu myszą każdy strzał unosi lufę (a z nią celownik) zamiast losowo poszerzać stożek — gracz może ją ściągać w dół.
 ## Wielkość z danych rozrzutu broni (części, które zmniejszają rozrzut serii, zmniejszają też podrzut). Klawiatura, pad i boty zostają przy rozrzucie.
@@ -1277,11 +1278,31 @@ func _fire_remote(muzzle: Vector2, dir: Vector2, w: int, seed: int, extra: float
 func _server_rail(d: WeaponDef, muzzle: Vector2, dir: Vector2, shooter: int, lag := 0.0) -> void:
 	var space := player.get_world_2d().direct_space_state
 	# lag > 0: trafiamy wrogów w pozycjach sprzed `lag` s (szyna jest natychmiastowa — jeden test w przeszłość)
-	var tr := Combat.trace(space, muzzle, dir, d.range_px, int(d.pierce), d.wall_pierce, [player.get_rid()], LagComp.now() - lag if lag > 0.0 else -1.0)
-	for h in tr["hits"]:
-		var info := Combat.make_info(d.id, d.damage, h["pos"], dir, shooter, "rail", d.build)
-		info["heavy"] = true
-		Combat.apply_and_report(h["collider"], info)
+	# przegrody na drodze dostają `rail` (SHOOT_DESTRUCTION_PLAN.md S1); rozbita przegroda, która zatrzymała promień, przepuszcza go dalej —
+	# ślad od miejsca rozbicia z resztą zasięgu i przebić (najwyżej RAIL_BREAKS przegród na strzał)
+	var ex: Array[RID] = [player.get_rid()]
+	var from := muzzle
+	var left := float(d.range_px)
+	var pierce := int(d.pierce)
+	var wall_px := float(d.wall_pierce)
+	var tr := {}
+	for _k in RAIL_BREAKS + 1:
+		tr = Combat.trace(space, from, dir, left, pierce, wall_px, ex, LagComp.now() - lag if lag > 0.0 else -1.0)
+		for h in tr["hits"]:
+			var info := Combat.make_info(d.id, d.damage, h["pos"], dir, shooter, "rail", d.build)
+			info["heavy"] = true
+			Combat.apply_and_report(h["collider"], info)
+		var broke := false
+		for b in tr["barriers"]:
+			var res := Combat.apply(b["node"], Combat.make_info(d.id, d.damage, b["pos"], dir, shooter, "rail", d.build))
+			broke = bool(res.get("killed", false)) and bool(tr["wall"]) and (b["pos"] as Vector2) == (tr["wall_pos"] as Vector2)
+		pierce -= (tr["hits"] as Array).size()
+		if not broke or pierce < 0:
+			break
+		var stop: Vector2 = tr["wall_pos"]
+		ex.append((tr["barriers"] as Array).back()["rid"])
+		left -= stop.distance_to(from)
+		from = stop
 	_rail_visual(d, muzzle, tr["end"], tr)
 	if NoiseMgr.has_network():
 		for peer in multiplayer.get_peers():

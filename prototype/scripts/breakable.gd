@@ -9,6 +9,8 @@ extends Node2D
 ## Reszta trafień odbija się bez obrażeń. Zamurowanie i deski są bryłą (ciało na warstwie świata), więc blokują wszystkich i pociski.
 ## Dziury (materiał z polem `holes`, dziś deski): trafienie co najmniej stopnia 1 (śrut, maczeta, pięść Wołka) przebija deskę — na wysokości
 ## dziury wzrok, światło, kule i dźwięk przechodzą (`hole_at`, `sight.gd`), ruch i nawigacja dalej nie.
+## Ostrzał (SHOOT_DESTRUCTION_PLAN.md S1, pole `shot`): kula rani deski według przebicia broni, zostawia przestrzelinę (~4 cm) i przy dość
+## dużym przebiciu przechodzi dalej słabsza (projectile.gd); cegła od kuli tylko się wyszczerbia. Pocisk przez krawędź dziury rani połową.
 ## Deski da się przybijać z powrotem (D2b, `barricade_spot.gd`, level.gd `nail_board`): wytrzymałość dzieli się na deski (level.gd `BOARDS`),
 ## pusty otwór „:” to ta sama przegroda w stanie rozbitym na starcie; widok 3D pokazuje tyle desek, ile wytrzymałości (`boards`).
 ## Gruz (D3, strefa „^”, `rubble`): na starcie przejście jest wolne; zapada się, gdy pęknie stempel „!” obok (`support_beam.gd`, level.gd
@@ -40,12 +42,18 @@ const TILE := 16.0
 ##   blasts   ile wybuchów w zasięgu rozbija element (BARRIER_FIX_PLAN.md B0): wybuch zadaje co najmniej max_hp / blasts, nawet na brzegu
 ##            promienia — kratka pada od jednego granatu, gruz od dwóch (brak pola — zwykłe obrażenia wybuchu)
 ##   label    nazwa dla gracza w komunikacie o złym narzędziu (tłumaczona `tr`)
+##   shot     wpływ pocisków (SHOOT_DESTRUCTION_PLAN.md S1): rodzaj trafienia → mnożnik obrażeń (0 — tylko wyszczerbienie, bez HP
+##            i bez komunikatu); `pen_ref` — przebicie broni (WeaponDef.pen), przy którym kula i Brenneke ranią × 1 (mnożnik
+##            clamp(pen / pen_ref, 0,25, 2)); `pen_cost` — ile energii przebicia zabiera przegroda (projectile.gd, brak — kula zostaje);
+##            `hole_r` — promień przestrzeliny kuli i Brenneke (px), zamiast wyrwy wg siły trafienia
 ## Na mapach są `brick`, `planks`, `grate` i `rubble` (gruz zawału, D3); `support` ma stempel (`support_beam.gd`), `sheet` i `glass` to wartości wstępne.
 const MATERIALS := {
 	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0, "surface": "concrete", "label": "Bricked-up passage",
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
-		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)]},
-	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "slug", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood", "label": "Boards",
+		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)],
+		"shot": {"bullet": 0.0, "slug": 0.0, "rail": 0.0}},           # kule tylko wyszczerbiają (decyzja 2): cegła = kilof albo wybuch
+	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "bullet", "pellet", "slug", "rail", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood", "label": "Boards",
+		"shot": {"bullet": 0.5, "slug": 1.0, "pellet": 1.0, "rail": 1.0, "pen_ref": 1.0, "pen_cost": 0.8, "hole_r": 0.45},
 		"hit_snd": ["wood_hit", 3, -8.0, 1.0], "break_snd": ["wood_break", 3, -2.0, 1.0],
 		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 	"sheet": {"hp": 150.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.5, "n_break": 6.0,
@@ -70,12 +78,18 @@ const TOOL_LABELS := {"pick": "a pickaxe", "blade": "a machete", "bullet": "bull
 
 ## Promień plamy w masce uszkodzeń wg rodzaju trafienia (px świata; 16 px = kafel).
 const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "slug": 1.2, "blast": 6.0, "charge": 8.0, "claw": 2.5}
-## Mnożnik hałasu uderzenia (`n_hit`) wg rodzaju trafienia; brak wpisu = 1. Kula stuka ciszej niż cios — sam wystrzał i tak liczy broń
-## (S0 pod S1: dziś żaden materiał przegród na mapach nie przyjmuje pojedynczej kuli).
+## Mnożnik hałasu uderzenia (`n_hit`) wg rodzaju trafienia; brak wpisu = 1. Kula stuka ciszej niż cios — sam wystrzał i tak liczy broń.
 const N_KIND := {"bullet": 0.3, "rail": 0.5}
+## Rodzaje trafień, których obrażenia w przegrodę zależą od przebicia broni i które zostawiają przestrzelinę (pole `shot`).
+const PEN_KINDS := ["bullet", "slug"]
+const PEN_MUL_MIN := 0.25
+const PEN_MUL_MAX := 2.0
+const PINHOLE := 0.5             ## stopień plamy przestrzeliny: w masce 3D jak stopień 0 (`int`), dziura o promieniu `shot.hole_r`
+const HOLE_CORE := 0.5           ## część promienia dziury, przez którą pocisk przelatuje bez obrażeń (decyzja 8); dalej — krawędź
+const EDGE_DAMAGE := 0.5         ## obrażenia pocisku przez krawędź dziury (projectile.gd)
 const SPLAT_GAP := 0.1          ## s: trafienia w tym oknie idą jedną paczką (seria z M-83 to nie 10 wiadomości)
 const MAX_SPLATS := 64           ## pamiętanych plam (dla dołączających); starsze wypadają z listy, w masce zostają
-const MAX_HOLES := 32            ## pamiętanych dziur; starsze wypadają (deska z tyloma dziurami i tak zaraz pęknie)
+const MAX_HOLES := 64            ## pamiętanych dziur; ponad limit łączą się dwie najbliższe w pionie (`_cap_holes`) — ostrzał nie gubi starych
 
 var mat_id := "brick"            ## klucz w MATERIALS (`material` zajmuje CanvasItem)
 var rows := 3
@@ -172,6 +186,13 @@ func take_hit(info: Dictionary) -> Dictionary:
 		return {}
 	var m := mat_def()
 	var kind := hit_kind(info)
+	var shot: Dictionary = m.get("shot", {})
+	if shot.has(kind):
+		if float(shot[kind]) <= 0.0:
+			_chip(info, kind)                         # cegła od kuli: wyszczerbienie, bez HP i bez komunikatu (S1, decyzja 2)
+			return {"hit": false, "dealt": 0.0, "killed": false, "mat": int(m["mat"])}
+		info = info.duplicate()
+		info["amount"] = float(info["amount"]) * float(shot[kind]) * shot_pen_mul(info, kind, shot)
 	if not (m["breaks"] as Array).has(kind):
 		_tell_bounce(int(info.get("shooter", -1)), kind)
 		return {"hit": false, "dealt": 0.0, "killed": false, "mat": 0}
@@ -190,6 +211,27 @@ func take_hit(info: Dictionary) -> Dictionary:
 		if lvl != null:
 			lvl.break_wall(String(name))
 	return {"hit": true, "dealt": float(info["amount"]), "killed": broken, "mat": int(m["mat"])}
+
+## Mnożnik obrażeń kuli i Brenneke w przegrodę wg przebicia broni z naboju (WeaponDef.pen): twardy rdzeń łupie mocniej niż miękka kula
+## pistoletowa, bełt bez przebicia ledwie się wbija. Inne rodzaje trafień — 1.
+static func shot_pen_mul(info: Dictionary, kind: String, shot: Dictionary) -> float:
+	var w := int(info.get("w", -1))
+	if not PEN_KINDS.has(kind) or not Weapons.is_valid(w):
+		return 1.0
+	var pen := float(Weapons.def_build(w, int(info.get("build", 0))).pen)
+	return clampf(pen / float(shot.get("pen_ref", 1.0)), PEN_MUL_MIN, PEN_MUL_MAX)
+
+## Ile energii przebicia (WeaponDef.pen) zabiera przegroda (projectile.gd `pen_cost`); INF — kula w niej zostaje.
+func shot_pen_cost() -> float:
+	return float((mat_def().get("shot", {}) as Dictionary).get("pen_cost", INF))
+
+## Serwer: trafienie bez obrażeń, ale z plamą stopnia 0 (cegła od kuli) i cichym stuknięciem.
+func _chip(info: Dictionary, kind: String) -> void:
+	var p := _splat_for(info, kind)
+	p[3] = 0.0
+	_batch_noise_add(float(mat_def()["n_hit"]) * float(N_KIND.get(kind, 1.0)))
+	_pending.append_array(p)
+	_queue_flush()
 
 ## Serwer: trafienie, które się odbiło — strzelec (człowiek) dostaje komunikat, czym ten element ruszyć (BARRIER_FIX_PLAN.md B0).
 ## Raz na element u każdego gracza (`_bounce_told` liczy się u odbiorcy); bot i wrogowie nic nie dostają.
@@ -242,8 +284,10 @@ func _splat_for(info: Dictionary, kind: String) -> PackedFloat32Array:
 		p += Vector2(randf_range(-4.0, 4.0), randf_range(-rc.size.y * 0.3, rc.size.y * 0.3))
 	p = p.clamp(rc.position, rc.end)
 	var share := float(info["amount"]) / max_hp()
-	var deg := 0 if share < 0.1 else (1 if share < 0.34 else 2)
-	return PackedFloat32Array([(p.x - rc.position.x) / rc.size.x, (p.y - rc.position.y) / rc.size.y, float(SPLAT_R.get(kind, 3.0)), float(deg)])
+	var deg := 0.0 if share < 0.1 else (1.0 if share < 0.34 else 2.0)
+	if PEN_KINDS.has(kind) and (mat_def().get("shot", {}) as Dictionary).has("hole_r"):
+		deg = PINHOLE                             # kula i Brenneke: przestrzelina (wizjer, nie sito), niezależnie od siły
+	return PackedFloat32Array([(p.x - rc.position.x) / rc.size.x, (p.y - rc.position.y) / rc.size.y, float(SPLAT_R.get(kind, 3.0)), deg])
 
 ## Serwer: paczka wychodzi pod koniec klatki pierwszego trafienia (od razu słychać i widać), kolejne w oknie SPLAT_GAP czekają na następną.
 func _queue_flush() -> void:
@@ -297,30 +341,76 @@ func _splat_rpc(data: PackedFloat32Array, frac: float) -> void:
 	_play(m["hit_snd"])
 	queue_redraw()
 
-## Dołączający: wszystkie zapamiętane plamy naraz, bez dźwięku i kurzu (level.gd `send_walls_to`).
+## Dołączający: wszystkie zapamiętane plamy i dziury naraz, bez dźwięku i kurzu (level.gd `send_walls_to`). Dziury idą osobno, bo lista plam
+## trzyma tylko MAX_SPLATS ostatnich — przy ostrzale starsze przestrzeliny wypadłyby z niej (S1).
 @rpc("authority", "call_remote", "reliable")
-func _splat_sync(data: PackedFloat32Array, frac: float) -> void:
-	_add_splats(data, frac)
+func _splat_sync(data: PackedFloat32Array, frac: float, hl: PackedFloat32Array) -> void:
+	_add_splats(data, frac, false)
+	_set_holes(hl)
 
-func _add_splats(data: PackedFloat32Array, frac: float) -> int:
+## `derive` — dziury z plam (paczka trafień); bez — dziury przychodzą gotowe (`_set_holes`).
+func _add_splats(data: PackedFloat32Array, frac: float, derive := true) -> int:
 	hp = max_hp() * clampf(frac, 0.0, 1.0)
 	var n := data.size() / 4
 	splats.append_array(data.slice(0, n * 4))
 	if splats.size() > MAX_SPLATS * 4:
 		splats = splats.slice(splats.size() - MAX_SPLATS * 4)
 	splat_total += n
+	if not derive:
+		return n
 	var k := float(mat_def().get("holes", 0.0))
+	var pin := float((mat_def().get("shot", {}) as Dictionary).get("hole_r", 0.0))
 	var made := 0
 	for i in n:
-		if k > 0.0 and data[i * 4 + 3] >= 1.0:
-			holes.append_array(PackedFloat32Array([data[i * 4], data[i * 4 + 1], data[i * 4 + 2] * k]))
+		var deg := data[i * 4 + 3]
+		var r := 0.0
+		if k > 0.0 and deg >= 1.0:
+			r = data[i * 4 + 2] * k
+		elif pin > 0.0 and deg > 0.0:
+			r = pin                                       # przestrzelina (PINHOLE)
+		if r > 0.0:
+			holes.append_array(PackedFloat32Array([data[i * 4], data[i * 4 + 1], r]))
 			made += 1
 	if made > 0:
-		if holes.size() > MAX_HOLES * 3:
-			holes = holes.slice(holes.size() - MAX_HOLES * 3)
+		_cap_holes()
 		hole_total += made
 		_holes_changed()
 	return n
+
+## Gotowa lista dziur (dołączający, reset do stanu z migawki).
+func _set_holes(hl: PackedFloat32Array) -> void:
+	var had := not holes.is_empty()
+	holes = hl.duplicate()
+	_cap_holes()
+	hole_total += holes.size() / 3
+	if had or not holes.is_empty():
+		_holes_changed()
+
+## Ponad MAX_HOLES: dwie dziury najbliższe w pionie (najmniejsza przerwa między ich zasięgami) łączą się w jedną, obejmującą obie. Przegroda
+## jest wąska, więc liczy się tylko wysokość — tak samo jak w `hole_at`. Ten sam wynik u każdego peera (ta sama lista w tej samej kolejności).
+func _cap_holes() -> void:
+	var h := hit_rect().size.y
+	while holes.size() > MAX_HOLES * 3:
+		var n := holes.size() / 3
+		var bi := 0
+		var bj := 1
+		var best := INF
+		for i in n:
+			for j in range(i + 1, n):
+				var gap := absf(holes[i * 3 + 1] - holes[j * 3 + 1]) * h - holes[i * 3 + 2] - holes[j * 3 + 2]
+				if gap < best:
+					best = gap
+					bi = i
+					bj = j
+		var yi := holes[bi * 3 + 1] * h
+		var yj := holes[bj * 3 + 1] * h
+		var lo := minf(yi - holes[bi * 3 + 2], yj - holes[bj * 3 + 2])
+		var hi := maxf(yi + holes[bi * 3 + 2], yj + holes[bj * 3 + 2])
+		holes[bi * 3] = (holes[bi * 3] + holes[bj * 3]) * 0.5
+		holes[bi * 3 + 1] = (lo + hi) * 0.5 / h
+		holes[bi * 3 + 2] = (hi - lo) * 0.5
+		for _k in 3:
+			holes.remove_at(bj * 3)
 
 ## Dziura na wylot na wysokości `y` (świat): promień poziomy na tej wysokości przechodzi przez przegrodę (`sight.gd`). Przegroda jest wąska
 ## (1 kafel), więc liczy się tylko wysokość — szerokość dziury na froncie to obraz w widoku 3D.
@@ -332,6 +422,32 @@ func hole_at(y: float) -> bool:
 		if absf(y - (rc.position.y + holes[i * 3 + 1] * rc.size.y)) <= holes[i * 3 + 2]:
 			return true
 	return false
+
+## Pocisk przez dziurę na wysokości `y` (projectile.gd, decyzja 8) — mnożnik obrażeń dla przegrody, a pocisk leci dalej:
+##   -1  bez dziury (zwykłe trafienie)
+##    0  środek dziury (bliżej niż HOLE_CORE promienia): przelot bez obrażeń
+##    EDGE_DAMAGE  krawędź dziury
+##    1  przestrzelina kuli (promień `shot.hole_r`): jest wielkości kuli, więc nie ma środka — kula łupie jej brzeg w pełni i leci dalej.
+##       Bez tego przestrzeliny serii w jeden punkt nakładają się, ich środki zakrywają cały pas rozrzutu i deska przestaje obrywać.
+## Z kilku dziur na tej wysokości liczy się ta, która przepuszcza najłatwiej.
+func hole_pass(y: float) -> float:
+	if holes.is_empty():
+		return -1.0
+	var rc := hit_rect()
+	var pin := float((mat_def().get("shot", {}) as Dictionary).get("hole_r", 0.0))
+	var out := -1.0
+	for i in holes.size() / 3:
+		var r := holes[i * 3 + 2]
+		var dy := absf(y - (rc.position.y + holes[i * 3 + 1] * rc.size.y))
+		if dy > r:
+			continue
+		var f := 1.0
+		if r > pin + 0.01:
+			if dy <= r * HOLE_CORE:
+				return 0.0
+			f = EDGE_DAMAGE
+		out = f if out < 0.0 else minf(out, f)
+	return out
 
 ## Czy któraś dziura sięga w pas wysokości od `y0` do `y1` (świat) — kafel siatki dźwięku przez nią otwarty (level.gd `_is_sound_solid`).
 func hole_in(y0: float, y1: float) -> bool:
@@ -349,8 +465,9 @@ func _holes_changed() -> void:
 		lvl.call("window_changed", self)
 
 ## U wszystkich peerów (level.gd `_reset_breakables_rpc`): uszkodzenia zastąpione stanem `data` / `frac` — wipe (czysto) albo punkt
-## kontrolny bossa (plamy z przebudzenia). Czekająca paczka przepada.
-func reset_damage(data: PackedFloat32Array, frac: float) -> void:
+## kontrolny bossa (plamy z przebudzenia). Czekająca paczka przepada. `hl` — dziury z migawki (level.gd `breakables_state`); null —
+## dziury z samych plam (stary zapis bez dziur).
+func reset_damage(data: PackedFloat32Array, frac: float, hl: Variant = null) -> void:
 	_pending = PackedFloat32Array()
 	splats = PackedFloat32Array()
 	splat_total = 0
@@ -358,8 +475,14 @@ func reset_damage(data: PackedFloat32Array, frac: float) -> void:
 	holes = PackedFloat32Array()
 	hole_total = 0
 	damage_epoch += 1
-	_add_splats(data, frac)
-	if had_holes and holes.is_empty():
+	if hl is PackedFloat32Array:
+		_add_splats(data, frac, false)
+		holes = (hl as PackedFloat32Array).duplicate()
+		_cap_holes()
+		hole_total = holes.size() / 3
+	else:
+		_add_splats(data, frac)
+	if had_holes != not holes.is_empty() or not holes.is_empty():
 		_holes_changed()
 	queue_redraw()
 
@@ -375,7 +498,7 @@ func boards(n: int) -> int:
 ## Serwer: stan dla dołączającego (pusty, gdy element nietknięty).
 func send_state_to(peer_id: int) -> void:
 	if not splats.is_empty() or hp < max_hp():
-		_splat_sync.rpc_id(peer_id, splats, clampf(hp / max_hp(), 0.0, 1.0))
+		_splat_sync.rpc_id(peer_id, splats, clampf(hp / max_hp(), 0.0, 1.0), holes)
 
 ## Rozpad na bryły (DESTRUCTION_PLAN.md D0): `chunks` brył z materiału, rozłożonych po prostokącie elementu siatką z odchyleniem, lekko
 ## w bok i w dół — mur osypuje się w miejscu, a nie wybucha. Z ziarna (`map_id` + nazwa), więc u wszystkich peerów te same miejsca,

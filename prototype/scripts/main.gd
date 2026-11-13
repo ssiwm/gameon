@@ -786,8 +786,9 @@ func _charger_net_step() -> void:
 	print("[CHARGER-NET] host active=%s client_pct=%d" % [str(chg.active), int(cl.bat_pct) if cl != null else -1])
 
 ## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
-## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną), deski w pustym otworze Opening1 (D2b) i skrzyni
-## Crate1 (D1). Host po N s rozbija skrzynię, zabija otwór dwiema deskami, po 1 s rani ścianę dwoma ciosami kilofa, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
+## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną), deski w pustym otworze Opening1 (D2b), skrzyni
+## Crate1 (D1) i desek schowka (`pl=`, HP i dziury — ostrzał S1). Host po N s rozbija skrzynię, zabija otwór dwiema deskami, po 1 s rani ścianę
+## dwoma ciosami kilofa i strzela trzy kule w deski schowka, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
 ## z bossem), po 3 s czyści wszystko (wipe, skrzynia wraca) i po 2 s kończy. Klient obecny od początku dostaje to przez RPC na żywo, dołączający
 ## po ciosach — z `send_walls_to`; klient kończy po końcowym wipe'ie (albo w lobby po utracie hosta).
 ## `want`: mapa testu — 1.2 (ściana, skrzynia, lampa, okno, otwór), t_mine (stempel i strefa zawału, `--cavenet`) albo t_dig (strefy
@@ -852,7 +853,20 @@ func _destruction_sig() -> String:
 		for f in z.finds:                                         # znajdźki: miejsca z ziarna i stan z gęstości (D5 część 2) — ten sam u każdego peera
 			fs += "%d,%d,%s,%d;" % [int(f["i"]), int(f["j"]), String(f["kind"]), int(f["state"])]
 		st += " finds=%d/%s" % [(z.finds as Array).size(), fs.md5_text().substr(0, 8)]
+	var pl := _net_planks()
+	if pl != null:
+		var hl: PackedFloat32Array = pl.holes
+		st += " pl=%d/%d/%s" % [roundi(float(pl.hp)), hl.size() / 3, str(hl).md5_text().substr(0, 8)]   # ostrzał desek (S1): HP i dziury
 	return st
+
+## Deski schowka na 1.2 (kol. 158) — cel kul w teście sieci zniszczeń (SHOOT_DESTRUCTION_PLAN.md S1); null na innych mapach.
+func _net_planks() -> Node2D:
+	if level.map_id != "z1_m2":
+		return null
+	for c in level.get_children():
+		if String(c.name).begins_with("Planks") and c is Node2D and int((c as Node2D).global_position.x / 16.0) == 158 and not c.is_queued_for_deletion():
+			return c as Node2D
+	return null
 
 func _destruction_net_host() -> void:
 	var w: Node2D = level.get_node_or_null("BrickWall1")
@@ -875,6 +889,11 @@ func _destruction_net_host() -> void:
 	var pick: RefCounted = Weapons.def(Weapons.KILOF)
 	for i in 2:
 		Combat.apply(w, Combat.make_info(Weapons.KILOF, pick.damage, w.call("body_center") + Vector2(0, -6 + 12 * i), Vector2.RIGHT, 1, "melee"))
+	var pl := _net_planks()
+	if pl != null:
+		var rc: Rect2 = pl.call("hit_rect")
+		for i in 3:                                                  # trzy kule M-83 w deski schowka (S1): HP i przestrzeliny u wszystkich
+			Combat.apply(pl, Combat.make_info(Weapons.M83, Weapons.def(Weapons.M83).damage, Vector2(rc.get_center().x, rc.position.y + 10.0 + 12.0 * i), Vector2.RIGHT, 1, "bullet"))
 	var t0 := Time.get_ticks_msec()
 	while multiplayer.get_peers().size() < 2 and Time.get_ticks_msec() - t0 < 30000:
 		await get_tree().create_timer(0.25).timeout
