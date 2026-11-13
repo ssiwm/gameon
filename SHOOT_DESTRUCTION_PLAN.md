@@ -3,7 +3,7 @@
 Stan wyjścia: main 1.7.554 (761ec1d9, 2026-11-13). Kontynuacja `DESTRUCTION_PLAN.md` (D0–D5) i `BARRIER_FIX_PLAN.md` (B0–B3).
 Prośba autora: „strzały z broni powinny niszczyć drewniane przeszkody i ściany”. Ten plik to analiza i plan — **nic nie jest wdrożone**.
 
-**Stan (2026-11-13):** decyzje 1–7 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). S0 zrobione w 1.7.555 (gałąź `feat/shoot-s0`).
+**Stan (2026-11-13):** decyzje 1–8 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). S0 zrobione w 1.7.555 (gałąź `feat/shoot-s0`).
 Następny krok: S1.
 
 Skala: kafel 16 px ≈ 1,31 m, więc 1 px ≈ 8 cm.
@@ -147,7 +147,7 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
   `pen_cost` (przegroda z polem `pen_cost`). Jeśli energii wystarczy, kula leci dalej słabsza (`_energy`), jak przez skrzynię, i trafia
   wroga za deskami. W przeciwnym razie kończy lot jak dziś. Cegła ma `pen_cost` ∞.
 - **Trafienie w istniejącą dziurę** (pomiar S0): dziś pocisk przelatuje bez obrażeń, więc ostrzał w jeden punkt przestaje działać po
-  pierwszej wyrwie. Propozycja do decyzji przed S1 (decyzja 8): pocisk przez dziurę (poza środkiem — dalej niż połowa promienia) rani krawędź z połową obrażeń i leci dalej;
+  pierwszej wyrwie. Przyjęte (decyzja 8): pocisk przez dziurę (poza środkiem — dalej niż połowa promienia) rani krawędź z połową obrażeń i leci dalej;
   przez środek przelatuje jak dziś. Sprawdzenie: seria M-83 w jeden punkt rozbija deski najwyżej o 30% wolniej niż seria z rozrzutem.
 - **Przestrzelina**: kula i Brenneke dają **stopień 0 w HP plamy, ale z dziurą o promieniu `hole_r`** (0,45 px ≈ 4 cm zamiast
   dzisiejszych 18 cm). Przez taką dziurę promień wzroku i kula przechodzą tylko na tej wysokości — wizjer, nie sito. Śrut z bliska,
@@ -232,7 +232,7 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
    kule z wewnętrznej strony × 0,5.
 7. **Bot strzela w przegrody?** *Zalecam:* nie — bot otwiera przejścia kilofem jak dziś.
 
-**Nowa (po pomiarze S0, czeka na autora):**
+**Po pomiarze S0 (2026-11-13: autor przyjął zalecenie):**
 
 8. **Pocisk w istniejącą dziurę?** Dziś przelatuje bez obrażeń, więc ostrzał w jeden punkt przestaje działać. *Zalecam:* przy krawędzi
    dziury (dalej niż pół promienia od środka) połowa obrażeń i lot dalej, przez środek bez obrażeń. Wariant: zostawić jak dziś.
@@ -242,7 +242,7 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
 | Etap | PR | Ryzyko | Zależy od |
 |---|---|---|---|
 | S0 porządki + pomiar | 1 | niskie | — |
-| S1 kule w drewno, przebicie, przestrzeliny | 1 | średnie (sieć, testy) | S0, decyzje 1–3, 5 |
+| S1 kule w drewno, przebicie, przestrzeliny | 1 | średnie (sieć, testy) | S0, decyzje 1–3, 5, 8 |
 | S2 pasy desek | 1 | średnie (barykada D2b, widok 3D) | S1, decyzja 4 |
 | S3 wrogowie, bot | 1 | niskie | S2, decyzje 6–7 |
 | S4 mapy i balans | 1 | średnie (projekt map) | playtest po S3 |
