@@ -1308,7 +1308,8 @@ const CAVE_CRUSH := 400.0        ## obrażenia wrogów zasypanych gruzem (zwykł
 var _support_defs: Array = []    ## [{name, pos (stopy), rows, wall}] od lewej
 var _supports_down: Array = []   ## nazwy złamanych stempli
 var _cave_epoch := 0             ## rośnie przy wipe'ie, punkcie kontrolnym i nowej mapie — zaplanowany zawał wtedy przepada
-## Barykadowanie (DESTRUCTION_PLAN.md D2b): deski z desek `planks` dzielą wytrzymałość na BOARDS części; przybita deska to jedna część.
+## Barykadowanie (DESTRUCTION_PLAN.md D2b): przybita deska to jeden pas przegrody z desek (SHOOT_DESTRUCTION_PLAN.md S2 — pas na kafel
+## wysokości, `breakable.bands`); komplet = tyle desek, ile kafli ma otwór (`board_total`). BOARDS — tylko dla przegród bez pasów.
 const BOARDS := 3
 const NAIL_SCRAP := 2            ## deska bez zapasu desek kosztuje tyle złomu z łupu misji
 const NAIL_NOISE := 1.5          ## ostatnie uderzenia młotka — deska przybita
@@ -1476,7 +1477,8 @@ func _spawn_walls() -> void:
 		win.rows = int(wd["rows"])
 		add_child(win)
 
-func _spawn_wall(wd: Dictionary, frac := 1.0) -> Node2D:
+## `b` — HP pasów desek (barykada z jednej albo kilku desek, S2); pusty — cała.
+func _spawn_wall(wd: Dictionary, b := PackedFloat32Array()) -> Node2D:
 	var old := get_node_or_null(String(wd["name"]))
 	if old != null:
 		old.name = "Old_%s" % old.name             # rozbita w tej samej klatce: nazwa zwalnia się dopiero po `queue_free`
@@ -1485,8 +1487,8 @@ func _spawn_wall(wd: Dictionary, frac := 1.0) -> Node2D:
 	w.position = wd["pos"]
 	w.rows = int(wd["rows"])
 	w.mat_id = String(wd.get("material", "brick"))
-	if frac < 1.0:
-		w.hp = w.max_hp() * clampf(frac, 0.0, 1.0)  # barykada z jednej albo dwóch desek
+	if not b.is_empty():
+		w.bands = b.duplicate()                    # barykada z jednej albo kilku desek (`_ready` liczy z pasów `hp`)
 	add_child(w)
 	return w
 
@@ -1545,7 +1547,8 @@ func breakables_state() -> Dictionary:
 		var n := String(wd["name"])
 		var w := get_node_or_null(n)
 		if w != null and not _opened_walls.has(n) and not w.is_queued_for_deletion() and (not (w.splats as PackedFloat32Array).is_empty() or float(w.hp) < float(w.max_hp())):
-			dmg[n] = [(w.splats as PackedFloat32Array).duplicate(), float(w.hp) / float(w.max_hp()), (w.holes as PackedFloat32Array).duplicate()]
+			dmg[n] = [(w.splats as PackedFloat32Array).duplicate(), float(w.hp) / float(w.max_hp()), (w.holes as PackedFloat32Array).duplicate(),
+				(w.bands as PackedFloat32Array).duplicate()]
 	var dig := {}
 	for z in dig_zones():
 		var st: PackedByteArray = z.state()
@@ -1614,10 +1617,11 @@ func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionar
 			var w := get_node_or_null(n)
 			var d: Array = dmg.get(n, [])
 			if w != null and w.has_method("reset_damage"):
-				w.reset_damage(d[0] if d.size() >= 2 else PackedFloat32Array(), float(d[1]) if d.size() >= 2 else 1.0, d[2] if d.size() >= 3 else null)
+				w.reset_damage(d[0] if d.size() >= 2 else PackedFloat32Array(), float(d[1]) if d.size() >= 2 else 1.0, d[2] if d.size() >= 3 else null,
+					d[3] if d.size() >= 4 else PackedFloat32Array())
 
 ## Rozbity element wraca: kafle znów bryłą dla nawigacji, nowy węzeł (widok 3D zdejmuje gruz w tym miejscu), gracze wypchnięci z kafli.
-func _close_wall(wd: Dictionary, frac := 1.0) -> void:
+func _close_wall(wd: Dictionary, b := PackedFloat32Array()) -> void:
 	var n := String(wd["name"])
 	_opened_walls.erase(n)
 	var rc := Rect2i()
@@ -1627,7 +1631,7 @@ func _close_wall(wd: Dictionary, frac := 1.0) -> void:
 		var cr := Rect2i(cell, Vector2i(1, 1))
 		rc = cr if first else rc.merge(cr)
 		first = false
-	_spawn_wall(wd, frac)
+	_spawn_wall(wd, b)
 	if not first:
 		_push_players_out(rc, true)
 		_refresh_region(rc)
@@ -1646,7 +1650,7 @@ func send_walls_to(peer_id: int) -> void:
 				if String(wd["material"]) == "rubble":
 					_cave_rpc.rpc_id(peer_id, map_id, wn, false)      # zawalona strefa (u dołączającego wolna); plamy i HP gruzu niżej
 				else:
-					_nail_rpc.rpc_id(peer_id, map_id, wn, float(w.hp) / float(w.max_hp()), plank_stock, false)   # zabity pusty otwór (u dołączającego wolny)
+					_nail_rpc.rpc_id(peer_id, map_id, wn, w.bands, plank_stock, false)   # zabity pusty otwór (u dołączającego wolny)
 		for sn in _supports_down:
 			_support_rpc.rpc_id(peer_id, map_id, String(sn), false)   # złamane stemple
 		for b in get_tree().get_nodes_in_group("breakables"):
@@ -1669,15 +1673,32 @@ func wall_def(wall_name: String) -> Dictionary:
 			return wd
 	return {}
 
-## Ile desek trzyma przegroda: 0 — otwór wolny (rozbita albo pusty otwór), BOARDS — pełna barykada. Deska to 1/BOARDS wytrzymałości;
-## nadłamana deska dalej się liczy (45 z 60 HP to trzy deski).
+## Ile desek trzyma przegroda: 0 — otwór wolny (rozbita albo pusty otwór), `board_total` — pełna barykada. Deska to pas (S2); nadłamana
+## deska dalej się liczy.
 func boards_of(wall_name: String) -> int:
 	if _opened_walls.has(wall_name):
 		return 0
 	var w := get_node_or_null(wall_name)
 	if w == null or w.is_queued_for_deletion() or float(w.hp) <= 0.0:
 		return 0
+	if bool(w.call("uses_bands")):
+		return int(w.call("bands_up"))
 	return clampi(ceili(float(w.hp) / float(w.max_hp()) * BOARDS - 0.001), 0, BOARDS)
+
+## Komplet desek przegrody: tyle, ile ma pasów (kafli wysokości); przegroda bez pasów — BOARDS.
+func board_total(wall_name: String) -> int:
+	var wd := wall_def(wall_name)
+	if wd.is_empty() or String(wd["material"]) != "planks":
+		return BOARDS
+	return maxi(int(wd["rows"]), 1)
+
+## Pasy otworu zabitego pierwszą deską: najniższy pas cały, reszta zero.
+func _one_board(wd: Dictionary) -> PackedFloat32Array:
+	var n := maxi(int(wd["rows"]), 1)
+	var b := PackedFloat32Array()
+	b.resize(n)
+	b[n - 1] = float(BREAKABLE.MATERIALS["planks"]["hp"]) / float(n)
+	return b
 
 ## Czy można przybić deskę (każdy peer — podpowiedź; serwer rozstrzyga): "ok", "full" (komplet desek), "blocked" (wróg w otworze),
 ## "nomat" (brak desek w zapasie i złomu w łupie), "invalid".
@@ -1685,7 +1706,7 @@ func nail_reason(wall_name: String) -> String:
 	var wd := wall_def(wall_name)
 	if wd.is_empty() or String(wd["material"]) != "planks":
 		return "invalid"
-	if boards_of(wall_name) >= BOARDS:
+	if boards_of(wall_name) >= board_total(wall_name):
 		return "full"
 	if _opened_walls.has(wall_name) and _opening_blocked(wd):
 		return "blocked"
@@ -1709,7 +1730,7 @@ func _opening_blocked(wd: Dictionary) -> bool:
 	return false
 
 ## Serwer: przybija deskę (barricade_spot.gd po ~2 s trzymania [E]). Koszt: deska z zapasu drużyny, a bez niej NAIL_SCRAP złomu z łupu misji.
-## Wolny otwór dostaje przegrodę z jedną deską (nawigacja znów zamknięta), stojąca — kolejną deskę (nadłamana zostaje zastąpiona całą).
+## Wolny otwór dostaje przegrodę z jedną deską — najniższym pasem (nawigacja znów zamknięta), stojąca — najniższy brakujący pas (S2).
 ## Zwraca powód jak `nail_reason`.
 func nail_board(wall_name: String) -> String:
 	if not NoiseMgr.is_server():
@@ -1721,20 +1742,26 @@ func nail_board(wall_name: String) -> String:
 		plank_stock -= 1
 	elif not Scrap.spend_loot(NAIL_SCRAP):
 		return "nomat"
-	var frac := float(boards_of(wall_name) + 1) / float(BOARDS)
 	var wd := wall_def(wall_name)
+	var b := _one_board(wd)
+	var w := get_node_or_null(wall_name)
+	if not _opened_walls.has(wall_name) and w != null:
+		b = w.call("bands_nailed")
 	NoiseMgr.add_noise(NAIL_NOISE, Vector2(wd["pos"]) + Vector2(0, -TILE), "barricade")
 	_nail_ms[wall_name] = Time.get_ticks_msec()
-	SessionLog.event("barricade", {"wall": wall_name, "boards": roundi(frac * BOARDS), "planks": plank_stock, "noise": roundi(NoiseMgr.level)})
+	var up := 0
+	for v in b:
+		up += 1 if v > 0.0 else 0
+	SessionLog.event("barricade", {"wall": wall_name, "boards": up, "planks": plank_stock, "noise": roundi(NoiseMgr.level)})
 	if NoiseMgr.has_network():
-		_nail_rpc.rpc(map_id, wall_name, frac, plank_stock, true)
+		_nail_rpc.rpc(map_id, wall_name, b, plank_stock, true)
 	else:
-		_nail_rpc(map_id, wall_name, frac, plank_stock, true)
+		_nail_rpc(map_id, wall_name, b, plank_stock, true)
 	return "ok"
 
-## U wszystkich peerów: przegroda `wall_name` ma teraz `frac` wytrzymałości (wolny otwór — nowa przegroda), zapas desek `stock`.
+## U wszystkich peerów: przegroda `wall_name` ma teraz pasy `b` (wolny otwór — nowa przegroda), zapas desek `stock`.
 @rpc("authority", "call_local", "reliable")
-func _nail_rpc(id: String, wall_name: String, frac: float, stock: int, with_fx: bool) -> void:
+func _nail_rpc(id: String, wall_name: String, b: PackedFloat32Array, stock: int, with_fx: bool) -> void:
 	if id != map_id:
 		return
 	plank_stock = stock
@@ -1742,11 +1769,11 @@ func _nail_rpc(id: String, wall_name: String, frac: float, stock: int, with_fx: 
 	if wd.is_empty():
 		return
 	if _opened_walls.has(wall_name):
-		_close_wall(wd, frac)
+		_close_wall(wd, b)
 	else:
 		var w := get_node_or_null(wall_name)
-		if w != null and w.has_method("set_hp_frac"):
-			w.set_hp_frac(frac)
+		if w != null and w.has_method("set_bands"):
+			w.set_bands(b)
 	if with_fx:
 		var at := Vector2(wd["pos"]) + Vector2(0, -TILE * float(wd["rows"]) * 0.5)
 		Audio.play_variant_at("hammer_nail", 3, at, Audio.BUS_WORLD, 3.0, 0.92)   # deska dobita: mocniejsze, niższe uderzenie młotka (B3)
@@ -1859,7 +1886,7 @@ func close_openings_checked() -> Array:
 		if not bool(wd.get("start_open", false)) or String(wd["material"]) != "planks" or not _opened_walls.has(String(wd["name"])):
 			continue
 		n += 1
-		_close_wall(wd, 1.0 / float(BOARDS))
+		_close_wall(wd, _one_board(wd))
 		var d := nav_diff_vs_full()
 		if d != "":
 			bad.append("nawigacja po zabiciu deskami %s różni się od pełnej budowy: %s" % [wd["name"], d])

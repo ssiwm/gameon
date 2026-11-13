@@ -43,6 +43,9 @@ extends "res://scripts/stalker_test.gd"
 ##     każdej broni i naboju w deski (trafień do rozbicia jak w tabeli S1 ±1), cegła od kul tylko wyszczerbiona, hałas uderzeń raz na paczkę
 ##     (snop śrutu to jedno uderzenie, nie pięć), przebicie desek (skrzynia za nimi), szyna, środek i krawędź dziury (decyzja 8), dziury
 ##     pamiętane osobno od plam (migawka, reset, dołączający).
+## 19. Pasy desek (S2): pas na kafel wysokości, cios i kula w pas na swojej wysokości, wybuch po równo; szczelina po odpadłym pasie tylko
+##     na jego wysokości (wzrok, promień, kula, dźwięk), ruch i nawigacja zamknięte do ostatniego pasu; barykada — przybicie wraca najniższy
+##     pas, dołączający, migawka i wipe dostają pasy.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -111,6 +114,7 @@ func run(m: Node2D) -> void:
 	await _barrier_fixes()
 	await _tool_for_all()
 	await _shooting()
+	await _bands()
 	_session_log()
 	_finish()
 
@@ -215,7 +219,7 @@ func _splats() -> void:
 	# dołączający: ten sam stan, ta sama maska
 	var j := _wall("DWall3", 120.0)
 	await _frames(0.1)
-	j._splat_sync(w.splats, w.hp / w.max_hp(), w.holes)
+	j._splat_sync(w.splats, w.hp / w.max_hp(), w.holes, w.bands)
 	check("dołączający: te same plamy (%d) i ta sama wytrzymałość (%.0f / %.0f HP)" % [j.splat_total, j.hp, w.hp],
 		j.splats == w.splats and j.splat_total == 4 and absf(j.hp - w.hp) < 0.01)
 	var ma := _mask_of(w)
@@ -829,11 +833,11 @@ func _holes() -> void:
 	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
 	_place_player(base + Vector2(-40.0, 0.0))
 	player.aim_dir = Vector2.RIGHT
-	var pl := _barrier("DHoles1", base)
+	var pl := _barrier("DHoles1", base, "planks", 2)   # dwa pasy po 30 HP: dziury na jednej wysokości, pas jeszcze stoi (S2)
 	await _frames(0.1)
 	var hy := base.y - 9.0                           # wysokość latarki gracza (Lights: stopy − 9 px)
 	var at := Vector2(base.x, hy)
-	_hit(pl, Weapons.P64, 20.0, "bullet", at)
+	_hit(pl, Weapons.P64, 10.0, "bullet", at)
 	_hit(pl, Weapons.SRUT8, 2.0, "bullet", at)      # śrut z daleka (słaby — stopień 0): odprysk bez dziury
 	_hit(pl, 0, 4.0, "claw", at)
 	await _frames(Breakable.SPLAT_GAP + 0.05)
@@ -986,7 +990,8 @@ func _barricade() -> void:
 	level.plank_stock = 0
 	check("nadłamana barykada: %.0f HP = %d deski, brak desek (%s)" % [float(w.hp), level.boards_of(on), level.nail_reason(on)], level.boards_of(on) == 2 and level.nail_reason(on) == "nomat")
 	level.plank_stock = 1
-	check("dobita deską: %s, %.0f HP, zapas %d" % [level.nail_board(on), float(w.hp), int(level.plank_stock)], is_equal_approx(float(w.hp), 60.0) and int(level.plank_stock) == 0)
+	check("dobita deską: %s — wraca najniższy pas (pasy %s, %.0f HP: nadłamany zostaje nadłamany), zapas %d, komplet (%s)" % [level.nail_board(on), str(w.bands), float(w.hp), int(level.plank_stock), level.nail_reason(on)],
+		is_equal_approx(float(w.hp), 55.0) and int(w.band_mask()) == 7 and int(level.plank_stock) == 0 and level.nail_reason(on) == "full")
 
 	# wipe i punkt kontrolny bossa
 	_hit(w, 0, 25.0, "claw", feet + Vector2(-8.0, -24.0))
@@ -1000,8 +1005,8 @@ func _barricade() -> void:
 	level.reset_breakables(st)
 	await _frames(0.1)
 	w = level.get_node_or_null(on)
-	check("punkt kontrolny bossa: barykada z %d deskami (%.0f HP) i zapas %d wracają" % [level.boards_of(on), float(w.hp) if w else 0.0, int(level.plank_stock)],
-		level.boards_of(on) == 2 and w != null and is_equal_approx(float(w.hp), 35.0) and int(level.plank_stock) == 3 and level._wall_cells.has(cell))
+	check("punkt kontrolny bossa: barykada z %d deskami (pasy %s, %.0f HP) i zapas %d wracają" % [level.boards_of(on), str(w.bands) if w else "-", float(w.hp) if w else 0.0, int(level.plank_stock)],
+		level.boards_of(on) == 2 and w != null and is_equal_approx(float(w.hp), 30.0) and int(w.band_mask()) == 5 and int(level.plank_stock) == 3 and level._wall_cells.has(cell))
 	level.reset_breakables()
 	await _frames(0.1)
 
@@ -1231,11 +1236,11 @@ func _support_blast() -> void:
 	await _frames(0.1)
 
 ## Próbna przegroda od podłogi do sufitu tunelu (6 kafli), poza `_wall_cells` — sama mechanika trafień, ruchu i wrogów.
-func _barrier(wname: String, feet: Vector2, mat := "planks") -> Node2D:
+func _barrier(wname: String, feet: Vector2, mat := "planks", rows := 6) -> Node2D:
 	var w: Node2D = Breakable.new()
 	w.name = wname
 	w.mat_id = mat
-	w.rows = 6
+	w.rows = rows
 	w.global_position = feet
 	level.add_child(w)
 	return w
@@ -1458,10 +1463,21 @@ func _ammo_t(w: int, id: String) -> int:
 			return i
 	return -1
 
-## Wylot dla strzału nr `k`: wysokość przesuwa się po przegrodzie (6 kafli), bo kolejne pociski w to samo miejsce lecą przez dziury
-## po poprzednich (śrut i Brenneke wybijają dziury na wylot) i nie ranią — gracz też przesuwa celownik.
-func _aim_row(muzzle: Vector2, k: int) -> Vector2:
-	return muzzle + Vector2(0.0, 32.0 - float((k * 11) % 72))
+## Wylot dla strzału nr `k`: wysokość przesuwa się po przegrodzie, bo kolejne pociski w to samo miejsce lecą przez dziury po poprzednich
+## (śrut i Brenneke wybijają dziury na wylot), a od S2 przez szczelinę po odpadłym pasie — gracz też przesuwa celownik na deski, które
+## jeszcze stoją. Celuje w środek kolejnego stojącego pasu (±3 px); przegroda bez pasów — dawny przesuw po 6 kaflach.
+func _aim_row(muzzle: Vector2, k: int, pl: Node2D = null) -> Vector2:
+	if pl == null or not is_instance_valid(pl) or not bool(pl.call("uses_bands")):
+		return muzzle + Vector2(0.0, 32.0 - float((k * 11) % 72))
+	var up: Array = []
+	for i in (pl.bands as PackedFloat32Array).size():
+		if pl.bands[i] > 0.0:
+			up.append(i)
+	if up.is_empty():
+		return muzzle
+	var rc: Rect2 = pl.call("hit_rect")
+	var band: int = up[k % up.size()]
+	return Vector2(muzzle.x, rc.position.y + (float(band) + 0.5) * 16.0 + float((k * 5) % 7 - 3))
 
 ## Jeden strzał prawdziwymi pociskami (wszystkie śruciny) z `muzzle` w prawo; czeka, aż dolecą i paczka plam wyjdzie.
 func _fire(w: int, build: int, muzzle: Vector2, seed_v: int) -> void:
@@ -1521,7 +1537,7 @@ func _shooting() -> void:
 		var broken := false
 		while shots < SHOT_CAP:
 			var hp0 := float(pl.hp)
-			await _fire(int(row[1]), build, _aim_row(muzzle, shots), 100 + shots)
+			await _fire(int(row[1]), build, _aim_row(muzzle, shots, pl), 100 + shots)
 			shots += 1
 			if not is_instance_valid(pl) or pl.is_queued_for_deletion():
 				broken = true
@@ -1545,14 +1561,15 @@ func _shooting() -> void:
 			off.append("%s %d (plan %d)" % [k, int(shots_of.get(k, -1)), int(SHOT_PLAN[k])])
 	check("ostrzał: kule ranią deski wg przebicia — trafień do rozbicia jak w tabeli S1 ±1%s" % ("" if off.is_empty() else ": " + ", ".join(off)), off.is_empty())
 
-	# hałas uderzeń raz na paczkę: snop SPREAD-12 (5 śrucin, deski stoją) to jedno zdarzenie hałasu przegrody, nie pięć
+	# hałas uderzeń raz na paczkę: snop SPREAD-12 (5 śrucin, deski stoją) to jedno zdarzenie hałasu przegrody, nie pięć; śruciny po odpadnięciu
+	# pasu lecą przez szczelinę (S2), więc trafia ich mniej niż pięć
 	var pn := _barrier("ShootNoise", base)
 	await _frames(0.1)
 	events[0] = 0
 	await _fire(Weapons.SPREAD12, 0, muzzle, 7)
 	var hits := int(pn.splat_total) if is_instance_valid(pn) else 0
 	check("ostrzał: snop śrutu w deski — %d śrucin trafiło, zdarzeń hałasu przegrody %d (jedna paczka)" % [hits, int(events[0])],
-		hits >= 3 and int(events[0]) == 1 and is_instance_valid(pn) and not pn.is_queued_for_deletion())
+		hits >= 2 and int(events[0]) == 1 and is_instance_valid(pn) and not pn.is_queued_for_deletion())
 	# kolejny strzał po przerwie to nowa paczka — znów słychać
 	await _frames(Breakable.SPLAT_GAP)
 	events[0] = 0
@@ -1635,45 +1652,56 @@ func _shot_rail(base: Vector2) -> void:
 	level._opened_walls.erase("ShootRailBrick")
 	await _frames(0.1)
 
-## Decyzja 8: środek dziury przepuszcza pocisk bez obrażeń, krawędź rani połową, przestrzelina kuli (bez środka) — w pełni; seria M-83 w jeden
-## punkt rozbija deski najwyżej o 30% wolniej niż z przesuwanym celownikiem (`spread_shots` — wynik tabeli), z bliska i z 5 m.
+## Decyzja 8: środek dziury przepuszcza pocisk bez obrażeń, krawędź rani połową, przestrzelina kuli (bez środka) — w pełni. Seria M-83 w jeden
+## punkt (S2) wybija pas na wysokości celownika najwyżej o 30% wolniej niż wynika z tabeli (`spread_shots` na całość / liczba pasów), z bliska
+## i z 5 m; potem kule lecą przez szczelinę, a reszta desek stoi.
 func _shot_edges(base: Vector2, muzzle: Vector2, spread_shots: int) -> void:
 	var pe := _barrier("ShootEdge", base)
 	await _frames(0.1)
 	var y0 := base.y - 40.0
 	var y1 := base.y - 70.0
 	_hit(pe, Weapons.P64, 4.0, "bullet", Vector2(base.x, y0))
-	_hit(pe, Weapons.SRUT8, 10.0, "bullet", Vector2(base.x, y1))
+	_hit(pe, Weapons.SRUT8, 7.0, "bullet", Vector2(base.x, y1))     # 7 < 10 HP pasu: dziura bez odpadnięcia deski
 	await _frames(Breakable.SPLAT_GAP + 0.05)
 	var got := [pe.hole_pass(y0), pe.hole_pass(y0 + 0.6), pe.hole_pass(y1), pe.hole_pass(y1 + 1.3), pe.hole_pass(y1 + 2.0)]
 	check("ostrzał: mnożnik przelotu — przestrzelina / obok niej / środek dziury śrutu / jej krawędź / obok %s" % str(got),
 		got == [1.0, -1.0, 0.0, Breakable.EDGE_DAMAGE, -1.0])
 	pe.queue_free()
 	level._opened_walls.erase("ShootEdge")
-	var limit := ceilf(float(spread_shots) * 1.3)
+	var limit := ceilf(float(spread_shots) / 6.0 * 1.3) + 1.0
 	var res := {}
+	var after := {}
 	for dist in [16.0, 60.0]:
 		var ps := _barrier("ShootPoint", base)
 		await _frames(0.1)
+		var band := int(ps.call("band_at", muzzle.y))
 		var shots := 0
-		while shots < SHOT_CAP * 2 and is_instance_valid(ps) and not ps.is_queued_for_deletion():
+		while shots < SHOT_CAP and float(ps.bands[band]) > 0.0:
 			await _fire(Weapons.M83, 0, Vector2(base.x - 8.0 - dist, muzzle.y), 500 + shots)
 			shots += 1
-		res[dist] = shots if not is_instance_valid(ps) or ps.is_queued_for_deletion() else -1
+		res[dist] = shots if float(ps.bands[band]) <= 0.0 else -1
+		var hp1 := float(ps.hp)
+		for k in 3:
+			await _fire(Weapons.M83, 0, Vector2(base.x - 8.0 - dist, muzzle.y), 700 + k)
+		after[dist] = [snappedf(hp1 - float(ps.hp), 0.1), int(ps.call("bands_up")), is_instance_valid(ps) and not ps.is_queued_for_deletion(),
+			bool(ps.call("hole_at", muzzle.y)), bool(ps.call("hole_at", muzzle.y - 20.0))]
 		if is_instance_valid(ps):
 			ps.queue_free()
 		level._opened_walls.erase("ShootPoint")
 		await _frames(0.1)
-	check("ostrzał: seria M-83 w jeden punkt rozbija deski po %d strzałach z 1,3 m i %d z 5 m (z rozrzutem %d, limit %d)" % [int(res[16.0]), int(res[60.0]), spread_shots, int(limit)],
+	check("ostrzał: seria M-83 w jeden punkt wybija pas po %d strzałach z 1,3 m i %d z 5 m (tabela %d na 6 pasów, limit %d)" % [int(res[16.0]), int(res[60.0]), spread_shots, int(limit)],
 		spread_shots > 0 and int(res[16.0]) > 0 and int(res[60.0]) > 0 and float(res[16.0]) <= limit and float(res[60.0]) <= limit)
-	# śrut w jeden punkt (pomiar S0: 30 strzałów zostawiało 18 HP) — wydruk
+	var a16: Array = after[16.0]
+	check("ostrzał: potem kule lecą przez szczelinę — 3 strzały z bliska [HP mniej, pasów, stoi, szczelina na celowniku, pas wyżej] %s" % str(a16),
+		float(a16[0]) == 0.0 and int(a16[1]) == 5 and bool(a16[2]) and bool(a16[3]) and not bool(a16[4]))
+	# śrut w jeden punkt — wydruk (od S2 wybija pas lub dwa i dalej leci szczeliną)
 	var pg := _barrier("ShootPointG", base)
 	await _frames(0.1)
 	var gs := 0
-	while gs < SHOT_CAP and is_instance_valid(pg) and not pg.is_queued_for_deletion():
+	while gs < 6 and is_instance_valid(pg) and not pg.is_queued_for_deletion():
 		await _fire(Weapons.SPREAD12, 0, muzzle, 900 + gs)
 		gs += 1
-	info("SPREAD-12 w jeden punkt: %s" % (("rozbite po %d strzałach" % gs) if not is_instance_valid(pg) or pg.is_queued_for_deletion() else "po %d strzałach %.0f HP" % [gs, float(pg.hp)]))
+	info("SPREAD-12 w jeden punkt: %s" % (("rozbite po %d strzałach" % gs) if not is_instance_valid(pg) or pg.is_queued_for_deletion() else "po %d strzałach %.0f HP, pasów %d" % [gs, float(pg.hp), int(pg.call("bands_up"))]))
 	if is_instance_valid(pg):
 		pg.queue_free()
 	level._opened_walls.erase("ShootPointG")
@@ -1718,8 +1746,132 @@ func _shot_holes_state() -> void:
 	j.rows = mp.rows if mp != null else 3
 	await _frames(0.1)
 	if mp != null:
-		j._splat_sync(mp.splats, float(mp.hp) / float(mp.max_hp()), mp.holes)
+		j._splat_sync(mp.splats, float(mp.hp) / float(mp.max_hp()), mp.holes, mp.bands)
 	check("ostrzał: dołączający dostaje wszystkie dziury (%d), nie tylko z 64 ostatnich plam" % ((j.holes as PackedFloat32Array).size() / 3), mp != null and j.holes == mp.holes)
 	j.queue_free()
+	level.reset_breakables()
+	await _frames(0.1)
+
+# ---------------------------------------------------------------- 19. pasy desek (S2)
+
+## S2: deski dzielą się na pasy (pas na kafel wysokości, HP po równo). Cios i kula ranią pas na wysokości trafienia (nadwyżka na sąsiedni),
+## wybuch wszystkie; pas na zero to szczelina dla wzroku, promienia, kul i dźwięku tylko na swojej wysokości, ale ruch i nawigacja zostają
+## zamknięte, dopóki stoi choć jeden pas. Barykada `:` — przybicie wraca najniższy pas; dołączający, migawka i wipe dostają pasy.
+func _bands() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	for n in level.get_children():
+		if n is RigidBody2D:
+			n.queue_free()
+	var space := level.get_world_2d().direct_space_state
+	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
+	_place_player(base + Vector2(-60.0, 0.0))
+	var pl := _barrier("Bands1", base)
+	await _frames(0.1)
+	var rc: Rect2 = pl.call("hit_rect")
+	check("pasy: deski z 6 kafli to 6 pasów po %.0f HP (suma %.0f, maska %d)" % [float(pl.band_hp()), float(pl.hp), int(pl.band_mask())],
+		(pl.bands as PackedFloat32Array).size() == 6 and is_equal_approx(float(pl.band_hp()), 10.0) and is_equal_approx(float(pl.hp), 60.0) and int(pl.band_mask()) == 63)
+	var top := rc.position.y + 8.0
+	var low := base.y - 9.0
+	for k in 3:
+		_hit(pl, 0, 4.0, "claw", Vector2(base.x, top))   # słabe drapnięcia (stopień 0) — bez dziur, sam pas
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	check("pasy: trzy drapnięcia w górny pas — odpada (pasy %s), nadwyżka 2 HP na pas niżej, przegroda stoi (%.0f HP)" % [str(pl.bands), float(pl.hp)],
+		float(pl.bands[0]) == 0.0 and is_equal_approx(float(pl.bands[1]), 8.0) and is_equal_approx(float(pl.hp), 48.0) and is_instance_valid(pl) and not pl.is_queued_for_deletion())
+	var a := Vector2(base.x - 40.0, top)
+	var b := Vector2(base.x + 40.0, top)
+	check("pasy: szczelina tylko na swojej wysokości — wzrok górą tak (%s), przy podłodze nie (%s), cały pas otwarty (%s / %s), pas niżej zamknięty (%s)" % [
+			str(Sight.clear(space, a, b)), str(Sight.clear(space, Vector2(a.x, low), Vector2(b.x, low))), str(pl.hole_at(rc.position.y + 1.0)), str(pl.hole_at(rc.position.y + 15.0)), str(pl.hole_at(rc.position.y + 20.0))],
+		Sight.clear(space, a, b) and not Sight.clear(space, Vector2(a.x, low), Vector2(b.x, low)) and pl.hole_at(rc.position.y + 1.0) and pl.hole_at(rc.position.y + 15.0)
+		and not pl.hole_at(rc.position.y + 20.0) and float(pl.hole_pass(top)) == 0.0)
+	var tr := Combat.trace(space, a, Vector2.RIGHT, 80.0, 0)
+	var oq := PhysicsRayQueryParameters2D.create(a, b, 1 | 256)
+	check("pasy: promień leci szczeliną (koniec x %+.0f), okluzja dźwięku przez nią słabsza, cios przez nią nie sięga" % (float((tr["end"] as Vector2).x) - base.x),
+		float((tr["end"] as Vector2).x) > base.x + 20.0 and Sight.first_hit(space, oq).is_empty() and not Combat.clear_line(space, a, b))
+	var hp0 := float(pl.hp)
+	var through := Projectile.new()
+	through.launch(Weapons.M83, Vector2(base.x - 30.0, top), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(through)
+	await _frames(0.3)
+	var hp1 := float(pl.hp)
+	var stuck := Projectile.new()
+	stuck.launch(Weapons.P64, Vector2(base.x - 30.0, low), Vector2.RIGHT, 1, true)
+	get_tree().current_scene.add_child(stuck)
+	await _frames(0.3)
+	check("pasy: kula szczeliną przelatuje bez obrażeń (%.1f → %.1f HP), przy podłodze rani dolny pas (%.1f → %.1f)" % [hp0, hp1, hp1, float(pl.hp)],
+		hp1 == hp0 and float(pl.hp) < hp1 and float(pl.bands[5]) < 10.0)
+	pl.queue_free()
+	await _frames(0.1)
+	var pb := _barrier("Bands2", base)
+	await _frames(0.1)
+	_hit(pb, 0, 30.0, "blast", pb.call("body_center"))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	var even := true
+	for v in (pb.bands as PackedFloat32Array):
+		even = even and is_equal_approx(float(v), 5.0)
+	check("pasy: wybuch rani wszystkie pasy po równo (%s)" % str(pb.bands), even and is_equal_approx(float(pb.hp), 30.0))
+	pb.queue_free()
+	await _frames(0.1)
+
+	# deski schowka na 1.2 (3 kafle): odpadły górny pas otwiera kafel siatki dźwięku na swojej wysokości, niższe zostają zamknięte
+	var mp: Node2D = level.get_node_or_null(_planks_at_col(158))
+	if mp != null:
+		var col := int(mp.global_position.x / 16.0)
+		var row0 := int(mp.global_position.y / 16.0) - int(mp.rows)
+		for k in 5:
+			_hit(mp, 0, 4.0, "claw", Vector2(mp.global_position.x, row0 * 16.0 + 8.0))   # stopień 0 — bez dziur
+		await _frames(Breakable.SPLAT_GAP + 0.05)
+		check("pasy: górny pas desek na 1.2 otwiera swój kafel dźwięku (%s), środkowy zamknięty (%s), pasy %s" % [str(not level._is_sound_solid(col, row0)), str(level._is_sound_solid(col, row0 + 1)), str(mp.bands)],
+			not level._is_sound_solid(col, row0) and level.sound_grid._open(Vector2i(col, row0)) and level._is_sound_solid(col, row0 + 1))
+		level.reset_breakables()
+		await _frames(0.1)
+
+	# barykada `:`: zestrzelenie pasa po pasie — przejście dopiero przy ostatnim; przybicie wraca najniższy pas
+	var on := "Opening1"
+	var wd: Dictionary = level.wall_def(on)
+	if wd.is_empty():
+		check("pasy: pusty otwór na 1.2", false)
+		return
+	var feet: Vector2 = wd["pos"]
+	var cell := Vector2i(243, 25)
+	level.plank_stock = 3
+	for k in 3:
+		level.nail_board(on)
+	await _frames(0.1)
+	var w: Node2D = level.get_node_or_null(on)
+	check("pasy: barykada %d/%d (pasy %s)" % [level.boards_of(on), level.board_total(on), str(w.bands) if w else "-"],
+		w != null and level.boards_of(on) == 3 and level.board_total(on) == 3 and int(w.band_mask()) == 7)
+	if w == null:
+		return
+	_hit(w, 0, 20.0, "claw", Vector2(feet.x, feet.y - 40.0))
+	_hit(w, 0, 20.0, "claw", Vector2(feet.x, feet.y - 24.0))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	var nav_closed := (level.nav.find_path(feet + Vector2(-60, -2), feet + Vector2(60, -2)) as Array).is_empty()
+	check("pasy: dwa górne pasy zestrzelone (pasy %s, desek %d) — przejście i nawigacja dalej zamknięte (kafel %s, ścieżka pusta %s)" % [str(w.bands), level.boards_of(on), str(level._wall_cells.has(cell)), str(nav_closed)],
+		level.boards_of(on) == 1 and level._wall_cells.has(cell) and not level._opened_walls.has(on) and nav_closed)
+	# dołączający i migawka: te same pasy
+	var j := _barrier("BandsJoin", Vector2(-3000.0, -3000.0), "planks", 3)
+	await _frames(0.1)
+	j._splat_sync(w.splats, float(w.hp) / float(w.max_hp()), w.holes, w.bands)
+	check("pasy: dołączający dostaje pasy (%s), nie ułamek (maska %d)" % [str(j.bands), int(j.band_mask())], j.bands == w.bands and int(j.band_mask()) == 4)
+	j.queue_free()
+	var st: Dictionary = level.breakables_state()
+	level.reset_breakables()
+	await _frames(0.1)
+	level.reset_breakables(st)
+	await _frames(0.1)
+	w = level.get_node_or_null(on)
+	check("pasy: wipe i punkt kontrolny bossa — wracają te same pasy (%s)" % (str(w.bands) if w else "-"), w != null and int(w.band_mask()) == 4 and is_equal_approx(float(w.hp), 20.0))
+	if w == null:
+		return
+	level.plank_stock = 1
+	var why := String(level.nail_board(on))
+	check("pasy: przybicie wraca najniższy brakujący pas (%s, pasy %s, desek %d)" % [why, str(w.bands), level.boards_of(on)],
+		why == "ok" and int(w.band_mask()) == 6 and level.boards_of(on) == 2)
+	_hit(w, 0, 20.0, "claw", Vector2(feet.x, feet.y - 24.0))
+	_hit(w, 0, 20.0, "claw", Vector2(feet.x, feet.y - 8.0))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	check("pasy: ostatni pas zestrzelony — przejście otwarte, nawigacja = pełna budowa (%s)" % level.nav_diff_vs_full(),
+		level._opened_walls.has(on) and not level._wall_cells.has(cell) and level.nav_diff_vs_full() == "")
 	level.reset_breakables()
 	await _frames(0.1)

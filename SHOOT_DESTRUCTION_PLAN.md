@@ -4,7 +4,7 @@ Stan wyjścia: main 1.7.554 (761ec1d9, 2026-11-13). Kontynuacja `DESTRUCTION_PLA
 Prośba autora: „strzały z broni powinny niszczyć drewniane przeszkody i ściany”. Ten plik to analiza i plan — **nic nie jest wdrożone**.
 
 **Stan (2026-11-13):** decyzje 1–8 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). S0 zrobione w 1.7.555 (#665), S1 w 1.7.556
-(gałąź `feat/shoot-s1`). Następny krok: S2.
+(#666), S2 w 1.7.557 (gałąź `feat/shoot-s2`). Następny krok: S3.
 
 Skala: kafel 16 px ≈ 1,31 m, więc 1 px ≈ 8 cm.
 
@@ -196,6 +196,19 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
   najniższy pas, a zrzuty 3D (`--shotwall=Planks1 --shotholes`) pokazują deski w miejscach z symulacji. `--destructiontest` (sekcje
   11–13, 16), `test_net_session.sh` (barykada zestrzelona do jednego pasa u klienta i dołączającego), `--fxtest`, `--hitchtest
   --hitchwall` (bez nowych przycięć).
+- **Zrobione w 1.7.557:** `breakable.bands` (materiał z `"bands": true` — deski): pas na kafel od góry, HP = max / rows; `_take_damage`
+  rani pas z `band_at(pos.y)`, nadwyżka idzie na najbliższy stojący (0, +1, −1, +2…), wybuch i szarża po równo; `_band_open(y)` otwiera
+  `hole_at` / `hole_pass` (0 — przelot bez obrażeń) / `hole_in` na wysokości martwego pasu, `break_wall` dopiero przy sumie 0. Pasy idą
+  w `_splat_rpc` / `_splat_sync` / `send_state_to` / `breakables_state` (4. pole) / `reset_damage` / `_nail_rpc` (zamiast ułamka).
+  Barykada: `level.board_total` (rows otworu, BOARDS = 3 tylko dla przegród bez pasów), `_one_board` (najniższy pas), `bands_nailed`
+  (najniższy martwy pas wraca cały, nadłamany zostaje nadłamany — przybijamy brakującą deskę, nie łatamy), HUD i podpowiedzi liczą do
+  `board_total`. Widok 3D `_sync_barricade` z `band_mask` (deska → pas z wysokości spoczynku), zastrzały tylko przy komplecie, odpada
+  i wisi deska z trafionego pasu. **Pomiar:** tabela S1 bez zmian przy celowniku na stojące pasy (P-83 22, M-83 PS 13, US 28, BZ 8,
+  HOT 10, Brenneke 2, SINEW-6 11); seria M-83 w jeden punkt wybija pas po 3 strzałach z 1,3 m i z 5 m i dalej leci szczeliną (deski stoją);
+  SPREAD-12 w jeden punkt po 6 strzałach: 46 HP, 5 pasów. Zrzuty z ukosa (`--shotwall=Opening1 --shotboards=3 --shotbands=N --shottorch
+  --shotaimleft --shotorbit=40,12`): zestrzelony górny pas odsłania ścianę za barykadą, środkowy — deski wiszą na słupku, jedna przybita
+  deska to tylko dolny pas. Odstępstwo od planu: zamiast `hp_bands` pole nazywa się `bands`, a `--hitchwall` bije w mur (bez zmian
+  w S2) — przebiegi 49–113 ms przy rozbiciu, z szumem okna debug (bezczynność też ≥ 33 ms), bez nowych przycięć po stronie desek.
 
 ### S3 — wrogowie, bot, dyrektor (1 PR)
 
