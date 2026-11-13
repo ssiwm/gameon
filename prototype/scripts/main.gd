@@ -788,7 +788,7 @@ func _charger_net_step() -> void:
 ## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
 ## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną), deski w pustym otworze Opening1 (D2b), skrzyni
 ## Crate1 (D1) i desek schowka (`pl=`, HP i dziury — ostrzał S1). Host po N s rozbija skrzynię, zabija otwór dwiema deskami, po 1 s rani ścianę
-## dwoma ciosami kilofa i strzela trzy kule w deski schowka, czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
+## dwoma ciosami kilofa, strzela trzy kule w deski schowka i zestrzeliwuje środkową deskę otworu (S2: zostaje jeden pas), czeka na dwóch klientów, zapisuje migawkę (jak przebudzenie bossa) i rozbija ścianę, po 3 s wraca do migawki (wipe w walce
 ## z bossem), po 3 s czyści wszystko (wipe, skrzynia wraca) i po 2 s kończy. Klient obecny od początku dostaje to przez RPC na żywo, dołączający
 ## po ciosach — z `send_walls_to`; klient kończy po końcowym wipe'ie (albo w lobby po utracie hosta).
 ## `want`: mapa testu — 1.2 (ściana, skrzynia, lampa, okno, otwór), t_mine (stempel i strefa zawału, `--cavenet`) albo t_dig (strefy
@@ -833,7 +833,8 @@ func _destruction_sig() -> String:
 		var sp: PackedFloat32Array = w.splats
 		st += " hp=%d splats=%d/%s" % [roundi(float(w.hp)), sp.size() / 4, str(sp).md5_text().substr(0, 8)]
 	if not level.wall_def("Opening1").is_empty():
-		st += " bar=%d" % level.boards_of("Opening1")                 # pusty otwór zabity deskami (D2b)
+		var ob: Node = level.get_node_or_null("Opening1")
+		st += " bar=%d:%d" % [level.boards_of("Opening1"), int(ob.call("band_mask")) if ob != null and not ob.is_queued_for_deletion() else 0]   # deski w otworze (D2b) i maska pasów (S2)
 	var cr: Node = level.get_node_or_null("Crate1")
 	if cr != null:
 		st += " crate=%s" % ("gone" if bool(cr.get("exploded")) else "ok")
@@ -894,6 +895,13 @@ func _destruction_net_host() -> void:
 		var rc: Rect2 = pl.call("hit_rect")
 		for i in 3:                                                  # trzy kule M-83 w deski schowka (S1): HP i przestrzeliny u wszystkich
 			Combat.apply(pl, Combat.make_info(Weapons.M83, Weapons.def(Weapons.M83).damage, Vector2(rc.get_center().x, rc.position.y + 10.0 + 12.0 * i), Vector2.RIGHT, 1, "bullet"))
+	var ob: Node2D = level.get_node_or_null("Opening1")
+	if ob != null:
+		var feet: Vector2 = level.wall_def("Opening1")["pos"]
+		for i in 12:                                                 # kule M-83 w środkową deskę barykady, aż odpadnie (S2): u wszystkich jeden pas
+			if float(ob.bands[1]) <= 0.0:
+				break
+			Combat.apply(ob, Combat.make_info(Weapons.M83, Weapons.def(Weapons.M83).damage, Vector2(feet.x, feet.y - 24.0), Vector2.RIGHT, 1, "bullet"))
 	var t0 := Time.get_ticks_msec()
 	while multiplayer.get_peers().size() < 2 and Time.get_ticks_msec() - t0 < 30000:
 		await get_tree().create_timer(0.25).timeout
@@ -2543,6 +2551,17 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				for k in 5:
 					var at := Vector2(rc.get_center().x + float(k - 2) * 3.0, rc.position.y + rc.size.y * (0.18 + 0.16 * float(k)))
 					Combat.apply(sw, Combat.make_info(Weapons.SRUT8, 10.0, at, Vector2.LEFT, 1, "bullet")))
+		for a in OS.get_cmdline_user_args():                   # …i po 1 s pasy desek zestrzelone kulami M-83 (--shotbands=0,2 — numery od góry, S2)
+			if sw != null and a.begins_with("--shotbands=") and sw.has_method("band_at"):
+				var which := a.substr("--shotbands=".length()).split(",")
+				get_tree().create_timer(1.0).timeout.connect(func() -> void:
+					for s in which:
+						var bi := int(s)
+						for k in 20:
+							if not is_instance_valid(sw) or sw.is_queued_for_deletion() or bi >= (sw.bands as PackedFloat32Array).size() or float(sw.bands[bi]) <= 0.0:
+								break
+							var rc: Rect2 = sw.call("hit_rect")
+							Combat.apply(sw, Combat.make_info(Weapons.M83, Weapons.def(Weapons.M83).damage, Vector2(rc.get_center().x, rc.position.y + (float(bi) + 0.5) * 16.0), Vector2.LEFT, 1, "bullet")))
 		for a in OS.get_cmdline_user_args():                   # …i po 1 s N ciosów kilofem po 35 (--shotpick=N): stany kratki i desek (B2)
 			if sw != null and a.begins_with("--shotpick="):
 				var picks := int(a.substr("--shotpick=".length()))

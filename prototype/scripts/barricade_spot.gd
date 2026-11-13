@@ -2,7 +2,7 @@ extends Node2D
 ## Miejsce przybijania desek (DESTRUCTION_PLAN.md D2b) przy przegrodzie z desek: rozbite deski `%` i pusty otwór `:` (level.gd `_spawn_walls`).
 ##
 ## Gracz stoi przy otworze i TRZYMA [E] przez NAIL_TIME s — przybija jedną deskę (level.gd `nail_board`: koszt, przegroda, sieć); trzyma
-## dalej — przybija następną, aż do kompletu (level.gd `BOARDS`). Młotek stuka, więc praca to hałas: Stalker i wrogowie idą na stukanie.
+## dalej — przybija następną, aż do kompletu (level.gd `board_total` — deska na kafel wysokości otworu). Młotek stuka, więc praca to hałas: Stalker i wrogowie idą na stukanie.
 ## Puszczenie klawisza przerywa deskę (postęp przepada). Jak generator: peer zgłasza serwerowi tylko „trzymam / puściłem” (`_work_rpc`),
 ## serwer sam sprawdza zasięg, życie i koszt; postęp idzie do klientów przez `_sync`. Węzeł stoi przez całą misję — przegroda znika
 ## i wraca, miejsce zostaje. Stopy w (0, 0) jak przegroda.

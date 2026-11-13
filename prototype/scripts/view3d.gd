@@ -3102,7 +3102,7 @@ func _sync_drawn() -> void:
 				# rozbite zamurowane przejście (ta sama mapa): na podłodze zostaje gruz, a przy stropie wyszczerbione resztki muru
 				if pr.size() > 3 and String(pr[2]) == "wall" and String(pr[3]) == String(_level.get("map_id")):
 					_spawn_rubble((pr[1] as Node3D).position - Vector3(0.0, float(pr[4]) * 0.5, 0.0), float(pr[4]))
-				elif pr.size() > 3 and String(pr[2]) == "barrier" and (pr[1] as Node).has_meta("boards") and String(pr[3]) == String(_level.get("map_id")):
+				elif pr.size() > 3 and String(pr[2]) == "barrier" and (pr[1] as Node).has_meta("bands") and String(pr[3]) == String(_level.get("map_id")):
 					_spawn_board_remains(pr[1] as MeshInstance3D, float(pr[4]))     # rozbita barykada: słupki i wiszące deski zostają (B2)
 				elif pr.size() > 3 and String(pr[2]) == "barrier" and (pr[1] as Node).has_meta("grate_size") and String(pr[3]) == String(_level.get("map_id")):
 					_spawn_grate_remains(pr[1] as MeshInstance3D, float(pr[4]), pr[0] if is_instance_valid(pr[0]) else null)   # rama w otworze, skrzydło na podłodze (B2)
@@ -4113,7 +4113,6 @@ func _support_model(h: float, away: float, reach := 0.0) -> Node3D:
 ## do niej (y–z) na środku kafla, na całą głębokość od ściany tła (−DEPTH_BACK) do przodu brył (DEPTH_FRONT) i od podłogi do stropu; bryła
 ## pod spodem jest przezroczysta. Kamera widzi przód konstrukcji i, z perspektywy, lico od strony gracza. Stany liczy każdy peer z HP
 ## i plam, które przychodzą z serwera; zerwane deski, odgięte skrzydło i wypadające śruby są tylko w widoku (bez fizyki symulacji).
-const BARRICADE_BOARDS := 3                 ## części wytrzymałości barykady (`breakable.boards`): tyle desek przybija się w otworze `:`
 const BAR_POST := 0.12                      ## m: przekrój słupka barykady
 const BAR_BOARD_T := 0.04                   ## m: grubość deski
 const BAR_POST_MID := 0.36                  ## środkowy słupek: ułamek głębokości od ściany tła (świat z ≈ −1,1 — za drogą postaci)
@@ -4256,46 +4255,39 @@ func _untear_board(bi: MeshInstance3D) -> void:
 		for c in bi.get_children():
 			(c as Node3D).visible = true
 
-## Barykada (DESTRUCTION_PLAN.md D2b, B2): widać tyle desek, ile przegroda ma wytrzymałości (`breakable.boards`, BARRICADE_BOARDS części).
-## Kolejność desek z nazwy, przemieszana (u wszystkich ta sama), więc jedna przybita deska z trzech to kilka desek przez cały otwór.
-## Odłupana deska sypie drzazgą i w połowie przypadków wisi na przednim słupku; zastrzały odpadają przy pierwszej utraconej części.
+## Barykada (DESTRUCTION_PLAN.md D2b, B2; SHOOT_DESTRUCTION_PLAN.md S2): deska stoi, póki stoi pas przegrody na jej wysokości
+## (`breakable.band_mask`, pas = kafel od góry) — obraz = symulacja: tam, gdzie deski brak, w 2D jest szczelina dla wzroku, kul i dźwięku.
+## Odłupana deska sypie drzazgą i w połowie przypadków wisi na przednim słupku; zastrzały odpadają przy pierwszym utraconym pasie.
 ## Przybita na nowo (punkt kontrolny, wipe, barykadowanie) wraca na miejsce.
 func _sync_barricade(n: Node2D, mi: MeshInstance3D, h: float) -> void:
-	var want := int(n.call("boards", BARRICADE_BOARDS))
-	var had := int(mi.get_meta("boards", -1))
+	var rows := maxi(int(n.get("rows")), 1)
+	var want := int(n.call("band_mask")) if bool(n.call("uses_bands")) else (1 << rows) - 1
+	var had := int(mi.get_meta("bands", -1))
 	if want == had:
 		return
-	mi.set_meta("boards", want)
+	mi.set_meta("bands", want)
+	var full := (1 << rows) - 1
 	var front_z := float((mi.get_meta("post_z") as Array)[0])
-	var parts: Array = []
 	for c in mi.get_children():
-		if String(c.name).begins_with("Board"):
-			parts.append(c)
-		elif String(c.name).begins_with("Brace"):
-			var up := want >= BARRICADE_BOARDS
-			if (c as Node3D).visible and not up and had > want:
+		var nm := String(c.name)
+		if nm.begins_with("Brace"):
+			var up := want == full
+			if (c as Node3D).visible and not up and had >= 0:
 				_board_splinter(n, c as Node3D, h)
 			(c as Node3D).visible = up
-	var order: Array = range(parts.size())
-	var rng := RandomNumberGenerator.new()
-	rng.seed = absi(String(n.name).hash()) + 7
-	for i in range(order.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
-		var t: int = order[i]
-		order[i] = order[j]
-		order[j] = t
-	var show := int(ceil(float(parts.size()) * float(want) / float(BARRICADE_BOARDS)))
-	for k in order.size():
-		var bi := parts[order[k]] as MeshInstance3D
-		if k < show:
-			_untear_board(bi)
-			bi.visible = true
-		elif bi.visible and not bi.has_meta("hang"):
-			if had > want:
-				_board_splinter(n, bi, h)
-				bi.visible = _tear_board(bi, h, front_z)
-			else:
-				bi.visible = false
+		elif nm.begins_with("Board"):
+			var bi := c as MeshInstance3D
+			var rest: Transform3D = bi.get_meta("rest") if bi.has_meta("rest") else bi.transform
+			var band := clampi(int((h * 0.5 - rest.origin.y) / h * float(rows)), 0, rows - 1)
+			if want & (1 << band):
+				_untear_board(bi)
+				bi.visible = true
+			elif bi.visible and not bi.has_meta("hang"):
+				if had >= 0 and had & (1 << band):
+					_board_splinter(n, bi, h)
+					bi.visible = _tear_board(bi, h, front_z)
+				else:
+					bi.visible = false
 
 ## Drzazga 2D (z modelem pre-fraktury desek) z miejsca odłupanej deski — na drodze postaci, na wysokości deski.
 func _board_splinter(n: Node2D, part: Node3D, h: float) -> void:

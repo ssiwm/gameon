@@ -53,7 +53,7 @@ const HIT_SLOW_TIME := 1.2
 const HIT_SLOW := 0.4
 const HIT_STAGGER := 0.7
 const STAGGER_COOLDOWN := 3.0
-const SMASH_DMG := 20.0         ## cios w barykadę = jedna deska (level.gd BOARDS = 3 na 60 HP)
+const SMASH_DMG := 20.0         ## cios w barykadę: 20 z 60 HP — pas na wysokości ciosu i sąsiedni (pas = 60 / kafle otworu, S2)
 const SMASH_EVERY := 1.1        ## s między ciosami: pełna barykada ≈ 3 s plus dojście
 const SMASH_FIRST := 0.45       ## s od stanięcia pod barykadą do pierwszego ciosu
 const SMASH_STAND := 7.0        ## px przed barykadą, skąd bije

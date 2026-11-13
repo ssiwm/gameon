@@ -195,7 +195,7 @@ func _collect(p: Node) -> void:
 	var adit_open := false
 	if adit_zone is Rect2 and (adit_zone as Rect2).has_point(p.global_position) and lvl_n.has_method("boards_of"):
 		for sp in p.get_tree().get_nodes_in_group("barricade_spots"):
-			if (adit_zone as Rect2).grow(16.0).has_point((sp as Node2D).global_position) and int(lvl_n.boards_of(String(sp.get("wall_name")))) < int(lvl_n.BOARDS):
+			if (adit_zone as Rect2).grow(16.0).has_point((sp as Node2D).global_position) and int(lvl_n.boards_of(String(sp.get("wall_name")))) < int(lvl_n.board_total(String(sp.get("wall_name")))):
 				adit_open = true
 				break
 	_queue("adit", adit_open, false)

@@ -36,6 +36,8 @@ const TILE := 16.0
 ##   debris   kolor odłamków                         chips   ile odłamków przy rozbiciu
 ##   dust     kurz przy uderzeniu / przy rozbiciu    mat     znacznik trafienia (Arsenal.Mat)
 ##   chip     [świeży przełom, głąb wyrwy] — mnożniki barwy plam w masce uszkodzeń widoku 3D (`damage_mask.gd`, ~1 = bez zmian)
+##   bands    deski odpadają pasami (SHOOT_DESTRUCTION_PLAN.md S2): pas na kafel wysokości, każdy z równą częścią HP (`bands`); pas na zero —
+##            szczelina na całą jego wysokość dla wzroku, światła, kul i dźwięku (`hole_at`), ruch i nawigacja dalej zamknięte do rozbicia całości
 ##   layer    warstwa ciała (domyślnie 1 — bryła świata; kratka 128 — tylko ruch, jak rama okna)
 ##   holes    mnożnik promienia plamy dla dziury na wylot (brak pola — materiał bez dziur)
 ##   surface  powierzchnia trafienia kulą (Vfx.impact: odpryski i dźwięk)
@@ -52,7 +54,7 @@ const MATERIALS := {
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
 		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)],
 		"shot": {"bullet": 0.0, "slug": 0.0, "rail": 0.0}},           # kule tylko wyszczerbiają (decyzja 2): cegła = kilof albo wybuch
-	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "bullet", "pellet", "slug", "rail", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood", "label": "Boards",
+	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "bullet", "pellet", "slug", "rail", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "bands": true, "surface": "wood", "label": "Boards",
 		"shot": {"bullet": 0.5, "slug": 1.0, "pellet": 1.0, "rail": 1.0, "pen_ref": 1.0, "pen_cost": 0.8, "hole_r": 0.45},
 		"hit_snd": ["wood_hit", 3, -8.0, 1.0], "break_snd": ["wood_break", 3, -2.0, 1.0],
 		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
@@ -93,7 +95,8 @@ const MAX_HOLES := 64            ## pamiętanych dziur; ponad limit łączą si�
 
 var mat_id := "brick"            ## klucz w MATERIALS (`material` zajmuje CanvasItem)
 var rows := 3
-var hp := -1.0                   ## < 0 przed `_ready`: pełne `hp` materiału
+var hp := -1.0                   ## < 0 przed `_ready`: pełne `hp` materiału; materiał z pasami — suma `bands`
+var bands := PackedFloat32Array()   ## HP pasów od góry (materiał z `bands`; pas = kafel wysokości); przed `_ready` pusty — z `hp` od dołu
 var splats := PackedFloat32Array()   ## plamy u tego peera: po 4 liczby (u, v w ułamkach `hit_rect`, v = 0 u góry; promień px; stopień 0–2)
 var splat_total := 0             ## ile plam przyszło łącznie (widok 3D odciska tylko nowe)
 var holes := PackedFloat32Array()    ## dziury na wylot u tego peera: po 3 liczby (u, v jak w `splats`, promień px) — z plam, więc wszędzie te same
@@ -151,6 +154,10 @@ func _ready() -> void:
 	_seed = absi(String(name).hash())
 	if hp < 0.0:
 		hp = max_hp()
+	if uses_bands():
+		if bands.size() != rows:
+			bands = bands_from_frac(hp / max_hp())
+		hp = _bands_sum(bands)
 	var body := StaticBody2D.new()
 	body.collision_layer = int(mat_def().get("layer", 1))
 	body.collision_mask = 0
@@ -199,7 +206,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	if kind == "blast" and m.has("blasts"):
 		info = info.duplicate()                   # słownik należy do wołającego (Combat.explode)
 		info["amount"] = maxf(float(info["amount"]), max_hp() / float(m["blasts"]) + 0.01)
-	hp -= float(info["amount"])
+	_take_damage(float(info["amount"]), kind, info.get("pos", body_center()))
 	_batch_noise_add(float(m["n_hit"]) * float(N_KIND.get(kind, 1.0)))
 	var broken := hp <= 0.0
 	_pending.append_array(_splat_for(info, kind))
@@ -224,6 +231,118 @@ static func shot_pen_mul(info: Dictionary, kind: String, shot: Dictionary) -> fl
 ## Ile energii przebicia (WeaponDef.pen) zabiera przegroda (projectile.gd `pen_cost`); INF — kula w niej zostaje.
 func shot_pen_cost() -> float:
 	return float((mat_def().get("shot", {}) as Dictionary).get("pen_cost", INF))
+
+# ---------------------------------------------------------------- pasy desek (SHOOT_DESTRUCTION_PLAN.md S2)
+
+func uses_bands() -> bool:
+	return bool(mat_def().get("bands", false)) and rows > 0
+
+func band_hp() -> float:
+	return max_hp() / float(maxi(rows, 1))
+
+## Pasy z ułamka wytrzymałości: pełne od dołu (barykada z jednej deski to najniższy pas — najpierw zamyka przejście), reszta ułamka w pasie
+## nad nimi.
+func bands_from_frac(frac: float) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(rows)
+	var left := max_hp() * clampf(frac, 0.0, 1.0)
+	for i in range(rows - 1, -1, -1):
+		out[i] = minf(band_hp(), left)
+		left = maxf(0.0, left - out[i])
+	return out
+
+static func _bands_sum(b: PackedFloat32Array) -> float:
+	var t := 0.0
+	for v in b:
+		t += v
+	return t
+
+## Pas na wysokości `y` (świat), od góry; poza przegrodą — najbliższy.
+func band_at(y: float) -> int:
+	var rc := hit_rect()
+	return clampi(int((y - rc.position.y) / TILE), 0, maxi(rows - 1, 0))
+
+## Maska stojących pasów (bit i = pas i od góry) — widok 3D zrzuca deski z pasów, które spadły.
+func band_mask() -> int:
+	var m := 0
+	for i in bands.size():
+		if bands[i] > 0.0:
+			m |= 1 << i
+	return m
+
+## Ile pasów stoi (nadłamany też).
+func bands_up() -> int:
+	var n := 0
+	for v in bands:
+		if v > 0.0:
+			n += 1
+	return n
+
+## Serwer: obrażenia. Materiał z pasami: wybuch i szarża ranią wszystkie stojące pasy po równo, reszta — pas na wysokości trafienia; nadwyżka
+## ponad HP pasa przechodzi na najbliższy stojący (cios kilofa łamie deski tyle samo razy co dotąd, a suma HP jest ta sama).
+func _take_damage(amount: float, kind: String, pos: Vector2) -> void:
+	if not uses_bands() or bands.size() != rows:
+		hp -= amount
+		return
+	var b := bands.duplicate()
+	var left := amount
+	if kind in ["blast", "charge"]:
+		for _k in rows:
+			var up: Array = []
+			for i in rows:
+				if b[i] > 0.0:
+					up.append(i)
+			if up.is_empty() or left <= 0.0:
+				break
+			var each := left / float(up.size())
+			left = 0.0
+			for i in up:
+				var d := minf(b[i], each)
+				b[i] -= d
+				left += each - d
+	else:
+		var i0 := band_at(pos.y)
+		for step in rows * 2:
+			if left <= 0.0:
+				break
+			var off := (step + 1) / 2 * (1 if step % 2 == 1 else -1)    # 0, +1, −1, +2, −2…
+			var i := i0 + off
+			if i < 0 or i >= rows or b[i] <= 0.0:
+				continue
+			var d := minf(b[i], left)
+			b[i] -= d
+			left -= d
+	if left > 0.0:
+		for i in rows:
+			b[i] = 0.0                                    # nadwyżka ponad całość — deski rozbite
+	_apply_bands(b)
+
+## Nowe HP pasów (serwer po trafieniu, peery z paczki, przybita deska, reset): suma do `hp`; inna maska stojących pasów — szczeliny
+## zmieniły się, więc siatka dźwięku w kaflach przegrody od nowa.
+func _apply_bands(b: PackedFloat32Array) -> void:
+	if not uses_bands() or b.size() != rows:
+		return
+	var m0 := band_mask()
+	bands = b.duplicate()
+	for i in rows:
+		bands[i] = maxf(bands[i], 0.0)
+	hp = _bands_sum(bands)
+	if band_mask() != m0 and is_inside_tree():
+		_holes_changed()
+
+## U wszystkich peerów (level.gd `_nail_rpc`): przybita deska — nowe pasy, plamy zostają.
+func set_bands(b: PackedFloat32Array) -> void:
+	_apply_bands(b)
+	queue_redraw()
+
+## Pasy po przybiciu deski: najniższy pas na zero wraca cały (najpierw trzeba zamknąć przejście); pusty, gdy wszystkie stoją.
+func bands_nailed() -> PackedFloat32Array:
+	var b := bands.duplicate() if bands.size() == rows else bands_from_frac(hp / max_hp())
+	for i in range(rows - 1, -1, -1):
+		if b[i] <= 0.0:
+			b[i] = band_hp()
+			return b
+	return PackedFloat32Array()
 
 ## Serwer: trafienie bez obrażeń, ale z plamą stopnia 0 (cegła od kuli) i cichym stuknięciem.
 func _chip(info: Dictionary, kind: String) -> void:
@@ -318,14 +437,14 @@ func _flush() -> void:
 	batches_sent += 1
 	var frac := clampf(hp / max_hp(), 0.0, 1.0)
 	if NoiseMgr.has_network():
-		_splat_rpc.rpc(data, frac)
+		_splat_rpc.rpc(data, frac, bands)
 	else:
-		_splat_rpc(data, frac)
+		_splat_rpc(data, frac, bands)
 
 ## U wszystkich peerów: plamy z paczki, stan wytrzymałości, jeden dźwięk i kurz na paczkę.
 @rpc("authority", "call_local", "reliable")
-func _splat_rpc(data: PackedFloat32Array, frac: float) -> void:
-	var n := _add_splats(data, frac)
+func _splat_rpc(data: PackedFloat32Array, frac: float, b: PackedFloat32Array) -> void:
+	var n := _add_splats(data, frac, true, b)
 	if n == 0:
 		return
 	var m := mat_def()
@@ -344,13 +463,17 @@ func _splat_rpc(data: PackedFloat32Array, frac: float) -> void:
 ## Dołączający: wszystkie zapamiętane plamy i dziury naraz, bez dźwięku i kurzu (level.gd `send_walls_to`). Dziury idą osobno, bo lista plam
 ## trzyma tylko MAX_SPLATS ostatnich — przy ostrzale starsze przestrzeliny wypadłyby z niej (S1).
 @rpc("authority", "call_remote", "reliable")
-func _splat_sync(data: PackedFloat32Array, frac: float, hl: PackedFloat32Array) -> void:
-	_add_splats(data, frac, false)
+func _splat_sync(data: PackedFloat32Array, frac: float, hl: PackedFloat32Array, b: PackedFloat32Array) -> void:
+	_add_splats(data, frac, false, b)
 	_set_holes(hl)
 
-## `derive` — dziury z plam (paczka trafień); bez — dziury przychodzą gotowe (`_set_holes`).
-func _add_splats(data: PackedFloat32Array, frac: float, derive := true) -> int:
-	hp = max_hp() * clampf(frac, 0.0, 1.0)
+## `derive` — dziury z plam (paczka trafień); bez — dziury przychodzą gotowe (`_set_holes`). `b` — HP pasów (materiał z pasami); pusty —
+## wytrzymałość z ułamka `frac`.
+func _add_splats(data: PackedFloat32Array, frac: float, derive := true, b := PackedFloat32Array()) -> int:
+	if uses_bands():
+		_apply_bands(b if b.size() == rows else bands_from_frac(frac))
+	else:
+		hp = max_hp() * clampf(frac, 0.0, 1.0)
 	var n := data.size() / 4
 	splats.append_array(data.slice(0, n * 4))
 	if splats.size() > MAX_SPLATS * 4:
@@ -415,6 +538,8 @@ func _cap_holes() -> void:
 ## Dziura na wylot na wysokości `y` (świat): promień poziomy na tej wysokości przechodzi przez przegrodę (`sight.gd`). Przegroda jest wąska
 ## (1 kafel), więc liczy się tylko wysokość — szerokość dziury na froncie to obraz w widoku 3D.
 func hole_at(y: float) -> bool:
+	if _band_open(y):
+		return true
 	if holes.is_empty():
 		return false
 	var rc := hit_rect()
@@ -431,6 +556,8 @@ func hole_at(y: float) -> bool:
 ##       Bez tego przestrzeliny serii w jeden punkt nakładają się, ich środki zakrywają cały pas rozrzutu i deska przestaje obrywać.
 ## Z kilku dziur na tej wysokości liczy się ta, która przepuszcza najłatwiej.
 func hole_pass(y: float) -> float:
+	if _band_open(y):
+		return 0.0                                        # odpadnięty pas desek (S2): szczelina na całą jego wysokość
 	if holes.is_empty():
 		return -1.0
 	var rc := hit_rect()
@@ -449,9 +576,21 @@ func hole_pass(y: float) -> float:
 		out = f if out < 0.0 else minf(out, f)
 	return out
 
+## Pas desek na wysokości `y` odpadł (S2) — w obrębie przegrody.
+func _band_open(y: float) -> bool:
+	if not uses_bands() or bands.size() != rows:
+		return false
+	var rc := hit_rect()
+	return y >= rc.position.y and y <= rc.end.y and bands[band_at(y)] <= 0.0
+
 ## Czy któraś dziura sięga w pas wysokości od `y0` do `y1` (świat) — kafel siatki dźwięku przez nią otwarty (level.gd `_is_sound_solid`).
 func hole_in(y0: float, y1: float) -> bool:
 	var rc := hit_rect()
+	if uses_bands() and bands.size() == rows:
+		for i in rows:
+			var top := rc.position.y + float(i) * TILE
+			if bands[i] <= 0.0 and top + TILE > y0 and top < y1:
+				return true
 	for i in holes.size() / 3:
 		var hy := rc.position.y + holes[i * 3 + 1] * rc.size.y
 		if hy + holes[i * 3 + 2] > y0 and hy - holes[i * 3 + 2] < y1:
@@ -467,7 +606,7 @@ func _holes_changed() -> void:
 ## U wszystkich peerów (level.gd `_reset_breakables_rpc`): uszkodzenia zastąpione stanem `data` / `frac` — wipe (czysto) albo punkt
 ## kontrolny bossa (plamy z przebudzenia). Czekająca paczka przepada. `hl` — dziury z migawki (level.gd `breakables_state`); null —
 ## dziury z samych plam (stary zapis bez dziur).
-func reset_damage(data: PackedFloat32Array, frac: float, hl: Variant = null) -> void:
+func reset_damage(data: PackedFloat32Array, frac: float, hl: Variant = null, b := PackedFloat32Array()) -> void:
 	_pending = PackedFloat32Array()
 	splats = PackedFloat32Array()
 	splat_total = 0
@@ -476,29 +615,31 @@ func reset_damage(data: PackedFloat32Array, frac: float, hl: Variant = null) -> 
 	hole_total = 0
 	damage_epoch += 1
 	if hl is PackedFloat32Array:
-		_add_splats(data, frac, false)
+		_add_splats(data, frac, false, b)
 		holes = (hl as PackedFloat32Array).duplicate()
 		_cap_holes()
 		hole_total = holes.size() / 3
 	else:
-		_add_splats(data, frac)
+		_add_splats(data, frac, true, b)
 	if had_holes != not holes.is_empty() or not holes.is_empty():
 		_holes_changed()
 	queue_redraw()
 
-## U wszystkich peerów (level.gd `_nail_rpc`): przybita deska — nowa wytrzymałość (ułamek), plamy zostają.
+## Nowa wytrzymałość (ułamek), plamy zostają — przegroda bez pasów (barykada z desek idzie przez `set_bands`).
 func set_hp_frac(frac: float) -> void:
 	hp = max_hp() * clampf(frac, 0.0, 1.0)
 	queue_redraw()
 
 ## Ile z `n` desek stoi (widok 3D barykady): nadłamana deska dalej wisi.
 func boards(n: int) -> int:
+	if uses_bands() and bands.size() == rows:
+		return bands_up()
 	return clampi(ceili(hp / max_hp() * float(n) - 0.001), 0, n)
 
 ## Serwer: stan dla dołączającego (pusty, gdy element nietknięty).
 func send_state_to(peer_id: int) -> void:
 	if not splats.is_empty() or hp < max_hp():
-		_splat_sync.rpc_id(peer_id, splats, clampf(hp / max_hp(), 0.0, 1.0), holes)
+		_splat_sync.rpc_id(peer_id, splats, clampf(hp / max_hp(), 0.0, 1.0), holes, bands)
 
 ## Rozpad na bryły (DESTRUCTION_PLAN.md D0): `chunks` brył z materiału, rozłożonych po prostokącie elementu siatką z odchyleniem, lekko
 ## w bok i w dół — mur osypuje się w miejscu, a nie wybucha. Z ziarna (`map_id` + nazwa), więc u wszystkich peerów te same miejsca,

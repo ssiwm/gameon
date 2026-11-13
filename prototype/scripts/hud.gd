@@ -2290,8 +2290,9 @@ func _prompt_candidates() -> Array:
 		# barykadowanie (D2b): ile desek już stoi, zapas desek drużyny albo cena w złomie
 		var lvl := get_tree().get_first_node_in_group("level")
 		var have := int(bar.boards())
+		var total := int(lvl.board_total(String(bar.wall_name)))          # tyle desek, ile pasów (kafli) ma otwór (S2)
 		if float(bar.progress) > 0.0:
-			add.call(tr("Nailing a board…  %d/%d  ·  loud") % [have + 1, int(lvl.BOARDS)], float(bar.progress), UiTheme.OK)
+			add.call(tr("Nailing a board…  %d/%d  ·  loud") % [have + 1, total], float(bar.progress), UiTheme.OK)
 		else:
 			match String(bar.local_reason):
 				"blocked":
@@ -2300,7 +2301,7 @@ func _prompt_candidates() -> Array:
 					add.call(tr("No boards — break crates for planks (or carry %d scrap)") % int(lvl.NAIL_SCRAP), -1.0, UiTheme.MUTED)
 				_:
 					var cost := (tr("boards: %d") % int(lvl.plank_stock)) if int(lvl.plank_stock) > 0 else (tr("%d scrap") % int(lvl.NAIL_SCRAP))
-					add.call(Actions.fmt(tr("Hold [{interact}]  Board up  %d/%d  (loud · %s)")) % [have, int(lvl.BOARDS), cost], -1.0, UiTheme.ACCENT)
+					add.call(Actions.fmt(tr("Hold [{interact}]  Board up  %d/%d  (loud · %s)")) % [have, total, cost], -1.0, UiTheme.ACCENT)
 	if _near_workshop():
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
 	if _near_lathe():
