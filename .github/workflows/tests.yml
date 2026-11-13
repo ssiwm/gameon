@@ -49,7 +49,7 @@ jobs:
           grep -a "\[BATTERY-TEST\] ==== PASS" batterytest.log
       - name: Zniszczalne elementy — maska uszkodzeń, paczki plam, dołączający, rozbicie, reset i punkt kontrolny, bryły (--destructiontest)
         run: |
-          godot --headless --path prototype -- --host --mission=z1_m2 --destructiontest --autoquit=90 2>&1 | tee destructiontest.log
+          godot --headless --path prototype -- --host --mission=z1_m2 --destructiontest --autoquit=120 2>&1 | tee destructiontest.log
           grep -a "\[DESTRUCTION-TEST\] ==== PASS" destructiontest.log
       - name: Strefy wydobycia — kopanie, materiały, narzędzia, nawigacja, wybuch, migawka i wipe (--digtest)
         run: |

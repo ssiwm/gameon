@@ -1176,7 +1176,7 @@ func _t_phase4() -> void:
 	var all_known := true
 	for mk in BrickWall.MATERIALS:
 		for bk in BrickWall.MATERIALS[mk]["breaks"]:
-			all_known = all_known and bk in ["pick", "blade", "bullet", "pellet", "blast", "charge", "claw"]
+			all_known = all_known and bk in ["pick", "blade", "bullet", "pellet", "slug", "blast", "charge", "claw"]
 	check("materiały: cegła = kilof, wybuch, szarża; komplet %s, same znane rodzaje trafień" % str(BrickWall.MATERIALS.keys()),
 		BrickWall.MATERIALS["brick"]["breaks"] == ["pick", "blast", "charge"] and all_known
 		and BrickWall.MATERIALS.keys() == ["brick", "planks", "sheet", "grate", "glass", "rubble", "support"])
