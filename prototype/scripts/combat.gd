@@ -111,10 +111,12 @@ static func apply_and_report(target: Node, info: Dictionary) -> Dictionary:
 ##   hits   [{collider, pos, normal, dist}] — cele w kolejności od lufy
 ##   wall   true, jeśli zatrzymała go ściana
 ##   wall_pos / wall_normal  punkt i normalna ściany (gdy wall)
+##   barriers [{node, pos, rid}] — przegrody (breakable.gd) na drodze bez dziury: przebite (`wall_px`) i ta, która zatrzymała promień (ostatnia,
+##            gdy `wall` i jej `pos` == `wall_pos`)
 ## `pierce` = ile dodatkowych celów przebija, `wall_px` = ile px ściany przebija (RAIL).
 static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2, length: float,
 		pierce: int, wall_px: float = 0.0, exclude: Array[RID] = [], rewind := -1.0) -> Dictionary:
-	var out := {"end": from + dir * length, "hits": [], "wall": false, "wall_pos": Vector2.ZERO, "wall_normal": Vector2.ZERO}
+	var out := {"end": from + dir * length, "hits": [], "wall": false, "wall_pos": Vector2.ZERO, "wall_normal": Vector2.ZERO, "barriers": []}
 	var ex: Array[RID] = exclude.duplicate()
 	var cur := from
 	var left := length
@@ -161,6 +163,10 @@ static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2,
 			cur = p
 			continue
 		if not is_target:
+			var bw := Sight.barrier_of(collider)
+			if bw != null:
+				# przegroda na drodze (SHOOT_DESTRUCTION_PLAN.md S1): szyna ją rani (weapon_controller `_server_rail`), wiązka nie
+				(out["barriers"] as Array).append({"node": bw, "pos": p, "rid": hit["rid"]})
 			# ściana: przebij cienką warstwę, jeśli broń pozwala
 			if wall_budget > 0.0:
 				var depth := _wall_depth(space, p, dir, wall_budget)

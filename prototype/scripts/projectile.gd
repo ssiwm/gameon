@@ -19,6 +19,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Sight := preload("res://scripts/sight.gd")
+const Breakable := preload("res://scripts/breakable.gd")
 
 const MASK_AUTH := Combat.LAYER_WORLD | Combat.LAYER_PLAYER | Combat.LAYER_TARGET
 const MASK_COSMETIC := Combat.LAYER_WORLD | Combat.LAYER_TARGET
@@ -259,16 +260,32 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 			continue
 		var bw := Sight.barrier_of(collider)
 		if bw != null:
-			# przegroda (breakable.gd): przez dziurę na tej wysokości kula leci dalej (u serwera i u klienta te same dziury); inaczej serwer
-			# zadaje trafienie — śrut łupie deski, kula się odbija (`breaks`); bez potwierdzenia trafienia, jak w ścianę
-			if bool(bw.call("hole_at", p.y)):
+			# przegroda (breakable.gd): przez środek dziury na tej wysokości pocisk leci dalej (u serwera i u klienta te same dziury), przez
+			# krawędź dziury rani ją połową obrażeń, a przez przestrzelinę kuli w pełni — i w obu razach leci dalej (decyzja 8); inaczej serwer zadaje trafienie (materiał decyduje, ile
+			# rani — pole `shot`), a kula z dość dużym przebiciem przechodzi słabsza (SHOOT_DESTRUCTION_PLAN.md S1). Bez potwierdzenia trafienia.
+			var shoots: bool = float(_def.blast_radius) <= 0.0 and String(_def.payload) == ""
+			var hole := float(bw.call("hole_pass", p.y))
+			if hole == 0.0 or (hole > 0.0 and not shoots):
 				_skip.append(hit["rid"])
 				cur = p
 				continue
-			if authoritative and _def.blast_radius <= 0.0 and String(_def.payload) == "":
+			if authoritative and shoots:
 				var dmg: float = float(_def.damage) * float(_def.falloff(at_dist)) * float(_def.boost_damage(_vel.length())) * _energy
+				if hole > 0.0:
+					dmg *= hole                              # krawędź dziury albo brzeg przestrzeliny (breakable.gd `hole_pass`)
 				Combat.apply(bw, Combat.make_info(weapon, dmg, p, direction, shooter_id, "bullet", build))
-			_world_hit(p, n, String((bw.call("mat_def") as Dictionary).get("surface", "")))
+			var surface := String((bw.call("mat_def") as Dictionary).get("surface", ""))
+			if hole > 0.0:
+				_barrier_fx(bw, p, n, surface, false)
+				_skip.append(hit["rid"])
+				cur = p
+				continue
+			if shoots and _def.pen > 0.0 and not sticks_on_hit() and _pass_through(bw):
+				_barrier_fx(bw, p, n, surface, true)
+				_skip.append(hit["rid"])
+				cur = p
+				continue
+			_world_hit(p, n, surface)
 			return true
 		# ściana (metal pod ostrym kątem — rykoszet: kula leci dalej odbita)
 		if _ricochet(p, n):
@@ -286,8 +303,11 @@ func _pass_through(node: Node) -> bool:
 	_energy = minf(_energy, _pen_left / float(_def.pen))
 	return true
 
-## Ile energii przebicia zabiera cel: skrzynia (drewno), beczka (stal), ciało.
+## Ile energii przebicia zabiera cel: skrzynia (drewno), beczka (stal), ciało, przegroda (breakable.gd, pole `shot.pen_cost` — deski 0,8,
+## cegła i reszta INF: kula w nich zostaje).
 static func pen_cost(node: Node) -> float:
+	if node.has_method("shot_pen_cost"):
+		return float(node.call("shot_pen_cost"))
 	if node.is_in_group("props"):
 		return PEN_CRATE if String(node.get("kind")) == "crate" else PEN_BARREL
 	return PEN_BODY
@@ -329,6 +349,18 @@ func _hit_target(node: Node, p: Vector2, at_dist: float) -> Dictionary:
 	var res := Combat.apply(node, info)
 	Combat.report(info, res)
 	return res
+
+## Pocisk przechodzi przez przegrodę (przebicie albo krawędź dziury): odpryski przy wlocie, a przy przebiciu także drzazgi po drugiej
+## stronie (wylot na krawędzi prostokąta przegrody). Lot trwa dalej.
+func _barrier_fx(bw: Node, p: Vector2, n: Vector2, surface: String, exit: bool) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	var parent: Node = lvl if lvl != null else get_parent()
+	Vfx.impact(parent, p, n, surface, false)
+	if not exit or absf(direction.x) < 0.1:
+		return
+	var rc: Rect2 = bw.call("hit_rect")
+	var ex := rc.end.x if direction.x > 0.0 else rc.position.x
+	Vfx.impact(parent, p + direction * ((ex - p.x) / direction.x), direction, surface, false)
 
 ## `surface_override` — powierzchnia przegrody (`breakable.gd`, pole `surface`), która nie jest kaflem mapy.
 func _world_hit(p: Vector2, n: Vector2, surface_override := "") -> void:

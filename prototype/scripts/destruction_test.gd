@@ -39,9 +39,10 @@ extends "res://scripts/stalker_test.gd"
 ## 16. Poprawki po playteście 1.1 (BARRIER_FIX_PLAN.md B0): kratkę rozbija jeden granat na brzegu promienia, gruz dwa (jeden nie);
 ##    granat dalej niż SUPPORT_BLAST_R od stempla go nie rusza, bliski tak, ładunek burzący (`demolition`) pełnym promieniem;
 ##    cios, który się odbił, daje strzelcowi komunikat raz na przegrodę (bot i wróg — nic); na 1.1 nie ma kratki, a jedyny otwór `:` stoi w sztolni (kol. 189, MAPS_PLAN.md §1.6 L2 — zabity zatrzymuje pościg).
-## 18. Ostrzał (SHOOT_DESTRUCTION_PLAN.md S0): rodzaj trafienia wg naboju (kartacz 40 mm to śrut, Brenneke — `slug`), prawdziwe pociski każdej
-##     broni i naboju w deski (tabela „strzałów do rozbicia” w wydruku), cegła od kul bez obrażeń, hałas uderzeń raz na paczkę (snop śrutu
-##     to jedno uderzenie, nie pięć).
+## 18. Ostrzał (SHOOT_DESTRUCTION_PLAN.md S0, S1): rodzaj trafienia wg naboju (kartacz 40 mm to śrut, Brenneke — `slug`), prawdziwe pociski
+##     każdej broni i naboju w deski (trafień do rozbicia jak w tabeli S1 ±1), cegła od kul tylko wyszczerbiona, hałas uderzeń raz na paczkę
+##     (snop śrutu to jedno uderzenie, nie pięć), przebicie desek (skrzynia za nimi), szyna, środek i krawędź dziury (decyzja 8), dziury
+##     pamiętane osobno od plam (migawka, reset, dołączający).
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -198,11 +199,12 @@ func _splats() -> void:
 		waited and w.batches_sent == 2 and w.splat_total == 3)
 	check("plama wybuchu: przy prawym brzegu (u %.2f), odprysk (stopień %d), promień %.0f px" % [w.splats[8], int(w.splats[11]), w.splats[10]],
 		is_equal_approx(w.splats[8], 1.0) and int(w.splats[11]) == 0 and is_equal_approx(w.splats[10], Breakable.SPLAT_R["blast"]))
+	var hp_b := float(w.hp)
 	var r_bullet := _hit(w, Weapons.M83, 8.0, "bullet", c)
 	_hit(w, Weapons.MACZETA, 30.0, "melee", c)
 	await _frames(Breakable.SPLAT_GAP + 0.05)
-	check("kula i maczeta w cegłę: bez obrażeń i bez plamy (plam %d, paczek %d)" % [w.splat_total, w.batches_sent],
-		not bool(r_bullet.get("hit", true)) and w.splat_total == 3 and w.batches_sent == 2)
+	check("kula w cegłę: wyszczerbienie bez obrażeń (plama stopnia %d), maczeta odbija się bez plamy (plam %d, paczek %d, HP %.0f)" % [int(w.splats[15]) if w.splats.size() >= 16 else -1, w.splat_total, w.batches_sent, w.hp],
+		not bool(r_bullet.get("hit", true)) and w.splat_total == 4 and w.batches_sent == 3 and w.splats[15] == 0.0 and absf(w.hp - hp_b) < 0.01)
 	var dl := _wall("DWall2", 80.0, "planks")
 	await _frames(0.1)
 	_hit(dl, Weapons.SPREAD12, 4.0, "bullet", dl.call("body_center"))
@@ -213,9 +215,9 @@ func _splats() -> void:
 	# dołączający: ten sam stan, ta sama maska
 	var j := _wall("DWall3", 120.0)
 	await _frames(0.1)
-	j._splat_sync(w.splats, w.hp / w.max_hp())
+	j._splat_sync(w.splats, w.hp / w.max_hp(), w.holes)
 	check("dołączający: te same plamy (%d) i ta sama wytrzymałość (%.0f / %.0f HP)" % [j.splat_total, j.hp, w.hp],
-		j.splats == w.splats and j.splat_total == 3 and absf(j.hp - w.hp) < 0.01)
+		j.splats == w.splats and j.splat_total == 4 and absf(j.hp - w.hp) < 0.01)
 	var ma := _mask_of(w)
 	var mb := _mask_of(j)
 	check("dołączający: maska identyczna z maską serwera", ma.get_data() == mb.get_data() and _max_r(ma) > 0.9)
@@ -224,7 +226,7 @@ func _splats() -> void:
 		many.append_array([0.5, float(k) / 100.0, 2.0, 0.0])
 	j._add_splats(many, 0.5)
 	check("limit: pamiętane %d ostatnich plam z %d (najstarsze wypadają z listy)" % [j.splats.size() / 4, j.splat_total],
-		j.splats.size() == Breakable.MAX_SPLATS * 4 and j.splat_total == 3 + Breakable.MAX_SPLATS + 6 and is_equal_approx(j.splats[j.splats.size() - 3], float(Breakable.MAX_SPLATS + 5) / 100.0))
+		j.splats.size() == Breakable.MAX_SPLATS * 4 and j.splat_total == 4 + Breakable.MAX_SPLATS + 6 and is_equal_approx(j.splats[j.splats.size() - 3], float(Breakable.MAX_SPLATS + 5) / 100.0))
 	j.queue_free()
 	w.queue_free()
 	await _frames(0.1)
@@ -716,7 +718,8 @@ func _barriers() -> void:
 	await _frames(0.1)
 	var pm: Vector2 = pl.call("body_center")
 	check("deski: zasłaniają wzrok i zatrzymują kule (bryła świata)", not Combat.clear_line(space, pm + Vector2(-30.0, 0.0), pm + Vector2(30.0, 0.0)))
-	check("deski: kula pistoletu ich nie rani", not bool(_hit(pl, Weapons.P64, 20.0, "bullet", pm).get("hit")))
+	var rp := _hit(pl, Weapons.P64, 20.0, "bullet", pm)
+	check("deski: kula pistoletu rani słabo (20 × 0,5 × przebicie 0,5 → HP %.1f)" % float(pl.hp), bool(rp.get("hit")) and absf(float(pl.hp) - 55.0) < 0.01)
 	check("deski: śrut rani", bool(_hit(pl, Weapons.SRUT8, 10.0, "bullet", pm).get("hit")) and float(pl.hp) < 60.0)
 	check("deski: pazury (claw) ranią", bool(Combat.apply(pl, {"type": "claw", "amount": 4.0, "pos": pm, "dir": Vector2.RIGHT}).get("hit")))
 	pl.queue_free()
@@ -816,7 +819,7 @@ func _barriers() -> void:
 
 # ---------------------------------------------------------------- 12. dziury w deskach (D2, PR 2)
 
-## D2, PR 2 — dziury na wylot w deskach: śrut, maczeta i kilof przebijają, kula i drapanie nie; przez dziurę widać, świeci latarka,
+## D2, PR 2 — dziury na wylot w deskach: śrut, maczeta i kilof przebijają, kula zostawia przestrzelinę (S1), drapanie nic; przez dziurę widać, świeci latarka,
 ## leci kula i promień (cios nie sięga), słychać (siatka dźwięku i okluzja); prawdziwy śrut z broni łupie deski; reset zabiera dziury.
 func _holes() -> void:
 	var space := level.get_world_2d().direct_space_state
@@ -834,11 +837,12 @@ func _holes() -> void:
 	_hit(pl, Weapons.SRUT8, 2.0, "bullet", at)      # śrut z daleka (słaby — stopień 0): odprysk bez dziury
 	_hit(pl, 0, 4.0, "claw", at)
 	await _frames(Breakable.SPLAT_GAP + 0.05)
-	check("dziury: kula, słaby śrut i drapanie nie przebijają (%d dziur)" % int(pl.hole_total), int(pl.hole_total) == 0 and not pl.hole_at(hy))
+	check("dziury: kula zostawia przestrzelinę (%d, promień %.2f px), słaby śrut i drapanie nie przebijają" % [int(pl.hole_total), float(pl.holes[2]) if pl.holes.size() >= 3 else 0.0],
+		int(pl.hole_total) == 1 and pl.hole_at(hy) and is_equal_approx(float(pl.holes[2]), 0.45) and not pl.hole_at(hy + 1.0))
 	_hit(pl, Weapons.SRUT8, 10.0, "bullet", at)
 	await _frames(Breakable.SPLAT_GAP + 0.05)
-	check("dziury: śrut przebija deskę (%d dziura, promień %.1f px), tylko na swojej wysokości" % [int(pl.hole_total), float(pl.holes[2]) if pl.holes.size() >= 3 else 0.0],
-		int(pl.hole_total) == 1 and pl.hole_at(hy) and not pl.hole_at(hy - 20.0) and not pl.hole_at(hy + 6.0))
+	check("dziury: śrut przebija deskę (%d dziury, promień %.1f px), tylko na swojej wysokości" % [int(pl.hole_total), float(pl.holes[5]) if pl.holes.size() >= 6 else 0.0],
+		int(pl.hole_total) == 2 and pl.hole_at(hy) and not pl.hole_at(hy - 20.0) and not pl.hole_at(hy + 6.0))
 	var a := Vector2(base.x - 40.0, hy)
 	var b := Vector2(base.x + 40.0, hy)
 	check("dziury: wzrok przez dziurę, obok niej nie", Sight.clear(space, a, b) and not Sight.clear(space, a - Vector2(0.0, 20.0), b - Vector2(0.0, 20.0)))
@@ -861,7 +865,7 @@ func _holes() -> void:
 	miss.launch(Weapons.P64, Vector2(base.x - 30.0, hy - 20.0), Vector2.RIGHT, 1, true)
 	get_tree().current_scene.add_child(miss)
 	await _frames(0.3)
-	var stopped := float(cr.hp) == c0 and float(pl.hp) == hp0
+	var stopped := float(cr.hp) == c0 and float(pl.hp) < hp0               # kula pistoletu rani deskę i w niej zostaje (przebicie 0,5 < 0,8)
 	var shot := Projectile.new()
 	shot.launch(Weapons.P64, Vector2(base.x - 30.0, hy), Vector2.RIGHT, 1, true)
 	get_tree().current_scene.add_child(shot)
@@ -1437,11 +1441,13 @@ func _barrier_fixes() -> void:
 		not rows.is_empty() and grates == 0 and openings == [Vector2i(189, 33)])
 	await _frames(0.1)
 
-# ---------------------------------------------------------------- 18. ostrzał (SHOOT_DESTRUCTION_PLAN.md S0)
+# ---------------------------------------------------------------- 18. ostrzał (SHOOT_DESTRUCTION_PLAN.md S0, S1)
 
 const Ammo := preload("res://scripts/ammo.gd")
 const SHOT_GAP := 0.12              ## s między strzałami w tabeli (pocisk z 24 px dolatuje w 1–4 klatki; paczka plam co 0,1 s)
-const SHOT_CAP := 30                ## najwięcej strzałów na pozycję tabeli
+const SHOT_CAP := 40                ## najwięcej strzałów na pozycję tabeli (M-83 US ok. 28)
+## Trafień do rozbicia desek 60 HP wg tabeli S1 (SHOOT_DESTRUCTION_PLAN.md): obrażenia × mnożnik rodzaju × clamp(pen / pen_ref, 0,25, 2).
+const SHOT_PLAN := {"P-83": 22, "M-83 PS": 13, "M-83 US": 28, "M-83 BZ": 8, "M-83 HOT": 10, "SPREAD-12 Brenneke": 2, "SINEW-6": 11}
 const BOUNCE_TRIES := 3             ## tyle strzałów bez ubytku HP = „odbija się”
 
 ## Numer typu naboju `id` w kalibrze broni `w` (0 = zwykły, -1 = brak).
@@ -1494,7 +1500,7 @@ func _shooting() -> void:
 		with_slug = with_slug and br.has("pellet") == br.has("slug")
 	check("ostrzał: Brenneke niszczy to samo co śrut (dotychczasowe zachowanie)", with_slug)
 
-	# tabela: prawdziwe pociski każdej broni i naboju w deski, celownik przesuwany po wysokości (wydruk; sprawdzane tylko zmiany S0)
+	# tabela: prawdziwe pociski każdej broni i naboju w deski, celownik przesuwany po wysokości (S1: liczby z planu ±1)
 	var rows := [["P-83", Weapons.P64, ""], ["M-83 PS", Weapons.M83, ""], ["M-83 US", Weapons.M83, "us"], ["M-83 BZ", Weapons.M83, "bz"],
 		["M-83 HOT", Weapons.M83, "hot"], ["SPREAD-12 śrut", Weapons.SPREAD12, ""], ["SPREAD-12 Brenneke", Weapons.SPREAD12, "slug"],
 		["PELLET-8", Weapons.SRUT8, ""], ["WRATH-4 kartacz", Weapons.GNIEW4, "buck"], ["SINEW-6", Weapons.CIEGNO6, ""]]
@@ -1531,11 +1537,13 @@ func _shooting() -> void:
 			pl.queue_free()
 		level._opened_walls.erase("Shoot%d" % i)
 		await _frames(0.05)
-	check("ostrzał: kartacz 40 mm łupie deski (dawniej odbijał się jak kula): %s strzałów" % str(shots_of.get("WRATH-4 kartacz")),
-		int(shots_of.get("WRATH-4 kartacz", -1)) > 0)
-	check("ostrzał: Brenneke i śrut łupią deski jak dotąd, kula pistoletu i M-83 dalej nie (S1): %s" % str(shots_of),
-		int(shots_of["SPREAD-12 Brenneke"]) > 0 and int(shots_of["SPREAD-12 śrut"]) > 0 and int(shots_of["PELLET-8"]) > 0
-		and int(shots_of["P-83"]) < 0 and int(shots_of["M-83 PS"]) < 0)
+	check("ostrzał: kartacz 40 mm, śrut i PELLET-8 łupią deski jak w S0: %s / %s / %s" % [str(shots_of.get("WRATH-4 kartacz")), str(shots_of.get("SPREAD-12 śrut")), str(shots_of.get("PELLET-8"))],
+		int(shots_of.get("WRATH-4 kartacz", -1)) > 0 and int(shots_of["SPREAD-12 śrut"]) > 0 and int(shots_of["PELLET-8"]) > 0)
+	var off := []
+	for k in SHOT_PLAN:
+		if absi(int(shots_of.get(k, -1)) - int(SHOT_PLAN[k])) > 1:
+			off.append("%s %d (plan %d)" % [k, int(shots_of.get(k, -1)), int(SHOT_PLAN[k])])
+	check("ostrzał: kule ranią deski wg przebicia — trafień do rozbicia jak w tabeli S1 ±1%s" % ("" if off.is_empty() else ": " + ", ".join(off)), off.is_empty())
 
 	# hałas uderzeń raz na paczkę: snop SPREAD-12 (5 śrucin, deski stoją) to jedno zdarzenie hałasu przegrody, nie pięć
 	var pn := _barrier("ShootNoise", base)
@@ -1554,15 +1562,164 @@ func _shooting() -> void:
 	if is_instance_valid(pn):
 		pn.queue_free()
 	level._opened_walls.erase("ShootNoise")
+	NoiseMgr.noise_added.disconnect(on_noise)
 
-	# cegła: kula odbija się (bez HP i bez plamy), jak dotąd
+	# cegła: kula ją tylko wyszczerbia — plamy stopnia 0, bez HP i bez komunikatu (decyzja 2)
 	var pb := _barrier("ShootBrick", base, "brick")
 	await _frames(0.1)
 	for k in 3:
-		await _fire(Weapons.M83, 0, muzzle, 20 + k)
-	check("ostrzał: cegła od kul M-83 bez obrażeń i bez plam (HP %.0f, plam %d)" % [float(pb.hp), int(pb.splat_total)],
-		float(pb.hp) == 120.0 and int(pb.splat_total) == 0)
-	NoiseMgr.noise_added.disconnect(on_noise)
+		await _fire(Weapons.M83, 0, _aim_row(muzzle, k), 20 + k)
+	var chips_ok := int(pb.splat_total) == 3
+	for k in (pb.splats as PackedFloat32Array).size() / 4:
+		chips_ok = chips_ok and pb.splats[k * 4 + 3] == 0.0
+	check("ostrzał: cegła od kul M-83 bez obrażeń, z wyszczerbieniami, bez komunikatu (HP %.0f, plam %d, komunikatów %d)" % [float(pb.hp), int(pb.splat_total), int(pb.bounce_shown)],
+		float(pb.hp) == 120.0 and chips_ok and int(pb.bounce_shown) == 0)
 	pb.queue_free()
 	level._opened_walls.erase("ShootBrick")
+	await _frames(0.1)
+
+	await _shot_through(base)
+	await _shot_rail(base)
+	await _shot_edges(base, muzzle, int(shots_of.get("M-83 PS", -1)))
+	await _shot_holes_state()
+
+## S1: kula z dość dużym przebiciem przechodzi przez deski słabsza i trafia skrzynię za nimi; kula pistoletu zostaje w desce.
+func _shot_through(base: Vector2) -> void:
+	var muzzle := Vector2(base.x - 24.0, base.y - 9.0)          # wysokość skrzyni za deskami
+	var share := {}
+	for row in [["P-83", Weapons.P64, ""], ["M-83 PS", Weapons.M83, ""], ["M-83 BZ", Weapons.M83, "bz"]]:
+		var t := 0 if String(row[2]) == "" else _ammo_t(int(row[1]), String(row[2]))
+		var pp := _barrier("ShootPen", base)
+		var cr := _crate(Vector2(base.x + 30.0, base.y))
+		await _frames(0.1)
+		var c0 := float(cr.hp)
+		var p0 := float(pp.hp)
+		await _fire(int(row[1]), Weapons.build_of(t, 0), muzzle, 300)
+		await _frames(0.1)
+		var d := Weapons.def_build(int(row[1]), Weapons.build_of(t, 0))
+		share[String(row[0])] = [snappedf((c0 - float(cr.hp)) / float(d.damage), 0.01), snappedf(p0 - float(pp.hp), 0.01)]
+		cr.queue_free()
+		pp.queue_free()
+		level._opened_walls.erase("ShootPen")
+		await _frames(0.05)
+	var ps: Array = share["M-83 PS"]
+	var bz: Array = share["M-83 BZ"]
+	var pm: Array = share["P-83"]
+	check("ostrzał: przebicie desek — za deskami [ułamek obrażeń, HP desek] P-83 %s, M-83 PS %s, BZ %s (plan: 0, ok. 33%%, ok. 67%%)" % [str(pm), str(ps), str(bz)],
+		float(pm[0]) == 0.0 and float(pm[1]) > 0.0 and absf(float(ps[0]) - 0.4 / 1.2) < 0.02 and absf(float(bz[0]) - 1.6 / 2.4) < 0.02 and float(ps[1]) > 0.0)
+
+## S1: szyna SPECTER-1 rozbija deski jednym strzałem i leci dalej (skrzynia za nimi); cegłę tylko wyszczerbia.
+func _shot_rail(base: Vector2) -> void:
+	var muzzle := Vector2(base.x - 24.0, base.y - 9.0)
+	var d := Weapons.def(Weapons.WIDMO1)
+	var pr := _barrier("ShootRail", base)
+	var cr := _crate(Vector2(base.x + 30.0, base.y))
+	await _frames(0.1)
+	var c0 := float(cr.hp)
+	player.weapons._server_rail(d, muzzle, Vector2.RIGHT, 1)
+	await _frames(0.2)
+	var broke := not is_instance_valid(pr) or pr.is_queued_for_deletion()
+	var crate_hit := not is_instance_valid(cr) or cr.is_queued_for_deletion() or float(cr.hp) < c0 or bool(cr.get("exploded"))
+	check("ostrzał: szyna rozbija deski jednym strzałem (%s) i leci dalej — skrzynia za nimi trafiona (%s)" % [str(broke), str(crate_hit)], broke and crate_hit)
+	if is_instance_valid(pr):
+		pr.queue_free()
+	if is_instance_valid(cr):
+		cr.queue_free()
+	level._opened_walls.erase("ShootRail")
+	var pb := _barrier("ShootRailBrick", base, "brick")
+	await _frames(0.1)
+	player.weapons._server_rail(d, muzzle, Vector2.RIGHT, 1)
+	await _frames(0.2)
+	check("ostrzał: szyna w cegłę — wyszczerbienie bez HP (HP %.0f, plam %d)" % [float(pb.hp), int(pb.splat_total)], float(pb.hp) == 120.0 and int(pb.splat_total) == 1)
+	pb.queue_free()
+	level._opened_walls.erase("ShootRailBrick")
+	await _frames(0.1)
+
+## Decyzja 8: środek dziury przepuszcza pocisk bez obrażeń, krawędź rani połową, przestrzelina kuli (bez środka) — w pełni; seria M-83 w jeden
+## punkt rozbija deski najwyżej o 30% wolniej niż z przesuwanym celownikiem (`spread_shots` — wynik tabeli), z bliska i z 5 m.
+func _shot_edges(base: Vector2, muzzle: Vector2, spread_shots: int) -> void:
+	var pe := _barrier("ShootEdge", base)
+	await _frames(0.1)
+	var y0 := base.y - 40.0
+	var y1 := base.y - 70.0
+	_hit(pe, Weapons.P64, 4.0, "bullet", Vector2(base.x, y0))
+	_hit(pe, Weapons.SRUT8, 10.0, "bullet", Vector2(base.x, y1))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	var got := [pe.hole_pass(y0), pe.hole_pass(y0 + 0.6), pe.hole_pass(y1), pe.hole_pass(y1 + 1.3), pe.hole_pass(y1 + 2.0)]
+	check("ostrzał: mnożnik przelotu — przestrzelina / obok niej / środek dziury śrutu / jej krawędź / obok %s" % str(got),
+		got == [1.0, -1.0, 0.0, Breakable.EDGE_DAMAGE, -1.0])
+	pe.queue_free()
+	level._opened_walls.erase("ShootEdge")
+	var limit := ceilf(float(spread_shots) * 1.3)
+	var res := {}
+	for dist in [16.0, 60.0]:
+		var ps := _barrier("ShootPoint", base)
+		await _frames(0.1)
+		var shots := 0
+		while shots < SHOT_CAP * 2 and is_instance_valid(ps) and not ps.is_queued_for_deletion():
+			await _fire(Weapons.M83, 0, Vector2(base.x - 8.0 - dist, muzzle.y), 500 + shots)
+			shots += 1
+		res[dist] = shots if not is_instance_valid(ps) or ps.is_queued_for_deletion() else -1
+		if is_instance_valid(ps):
+			ps.queue_free()
+		level._opened_walls.erase("ShootPoint")
+		await _frames(0.1)
+	check("ostrzał: seria M-83 w jeden punkt rozbija deski po %d strzałach z 1,3 m i %d z 5 m (z rozrzutem %d, limit %d)" % [int(res[16.0]), int(res[60.0]), spread_shots, int(limit)],
+		spread_shots > 0 and int(res[16.0]) > 0 and int(res[60.0]) > 0 and float(res[16.0]) <= limit and float(res[60.0]) <= limit)
+	# śrut w jeden punkt (pomiar S0: 30 strzałów zostawiało 18 HP) — wydruk
+	var pg := _barrier("ShootPointG", base)
+	await _frames(0.1)
+	var gs := 0
+	while gs < SHOT_CAP and is_instance_valid(pg) and not pg.is_queued_for_deletion():
+		await _fire(Weapons.SPREAD12, 0, muzzle, 900 + gs)
+		gs += 1
+	info("SPREAD-12 w jeden punkt: %s" % (("rozbite po %d strzałach" % gs) if not is_instance_valid(pg) or pg.is_queued_for_deletion() else "po %d strzałach %.0f HP" % [gs, float(pg.hp)]))
+	if is_instance_valid(pg):
+		pg.queue_free()
+	level._opened_walls.erase("ShootPointG")
+	await _frames(0.1)
+
+## S1: dziury pamiętane osobno od plam — 70 przestrzelin w deskach mapy 1.2: lista plam trzyma 64 ostatnie, dziur najwyżej MAX_HOLES
+## (najbliższe łączą się, żadna wysokość nie ginie); migawka stanu, reset do niej i dołączający mają wszystkie.
+func _shot_holes_state() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	var mp: Node2D = level.get_node_or_null(_planks_at_col(158))
+	check("ostrzał: deski schowka na 1.2 do próby dziur", mp != null)
+	if mp == null:
+		return
+	var rc: Rect2 = mp.call("hit_rect")
+	var ys: Array = []
+	for k in 70:
+		var y := rc.position.y + 3.0 + float(k) * 0.6
+		ys.append(y)
+		_hit(mp, Weapons.P64, 0.4, "bullet", Vector2(rc.get_center().x, y))
+	await _frames(Breakable.SPLAT_GAP + 0.05)
+	var all_in := func(n: Node2D) -> bool:
+		for y in ys:
+			if not bool(n.call("hole_at", y)):
+				return false
+		return true
+	check("ostrzał: 70 przestrzelin — plam %d, dziur %d (limit %d), każda wysokość dalej przestrzelona" % [(mp.splats as PackedFloat32Array).size() / 4, (mp.holes as PackedFloat32Array).size() / 3, Breakable.MAX_HOLES],
+		(mp.splats as PackedFloat32Array).size() / 4 == Breakable.MAX_SPLATS and (mp.holes as PackedFloat32Array).size() / 3 == Breakable.MAX_HOLES and all_in.call(mp))
+	var st: Dictionary = level.breakables_state()
+	var saved: Array = (st["damage"] as Dictionary).get(String(mp.name), [])
+	var hl: PackedFloat32Array = (mp.holes as PackedFloat32Array).duplicate()
+	level.reset_breakables()
+	await _frames(0.1)
+	mp = level.get_node_or_null(String(mp.name))
+	var clean := mp != null and (mp.holes as PackedFloat32Array).is_empty()
+	level.reset_breakables(st)
+	await _frames(0.1)
+	mp = level.get_node_or_null(String(mp.name)) if mp != null else null
+	check("ostrzał: migawka trzyma dziury osobno (%d), reset do niej je przywraca (czysto po wipe %s)" % [(saved[2] as PackedFloat32Array).size() / 3 if saved.size() >= 3 else -1, str(clean)],
+		saved.size() >= 3 and clean and mp != null and mp.holes == hl and all_in.call(mp))
+	var j := _barrier("ShootJoin", Vector2(-3000.0, -3000.0))
+	j.rows = mp.rows if mp != null else 3
+	await _frames(0.1)
+	if mp != null:
+		j._splat_sync(mp.splats, float(mp.hp) / float(mp.max_hp()), mp.holes)
+	check("ostrzał: dołączający dostaje wszystkie dziury (%d), nie tylko z 64 ostatnich plam" % ((j.holes as PackedFloat32Array).size() / 3), mp != null and j.holes == mp.holes)
+	j.queue_free()
+	level.reset_breakables()
 	await _frames(0.1)

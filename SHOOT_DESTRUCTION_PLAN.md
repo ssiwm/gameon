@@ -3,8 +3,8 @@
 Stan wyjścia: main 1.7.554 (761ec1d9, 2026-11-13). Kontynuacja `DESTRUCTION_PLAN.md` (D0–D5) i `BARRIER_FIX_PLAN.md` (B0–B3).
 Prośba autora: „strzały z broni powinny niszczyć drewniane przeszkody i ściany”. Ten plik to analiza i plan — **nic nie jest wdrożone**.
 
-**Stan (2026-11-13):** decyzje 1–8 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). S0 zrobione w 1.7.555 (gałąź `feat/shoot-s0`).
-Następny krok: S1.
+**Stan (2026-11-13):** decyzje 1–8 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). S0 zrobione w 1.7.555 (#665), S1 w 1.7.556
+(gałąź `feat/shoot-s1`). Następny krok: S2.
 
 Skala: kafel 16 px ≈ 1,31 m, więc 1 px ≈ 8 cm.
 
@@ -164,6 +164,20 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
   cegłę (HP stałe, plamy przybywa), szynę i stare sekcje 11–13. Sprawdzenia „kula pistoletu nie rani desek”
   (`destruction_test.gd:715`) i „kula nie przebija” (`:833`) zmieniają znaczenie. `test_weapons.sh` (391 + 21 sieć) i `--maptest`
   bez zmian, a w `test_net_session.sh` klient strzela kulami w deski: host, klient i dołączający mają te same HP, dziury i rozbicie.
+- **Zrobione w 1.7.556:** pole `shot` w `breakable.gd` (deski: kula 0,5, Brenneke / śrut / szyna 1, `pen_ref` 1, `pen_cost` 0,8, `hole_r` 0,45;
+  cegła: kula, Brenneke i szyna 0 — wyszczerbienie bez HP i komunikatu). Mnożnik przebicia tylko dla kuli i Brenneke (`PEN_KINDS`), śrut
+  i szyna bez niego. Tabela z testu (przesuwany celownik, 1,3 m): P-83 22, M-83 PS 13, US 28, BZ 8, HOT 10, Brenneke 2, SINEW-6 11,
+  śrut 2, PELLET-8 i kartacz 1 — zgodnie z planem (BZ 8 zamiast „ok. 7”). Przebicie: za deskami M-83 PS 33%, BZ 67%, pistolet 0.
+  **Doprecyzowanie decyzji 8 (z pomiaru):** przestrzelina kuli jest wielkości kuli, więc nie ma środka — pocisk przez nią łupie drewno
+  w pełni i leci dalej (`hole_pass` = 1). Z „połową promienia” także dla przestrzelin seria M-83 w jeden punkt z 1,3 m nie rozbijała
+  desek w ogóle (80 strzałów, 7 HP), a z 10 m — 38 HP: przestrzeliny nakładały się i ich środki zakrywały cały pas rozrzutu. Środek
+  i krawędź liczą się dla większych dziur (śrut, cios, wyrwa): przez środek bez obrażeń, przez krawędź połowa. Wynik: M-83 w jeden punkt
+  13 strzałów z 1,3 m i z 5 m (tyle co z rozrzutem), SPREAD-12 w jeden punkt 9 (w S0 — wcale). Szyna: `Combat.trace` zwraca `barriers`,
+  `_server_rail` je rani i po rozbiciu przegrody, która zatrzymała promień, prowadzi ślad dalej (najwyżej 3 przegrody); przewidywana smuga
+  strzelca-klienta dalej kończy się na deskach (kosmetyka). Dziury w stanie osobno od plam (`breakables_state`, `reset_damage`,
+  `_splat_sync`), `MAX_HOLES` 64 z łączeniem najbliższych w pionie (`_cap_holes`). Drzazgi po drugiej stronie przy przebiciu
+  (`projectile._barrier_fx`). `test_net_session.sh`: host strzela trzy kule M-83 w deski schowka 1.2 (pole `pl=` w stanie) — klient
+  i dołączający mają te same HP i przestrzeliny, migawka je trzyma, wipe czyści.
 
 ### S2 — deski odpadają pasami (1 PR)
 
@@ -236,6 +250,7 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
 
 8. **Pocisk w istniejącą dziurę?** Dziś przelatuje bez obrażeń, więc ostrzał w jeden punkt przestaje działać. *Zalecam:* przy krawędzi
    dziury (dalej niż pół promienia od środka) połowa obrażeń i lot dalej, przez środek bez obrażeń. Wariant: zostawić jak dziś.
+   *Doprecyzowane w S1 (pomiar):* przestrzelina kuli nie ma środka — kula przez nią rani w pełni i leci dalej; patrz „Zrobione w 1.7.556”.
 
 ## Kolejność i rozmiar
 

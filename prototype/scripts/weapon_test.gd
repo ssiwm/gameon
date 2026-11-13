@@ -1176,7 +1176,7 @@ func _t_phase4() -> void:
 	var all_known := true
 	for mk in BrickWall.MATERIALS:
 		for bk in BrickWall.MATERIALS[mk]["breaks"]:
-			all_known = all_known and bk in ["pick", "blade", "bullet", "pellet", "slug", "blast", "charge", "claw"]
+			all_known = all_known and bk in ["pick", "blade", "bullet", "pellet", "slug", "rail", "blast", "charge", "claw"]
 	check("materiały: cegła = kilof, wybuch, szarża; komplet %s, same znane rodzaje trafień" % str(BrickWall.MATERIALS.keys()),
 		BrickWall.MATERIALS["brick"]["breaks"] == ["pick", "blast", "charge"] and all_known
 		and BrickWall.MATERIALS.keys() == ["brick", "planks", "sheet", "grate", "glass", "rubble", "support"])
@@ -1190,8 +1190,9 @@ func _t_phase4() -> void:
 	var r_bullet := Combat.apply(w3, Combat.make_info(Weapons.M83, 8.0, w3.global_position, Vector2.RIGHT, 1, "bullet"))
 	var hp_bullet: float = w3.hp
 	var r_blade := Combat.apply(w3, Combat.make_info(Weapons.MACZETA, 30.0, w3.global_position, Vector2.RIGHT, 1, "melee"))
-	check("deski: kula odbija się (HP %.0f / %.0f), maczeta rani (HP %.0f, znacznik WOOD)" % [hp_bullet, w3.max_hp(), w3.hp],
-		not bool(r_bullet.get("hit", true)) and hp_bullet == w3.max_hp() and bool(r_blade.get("hit", false)) and w3.hp == w3.max_hp() - 30.0
+	# kula M-83 w deski (SHOOT_DESTRUCTION_PLAN.md S1): 8 × 0,5 (rodzaj) × 1,2 (przebicie) = 4,8
+	check("deski: kula rani wg przebicia (HP %.1f / %.0f), maczeta rani (HP %.1f, znacznik WOOD)" % [hp_bullet, w3.max_hp(), w3.hp],
+		bool(r_bullet.get("hit", false)) and absf(hp_bullet - (w3.max_hp() - 4.8)) < 0.01 and bool(r_blade.get("hit", false)) and absf(w3.hp - (hp_bullet - 30.0)) < 0.01
 		and int(r_blade.get("mat", -1)) == Arsenal.Mat.WOOD)
 	w3.queue_free()
 	free_dummies()
