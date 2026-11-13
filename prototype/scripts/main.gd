@@ -4332,6 +4332,70 @@ func _nav_len(nav: AStar2D, from: Vector2, to: Vector2) -> float:
 		d += path[i].distance_to(path[i - 1])
 	return d
 
+## Test map: cele trasy misji (generatory, gniazda, nieśmiertelniki, boss) od lewej do prawej — do szacunku długości trasy.
+func _route_goals(points: Array) -> Array:
+	var goals: Array = []
+	for p in points:
+		if String(p[0]).begins_with("Generator") or String(p[0]).begins_with("Nest") or String(p[0]).begins_with("Nieśmiertelnik"):
+			goals.append(p[1])
+	if level.boss_home != Vector2.ZERO:
+		goals.append(level.boss_home)
+	goals.sort_custom(func(u: Vector2, v: Vector2) -> bool: return u.x < v.x)
+	return goals
+
+## Test map: długość trasy start → cele → najdalsze wyjście (finał: wyjście po zawale) po grafie `nav`.
+func _route_len(nav: AStar2D, goals: Array) -> float:
+	var route := 0.0
+	var cur: Vector2 = level.spawns[0]
+	for gp in goals:
+		route += _nav_len(nav, cur, gp)
+		cur = gp
+	var far_exit: Vector2 = level.exits[0]
+	for ex in level.exits:
+		if (ex as Vector2).distance_to(cur) > far_exit.distance_to(cur):
+			far_exit = ex
+	if not level.exits_alt.is_empty():
+		far_exit = level.exits_alt[0]                # finał: wyjście po zawale zamiast powrotu na start
+	return route + _nav_len(nav, cur, far_exit)
+
+## Test map: droga po grafie z `a` do `b` (px) albo -1, gdy jej nie ma albo punkt nie leży przy grafie (dalej niż 12 px od węzła).
+func _nav_len_or_none(nav: AStar2D, a: Vector2, b: Vector2) -> float:
+	var ia := nav.get_closest_point(a)
+	var ib := nav.get_closest_point(b)
+	if ia < 0 or ib < 0 or nav.get_point_position(ia).distance_to(a) > 12.0 or nav.get_point_position(ib).distance_to(b) > 12.0:
+		return -1.0
+	if ia == ib:
+		return 0.0
+	if nav.get_id_path(ia, ib).is_empty():
+		return -1.0
+	return _nav_len(nav, a, b)
+
+## Test map (SHOOT_DESTRUCTION_PLAN.md S0, tylko wydruk): o ile każda stojąca przegroda skraca drogę po rozbiciu — objazd między jej bokami
+## (przy całej; „brak” = skrytka albo ślepy zaułek) i trasa misji start → cele → wyjście przy całej i rozbitej. Ostrzał z broni ma otwierać
+## deski z dystansu, więc przegląd map (etap S4) musi wiedzieć, które z nich to skrót na trasie, a które tylko schowek.
+func _shortcut_report(id: String, nav: AStar2D, points: Array) -> void:
+	var route_ok: bool = not level.exits.is_empty() and not level.spawns.is_empty()
+	var goals: Array = _route_goals(points) if route_ok else []
+	var route0: float = _route_len(nav, goals) if route_ok else 0.0
+	for wd in (level._wall_defs as Array).duplicate():
+		var wn := String(wd["name"])
+		if bool(wd.get("start_open", false)) or level._opened_walls.has(wn):
+			continue
+		var foot: Vector2 = wd["pos"] + Vector2(0.0, -2.0)
+		var left := foot + Vector2(-16.0, 0.0)
+		var right := foot + Vector2(16.0, 0.0)
+		var detour: float = _nav_len_or_none(nav, left, right)
+		level._open_wall(wn, false)
+		var through: float = _nav_len_or_none(nav, left, right)
+		var route1: float = _route_len(nav, goals) if route_ok else 0.0
+		level._close_wall(wd)
+		var cell := Vector2i(int(floor(float(wd["pos"].x) / 16.0)), int(round(float(wd["pos"].y) / 16.0)) - 1)
+		var txt := "[MAPTEST] %s: skrót %s (%s, kol. %d r. %d): objazd %s → %s" % [id, wn, String(wd.get("material", "")), cell.x, cell.y,
+			"brak" if detour < 0.0 else "%.0f px" % detour, "brak" if through < 0.0 else "%.0f px" % through]
+		if route_ok and route0 > 0.0:
+			txt += ", trasa misji %.0f → %.0f px (%+.0f%%)" % [route0, route1, (route1 - route0) / route0 * 100.0]
+		print(txt)
+
 ## Dev (--shotride, z1_m2): drezyna zasilona, gracz 1 na pokładzie pompuje przez cały podgląd (nagranie jazdy tunelem — FOREGROUND_PLAN.md).
 func _dev_ride() -> void:
 	var car := get_tree().get_first_node_in_group("handcar")
@@ -4583,29 +4647,13 @@ func _map_test() -> void:
 			bad.append_array(cv[0])
 			if int(cv[1]) > 0:
 				print("[MAPTEST] %s: strefy zawału: %d, stempli %d (wszystkie zawalone — cele, wyjścia i stanowiska dalej osiągalne)" % [id, int(cv[1]), level.supports_total()])
+			_shortcut_report(id, nav, points)       # o ile każda przegroda skraca drogę (SHOOT_DESTRUCTION_PLAN.md S0) — tylko wydruk
 			bad.append_array(level.open_walls_checked())
 		bad.append_array(_reach_errors(points, true))
 		if not level.exits.is_empty():           # kryjówka nie ma celów ani wyjścia
 			# szacunek długości trasy: start → cele (od lewej) → najdalsze wyjście; sam marsz 95 px/s, bez walki i czekania
-			var goals: Array = []
-			for p in points:
-				if String(p[0]).begins_with("Generator") or String(p[0]).begins_with("Nest") or String(p[0]).begins_with("Nieśmiertelnik"):
-					goals.append(p[1])
-			if level.boss_home != Vector2.ZERO:
-				goals.append(level.boss_home)
-			goals.sort_custom(func(u: Vector2, v: Vector2) -> bool: return u.x < v.x)
-			var route := 0.0
-			var cur: Vector2 = level.spawns[0]
-			for gp in goals:
-				route += _nav_len(nav, cur, gp)
-				cur = gp
-			var far_exit: Vector2 = level.exits[0]
-			for ex in level.exits:
-				if (ex as Vector2).distance_to(cur) > far_exit.distance_to(cur):
-					far_exit = ex
-			if not level.exits_alt.is_empty():
-				far_exit = level.exits_alt[0]                # finał: wyjście po zawale zamiast powrotu na start
-			route += _nav_len(nav, cur, far_exit)
+			var goals := _route_goals(points)
+			var route := _route_len(nav, goals)
 			print("[MAPTEST] %s: trasa start → %d celów → wyjście ≈ %.0f px, sam marsz ≈ %.0f s (%.1f min)" % [id, goals.size(), route, route / 95.0, route / 95.0 / 60.0])
 		if not level.collapse_rects.is_empty():   # zawał z danych mapy (finał 1.1, nadawanie 1.2) nie zostawia kieszeni bez wyjścia
 			var lost := _collapse_pockets()

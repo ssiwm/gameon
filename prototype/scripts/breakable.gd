@@ -20,6 +20,7 @@ extends Node2D
 ## Stopy w (0, 0) = dół elementu, środek kafla w poziomie; `rows` = wysokość w kaflach (level.gd liczy do sufitu).
 
 const Weapons := preload("res://scripts/weapons.gd")
+const Ammo := preload("res://scripts/ammo.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Mat := preload("res://scripts/arsenal.gd").Mat
 const SessionLog := preload("res://scripts/session_log.gd")
@@ -44,7 +45,7 @@ const MATERIALS := {
 	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0, "surface": "concrete", "label": "Bricked-up passage",
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
 		"debris": Color(0.5, 0.3, 0.24), "chips": 10, "chunks": 9, "dust": [1.0, 2.5], "mat": Mat.WORLD, "chip": [Color(1.6, 1.3, 1.15), Color(0.3, 0.22, 0.2)]},
-	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood", "label": "Boards",
+	"planks": {"hp": 60.0, "breaks": ["pick", "blade", "pellet", "slug", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "surface": "wood", "label": "Boards",
 		"hit_snd": ["wood_hit", 3, -8.0, 1.0], "break_snd": ["wood_break", 3, -2.0, 1.0],
 		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 	"sheet": {"hp": 150.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.5, "n_break": 6.0,
@@ -53,23 +54,26 @@ const MATERIALS := {
 	"grate": {"hp": 90.0, "breaks": ["pick", "blast"], "n_hit": 2.0, "n_break": 5.0, "layer": 128, "blasts": 1, "label": "Vent grate",
 		"hit_snd": ["impact_hard", 3, -4.0, 1.1], "break_snd": ["impact_hard", 3, 0.0, 0.7],
 		"debris": Color(0.36, 0.25, 0.18), "chips": 6, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
-	"glass": {"hp": 5.0, "breaks": ["pick", "blade", "bullet", "pellet", "blast", "charge"], "n_hit": 1.0, "n_break": 3.0,
+	"glass": {"hp": 5.0, "breaks": ["pick", "blade", "bullet", "pellet", "slug", "blast", "charge"], "n_hit": 1.0, "n_break": 3.0,
 		"hit_snd": ["glass_break", 2, -8.0, 1.3], "break_snd": ["glass_break", 2, 0.0, 1.0],
 		"debris": Color(0.6, 0.7, 0.72), "chips": 12, "dust": [0.0, 0.3], "mat": Mat.WORLD, "chip": [Color(1.8, 1.85, 1.9), Color(0.45, 0.5, 0.52)]},
 	"rubble": {"hp": 200.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.0, "n_break": 6.0, "surface": "concrete", "blasts": 2, "label": "Rubble",
 		"hit_snd": ["amb_thud", 2, -3.0, 1.1], "break_snd": ["amb_thud", 2, 1.0, 0.6],
 		"debris": Color(0.42, 0.36, 0.3), "chips": 12, "chunks": 10, "dust": [1.5, 3.0], "mat": Mat.WORLD, "chip": [Color(1.5, 1.35, 1.2), Color(0.3, 0.26, 0.22)]},
-	"support": {"hp": 80.0, "breaks": ["pick", "bullet", "pellet", "blast", "charge"], "n_hit": 1.2, "n_break": 5.0,
+	"support": {"hp": 80.0, "breaks": ["pick", "bullet", "pellet", "slug", "blast", "charge"], "n_hit": 1.2, "n_break": 5.0,
 		"hit_snd": ["amb_creak", 3, -6.0, 1.0], "break_snd": ["amb_creak", 3, 2.0, 0.6],
 		"debris": Color(0.4, 0.29, 0.17), "chips": 8, "dust": [0.5, 2.0], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 }
 
 ## Rodzaj trafienia → nazwa dla gracza (komunikat o złym narzędziu; `charge` i `claw` to wrogowie, nie gracz).
-const TOOL_LABELS := {"pick": "a pickaxe", "blade": "a machete", "bullet": "bullets", "pellet": "a shotgun", "blast": "explosives"}
+const TOOL_LABELS := {"pick": "a pickaxe", "blade": "a machete", "bullet": "bullets", "pellet": "a shotgun", "slug": "a shotgun", "blast": "explosives"}
 
 ## Promień plamy w masce uszkodzeń wg rodzaju trafienia (px świata; 16 px = kafel).
-const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "blast": 6.0, "charge": 8.0, "claw": 2.5}
-const SPLAT_GAP := 0.1           ## s: trafienia w tym oknie idą jedną paczką (seria z M-83 to nie 10 wiadomości)
+const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "slug": 1.2, "blast": 6.0, "charge": 8.0, "claw": 2.5}
+## Mnożnik hałasu uderzenia (`n_hit`) wg rodzaju trafienia; brak wpisu = 1. Kula stuka ciszej niż cios — sam wystrzał i tak liczy broń
+## (S0 pod S1: dziś żaden materiał przegród na mapach nie przyjmuje pojedynczej kuli).
+const N_KIND := {"bullet": 0.3, "rail": 0.5}
+const SPLAT_GAP := 0.1          ## s: trafienia w tym oknie idą jedną paczką (seria z M-83 to nie 10 wiadomości)
 const MAX_SPLATS := 64           ## pamiętanych plam (dla dołączających); starsze wypadają z listy, w masce zostają
 const MAX_HOLES := 32            ## pamiętanych dziur; starsze wypadają (deska z tyloma dziurami i tak zaraz pęknie)
 
@@ -83,26 +87,41 @@ var hole_total := 0              ## ile dziur powstało łącznie (widok 3D odci
 var damage_epoch := 0            ## rośnie przy `reset_damage` — widok 3D czyści wtedy maskę i odciska plamy od nowa
 var batches_sent := 0            ## serwer: wysłane paczki plam (test)
 var _pending := PackedFloat32Array()
+var _batch_noise := 0.0          ## serwer: hałas uderzeń już doliczony w bieżącej paczce (`_batch_noise_add`)
 var _flush_queued := false
 var _last_flush_ms := -100000
 var _flash := 0.0
 var _seed := 0
 
-## Rodzaj trafienia z `info` (Combat.make_info) dla pola `breaks`: pick (kilof), blade (inna broń biała), bullet, pellet (śrut), blast, charge
-## (szarża wroga, np. Rzeźnik), claw (pazury i pięści wroga przy barykadzie — `enemy.gd`). Promień, płomień i inne — pusty tekst, nic nie niszczą.
+## Rodzaj trafienia z `info` (Combat.make_info) dla pola `breaks`: pick (kilof), blade (inna broń biała), bullet, pellet (śrut), slug (Brenneke —
+## jeden ciężki pocisk ze strzelby), blast, charge (szarża wroga, np. Rzeźnik), claw (pazury i pięści wroga przy barykadzie — `enemy.gd`), rail
+## (szyna SPECTER-1), beam (wiązka LR-7). Płomień i inne — pusty tekst, nic nie niszczą.
+## Śrut a kula wg naboju, nie samej broni (SHOOT_DESTRUCTION_PLAN.md S0): kartacz 40 mm to śrut, Brenneke z SPREAD-12 — `slug`.
 static func hit_kind(info: Dictionary) -> String:
 	var w := int(info.get("w", -1))
 	match String(info.get("type", "")):
 		"melee":
 			return "pick" if Weapons.is_valid(w) and Weapons.def(w).breaks_walls else "blade"
 		"bullet":
-			return "pellet" if Weapons.is_valid(w) and Weapons.def(w).pellets > 1 else "bullet"
+			if not Weapons.is_valid(w):
+				return "bullet"
+			var base := Weapons.def(w)
+			if int(info.get("pellets", base.pellets)) > 1:
+				return "pellet"
+			var ammo := Weapons.ammo_of_build(int(info.get("build", 0)))
+			if bool(Ammo.type_of(String(base.caliber), ammo).get("slug", false)):
+				return "slug"
+			return "bullet"
 		"blast":
 			return "blast"
 		"charge":
 			return "charge"
 		"claw":
 			return "claw"
+		"rail":
+			return "rail"
+		"beam":
+			return "beam"
 	return ""
 
 ## Wpis materiału (nieznana nazwa → `brick`).
@@ -160,7 +179,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 		info = info.duplicate()                   # słownik należy do wołającego (Combat.explode)
 		info["amount"] = maxf(float(info["amount"]), max_hp() / float(m["blasts"]) + 0.01)
 	hp -= float(info["amount"])
-	NoiseMgr.add_noise(float(m["n_hit"]), global_position, "wall")
+	_batch_noise_add(float(m["n_hit"]) * float(N_KIND.get(kind, 1.0)))
 	var broken := hp <= 0.0
 	_pending.append_array(_splat_for(info, kind))
 	_queue_flush()
@@ -192,8 +211,8 @@ func _bounce_rpc(kind: String) -> void:
 	var m := mat_def()
 	var ways: Array = []
 	for k in m["breaks"]:
-		if TOOL_LABELS.has(k):
-			ways.append(tr(String(TOOL_LABELS[k])))
+		if TOOL_LABELS.has(k) and not ways.has(tr(String(TOOL_LABELS[k]))):
+			ways.append(tr(String(TOOL_LABELS[k])))          # śrut i Brenneke to ta sama strzelba
 	var text := tr("%s: not with %s") % [tr(String(m.get("label", "Barrier"))), tr(String(TOOL_LABELS[kind]))]
 	Msg.post("barrier.%s" % name, Msg.Ch.TOAST, text, {"sub": tr("Breaks with: %s") % ", ".join(ways), "style": Msg.Style.WARN, "ttl": 4.0, "prio": 55})
 	bounce_shown += 1
@@ -237,8 +256,16 @@ func _queue_flush() -> void:
 	else:
 		get_tree().create_timer(wait).timeout.connect(_flush)
 
+## Serwer: hałas uderzeń liczy się raz na paczkę (SHOOT_DESTRUCTION_PLAN.md S0) — w paczce zostaje najgłośniejsze uderzenie. Snop śrutu
+## (8 śrucin w jednej klatce) to jedno uderzenie, a nie osiem; kolejne ciosy maczetą (co 0,4 s) są osobnymi paczkami jak dotąd.
+func _batch_noise_add(amount: float) -> void:
+	if amount > _batch_noise:
+		NoiseMgr.add_noise(amount - _batch_noise, global_position, "wall")
+		_batch_noise = amount
+
 func _flush() -> void:
 	_flush_queued = false
+	_batch_noise = 0.0
 	if _pending.is_empty() or is_queued_for_deletion():
 		return
 	var data := _pending

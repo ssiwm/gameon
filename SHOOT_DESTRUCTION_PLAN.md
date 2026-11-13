@@ -3,7 +3,8 @@
 Stan wyjścia: main 1.7.554 (761ec1d9, 2026-11-13). Kontynuacja `DESTRUCTION_PLAN.md` (D0–D5) i `BARRIER_FIX_PLAN.md` (B0–B3).
 Prośba autora: „strzały z broni powinny niszczyć drewniane przeszkody i ściany”. Ten plik to analiza i plan — **nic nie jest wdrożone**.
 
-**Stan (2026-11-13):** decyzje 1–7 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). Następny krok: S0.
+**Stan (2026-11-13):** decyzje 1–7 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). S0 zrobione w 1.7.555 (gałąź `feat/shoot-s0`).
+Następny krok: S1.
 
 Skala: kafel 16 px ≈ 1,31 m, więc 1 px ≈ 8 cm.
 
@@ -55,6 +56,9 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
   (`boards(3)`), w kolejności z hasha nazwy. Symulacja 2D tych luk nie zna.
 - **Nawigacja po rozbiciu** (`level.gd:1494-1528`): `break_wall` → `_open_wall` → `_refresh_region` (lokalnie ok. 1–2 ms, D0). Kafle
   przegrody to `_wall_cells`.
+- **Kolejne strzały w to samo miejsce nie ranią** (pomiar S0, sekcja 18): śrut i Brenneke wybijają dziury na wylot (promień 1,8 px),
+  a pocisk na wysokości dziury leci dalej bez trafienia (`projectile.gd:264`). 30 strzałów SPREAD-12 w jeden punkt zostawia deskom
+  18 z 60 HP; przy przesuwanym celowniku wystarczą 2. To samo spotka kule po S1, jeśli trafienie w dziurę dalej nie będzie ranić.
 
 ### Wyniki dla desek (60 HP)
 
@@ -62,7 +66,7 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
 |---|---|---|
 | P-83 (9×18) | ∞ — odbija się | komunikat „nie kulami” |
 | M-83 PS / US / BZ / HOT | ∞ — odbija się | BZ też, choć przebija beczkę |
-| SPREAD-12 śrut | 2 z bliska (≤ 3,3 m), ok. 5 z daleka | `pellet`, 5 × 7 |
+| SPREAD-12 śrut | 2 z bliska (≤ 3,3 m), ok. 5 z daleka — **przy przesuwanym celowniku** | `pellet`, 5 × 7; w jeden punkt 30 strzałów zostawia 18 HP (dziury, niżej) |
 | SPREAD-12 Brenneke | 3 | liczy się jako `pellet` (błąd rodzaju, wynik przypadkiem rozsądny) |
 | PELLET-8 | 1 z bliska (≤ 1,6 m), 3 z daleka | 8 × 10 |
 | WRATH-4 kartacz 40 mm | ∞ — odbija się | **błąd** rodzaju trafienia |
@@ -106,11 +110,19 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
   (`n_kind`, np. kula w drewno 0,3, śrut 1,0, cios 1,0). Strzał PELLET-8 w deski: z ok. 9,6 do 1,2 Uwagi za uderzenie plus wystrzał.
 - `--maptest`: miara **skrótu**. Dla każdej przegrody i otworu długość trasy start → cele → wyjście przy całej i przy rozbitej
   (`_nav_len` jak w szacunku trasy, `main.gd:4590-4600`). Wydruk w `[MAPTEST]`, bez progu.
-- `--destructiontest` sekcja 16 „ostrzał”: **prawdziwe pociski** (`Projectile` przez `_sweep`, nie samo `Combat.apply`) każdej broni
+- `--destructiontest` sekcja 18 „ostrzał” (16 i 17 były już zajęte): **prawdziwe pociski** (`Projectile` przez `_sweep`, nie samo `Combat.apply`) każdej broni
   i naboju w deski, cegłę, kratkę i skrzynię. Wydruk tabeli „strzałów do rozbicia / Uwaga / dziur”, a sprawdzenia tylko dla tego,
   co S0 zmienia (kartacz rani deski, hałas raz na paczkę).
 - **Ukończone, gdy:** tabela z testu zgadza się z „Dziś” powyżej poza kartaczem i hałasem; `--maptest` wypisuje skróty na 1.1–1.3;
   regresje zielone (`--destructiontest`, `test_weapons.sh`, `--maptest`, `test_net_session.sh` sekcja zniszczeń).
+- **Zrobione w 1.7.555:** `breakable.hit_kind` bierze śruciny z `info.pellets` i rozpoznaje Brenneke (`slug` — w materiałach obok `pellet`,
+  więc niszczy to samo co dotąd), `rail` i `beam` (bez wpisów). Hałas uderzeń raz na paczkę (`_batch_noise_add`, najgłośniejsze uderzenie
+  w oknie `SPLAT_GAP`; mnożnik `N_KIND`: kula 0,3, szyna 0,5). `--maptest` wypisuje skróty (`main._shortcut_report`):
+  1.1 deski kol. 50 — objazd 2579 → 32 px, trasa misji −1%; deski kol. 208 — schowek (bez objazdu); 1.2 deski kol. 66 — objazd 7382 → 32 px,
+  −2%; kratka kol. 214 — 2707 → 32 px, −2%; deski kol. 158, cegła kol. 150 — schowki; 1.3 deski kol. 31 i kratka kol. 37 — schowki.
+  Żadna przegroda nie skraca trasy misji o więcej niż 2% — skróty dają objazd, nie drogę do celu. `--destructiontest` sekcja 18 (162/162):
+  tabela przy przesuwanym celowniku — śrut 2 strzały, Brenneke 3, PELLET-8 1, kartacz 40 mm 1 (dawniej ∞), kule i bełt ∞. Limit testu
+  w CI 90 → 120 s (lokalnie ok. 60 s).
 
 ### S1 — kule ranią drewno i przechodzą przez nie (1 PR, rdzeń)
 
@@ -134,6 +146,9 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
 - **Przebicie przegrody** (`projectile.gd:260-272`): po trafieniu serwer i kopia kosmetyczna u klienta pytają tę samą funkcję
   `pen_cost` (przegroda z polem `pen_cost`). Jeśli energii wystarczy, kula leci dalej słabsza (`_energy`), jak przez skrzynię, i trafia
   wroga za deskami. W przeciwnym razie kończy lot jak dziś. Cegła ma `pen_cost` ∞.
+- **Trafienie w istniejącą dziurę** (pomiar S0): dziś pocisk przelatuje bez obrażeń, więc ostrzał w jeden punkt przestaje działać po
+  pierwszej wyrwie. Propozycja do decyzji przed S1 (decyzja 8): pocisk przez dziurę (poza środkiem — dalej niż połowa promienia) rani krawędź z połową obrażeń i leci dalej;
+  przez środek przelatuje jak dziś. Sprawdzenie: seria M-83 w jeden punkt rozbija deski najwyżej o 30% wolniej niż seria z rozrzutem.
 - **Przestrzelina**: kula i Brenneke dają **stopień 0 w HP plamy, ale z dziurą o promieniu `hole_r`** (0,45 px ≈ 4 cm zamiast
   dzisiejszych 18 cm). Przez taką dziurę promień wzroku i kula przechodzą tylko na tej wysokości — wizjer, nie sito. Śrut z bliska,
   cios i wyrwa (stopień ≥ 1) dają dziury jak dziś.
@@ -145,7 +160,7 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
   i reset nie gubią więc dziur sprzed 64 ostatnich plam. Limit dziur podniesiony do 64, a przy przepełnieniu łączą się najbliższe
   w pionie, zamiast wypadać najstarsze.
 - Dźwięk: kula w deskę to dzisiejszy `Vfx.impact` „wood” (B3) plus drzazgi po **drugiej** stronie przy przebiciu. Rozbicie jak dziś.
-- **Ukończone, gdy:** sekcja 16 sprawdza tabelę (±1 trafienie), przebicie (wróg za deskami dostaje ułamek obrażeń, pistolet nie),
+- **Ukończone, gdy:** sekcja 18 sprawdza tabelę (±1 trafienie), przebicie (wróg za deskami dostaje ułamek obrażeń, pistolet nie),
   cegłę (HP stałe, plamy przybywa), szynę i stare sekcje 11–13. Sprawdzenia „kula pistoletu nie rani desek”
   (`destruction_test.gd:715`) i „kula nie przebija” (`:833`) zmieniają znaczenie. `test_weapons.sh` (391 + 21 sieć) i `--maptest`
   bez zmian, a w `test_net_session.sh` klient strzela kulami w deski: host, klient i dołączający mają te same HP, dziury i rozbicie.
@@ -216,6 +231,11 @@ od kul tylko się wyszczerbia (decyzja 2). Kafle mapy dalej są nietykalne.
 6. **Kule drużyny w swoją barykadę?** *Zalecam:* tak, jak każde (czytelność, filar „decyzja i koszt”). Pomiar w S4. Wariant:
    kule z wewnętrznej strony × 0,5.
 7. **Bot strzela w przegrody?** *Zalecam:* nie — bot otwiera przejścia kilofem jak dziś.
+
+**Nowa (po pomiarze S0, czeka na autora):**
+
+8. **Pocisk w istniejącą dziurę?** Dziś przelatuje bez obrażeń, więc ostrzał w jeden punkt przestaje działać. *Zalecam:* przy krawędzi
+   dziury (dalej niż pół promienia od środka) połowa obrażeń i lot dalej, przez środek bez obrażeń. Wariant: zostawić jak dziś.
 
 ## Kolejność i rozmiar
 
