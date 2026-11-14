@@ -3091,6 +3091,29 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var ssp: Node2D = _players.get_node_or_null("1")      # dev: --shotscream — gracz 1 krzyczy 0,3 s przed zrzutem (fala w połowie; z --shotseq cała fala)
 		if ssp != null:
 			get_tree().create_timer(maxf(0.05, delay - 0.3)).timeout.connect(func() -> void: ssp._scream_fx())
+	for sa in OS.get_cmdline_user_args():
+		# dev: --shotfoescream=podsluchacz|kaplan — wróg tego rodzaju 90 px na prawo od gracza 1, zamrożony; Podsłuchacz krzyczy 0,3 s przed
+		# zrzutem (pole ochronne + fala alarmu), Kapłan stoi w zapowiedzi swojej fali (strefa i fale ściągane do niego)
+		if sa.begins_with("--shotfoescream="):
+			var fk := sa.substr("--shotfoescream=".length())
+			var fp: Node2D = _players.get_node_or_null("1")
+			if fp != null and level.has_method("_add_enemy"):
+				level._add_enemy("ShotFoe", fk, fp.global_position + Vector2(90.0, 0.0))
+				var fw: Node = level.get_node_or_null("ShotFoe")
+				get_tree().create_timer(0.6).timeout.connect(func() -> void:
+					if not is_instance_valid(fw):
+						return
+					fw.call("wake")
+					fw.set_physics_process(false)
+					if fk == "kaplan":
+						fw.set("_sp", 1)                     # enemy_priest.gd SP_SCREAM
+						fw.set("winding", true)
+					else:
+						fw.set("_ai", fw.Ai.SCREAM))
+				if fk != "kaplan":
+					get_tree().create_timer(maxf(0.7, delay - 0.3)).timeout.connect(func() -> void:
+						if is_instance_valid(fw):
+							fw._scream_fx())
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
 	await get_tree().create_timer(delay).timeout

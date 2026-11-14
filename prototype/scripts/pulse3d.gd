@@ -10,6 +10,10 @@ extends RefCounted
 ##
 ## Prześwietlenie wrogów (skaner): nakładka (`material_overlay`) na modelach 3D bez testu głębi — obrys od kąta patrzenia (fresnel),
 ## błysk, gdy mija ich fala, i poziome linie „ekranu” skanera.
+##
+## Wrogowie (od 1.7.567, wcześniej płaskie tarcze i pierścienie w płaszczyźnie gry): fala alarmu to ta sama kula co krzyk gracza w czerwieni,
+## zapowiedź krzyku Kapłana to sonar o stałym zasięgu (fala ściąga do niego od brzegu), pole ochronne Podsłuchacza to bańka (`make_shield`):
+## spłaszczona w głąb elipsoida z obrysem od kąta patrzenia i jaśniejszym pasem tam, gdzie przecina podłogę, ścianę i samego stwora.
 
 const SONAR_SHADER := """
 shader_type spatial;
@@ -98,7 +102,8 @@ void fragment() {
 	away = away / max(length(away), 1e-4);
 	vec2 off = away * shell * 0.012 * distort * fade;
 	vec3 bg = texture(screen_tex, SCREEN_UV - off).rgb;
-	vec3 glow = tint.rgb * (front * 0.8 + shell * 0.05);
+	// brzeg kuli tylko załamuje obraz, nie świeci: przy ekspozycji ciemnej sceny nawet 5% koloru dawało pełny okrąg na ekranie — znów „2D”
+	vec3 glow = tint.rgb * front * 0.8;
 	ALBEDO = bg + glow * fade;
 	ALPHA = clamp(max(shell * step(0.001, distort), front) * 1.4, 0.0, 1.0) * fade;
 }
@@ -125,7 +130,36 @@ void fragment() {
 }
 """
 
+const SHIELD_SHADER := """
+shader_type spatial;
+render_mode blend_add, unshaded, depth_draw_never, cull_disabled, fog_disabled, shadows_disabled;
+uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
+uniform vec4 tint : source_color = vec4(0.55, 0.82, 1.0, 1.0);
+uniform float fade = 1.0;              // pojawianie się i pęknięcie bańki
+uniform float pulse = 0.0;             // 0..1 — oddech pola w rytmie krzyku
+varying vec3 lpos;
+void vertex() {
+	lpos = VERTEX;
+}
+void fragment() {
+	// obrys: im bardziej powierzchnia ucieka od patrzącego, tym jaśniej (środek bańki prawie przezroczysty)
+	float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 2.4);
+	// styk z bryłami: odległość (w głąb) od punktu sceny pod pikselem — pas tam, gdzie bańka wchodzi w podłogę, ścianę, stwora
+	float z = texture(depth_tex, SCREEN_UV).r;
+	vec4 sv = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, z, 1.0);
+	float gap = (-sv.z / sv.w) - (-VERTEX.z);
+	float contact = 1.0 - smoothstep(0.0, 0.18, abs(gap));
+	// fale dźwięku biegnące po powłoce od ust w górę i w dół
+	float wave = 0.5 + 0.5 * sin(abs(lpos.y) * 14.0 - TIME * 16.0);
+	float back = FRONT_FACING ? 1.0 : 0.5;     // tylna ścianka widoczna przez przednią — bańka ma głębię
+	float a = (0.025 + 0.55 * fres * (0.75 + 0.25 * wave) + 0.6 * contact) * back * (0.8 + 0.2 * pulse);
+	ALBEDO = tint.rgb;
+	ALPHA = clamp(a * tint.a * fade, 0.0, 1.0);
+}
+"""
+
 static var _sonar_sh: Shader
+static var _shield_sh: Shader
 static var _scream_sh: Shader
 static var _xray_sh: Shader
 
@@ -168,6 +202,27 @@ static func place(mi: MeshInstance3D, center: Vector3, radius: float, reach: flo
 	for k in params:
 		m.set_shader_parameter(k, params[k])
 	mi.visible = true
+
+## Bańka pola ochronnego (siatka o promieniu 1 — rozmiar przez `scale`).
+static func make_shield(layer: int) -> MeshInstance3D:
+	if _shield_sh == null:
+		_shield_sh = _shader(SHIELD_SHADER)
+	var mi := MeshInstance3D.new()
+	mi.name = "ShieldBubble"
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	sm.radial_segments = 32
+	sm.rings = 16
+	mi.mesh = sm
+	var m := ShaderMaterial.new()
+	m.shader = _shield_sh
+	m.render_priority = 2
+	mi.material_override = m
+	mi.layers = layer
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visible = false
+	return mi
 
 ## Materiał prześwietlenia wroga (nakładka na model 3D).
 static func make_xray(tint: Color) -> ShaderMaterial:
