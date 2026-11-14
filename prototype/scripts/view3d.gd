@@ -7013,7 +7013,7 @@ func _sync_enemy_rings() -> void:
 			sh[1] = float(sh[1]) + dt
 			sh[2] = -1.0
 			var grow := 1.0 - pow(1.0 - clampf(float(sh[1]) / SHIELD_IN, 0.0, 1.0), 3.0)
-			_place_shield(sh[0], pos, size, 0.7 + 0.3 * grow, grow)
+			_place_shield(sh[0], n as Node2D, size, 0.7 + 0.3 * grow, grow)
 		var tele := float(info.get("tele", 0.0))
 		if tele > 0.0:
 			seen_tele[id] = true
@@ -7052,7 +7052,7 @@ func _sync_enemy_rings() -> void:
 			continue
 		var dfn2 = src.get("_def")
 		var size2: Vector2 = (dfn2 as Dictionary)["size"] if dfn2 is Dictionary else Vector2(12, 24)
-		_place_shield(sh[0], (src as Node2D).global_position, size2, 1.0 + 0.35 * u, pow(1.0 - u, 1.5))
+		_place_shield(sh[0], src as Node2D, size2, 1.0 + 0.35 * u, pow(1.0 - u, 1.5))
 		sh[1] = 1.0                                               # po pęknięciu nie „rośnie” od nowa, gdy krzyk wróci za chwilę
 
 const ALARM_T := 0.7                     ## czas fali alarmu [s] = `enemy.gd: _scream_fx` `_ring` na starcie
@@ -7062,13 +7062,34 @@ const TELE_PULL := 1.8                   ## fal zapowiedzi na sekundę (ściąga
 const SHIELD_TINT := Color(0.55, 0.82, 1.0)
 const SHIELD_IN := 0.16                  ## rozrost bańki po krzyku [s]
 const SHIELD_OUT := 0.28                 ## pęknięcie bańki po opadnięciu pola [s]
-const SHIELD_Z_M := 0.85                 ## półoś bańki w głąb [m]: pełna kula Podsłuchacza (≈ 1,6 m) wystawałaby przed przekrój skały
+const SHIELD_R := 0.62                   ## promień bańki × wysokość modelu 3D: mieści całą postać w każdej klatce animacji krzyku
+const SHIELD_Z_M := 1.0                  ## półoś bańki w głąb [m]: pełna kula wystawałaby przed przekrój skały (z = 1,1 m)
 
-## Bańka pola ochronnego wokół tułowia: `s` skala (rozrost / pęknięcie), `fade` jasność.
-func _place_shield(mi: MeshInstance3D, pos: Vector2, size: Vector2, s: float, fade: float) -> void:
-	var r := size.y * 0.8 * PX * s
-	mi.position = Level3D.px_to_m(pos + Vector2(0.0, -size.y * 0.55))
-	mi.scale = Vector3(r, r, minf(r, SHIELD_Z_M * s))
+## Bańka pola ochronnego wokół całego stwora: kula o stałej wielkości — środek w połowie wysokości modelu 3D, promień SHIELD_R tej
+## wysokości (do 1.7.567 promień z wysokości strefy trafień, niższej niż model: głowa i uszy w animacji krzyku wystawały górą).
+## Wysokość modelu (siatka spoczynkowa, z uszami) liczona raz, przy pierwszym ustawieniu bańki — rozmiar nie zmienia się w trakcie
+## animacji. Bez modelu — strefa trafień × 1,2. `s` skala (rozrost / pęknięcie), `fade` jasność.
+func _place_shield(mi: MeshInstance3D, src: Node2D, size: Vector2, s: float, fade: float) -> void:
+	if not mi.has_meta("model_h"):
+		var hgt := size.y * PX * 1.2
+		var pr: Array = _enemies.get(src.get_instance_id(), [])
+		if pr.size() > 1 and pr[1] != null and is_instance_valid(pr[1]):
+			var box := AABB()
+			var any := false
+			for m3 in (pr[1] as Node3D).find_children("*", "MeshInstance3D", true, false):
+				var g := m3 as MeshInstance3D
+				if g == mi or g.mesh == null:
+					continue
+				var wb := g.global_transform * g.get_aabb()
+				box = wb if not any else box.merge(wb)
+				any = true
+			if any:
+				hgt = maxf(hgt, box.size.y)
+		mi.set_meta("model_h", hgt)
+	var h: float = mi.get_meta("model_h")
+	var r := h * SHIELD_R
+	mi.position = Level3D.px_to_m(src.global_position) + Vector3(0.0, h * 0.5, 0.0)
+	mi.scale = Vector3(r, r, minf(r, SHIELD_Z_M)) * s
 	var m := mi.material_override as ShaderMaterial
 	m.set_shader_parameter("tint", SHIELD_TINT)
 	m.set_shader_parameter("fade", fade)
