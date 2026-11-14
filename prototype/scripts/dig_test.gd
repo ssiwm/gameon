@@ -95,14 +95,14 @@ func _on_noise(amount: float, pos: Vector2, tag: String) -> void:
 		_noise.append([amount, pos])
 
 ## Zrzut okna do `--digshots=KATALOG` (w oknie; headless nic nie robi).
-func _shot(name: String, each := Callable()) -> void:
+func _shot(name: String, each := Callable(), wait := 0.6) -> void:
 	var dir := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--digshots="):
 			dir = a.substr("--digshots=".length())
 	if dir == "" or DisplayServer.get_name() == "headless":
 		return
-	await _frames(0.6, each)
+	await _frames(wait, each)
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(dir.path_join(name + ".png"))
 	info("zrzut %s" % dir.path_join(name + ".png"))
@@ -290,6 +290,18 @@ func _tunnel() -> void:
 	_place_player(pit + Vector2(0, -2))
 	await _frames(0.4)
 	await _dig_down(pit.y - TOP + 24.0)
+	if DisplayServer.get_name() != "headless":   # zrzut chwilę po ciosie w czoło tunelu: okruchy, pył w snopie latarki, urobek ze stropu
+		var fl0: bool = player.flashlight
+		var ma0: bool = player.mouse_aim
+		player.flashlight = true
+		player.mouse_aim = false
+		var aim := func(_t: float, _dt: float) -> void: player.aim_dir = Vector2.RIGHT
+		await _frames(0.4, aim)
+		await _swing(Vector2.RIGHT)
+		await _shot("d5_11_hit", aim, 0.07)
+		await _shot("d5_12_hit_dust", aim, 0.35)
+		player.flashlight = fl0
+		player.mouse_aim = ma0
 	var start: Vector2 = player.global_position
 	var d0: int = zone.digs
 	var r := await _bore(Vector2.RIGHT, "move_right", 8, 11.0 * 16.0 - 8.0)
@@ -307,6 +319,9 @@ func _tunnel() -> void:
 		prof.append("%.0f:%s" % [x, "—" if h.is_empty() else "%.1f" % (h["position"].y - start.y)])
 		x += 4.0
 	info("  dno tunelu względem wejścia (x:dy): %s" % " ".join(prof))
+	check("efekt ciosu z wejścia gracza: materiał strefy, kilof, kamera drga u bijącego (%s)" % str(zone.fx_last),
+		DigMats.MATS.has(String(zone.fx_last.get("mat", ""))) and int(zone.fx_last.get("tool", -1)) == DigMats.Tool.PICK
+		and int(zone.fx_last.get("by", -1)) == player.player_id)
 	await _shot("s2_4_tunnel")
 	# schody w dół po skosie: od lewej krawędzi strefy w głąb
 	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
@@ -584,12 +599,17 @@ func _finds() -> void:
 	var origin := Vector2(sx, bottom - 9.0)
 	var clinks := 0
 	var swings := 0
+	var fx0: int = zone.fx_hits
+	var fx_metal := 0
 	while swings < 6 and zone.finds_out == 0:
 		var dug: Dictionary = zone.melee_dig(space, origin, Vector2(-dx, 0.0), 24.0, DigMats.Tool.PICK)
 		swings += 1
 		if bool(dug.get("metal", false)):
 			clinks += 1
+			fx_metal += 1 if bool(zone.fx_last.get("metal", false)) else 0
 		await _frames(0.05)
+	check("efekt ciosu (dźwięk, okruchy, pył) na każdy cios, z metalem przy znajdźce (%d/%d, metal %d/%d)" % [zone.fx_hits - fx0, swings, fx_metal, clinks],
+		zone.fx_hits - fx0 == swings and fx_metal == clinks)
 	var items: Array = _items()
 	var item: Node2D = items.back() if items.size() > items0 else null
 	var ik := String(item.kind) if item != null else "—"

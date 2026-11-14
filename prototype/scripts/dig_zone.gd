@@ -117,6 +117,8 @@ var _pour_fx_t := 0.0                 ## u każdego peera: s do następnego dźw
 var sim_steps := 0                    ## kroków z ruchem od wczytania (test, pomiar)
 var sim_usec := 0                     ## czas ostatniego kroku z ruchem (µs)
 var islands_fallen := 0               ## serwer: wysp, które spadły od wczytania / resetu
+var fx_hits := 0                      ## u każdego peera: efektów ciosu od wczytania (test)
+var fx_last := {}                     ## ostatni efekt ciosu {"mat", "tool", "metal", "by"} (test)
 
 ## Ustawia strefę z wpisu `DIG_ZONES` ([c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?], kafle włącznie). `solid_at(c, r) -> bool` — czy
 ## kafel mapy (poza strefą) jest bryłą; `zone_solid(c, r) -> bool` — czy kafel strefy był skałą w danych mapy (przed wycięciem).
@@ -280,13 +282,14 @@ func solid_in_data(c: int, r: int) -> bool:
 # ---------------------------------------------------------------- kopanie (serwer rozstrzyga, wszyscy stosują)
 
 ## Serwer: cios z `origin` (stopy − 9 px, jak w weapon_controller.gd) w kierunku `dir` narzędziem `tool` (dig_materials.gd Tool). Kopie, gdy
-## w prostokącie wyrwy jest skała, którą to narzędzie bierze. Zwraca {"at": punkt na pył i dźwięk, "mat": materiał} albo pusty słownik.
-func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, reach: float, tool: int) -> Dictionary:
+## w prostokącie wyrwy jest skała, którą to narzędzie bierze, i rozsyła efekt ciosu (`_hit_rpc`; `by` — player_id bijącego, jego kamera
+## drga). Zwraca {"at": punkt na pył i dźwięk, "mat": materiał, "metal": cios przy zakopanej znajdźce} albo pusty słownik.
+func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, reach: float, tool: int, by := -1) -> Dictionary:
 	var r := cut_rect(origin, dir)
 	var mat := _rock_in(r, tool)
 	if mat < 0:
 		return {}
-	var at := r.get_center()
+	var at := _face_point(r, origin, dir, reach)
 	var hit := space.intersect_ray(PhysicsRayQueryParameters2D.create(origin, origin + dir * reach, LAYER_WORLD))
 	if not hit.is_empty() and hit["collider"] is Node and (hit["collider"] as Node).get_parent() == self:
 		at = hit["position"]
@@ -294,7 +297,78 @@ func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, 
 	NoiseMgr.add_noise(N_DIG * float(Mats.MATS[key]["noise"]) * (BLADE_NOISE if tool == Mats.Tool.BLADE else 1.0), at, "dig")
 	var metal := find_near_rect(r.grow(FIND_CLINK)) >= 0          # przed cięciem: znajdźka, która tym ciosem wypadnie, też dzwoni
 	_send(r.get_center(), r.size * 0.5, 0.0, tool)
+	var top := Vector2(clampf(at.x - signf(dir.x) * 3.0, r.position.x + 2.0, r.end.x - 2.0), r.position.y + 2.0)   # urobek z górnej krawędzi wyrwy, przy czole
+	if NoiseMgr.has_network():
+		_hit_rpc.rpc(map_key, at, -dir, mat, tool, metal, top, by)
+	else:
+		_hit_rpc(map_key, at, -dir, mat, tool, metal, top, by)
 	return {"at": at, "mat": key, "metal": metal}
+
+## Każdy peer: efekt ciosu w strefę wg materiału (dig_materials.gd: snd, chip, dust, clods, sparks). Do 1.7.557 kopanie szło przez
+## Arsenal.broadcast_hit z `Mat.WORLD` (Vfx.hit tego nie zna — cisza, nic) albo `Mat.DUST` (pyłek Ćmy). Teraz trzy warstwy, bo to one mówią,
+## że coś odpadło: uderzenie (dźwięk + okruchy i grudki od ściany, w skale czasem iskra stali o kamień), obłoczek pyłu, który wisi w świetle
+## latarki, i drobny urobek sypiący się ze stropu wyrwy (`top`). Broń biała w ziemi — mniej i ciszej. Zakopana znajdźka: dodatkowo metal
+## (iskry i brzęk) — podpowiedź bez skanera. Kamera drga tylko u bijącego (`by`); kilof w skale dostaje krótki hitstop (Feel: bez niego
+## na hoście z klientami). Cząsteczki są cieniowane (poza iskrami): nocą widać je tylko w snopie latarki albo przy lampie, jak prawdziwy kurz.
+@rpc("authority", "call_local", "unreliable")
+func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, metal: bool, top: Vector2, by: int) -> void:
+	if key != map_key:
+		return
+	fx_hits += 1
+	fx_last = {"mat": Mats.key_of(mat), "tool": tool, "metal": metal, "by": by}
+	var lvl := get_parent()
+	if lvl == null or not lvl.is_inside_tree():
+		return
+	var m: Dictionary = Mats.MATS[Mats.key_of(mat)]
+	var pick := tool != Mats.Tool.BLADE
+	var k := 1.0 if pick else 0.55
+	var hard := String(m["hit"]) == "world"
+	var chip: Color = m["chip"]
+	var snd: Array = m["snd"]
+	out = out.normalized() if out.length() > 0.1 else Vector2.UP
+	# uderzenie: okruchy (skała — ostre i szybkie) albo grudki (ziemia, żwir — cięższe, wolniejsze)
+	Vfx.chips(lvl, at, out, chip, maxi(2, roundi(float(m["clods"]) * k)), "chip", 135.0 if hard else 90.0, Vector2(0.7, 1.5) if hard else Vector2(0.9, 2.0))
+	# pył: kilka dużych, rzadkich i powolnych plam zamiast obłoczka trafienia kuli (Vfx.puff) — ten przy postaci, w snopie latarki i aurze,
+	# dawał wyraźne jasne krążki zamiast mgiełki (zrzut 2026-11-14)
+	Vfx.burst(lvl, at + out * 3.0, m["dust"], 3, 2.0, 10.0 * k, out, 90.0, -6.0, 1.8, Vector2(7.0, 11.0) * k, false, true,
+		{"fade": true, "explosiveness": 0.9})
+	# urobek ze stropu: drobne bryłki spadają same z siebie (bez prędkości początkowej). Bryłki, nie plamki-billboardy: te w świetle
+	# aury postaci świeciły jak świetliki (zrzut 2026-11-14)
+	Vfx.burst(lvl, top, chip, roundi(5.0 * k), 0.0, 14.0, Vector2.DOWN, 70.0, 520.0, 0.7, Vector2(0.35, 0.75), false, false, {"mesh": "chip"})
+	if pick and randf() < float(m["sparks"]):
+		Vfx.burst(lvl, at, Color(1.0, 0.82, 0.45), randi_range(2, 4), 60.0, 170.0, out, 45.0, 380.0, 0.16, Vector2(0.5, 0.9), true)
+	Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - (3.0 if not pick else 0.0), float(snd[2]) * (1.12 if not pick else 1.0))
+	if metal:
+		# drobne i szybkie iskry, nie Vfx.sparks (kula w blachę): tamte przy postaci wyglądały jak świecące kulki (zrzut 2026-11-14)
+		Vfx.burst(lvl, at, Color(1.0, 0.86, 0.5), 5, 80.0, 210.0, out, 50.0, 420.0, 0.14, Vector2(0.35, 0.6), true)
+		Audio.play_variant_at("impact_hard", 3, at, Audio.BUS_WORLD, -11.0, 1.25)
+		Audio.play_variant_at("ricochet", 2, at, Audio.BUS_WORLD, -18.0, 1.1, 0.12)
+	if by >= 0 and by == NoiseMgr.local_id():
+		Feel.kick(out * (2.6 if hard else 1.4) * k)                 # narzędzie odbija od ściany w stronę bijącego
+		Feel.shake((1.4 if hard else 0.7) * k)
+		if pick and hard:
+			Feel.hitstop(0.035)
+
+## Miejsce uderzenia na pył i dźwięk: pierwszy punkt skały na linii ciosu (czoło wyrwy), a gdy linia idzie powietrzem (cios po skosie, wnęka
+## nad głową) — środek skały w prostokącie wyrwy `r`. Środek samego prostokąta leży w postaci (wyrwa w bok sięga 8 px za nią), więc
+## okruchy i pył wychodziły z jej nóg (zrzut 2026-11-14).
+func _face_point(r: Rect2, origin: Vector2, dir: Vector2, reach: float) -> Vector2:
+	var t := 0.0
+	while t <= reach + CELL:
+		var p := origin + dir * t
+		if solid_at_px(p):
+			return p - dir * 1.0
+		t += 2.0
+	var sum := Vector2.ZERO
+	var n := 0
+	var a := (r.position - global_position) / CELL + Vector2(1, 1)
+	var b := (r.end - global_position) / CELL + Vector2(1, 1)
+	for j in range(maxi(1, roundi(a.y)), mini(_h - 2, roundi(b.y)) + 1):
+		for i in range(maxi(1, roundi(a.x)), mini(_w - 2, roundi(b.x)) + 1):
+			if _d[j * _w + i] >= ISO and _fixed[j * _w + i] == 0:
+				sum += global_position + _corner_px(i, j)
+				n += 1
+	return sum / float(n) if n > 0 else r.get_center()
 
 ## Czy w zasięgu ciosu z `origin` w kierunku `dir` jest skała strefy (dowolne narzędzie) i której nie bierze broń biała — wybór kilofa
 ## (weapon_controller.gd `melee_for_target`). Zwraca [jest skała, broń biała jej nie bierze].
