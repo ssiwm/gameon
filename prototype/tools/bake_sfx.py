@@ -736,7 +736,19 @@ def build_world() -> None:
         x = d.mix([(crunch, 1.0), (slide, .35), (thump(.14, vary(r, 110, .1), 60, .015, .04), .6),
                    (_crumbs(r, n, 8, .2, .8, 1600, 4800, .2), .4)], n)
         finalize("dig_gravel_%d" % (i + 1), d.reverb(d.lp(x, 5000.0, order=2) / (d.peak(x) + 1e-9), ir("close"), wet=.14), lufs=-19.5, fade_out_ms=120)
-    bake_hybrid.world()                                    # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
+
+    # Kropla ze stropu wykopu w skale (kopanie P2c, view3d.gd `_tick_dig_drips`): plaśnięcie o mokre dno i „plink” pęcherzyka
+    # powietrza porwanego pod powierzchnię — sinus wznoszący się o ok. 60% w kilkadziesiąt ms (rezonans Minnaerta), z echem tunelu.
+    for i in range(3):
+        r = Rng(0xE400 + i * 1013)
+        n = ms(700)
+        f0 = vary(r, (1050, 1500, 820)[i], .08)
+        nb = ms(90)
+        bub = d.osc("sine", d.glide_exp(f0, f0 * vary(r, 1.6, .1), nb, .022), nb) * d.env_perc(nb, .0004, vary(r, .024, .2))
+        slap = d.lp(d.white(ms(12), r) * d.env_perc(ms(12), .0001, .0018), 3800.0)
+        x = d.mix([(slap, .45), (bub, 1.0, .0015), (tick(r, vary(r, 2600, .2), 2.0, 6, .0012), .2)], n)
+        finalize("drip_%d" % (i + 1), d.reverb(x / (d.peak(x) + 1e-9), ir("cave"), wet=.28), lufs=-24.0, fade_out_ms=200)
+    bake_hybrid.world()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
 # ============================================================ GRACZ

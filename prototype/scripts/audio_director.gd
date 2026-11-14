@@ -158,6 +158,12 @@ var _duck_hold := 0.0
 var _deaf := 0.0
 var _deaf_hold := 0.0
 var _rev_fx: AudioEffectReverb
+## Pogłos w wykopie pod skałą (`_dig_acoustics`): [ziemia, skała] wg dig_materials.gd `echo`
+const DIG_WET := Vector2(0.10, 0.30)
+const DIG_DAMP := Vector2(0.88, 0.30)
+const DIG_ROOM_SOFT := 0.30               ## ziemia: mały pokój — ogon zaraz ginie
+const DIG_ROOM_HARD := 0.62               ## skała: dłuższe echo chodnika
+const DIG_ROOM_TIGHT := 0.22              ## ciasny tunel: ogon jeszcze krótszy (gęste, bliskie odbicia)
 var _lp_fx: Array[AudioEffectLowPassFilter] = []
 var _rev_timer := 0.0
 var _rev_wet := 0.08
@@ -933,6 +939,8 @@ func _probe_environment() -> void:
 	var hits := 0
 	var dsum := 0.0
 	var n := 12
+	var dig_hits := 0
+	var echo := 0.0
 	for i in n:
 		var a := TAU * float(i) / float(n)
 		var q := PhysicsRayQueryParameters2D.create(_listener_pos,
@@ -944,11 +952,32 @@ func _probe_environment() -> void:
 		else:
 			hits += 1
 			dsum += _listener_pos.distance_to(r["position"])
+			var z = (r["collider"] as Node).get_parent() if r["collider"] is Node else null
+			if z != null and z.is_in_group("dig_zones"):
+				dig_hits += 1
+				echo += z.echo_at(r["position"], Vector2.from_angle(a))
 	var enclosure := float(hits) / float(n)
 	var mean_d := dsum / float(n) / reach          # 0 ciasno .. 1 otwarcie
 	_rev_wet_t = lerpf(0.04, 0.26, enclosure)
 	_rev_room_t = lerpf(0.30, 0.82, clampf(enclosure * (1.15 - 0.6 * mean_d), 0.0, 1.0))
 	_rev_damp_t = lerpf(0.70, 0.32, enclosure)
+	_dig_acoustics(dig_hits, echo, mean_d)
+
+
+## Kopanie P2c: słuchawka w wykopie strefy wydobycia pod skałą (level.gd `dig_cover_at`). Ciasny tunel to nie hala: krótszy ogon
+## (pokój tym mniejszy, im bliżej ścian), a materiał ścian (dig_materials.gd `echo`) decyduje o barwie — ziemia pochłania (głucho,
+## prawie bez pogłosu), skała odbija (jaśniej i więcej echa). Ściany strefy z wachlarza promieni ważą resztę ścian mapy po równo.
+func _dig_acoustics(dig_hits: int, echo: float, mean_d: float) -> void:
+	if dig_hits == 0:
+		return
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or not lvl.has_method("dig_cover_at") or lvl.dig_cover_at(_listener_pos) == null:
+		return
+	var e := echo / float(dig_hits)
+	var tight := clampf(1.0 - mean_d * 2.5, 0.0, 1.0)            # 1 — ściany tuż przy słuchawce (tunel na wzrost postaci)
+	_rev_wet_t = lerpf(DIG_WET.x, DIG_WET.y, e)
+	_rev_room_t = lerpf(lerpf(DIG_ROOM_SOFT, DIG_ROOM_HARD, e), DIG_ROOM_TIGHT, tight * (1.0 - 0.5 * e))
+	_rev_damp_t = lerpf(DIG_DAMP.x, DIG_DAMP.y, e)
 
 
 func _update_reverb(delta: float) -> void:

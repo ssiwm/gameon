@@ -25,6 +25,7 @@ const BED_FOREST_OPEN_DB := -13.0
 const BED_FOREST_ROOF_DB := -19.0
 const BED_AIR_DB := -20.0
 const BED_DRIPS_DB := -22.0
+const BED_CAVE_DRIPS := 0.5                 ## kapanie w wykopie pod skałą: połowa amplitudy podziemi (−6 dB) — płytko, a krople ze stropu gra view3d.gd
 
 ## Dev (--shotflash[=K]): stała siła błysku 0..1 zamiast harmonogramu (zrzuty i pomiary; 0 = bez błysków); −1 = harmonogram.
 static var dev_flash := -1.0
@@ -35,6 +36,7 @@ var _loops_on := {}                         ## klucze pętli dźwięku uruchomio
 var _k := 0.0                               ## wygładzona siła pogody 0..1
 var _sky := 0.0                             ## wygładzona „otwartość nieba" nad lokalnym graczem 0..1
 var _deep := 0.0                            ## wygładzone „jestem w podziemiach" 0..1
+var _cave := 0.0                            ## wygładzone „jestem w wykopie pod skałą” 0..1 (strefa wydobycia, level.gd `dig_cover_at`)
 var _beds_on := {}                          ## pętle tła wg miejsca, które teraz grają
 var _id := ""                               ## pogoda, dla której ustawiono parametry cząsteczek
 var _t := 0.0
@@ -60,6 +62,8 @@ func _process(delta: float) -> void:
 	var open := 1.0 if (lp != null and _sky_open(lp)) else 0.0
 	_sky = move_toward(_sky, open, 2.0 * delta)
 	_deep = move_toward(_deep, 1.0 if (lp != null and _level != null and lp.global_position.y >= float(_level.underground_y)) else 0.0, 1.0 * delta)
+	var cave := lp != null and _level != null and _level.has_method("dig_cover_at") and _level.dig_cover_at(lp.global_position) != null
+	_cave = move_toward(_cave, 1.0 if cave else 0.0, 1.0 * delta)
 	_audio(mode, lp)
 	_beds()
 
@@ -143,14 +147,14 @@ func _audio(mode: int, lp: Node2D) -> void:
 		_thunder()
 
 ## Tło wg miejsca (niezależnie od pogody): pod dachem słychać „powietrze" budynku (amb_air), w podziemiach kapanie
-## (amb_drips), a las z powierzchni cichnie pod dachem. Działa tylko, gdy gra tło misji (pętla amb_forest z main.gd).
+## (amb_drips), a las z powierzchni cichnie pod dachem. W wykopie pod skałą (kopanie P2c) zamiast powietrza budynku ciche kapanie. Działa tylko, gdy gra tło misji (pętla amb_forest z main.gd).
 func _beds() -> void:
 	var on := Audio.loop_playing("amb_forest")
 	if on:
 		Audio.set_loop_volume("amb_forest", lerpf(BED_FOREST_ROOF_DB, BED_FOREST_OPEN_DB, _sky))
 	var targets := {
-		"amb_air": BED_AIR_DB + _db(1.0 - _sky) if on else -99.0,
-		"amb_drips": BED_DRIPS_DB + _db(_deep) if on else -99.0,
+		"amb_air": BED_AIR_DB + _db((1.0 - _sky) * (1.0 - _cave)) if on else -99.0,
+		"amb_drips": BED_DRIPS_DB + _db(maxf(_deep, BED_CAVE_DRIPS * _cave)) if on else -99.0,
 	}
 	for key in targets:
 		var v: float = targets[key]

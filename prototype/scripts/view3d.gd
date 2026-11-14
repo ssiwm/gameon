@@ -573,6 +573,7 @@ func _tick(delta: float) -> void:
 	tp = _tp("props", tp)
 	_sync_dig_zones()
 	_tick_dig_dust(delta)
+	_tick_dig_drips(delta)
 	_sync_items()
 	tp = _tp("items", tp)
 	if warm == 1:
@@ -8398,6 +8399,126 @@ func _tick_dig_dust(delta: float) -> void:
 		fm.set_shader_parameter("tn", tn)
 		fm.set_shader_parameter("tpos", tor[0])
 		fm.set_shader_parameter("tdir", tor[1])
+
+## Kapanie ze stropu wykopu w skale (kopanie P2c): kilka stałych miejsc przy lokalnym graczu kapie każde w swoim rytmie — jak w sztolni,
+## gdzie to samo miejsce kapie co parę sekund. Kropla nabrzmiewa pod stropem, spada z przyspieszeniem i pluska o dno (`drip_1`–`3`,
+## szyna tła). Sam obraz i dźwięk, u każdego peera osobno (bez sieci); miejsca wybiera dig_zone.gd `drip_spot` (strop w skale lub żyle).
+## Kropla bez emisji: w ciemności jej nie widać, w snopie latarki błyszczy.
+const DIG_DRIP_SPOTS := 3                 ## miejsc kapania naraz
+const DIG_DRIP_NEAR := 120.0              ## px: szukamy miejsc w tym promieniu od gracza (ok. 10 m)
+const DIG_DRIP_FAR := 200.0               ## px: dalsze miejsce gaśnie
+const DIG_DRIP_GAP := 16.0                ## px: najmniejszy odstęp miejsc
+const DIG_DRIP_PERIOD := Vector2(1.6, 4.5)   ## s: rytm miejsca (każda kropla ±20%)
+const DIG_DRIP_GROW := 0.6                ## s: kropla nabrzmiewa pod stropem
+const DIG_DRIP_LIFE := Vector2(25.0, 50.0)   ## s: po tym czasie miejsce wysycha, losujemy nowe
+const DIG_DRIP_R := 0.016                 ## m: promień kropli (nieco większa od prawdziwej — w kadrze 1–2 px błysku w snopie)
+const DIG_DRIP_G := 9.8                   ## m/s²
+const DIG_DRIP_Z := Vector2(-0.45, 0.35)   ## m: głębokość miejsca kapania — blisko płaszczyzny gry, gdzie świeci snop latarki
+const DIG_DRIP_DB := -8.0
+
+var _drips: Array = []                    ## {"zone", "top": Vector2, "bot": Vector2 (px), "pos": Vector3 strop (m), "floor": float m, "per", "t", "life", "y", "v", "mi"}
+var _drip_rng := RandomNumberGenerator.new()
+var _drip_mesh: SphereMesh
+var _drip_mat: StandardMaterial3D
+var _drip_seek := 0.0
+var drip_splashes := 0                    ## licznik kropli, które doleciały do dna (test `--digtest` w oknie)
+
+func _tick_dig_drips(delta: float) -> void:
+	var lp: Node2D = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if is_instance_valid(p) and p.get("is_bot") == false and (p as Node).is_multiplayer_authority() and not bool(p.get("dead")):
+			lp = p
+			break
+	var at := lp.global_position if lp != null else Vector2.INF
+	for i in range(_drips.size() - 1, -1, -1):
+		var e: Dictionary = _drips[i]
+		var z = e["zone"]
+		var top: Vector2 = e["top"]
+		e["life"] = float(e["life"]) - delta
+		var gone: bool = lp == null or not is_instance_valid(z) or (z as Node).is_queued_for_deletion() or top.distance_to(at) > DIG_DRIP_FAR 				or not z.solid_at_px(top - Vector2(0.0, 3.0)) or z.solid_at_px(top + Vector2(0.0, 3.0))
+		if gone or (float(e["life"]) <= 0.0 and float(e["y"]) < 0.0):
+			if is_instance_valid(e["mi"]):
+				(e["mi"] as Node).queue_free()
+			_drips.remove_at(i)
+			continue
+		_drip_step(e, delta)
+	if lp == null or _geo == null or _drips.size() >= DIG_DRIP_SPOTS:
+		return
+	_drip_seek -= delta
+	if _drip_seek > 0.0:
+		return
+	_drip_seek = 0.5
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if not (z.rect_px() as Rect2).grow(DIG_DRIP_NEAR).has_point(at):
+			continue
+		var sp: Array = z.drip_spot(_drip_rng, at, DIG_DRIP_NEAR)
+		if sp.is_empty():
+			continue
+		var ok := true
+		for e in _drips:
+			ok = ok and ((e["top"] as Vector2).distance_to(sp[0]) > DIG_DRIP_GAP)
+		if ok:
+			_add_drip(z, sp[0], sp[1])
+			return
+
+func _add_drip(z: Node2D, top: Vector2, bot: Vector2) -> void:
+	if _drip_mesh == null:
+		_drip_mesh = SphereMesh.new()
+		_drip_mesh.radius = DIG_DRIP_R
+		_drip_mesh.height = DIG_DRIP_R * 2.0
+		_drip_mesh.radial_segments = 8
+		_drip_mesh.rings = 4
+		_drip_mat = StandardMaterial3D.new()
+		_drip_mat.albedo_color = Color(0.32, 0.36, 0.38)
+		_drip_mat.roughness = 0.04
+		_drip_mat.metallic_specular = 1.0
+	var mi := MeshInstance3D.new()
+	mi.name = "DigDrip"
+	mi.mesh = _drip_mesh
+	mi.material_override = _drip_mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.layers = LAYER_WORLD
+	mi.visible = false
+	_geo.add_child(mi)
+	var pos := Level3D.px_to_m(top)
+	pos.z = _drip_rng.randf_range(DIG_DRIP_Z.x, DIG_DRIP_Z.y)
+	var per := _drip_rng.randf_range(DIG_DRIP_PERIOD.x, DIG_DRIP_PERIOD.y)
+	_drips.append({"zone": z, "top": top, "bot": bot, "pos": pos, "floor": Level3D.px_to_m(bot).y, "per": per,
+		"t": _drip_rng.randf_range(0.2, 1.0) * per, "life": _drip_rng.randf_range(DIG_DRIP_LIFE.x, DIG_DRIP_LIFE.y), "y": -1.0, "v": 0.0, "mi": mi})
+
+## Jedna klatka miejsca kapania: czekanie → nabrzmiewanie (kropla rośnie pod stropem) → spadek → plusk i dźwięk.
+func _drip_step(e: Dictionary, delta: float) -> void:
+	var mi := e["mi"] as MeshInstance3D
+	var pos: Vector3 = e["pos"]
+	if float(e["y"]) >= 0.0:                                   # spada: y — ile metrów już przeleciała
+		e["v"] = float(e["v"]) + DIG_DRIP_G * delta
+		e["y"] = float(e["y"]) + float(e["v"]) * delta
+		var yy := pos.y - DIG_DRIP_R - float(e["y"])
+		if yy <= float(e["floor"]) + DIG_DRIP_R:
+			mi.visible = false
+			e["y"] = -1.0
+			e["t"] = float(e["per"]) * _drip_rng.randf_range(0.8, 1.2)
+			drip_splashes += 1
+			Audio.play_variant_at("drip", 3, e["bot"], Audio.BUS_AMB, DIG_DRIP_DB, 1.0, 0.08)
+			return
+		mi.position = Vector3(pos.x, yy, pos.z)
+		mi.scale = Vector3(0.8, 1.0 + minf(float(e["v"]) * 0.25, 0.9), 0.8)   # w locie wydłużona
+		return
+	if float(e["life"]) <= 0.0:
+		mi.visible = false                                     # miejsce wysycha: ostatnia kropla już spadła
+		return
+	e["t"] = float(e["t"]) - delta
+	var t := float(e["t"])
+	if t > DIG_DRIP_GROW:
+		mi.visible = false
+		return
+	var g := clampf(1.0 - t / DIG_DRIP_GROW, 0.05, 1.0)
+	mi.visible = true
+	mi.scale = Vector3(g, g * 1.15, g)
+	mi.position = Vector3(pos.x, pos.y - DIG_DRIP_R * g, pos.z)
+	if t <= 0.0:
+		e["y"] = 0.0
+		e["v"] = 0.0
 
 ## Znak strefy wydobycia przy jej wejściu (dig_zone.gd `entrance`, po pytaniu z 2026-11-06 „czy sygnalizujemy możliwość kopania”):
 ## kilof wbity w skałę na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień), kupka

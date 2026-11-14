@@ -1445,6 +1445,14 @@ func _dig_tiles_changed(rc: Rect2i) -> void:
 					_dig_cells[cell] = true
 	_refresh_region(rc)
 
+## Kopanie P2c: strefa wydobycia, w której wykopie stoi punkt (stopy) pod skałą nad głową (tunel, nawis), albo null. Tło i pogłos jak
+## w podziemiach (weather_fx.gd `_beds`, audio_director.gd `_probe_environment`).
+func dig_cover_at(p: Vector2) -> Node:
+	for z in dig_zones():
+		if (z.rect_px() as Rect2).has_point(p) and z.roof_over(p):
+			return z
+	return null
+
 ## Strefy wydobycia tej mapy.
 func dig_zones() -> Array:
 	var out: Array = []
