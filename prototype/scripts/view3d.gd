@@ -219,7 +219,10 @@ var _hid2d: Array = []                   ## węzły 2D schowane przez `self_modu
 var _worldfx := {}                       ## id obiektu → {"src", "nodes": [węzły 3D], …} (dym generatora, tablica wyników)
 var _surf_t := 0.0                       ## do następnego odświeżenia tekstur z rysunkiem 2D [s]
 var _nestfx := {}                        ## id gniazda → [węzeł 2D, żar 3D]
-var _ring_mi: MeshInstance3D             ## pierścienie alarmu wrogów (jedna siatka na wszystkie)
+var _ring_mi: MeshInstance3D             ## wiązki leczenia Kapłana (jedna siatka na wszystkie)
+var _alarmfx := {}                       ## id wroga → kula fali alarmu (pulse3d.gd)
+var _telefx := {}                        ## id Kapłana → kula zapowiedzi jego fali (sonar o stałym zasięgu)
+var _shieldfx := {}                      ## id Podsłuchacza → [bańka pola, s od krzyku, s od opadnięcia (−1 — pole stoi)]
 var _screamfx := {}                      ## id gracza → kula fali krzyku (pulse3d.gd)
 var _sonar: MeshInstance3D               ## fala skanera „Sowa” lokalnego gracza (pulse3d.gd)
 var _scan_marks: MeshInstance3D          ## romby znajdziek i pudła wrogów bez modelu na skanerze
@@ -6958,112 +6961,159 @@ func _sync_nests() -> void:
 		p.emitting = (src as Node2D).is_visible_in_tree() and (src.get("alive") == null or src.get("alive") == true)
 		p.position = Level3D.px_to_m((src as Node2D).global_position + Vector2(0.0, -16.0)) + Vector3(0.0, 0.0, 0.3)
 
-## Pierścień alarmu wroga (`enemy.gd: _ring` — rozchodzi się od stwora, gdy podnosi alarm): okrąg w płaszczyźnie gry wokół jego tułowia.
+## Krzyki wrogów w 3D (do 1.7.566 płaskie tarcze i pierścienie w płaszczyźnie gry — wyglądały jak 2D):
+## • fala alarmu (`enemy.gd: _ring`, gdy stwór krzyczy: Podsłuchacz, wybuch fali Kapłana) — kula jak krzyk gracza, w czerwieni;
+## • pole ochronne Podsłuchacza w trakcie krzyku (`shield_up`) — bańka wokół tułowia, przy opadnięciu pęka na zewnątrz;
+## • zapowiedź fali Kapłana (`view_info()["tele"]` = promień w px) — sonar o stałym zasięgu: stały brzeg strefy na podłodze i ścianach,
+##   fale ściągane od brzegu do niego (nabiera powietrza) — gracz widzi, dokąd się cofnąć;
+## • wiązki leczenia Kapłana (`view_info()["beams"]`) — cienkie świecące rurki do leczonych Trzosków.
+## Do 1.7.566 zapowiedź i wiązki w ogóle się nie rysowały: `view_info` pytano tylko o wrogów z podniesioną tarczą, a ma ją tylko Podsłuchacz.
 func _sync_enemy_rings() -> void:
 	if _ring_mi == null:
 		_ring_mi = _imm(_world, _add_mat())
-		_ring_mi.name = "EnemyRings"
+		_ring_mi.name = "EnemyBeams"
 	var im := _ring_mi.mesh as ImmediateMesh
 	im.clear_surfaces()
+	var dt := get_process_delta_time()
+	var now := Time.get_ticks_msec() * 0.001
+	var calm := Settings.reduce_fx
+	var seen_alarm := {}
+	var seen_shield := {}
+	var seen_tele := {}
 	for n in get_tree().get_nodes_in_group("enemies"):
-		var rv = n.get("_ring")
-		if rv == null or not (n is Node2D):
+		if not (n is Node2D) or not is_instance_valid(n) or not (n as Node2D).is_visible_in_tree():
 			continue
-		if float(rv) <= 0.0 or not (n as Node2D).is_visible_in_tree():
-			continue
-		var k := 1.0 - float(rv) / 0.7
-		var size: Vector2 = n.get("_def")["size"]
-		var c := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.7)) + Vector3(0.0, 0.0, 0.35)
-		var r := (8.0 + k * float((n.get("_def") as Dictionary).get("ring_r", 70.0))) * PX
-		var col := Color(1.0, 0.55, 0.35, (1.0 - k) * 0.8)
-		im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-		for i in 49:
-			var a := TAU * float(i) / 48.0
-			var d := Vector3(cos(a), sin(a), 0.0)
-			im.surface_set_color(col)
-			im.surface_add_vertex(c + d * (r - 0.05))
-			im.surface_set_color(col)
-			im.surface_add_vertex(c + d * (r + 0.05))
-		im.surface_end()
-	# pole ochronne Podsłuchacza w trakcie krzyku (`view_info()["shield"]`): półprzezroczysta tarcza wokół tułowia z jaśniejszym brzegiem, lekko pulsuje
-	for n in get_tree().get_nodes_in_group("enemies"):
-		if not (n is Node2D) or not n.has_method("view_info") or not (n as Node2D).is_visible_in_tree():
-			continue
-		var beh = n.get("_beh")
-		if beh == null or not bool(beh.call("shield_up")):
-			continue                                               # view_info co klatkę dla stu wrogów to koszt bez korzyści: tarczę ma tylko krzyczący Podsłuchacz
-		var info: Dictionary = n.view_info()
 		var dfn = n.get("_def")
-		if dfn == null:
-			continue                                               # Stalker, Żyła, Pijawka i gniazda mają view_info, ale nie dane rodzaju zwykłego wroga
+		if not (dfn is Dictionary):
+			continue                                               # Stalker, Żyła, Pijawka, gniazda — nie krzyczą jak zwykli wrogowie
+		var id := n.get_instance_id()
+		var pos := (n as Node2D).global_position
 		var size: Vector2 = (dfn as Dictionary)["size"]
+		var rv = n.get("_ring")
+		if rv != null and float(rv) > 0.0:
+			seen_alarm[id] = true
+			var mi := _fx_pool(_alarmfx, id, func() -> MeshInstance3D: return Pulse3D.make_wave(true, LAYER_WORLD))
+			var k := clampf(1.0 - float(rv) / ALARM_T, 0.0, 1.0)
+			var reach := float((dfn as Dictionary).get("ring_r", 70.0)) * PX
+			var r := 8.0 * PX + reach * (1.0 - pow(1.0 - k, 2.2))
+			Pulse3D.place(mi, Level3D.px_to_m(pos + Vector2(0.0, -size.y * 0.7)), r, reach + 0.8,
+				{"tint": ALARM_TINT, "fade": pow(1.0 - k, 1.2), "width": 0.22 + 0.3 * k, "distort": 0.0 if calm else 0.7})
+		var bk := String((dfn as Dictionary).get("behavior", ""))
+		if bk != "listener" and bk != "priest" or not n.has_method("view_info"):
+			continue                                               # view_info co klatkę dla stu wrogów to koszt bez korzyści
+		var info: Dictionary = n.view_info()
 		if bool(info.get("shield", false)):
-			var c := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.55)) + Vector3(0.0, 0.0, 0.3)
-			var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
-			var r := (size.y * 0.9 + pulse * 2.0) * PX
-			var fill := Color(0.55, 0.8, 1.0, 0.10 + 0.07 * pulse)
-			var edge := Color(0.7, 0.9, 1.0, 0.55 + 0.3 * pulse)
-			im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-			for i in 49:
-				var a := TAU * float(i) / 48.0
-				var d := Vector3(cos(a), sin(a), 0.0)
-				im.surface_set_color(fill)
-				im.surface_add_vertex(c)
-				im.surface_set_color(fill)
-				im.surface_add_vertex(c + d * r)
-			im.surface_end()
-			im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-			for i in 49:
-				var a := TAU * float(i) / 48.0
-				var d := Vector3(cos(a), sin(a), 0.0)
-				im.surface_set_color(edge)
-				im.surface_add_vertex(c + d * (r - 0.04))
-				im.surface_set_color(edge)
-				im.surface_add_vertex(c + d * (r + 0.04))
-			im.surface_end()
-		# zapowiedź fali krzyku Kapłana (`view_info()["tele"]` = promień w px): pulsujący pierścień na całym zasięgu fali — gracz widzi, skąd się cofnąć
+			seen_shield[id] = true
+			var sh: Array = _shieldfx.get(id, [])
+			if sh.is_empty() or not is_instance_valid(sh[0]):
+				var b := Pulse3D.make_shield(LAYER_WORLD)
+				_world.add_child(b)
+				sh = [b, 0.0, -1.0]
+				_shieldfx[id] = sh
+			sh[1] = float(sh[1]) + dt
+			sh[2] = -1.0
+			var grow := 1.0 - pow(1.0 - clampf(float(sh[1]) / SHIELD_IN, 0.0, 1.0), 3.0)
+			_place_shield(sh[0], pos, size, 0.7 + 0.3 * grow, grow)
 		var tele := float(info.get("tele", 0.0))
 		if tele > 0.0:
-			var tc := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.5)) + Vector3(0.0, 0.0, 0.35)
-			var tp := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.02)
+			seen_tele[id] = true
+			var tm := _fx_pool(_telefx, id, func() -> MeshInstance3D: return Pulse3D.make_wave(false, LAYER_WORLD))
 			var tr := tele * PX
-			var tfill := Color(1.0, 0.75, 0.3, 0.025 + 0.02 * tp)
-			var tedge := Color(1.0, 0.8, 0.35, 0.55 + 0.35 * tp)
-			im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-			for i in 49:
-				var ta := TAU * float(i) / 48.0
-				var td := Vector3(cos(ta), sin(ta), 0.0)
-				im.surface_set_color(tfill)
-				im.surface_add_vertex(tc)
-				im.surface_set_color(tfill)
-				im.surface_add_vertex(tc + td * tr)
-			im.surface_end()
-			im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-			for i in 49:
-				var ta2 := TAU * float(i) / 48.0
-				var td2 := Vector3(cos(ta2), sin(ta2), 0.0)
-				im.surface_set_color(tedge)
-				im.surface_add_vertex(tc + td2 * (tr - 0.05))
-				im.surface_set_color(tedge)
-				im.surface_add_vertex(tc + td2 * (tr + 0.05))
-			im.surface_end()
-		# wiązki leczenia Kapłana (`view_info()["beams"]` = punkty leczonych): zielone pasma od jego tułowia do każdego z Trzosków
+			var tp := 0.5 + 0.5 * sin(now * 20.0)
+			var pull := fmod(now * TELE_PULL, 1.0)                  # fala ściągana od brzegu do Kapłana
+			Pulse3D.place(tm, Level3D.px_to_m(pos + Vector2(0.0, -size.y * 0.5)), tr * (1.0 - pull), tr,
+				{"tint": TELE_TINT, "max_r": tr, "width": 0.3, "edge": 0.35 + 0.35 * tp, "fade": 1.0, "lines": 0.0})
 		var beams: PackedVector2Array = info.get("beams", PackedVector2Array())
 		if not beams.is_empty():
-			var from3 := Level3D.px_to_m((n as Node2D).global_position + Vector2(0.0, -size.y * 0.7)) + Vector3(0.0, 0.0, 0.35)
+			var from3 := Level3D.px_to_m(pos + Vector2(0.0, -size.y * 0.7))
+			var flow := 0.75 + 0.25 * sin(now * 9.0)
 			for bp in beams:
-				var to3 := Level3D.px_to_m(bp) + Vector3(0.0, 0.0, 0.35)
-				var dir3 := (to3 - from3)
-				var nrm := Vector3(-dir3.y, dir3.x, 0.0).normalized() * 0.05
-				var bc := Color(0.45, 1.0, 0.55, 0.6)
-				im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-				for t in [0.0, 1.0]:
-					var pt: Vector3 = from3.lerp(to3, t)
-					im.surface_set_color(bc)
-					im.surface_add_vertex(pt - nrm)
-					im.surface_set_color(bc)
-					im.surface_add_vertex(pt + nrm)
-				im.surface_end()
+				_add_tube(im, from3, Level3D.px_to_m(bp + Vector2(0.0, -8.0)), 0.035, Color(0.45, 1.0, 0.55, 0.55 * flow))
+	_fx_sweep(_alarmfx, seen_alarm)
+	_fx_sweep(_telefx, seen_tele)
+	# tarcza, która właśnie opadła: pęka — rośnie i gaśnie w SHIELD_OUT s (stwór nadal w miejscu; zniknął — od razu precz)
+	for id in _shieldfx.keys():
+		if seen_shield.has(id):
+			continue
+		var sh: Array = _shieldfx[id]
+		var src = instance_from_id(id) if is_instance_id_valid(id) else null
+		if not is_instance_valid(sh[0]) or src == null or not (src as Node2D).is_visible_in_tree():
+			if is_instance_valid(sh[0]):
+				(sh[0] as Node).queue_free()
+			_shieldfx.erase(id)
+			continue
+		if float(sh[2]) < 0.0:
+			sh[2] = 0.0
+		sh[2] = float(sh[2]) + dt
+		var u := float(sh[2]) / SHIELD_OUT
+		if u >= 1.0 or float(sh[1]) <= 0.0:
+			(sh[0] as Node).queue_free()
+			_shieldfx.erase(id)
+			continue
+		var dfn2 = src.get("_def")
+		var size2: Vector2 = (dfn2 as Dictionary)["size"] if dfn2 is Dictionary else Vector2(12, 24)
+		_place_shield(sh[0], (src as Node2D).global_position, size2, 1.0 + 0.35 * u, pow(1.0 - u, 1.5))
+		sh[1] = 1.0                                               # po pęknięciu nie „rośnie” od nowa, gdy krzyk wróci za chwilę
+
+const ALARM_T := 0.7                     ## czas fali alarmu [s] = `enemy.gd: _scream_fx` `_ring` na starcie
+const ALARM_TINT := Color(1.0, 0.42, 0.28)   ## fala alarmu wroga (gracz: ciepła żółć)
+const TELE_TINT := Color(1.0, 0.72, 0.3, 0.85)   ## zapowiedź fali Kapłana
+const TELE_PULL := 1.8                   ## fal zapowiedzi na sekundę (ściąganych do Kapłana)
+const SHIELD_TINT := Color(0.55, 0.82, 1.0)
+const SHIELD_IN := 0.16                  ## rozrost bańki po krzyku [s]
+const SHIELD_OUT := 0.28                 ## pęknięcie bańki po opadnięciu pola [s]
+const SHIELD_Z_M := 0.85                 ## półoś bańki w głąb [m]: pełna kula Podsłuchacza (≈ 1,6 m) wystawałaby przed przekrój skały
+
+## Bańka pola ochronnego wokół tułowia: `s` skala (rozrost / pęknięcie), `fade` jasność.
+func _place_shield(mi: MeshInstance3D, pos: Vector2, size: Vector2, s: float, fade: float) -> void:
+	var r := size.y * 0.8 * PX * s
+	mi.position = Level3D.px_to_m(pos + Vector2(0.0, -size.y * 0.55))
+	mi.scale = Vector3(r, r, minf(r, SHIELD_Z_M * s))
+	var m := mi.material_override as ShaderMaterial
+	m.set_shader_parameter("tint", SHIELD_TINT)
+	m.set_shader_parameter("fade", fade)
+	m.set_shader_parameter("pulse", 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012))
+	mi.visible = true
+
+## Kula z puli efektów (id źródła → MeshInstance3D); brak albo zwolniona — tworzy nową przez `make`.
+func _fx_pool(pool: Dictionary, id: int, make: Callable) -> MeshInstance3D:
+	var mi = pool.get(id)
+	if mi == null or not is_instance_valid(mi):
+		mi = make.call()
+		_world.add_child(mi)
+		pool[id] = mi
+	return mi
+
+## Chowa kule źródeł, które w tej klatce nic nie pokazały; źródło zniknęło — zwalnia kulę.
+func _fx_sweep(pool: Dictionary, seen: Dictionary) -> void:
+	for id in pool.keys():
+		if seen.has(id):
+			continue
+		var mi = pool[id]
+		if mi == null or not is_instance_valid(mi):
+			pool.erase(id)
+		elif not is_instance_id_valid(id):
+			(mi as Node).queue_free()
+			pool.erase(id)
+		else:
+			(mi as Node3D).visible = false
+
+## Rurka (graniastosłup sześciokątny) z `a` do `b` o promieniu `r` — wiązka widoczna z każdej strony, nie płaski pas.
+func _add_tube(im: ImmediateMesh, a: Vector3, b: Vector3, r: float, col: Color) -> void:
+	var d := (b - a).normalized()
+	if d == Vector3.ZERO:
+		return
+	var n1 := d.cross(Vector3.FORWARD if absf(d.z) < 0.9 else Vector3.UP).normalized()
+	var n2 := d.cross(n1).normalized()
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for i in 7:
+		var ang := TAU * float(i) / 6.0
+		var o := (n1 * cos(ang) + n2 * sin(ang)) * r
+		im.surface_set_color(col)
+		im.surface_add_vertex(a + o)
+		im.surface_set_color(col)
+		im.surface_add_vertex(b + o)
+	im.surface_end()
 
 # ---------------------------------------------------------------- fale: krzyk i skaner „Sowa” (pulse3d.gd)
 
@@ -7086,27 +7136,13 @@ func _sync_screams() -> void:
 			continue
 		var id := p.get_instance_id()
 		seen[id] = true
-		var mi: MeshInstance3D = _screamfx.get(id)
-		if mi == null or not is_instance_valid(mi):
-			mi = Pulse3D.make_wave(true, LAYER_WORLD)
-			_world.add_child(mi)
-			_screamfx[id] = mi
+		var mi := _fx_pool(_screamfx, id, func() -> MeshInstance3D: return Pulse3D.make_wave(true, LAYER_WORLD))
 		var k := clampf(1.0 - ring / SCREAM_T, 0.0, 1.0)
 		var r := SCREAM_R_M * (1.0 - pow(1.0 - k, 2.6))
 		var c := Level3D.px_to_m((p as Node2D).global_position + Vector2(0.0, -SCREAM_UP_PX))
 		Pulse3D.place(mi, c, r, r + 0.8, {"fade": pow(1.0 - k, 1.3), "width": 0.25 + 0.35 * k,
 			"distort": 0.0 if Settings.reduce_fx else 1.0})
-	for id in _screamfx.keys():
-		if seen.has(id):
-			continue
-		var mi = _screamfx[id]
-		if mi == null or not is_instance_valid(mi):
-			_screamfx.erase(id)
-		elif not is_instance_id_valid(id):
-			(mi as Node).queue_free()
-			_screamfx.erase(id)
-		else:
-			(mi as Node3D).visible = false
+	_fx_sweep(_screamfx, seen)
 
 ## Skaner „Sowa” lokalnego gracza (scanner_view.gd mówi, co widać): fala sonaru po powierzchniach do brzegu zasięgu z jego stałym śladem,
 ## modele wrogów prześwietlone przez ściany (czerwone — zagrożenie, żółte — reszta; błysk, gdy mija je fala), zakopane znajdźki jako
