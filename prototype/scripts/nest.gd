@@ -1,5 +1,7 @@
 extends CharacterBody2D
-## Gniazdo — cel misji „Gniazdo" (GDD §9, misja 1.3: „spal 3 gniazda").
+## Gniazdo — cel misji „Gniazdo" (GDD §9, misja 1.3: „zniszcz 4 gniazda”). 60 HP: niszczy je każde trafienie bronią
+## (kula, śrut, cios, wybuch, strumień HKM-9); WRATH-4 (AoE) najszybciej. Plama ognia na ziemi (fire_patch.gd) gniazd nie rani.
+## Do 1.7.565 ten komentarz mówił „spal 3 gniazda” (pierwotny szkic misji, GDD tego nie wymaga).
 ## Symulacja i HP TYLKO na serwerze; klienci dostają stan przez _sync.
 ##
 ## Gniazdo jest w grupie „enemies", bo tak trafiają je pociski (projectile.gd)

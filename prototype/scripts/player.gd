@@ -1130,7 +1130,7 @@ func _throw_flare() -> void:
 
 # ---------------------------------------------------------------- ekwipunek zużywalny (lewy Alt / X)
 
-## Skaner „Sowa”: ile sekund jeszcze działa (lokalny gracz); nakładkę rysuje scanner_view.gd.
+## Skaner „Sowa”: ile sekund jeszcze działa (lokalny gracz); co widać, mówi scanner_view.gd, obraz 3D robi view3d.gd `_sync_scanner`.
 var scan_left := 0.0
 ## Tekst i postęp środkowego paska HUD dla narzędzi (apteczka, defibrylator) — tylko lokalny człowiek.
 var gear_text := ""
@@ -1140,7 +1140,7 @@ var _med_hp := 0
 var _defib_hold := 0.0
 var _defib_ref: Node2D = null
 var _scan_noise_t := 0.0
-var _scan_view: Node2D = null
+var _scan_view: Node = null
 
 ## Co klatkę (lokalny człowiek): X zmienia wybór, T używa wybranego przedmiotu. Zwraca true, gdy postać jest „zajęta”
 ## (apteczka i defibrylator wymagają stania w miejscu i nie strzelania, jak podnoszenie).
@@ -1355,7 +1355,7 @@ func do_scream(amount: float) -> void:
 	else:
 		_scream_fx()
 
-var _scream_ring := 0.0
+var _scream_ring := 0.0          ## s do końca fali krzyku (0,6 → 0); kulę 3D rysuje view3d.gd `_sync_screams`
 
 @rpc("authority", "call_local", "reliable")
 func _scream_fx() -> void:
@@ -2576,12 +2576,9 @@ func _update_plate(delta: float) -> void:
 	var want := _plate_t > 0.0 or hp != max_hp() or dead
 	_plate_a = move_toward(_plate_a, 1.0 if want else 0.0, delta * 4.0)
 
-## Rzeczy czytelne w ciemności (materiał unshaded): krąg krzyku i rany na sprite'cie. Imię, plakietkę życia, stan „DOWN”
-## i pasek podnoszenia rysuje warstwa ekranu (world_bars.gd) ze stanu `plate_state()`.
+## Rzeczy czytelne w ciemności (materiał unshaded): rany na sprite'cie. Imię, plakietkę życia, stan „DOWN”
+## i pasek podnoszenia rysuje warstwa ekranu (world_bars.gd) ze stanu `plate_state()`. Falę krzyku rysuje widok 3D (view3d.gd `_sync_screams`).
 func _draw_overlay(ov: Node2D) -> void:
-	if _scream_ring > 0.0:
-		var k := 1.0 - _scream_ring / 0.6
-		ov.draw_arc(Vector2(0, -12), 6.0 + k * 52.0, 0.0, TAU, 28, Color(1.0, 0.85, 0.5, (1.0 - k) * 0.7), 1.5)
 	if not dead and Sprites.newitem and hp < max_hp() and c3d == null:
 		_draw_wounds(ov, _head_top_px())                  # postać 3D ma krew w materiale (char3d.gd)
 
