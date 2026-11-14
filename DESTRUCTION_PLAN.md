@@ -537,6 +537,13 @@ nie łamią zasady „symulacja 2D” i działają w co-op od razu.
   w ostatnich sekundach), krok 15–20 Hz, na serwerze; wynik idzie jak zwykła delta komórek (Noita). **Wyspy skały bez połączenia z brzegiem
   strefy spadają** jako jeden odłamek (sprawdzenie spójności zalewaniem po każdym ciosie, który coś odciął) — nic nie wisi w powietrzu
   (lekcja z Teardown).
+- **Zawał stropu i stemple** (kopanie P2d, 1.7.565): strop wykopu bez podparcia szerszy niż próg materiału (ziemia 96 px ≈ 8 m, skała
+  i żyła 192 px; żwir nie trzyma stropu wcale — sam się osypuje) najpierw ostrzega (ziemia 6 s, skała 8 s: okruchy ze stropu, trzeszczenie,
+  czerwona podpowiedź), potem siada **łukiem** (sklepienie samonośne: w środku 0,3 szerokości przęsła, najwyżej 56 px) — ta bryła
+  zamienia się w żwir, który spada i osypuje się, więc zasypuje tunel, a płytki tunel otwiera lej do wierzchu. Pod spodem: gracz −1 serce
+  i wyjście spod gruzu z ogłuszeniem, zwykły wróg ginie (jak w D3), hałas jak granat. **Stempel**: trzymanie [E] 2,5 s pod stropem, deska
+  z zapasu drużyny (D2b) albo 3 złomu; dzieli przęsło i odwołuje ostrzeżenie; przewraca go wybuch i podkopanie stropu albo spągu. Stemple
+  są w stanie strefy (punkt kontrolny, dołączający). Liczby to punkt wyjścia do strojenia po playteście (`dig_materials.gd` `span`, `warn`).
 - **Anty-pułapka** (lekcja z SteamWorld Dig, liczby z S2): z dołu do 48 px (3 kafle) wychodzi się skokiem, z głębszego — stopniami
   wyciętymi po skosie w górę (4 ciosy z 60 px). Dlatego strefa nie schodzi niżej niż **3 kafle pod najniższe wejście tam, gdzie jej
   ściany są niekopalne** (brzeg strefy przy kaflach mapy, materiał, którego nie bierze żadne narzędzie); przy kopalnych ścianach głębokość

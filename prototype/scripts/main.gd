@@ -850,6 +850,7 @@ func _destruction_sig() -> String:
 	for z in level.dig_zones():
 		st += " %s=%s/%s" % [String(z.name).replace("DigZone", "dig"), (z._d as PackedByteArray).hex_encode().md5_text().substr(0, 8),
 			(z._m as PackedByteArray).hex_encode().md5_text().substr(0, 6)]   # gęstość i materiał strefy (D5; materiał przesuwa osypisko i wyspa)
+		st += " props=%d/%s warns=%d" % [(z.props as Array).size(), str(z.props).md5_text().substr(0, 6), (z.warns as Array).size()]   # stemple i ostrzeżenia (P2d)
 		var fs := ""
 		for f in z.finds:                                         # znajdźki: miejsca z ziarna i stan z gęstości (D5 część 2) — ten sam u każdego peera
 			fs += "%d,%d,%s,%d;" % [int(f["i"]), int(f["j"]), String(f["kind"]), int(f["state"])]
@@ -942,10 +943,20 @@ func _dig_net_host() -> void:
 	for cut in [[Vector2(500.0, 196.0), Vector2(14.0, 4.0)], [Vector2(500.0, 228.0), Vector2(14.0, 6.0)], [Vector2(488.0, 212.0), Vector2(4.0, 18.0)],
 			[Vector2(512.0, 212.0), Vector2(4.0, 18.0)]]:
 		z2._send(cut[0], cut[1], 0.0, DigMats.Tool.BLAST)
+	# zawał stropu i stemple (kopanie P2d): w głębi DigZone1 dwa szerokie tunele (144 px, ziemia trzyma 96) — niższy na stemplu z deski,
+	# wyższy siada od razu (odliczanie ostrzeżenia skrócone, żeby stan ustał przed dołączeniem klienta B); gruz to żwir, idzie deltą
+	z1._send(Vector2(112.0, top + 104.0), Vector2(72.0, 12.0), 0.0, DigMats.Tool.BLAST)
+	level.add_planks(1)
+	var prop_ok := String(z1.place_prop(Vector2(112.0, top + 116.0)))
+	z1._send(Vector2(112.0, top + 52.0), Vector2(72.0, 14.0), 0.0, DigMats.Tool.BLAST)
+	z1._update_warns()
+	for w in z1.warns:
+		w[3] = 0.05
 	var t0 := Time.get_ticks_msec()
-	while not (z2.is_settled() and (z3 == null or z3.is_settled())) and Time.get_ticks_msec() - t0 < 5000:
+	while not (z1.is_settled() and z1.collapses > 0 and z2.is_settled() and (z3 == null or z3.is_settled())) and Time.get_ticks_msec() - t0 < 8000:
 		await get_tree().create_timer(0.1).timeout
-	print("[DIG-NET] host islands=%d settled=%s" % [int(z2.islands_fallen), z2.is_settled() and (z3 == null or z3.is_settled())])   # wyspa spadła (licznik tylko na serwerze)
+	print("[DIG-NET] host islands=%d settled=%s collapses=%d prop=%s props=%d warns=%d" % [int(z2.islands_fallen), z1.is_settled() and z2.is_settled() and (z3 == null or z3.is_settled()),
+		int(z1.collapses), prop_ok, (z1.props as Array).size(), (z1.warns as Array).size()])   # wyspa spadła, strop siadł (liczniki tylko na serwerze)
 	while multiplayer.get_peers().size() < 2 and Time.get_ticks_msec() - t0 < 30000:
 		await get_tree().create_timer(0.25).timeout
 	print("[DESTRUCTION-NET] host peers=%d" % multiplayer.get_peers().size())
