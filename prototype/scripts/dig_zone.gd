@@ -51,6 +51,14 @@ const DOWN_W := 20.0                  ## px: szerokość szybu (szerszy od posta
 const DOWN_D := 12.0                  ## px: głębokość szybu na cios
 const UP_D := 12.0                    ## px: wnęka nad głową na cios
 const DIAG_DROP := 8.0                ## px: stopień przy ciosie po skosie (w dół — zejście, w górę — próg do wskoczenia)
+## Nieregularna siatka 3D (P1, `chunk_mesh`): ściany wykopu dzielone w głąb na plastry, a wierzchołki konturu przesunięte gładkim szumem
+## zależnym tylko od położenia w świecie — ten sam punkt dostaje to samo przesunięcie w każdej komórce i każdym fragmencie, więc siatka nie pęka.
+## Kolizja zostaje z konturu (różnica kilka cm). Podłoga (powietrze nad, skała pod) nie rusza się w pionie — stopy stoją na tym, co widać.
+const JAG_U := [0.0, 0.05, 0.27, 0.5, 0.75, 1.0]   ## granice plastrów ściany wykopu od przodu (0) do tyłu bryły (1); pierwszy cienki — wyłupana krawędź
+const JAG_RIM := 0.15                  ## m: obrys wykopu na przodzie (narożniki konturu; < pół komórki, żeby trójkąty się nie przewracały)
+const JAG_FRONT := 0.08                ## m: przesunięcie tuż za przodem (pierwszy plaster — krawędź wykopu wygląda na wyłupaną)
+const JAG_DEEP := 0.26                 ## m: największe wybrzuszenie w połowie głębokości
+const JAG_FREQ := 1.6                  ## 1/m: częstotliwość szumu (garby co ok. 0,6 m)
 const N_DIG := 1.5                    ## hałas ciosu kilofem w grunt (jak w ścianę, breakable.gd); materiał mnoży (dig_materials.gd `noise`)
 const BLADE_NOISE := 0.5              ## broń biała w ziemi: wolniej, ale ciszej
 const BLAST_DIG := 0.5                ## promień wyrwy po wybuchu = połowa promienia fali
@@ -119,6 +127,7 @@ var sim_usec := 0                     ## czas ostatniego kroku z ruchem (µs)
 var islands_fallen := 0               ## serwer: wysp, które spadły od wczytania / resetu
 var fx_hits := 0                      ## u każdego peera: efektów ciosu od wczytania (test)
 var fx_last := {}                     ## ostatni efekt ciosu {"mat", "tool", "metal", "by"} (test)
+static var _jag_noise: FastNoiseLite
 
 ## Ustawia strefę z wpisu `DIG_ZONES` ([c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?], kafle włącznie). `solid_at(c, r) -> bool` — czy
 ## kafel mapy (poza strefą) jest bryłą; `zone_solid(c, r) -> bool` — czy kafel strefy był skałą w danych mapy (przed wycięciem).
@@ -1142,12 +1151,13 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 			segs.clear()
 			var mask := 0 if i == i_end else _cell(i, j, poly, segs)
 			var cm := _cell_mat(i, j) if mask != 0 else -1
-			if run >= 0 and (mask != 15 or cm != run_mat):       # zamknij pas pełnych komórek [run, i)
+			var rim := mask == 15 and _rim_cell(i, j)              # pełna komórka przy konturze: osobno, bo jej narożniki na konturze się przesuwają
+			if run >= 0 and (mask != 15 or rim or cm != run_mat):    # zamknij pas pełnych komórek [run, i)
 				var a := (gp + _corner_px(run, j)) * px
 				var b := (gp + _corner_px(i, j + 1)) * px
 				_quad(verts, norms, cols, Mats.tint(run_mat), Vector3(a.x, -a.y, front), Vector3(b.x, -a.y, front), Vector3(b.x, -b.y, front), Vector3(a.x, -b.y, front))
 				run = -1
-			if mask == 15:
+			if mask == 15 and not rim:
 				if run < 0:
 					run = i
 					run_mat = cm
@@ -1200,6 +1210,7 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	if verts.is_empty():
 		return mesh
+	_jag_mesh(verts, norms, gp, px, front, back)
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts
@@ -1208,7 +1219,8 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return mesh
 
-## Ściany konturu (odcinki `segs` komórki) od przodu do tyłu strefy; normalna od środka skały `cen` na zewnątrz (w płaszczyźnie xy).
+## Ściany konturu (odcinki `segs` komórki) od przodu do tyłu strefy, w plastrach JAG_U; normalna od środka skały `cen` na zewnątrz
+## (w płaszczyźnie xy — po przesunięciu wierzchołków `_jag_mesh` liczy ją od nowa z trójkąta, z tym samym zwrotem).
 func _walls(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, segs: PackedVector2Array, cen: Vector2, gp: Vector2, px: float, front: float, back: float, tint: Color, deep: Color) -> void:
 	for k in range(0, segs.size(), 2):
 		var e := segs[k + 1] - segs[k]
@@ -1218,26 +1230,100 @@ func _walls(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedCo
 		var n3 := Vector3(n2.x, -n2.y, 0.0)
 		var a2 := (gp + segs[k]) * px
 		var b2 := (gp + segs[k + 1]) * px
-		var af := Vector3(a2.x, -a2.y, front)
-		var bf := Vector3(b2.x, -b2.y, front)
-		var ab := Vector3(a2.x, -a2.y, back)
-		var bb := Vector3(b2.x, -b2.y, back)
-		if (bf - af).cross(bb - af).dot(n3) > 0.0:     # przód (zgodnie z ruchem wskazówek) od strony normalnej
-			var t := af
-			af = bf
-			bf = t
-			t = ab
-			ab = bb
-			bb = t
-		verts.append(af)
-		verts.append(bf)
-		verts.append(bb)
-		verts.append(af)
-		verts.append(bb)
-		verts.append(ab)
-		for c in [tint, tint, deep, tint, deep, deep]:
-			norms.append(n3)
-			cols.append(c)
+		if (Vector3(b2.x - a2.x, a2.y - b2.y, 0.0)).cross(Vector3(0, 0, back - front)).dot(n3) > 0.0:   # przód (zgodnie z ruchem wskazówek) od strony normalnej
+			var t := a2
+			a2 = b2
+			b2 = t
+		for sl in JAG_U.size() - 1:
+			var u0: float = JAG_U[sl]
+			var u1: float = JAG_U[sl + 1]
+			var z0 := lerpf(front, back, u0)
+			var z1 := lerpf(front, back, u1)
+			var c0 := tint.lerp(deep, u0)
+			var c1 := tint.lerp(deep, u1)
+			var af := Vector3(a2.x, -a2.y, z0)
+			var bf := Vector3(b2.x, -b2.y, z0)
+			var ab := Vector3(a2.x, -a2.y, z1)
+			var bb := Vector3(b2.x, -b2.y, z1)
+			verts.append(af)
+			verts.append(bf)
+			verts.append(bb)
+			verts.append(af)
+			verts.append(bb)
+			verts.append(ab)
+			for c in [c0, c0, c1, c0, c1, c1]:
+				norms.append(n3)
+				cols.append(c)
+
+## Przesunięcie wierzchołka siatki (P1, JAG_*): `v` w metrach świata. Przód skały zostaje płaski i na miejscu (styk z pasami pełnych komórek
+## i z przodem mapy — kontur wyrwy leży dokładnie na narożnikach siatki), tak samo pas przy brzegu strefy; przy podłodze bez ruchu w pionie.
+func _jag(v: Vector3, gp: Vector2, px: float, front: float, back: float) -> Vector3:
+	var g := Vector2(v.x, -v.y) / px                          # px świata
+	var l := g - gp                                           # px względem strefy
+	var at_front := v.z >= front - 0.001
+	if at_front:
+		var fx := fposmod(l.x, CELL)
+		var fy := fposmod(l.y, CELL)
+		if minf(fx, CELL - fx) < 0.05 and minf(fy, CELL - fy) < 0.05 and not _rim_corner(roundi(l.x / CELL) + 1, roundi(l.y / CELL) + 1):
+			return v                                           # narożnik w głębi skały: styk z pasami pełnych komórek
+	var edge := minf(minf(l.x, nx * CELL - l.x), minf(l.y, ny * CELL - l.y)) / CELL
+	var fade := clampf(edge - 0.5, 0.0, 1.0)
+	if fade <= 0.0:
+		return v
+	if _jag_noise == null:
+		_jag_noise = FastNoiseLite.new()
+		_jag_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		_jag_noise.frequency = JAG_FREQ
+		_jag_noise.fractal_octaves = 2
+	var u := clampf((front - v.z) / maxf(front - back, 0.01), 0.0, 1.0)
+	var amp := (JAG_RIM if at_front else lerpf(JAG_FRONT, JAG_DEEP, sin(u * PI))) * fade
+	var d: Vector3
+	if at_front:                                               # obrys na przodzie: szum 2D
+		d = Vector3(_jag_noise.get_noise_2d(v.x, v.y), _jag_noise.get_noise_2d(v.x + 31.7, v.y - 12.3), 0.0)
+	else:                                                      # w głąb: szum 3D (garby, z także w głąb)
+		d = Vector3(_jag_noise.get_noise_3d(v.x, v.y, v.z), _jag_noise.get_noise_3d(v.x + 31.7, v.y - 12.3, v.z + 5.1),
+			_jag_noise.get_noise_3d(v.x - 17.9, v.y + 44.2, v.z - 9.4) * 0.5 * sin(u * PI))
+	d *= amp * 1.6
+	if at_front:
+		d = d.limit_length(CELL * px * 0.45)
+	if solid_at_px(g + Vector2(0.0, 2.0)) and not solid_at_px(g - Vector2(0.0, 2.0)):
+		d.y = 0.0                                              # podłoga: stopy stoją na tym, co widać
+	return v + d
+
+## Narożnik (i, j) leży na konturze: skała, a obok (8 sąsiadów) powietrze.
+func _rim_corner(i: int, j: int) -> bool:
+	if i < 0 or j < 0 or i >= _w or j >= _h or _d[j * _w + i] < ISO:
+		return false
+	for dj in range(-1, 2):
+		for di in range(-1, 2):
+			var a := i + di
+			var b := j + dj
+			if a >= 0 and b >= 0 and a < _w and b < _h and _d[b * _w + a] < ISO:
+				return true
+	return false
+
+## Pełna komórka (i, j) ma narożnik na konturze.
+func _rim_cell(i: int, j: int) -> bool:
+	return _rim_corner(i, j) or _rim_corner(i + 1, j) or _rim_corner(i + 1, j + 1) or _rim_corner(i, j + 1)
+
+## Przesuwa wszystkie wierzchołki (`_jag`, raz na położenie) i liczy płaskie normalne trójkątów od nowa, ze zwrotem starej normalnej.
+func _jag_mesh(verts: PackedVector3Array, norms: PackedVector3Array, gp: Vector2, px: float, front: float, back: float) -> void:
+	var memo := {}
+	for k in verts.size():
+		var v := verts[k]
+		if not memo.has(v):
+			memo[v] = _jag(v, gp, px, front, back)
+		verts[k] = memo[v]
+	for k in range(0, verts.size(), 3):
+		var n := (verts[k + 2] - verts[k]).cross(verts[k + 1] - verts[k])
+		if n.length_squared() < 1e-12:
+			continue
+		n = n.normalized()
+		if n.dot(norms[k]) < 0.0:
+			n = -n
+		norms[k] = n
+		norms[k + 1] = n
+		norms[k + 2] = n
 
 ## Prostokąt przodu skały (a, b, c, d zgodnie z ruchem wskazówek na ekranie i w 3D), normalna +z.
 static func _quad(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, col: Color, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
