@@ -3092,7 +3092,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		if ssp != null:
 			get_tree().create_timer(maxf(0.05, delay - 0.3)).timeout.connect(func() -> void: ssp._scream_fx())
 	for sa in OS.get_cmdline_user_args():
-		# dev: --shotfoescream=podsluchacz|kaplan — wróg tego rodzaju 90 px na prawo od gracza 1, zamrożony; Podsłuchacz krzyczy 0,3 s przed
+		# dev: --shotfoescream=podsluchacz|kaplan — wróg tego rodzaju 90 px na prawo od gracza 1; Podsłuchacz (żywy, animowany) krzyczy 0,3 s przed
 		# zrzutem (pole ochronne + fala alarmu), Kapłan stoi w zapowiedzi swojej fali (strefa i fale ściągane do niego)
 		if sa.begins_with("--shotfoescream="):
 			var fk := sa.substr("--shotfoescream=".length())
@@ -3104,16 +3104,14 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					if not is_instance_valid(fw):
 						return
 					fw.call("wake")
-					fw.set_physics_process(false)
 					if fk == "kaplan":
+						fw.set_physics_process(false)
 						fw.set("_sp", 1)                     # enemy_priest.gd SP_SCREAM
-						fw.set("winding", true)
-					else:
-						fw.set("_ai", fw.Ai.SCREAM))
+						fw.set("winding", true))
 				if fk != "kaplan":
 					get_tree().create_timer(maxf(0.7, delay - 0.3)).timeout.connect(func() -> void:
 						if is_instance_valid(fw):
-							fw._scream_fx())
+							fw._beh.scream())         # jak w grze: gest krzyku (visual_attack), pole, fala alarmu
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
 	await get_tree().create_timer(delay).timeout

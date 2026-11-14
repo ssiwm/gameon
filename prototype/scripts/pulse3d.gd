@@ -13,7 +13,7 @@ extends RefCounted
 ##
 ## Wrogowie (od 1.7.567, wcześniej płaskie tarcze i pierścienie w płaszczyźnie gry): fala alarmu to ta sama kula co krzyk gracza w czerwieni,
 ## zapowiedź krzyku Kapłana to sonar o stałym zasięgu (fala ściąga do niego od brzegu), pole ochronne Podsłuchacza to bańka (`make_shield`):
-## spłaszczona w głąb elipsoida z obrysem od kąta patrzenia i jaśniejszym pasem tam, gdzie przecina podłogę, ścianę i samego stwora.
+## kula wokół całej postaci (spłaszczona w głąb), z obrysem od kąta patrzenia i jaśniejszym pasem tam, gdzie przecina podłogę, ścianę i samego stwora.
 
 const SONAR_SHADER := """
 shader_type spatial;
@@ -203,7 +203,7 @@ static func place(mi: MeshInstance3D, center: Vector3, radius: float, reach: flo
 		m.set_shader_parameter(k, params[k])
 	mi.visible = true
 
-## Bańka pola ochronnego (siatka o promieniu 1 — rozmiar przez `scale`).
+## Bańka pola ochronnego (siatka o promieniu 1 — rozmiar przez `scale`, ustawia `view3d.gd: _place_shield`).
 static func make_shield(layer: int) -> MeshInstance3D:
 	if _shield_sh == null:
 		_shield_sh = _shader(SHIELD_SHADER)
