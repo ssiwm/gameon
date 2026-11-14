@@ -22,6 +22,8 @@ extends "res://scripts/stalker_test.gd"
 ##    odnowienie po 3 udanych misjach na innych mapach (nowe miejsca), Nocny Dyżur nie rusza puli, zapis w progress.cfg.
 ## 12. sygnał strefy: wejście (miejsce znaku 3D), podpowiedź „Kop” w pasku akcji (skała z kilofem, ziemia, z dala nic, milknie po
 ##    3 ciosach przy niej, osobno dla każdej strefy), porada o kopaniu i skanerze tylko na 1.1.
+## 13. wykop pod skałą (kopanie P2c): strop nad głową w tunelu, na wierzchu nie; tło jak w podziemiach (level.gd `dig_cover_at`); miejsca
+##    kapania na stropie w skale (dig_zone.gd `drip_spot`), w ziemi nie; pogłos wg ścian — w skale jaśniejszy, w ziemi głuchy.
 ## Wynik: linie [DIG-TEST] (PASS / FAIL / INFO) i kod wyjścia.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -82,6 +84,7 @@ func run(m: Node2D) -> void:
 	await _tunnel()
 	_nav_check(dig0)
 	await _materials()
+	await _acoustics()
 	await _blast()
 	await _state(dig0)
 	await _finds()
@@ -457,6 +460,76 @@ func _materials() -> void:
 	zone.reset_to(dug)
 	await _frames(0.1)
 	wc.melee_id = melee0
+
+# ---------------------------------------------------------------- 13. wykop pod skałą: strop, kapanie, pogłos (P2c)
+
+func _acoustics() -> void:
+	var res := {}
+	for z in [rock, zone]:
+		var s0: PackedByteArray = z.state()
+		var f0: Array[Dictionary] = z.finds.duplicate(true)       # tunel nie odsłania znajdziek (gracz w oknie podniósłby łup puli)
+		var fo: int = z.finds_out
+		z.finds.clear()
+		z.reset_to(PackedByteArray())
+		await _frames(0.1)
+		var rc: Rect2 = z.rect_px()
+		var c := Vector2(rc.get_center().x, TOP + 54.0)          # tunel 28 px pod 40 px stropu, stopy na 68 px pod wierzchem
+		z.apply_dig(c, Vector2(44.0, 14.0), 0.0, DigMats.Tool.BLAST)   # wybuch bierze skałę jednym przebiegiem (kilof: 72 z 255)
+		await _frames(0.3)
+		var feet := c + Vector2(0.0, 13.0)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 87
+		var sp: Array = z.drip_spot(rng, feet, 120.0)
+		var mat_top := String(z.material_at_px((sp[0] as Vector2) - Vector2(0.0, 3.0))) if not sp.is_empty() else "—"
+		Audio._listener_pos = feet - Vector2(0.0, 8.0)
+		Audio._probe_environment()
+		res[z] = {"roof": z.roof_over(feet), "open": z.roof_over(Vector2(c.x, TOP - 1.0)), "cover": level.dig_cover_at(feet) == z,
+			"sp": sp, "mat": mat_top, "rev": [Audio._rev_wet_t, Audio._rev_room_t, Audio._rev_damp_t], "fx": Audio._rev_fx != null}
+		info("%s: strop %s, na wierzchu %s, kapanie %s (%s), pogłos wet %.2f room %.2f damp %.2f" % [z.name, res[z]["roof"], res[z]["open"],
+			str(sp), mat_top, res[z]["rev"][0], res[z]["rev"][1], res[z]["rev"][2]])
+		var v3: Node = Vfx.view3d
+		if z == rock and v3 != null and is_instance_valid(v3):    # w oknie: krople ze stropu tunelu spadają i pluskają (view3d.gd `_tick_dig_drips`)
+			var fl: bool = player.flashlight
+			var ma: bool = player.mouse_aim
+			player.flashlight = true
+			player.mouse_aim = false
+			_place_player(feet - Vector2(30.0, 1.0))
+			var n0: int = v3.drip_splashes
+			var seen := false
+			for _i in 500:                                      # do 10 s
+				player.aim_dir = Vector2.RIGHT
+				await _frames(0.02)
+				var grow: Node3D = null                         # zrzut, gdy kropla przelatuje przez snop
+				for d in v3.get("_drips"):
+					if is_instance_valid(d["mi"]) and (d["mi"] as Node3D).visible:
+						seen = true
+						grow = d["mi"] if float(d["y"]) > 0.7 and float(d["y"]) < 1.5 else grow   # w locie przez snop na wysokości głowy
+				if grow != null and int(v3.drip_splashes) > n0:
+					var cam := v3.get("_cam_a") as Camera3D
+					if cam != null:
+						info("kropla na ekranie: %s" % str(cam.unproject_position(grow.global_position)))
+					break
+			await _shot("d5_14_drip", func(_t: float, _dt: float) -> void: player.aim_dir = Vector2.RIGHT, 0.0)
+			check("w oknie kapie ze stropu tunelu w skale: %d miejsc, kropli na dnie %d" % [(v3.get("_drips") as Array).size(), int(v3.drip_splashes) - n0],
+				seen and int(v3.drip_splashes) > n0)
+			player.flashlight = fl
+			player.mouse_aim = ma
+		z.reset_to(s0)
+		await _frames(0.1)
+		z.finds = f0
+		z.finds_out = fo
+	var r: Dictionary = res[rock]
+	var e: Dictionary = res[zone]
+	check("tunel pod skałą: strop nad głową i tło podziemi, na wierzchu nie", r["roof"] and e["roof"] and r["cover"] and e["cover"] and not r["open"] and not e["open"])
+	var sp: Array = r["sp"]
+	check("kapanie ze stropu tunelu w skale: strop ok. 40 px pod wierzchem, dno na stopach (%s)" % str(sp),
+		sp.size() == 2 and absf((sp[0] as Vector2).y - (TOP + 40.0)) <= 4.0 and absf((sp[1] as Vector2).y - (TOP + 68.0)) <= 4.0 and String(r["mat"]) in ["rock", "vein"])
+	check("w ziemi nie kapie", (e["sp"] as Array).is_empty())
+	if r["fx"]:
+		check("pogłos w tunelu: skała jaśniejsza i dłuższa od ziemi (damp %.2f < %.2f, room %.2f > %.2f)" % [r["rev"][2], e["rev"][2], r["rev"][1], e["rev"][1]],
+			float(r["rev"][2]) < 0.5 and float(e["rev"][2]) > 0.75 and float(r["rev"][1]) > float(e["rev"][1]))
+	else:
+		info("pogłos: brak efektu Reverb na szynie SFX — pomijam")
 
 # ---------------------------------------------------------------- 6. wybuch
 

@@ -268,6 +268,66 @@ func solid_fraction() -> float:
 				s += 1
 	return float(s) / float(maxi(n, 1))
 
+# ---------------------------------------------------------------- strop, kapanie, akustyka (kopanie P2c — tylko obraz i dźwięk, bez sieci)
+
+const ROOF_HEAD := 22.0               ## px nad stopami: od tej wysokości szukamy skały nad głową (`roof_over`)
+const DRIP_ROOF := 2                  ## narożników skały nad stropem (8 px) — kapie spod grubego stropu, nie z cienkiego daszka
+const DRIP_FALL := 12.0               ## px: najkrótszy spadek kropli (niżej — dno tuż pod stropem, kropli nie widać)
+
+## Czy nad punktem (stopy postaci) jest skała strefy — postać stoi w tunelu albo pod nawisem, nie w odkrytym dole.
+func roof_over(feet: Vector2) -> bool:
+	var p := (feet - global_position) / CELL + Vector2(1, 1)
+	var i := roundi(p.x)
+	if i < 1 or i >= _w - 1 or p.y < 1.0:
+		return false
+	for j in range(mini(floori(p.y - ROOF_HEAD / CELL), _h - 1), -1, -1):
+		if _d[j * _w + i] >= ISO:
+			return true
+	return false
+
+## Losowy punkt kapania blisko `near` (±`radius` px w poziomie i w pionie): strop wykopu — narożnik powietrza, nad nim co najmniej
+## DRIP_ROOF narożników skały materiału z `drip` (dig_materials.gd). Zwraca [strop, dno] w px świata (dno — pierwsza skała pod stropem
+## albo spód strefy) albo [] po `tries` chybionych kolumnach. Woła view3d.gd u każdego peera osobno (krople to sam obraz i dźwięk).
+func drip_spot(rng: RandomNumberGenerator, near: Vector2, radius: float, tries := 12) -> Array:
+	for _t in tries:
+		var i := roundi((near.x + rng.randf_range(-radius, radius) - global_position.x) / CELL) + 1
+		if i < 1 or i >= _w - 1:
+			continue
+		var tops: Array = []
+		var run := 0
+		for j in _h:
+			var k := j * _w + i
+			if _d[k] >= ISO:
+				run += 1
+				continue
+			if run >= DRIP_ROOF and bool(Mats.MATS[Mats.key_of(_m[k - _w])]["drip"]) \
+					and absf(_corner_px(i, j).y + global_position.y - near.y) < radius:
+				tops.append(j)
+			run = 0
+		if tops.is_empty():
+			continue
+		var j0: int = tops[rng.randi() % tops.size()]
+		var j1 := j0
+		while j1 < _h - 1 and _d[(j1 + 1) * _w + i] < ISO:
+			j1 += 1
+		var top := _corner_px(i, j0) + global_position - Vector2(0.0, CELL * _iso_t(j0 - 1, j0, i))
+		var bot := _corner_px(i, j1) + global_position
+		if j1 < _h - 1:
+			bot.y += CELL * _iso_t(j1 + 1, j1, i)
+		if bot.y - top.y >= DRIP_FALL:
+			return [top, bot]
+	return []
+
+## Ułamek drogi od narożnika powietrza `air` do narożnika skały `rock` (ta sama kolumna `i`), na którym gęstość przechodzi przez ISO.
+func _iso_t(rock: int, air: int, i: int) -> float:
+	var a := float(_d[air * _w + i])
+	var b := float(_d[rock * _w + i])
+	return clampf((float(ISO) - a) / maxf(b - a, 1.0), 0.0, 1.0)
+
+## Twardość akustyczna (dig_materials.gd `echo`) skały strefy w punkcie trafienia promienia `at` lecącego w kierunku `dir`.
+func echo_at(at: Vector2, dir: Vector2) -> float:
+	return float(Mats.MATS[material_at_px(at + dir * CELL * 0.5)]["echo"])
+
 ## Czy kafel strefy (tx, ty — względem strefy) jest już wolny: żaden z 3 × 3 narożników we wnętrzu kafla nie jest skałą.
 ## Kafel z niedokończonym wykopem zostaje bryłą — bot i wrogowie nie wchodzą w niedokończone tunele.
 func _tile_clear(tx: int, ty: int) -> bool:

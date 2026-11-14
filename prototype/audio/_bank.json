@@ -139,6 +139,18 @@
   "sfx/world/door_2",
   0
  ],
+ "drip_1": [
+  "sfx/world/drip_1",
+  0
+ ],
+ "drip_2": [
+  "sfx/world/drip_2",
+  0
+ ],
+ "drip_3": [
+  "sfx/world/drip_3",
+  0
+ ],
  "dry_fire": [
   "sfx/weapons/dry_fire",
   0
