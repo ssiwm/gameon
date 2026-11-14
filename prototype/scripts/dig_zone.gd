@@ -33,6 +33,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Vfx := preload("res://scripts/vfx.gd")
+const Combat := preload("res://scripts/combat.gd")
 
 const TILE := 16.0
 const CELL := 4.0                     ## px komórki
@@ -328,6 +329,501 @@ func _iso_t(rock: int, air: int, i: int) -> float:
 func echo_at(at: Vector2, dir: Vector2) -> float:
 	return float(Mats.MATS[material_at_px(at + dir * CELL * 0.5)]["echo"])
 
+# ---------------------------------------------------------------- zawał stropu i stemple (kopanie P2d — serwer rozstrzyga)
+## Strop wykopu bez podparcia szerszy niż `span` materiału (dig_materials.gd) siada: najpierw `warn` s ostrzeżenia (u wszystkich okruchy
+## ze stropu i trzeszczenie, podpowiedź stempla), potem strop siada łukiem (sklepienie samonośne: w środku przęsła ARCH_K jego szerokości,
+## przy ścianach COLLAPSE_T) — ta bryła zamienia się w luźny gruz (żwir), który spada i rozsypuje się pod kątem usypiska. Gruzu z łuku jest
+## mniej więcej tyle, ile tunelu pod nim, więc zawał zasypuje przejście, a nad nim zostaje sklepienie, które już nie siada (wąskie przęsła
+## u szczytu). Pod spodem: gracz traci COLLAPSE_PLAYER serca i wychodzi spod gruzu na wierzch z ogłuszeniem,
+## zwykły wróg ginie (jak zawał D3). Stempel (gracz trzyma [E] PROP_TIME s, deska z zapasu drużyny albo PROP_SCRAP złomu) dzieli przęsło
+## i odwołuje ostrzeżenie; przewraca go wybuch i podkopanie stropu albo spągu. Strefy nie więżą: kilof ma każdy, a gruz to żwir.
+
+const SPAN_TOL := 4                    ## narożniki: kolumna ma strop, gdy skała jest najwyżej tyle nad wierszem przęsła (strop po kęsach jest nierówny)
+const SPAN_COVER := 0.7                ## udział kolumn przęsła ze stropem; mniej — dół albo szyb, nie strop
+const COLLAPSE_T := 3                  ## narożniki: najcieńszy pas stropu, który siada (przy ścianach przęsła; 12 px ≈ 1 m)
+const ARCH_K := 0.3                    ## wysokość łuku zawału w środku przęsła / szerokość przęsła (144 px → ok. 43 px)
+const ARCH_MAX := 14                   ## narożniki: najwyższy łuk (56 px ≈ 4,6 m)
+const COLLAPSE_PLAYER := 1             ## serca gracza przygniecionego gruzem (jak wybuch, combat.gd `explode`)
+const COLLAPSE_CRUSH := 400.0          ## wrogowie jak w zawale D3 (level.gd CAVE_CRUSH): zwykłych zabija, Stalker i boss przeżyją
+const COLLAPSE_REACH := 40.0           ## px pod stropem: kto stoi niżej (głęboki dół pod przęsłem), tego gruz od razu nie przygniata
+const PROP_TIME := 2.5                 ## s trzymania [E] na stempel
+const PROP_REACH := 44.0               ## px: najdłuższy stempel (stopy → strop, ok. 3,6 m)
+const PROP_MIN := 18.0                 ## px: najkrótszy
+const PROP_SCRAP := 3                  ## złom z łupu misji, gdy drużyna nie ma desek (deska barykady: level.gd NAIL_SCRAP 2)
+const PROP_MAX := 12                   ## stempli na strefę
+const PROP_GAP := 10.0                 ## px: najmniejszy odstęp stempli
+const PROP_HINT := 0.6                 ## podpowiedź stempla, gdy przęsło nad głową ma tyle limitu materiału (albo trwa ostrzeżenie)
+const PROP_NOISE_PER_S := 0.8          ## Uwaga na sekundę klinowania (młotek)
+const PROP_REACH_X := 14.0             ## px: serwer przyjmuje pracę, póki gracz stoi tak blisko miejsca stempla
+
+var props: Array[Vector3] = []         ## stemple u każdego peera: (x, y stropu, y stóp) px świata (`_props_rpc`)
+var warns: Array = []                  ## ostrzeżenia [j, i0, i1, t (s do zawału), materiał] — serwer liczy, klienci kopiują (`_warn_rpc`)
+var collapses := 0                     ## serwer: zawałów od wczytania / resetu (test, pomiar)
+var prop_progress := 0.0               ## postęp stawiania stempla w tej strefie (serwer → klienci; HUD)
+var local_prop := ""                   ## lokalny człowiek: "" — nic, "ok" — może stawiać, "nomat" — brak desek i złomu (HUD)
+var local_warned := false              ## lokalny człowiek stoi pod przęsłem z ostrzeżeniem (HUD)
+var _check_spans := false
+var _prop_workers := {}                ## serwer: peer id (tekst) → stopy (Vector2) w chwili zgłoszenia — miejsce stempla
+var _prop_holding := false
+var _prop_sync_t := 0.0
+var _prop_sent := -1.0
+var _prop_noise := 0.0
+var _knock_t := 0.0
+var _local_t := 0.0
+var _warn_fx_t := 0.0
+var _creak_t := 0.0
+var props_ver := 0                     ## u każdego peera: zmiana listy stempli (widok 3D przebudowuje modele)
+var last_collapse := {}                ## serwer: ostatni zawał {"hurt", "crushed", "width", "pos"} (test)
+
+## Czy narożnik (i, j) zajmuje stempel (oś ± jeden narożnik, od stropu do stóp).
+func _prop_at(i: int, j: int) -> bool:
+	var p := _corner_px(i, j) + global_position
+	for pr in props:
+		if absf(pr.x - p.x) <= CELL * 1.5 and p.y >= pr.y - CELL and p.y <= pr.z + CELL:
+			return true
+	return false
+
+## Materiał stropu w kolumnie `i` nad wierszem `j` (pierwszy narożnik skały w SPAN_TOL) albo "" — kolumna bez stropu (albo strop
+## z pierścienia strefy).
+func _roof_mat(i: int, j: int) -> String:
+	for dj in range(1, SPAN_TOL + 1):
+		if j - dj < 0:
+			break
+		var k := (j - dj) * _w + i
+		if _d[k] >= ISO:
+			return "" if _fixed[k] == 1 else Mats.key_of(_m[k])   # pierścień = skała mapy poza strefą: lita, nie siada
+	return ""
+
+## Przęsło w wierszu `j` od kolumny `a` (ciąg narożników powietrza do skały albo stempla): [ostatnia kolumna, kolumn ze stropem,
+## materiał większości stropu].
+func _run(j: int, a: int) -> Array:
+	var b := a
+	var cnt := {}
+	var roof := 0
+	while b < _w - 1 and _d[j * _w + b] < ISO and not _prop_at(b, j):
+		var mk := _roof_mat(b, j)
+		if mk != "":
+			roof += 1
+			cnt[mk] = int(cnt.get(mk, 0)) + 1
+		b += 1
+	var best := ""
+	for mk in cnt:
+		if best == "" or int(cnt[mk]) > int(cnt[best]):
+			best = mk
+	return [b - 1, roof, best]
+
+## Przęsła stropu bez podparcia szersze niż `span` materiału: [j, i0, i1, materiał]. Ten sam strop łapie się w kilku wierszach pod nim —
+## zostaje najszersze przęsło z grupy nachodzących. Liczy każdy peer z tych samych danych.
+func unstable_spans() -> Array:
+	var cand: Array = []
+	for j in range(2, _h - 1):
+		var i := 1
+		while i < _w - 1:
+			if _d[j * _w + i] >= ISO or _prop_at(i, j):
+				i += 1
+				continue
+			var r := _run(j, i)
+			var b := int(r[0])
+			var n := b - i + 1
+			if String(r[2]) != "" and float(r[1]) >= SPAN_COVER * float(n):
+				cand.append([j, i, b, String(r[2])])
+			i = b + 1
+	cand.sort_custom(func(x: Array, y: Array) -> bool: return int(x[2]) - int(x[1]) > int(y[2]) - int(y[1]))
+	var out: Array = []
+	var taken: Array = []
+	for c in cand:
+		var free := true
+		for o in taken:
+			free = free and not (int(o[1]) <= int(c[2]) and int(o[2]) >= int(c[1]) and absi(int(o[0]) - int(c[0])) <= SPAN_TOL * 2)
+		if not free:
+			continue
+		taken.append(c)
+		var span := float(Mats.MATS[c[3]]["span"])
+		if span > 0.0 and float(int(c[2]) - int(c[1]) + 1) * CELL > span:
+			out.append(c)
+	return out
+
+## Strop nad stopami `feet` (y px świata) w zasięgu PROP_REACH albo INF.
+func _roof_y(feet: Vector2) -> float:
+	var p := (feet - global_position) / CELL + Vector2(1, 1)
+	var i := roundi(p.x)
+	if i < 1 or i >= _w - 1:
+		return INF
+	var j := mini(floori(p.y - 1.0), _h - 2)
+	var stop := maxi(floori(p.y - PROP_REACH / CELL) - 1, 0)
+	while j >= stop:
+		if _d[j * _w + i] >= ISO:
+			return _corner_px(i, j + 1).y + global_position.y - CELL * _iso_t(j, j + 1, i)
+		j -= 1
+	return INF
+
+## Przęsło nad głową postaci (stopy `feet`): [szerokość px, limit materiału px] albo [0, 0].
+func span_over(feet: Vector2) -> Array:
+	var top := _roof_y(feet)
+	if top == INF:
+		return [0.0, 0.0]
+	var p := (Vector2(feet.x, top) - global_position) / CELL + Vector2(1, 1)
+	var j := ceili(p.y)
+	var i := roundi(p.x)
+	if j < 1 or j >= _h - 1 or i < 1 or i >= _w - 1 or _d[j * _w + i] >= ISO:
+		return [0.0, 0.0]
+	var a := i
+	while a > 1 and _d[j * _w + a - 1] < ISO and not _prop_at(a - 1, j):
+		a -= 1
+	var r := _run(j, a)
+	if String(r[2]) == "":
+		return [0.0, 0.0]
+	return [float(int(r[0]) - a + 1) * CELL, float(Mats.MATS[r[2]]["span"])]
+
+## Czy w tym miejscu (stopy `feet`) da się postawić stempel: ok, out, max, noroof, short, near, nomat.
+func prop_reason(feet: Vector2) -> String:
+	if not rect_px().grow(2.0).has_point(feet - Vector2(0.0, 4.0)):
+		return "out"
+	if props.size() >= PROP_MAX:
+		return "max"
+	var top := _roof_y(feet)
+	if top == INF:
+		return "noroof"
+	if feet.y - top < PROP_MIN:
+		return "short"
+	for pr in props:
+		if absf(pr.x - feet.x) < PROP_GAP:
+			return "near"
+	var lvl := get_parent()
+	if lvl == null or not ("plank_stock" in lvl):
+		return "out"
+	if int(lvl.plank_stock) <= 0 and not (Scrap.enabled() and Scrap.loot >= PROP_SCRAP):
+		return "nomat"
+	return "ok"
+
+## Serwer: stawia stempel pod stopami `feet` (koszt: deska z zapasu drużyny albo złom). Zwraca prop_reason (ok — stoi).
+func place_prop(feet: Vector2) -> String:
+	if not NoiseMgr.is_server():
+		return "out"
+	var why := prop_reason(feet)
+	if why != "ok":
+		return why
+	var lvl := get_parent()
+	if int(lvl.plank_stock) > 0:
+		lvl.plank_stock = int(lvl.plank_stock) - 1
+		if NoiseMgr.has_network():
+			lvl._planks_rpc.rpc(lvl.plank_stock, 0)
+	elif not Scrap.spend_loot(PROP_SCRAP):
+		return "nomat"
+	props.append(Vector3(feet.x, _roof_y(feet), feet.y))
+	SessionLog.event("dig_prop", {"zone": String(name), "pos": SessionLog.xy(feet), "props": props.size()})
+	_send_props()
+	_check_spans = true
+	return "ok"
+
+func _send_props() -> void:
+	var a := PackedVector3Array(props)
+	if NoiseMgr.has_network():
+		_props_rpc.rpc(map_key, a)
+	else:
+		_props_rpc(map_key, a)
+
+@rpc("authority", "call_local", "reliable")
+func _props_rpc(key: String, a: PackedVector3Array) -> void:
+	if key != map_key:
+		return
+	var nw: Array[Vector3] = []
+	for v in a:
+		nw.append(v)
+	var lvl := get_parent()
+	for old in props:                                            # przewrócony stempel: trzask drewna i drzazgi u każdego peera
+		if not nw.has(old) and lvl != null and lvl.is_inside_tree():
+			var mid := Vector2(old.x, lerpf(old.y, old.z, 0.4))
+			Audio.play_variant_at("wood_break", 3, mid, Audio.BUS_WORLD, -2.0, 0.9)
+			Vfx.chips(lvl, mid, Vector2.UP, Color(0.62, 0.5, 0.36), 6, "splinter", 120.0, Vector2(0.6, 1.3))
+	props = nw
+	props_ver += 1
+
+## Serwer: stemple, którym podkopano strop albo spąg (albo zabrał je wybuch: `blast` = środek x, y i promień), przewracają się.
+func _validate_props(blast := Vector3.INF) -> void:
+	var keep: Array[Vector3] = []
+	for pr in props:
+		var ok := solid_at_px(Vector2(pr.x, pr.y - 3.0))
+		var below := Vector2(pr.x, pr.z + 3.0)
+		ok = ok and (solid_at_px(below) or (not rect_px().has_point(below) and _solid_at.is_valid()
+			and bool(_solid_at.call(floori(below.x / TILE), floori(below.y / TILE)))))
+		if blast != Vector3.INF and Vector2(pr.x, clampf(blast.y, pr.y, pr.z)).distance_to(Vector2(blast.x, blast.y)) <= blast.z:
+			ok = false
+		if ok:
+			keep.append(pr)
+	if keep.size() != props.size():
+		props = keep
+		_send_props()
+		_check_spans = true
+
+## Serwer: ostrzeżenia z bieżących przęseł — trwające liczą dalej (odliczanie nie startuje od nowa przy każdym ciosie), nowe dostają `warn`
+## materiału, podparte znikają. Zmiana idzie do wszystkich.
+func _update_warns() -> void:
+	_validate_props()
+	var nw: Array = []
+	for sp in unstable_spans():
+		var t := float(Mats.MATS[sp[3]]["warn"])
+		for w in warns:
+			if int(w[1]) <= int(sp[2]) and int(w[2]) >= int(sp[1]) and absi(int(w[0]) - int(sp[0])) <= SPAN_TOL * 2:
+				t = minf(t, float(w[3]))
+				break
+		nw.append([sp[0], sp[1], sp[2], t, sp[3]])
+	var same := nw.size() == warns.size()
+	if same:
+		for c in nw.size():
+			same = same and int(nw[c][0]) == int(warns[c][0]) and int(nw[c][1]) == int(warns[c][1]) and int(nw[c][2]) == int(warns[c][2])
+	warns = nw
+	if not same:
+		_send_warns()
+
+func _send_warns() -> void:
+	if NoiseMgr.has_network():
+		_warn_rpc.rpc(map_key, warns)
+	else:
+		_warn_rpc(map_key, warns)
+
+@rpc("authority", "call_local", "reliable")
+func _warn_rpc(key: String, w: Array) -> void:
+	if key != map_key or NoiseMgr.is_server():
+		return
+	warns = w.duplicate(true)
+
+## Środek przęsła ostrzeżenia `w` (px świata, tuż pod stropem).
+func _warn_center(w: Array) -> Vector2:
+	var a := _corner_px(int(w[1]), int(w[0])) + global_position
+	var b := _corner_px(int(w[2]), int(w[0])) + global_position
+	return Vector2((a.x + b.x) * 0.5, a.y - CELL)
+
+## Serwer: przęsło `w` siada — łuk stropu nad nim zamienia się w żwir (spada i osypuje się w następnych krokach), pod spodem obrażenia.
+func _collapse(w: Array) -> void:
+	var j := int(w[0])
+	var i0 := int(w[1])
+	var i1 := int(w[2])
+	var gravel := Mats.code("gravel")
+	var idx := PackedInt32Array()
+	var top := INF
+	var n := float(i1 - i0 + 1)
+	for i in range(i0, i1 + 1):
+		var u := (float(i - i0) + 0.5) / n
+		var th := clampi(ceili(ARCH_K * n * 4.0 * u * (1.0 - u)), COLLAPSE_T, ARCH_MAX)
+		var jc := -1
+		for dj in range(1, SPAN_TOL + 1):
+			if j - dj >= 1 and _d[(j - dj) * _w + i] >= ISO:
+				jc = j - dj
+				break
+		if jc < 0:
+			continue
+		top = minf(top, _corner_px(i, jc).y + global_position.y)
+		for t in th:
+			var k := (jc - t) * _w + i
+			if jc - t < 1 or _fixed[k] == 1 or _d[k] < ISO or _in_isl[k] == 1:
+				break
+			_m[k] = gravel
+			idx.append(k)
+	if idx.is_empty():
+		return
+	collapses += 1
+	var c := _warn_center(w)
+	var hit := Rect2(_corner_px(i0, j).x + global_position.x - 4.0, top, float(i1 - i0) * CELL + 8.0, COLLAPSE_REACH)
+	var hurt := 0
+	var crushed := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.dead and not p.is_queued_for_deletion() and hit.has_point(p.global_position + Vector2(0, -4)):
+			p.deliver_hit(COLLAPSE_PLAYER, Vector2(p.global_position.x, top), "collapse")
+			hurt += 1
+	for e in get_tree().get_nodes_in_group("enemies"):
+		var en := e as Node2D
+		if en == null or en.is_queued_for_deletion() or not en.visible or en.get("dead") == true or en.get("alive") == false:
+			continue
+		if hit.has_point(en.global_position + Vector2(0, -4)):
+			var info := Combat.make_info(0, COLLAPSE_CRUSH, en.global_position + Vector2(0, -8), Vector2.DOWN, -1, "blast")
+			info["knock"] = 0.0
+			info["stun"] = 0.0
+			info["heavy"] = true
+			if bool(Combat.apply(en, info).get("killed", false)):
+				crushed += 1
+	last_collapse = {"hurt": hurt, "crushed": crushed, "width": float(i1 - i0 + 1) * CELL, "pos": c}
+	NoiseMgr.add_noise(NoiseMgr.N_GRENADE, c, "dig")
+	SessionLog.event("dig_collapse", {"zone": String(name), "width": (i1 - i0 + 1) * int(CELL), "mat": String(w[4]), "pos": SessionLog.xy(c),
+		"hurt": hurt, "crushed": crushed, "props": props.size()})
+	var d := PackedByteArray()
+	var m := PackedByteArray()
+	for k in idx:
+		d.append(_d[k])
+		m.append(_m[k])
+	var fx := PackedVector3Array([Vector3(c.x, c.y, -float(i1 - i0 + 1) * CELL)])   # siła < 0: zawał (szerokość px) — efekt w `_cells_rpc`
+	if NoiseMgr.has_network():
+		_cells_rpc.rpc(map_key, idx, d, m, fx)
+	else:
+		_cells_rpc(map_key, idx, d, m, fx)
+	_wake(i0 - 1, i1 + 1)
+	_check_islands = true
+
+## Serwer: odliczanie ostrzeżeń; zero — zawał.
+func _tick_warns(delta: float) -> void:
+	if warns.is_empty():
+		return
+	var due: Array = []
+	for w in warns:
+		w[3] = float(w[3]) - delta
+		if float(w[3]) <= 0.0:
+			due.append(w)
+	for w in due:
+		warns.erase(w)
+		_collapse(w)
+	if not due.is_empty():
+		_send_warns()
+
+## Pilność ostrzeżenia 0..1 (1 — zaraz siądzie).
+func _urgency(w: Array) -> float:
+	return 1.0 - clampf(float(w[3]) / maxf(float(Mats.MATS[w[4]]["warn"]), 0.1), 0.0, 1.0)
+
+## Każdy peer: ostrzeżenie słychać i widać — okruchy ze stropu przęsła i trzeszczenie, coraz gęściej pod koniec.
+func _warn_fx(delta: float) -> void:
+	if warns.is_empty():
+		return
+	var lvl := get_parent()
+	if lvl == null or not lvl.is_inside_tree():
+		return
+	if not NoiseMgr.is_server():
+		for w in warns:
+			w[3] = maxf(float(w[3]) - delta, 0.0)
+	_warn_fx_t -= delta
+	_creak_t -= delta
+	var urg_max := 0.0
+	for w in warns:
+		var urg := _urgency(w)
+		urg_max = maxf(urg_max, urg)
+		if _warn_fx_t <= 0.0:
+			var a := _corner_px(int(w[1]), 0).x + global_position.x
+			var b := _corner_px(int(w[2]), 0).x + global_position.x
+			var at := Vector2(randf_range(a, b), _corner_px(0, int(w[0])).y + global_position.y - CELL * 1.5)
+			var chip: Color = Mats.MATS[w[4]]["chip"]
+			Vfx.burst(lvl, at, chip, randi_range(2, 3 + roundi(4.0 * urg)), 0.0, 10.0, Vector2.DOWN, 60.0, 520.0, 0.7, Vector2(0.3, 0.7), false, false, {"mesh": "chip"})
+		if _creak_t <= 0.0:
+			Audio.play_variant_at("amb_creak", 3, _warn_center(w), Audio.BUS_WORLD, lerpf(-2.0, 4.0, urg), 0.5 if String(w[4]) != "dirt" else 0.65, 0.08)
+	if _warn_fx_t <= 0.0:
+		_warn_fx_t = lerpf(0.6, 0.2, urg_max) * randf_range(0.8, 1.2)
+	if _creak_t <= 0.0:
+		_creak_t = lerpf(2.2, 0.7, urg_max) * randf_range(0.8, 1.2)
+
+## Każdy peer: efekt zawału (z delty serwera): łoskot, pył, wstrząs u bliskich.
+func _collapse_fx(at: Vector2, width: float) -> void:
+	var lvl := get_parent()
+	if lvl == null or not lvl.is_inside_tree():
+		return
+	Audio.play_at("collapse", at, Audio.BUS_WORLD, 2.0, 1.05)
+	Vfx.dust(lvl, at + Vector2(0, 12), clampf(width / 40.0, 1.0, 3.0))
+	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
+		for _n in 3:
+			Vfx.view3d.call("dig_dust", self, at + Vector2(randf_range(-width, width) * 0.4, 16.0), Mats.code("gravel"), 1.6)
+	Vfx.quake(at, clampf(width * 1.5, 64.0, 200.0), 1.6)
+
+# ---------------------------------------------------------------- stawianie stempla: peer zgłasza „trzymam”, serwer sprawdza i liczy
+
+func _local_human() -> Node2D:
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and p.is_multiplayer_authority() and not p.is_queued_for_deletion():
+			return p
+	return null
+
+## Każdy peer, co 0,15 s: czy mój gracz stoi pod długim przęsłem (podpowiedź); co klatkę — czy trzyma [E].
+func _update_local_prop(delta: float) -> void:
+	_local_t -= delta
+	var me := _local_human()
+	if _local_t <= 0.0:
+		_local_t = 0.15
+		local_prop = ""
+		local_warned = false
+		if me != null and not me.dead and rect_px().grow(4.0).has_point(me.global_position - Vector2(0, 4)):
+			var feet: Vector2 = me.global_position
+			for w in warns:
+				var a := _corner_px(int(w[1]), 0).x + global_position.x
+				var b := _corner_px(int(w[2]), 0).x + global_position.x
+				var wy := _corner_px(0, int(w[0])).y + global_position.y
+				local_warned = local_warned or (feet.x >= a - 4.0 and feet.x <= b + 4.0 and feet.y >= wy - 8.0 and feet.y <= wy + 48.0)
+			var sp := span_over(feet)
+			if local_warned or (float(sp[1]) > 0.0 and float(sp[0]) >= PROP_HINT * float(sp[1])):
+				var why := prop_reason(feet)
+				local_prop = why if why in ["ok", "nomat"] else ""
+	var want := false
+	if me != null and local_prop == "ok" and Input.is_action_pressed("interact"):
+		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
+	if want == _prop_holding:
+		return
+	_prop_holding = want
+	var at: Vector2 = me.global_position if me != null else Vector2.ZERO
+	if NoiseMgr.is_server():
+		_set_prop_worker(NoiseMgr.local_id(), want, at)
+	else:
+		_prop_work_rpc.rpc_id(1, want, at)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _prop_work_rpc(on: bool, at: Vector2) -> void:
+	if multiplayer.is_server():
+		_set_prop_worker(multiplayer.get_remote_sender_id(), on, at)
+
+func _set_prop_worker(peer_id: int, on: bool, at: Vector2) -> void:
+	if on:
+		_prop_workers[str(peer_id)] = at
+	else:
+		_prop_workers.erase(str(peer_id))
+
+## Test i bot: serwer traktuje gracza `peer_id` jak trzymającego [E] przy stemplu w miejscu `at` (stopy).
+func force_prop_worker(peer_id: int, on: bool, at: Vector2) -> void:
+	if NoiseMgr.is_server():
+		_set_prop_worker(peer_id, on, at)
+
+## Serwer: praca nad stemplem — gracz (peer) musi żyć i stać przy zgłoszonym miejscu; puszczenie przerywa (postęp przepada).
+func _tick_prop_work(delta: float) -> void:
+	var at := Vector2.INF
+	for k in _prop_workers.keys():
+		var ok := false
+		var spot: Vector2 = _prop_workers[k]
+		for p in get_tree().get_nodes_in_group("players"):
+			if p.is_bot or String(p.name) != k:
+				continue
+			ok = not p.dead and not p.is_queued_for_deletion() and absf(p.global_position.x - spot.x) <= PROP_REACH_X \
+				and absf(p.global_position.y - spot.y) <= 10.0
+		if not ok:
+			_prop_workers.erase(k)
+		elif at == Vector2.INF:
+			at = spot
+	if at != Vector2.INF and prop_reason(at) == "ok":
+		prop_progress = minf(1.0, prop_progress + delta / PROP_TIME)
+		_prop_noise += PROP_NOISE_PER_S * delta
+		if _prop_noise >= 0.3:
+			NoiseMgr.add_noise(_prop_noise, at + Vector2(0, -14), "barricade")
+			_prop_noise = 0.0
+		if prop_progress >= 1.0:
+			place_prop(at)
+			prop_progress = 0.0
+			_prop_workers.clear()
+	elif prop_progress > 0.0:
+		prop_progress = 0.0
+	_prop_sync_t -= delta
+	if not is_equal_approx(prop_progress, _prop_sent) and (_prop_sync_t <= 0.0 or prop_progress == 0.0):
+		_prop_sync_t = 0.1
+		_prop_sent = prop_progress
+		if NoiseMgr.has_network():
+			_prop_sync.rpc(prop_progress)
+
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _prop_sync(p: float) -> void:
+	prop_progress = p
+
+## Każdy peer: stuk młotka przy klinowaniu stempla (z postępu).
+func _prop_knock(delta: float) -> void:
+	if prop_progress <= 0.0:
+		_knock_t = 0.0
+		return
+	_knock_t -= delta
+	if _knock_t <= 0.0:
+		_knock_t = 0.45
+		var me := _local_human()
+		var at: Vector2 = me.global_position if me != null and _prop_holding else rect_px().get_center()
+		Audio.play_variant_at("hammer_nail", 3, at + Vector2(0, -20), Audio.BUS_WORLD, -2.0, 0.85)
+
 ## Czy kafel strefy (tx, ty — względem strefy) jest już wolny: żaden z 3 × 3 narożników we wnętrzu kafla nie jest skałą.
 ## Kafel z niedokończonym wykopem zostaje bryłą — bot i wrogowie nie wchodzą w niedokończone tunele.
 func _tile_clear(tx: int, ty: int) -> bool:
@@ -544,6 +1040,8 @@ func blast_dig(pos: Vector2, radius: float) -> bool:
 	if not rect_px().grow(rr + SOFT).has_point(pos):
 		return false
 	_send(pos, Vector2.ZERO, rr, Mats.Tool.BLAST)
+	if NoiseMgr.is_server() and not props.is_empty():
+		_validate_props(Vector3(pos.x, pos.y, rr + SOFT))
 	return true
 
 func _send(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
@@ -603,6 +1101,7 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 		if NoiseMgr.is_server():
 			_wake(i0 - 1, i1 + 1)
 			_check_islands = true
+			_check_spans = true
 
 ## Narożnik (i, j) należy do czterech komórek — ich fragmenty do przebudowy.
 func _touch(touched: Dictionary, i: int, j: int) -> void:
@@ -635,17 +1134,45 @@ func _update_tiles(rt: Rect2i) -> void:
 
 # ---------------------------------------------------------------- stan: dołączający, wipe, punkt kontrolny
 
-## Gęstość i materiał strefy (skompresowane, jedno za drugim) — puste, gdy strefa jest jak w danych mapy. Materiał, bo osypisko go przesuwa.
+## Gęstość, materiał, stemple i wyjęte znajdźki strefy (skompresowane, jedno za drugim) — puste, gdy strefa jest jak w danych mapy. Materiał,
+## bo osypisko go przesuwa; stemple, bo bez nich podparty tunel po punkcie kontrolnym by siadł; wyjęte znajdźki, bo gruz (osypisko, zawał)
+## potrafi przysypać miejsce, z którego znajdźka już wypadła — z samej gęstości wyszłaby znów „do połowy w ścianie”.
 func state() -> PackedByteArray:
-	if _d == _d0 and _m == _m0:
+	if _d == _d0 and _m == _m0 and props.is_empty():
 		return PackedByteArray()
-	return (_d + _m).compress(FileAccess.COMPRESSION_ZSTD)
+	var out := 0
+	for k in mini(finds.size(), 8):
+		if int(finds[k]["state"]) == Find.OUT:
+			out |= 1 << k
+	return (_d + _m + _props_block(props) + PackedByteArray([out])).compress(FileAccess.COMPRESSION_ZSTD)
+
+const STATE_EXTRA := PROP_BYTES + 1    ## bajty stanu po gęstości i materiale: stemple + maska wyjętych znajdziek (bit k — znajdźka k)
+
+const PROP_BYTES := 1 + PROP_MAX * 12   ## stemple w stanie strefy: liczba + PROP_MAX × (x, y stropu, y stóp) float32 — stały rozmiar
+
+static func _props_block(pr: Array[Vector3]) -> PackedByteArray:
+	var b := PackedByteArray()
+	b.resize(PROP_BYTES)
+	b[0] = mini(pr.size(), PROP_MAX)
+	for c in int(b[0]):
+		b.encode_float(1 + c * 12, pr[c].x)
+		b.encode_float(5 + c * 12, pr[c].y)
+		b.encode_float(9 + c * 12, pr[c].z)
+	return b
+
+static func _props_from(b: PackedByteArray) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for c in mini(int(b[0]), PROP_MAX):
+		out.append(Vector3(b.decode_float(1 + c * 12), b.decode_float(5 + c * 12), b.decode_float(9 + c * 12)))
+	return out
 
 ## Serwer: dołączający gracz dostaje stan strefy (jeśli ktoś już kopał).
 func send_state_to(peer_id: int) -> void:
 	var s := state()
 	if not s.is_empty():
 		_state_rpc.rpc_id(peer_id, map_key, s)
+	if not warns.is_empty():
+		_warn_rpc.rpc_id(peer_id, map_key, warns)
 
 ## Serwer: strefa wraca do stanu `s` (`state()`; pusty — dane mapy) u wszystkich peerów. Wipe i nowa misja — pusty, punkt kontrolny bossa —
 ## stan z przebudzenia (level.gd `reset_breakables`).
@@ -659,9 +1186,11 @@ func reset_to(s: PackedByteArray) -> void:
 func _state_rpc(key: String, s: PackedByteArray) -> void:
 	if key != map_key:
 		return
-	var dm := (_d0 + _m0) if s.is_empty() else s.decompress(_w * _h * 2, FileAccess.COMPRESSION_ZSTD)
-	if dm.size() != _w * _h * 2:
-		push_warning("dig_zone: zły rozmiar stanu %s (%d zamiast %d)" % [name, dm.size(), _w * _h * 2])
+	var n := _w * _h * 2 + STATE_EXTRA
+	var none: Array[Vector3] = []
+	var dm := (_d0 + _m0 + _props_block(none) + PackedByteArray([0])) if s.is_empty() else s.decompress(n, FileAccess.COMPRESSION_ZSTD)
+	if dm.size() != n:
+		push_warning("dig_zone: zły rozmiar stanu %s (%d zamiast %d)" % [name, dm.size(), n])
 		return
 	_islands.clear()                                             # symulacja od nowa: nic nie spada, nic się nie osypuje
 	_in_isl.fill(0)
@@ -669,8 +1198,18 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 	_check_islands = false
 	if s.is_empty():
 		islands_fallen = 0
+		collapses = 0
+	var out_mask := int(dm[n - 1])
+	var pr := _props_from(dm.slice(_w * _h * 2, n - 1))                 # stemple ze stanu (wipe: bez), ostrzeżenia serwer liczy od nowa
+	if pr != props:
+		props = pr
+		props_ver += 1
+	warns.clear()
+	prop_progress = 0.0
+	_prop_workers.clear()
+	_check_spans = NoiseMgr.is_server() and not s.is_empty()
 	var d := dm.slice(0, _w * _h)
-	var m := dm.slice(_w * _h)
+	var m := dm.slice(_w * _h, _w * _h * 2)
 	if d == _d and m == _m:
 		return
 	_d = d
@@ -678,8 +1217,8 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 	digs = 0 if s.is_empty() else maxi(digs, 1)
 	for ci in _ccx * _ccy:
 		_rebuild(ci)
-	for f in finds:                                              # bez wypadania: przedmioty z wykopanych znajdziek sprząta level.gd (wipe, punkt kontrolny)
-		f["state"] = _find_state(f)
+	for k in finds.size():                                       # bez wypadania: przedmioty z wykopanych znajdziek sprząta level.gd (wipe, punkt kontrolny)
+		finds[k]["state"] = Find.OUT if k < 8 and (out_mask >> k) & 1 == 1 else _find_state(finds[k])
 	if s.is_empty():
 		finds_out = 0
 	_update_tiles(Rect2i(0, 0, tiles.x, tiles.y))
@@ -734,9 +1273,17 @@ func is_settled() -> bool:
 
 func _physics_process(delta: float) -> void:
 	_pour_fx_t = maxf(0.0, _pour_fx_t - delta)
+	_update_local_prop(delta)
+	_warn_fx(delta)
+	_prop_knock(delta)
 	if not NoiseMgr.is_server():
 		return
 	_pour_t = maxf(0.0, _pour_t - delta)
+	_tick_prop_work(delta)
+	_tick_warns(delta)
+	if _check_spans and is_settled():
+		_check_spans = false
+		_update_warns()
 	if is_settled():
 		_sim_t = 0.0
 		return
@@ -928,7 +1475,8 @@ func _land(isl: Dictionary, fx: PackedVector3Array) -> void:
 		"noise": roundi(NoiseMgr.level)})
 
 ## Każdy peer: delta z kroku serwera — narożniki `idx` dostają gęstość `d` i materiał `m`; przebudowa fragmentów, kafli, znajdziek (serwer
-## wyrzuca odkopane osypiskiem), wyciągnięcie zasypanych postaci, efekty (`fx`: siła 0 — szmer osypiska, > 0 — upadek wyspy).
+## wyrzuca odkopane osypiskiem), wyciągnięcie zasypanych postaci, efekty (`fx`: siła 0 — szmer osypiska, > 0 — upadek wyspy, < 0 — zawał
+## stropu o szerokości −siła px).
 @rpc("authority", "call_local", "reliable")
 func _cells_rpc(key: String, idx: PackedInt32Array, d: PackedByteArray, m: PackedByteArray, fx: PackedVector3Array) -> void:
 	if key != map_key or idx.size() != d.size() or idx.size() != m.size():
@@ -960,10 +1508,13 @@ func _cells_rpc(key: String, idx: PackedInt32Array, d: PackedByteArray, m: Packe
 	_unstick_players(CRUSH_STUN)
 	if NoiseMgr.is_server():
 		_unstick_enemies()
+		_check_spans = true
 	var lvl := get_parent()
 	for e in fx:
 		var at := Vector2(e.x, e.y)
-		if e.z <= 0.0:
+		if e.z < 0.0:
+			_collapse_fx(at, -e.z)
+		elif e.z == 0.0:
 			if _pour_fx_t <= 0.0:
 				_pour_fx_t = 0.35
 				Audio.play_at("collapse", at, Audio.BUS_WORLD, -16.0, 1.7)

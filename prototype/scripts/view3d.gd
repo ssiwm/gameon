@@ -8144,10 +8144,64 @@ func _sync_dig_zones() -> void:
 				((st["mis"] as Array)[ci] as MeshInstance3D).mesh = z.chunk_mesh(ci, Level3D.PX, float(st.get("zf", Level3D.DEPTH_FRONT)), -Level3D.DEPTH_BACK)
 		st["ver"] = vers
 		_sync_dig_glints(st, z)
+		_sync_dig_props(st, z)
 	for id in _dig3d.keys():
 		var z = (_dig3d[id] as Dictionary)["zone"]
 		if not is_instance_valid(z) or (z as Node).is_queued_for_deletion():
 			_dig3d.erase(id)
+
+## Stemple w wykopie (kopanie P2d, dig_zone.gd `props`): słup od spągu do stropu za płaszczyzną gry (postać przechodzi przed nim) i kapa
+## w głąb tunelu nad głową, jak odrzwia w sztolni — tylko obraz, u każdego peera; zmiana listy (`props_ver`) przebudowuje modele strefy.
+const DIG_PROP_Z := -0.9                  ## m: oś słupa w głąb (za postacią, w zasięgu snopu latarki)
+const DIG_PROP_CAP := Vector2(-1.8, 0.5)  ## m: kapa od—do w głąb
+const DIG_PROP_CAP_H := 0.16              ## m: grubość kapy
+
+func _sync_dig_props(st: Dictionary, z: Node2D) -> void:
+	var ver := int(z.props_ver)
+	if int(st.get("props_ver", 0)) == ver:
+		return
+	st["props_ver"] = ver
+	for n in st.get("props", []):
+		if is_instance_valid(n):
+			(n as Node).queue_free()
+	var nodes: Array = []
+	var wood := _prop_mat("plank", 0.9, Color(0.62, 0.5, 0.36))
+	for pr: Vector3 in z.props:
+		var top := Level3D.px_to_m(Vector2(pr.x, pr.y))
+		var bot := Level3D.px_to_m(Vector2(pr.x, pr.z))
+		var h := maxf(top.y - bot.y - DIG_PROP_CAP_H, 0.3)
+		var root := Node3D.new()
+		root.name = "DigProp"
+		root.position = Vector3(bot.x, bot.y, 0.0)
+		var post := MeshInstance3D.new()
+		var pm := BoxMesh.new()
+		pm.size = Vector3(SUPPORT_W, h, SUPPORT_W)
+		post.mesh = pm
+		post.material_override = wood
+		post.position = Vector3(0.0, h * 0.5, DIG_PROP_Z)
+		post.rotation = Vector3(0.0, 0.3, 0.02)
+		post.layers = LAYER_WORLD
+		root.add_child(post)
+		var cap := MeshInstance3D.new()
+		var cm := BoxMesh.new()
+		cm.size = Vector3(0.3, DIG_PROP_CAP_H, DIG_PROP_CAP.y - DIG_PROP_CAP.x)
+		cap.mesh = cm
+		cap.material_override = wood
+		cap.position = Vector3(0.0, h + DIG_PROP_CAP_H * 0.5, (DIG_PROP_CAP.x + DIG_PROP_CAP.y) * 0.5)
+		cap.layers = LAYER_WORLD
+		root.add_child(cap)
+		var wedge := MeshInstance3D.new()                            # klin między słupem a kapą — po nim widać, że stempel jest wbity
+		var wm := PrismMesh.new()
+		wm.size = Vector3(0.24, 0.1, 0.16)
+		wedge.mesh = wm
+		wedge.material_override = wood
+		wedge.position = Vector3(0.0, h - 0.05, DIG_PROP_Z + 0.16)
+		wedge.rotation = Vector3(PI, 0.0, 0.0)
+		wedge.layers = LAYER_WORLD
+		root.add_child(wedge)
+		_geo.add_child(root)
+		nodes.append(root)
+	st["props"] = nodes
 
 ## Urobek (kopanie P1): bryłki wykopanego materiału na dnie wykopu — tylko obraz, u każdego peera z widokiem 3D (bez kolizji i sieci;
 ## dołączający widzi wykop bez starego urobku). Woła je dig_zone.gd `_hit_rpc`. Zmiana strefy (cios, osypisko, wybuch, wipe) przesuwa

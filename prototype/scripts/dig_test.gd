@@ -23,6 +23,9 @@ extends "res://scripts/stalker_test.gd"
 ## 12. sygnał strefy: wejście (miejsce znaku 3D), podpowiedź „Kop” w pasku akcji (skała z kilofem, ziemia, z dala nic, milknie po
 ##    3 ciosach przy niej, osobno dla każdej strefy), porada o kopaniu i skanerze tylko na 1.1.
 ## 5a. ślady pracy (kopanie P2e): ciosy kilofem brudzą strój pyłem materiału i dają zadyszkę.
+## 14. zawał stropu (kopanie P2d): szeroki tunel w ziemi bez podparcia — ostrzeżenie (czas z materiału, podpowiedź stempla), potem pas
+##    stropu w żwir: zawał, gracz pod nim traci HP i wychodzi na wierzch z ogłuszeniem, tunel zasypany; stempel (trzymanie [E]) kosztuje
+##    deskę i odwołuje ostrzeżenie, bez desek i złomu — „nomat”; wybuch przewraca stempel; wipe czyści stemple.
 ## 13. wykop pod skałą (kopanie P2c): strop nad głową w tunelu, na wierzchu nie; tło jak w podziemiach (level.gd `dig_cover_at`); miejsca
 ##    kapania na stropie w skale (dig_zone.gd `drip_spot`), w ziemi nie; pogłos wg ścian — w skale jaśniejszy, w ziemi głuchy.
 ## Wynik: linie [DIG-TEST] (PASS / FAIL / INFO) i kod wyjścia.
@@ -92,6 +95,7 @@ func run(m: Node2D) -> void:
 	await _gravel()
 	await _pools()
 	await _signals()
+	await _collapse()
 	_timings()
 	_finish()
 
@@ -371,6 +375,7 @@ func _tunnel() -> void:
 # ---------------------------------------------------------------- 4. nawigacja i dźwięk
 
 func _nav_check(dig0: int) -> void:
+	info("zawały stropu po punktach 1–3 (P2d): %d, ostrzeżeń %d" % [zone.collapses, zone.warns.size()])
 	var open: Array = []
 	for k in zone.tiles.x * zone.tiles.y:
 		var c: int = zone.c0 + k % zone.tiles.x
@@ -595,9 +600,10 @@ func _state(dig0: int) -> void:
 	await _frames(0.3)
 	await _swing(Vector2.DOWN)
 	var st: PackedByteArray = zone.state()
-	var raw: PackedByteArray = st.decompress(zone._w * zone._h * 2, FileAccess.COMPRESSION_ZSTD)
+	var raw: PackedByteArray = st.decompress(zone._w * zone._h * 2 + DigZone.STATE_EXTRA, FileAccess.COMPRESSION_ZSTD)
 	info("stan strefy dla dołączającego: %d B (surowo %d B)" % [st.size(), raw.size()])
-	check("stan strefy: kompresja bez strat i mały (< 1 kB po jednym ciosie)", raw == zone._d + zone._m and st.size() < 1024)
+	check("stan strefy: kompresja bez strat i mały (< 1 kB po jednym ciosie)",
+		raw.slice(0, zone._w * zone._h * 2) == zone._d + zone._m and raw[zone._w * zone._h * 2] == 0 and st.size() < 1024)
 	level.reset_breakables()
 	await _frames(0.1)
 
@@ -913,9 +919,9 @@ func _gravel() -> void:
 		not rock.solid_at_px(Vector2(544.0, 203.0)) and rock.solid_at_px(Vector2(544.0, 231.0)) and _solid_count(rock) == rn1 and rn1 < rn0 and not loud.is_empty())
 	# 4. stan dla dołączającego niesie materiał (wyspa przesunęła żyłę i skałę); migawka wraca do tego samego
 	var st: PackedByteArray = rock.state()
-	var raw: PackedByteArray = st.decompress(rock._w * rock._h * 2, FileAccess.COMPRESSION_ZSTD)
+	var raw: PackedByteArray = st.decompress(rock._w * rock._h * 2 + DigZone.STATE_EXTRA, FileAccess.COMPRESSION_ZSTD)
 	var dm: PackedByteArray = rock._d + rock._m
-	check("stan strefy: gęstość i materiał, bez strat (%d B)" % st.size(), raw == dm and raw.size() == rock._w * rock._h * 2)
+	check("stan strefy: gęstość i materiał, bez strat (%d B)" % st.size(), raw.slice(0, rock._w * rock._h * 2) == dm and raw.size() == rock._w * rock._h * 2 + DigZone.STATE_EXTRA)
 	level.reset_breakables()
 	await _frames(0.1)
 	var wiped: bool = rock.state().is_empty() and rock.is_settled()
@@ -1131,6 +1137,117 @@ func _signals() -> void:
 	await _stand(24.5, Vector2.RIGHT)
 
 # ---------------------------------------------------------------- 8. czasy
+
+# ---------------------------------------------------------------- 14. zawał stropu i stemple (kopanie P2d)
+
+const SPAN_Y := TOP + 66.0                ## y stóp w tunelu do prób (strop ok. 2,6 m ziemi nad nim)
+
+## Strefa ziemi wraca do danych mapy i dostaje tunel w bok o szerokości `w` px (środek x `cx`) — od razu, bez ciosów.
+func _span_tunnel(cx: float, w: float) -> void:
+	zone.reset_to(PackedByteArray())
+	await _frames(0.1)
+	zone._send(Vector2(cx, SPAN_Y - 14.0), Vector2(w * 0.5, 14.0), 0.0, DigMats.Tool.BLAST)
+	await _frames(0.4)
+
+func _collapse() -> void:
+	var cx := 7.0 * 16.0
+	var stock0: int = level.plank_stock
+	# krótki tunel (40 px; ziemia trzyma 96, podpowiedź stempla od 0,6 tego): bez ostrzeżenia
+	await _span_tunnel(cx, 40.0)
+	_place_player(Vector2(cx, SPAN_Y - 1.0))
+	await _frames(0.5)
+	check("krótki tunel w ziemi (40 px): strop trzyma, bez ostrzeżenia i podpowiedzi stempla (%d, „%s”)" % [zone.warns.size(), zone.local_prop],
+		zone.warns.is_empty() and zone.unstable_spans().is_empty() and zone.local_prop == "")
+	# szeroki tunel (144 px): ostrzeżenie, potem zawał
+	await _span_tunnel(cx, 144.0)
+	_place_player(Vector2(cx, SPAN_Y - 1.0))
+	level.plank_stock = 0
+	player.hp = player.MAX_HP
+	player._invuln = 0.0
+	var hp0: int = player.hp
+	var c0: int = zone.collapses
+	await _frames(0.5)
+	var w: Array = zone.warns[0] if zone.warns.size() > 0 else []
+	check("szeroki tunel w ziemi (144 px): ostrzeżenie o zawale z czasem ziemi (%s)" % str(w),
+		zone.warns.size() == 1 and String(w[4]) == "dirt" and float(w[3]) > 4.5 and float(w[3]) <= 6.0)
+	check("pod przęsłem: gracz widzi ostrzeżenie, bez desek i złomu podpowiedź „brak materiału” (%s, „%s”)" % [zone.local_warned, zone.local_prop],
+		zone.local_warned and (zone.local_prop == "nomat" or (Scrap.enabled() and Scrap.loot >= DigZone.PROP_SCRAP and zone.local_prop == "ok")))
+	await _shot("d5_16_warn")
+	await _frames(6.0)
+	var lc: Dictionary = zone.last_collapse
+	check("po czasie ostrzeżenia strop siada: zawał %d → %d, bez ostrzeżeń, szerokość %s" % [c0, zone.collapses, str(lc.get("width", 0))],
+		zone.collapses == c0 + 1 and zone.warns.is_empty() and float(lc.get("width", 0.0)) >= 120.0)
+	check("gracz pod zawałem: −%d serce (%d → %d), trafiony %d" % [DigZone.COLLAPSE_PLAYER, hp0, player.hp, int(lc.get("hurt", 0))],
+		int(lc.get("hurt", 0)) == 1 and player.hp == hp0 - DigZone.COLLAPSE_PLAYER)
+	var stunned := false
+	await _frames(3.0, func(_t: float, _dt: float) -> void: _flag = _flag or player.stun_t > 0.0)
+	stunned = _flag
+	_flag = false
+	var settled: bool = zone.is_settled()
+	var filled := 0
+	for dx in [-48.0, -24.0, 0.0, 24.0, 48.0]:
+		if zone.solid_at_px(Vector2(cx + dx, SPAN_Y - 4.0)):
+			filled += 1
+	check("gruz (żwir) zasypał tunel: %d z 5 punktów dna w gruzie, strefa w spoczynku %s, materiał %s" % [filled, settled, zone.material_at_px(Vector2(cx, SPAN_Y - 4.0))],
+		filled >= 3 and settled and zone.material_at_px(Vector2(cx, SPAN_Y - 4.0)) == "gravel")
+	check("gracz wyszedł spod gruzu w górę z ogłuszeniem (y %.0f, było %.0f, ogłuszony %s)" % [player.global_position.y, SPAN_Y - 1.0, stunned],
+		player.global_position.y < SPAN_Y - 8.0 and stunned and not zone.solid_at_px(player.global_position + Vector2(0, -10)))
+	await _shot("d5_16_collapse")
+	# stempel: deska z zapasu drużyny, ostrzeżenie znika, nic nie siada
+	player.hp = hp0
+	await _span_tunnel(cx, 144.0)
+	_place_player(Vector2(cx, SPAN_Y - 1.0))
+	level.plank_stock = 2
+	await _frames(0.5)
+	check("z deskami podpowiedź stempla „ok” (%s)" % zone.local_prop, zone.local_prop == "ok" and zone.warns.size() == 1)
+	var feet: Vector2 = player.global_position
+	zone.force_prop_worker(1, true, feet)
+	await _frames(1.0)
+	var mid: float = zone.prop_progress
+	await _frames(2.0)
+	var c1: int = zone.collapses
+	check("stempel po %.1f s trzymania (postęp w połowie %.2f): stoi 1, deska z zapasu (%d → %d)" % [DigZone.PROP_TIME, mid, 2, level.plank_stock],
+		zone.props.size() == 1 and mid > 0.2 and mid < 0.9 and level.plank_stock == 1)
+	var pr: Vector3 = zone.props[0] if zone.props.size() > 0 else Vector3.ZERO
+	check("stempel od stropu do stóp (strop %.0f, stopy %.0f, długość %.0f px)" % [pr.y, pr.z, pr.z - pr.y],
+		absf(pr.x - feet.x) < 1.0 and absf(pr.z - feet.y) < 1.0 and pr.z - pr.y >= DigZone.PROP_MIN and pr.z - pr.y <= DigZone.PROP_REACH)
+	await _frames(0.5)
+	check("podparte przęsła (2 × ok. 66 px) trzymają: ostrzeżenie odwołane (%d)" % zone.warns.size(), zone.warns.is_empty() and zone.unstable_spans().is_empty())
+	_place_player(feet + Vector2(-30.0, -1.0))                  # zrzut: postać obok stempla, nie przed nim
+	await _shot("d5_16_prop")
+	await _frames(6.5)
+	check("ze stemplem strop stoi po czasie ostrzeżenia (zawałów %d → %d)" % [c1, zone.collapses], zone.collapses == c1 and zone.props.size() == 1)
+	check("drugi stempel tuż obok — za blisko („%s”)" % zone.prop_reason(feet + Vector2(4.0, 0.0)), zone.prop_reason(feet + Vector2(4.0, 0.0)) == "near")
+	# punkt kontrolny: stempel jest w stanie strefy — po wipe'ie i powrocie stoi dalej, podparty tunel nie siada
+	var snap: PackedByteArray = zone.state()
+	zone.reset_to(PackedByteArray())
+	await _frames(0.2)
+	var wiped: int = zone.props.size()
+	zone.reset_to(snap)
+	await _frames(0.6)
+	check("stempel w stanie strefy: wipe go zabiera (%d), powrót do migawki przywraca (%d), bez ostrzeżeń (%d)" % [wiped, zone.props.size(), zone.warns.size()],
+		wiped == 0 and zone.props.size() == 1 and zone.props[0] == pr and zone.warns.is_empty())
+	# wybuch przy stemplu: przewraca go, przęsło znów bez podparcia
+	_place_player(Vector2(cx - 60.0, SPAN_Y - 1.0))
+	zone.blast_dig(Vector2(pr.x, pr.z - 10.0), 24.0)
+	await _frames(0.6)
+	check("wybuch przy stemplu przewraca go: stempli %d, ostrzeżenie wraca (%d)" % [zone.props.size(), zone.warns.size()],
+		zone.props.is_empty() and zone.warns.size() == 1)
+	# wipe: stemple i ostrzeżenia znikają
+	await _span_tunnel(cx, 144.0)
+	level.plank_stock = 1
+	await _frames(0.5)
+	zone.place_prop(Vector2(cx, SPAN_Y))
+	var before: int = zone.props.size()
+	zone.reset_to(PackedByteArray())
+	await _frames(0.2)
+	check("wipe czyści stemple i ostrzeżenia (%d → %d, ostrzeżeń %d, zawałów %d)" % [before, zone.props.size(), zone.warns.size(), zone.collapses],
+		before == 1 and zone.props.is_empty() and zone.warns.is_empty() and zone.collapses == 0)
+	level.plank_stock = stock0
+	player.hp = hp0
+	player.stun_t = 0.0
+	_place_player(Vector2(3.5 * 16.0, TOP - 2.0))
+	await _frames(0.3)
 
 func _timings() -> void:
 	info("ostatnia przebudowa fragmentów po ciosie (kontur + kolizja): %.3f ms" % (zone.rebuild_usec / 1000.0))

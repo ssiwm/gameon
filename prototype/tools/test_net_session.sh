@@ -233,7 +233,8 @@ echo "== strefy wydobycia (t_dig) =="
 # (wykopy wracają = DS) i wipe (D0). Klient A od początku (operacje kopania na żywo), klient B dołącza po wykopach — gęstość stref dostaje
 # z `send_walls_to`. Stan = skrót gęstości i materiału każdej strefy, więc zgodność znaczy: te same komórki u wszystkich. Host przed
 # klientem B kopie też dół w żwirze (DigZone3, osypuje się) i odcina blok w skale (DigZone2, spada jako wyspa) — oba idą deltą z serwera.
-# Pula znajdziek DigZone1 jest u hosta odnowiona raz i z jednym miejscem wykopanym — skrót znajdziek u klientów zgadza się tylko po sync Scrap.
+# Host kopie też w DigZone1 dwa szerokie tunele: wyższy siada (zawał P2d — żwir deltą), niższy stoi na stemplu (lista stempli w skrócie
+# i w stanie strefy — punkt kontrolny go przywraca). Pula znajdziek DigZone1 jest u hosta odnowiona raz i z jednym miejscem wykopanym — skrót znajdziek u klientów zgadza się tylko po sync Scrap.
 godot --headless --path . -- --host --mission=t_dig --port=8971 --dignet=8 --autoquit=50 >"$LOG/gnet_host.log" 2>&1 &
 HOST=$!
 sleep 3
@@ -251,7 +252,7 @@ if [ -z "$D0" ] || [ "$D0" = "$DS" ] || [ "$H" != "$D0;$DS;$D0;$DS;$D0;" ]; then
 	fail "host: zły przebieg stref wydobycia ($H)"
 else
 	ok "host: strefy całe → wykopy i wybuch → wipe (całe) → migawka (wykopy wracają) → wipe"
-	grep -a -q -E "\[DIG-NET\] host islands=[1-9][0-9]* settled=true" "$LOG/gnet_host.log" && ok "host: dół w żwirze osypał się, odcięta wyspa w skale spadła, strefy stoją" \
+	grep -a -q -E "\[DIG-NET\] host islands=[1-9][0-9]* settled=true collapses=1 prop=ok props=1 warns=0" "$LOG/gnet_host.log" && ok "host: dół w żwirze osypał się, odcięta wyspa w skale spadła, szeroki tunel siadł, drugi stoi na stemplu, strefy stoją" \
 		|| fail "host: wyspa / osypisko ($(grep -a "\[DIG-NET\]" "$LOG/gnet_host.log"))"
 	A=$(gnet client "$LOG/gnet_a.log")
 	[ "$A" = "$H" ] && ok "klient od początku: te same komórki stref po wykopach, wybuchu, migawce i wipe'ie" || fail "klient A: $A (host: $H)"

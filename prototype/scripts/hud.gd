@@ -2206,6 +2206,13 @@ func _on_dig_swing(_w: int) -> void:
 	if _dig_hint_key != "":
 		_dig_learned[_dig_hint_key] = int(_dig_learned.get(_dig_hint_key, 0)) + 1
 
+## Strefa wydobycia, pod której stropem stoi lokalny gracz (dig_zone.gd `local_prop` / `local_warned`, kopanie P2d), albo null.
+func _dig_prop_zone() -> Node:
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if String(z.local_prop) != "" or bool(z.local_warned) or bool(z._prop_holding):
+			return z
+	return null
+
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
 func _near_strongbox() -> Node:
 	for sb in get_tree().get_nodes_in_group("strongboxes"):
@@ -2302,6 +2309,23 @@ func _prompt_candidates() -> Array:
 				_:
 					var cost := (tr("boards: %d") % int(lvl.plank_stock)) if int(lvl.plank_stock) > 0 else (tr("%d scrap") % int(lvl.NAIL_SCRAP))
 					add.call(Actions.fmt(tr("Hold [{interact}]  Board up  %d/%d  (loud · %s)")) % [have, total, cost], -1.0, UiTheme.ACCENT)
+	var dz := _dig_prop_zone()
+	if dz != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+		# zawał stropu i stemple (kopanie P2d): ostrzeżenie nad głową, stempel za deskę z zapasu drużyny albo złom
+		var lvl_z := get_tree().get_first_node_in_group("level")
+		var warned := bool(dz.local_warned)
+		if bool(dz._prop_holding) and float(dz.prop_progress) > 0.0:
+			add.call(tr("Wedging a prop…  ·  loud"), float(dz.prop_progress), UiTheme.OK)
+		elif String(dz.local_prop) == "ok":
+			var pcost := (tr("boards: %d") % int(lvl_z.plank_stock)) if int(lvl_z.plank_stock) > 0 else (tr("%d scrap") % int(dz.PROP_SCRAP))
+			if warned:
+				add.call(Actions.fmt(tr("THE CEILING IS GIVING WAY — hold [{interact}]  Prop it  (%s)")) % pcost, -1.0, UiTheme.DANGER)
+			else:
+				add.call(Actions.fmt(tr("Wide ceiling — hold [{interact}]  Prop it  (loud · %s)")) % pcost, -1.0, UiTheme.ACCENT)
+		elif warned:
+			add.call(tr("THE CEILING IS GIVING WAY — get out!") + ("  " + tr("(no boards or scrap for a prop)") if String(dz.local_prop) == "nomat" else ""), -1.0, UiTheme.DANGER)
+		elif String(dz.local_prop) == "nomat":
+			add.call(tr("Wide ceiling — no boards for a prop (break crates, or carry %d scrap)") % int(dz.PROP_SCRAP), -1.0, UiTheme.MUTED)
 	if _near_workshop():
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
 	if _near_lathe():
