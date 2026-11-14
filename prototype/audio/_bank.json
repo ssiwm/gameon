@@ -95,6 +95,42 @@
   "sfx/world/collapse",
   0
  ],
+ "dig_dirt_1": [
+  "sfx/world/dig_dirt_1",
+  0
+ ],
+ "dig_dirt_2": [
+  "sfx/world/dig_dirt_2",
+  0
+ ],
+ "dig_dirt_3": [
+  "sfx/world/dig_dirt_3",
+  0
+ ],
+ "dig_gravel_1": [
+  "sfx/world/dig_gravel_1",
+  0
+ ],
+ "dig_gravel_2": [
+  "sfx/world/dig_gravel_2",
+  0
+ ],
+ "dig_gravel_3": [
+  "sfx/world/dig_gravel_3",
+  0
+ ],
+ "dig_rock_1": [
+  "sfx/world/dig_rock_1",
+  0
+ ],
+ "dig_rock_2": [
+  "sfx/world/dig_rock_2",
+  0
+ ],
+ "dig_rock_3": [
+  "sfx/world/dig_rock_3",
+  0
+ ],
  "door_1": [
   "sfx/world/door_1",
   0

@@ -35,7 +35,7 @@ LABELS = {"obecna": "obecna (synteza)", "przed": "przed zmianą", "po": "po zmia
 # odstęp serii [ms] dla rodzin, w których liczy się powtarzalność; reszta gra warianty jeden po drugim
 # (pierwsze dopasowanie wygrywa; strzały wg `cooldown` z scripts/weapons.gd — seria ma brzmieć jak ogień w grze)
 SERIES_MS = (("m83_shot", 110), ("p64_shot", 200), ("spread12_shot", 260), ("srut8_shot", 800), ("sokol6_shot", 200),
-             ("gniew4_shot", 1200), ("ciegno6_shot", 800), ("_shot", 150), ("step_", 330), ("impact_", 160), ("shell", 140))
+             ("gniew4_shot", 1200), ("ciegno6_shot", 800), ("_shot", 150), ("step_", 330), ("dig_", 650), ("impact_", 160), ("shell", 140))
 
 
 WAV_ONLY = [False]

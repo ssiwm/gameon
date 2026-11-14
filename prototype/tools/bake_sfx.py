@@ -685,7 +685,58 @@ def build_world() -> None:
         knock = ring(r, [vary(r, 330, .08), vary(r, 820, .08)], [.07, .04], [1.0, .5], dur=.25, jitter=.02)
         x = d.mix([(tick(r, 3200, 1.2, 10, .002), 1.0), (clink, .45), (knock, .8), (thump(.12, 160, 80, .015, .03), .6)], n)
         finalize("hammer_nail_%d" % (i + 1), d.reverb(x, ir("room"), wet=.12), lufs=-20.4)
-    bake_hybrid.world()                                     # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
+
+    # Kopanie w strefach wydobycia (DESTRUCTION_PLAN.md D5): do 1.7.557 cios w grunt grał tylko świst kilofa. Każdy wariant ma dwie
+    # warstwy — uderzenie wg materiału i ogon urobku (grudki, okruchy, kamyki opadające 0,1–0,7 s po ciosie), bo to ogon mówi, że coś odpadło.
+    def _crumbs(r: Rng, n: int, count: int, t0: float, t1: float, f_lo: float, f_hi: float, soft: float) -> np.ndarray:
+        """Opadający urobek: `count` drobnych stuknięć w oknie t0–t1 s, coraz cichszych; soft 0 — twarde okruchy, 1 — miękkie grudki."""
+        y = np.zeros(n)
+        for _ in range(count):
+            at = r.uniform(t0, t1)
+            k = ms(at * 1000)
+            if k >= n:
+                continue
+            f = r.uniform(f_lo, f_hi)
+            tap = d.mix([(tick(r, f, 1.6 - soft, 14 + 20 * soft, .002 + .006 * soft), 1.0 - .5 * soft),
+                         (thump(.05, f * .12 + 90, 70, .01, .015 + .02 * soft), .25 + .5 * soft)])
+            y[k:k + len(tap)] += tap[:n - k] * r.uniform(.25, .7) * (1.0 - .55 * (at - t0) / max(t1 - t0, 1e-3))
+        return y
+
+    # Ziemia: głuchy łomot ostrza wchodzącego w glinę, krótkie mlaśnięcie szumu i osypujące się grudki.
+    for i in range(3):
+        r = Rng(0xE100 + i * 1301)
+        n = ms(900)
+        body = thump(.22, vary(r, 120, .1), 55, .02, .07)
+        bite = burst(ms(160), r, vary(r, 1800, .15), 300.0, .035, color=1.4)
+        x = d.mix([(body, 1.0), (bite, .7), (tick(r, vary(r, 900, .15), .8, 12, .003), .35),
+                   (_crumbs(r, n, 9 + i, .08, .75, 500, 1600, .85), .55)], n)
+        finalize("dig_dirt_%d" % (i + 1), d.reverb(d.lp(x, 2200.0, order=2) / (d.peak(x) + 1e-9), ir("close"), wet=.15), lufs=-19.0, fade_out_ms=120)
+
+    # Skała: stal o kamień — ostry klik, krótki dzwięk ostrza kilofa, trzask odłupanego kamienia i odbijające się okruchy.
+    for i in range(3):
+        r = Rng(0xE200 + i * 1777)
+        n = ms(1000)
+        steel = ring(r, [vary(r, 2100, .06), vary(r, 3900, .06), vary(r, 6100, .06)], [.07, .045, .03], [1.0, .55, .3], dur=.25, jitter=.004)
+        crack = burst(ms(120), r, vary(r, 7000, .1), 1800.0, .014, color=.2)
+        knock = ring(r, [vary(r, 260, .1), vary(r, 610, .1)], [.06, .035], [1.0, .45], dur=.2, jitter=.02)
+        x = d.mix([(tick(r, vary(r, 3600, .1), 1.3, 10, .0015), 1.0), (steel, .45), (crack, .9), (knock, .7),
+                   (thump(.12, vary(r, 150, .1), 75, .012, .03), .5), (_crumbs(r, n, 12 + 2 * i, .06, .85, 1400, 4200, .1), .5)], n)
+        finalize("dig_rock_%d" % (i + 1), d.limiter(d.reverb(x / (d.peak(x) + 1e-9), ir("room"), wet=.16), -6.0), lufs=-18.0, fade_out_ms=120)
+
+    # Żwir: chrzęst — gęsta seria drobnych kliknięć w pierwszych 150 ms, szmer zsuwających się kamyków i kilka spóźnionych.
+    for i in range(3):
+        r = Rng(0xE300 + i * 1559)
+        n = ms(900)
+        crunch = np.zeros(n)
+        for _ in range(38 + 6 * i):
+            k = ms(r.uniform(0.0, 0.15) ** 1.4 * 1000 * 2.2)
+            c = tick(r, r.uniform(1200, 4500), 1.2, 6, .0012)
+            crunch[k:k + len(c)] += c[:n - k] * r.uniform(.2, 1.0)
+        slide = d.filt(d.colored(n, r, .6), "bp", vary(r, 3200, .15), .5) * d.env_pts(n, [(0, 0), (.05, .5), (.3, .25), (.8, 0)])
+        x = d.mix([(crunch, 1.0), (slide, .35), (thump(.14, vary(r, 110, .1), 60, .015, .04), .6),
+                   (_crumbs(r, n, 8, .2, .8, 1600, 4800, .2), .4)], n)
+        finalize("dig_gravel_%d" % (i + 1), d.reverb(d.lp(x, 5000.0, order=2) / (d.peak(x) + 1e-9), ir("close"), wet=.14), lufs=-19.5, fade_out_ms=120)
+    bake_hybrid.world()                                    # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
 # ============================================================ GRACZ

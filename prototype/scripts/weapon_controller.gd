@@ -1708,13 +1708,8 @@ func _server_melee(origin: Vector2, dir: Vector2, w: int, shooter: int, e: float
 		# strefa wydobycia (dig_zone.gd, D5): kilof kopie każdy materiał, broń biała tylko ziemię i żwir (wolniej i ciszej)
 		var tool: int = DigMats.Tool.PICK if d.breaks_walls else DigMats.Tool.BLADE
 		for z in get_tree().get_nodes_in_group("dig_zones"):
-			var dug: Dictionary = z.melee_dig(space, origin, dir, d.reach, tool)
-			if not dug.is_empty():
-				var hard: bool = String(DigMats.MATS[String(dug["mat"])]["hit"]) == "world"
-				var fx: int = Arsenal.Mat.WORLD if hard else Arsenal.Mat.DUST
-				if bool(dug.get("metal", false)):
-					fx = Arsenal.Mat.METAL                          # zakopana znajdźka tuż przy wyrwie: cios dzwoni w metal (podpowiedź bez skanera)
-				Arsenal.broadcast_hit(dug["at"], -dir, fx, false, tool == DigMats.Tool.PICK)
+			# efekt ciosu (dźwięk wg materiału, okruchy, pył, metal przy zakopanej znajdźce) rozsyła sama strefa — dig_zone.gd `_hit_rpc`
+			if not (z.melee_dig(space, origin, dir, d.reach, tool, shooter) as Dictionary).is_empty():
 				hit_any = true
 				break
 	if not hit_any:
