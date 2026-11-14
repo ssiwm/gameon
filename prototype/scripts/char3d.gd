@@ -57,6 +57,8 @@ uniform float val_mul = 1.0;
 uniform float damage = 0.0;               // 0..1: ilość krwi na stroju (player.gd, z zdrowia); maska w przestrzeni UV — przyklejona do ciała przy animacji
 uniform float blood_seed = 0.0;
 uniform float grime = 0.0;                // 0..1: zużycie stroju — barwna tkanina traci nasycenie i jasność, błoto od butów w górę (GRIME)
+uniform float soil = 0.0;                 // 0..1: urobek na stroju po kopaniu (player.gd `soil`, kopanie P2e) — kurz i grudy na całej postaci
+uniform vec3 soil_col = vec3(0.36, 0.29, 0.21);   // kolor pyłu ostatnio kopanego materiału (dig_materials.gd `dust`)
 varying float wy;                         // wysokość w świecie (m): krew gęstsza na tułowiu i ramionach niż na łydkach
 float bh(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -118,6 +120,15 @@ void fragment() {
 		float mn = bn(UV * 13.0 + 3.0) * 0.65 + bn(UV * 41.0 + 7.0) * 0.35;
 		float mud = (1.0 - smoothstep(0.1, 0.95, ly)) * smoothstep(0.42, 0.72, mn);
 		c = mix(c, vec3(0.055, 0.045, 0.032), mud * grime * 0.75 * cloth);
+	}
+	if (soil > 0.001) {
+		// urobek po kopaniu: płaty pyłu z szumu w UV (stałe na ciele), z ilością rosną i zlewają się; jaśniejszy i matowy
+		// na ciemnej tkaninie, na skórze słabiej (dłonie i twarz ociera się częściej)
+		float sk = skin_k(rgb2hsv(c));
+		float sn = bn(UV * 19.0 + 23.0) * 0.6 + bn(UV * 57.0 + 4.0) * 0.4;
+		float cover = smoothstep(1.0 - 0.42 * soil, 1.0 - 0.2 * soil, sn) * mix(1.0, 0.45, sk);   // przy pełnym ok. 1/4 stroju
+		vec3 dust = soil_col * (0.6 + 0.3 * bn(UV * 140.0));
+		c = mix(c, dust, cover * 0.6);
 	}
 	float wet = 0.0;
 	if (damage > 0.001) {
@@ -648,6 +659,13 @@ func set_palette(p: int) -> void:
 		return
 	_palette = p
 	_apply_palette()
+
+## Urobek na stroju po kopaniu (player.gd `soil`, kopanie P2e): s 0..1, col — kolor pyłu materiału.
+func set_soil(s: float, col: Color) -> void:
+	for m in _pal_mats:
+		var sm := m as ShaderMaterial
+		sm.set_shader_parameter("soil", clampf(s, 0.0, 1.0))
+		sm.set_shader_parameter("soil_col", Vector3(col.r, col.g, col.b))
 
 ## Krew na stroju (player.gd): d 0..1 — od lekkich plam do przesiąknięcia; seed rozmieszcza plamy inaczej u każdego gracza.
 func set_damage(d: float, seed: float) -> void:
