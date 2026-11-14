@@ -1,7 +1,10 @@
 extends CharacterBody2D
 ## Gniazdo — cel misji „Gniazdo" (GDD §9, misja 1.3: „zniszcz 4 gniazda”). 60 HP: niszczy je każde trafienie bronią
-## (kula, śrut, cios, wybuch, strumień HKM-9); WRATH-4 (AoE) najszybciej. Plama ognia na ziemi (fire_patch.gd) gniazd nie rani.
-## Do 1.7.565 ten komentarz mówił „spal 3 gniazda” (pierwotny szkic misji, GDD tego nie wymaga).
+## (kula, śrut, cios, wybuch, strumień HKM-9); WRATH-4 (AoE) najszybciej. Do 1.7.565 ten komentarz mówił „spal 3 gniazda”
+## (pierwotny szkic misji, GDD tego nie wymaga).
+## Od 1.7.566 gniazdo się PALI: ogień (strumień HKM-9, amunicja zapalająca, plama ognia z fire_patch.gd) podpala je na co najmniej
+## BURN_MIN s; płonące traci BURN_DPS HP/s i co SCORCH_EVERY s parzy każdego gracza (także bota) w zasięgu SCORCH_R
+## za pół serca (`player.deliver_chip`, jak głaz Wołka). Ogień to szybka droga do celu, ale nie stój przy nim.
 ## Symulacja i HP TYLKO na serwerze; klienci dostają stan przez _sync.
 ##
 ## Gniazdo jest w grupie „enemies", bo tak trafiają je pociski (projectile.gd)
@@ -19,12 +22,21 @@ const Sprites := preload("res://scripts/sprites.gd")
 const MAX_HP := 60.0
 ## Hałas zniszczenia (GDD §8.1): pękające gniazdo budzi okolicę — to cena celu.
 const N_DESTROY := 8.0
+const BURN_DPS := 8.0          ## HP/s płonięcia (jak wróg, enemy.gd BURN_DPS): 60 HP spala się w 7,5 s
+const BURN_MIN := 4.0          ## s: suche gniazdo raz podpalone płonie co najmniej tyle (plama ognia odnawia tylko 1,2 s)
+const SCORCH_R := 26.0         ## px od środka gniazda (≈ 2,1 m; gniazdo ma ok. 1,6 m szerokości → ok. 1,5 m od brzegu)
+const SCORCH_CHIP := 0.5       ## pół serca za każde sparzenie
+const SCORCH_EVERY := 1.0      ## s między sparzeniami
+const SCORCH_UP := 15.0        ## px: środek gniazda nad jego podstawą (strefa trafień 20 × 30 px)
 
 var hp := MAX_HP
 var alive := true
 
 var _flash := 0.0
 var _net_timer := 0.0
+var _burn := 0.0               ## s płonięcia (serwer)
+var _scorch_t := 0.0           ## s do następnego sparzenia graczy w zasięgu (serwer)
+var _fx_left := 0.0            ## s, przez które płomienie u wszystkich jeszcze się palą (serwer odnawia je przed końcem)
 var _glow: Lights.GameLight
 var _spr: Array = []
 
@@ -52,6 +64,8 @@ func view_info() -> Dictionary:
 ## Restart misji (wipe / nowa próba).
 func reset_enemy() -> void:
 	hp = MAX_HP
+	_burn = 0.0
+	_fx_left = 0.0
 	_set_alive(true)
 	_send_state(999.0)
 
@@ -66,7 +80,56 @@ func take_hit(info: Dictionary) -> Dictionary:
 		return {}
 	var dmg: float = info["amount"]
 	take_bullet(info["pos"], dmg)
+	var fire: float = info.get("ignite", 0.0)
+	if fire > 0.0 and alive:
+		_ignite(fire)
 	return {"hit": true, "dealt": dmg, "killed": not alive, "mat": Arsenal.Mat.FLESH}
+
+## Płonie (serwer; testy i widok).
+func burning() -> bool:
+	return alive and _burn > 0.0
+
+## Podpalenie (serwer): co najmniej BURN_MIN s. Pierwsze sparzenie po pół odstępu — kto stoi obok w chwili podpalenia, ma moment na odskok.
+func _ignite(seconds: float) -> void:
+	if not NoiseMgr.is_server() or not alive:
+		return
+	if _burn <= 0.0:
+		_scorch_t = SCORCH_EVERY * 0.5
+	_burn = maxf(_burn, maxf(seconds, BURN_MIN))
+	if _fx_left < 0.5 or _burn > _fx_left + 0.5:
+		_fx_left = _burn + 0.5
+		if NoiseMgr.has_network():
+			_ignite_fx.rpc(_fx_left)
+		else:
+			_ignite_fx(_fx_left)
+
+func _tick_burn(delta: float) -> void:
+	_fx_left = maxf(0.0, _fx_left - delta)
+	if _burn <= 0.0 or not alive:
+		return
+	_burn = maxf(0.0, _burn - delta)
+	_scorch_t -= delta
+	if _scorch_t <= 0.0:
+		_scorch_t += SCORCH_EVERY
+		_scorch()
+	hp -= BURN_DPS * delta
+	if hp <= 0.0:
+		_destroy()
+
+## Sparzenie: każdy żywy gracz (człowiek i bot), którego środek jest w zasięgu SCORCH_R od środka gniazda.
+func _scorch() -> void:
+	var c := global_position + Vector2(0.0, -SCORCH_UP)
+	for p in get_tree().get_nodes_in_group("players"):
+		var pp := p as Node2D
+		if pp == null or not is_instance_valid(pp) or bool(pp.get("dead")):
+			continue
+		if (pp.global_position + Vector2(0.0, -9.0)).distance_to(c) <= SCORCH_R:
+			pp.deliver_chip(SCORCH_CHIP, c, "nest_fire")
+
+## Płomienie na gnieździe — każdy peer (3D: view3d.gd `mirror_burning`, gasną same, gdy gniazdo pęknie).
+@rpc("authority", "call_local", "reliable")
+func _ignite_fx(seconds: float) -> void:
+	Vfx.burning(self, seconds)
 
 func take_bullet(_from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not NoiseMgr.is_server() or not alive:
@@ -79,6 +142,7 @@ func take_bullet(_from_pos: Vector2, dmg: float = 8.0) -> void:
 		_send_state(999.0)
 
 func _destroy() -> void:
+	_burn = 0.0
 	_set_alive(false)
 	NoiseMgr.add_noise(N_DESTROY, global_position, "nest")
 	_destroy_fx()
@@ -105,6 +169,7 @@ func _local_dist() -> float:
 func _physics_process(delta: float) -> void:
 	_flash = maxf(0.0, _flash - delta)
 	if NoiseMgr.is_server():
+		_tick_burn(delta)
 		_send_state(delta)
 
 ## Stan rzadko się zmienia — wysyłamy przy zmianie i co 0,5 s (dla dołączających).

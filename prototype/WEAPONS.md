@@ -294,7 +294,7 @@ Karuzela (lewy Alt / X), dane w `throwables.gd` (`ORDER`, `KINDS`, `mode`):
 | **CHARGE** | postaw | zapalnik 4 s, 5 m, 150, rozbija zamurowane przejścia, rani drużynę, hałas 20 | 1 / 2 |
 | **MEDKIT** | użyj (przytrzymaj klawisz) | 5 s przy rannym koledze (do 36 px) albo sobie: +1 serce; obrażenia przerywają | 1 / 3 |
 | **DEFIB** | użyj (przytrzymaj klawisz) | 1,5 s: podnosi leżącego do 10 m w linii wzroku; 1 na misję | 1 / 1 |
-| **OWL** | użyj | 10 s: sylwetki wrogów przez ściany do 15 m (czerwone = zagrożenie), hałas 1/s; od 1.7.566 w 3D: fala sonaru po ścianach i podłodze, modele wrogów prześwietlone przez ściany, zakopane znajdźki jako romby 3D | 2 / 3 |
+| **OWL** | użyj | 10 s: sylwetki wrogów przez ściany do 15 m (czerwone = zagrożenie), hałas 1/s; od 1.7.566 w 3D: fala sonaru po ścianach i podłodze, modele wrogów prześwietlone przez ściany, zakopane znajdźki jako romby 3D; zasięg 183 px = 15 m (do 1.7.565 — 240 px ≈ 19,6 m) | 2 / 3 |
 
 Start „po 1–2 sztuki” to tymczasowy zestaw do prób — faza A3 przeniesie go do zakupu w warsztacie.
 Kod: `grenade.gd` (rzucane), `placed.gd` (mina, ładunek), `smoke_cloud.gd`, `scanner_view.gd` (co widać na skanerze) + `pulse3d.gd` / `view3d.gd: _sync_scanner` (obraz 3D), `player._gear_tick`, `Arsenal.request_use`.
