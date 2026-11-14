@@ -255,6 +255,17 @@ var _deck_car: Node2D = null           ## drezyna pod nogami przy ostatnim licze
 var _deck_x := 0.0                     ## jej travel_x wtedy
 var _deck_rel := 0.0                   ## droga po pokładzie względem drezyny od ostatniego kroku (ze znakiem)
 var _breath_on := false
+## Kopanie P2e: ślady pracy kilofem — urobek na stroju (char3d.gd `soil`, kolor pyłu materiału) i zadyszka (`_update_breath`).
+## Woła je dig_zone.gd `_hit_rpc` u każdego peera (`dig_exert`), więc brudny strój widać u wszystkich; kosmetyka, bez wpływu na grę.
+const SOIL_HIT := 0.07                    ## urobku na stroju na cios kilofem (kęs); ok. 14 ciosów do pełna, maczetą połowa
+const SOIL_DECAY := 0.004                 ## /s: otrząsa się powoli — z pełnego ok. 4 min
+const WIND_HIT := 0.1                     ## zadyszki na cios
+const WIND_DECAY := 0.08                  ## /s: z pełnej ok. 12 s
+const WIND_DB := 4.0                      ## dB: zadyszka głośniejsza od biegu
+var soil := 0.0
+var soil_col := Color(0.36, 0.29, 0.21)
+var winded := 0.0
+var _soil_sent := -1.0
 var _air_time_accum := 0.0
 
 @onready var _camera: Camera2D = $Camera2D
@@ -1659,19 +1670,22 @@ func _deck_walk(moved_x: float) -> float:
 	_deck_x = car.travel_x
 	return absf(_deck_rel)
 
-## Oddech: ciągły przy wysiłku (skradanie w napięciu, bieg) i cisza gdy stoisz.
+## Oddech: ciągły przy wysiłku (skradanie w napięciu, bieg) i cisza gdy stoisz. Po serii ciosów kilofem (kopanie P2e, `winded`)
+## zadyszka trwa także w miejscu i jest głośniejsza — tylko u człowieka (bot nie dyszy przez głośniki hosta).
 func _update_breath() -> void:
 	var exertion := 0.0
 	if crouching:
 		exertion = 0.55
 	if absf(velocity.x) > 5.0 and is_on_floor() and not crouching:
 		exertion = 1.0
-	var want := exertion > 0.0
+	var pant := 0.0 if is_bot else winded
+	exertion = maxf(exertion, pant)
+	var want := exertion > 0.05
 	if want and not _breath_on:
 		_breath_on = true
 		Audio.start_loop("breath_loop", Audio.BUS_PLAYER, -32.0)
 	elif want and Audio.loop_playing("breath_loop"):
-		Audio.set_loop_volume("breath_loop", lerpf(-38.0, -26.0, exertion))
+		Audio.set_loop_volume("breath_loop", lerpf(-38.0, -26.0, exertion) + WIND_DB * pant)
 	elif not want and _breath_on:
 		_breath_on = false
 		Audio.stop_loop("breath_loop")
@@ -2503,10 +2517,22 @@ func _body_color() -> Color:
 func _gun_len() -> float:
 	return weapons.cur().gun_len
 
+## Cios w strefie wydobycia (dig_zone.gd `_hit_rpc`, u każdego peera): urobek na stroju w kolorze pyłu materiału i zadyszka; `k` — 1 kilof, 0,55 broń biała.
+func dig_exert(dust: Color, k: float) -> void:
+	var add := SOIL_HIT * k
+	soil_col = soil_col.lerp(Color(dust.r, dust.g, dust.b), add / maxf(soil + add, 0.001))
+	soil = minf(soil + add, 1.0)
+	winded = minf(winded + WIND_HIT * k, 1.0)
+
 ## Obrażenia na postaci: krew w materiale modelu 3D (char3d.gd), kapanie i plamy na podłodze (blood_decals.gd). Wszystko z replikowanego `hp`,
 ## więc widać u wszystkich graczy; kosmetyka, lokalna. Jakość: LOW — same plamy na modelu, MEDIUM — kapanie, HIGH — plamy na podłodze;
 ## „Reduce effects” wyłącza kapanie i plamy na podłodze (plamy na modelu zostają).
 func _update_damage(delta: float) -> void:
+	soil = maxf(soil - SOIL_DECAY * delta, 0.0)
+	winded = maxf(winded - WIND_DECAY * delta, 0.0)
+	if c3d != null and absf(soil - _soil_sent) > 0.01:
+		_soil_sent = soil
+		c3d.set_soil(soil, soil_col)
 	var tgt := 0.0
 	if dead:
 		tgt = 1.0

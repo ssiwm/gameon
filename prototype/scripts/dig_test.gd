@@ -22,6 +22,7 @@ extends "res://scripts/stalker_test.gd"
 ##    odnowienie po 3 udanych misjach na innych mapach (nowe miejsca), Nocny Dyżur nie rusza puli, zapis w progress.cfg.
 ## 12. sygnał strefy: wejście (miejsce znaku 3D), podpowiedź „Kop” w pasku akcji (skała z kilofem, ziemia, z dala nic, milknie po
 ##    3 ciosach przy niej, osobno dla każdej strefy), porada o kopaniu i skanerze tylko na 1.1.
+## 5a. ślady pracy (kopanie P2e): ciosy kilofem brudzą strój pyłem materiału i dają zadyszkę.
 ## 13. wykop pod skałą (kopanie P2c): strop nad głową w tunelu, na wierzchu nie; tło jak w podziemiach (level.gd `dig_cover_at`); miejsca
 ##    kapania na stropie w skale (dig_zone.gd `drip_spot`), w ziemi nie; pogłos wg ścian — w skale jaśniejszy, w ziemi głuchy.
 ## Wynik: linie [DIG-TEST] (PASS / FAIL / INFO) i kod wyjścia.
@@ -429,8 +430,24 @@ func _materials() -> void:
 		wc._server_melee(player.global_position + Vector2(0, -9), Vector2.DOWN, blade, player.player_id)
 		await _frames(0.05)
 		check("maczeta nie bierze skały, a cios w skałę bierze kilof (%s)" % Weapons.def(auto_rock).key, rock.digs == d0 and auto_rock == Weapons.TOOL)
+		player.soil = 0.0
+		player.winded = 0.0
 		var hr: Array = await _hits_down(rock, rock_x, pick)
 		info("skała: %d ciosów kilofem na wyrwę (%s)" % [hr[0], hr[1]])
+		var sc: Color = player.soil_col
+		var rd: Color = DigMats.MATS["rock"]["dust"]
+		info("po %d ciosach w skałę: urobek na stroju %.2f (kolor %s), zadyszka %.2f" % [hr[0], player.soil, str(sc), player.winded])
+		check("kopanie brudzi strój pyłem materiału i daje zadyszkę (P2e)", player.soil > 0.2 and player.winded > 0.2
+			and absf(sc.r - rd.r) < 0.08 and absf(sc.b - rd.b) < 0.08)
+		if Vfx.view3d != null and is_instance_valid(Vfx.view3d):    # w oknie: ta sama postać czysta i po kopaniu w ziemi (zrzuty do porównania)
+			_place_player(Vector2(26.0 * 16.0, TOP - 2.0))
+			player.aim_dir = Vector2.RIGHT
+			player.soil = 0.0
+			await _shot("d5_15_clean", Callable(), 0.6)
+			player.soil = 1.0
+			player.soil_col = DigMats.MATS["dirt"]["dust"]
+			await _shot("d5_15_soil", Callable(), 0.6)
+			player.soil = 0.0
 		check("skała: 4 ciosy kilofem na wyrwę w dół (2 kęsy × 2)", int(hr[0]) == 4 and String(hr[1]) == "rock")
 	if vein_x != INF:
 		var hv: Array = await _hits_down(rock, vein_x, pick)

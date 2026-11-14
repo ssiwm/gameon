@@ -466,6 +466,9 @@ func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, metal
 		Vfx.burst(lvl, at, Color(1.0, 0.86, 0.5), 5, 80.0, 210.0, out, 50.0, 420.0, 0.14, Vector2(0.35, 0.6), true)
 		Audio.play_variant_at("impact_hard", 3, at, Audio.BUS_WORLD, -11.0, 1.25)
 		Audio.play_variant_at("ricochet", 2, at, Audio.BUS_WORLD, -18.0, 1.1, 0.12)
+	for p in get_tree().get_nodes_in_group("players"):          # urobek na stroju i zadyszka bijącego (P2e)
+		if int(p.get("player_id")) == by and p.has_method("dig_exert"):
+			p.dig_exert(m["dust"], k)
 	if by >= 0 and by == NoiseMgr.local_id():
 		Feel.kick(out * (2.6 if hard else 1.4) * k)                 # narzędzie odbija od ściany w stronę bijącego
 		Feel.shake((1.4 if hard else 0.7) * k)
