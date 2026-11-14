@@ -728,6 +728,9 @@ func _t_climb() -> void:
 		var dz := eye.z - pos.z
 		if dz > 0.5:
 			ys.append(eye.y + (pos.y - eye.y) * RangeSim.LANE_L / dz))
+	# stałe ziarno: rozrzut strzału (ziarno z randi(), WeaponController._fire_shot) i drżenie podrzutu (CLIMB_JITTER) są losowe — średnia
+	# z dwóch strzałów potrafiła zasłonić podrzut (CI 2026-11-14: 0,09 m przy progu 0,15, lokalnie zwykle 0,8 m)
+	seed(87)
 	wc.sim_fire = true
 	var t := 0.0
 	while ys.size() < 6 and t < 3.0:
