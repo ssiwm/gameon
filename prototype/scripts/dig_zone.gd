@@ -397,6 +397,7 @@ func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, metal
 	Vfx.burst(lvl, top, chip, roundi(5.0 * k), 0.0, 14.0, Vector2.DOWN, 70.0, 520.0, 0.7, Vector2(0.35, 0.75), false, false, {"mesh": "chip"})
 	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):    # urobek zostaje na dnie wykopu (widok 3D, kopanie P1)
 		Vfx.view3d.call("dig_spoil", self, at, out, mat, 2 if tool == Mats.Tool.PICK else 1)   # kęs to 1/3 wyrwy (P1a) — mniej bryłek
+		Vfx.view3d.call("dig_dust", self, at, mat, k)            # pył wisi w wykopie i gęstnieje z serią (P2a)
 	if pick and randf() < float(m["sparks"]):
 		Vfx.burst(lvl, at, Color(1.0, 0.82, 0.45), randi_range(2, 4), 60.0, 170.0, out, 45.0, 380.0, 0.16, Vector2(0.5, 0.9), true)
 	Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - (3.0 if not pick else 0.0), float(snd[2]) * (1.12 if not pick else 1.0))

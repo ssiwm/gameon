@@ -28,6 +28,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Level3D := preload("res://scripts/level3d.gd")
 
 const DigMats := preload("res://scripts/dig_materials.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 const Combat := preload("res://scripts/combat.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
 const Lights := preload("res://scripts/lights.gd")
@@ -333,6 +334,21 @@ func _tunnel() -> void:
 		prof.append("%.0f:%s" % [x, "—" if h.is_empty() else "%.1f" % (h["position"].y - start.y)])
 		x += 4.0
 	info("  dno tunelu względem wejścia (x:dy): %s" % " ".join(prof))
+	var v3: Node = Vfx.view3d
+	if v3 != null and is_instance_valid(v3):                  # pył w wykopie (P2a): seria ciosów zostawia gęstą bryłę mgły
+		var dust: Array = v3.get("_dig_dust")
+		var dmax := 0.0
+		for e in dust:
+			dmax = maxf(dmax, float(e["d"]))
+		check("pył w wykopie po serii ciosów: %d brył mgły, najgęstsza %.2f" % [dust.size(), dmax], dust.size() >= 1 and dmax > 0.3)
+		var fl1: bool = player.flashlight
+		var ma1: bool = player.mouse_aim
+		player.flashlight = true
+		player.mouse_aim = false
+		_place_player(player.global_position + Vector2(-20.0, -1.0))   # krok w tył: snop latarki idzie przez chmurę do czoła tunelu
+		await _shot("d5_13_dust", func(_t: float, _dt: float) -> void: player.aim_dir = Vector2.RIGHT, 0.4)
+		player.flashlight = fl1
+		player.mouse_aim = ma1
 	check("efekt ciosu z wejścia gracza: materiał strefy, kilof, kamera drga u bijącego (%s)" % str(zone.fx_last),
 		DigMats.MATS.has(String(zone.fx_last.get("mat", ""))) and int(zone.fx_last.get("tool", -1)) == DigMats.Tool.PICK
 		and int(zone.fx_last.get("by", -1)) == player.player_id)
