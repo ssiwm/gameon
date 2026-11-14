@@ -8,9 +8,9 @@ extends "res://scripts/stalker_test.gd"
 ## DigZone1: ziemia bez wtrąceń, kafle 2–11 × 10–17 (wierzch równo z podłogą hali); DigZone2: skała z żyłą, kafle 30–37 × 10–15.
 ## 1. wierzch strefy równo z sąsiednimi kaflami, przejście przez szew strefa / mapa bez zatrzymania i podskoku;
 ## 2. dół: ciosy kilofem w dół do głębokości 2 kafli, ile ciosów i czy da się wyskoczyć; zakopanie i wyjście stopniami po skosie;
-## 3. tunel w bok z dna dołu: ciosy + marsz, czy postać się mieści, czy tunel schodzi w dół, postęp na cios; schody po skosie;
+## 3. tunel w bok z dna dołu: ciosy + marsz, czy postać się mieści, czy tunel schodzi w dół, postęp na cios (kęs 1/3 przejścia); schody po skosie;
 ## 4. nawigacja i siatka dźwięku: wykopany kafel przestaje być bryłą;
-## 5. materiały i narzędzia: skała 3 ciosy, żyła 4, maczeta nie bierze skały (kilof wybiera się sam), ziemię maczetą 2 ciosy i ciszej;
+## 5. materiały i narzędzia (w dół, 2 kęsy): skała 4 ciosy, żyła 6, maczeta nie bierze skały (kilof wybiera się sam), ziemię maczetą 4 ciosy i ciszej;
 ## 6. wybuch (combat.gd `explode`) wycina koło w skale;
 ## 7. stan: migawka z punktu kontrolnego i wipe przywracają strefę (gęstość, kafle, nawigacja), gracz w zasypanym wykopie wychodzi na wierzch;
 ## 8. czasy przebudowy fragmentu (kontur + kolizja) i siatki 3D;
@@ -182,6 +182,19 @@ func _dump_segments(r: Rect2) -> void:
 			if r.has_point((a + b) * 0.5):
 				info("    odcinek %s → %s (względem stóp %s)" % [a, b, (a + b) * 0.5 - pp])
 
+## Ciosy w kierunku `dir` z miejsca gracza, aż cała wyrwa (`cut_rect`) wolna — jeden zamach bierze kęs (P1a); zwraca liczbę ciosów (≤ 6).
+func _swing_full(dir: Vector2) -> int:
+	var n := 0
+	while n < 6:
+		var o: Vector2 = player.global_position + Vector2(0, -9)
+		if zone._rock_in(zone.cut_rect(o, dir.normalized()), DigMats.Tool.PICK) < 0:
+			break
+		if not await _swing(dir):
+			break
+		n += 1
+		await _frames(0.1)
+	return n
+
 ## Kopie w dół do głębokości `depth` px pod wierzchem; zwraca liczbę ciosów.
 func _dig_down(depth: float) -> int:
 	var hits := 0
@@ -232,7 +245,7 @@ func _pit() -> void:
 	var depth: float = player.global_position.y - TOP
 	info("dół na 2 kafle: %d ciosów w dół (%.1f px, %.1f px na cios, ok. %.1f s przy cooldownie 0,9 s), x %.1f → %.1f" %
 		[hits, depth, depth / maxf(hits, 1), hits * 0.9, x0, player.global_position.x])
-	check("dół na 2 kafle w 2–5 ciosach", depth >= 31.5 and hits >= 2 and hits <= 5)
+	check("dół na 2 kafle w 4–10 ciosach (kęs = pół szybu)", depth >= 31.5 and hits >= 4 and hits <= 10)
 	await _shot("s2_2_pit")
 	check("z dołu na 2 kafle da się wyskoczyć (skok + bok)", await _jump_out("move_right"))
 	# głębiej niż skok (ok. 44 px) + skos krawędzi (4 px): czy da się zakopać i czy stopnie po skosie w górę wyprowadzają
@@ -250,14 +263,15 @@ func _pit() -> void:
 	_place_player(bottom + Vector2(0, -2))
 	await _frames(0.4)
 	var tries := 0
+	var swings := 0
 	var out := false
 	while tries < 8 and not out:
-		await _swing(Vector2(1, -1))
+		swings += await _swing_full(Vector2(1, -1))             # stopień to kilka kęsów (P1a) — kopie, aż cała wyrwa wolna
 		tries += 1
 		out = await _jump_out("move_right")
-	info("wyjście z dołu stopniami po skosie w górę: %s po %d ciosach, stopy (%.0f, %.1f)" %
-		["TAK" if out else "NIE", tries, player.global_position.x, player.global_position.y])
-	check("z dołu na 52+ px wychodzi się stopniami po skosie (≤ 6 ciosów)", out and tries <= 6)
+	info("wyjście z dołu stopniami po skosie w górę: %s po %d stopniach (%d ciosów), stopy (%.0f, %.1f)" %
+		["TAK" if out else "NIE", tries, swings, player.global_position.x, player.global_position.y])
+	check("z dołu na 52+ px wychodzi się stopniami po skosie (≤ 6 stopni, ≤ 18 ciosów)", out and tries <= 6 and swings <= 18)
 	_place_player(Vector2(bottom.x + 20.0, TOP - 2.0))
 	await _shot("s2_3_steps")
 	set_meta("pit_bottom", bottom)
@@ -304,11 +318,11 @@ func _tunnel() -> void:
 		player.mouse_aim = ma0
 	var start: Vector2 = player.global_position
 	var d0: int = zone.digs
-	var r := await _bore(Vector2.RIGHT, "move_right", 8, 11.0 * 16.0 - 8.0)
+	var r := await _bore(Vector2.RIGHT, "move_right", 16, 11.0 * 16.0 - 8.0)
 	var hits: int = zone.digs - d0
 	info("tunel w bok: %d ciosów, postęp %.0f px (%.1f px = %.2f kafla na cios), zmiana dna %+.1f px, ciosy bez postępu %d, klatki z sufitem %d" %
 		[hits, r.x, r.x / maxf(hits, 1), r.x / maxf(hits, 1) / 16.0, r.y, r.z, r.w])
-	check("tunel w bok: postać się mieści i idzie naprzód (> 8 px na cios)", r.x / maxf(hits, 1) > 8.0)
+	check("tunel w bok: postać się mieści i idzie naprzód (> 3,5 px na cios — kęs to 1/3 przejścia)", r.x / maxf(hits, 1) > 3.5)
 	check("dno tunelu nie schodzi (|zmiana| ≤ 1 px)", absf(r.y) <= 1.0)
 	var prof := []                            # profil dna: promień w dół co 4 px od wejścia tunelu
 	var space := player.get_world_2d().direct_space_state
@@ -327,11 +341,11 @@ func _tunnel() -> void:
 	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
 	await _frames(0.4)
 	d0 = zone.digs
-	r = await _bore(Vector2(1, 1), "move_right", 3, 4.5 * 16.0)
+	r = await _bore(Vector2(1, 1), "move_right", 9, 4.5 * 16.0)
 	hits = zone.digs - d0
 	info("schody po skosie w dół: %d ciosów, %.0f px w bok, %+.1f px w dół (%.1f px w dół na cios), ciosy bez postępu %d" %
 		[hits, r.x, r.y, r.y / maxf(hits, 1), r.z])
-	check("schody po skosie schodzą (≥ 6 px w dół na cios) i idą naprzód", r.y / maxf(hits, 1) >= 6.0 and r.x > 20.0)
+	check("schody po skosie schodzą (≥ 2 px w dół na cios — stopień 8 px na 3 kęsy) i idą naprzód", r.y / maxf(hits, 1) >= 2.0 and r.x > 20.0)
 	info("skała w strefie: %.0f%% (operacji kopania: %d)" % [zone.solid_fraction() * 100.0, zone.digs])
 
 # ---------------------------------------------------------------- 4. nawigacja i dźwięk
@@ -361,7 +375,7 @@ func _hits_down(z: Node2D, x: float, w: int) -> Array:
 	var tool: int = DigMats.Tool.PICK if Weapons.def(w).breaks_walls else DigMats.Tool.BLADE
 	var mat: int = z._rock_in(r, DigMats.Tool.PICK)
 	var hits := 0
-	while hits < 8 and z._rock_in(r, tool) >= 0:
+	while hits < 16 and z._rock_in(r, tool) >= 0:
 		_place_player(Vector2(x, TOP - 0.5))
 		player.weapons._server_melee(o, Vector2.DOWN, w, player.player_id)
 		hits += 1
@@ -398,26 +412,34 @@ func _materials() -> void:
 		check("maczeta nie bierze skały, a cios w skałę bierze kilof (%s)" % Weapons.def(auto_rock).key, rock.digs == d0 and auto_rock == Weapons.TOOL)
 		var hr: Array = await _hits_down(rock, rock_x, pick)
 		info("skała: %d ciosów kilofem na wyrwę (%s)" % [hr[0], hr[1]])
-		check("skała: 3 ciosy kilofem na wyrwę", int(hr[0]) == 3 and String(hr[1]) == "rock")
+		check("skała: 4 ciosy kilofem na wyrwę w dół (2 kęsy × 2)", int(hr[0]) == 4 and String(hr[1]) == "rock")
 	if vein_x != INF:
 		var hv: Array = await _hits_down(rock, vein_x, pick)
 		info("żyła: %d ciosów kilofem na wyrwę (%s)" % [hv[0], hv[1]])
-		check("żyła: 4 ciosy kilofem na wyrwę", int(hv[0]) == 4 and String(hv[1]) == "vein")
+		check("żyła: 5–6 ciosów kilofem na wyrwę w dół (kęs z żyłą 3, ze skałą 2)", int(hv[0]) >= 5 and int(hv[0]) <= 6 and String(hv[1]) == "vein")
 	# ziemia: maczetą 2 ciosy, ciszej niż kilof; wybór narzędzia zostaje przy maczecie
-	_place_player(Vector2(9.5 * 16.0, TOP - 2.0))
+	# na nietkniętym wierzchu: stopnie wyjścia z dołu (punkt 2, od P1a po kilka kęsów) przechodzą przez te miejsca — strefa na chwilę
+	# wraca do danych mapy, potem do stanu po punktach 2–4
+	var dug: PackedByteArray = zone.state()
+	zone.reset_to(PackedByteArray())
+	await _frames(0.1)
+	var bx := 9.5 * 16.0
+	_place_player(Vector2(bx, TOP - 2.0))
 	await _frames(0.3)
 	player.aim_dir = Vector2.DOWN
 	var auto_dirt: int = wc.melee_for_target()
 	_noise.clear()
-	var hb: Array = await _hits_down(zone, 9.5 * 16.0, blade)
-	var n_blade: float = float(_noise[0][0]) if not _noise.is_empty() else 0.0
+	var hb: Array = await _hits_down(zone, bx, blade)
+	var n_blade: float = float(_noise[-1][0]) if not _noise.is_empty() else 0.0   # ostatni cios: pierwszy hałas bywa upadkiem wyspy z wcześniejszych wykopów
 	_noise.clear()
 	var hp: Array = await _hits_down(zone, 8.0 * 16.0 + 2.0, pick)
-	var n_pick: float = float(_noise[0][0]) if not _noise.is_empty() else 0.0
+	var n_pick: float = float(_noise[-1][0]) if not _noise.is_empty() else 0.0
 	info("ziemia: maczetą %d ciosów (hałas %.2f), kilofem %d (hałas %.2f), wybór narzędzia w ziemi: %s" % [hb[0], n_blade, hp[0], n_pick, Weapons.def(auto_dirt).key])
-	check("ziemia: maczetą 2 ciosy, kilofem 1", int(hb[0]) == 2 and int(hp[0]) == 1)
+	check("ziemia: maczetą 4 ciosy, kilofem 2 (2 kęsy)", int(hb[0]) == 4 and int(hp[0]) == 2)
 	check("cios maczetą w ziemię jest o połowę cichszy od kilofa (> 0)", n_blade > 0.0 and absf(n_blade - n_pick * 0.5) < 0.05)
 	check("w ziemi wybór narzędzia zostawia maczetę", auto_dirt == blade)
+	zone.reset_to(dug)
+	await _frames(0.1)
 	wc.melee_id = melee0
 
 # ---------------------------------------------------------------- 6. wybuch

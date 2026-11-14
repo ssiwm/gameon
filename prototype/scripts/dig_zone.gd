@@ -51,6 +51,11 @@ const DOWN_W := 20.0                  ## px: szerokość szybu (szerszy od posta
 const DOWN_D := 12.0                  ## px: głębokość szybu na cios
 const UP_D := 12.0                    ## px: wnęka nad głową na cios
 const DIAG_DROP := 8.0                ## px: stopień przy ciosie po skosie (w dół — zejście, w górę — próg do wskoczenia)
+## Kęs ciosu (kopanie P1a): do 1.7.559 jeden zamach zabierał całą wyrwę — w bok 2,2 × 2,3 m na całą głębokość bryły. Teraz wyrwa to cel
+## kilku zamachów, a jeden bierze jej część: w bok i po skosie pas na wysokości celowania (strop, środek, dół), w szybie i wnęce połowę
+## szerokości. Kolejny cios bierze najbliższą celownikowi część, w której jeszcze jest skała, więc trzy zamachy w ten sam punkt i tak
+## wybijają całe przejście, a celowanie decyduje tylko o kolejności. Ziemia: 3 ciosy na krok tunelu (2 w dół), skała i żyła — razy siła.
+const BITE_SIDE := [0.0, 8.0, 20.0, 28.0]   ## px od stropu przejścia (CUT_H): granice pasów ciosu w bok; środkowy szerszy — na nim staje wzrok
 ## Nieregularna siatka 3D (P1, `chunk_mesh`): ściany wykopu dzielone w głąb na plastry, a wierzchołki konturu przesunięte gładkim szumem
 ## zależnym tylko od położenia w świecie — ten sam punkt dostaje to samo przesunięcie w każdej komórce i każdym fragmencie, więc siatka nie pęka.
 ## Kolizja zostaje z konturu (różnica kilka cm). Podłoga (powietrze nad, skała pod) nie rusza się w pionie — stopy stoją na tym, co widać.
@@ -292,16 +297,21 @@ func solid_in_data(c: int, r: int) -> bool:
 
 ## Serwer: cios z `origin` (stopy − 9 px, jak w weapon_controller.gd) w kierunku `dir` narzędziem `tool` (dig_materials.gd Tool). Kopie, gdy
 ## w prostokącie wyrwy jest skała, którą to narzędzie bierze, i rozsyła efekt ciosu (`_hit_rpc`; `by` — player_id bijącego, jego kamera
-## drga). Zwraca {"at": punkt na pył i dźwięk, "mat": materiał, "metal": cios przy zakopanej znajdźce} albo pusty słownik.
+## drga). Wycina tylko kęs wyrwy (`bite_rect`). Zwraca {"at": punkt na pył i dźwięk, "mat": materiał, "metal": cios przy zakopanej znajdźce,
+## "bite": wycięty prostokąt} albo pusty słownik.
 func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, reach: float, tool: int, by := -1) -> Dictionary:
-	var r := cut_rect(origin, dir)
+	var full := cut_rect(origin, dir)
+	if _rock_in(full, tool) < 0:
+		return {}
+	var aim := _face_point(full, origin, dir, reach)
+	var hit := space.intersect_ray(PhysicsRayQueryParameters2D.create(origin, origin + dir * reach, LAYER_WORLD))
+	if not hit.is_empty() and hit["collider"] is Node and (hit["collider"] as Node).get_parent() == self:
+		aim = hit["position"]
+	var r := bite_rect(full, dir, aim, tool)
 	var mat := _rock_in(r, tool)
 	if mat < 0:
 		return {}
-	var at := _face_point(r, origin, dir, reach)
-	var hit := space.intersect_ray(PhysicsRayQueryParameters2D.create(origin, origin + dir * reach, LAYER_WORLD))
-	if not hit.is_empty() and hit["collider"] is Node and (hit["collider"] as Node).get_parent() == self:
-		at = hit["position"]
+	var at := aim if r.grow(CELL).has_point(aim) else _rock_center(r)   # pył i dźwięk z kęsa, nie z innego pasa
 	var key := Mats.key_of(mat)
 	NoiseMgr.add_noise(N_DIG * float(Mats.MATS[key]["noise"]) * (BLADE_NOISE if tool == Mats.Tool.BLADE else 1.0), at, "dig")
 	var metal := find_near_rect(r.grow(FIND_CLINK)) >= 0          # przed cięciem: znajdźka, która tym ciosem wypadnie, też dzwoni
@@ -311,7 +321,48 @@ func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, 
 		_hit_rpc.rpc(map_key, at, -dir, mat, tool, metal, top, by)
 	else:
 		_hit_rpc(map_key, at, -dir, mat, tool, metal, top, by)
-	return {"at": at, "mat": key, "metal": metal}
+	return {"at": at, "mat": key, "metal": metal, "bite": r}
+
+## Kęs ciosu w wyrwie `full` (cut_rect, kierunek `dir`): część z kopalną dla `tool` skałą najbliższa punktowi `aim` (czoło na linii ciosu) —
+## w bok i po skosie pas BITE_SIDE (bliżej celownika w pionie; remis — niższy, bo dno tunelu da się szybciej przejść), w pionie połowa
+## szybu (w poziomie; remis — w stronę ciosu). Gdy żadna część nie ma skały we wnętrzu (skała tylko na granicy pasów) — cała wyrwa.
+func bite_rect(full: Rect2, dir: Vector2, aim: Vector2, tool: int) -> Rect2:
+	var vertical := absf(dir.x) < 0.38
+	var parts: Array[Rect2] = []
+	if vertical:
+		var mid := _snap(full.get_center().x, global_position.x)
+		parts = [Rect2(full.position.x, full.position.y, mid - full.position.x, full.size.y),
+			Rect2(mid, full.position.y, full.end.x - mid, full.size.y)]
+	else:
+		var scale_y := full.size.y / CUT_H
+		for b in BITE_SIDE.size() - 1:
+			var y0 := _snap(full.position.y + float(BITE_SIDE[b]) * scale_y, global_position.y)
+			var y1 := _snap(full.position.y + float(BITE_SIDE[b + 1]) * scale_y, global_position.y)
+			parts.append(Rect2(full.position.x, y0, full.size.x, y1 - y0))
+	var best := full
+	var best_d := INF
+	for p in parts:
+		if p.size.x <= 0.0 or p.size.y <= 0.0 or _rock_in(p, tool) < 0:
+			continue
+		var c := p.get_center()
+		var d := absf(c.x - aim.x) - c.x * signf(dir.x) * 0.001 if vertical else absf(c.y - aim.y) - c.y * 0.001
+		if d < best_d:
+			best_d = d
+			best = p
+	return best
+
+## Środek kopalnej skały (narożniki ≥ ISO, nie ramka) w prostokącie `r`; środek `r`, gdy jej nie ma.
+func _rock_center(r: Rect2) -> Vector2:
+	var sum := Vector2.ZERO
+	var n := 0
+	var a := (r.position - global_position) / CELL + Vector2(1, 1)
+	var b := (r.end - global_position) / CELL + Vector2(1, 1)
+	for j in range(maxi(1, roundi(a.y)), mini(_h - 2, roundi(b.y)) + 1):
+		for i in range(maxi(1, roundi(a.x)), mini(_w - 2, roundi(b.x)) + 1):
+			if _d[j * _w + i] >= ISO and _fixed[j * _w + i] == 0:
+				sum += global_position + _corner_px(i, j)
+				n += 1
+	return sum / float(n) if n > 0 else r.get_center()
 
 ## Każdy peer: efekt ciosu w strefę wg materiału (dig_materials.gd: snd, chip, dust, clods, sparks). Do 1.7.557 kopanie szło przez
 ## Arsenal.broadcast_hit z `Mat.WORLD` (Vfx.hit tego nie zna — cisza, nic) albo `Mat.DUST` (pyłek Ćmy). Teraz trzy warstwy, bo to one mówią,
@@ -345,7 +396,7 @@ func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, metal
 	# aury postaci świeciły jak świetliki (zrzut 2026-11-14)
 	Vfx.burst(lvl, top, chip, roundi(5.0 * k), 0.0, 14.0, Vector2.DOWN, 70.0, 520.0, 0.7, Vector2(0.35, 0.75), false, false, {"mesh": "chip"})
 	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):    # urobek zostaje na dnie wykopu (widok 3D, kopanie P1)
-		Vfx.view3d.call("dig_spoil", self, at, out, mat, 3 if tool == Mats.Tool.PICK else 1)
+		Vfx.view3d.call("dig_spoil", self, at, out, mat, 2 if tool == Mats.Tool.PICK else 1)   # kęs to 1/3 wyrwy (P1a) — mniej bryłek
 	if pick and randf() < float(m["sparks"]):
 		Vfx.burst(lvl, at, Color(1.0, 0.82, 0.45), randi_range(2, 4), 60.0, 170.0, out, 45.0, 380.0, 0.16, Vector2(0.5, 0.9), true)
 	Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - (3.0 if not pick else 0.0), float(snd[2]) * (1.12 if not pick else 1.0))
@@ -370,16 +421,7 @@ func _face_point(r: Rect2, origin: Vector2, dir: Vector2, reach: float) -> Vecto
 		if solid_at_px(p):
 			return p - dir * 1.0
 		t += 2.0
-	var sum := Vector2.ZERO
-	var n := 0
-	var a := (r.position - global_position) / CELL + Vector2(1, 1)
-	var b := (r.end - global_position) / CELL + Vector2(1, 1)
-	for j in range(maxi(1, roundi(a.y)), mini(_h - 2, roundi(b.y)) + 1):
-		for i in range(maxi(1, roundi(a.x)), mini(_w - 2, roundi(b.x)) + 1):
-			if _d[j * _w + i] >= ISO and _fixed[j * _w + i] == 0:
-				sum += global_position + _corner_px(i, j)
-				n += 1
-	return sum / float(n) if n > 0 else r.get_center()
+	return _rock_center(r)
 
 ## Czy w zasięgu ciosu z `origin` w kierunku `dir` jest skała strefy (dowolne narzędzie) i której nie bierze broń biała — wybór kilofa
 ## (weapon_controller.gd `melee_for_target`). Zwraca [jest skała, broń biała jej nie bierze].
