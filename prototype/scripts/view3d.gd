@@ -18,6 +18,7 @@ const Building3D := preload("res://scripts/building3d.gd")
 const DamageMask := preload("res://scripts/damage_mask.gd")
 const Lights := preload("res://scripts/lights.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
+const DigGround := preload("res://scripts/dig_ground.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
@@ -8073,8 +8074,9 @@ func _make_item(sp: ItemsHd.ItemMark) -> void:
 # ---------------------------------------------------------------- strefy wydobycia (dig_zone.gd, DESTRUCTION_PLAN.md D5)
 
 var _dig3d := {}                          ## id strefy → {"zone", "mis": [MeshInstance3D na fragment], "ver": PackedInt32Array}
-var _dig_mat: StandardMaterial3D
-const DIG_MESH_PER_FRAME := 4             ## siatek fragmentów strefy na klatkę (1,0–1,4 ms każda); wybuch i reset kończą się w następnych klatkach
+var _dig_mat: Material                     ## ściany i przód stref (dig_ground.gd; bez tekstur — StandardMaterial3D jak grunt mapy)
+var _dig_spoil_mat: Material
+const DIG_MESH_PER_FRAME := 2             ## siatek fragmentów strefy na klatkę (1,8–3 ms każda od P1: plastry, szum, wagi); wybuch i reset kończą się w następnych klatkach
 const DIG_GLINT_M := 0.2                  ## m: jasny środek błysku znajdźki odkopanej do połowy
 const DIG_GLINT_STREAK := Vector2(0.7, 0.045)   ## m: smugi gwiazdki (długość, grubość) — odblask metalu, nie plamka światła
 const DIG_GLINT_COL := Color(1.0, 0.95, 0.8)
@@ -8094,8 +8096,13 @@ func _sync_dig_zones() -> void:
 		var st: Dictionary = _dig3d.get(id, {})
 		if st.is_empty() or (st["mis"] as Array).is_empty() or not is_instance_valid((st["mis"] as Array)[0]):
 			if _dig_mat == null:
-				_dig_mat = (Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")).duplicate() as StandardMaterial3D
-				_dig_mat.vertex_color_use_as_albedo = true
+				_dig_mat = DigGround.material(false)
+				_dig_spoil_mat = DigGround.material(true)
+				if _dig_mat == null:
+					var sm := (Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")).duplicate() as StandardMaterial3D
+					sm.vertex_color_use_as_albedo = true
+					_dig_mat = sm
+					_dig_spoil_mat = sm
 			var mis: Array = []
 			for ci in int(z.chunk_count()):
 				var mi := MeshInstance3D.new()
@@ -8123,6 +8130,10 @@ func _sync_dig_zones() -> void:
 			st = {"zone": z, "mis": mis, "ver": ver, "zf": zf}
 			_dig3d[id] = st
 		var vers: PackedInt32Array = st["ver"]
+		if st.has("spoil") and vers != z.chunk_ver:
+			_settle_spoil(st, z)
+		if st.get("spoil_dirty", false):
+			_draw_spoil(st)
 		for ci in vers.size():
 			if budget > 0 and vers[ci] != int(z.chunk_ver[ci]):
 				budget -= 1
@@ -8134,6 +8145,97 @@ func _sync_dig_zones() -> void:
 		var z = (_dig3d[id] as Dictionary)["zone"]
 		if not is_instance_valid(z) or (z as Node).is_queued_for_deletion():
 			_dig3d.erase(id)
+
+## Urobek (kopanie P1): bryłki wykopanego materiału na dnie wykopu — tylko obraz, u każdego peera z widokiem 3D (bez kolizji i sieci;
+## dołączający widzi wykop bez starego urobku). Woła je dig_zone.gd `_hit_rpc`. Zmiana strefy (cios, osypisko, wybuch, wipe) przesuwa
+## bryłki na nowe dno albo zabiera zasypane (`_settle_spoil`); najstarsze znikają ponad DIG_SPOIL_MAX.
+const DIG_SPOIL_MAX := 160                ## bryłek na strefę
+const DIG_SPOIL_SIZE := Vector2(0.28, 0.6)   ## skala bryły z `fracture_rock` (kamień zawału, ok. 0,4 m) — grudy i okruchy 12–25 cm
+const DIG_SPOIL_DARK := 0.25             ## urobek ciemniejszy od przodu skały (luźny, w cieniu dna)
+const DIG_SPOIL_FALL := 200.0             ## px: najdalej w dół od miejsca ciosu do dna
+
+func dig_spoil(z: Node2D, at: Vector2, out: Vector2, mat: int, n: int) -> void:
+	var st: Dictionary = _dig3d.get(z.get_instance_id(), {})
+	if st.is_empty():
+		return
+	var sp: Array = st.get("spoil", [])
+	var zf: float = st.get("zf", Level3D.DEPTH_FRONT)
+	for k in n:
+		var f: Variant = _spoil_floor(z, at + out * randf_range(2.5, 6.0) + Vector2(randf_range(-3.0, 3.0), 0.0))
+		if f == null:
+			continue
+		sp.append({"p": f, "z": zf - 0.1 - pow(randf(), 1.6) * 1.6, "b": Basis.from_euler(Vector3(randf() * TAU, randf() * TAU, randf() * TAU)),
+			"s": randf_range(DIG_SPOIL_SIZE.x, DIG_SPOIL_SIZE.y), "v": randi() % 3, "c": DigZone.Mats.tint(mat),
+			"w": Color(1.0 if mat == DigZone.Mats.code("gravel") else 0.0, 1.0 if mat >= DigZone.Mats.code("rock") else 0.0, 0.0, 0.0)})
+	while sp.size() > DIG_SPOIL_MAX:
+		sp.pop_front()
+	st["spoil"] = sp
+	st["spoil_dirty"] = true
+
+## Dno pod punktem `p` (px świata): pierwszy piksel nad skałą strefy; null — punkt w skale albo spadłby poza strefę.
+func _spoil_floor(z: Node2D, p: Vector2) -> Variant:
+	if z.solid_at_px(p):
+		return null
+	var rc: Rect2 = z.rect_px().grow(4.0)
+	var q := p
+	for _i in int(DIG_SPOIL_FALL):
+		if z.solid_at_px(q + Vector2(0.0, 1.0)):
+			return q
+		q.y += 1.0
+		if not rc.has_point(q):
+			return null
+	return null
+
+## Po zmianie strefy: bryłka w skale (zasypana, wipe) znika, bez podparcia spada na nowe dno.
+func _settle_spoil(st: Dictionary, z: Node2D) -> void:
+	var sp: Array = st["spoil"]
+	var keep: Array = []
+	for piece in sp:
+		var f: Variant = _spoil_floor(z, (piece["p"] as Vector2) - Vector2(0.0, 1.0))
+		if f != null:
+			piece["p"] = f
+			keep.append(piece)
+	st["spoil"] = keep
+	st["spoil_dirty"] = true
+
+func _draw_spoil(st: Dictionary) -> void:
+	st["spoil_dirty"] = false
+	var rocks := _fracture_meshes("rubble")
+	if rocks.is_empty():
+		return
+	var mmis: Array = st.get("spoil_mm", [])
+	if mmis.is_empty():
+		for k in 3:
+			var mmi := MultiMeshInstance3D.new()
+			mmi.name = "DigSpoil%d" % k
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = true
+			mm.use_custom_data = true
+			mm.mesh = rocks[k % rocks.size()]
+			mmi.multimesh = mm
+			mmi.material_override = _dig_spoil_mat             # te same skany co ściany wykopu (materiał z danych instancji, odcień z koloru)
+			mmi.layers = LAYER_WORLD
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_geo.add_child(mmi)
+			mmis.append(mmi)
+		st["spoil_mm"] = mmis
+	var by_v: Array = [[], [], []]
+	for piece in st["spoil"]:
+		(by_v[int(piece["v"])] as Array).append(piece)
+	for k in 3:
+		var mm := (mmis[k] as MultiMeshInstance3D).multimesh
+		var list: Array = by_v[k]
+		mm.instance_count = list.size()
+		for i in list.size():
+			var piece: Dictionary = list[i]
+			var sc: float = piece["s"]
+			var pos := Level3D.px_to_m(piece["p"] as Vector2)
+			pos.z = piece["z"]
+			pos.y += sc * 0.35                                   # bryła leży na dnie, nie w nim
+			mm.set_instance_transform(i, Transform3D((piece["b"] as Basis).scaled(Vector3.ONE * sc), pos))
+			mm.set_instance_color(i, (piece["c"] as Color).darkened(DIG_SPOIL_DARK))
+			mm.set_instance_custom_data(i, piece["w"])
 
 ## Znak strefy wydobycia przy jej wejściu (dig_zone.gd `entrance`, po pytaniu z 2026-11-06 „czy sygnalizujemy możliwość kopania”):
 ## kilof wbity w skałę na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień), kupka
