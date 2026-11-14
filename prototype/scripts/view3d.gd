@@ -8083,10 +8083,6 @@ var _dig3d := {}                          ## id strefy → {"zone", "mis": [Mesh
 var _dig_mat: Material                     ## ściany i przód stref (dig_ground.gd; bez tekstur — StandardMaterial3D jak grunt mapy)
 var _dig_spoil_mat: Material
 const DIG_MESH_PER_FRAME := 2             ## siatek fragmentów strefy na klatkę (1,8–3 ms każda od P1: plastry, szum, wagi); wybuch i reset kończą się w następnych klatkach
-const DIG_GLINT_M := 0.2                  ## m: jasny środek błysku znajdźki odkopanej do połowy
-const DIG_GLINT_STREAK := Vector2(0.7, 0.045)   ## m: smugi gwiazdki (długość, grubość) — odblask metalu, nie plamka światła
-const DIG_GLINT_COL := Color(1.0, 0.95, 0.8)
-const DIG_GLINT_TOWARD := 0.6             ## błysk leży między znajdźką a najbliższym powietrzem (0 — w znajdźce, 1 — na ścianie wykopu)
 const DIG_SIGN_PICK := "res://art/char3d/gun_kilof.glb"   ## znak strefy: kilof wbity w skałę przy wejściu (model broni, długość 0,72 m)
 const DIG_SIGN_PICK_K := 1.25            ## skala kilofa w znaku: 0,9 m jak prawdziwy (model broni jest mniejszy, bo siedzi w dłoni postaci)
 
@@ -8439,54 +8435,79 @@ func _build_dig_sign(z: Node2D) -> void:
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).layers = LAYER_WORLD
 
-## Znajdźki odkopane do połowy (dig_zone.gd `Find.NEAR`): metal w ścianie wykopu błyska, gdy pada na niego snop latarki
-## (Lights.flashlight_on do najbliższego pustego narożnika — jak widzi go latarka, tak widzi błysk); poza snopem gaśnie. Bez skanera to jedyny
-## znak oprócz dźwięku ciosu w metal (DESTRUCTION_PLAN.md D5).
+## Znajdźka odkopana do połowy (kopanie P2b; do 1.7.561 gwiazdka z trzech świecących kwadratów): model przedmiotu tego rodzaju
+## (pickup.gd `_hd_name`: złom, skrzynka amunicji, zaopatrzenie, bateria; część — zestaw do czyszczenia) wystaje ze ściany wykopu
+## w stronę powietrza, przechylony z ziarna znajdźki. Bez własnego światła i emisji: w ciemności go nie widać, w snopie latarki metal
+## i farba łapią światło jak każda bryła — ta sama podpowiedź co dawny błysk, tylko widać, co tam leży. Model wczytuje się w tle
+## (`_item_ready`), znika, gdy znajdźka wypadnie (przedmiot ma już swój model) albo wróci w ziemię (wipe, osypisko).
+const DIG_FIND_MODEL := {"scrap": "scrap_pile", "small": "scrap_pile", "ammo": "ammo", "supply": "supply", "battery": "battery", "part": "cleankit"}
+const DIG_FIND_M := 0.36                  ## m: najdłuższy bok modelu znajdźki w ścianie
+const DIG_FIND_OUT := 0.95                ## środek modelu między znajdźką (0) a ścianą wykopu (1): na ścianie — połowa wystaje do wykopu
+const DIG_FIND_Z := 0.15                  ## m: głębokość modelu (płaszczyzna gry, wnętrze wykopu widać na całą głębokość)
+
 func _sync_dig_glints(st: Dictionary, z: Node2D) -> void:
 	var finds: Array = z.finds
 	if not st.has("glint"):
 		var gl: Array = []
 		for _k in finds.size():
-			var root := Node3D.new()                             # środek (billboard) + smuga pozioma i pionowa w płaszczyźnie kadru
-			root.visible = false
-			var parts: Array = []
-			for q in 3:
-				var mi := _glow_quad(Color(DIG_GLINT_COL, 0.0))
-				if q == 0:
-					(mi.material_override as StandardMaterial3D).billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-				root.add_child(mi)
-				parts.append(mi)
-			_geo.add_child(root)
-			gl.append([root, 0.0, parts])
+			gl.append([null, ""])
 		st["glint"] = gl
 	var gl: Array = st["glint"]
-	var space := z.get_world_2d().direct_space_state
-	var dt := get_process_delta_time()
-	var t := Time.get_ticks_msec() * 0.001
 	for k in mini(gl.size(), finds.size()):
 		var f: Dictionary = finds[k]
 		var e: Array = gl[k]
-		var root: Node3D = e[0]
-		var want := 0.0
-		var at: Vector2 = f["pos"]
+		var show := false
+		var face := Vector2.INF
 		if int(f["state"]) == DigZone.Find.NEAR:
-			var face: Vector2 = z.find_face(f)
-			if face != Vector2.INF:
-				at = (f["pos"] as Vector2).lerp(face, DIG_GLINT_TOWARD)
-				if Lights.flashlight_on(face, get_tree(), space) != null:
-					want = 1.0
-		e[1] = move_toward(float(e[1]), want, dt * 6.0)
-		var a := float(e[1])
-		root.visible = a > 0.01
-		if root.visible:
-			var tw := 0.6 + 0.4 * sin(t * 9.0 + float(k) * 1.7)      # migotanie: drobny ruch snopu daje odblask, a nie stałą kropkę
-			root.position = Level3D.px_to_m(at) + Vector3(0.0, 0.0, Level3D.DEPTH_FRONT + 0.04)
-			var parts: Array = e[2]
-			(parts[0] as MeshInstance3D).scale = Vector3.ONE * DIG_GLINT_M * (0.8 + 0.4 * tw)
-			(parts[1] as MeshInstance3D).scale = Vector3(DIG_GLINT_STREAK.x * (0.5 + 0.5 * tw), DIG_GLINT_STREAK.y, 1.0)
-			(parts[2] as MeshInstance3D).scale = Vector3(DIG_GLINT_STREAK.y, DIG_GLINT_STREAK.x * 0.7 * (0.5 + 0.5 * tw), 1.0)
-			for q in 3:
-				((parts[q] as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = Color(DIG_GLINT_COL, a * (1.0 if q == 0 else tw))
+			face = z.find_face(f)
+			show = face != Vector2.INF
+		var nm := String(DIG_FIND_MODEL.get(String(f["kind"]), "scrap_pile"))
+		if show and (e[0] == null or String(e[1]) != nm) and _item_ready(nm):
+			if e[0] != null and is_instance_valid(e[0]):
+				(e[0] as Node).queue_free()
+			e[0] = _dig_find_model(nm, k)
+			e[1] = nm
+		var m = e[0]
+		if m == null or not is_instance_valid(m):
+			continue
+		(m as Node3D).visible = show
+		if show:
+			var at: Vector2 = (f["pos"] as Vector2).lerp(face, DIG_FIND_OUT)
+			(m as Node3D).position = Level3D.px_to_m(at) + Vector3(0.0, 0.0, DIG_FIND_Z)
+
+## Model znajdźki `nm` przeskalowany do DIG_FIND_M (najdłuższy bok) i przechylony z ziarna `k`; środek bryły w początku węzła.
+func _dig_find_model(nm: String, k: int) -> Node3D:
+	var root := Node3D.new()
+	root.name = "DigFind"
+	var m := _item_model(nm)
+	if m == null:
+		var mi := MeshInstance3D.new()                          # bez pliku modelu: blaszana puszka zastępcza
+		var bm := BoxMesh.new()
+		bm.size = Vector3(1.0, 0.6, 0.5)
+		mi.mesh = bm
+		mi.material_override = _hp_mat(Color(0.32, 0.3, 0.26), 0.55, 0.6)
+		mi.layers = LAYER_WORLD
+		m = mi
+	root.add_child(m)
+	var box := AABB()
+	var first := true
+	for n in m.find_children("*", "MeshInstance3D", true, false) + ([m] if m is MeshInstance3D else []):
+		var mi2 := n as MeshInstance3D
+		if mi2.mesh == null:
+			continue
+		var xf := _local_xf(mi2, m)                       # m ma jeszcze transformację jednostkową (skala niżej)
+		var b := xf * mi2.mesh.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	var longest := maxf(box.size.x, maxf(box.size.y, box.size.z))
+	var sc := DIG_FIND_M / maxf(longest, 0.001)
+	m.scale = Vector3.ONE * sc
+	m.position = -box.get_center() * sc
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 8711 + k * 31
+	root.rotation = Vector3(rng.randf_range(-0.5, 0.5), rng.randf_range(-PI, PI), rng.randf_range(-0.6, 0.6))
+	_geo.add_child(root)
+	return root
 
 # ---------------------------------------------------------------- obiekty fizyczne (skrzynie, beczki)
 
