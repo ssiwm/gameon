@@ -68,6 +68,7 @@ func run(m: Node2D) -> void:
 	await _power_crate()
 	await _silent_run()
 	await _strongbox()
+	await _nest_fire()
 	await _nest_respawn()
 	await _stash_first()
 	await _checkpoint()
@@ -354,6 +355,44 @@ func _checkpoint() -> void:
 	for p in get_tree().get_nodes_in_group("players"):
 		if p != player:
 			p.global_position = Vector2(-4000, -4000)  # bot wciągnięty przez bramę wraca poza mapę (jak w _quiet_world)
+
+# ---------------------------------------------------------------- 12b. płonące gniazdo (1.7.566)
+
+## Plama ognia podpala gniazdo, a ono płonie samo co najmniej BURN_MIN s i traci HP; gracz poza zasięgiem — nic, w zasięgu — pół serca
+## (`chip`); po wygaśnięciu gniazdo przestaje parzyć. Na końcu gniazdo wraca do stanu z początku (dalsze części testu go potrzebują).
+func _nest_fire() -> void:
+	stalker.set_physics_process(false)
+	var nest: Node2D = get_tree().get_nodes_in_group("nests")[0]
+	var full: int = player.max_hp()
+	player.hp = full
+	player.chip = 0.0
+	_place_player(nest.global_position + Vector2(70, 0))
+	await _ticks(2)
+	var hp0: float = nest.hp
+	level.spawn_fire_patch(nest.global_position + Vector2(0, -1), Weapons.HKM9, 1)
+	await get_tree().create_timer(0.4).timeout
+	for f in get_tree().get_nodes_in_group("fire_patches"):
+		(f as Node).queue_free()                  # dalej gniazdo pali się samo
+	check("płonące gniazdo: plama ognia je podpala i rani (HP %.0f → %.0f)" % [hp0, nest.hp], nest.burning() and nest.hp < hp0)
+	await get_tree().create_timer(1.3).timeout
+	check("płonące gniazdo: gracz 70 px dalej nie jest sparzony (HP %d, stłuczenie %.1f)" % [player.hp, player.chip], player.hp == full and player.chip == 0.0)
+	_place_player(nest.global_position + Vector2(10, 0))
+	await get_tree().create_timer(1.05).timeout
+	var hurt := float(full - int(player.hp)) + float(player.chip)
+	check("płonące gniazdo: gracz obok sparzony o pół serca na sekundę (strata %.1f)" % hurt, hurt >= 0.5 and hurt <= 1.0)
+	check("płonące gniazdo: płonie samo co najmniej %.0f s po zgaszeniu plamy (HP %.0f)" % [nest.BURN_MIN, nest.hp], nest.burning() and nest.alive)
+	_place_player(nest.global_position + Vector2(70, 0))
+	await get_tree().create_timer(nest.BURN_MIN - 2.3 + 0.4).timeout
+	var hp_out: float = nest.hp
+	player.hp = full
+	player.chip = 0.0
+	_place_player(nest.global_position + Vector2(10, 0))
+	await get_tree().create_timer(1.2).timeout
+	check("płonące gniazdo: po wygaśnięciu nie płonie, nie traci HP i nie parzy (HP %.0f → %.0f, gracz %d)" % [hp_out, nest.hp, player.hp],
+		not nest.burning() and nest.alive and absf(nest.hp - hp_out) < 0.01 and player.hp == full and player.chip == 0.0)
+	nest.reset_enemy()
+	player.hp = full
+	player.chip = 0.0
 
 # ---------------------------------------------------------------- 13. odrodzenie przy gnieździe (1.7.551)
 

@@ -67,8 +67,8 @@ func _physics_process(delta: float) -> void:
 		var n := e as Node2D
 		if n == null or not is_instance_valid(n) or n.is_queued_for_deletion():
 			continue
-		if n.is_in_group("boss") or n.is_in_group("nests"):
-			continue
+		if n.is_in_group("boss"):
+			continue                                              # gniazda płoną od 1.7.566 (nest.gd: _ignite) — do tego czasu plama je pomijała
 		var c := Combat.center_of(n)
 		if absf(c.x - global_position.x) > HALF_W + 4.0 or c.y > global_position.y + 4.0 or c.y < global_position.y - HEIGHT:
 			continue

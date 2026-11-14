@@ -121,7 +121,7 @@ const KINDS := {
 		"note": "Four smoke rounds for the WRATH-4: a smoke cloud where the round lands, enemies cannot see through it.",
 	},
 	"scanner": {
-		"mode": "use", "name": "OWL", "full": "Motion scanner (Owl)", "issue": 0, "price": 120, "max": 3, "time": 10.0, "range": 240.0, "noise": 1.0,
+		"mode": "use", "name": "OWL", "full": "Motion scanner (Owl)", "issue": 0, "price": 120, "max": 3, "time": 10.0, "range": 183.0, "noise": 1.0,      # 183 px = 15 m (GDD §6.6; do 1.7.565 — 240 px ≈ 19,6 m)
 		"color": Color(0.9, 0.9, 0.5),
 		"note": "10 s: shows enemy silhouettes through walls and metal buried in dig sites within 15 m. Emits 1 noise per second.",
 	},

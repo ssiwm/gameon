@@ -38,6 +38,7 @@ const Front3D := preload("res://scripts/front3d.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
 const WorldBars := preload("res://scripts/world_bars.gd")
+const Pulse3D := preload("res://scripts/pulse3d.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
@@ -219,6 +220,12 @@ var _worldfx := {}                       ## id obiektu → {"src", "nodes": [wę
 var _surf_t := 0.0                       ## do następnego odświeżenia tekstur z rysunkiem 2D [s]
 var _nestfx := {}                        ## id gniazda → [węzeł 2D, żar 3D]
 var _ring_mi: MeshInstance3D             ## pierścienie alarmu wrogów (jedna siatka na wszystkie)
+var _screamfx := {}                      ## id gracza → kula fali krzyku (pulse3d.gd)
+var _sonar: MeshInstance3D               ## fala skanera „Sowa” lokalnego gracza (pulse3d.gd)
+var _scan_marks: MeshInstance3D          ## romby znajdziek i pudła wrogów bez modelu na skanerze
+var _scan_mk := Pulse3D.Marks.new()
+var _xray := {}                          ## id wroga 2D → [model 3D, siatki z nakładką prześwietlenia, materiał] (skaner)
+var _xray_mat: Array[ShaderMaterial] = []   ## [spokojny, zagrożenie]
 var _motes: CPUParticles3D               ## pył w powietrzu wokół kamery
 var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 3D efektów na wodzie]
 var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata żarówki]
@@ -631,6 +638,9 @@ func _tick(delta: float) -> void:
 	tp = _tp("nests", tp)
 	_sync_enemy_rings()
 	tp = _tp("enemy_rings", tp)
+	_sync_screams()
+	_sync_scanner()
+	tp = _tp("pulses", tp)
 	_sync_ambient()
 	tp = _tp("ambient", tp)
 	_sync_world_fx(delta)
@@ -7054,6 +7064,134 @@ func _sync_enemy_rings() -> void:
 					im.surface_set_color(bc)
 					im.surface_add_vertex(pt + nrm)
 				im.surface_end()
+
+# ---------------------------------------------------------------- fale: krzyk i skaner „Sowa” (pulse3d.gd)
+
+const SCREAM_R_M := 6.0                  ## zasięg widocznej fali krzyku [m] (do 1.7.565 okrąg 2D do 58 px ≈ 4,7 m)
+const SCREAM_T := 0.6                    ## czas fali [s] = `player.gd: _scream_ring` na starcie
+const SCREAM_UP_PX := 18.0               ## źródło krzyku nad stopami [px] (usta)
+const SCAN_HOT := Color(1.0, 0.35, 0.3)  ## wróg-zagrożenie na skanerze
+const SCAN_CALM := Color(0.95, 0.9, 0.55)    ## reszta (gniazda, uśpieni)
+const SCAN_FIND := Color(0.45, 0.95, 1.0)    ## zakopana znajdźka (metal w ziemi)
+
+## Krzyk gracza (`player.gd: _scream_fx`, widzą go wszyscy): kula od ust — czoło fali przesuwa się po ścianach i podłodze, brzeg kuli
+## w powietrzu lekko załamuje obraz. Szybki start i wyhamowanie (dźwięk traci energię), całość gaśnie w 0,6 s.
+func _sync_screams() -> void:
+	var seen := {}
+	for p in get_tree().get_nodes_in_group("players"):
+		if not (p is Node2D) or not is_instance_valid(p):
+			continue
+		var ring := float(p.get("_scream_ring")) if p.get("_scream_ring") != null else 0.0
+		if ring <= 0.0 or not (p as Node2D).is_visible_in_tree():
+			continue
+		var id := p.get_instance_id()
+		seen[id] = true
+		var mi: MeshInstance3D = _screamfx.get(id)
+		if mi == null or not is_instance_valid(mi):
+			mi = Pulse3D.make_wave(true, LAYER_WORLD)
+			_world.add_child(mi)
+			_screamfx[id] = mi
+		var k := clampf(1.0 - ring / SCREAM_T, 0.0, 1.0)
+		var r := SCREAM_R_M * (1.0 - pow(1.0 - k, 2.6))
+		var c := Level3D.px_to_m((p as Node2D).global_position + Vector2(0.0, -SCREAM_UP_PX))
+		Pulse3D.place(mi, c, r, r + 0.8, {"fade": pow(1.0 - k, 1.3), "width": 0.25 + 0.35 * k,
+			"distort": 0.0 if Settings.reduce_fx else 1.0})
+	for id in _screamfx.keys():
+		if seen.has(id):
+			continue
+		var mi = _screamfx[id]
+		if mi == null or not is_instance_valid(mi):
+			_screamfx.erase(id)
+		elif not is_instance_id_valid(id):
+			(mi as Node).queue_free()
+			_screamfx.erase(id)
+		else:
+			(mi as Node3D).visible = false
+
+## Skaner „Sowa” lokalnego gracza (scanner_view.gd mówi, co widać): fala sonaru po powierzchniach do brzegu zasięgu z jego stałym śladem,
+## modele wrogów prześwietlone przez ściany (czerwone — zagrożenie, żółte — reszta; błysk, gdy mija je fala), zakopane znajdźki jako
+## obracające się romby 3D w skale. Wróg bez modelu albo ukryty (uśpiony Stalker przy perku „Scout”) dostaje pudło na miarę strefy trafień.
+func _sync_scanner() -> void:
+	var sv: Node = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if is_instance_valid(p) and p.get("is_bot") == false and (p as Node).is_multiplayer_authority():
+			var v = p.get("_scan_view")
+			if v != null and is_instance_valid(v) and bool(v.call("active")):
+				sv = v
+			break
+	if _scan_marks == null:
+		_scan_marks = _imm(_world, Pulse3D.make_marks())
+		_scan_marks.name = "ScanMarks"
+		_xray_mat = [Pulse3D.make_xray(SCAN_CALM), Pulse3D.make_xray(SCAN_HOT)]
+	var want := {}
+	if sv == null:
+		if _sonar != null:
+			_sonar.visible = false
+		_scan_mk.flush(_scan_marks.mesh as ImmediateMesh)
+		_xray_apply(want)
+		return
+	if _sonar == null:
+		_sonar = Pulse3D.make_wave(false, LAYER_WORLD)
+		_world.add_child(_sonar)
+	var c := Level3D.px_to_m(sv.call("center"))
+	var reach := float(sv.call("range_px")) * PX
+	var pulse := float(sv.call("pulse"))
+	var fade := float(sv.call("fade"))
+	var front := reach * pulse
+	Pulse3D.place(_sonar, c, front, reach, {"max_r": reach, "fade": fade, "tint": Color(SCAN_CALM, 0.6), "width": 0.22, "edge": 0.16})
+	for m in _xray_mat:
+		m.set_shader_parameter("center", c)
+		m.set_shader_parameter("pulse", front)
+		m.set_shader_parameter("fade", fade)
+	var spin := Time.get_ticks_msec() * 0.0012
+	for t in sv.call("enemies"):
+		var n: Node2D = t["node"]
+		var hot: bool = t["hot"]
+		var pair = _enemies.get(n.get_instance_id())
+		var model: Node3D = pair[1] if pair != null and pair[1] != null and is_instance_valid(pair[1]) else null
+		if model != null and model.is_visible_in_tree() and not bool(t["scouted"]):
+			want[n.get_instance_id()] = [model, _xray_mat[1 if hot else 0]]
+			continue
+		var sz: Vector2 = t["size"]
+		var col := SCAN_HOT if hot else SCAN_CALM
+		var foot := Level3D.px_to_m(n.global_position)
+		var ping := _scan_ping(foot + Vector3(0.0, sz.y * PX * 0.5, 0.0), c, front)
+		Pulse3D.add_box(_scan_mk, foot, Vector3(sz.x * PX, sz.y * PX, 0.5),
+			Color(col, (0.12 + 0.25 * ping) * fade), Color(col, (0.55 + 0.4 * ping) * fade))
+	for f in sv.call("finds"):
+		var small: bool = f["small"]
+		var fp := Level3D.px_to_m(f["pos"])
+		var ping := _scan_ping(fp, c, front)
+		var a := (0.55 + 0.45 * ping) * fade * (0.5 if small else 1.0)
+		Pulse3D.add_octa(_scan_mk, fp, (2.5 if small else 4.0) * PX * 1.6, spin + fp.x, Color(SCAN_FIND, a * 0.3), Color(SCAN_FIND, a))
+	_scan_mk.flush(_scan_marks.mesh as ImmediateMesh)
+	_xray_apply(want)
+
+## Jasność błysku, gdy czoło fali mija punkt (0..1).
+static func _scan_ping(p: Vector3, c: Vector3, front: float) -> float:
+	return 1.0 - clampf(absf(p.distance_to(c) - front) / 2.0, 0.0, 1.0)
+
+## Nakładki prześwietlenia: `want` = id wroga → [model, materiał]. Nakładka zdejmowana tylko wtedy, gdy wciąż jest nasza.
+func _xray_apply(want: Dictionary) -> void:
+	for id in _xray.keys():
+		var cur: Array = _xray[id]
+		if want.has(id) and want[id][0] == cur[0] and want[id][1] == cur[2]:
+			continue
+		for mi in cur[1]:
+			if is_instance_valid(mi) and (mi as GeometryInstance3D).material_overlay == cur[2]:
+				(mi as GeometryInstance3D).material_overlay = null
+		_xray.erase(id)
+	for id in want.keys():
+		if _xray.has(id):
+			continue
+		var model: Node3D = want[id][0]
+		var mat: ShaderMaterial = want[id][1]
+		var used: Array = []
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			if (mi as GeometryInstance3D).material_overlay == null:
+				(mi as GeometryInstance3D).material_overlay = mat
+				used.append(mi)
+		_xray[id] = [model, used, mat]
 
 ## Pył w powietrzu wokół kadru: drobiny 3D w całej głębi sceny, widoczne tylko w świetle — snop latarki „ma objętość".
 ## Mgłę przy ziemi daje mgła wolumetryczna.

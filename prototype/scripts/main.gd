@@ -3079,6 +3079,18 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			cr.kind = "crate"
 			cr.position = bp.global_position + Vector2(12.5, -1.0)
 			level.add_child(cr)
+	if "--shotscan" in OS.get_cmdline_user_args():
+		var scp: Node2D = _players.get_node_or_null("1")      # dev: --shotscan — gracz 1 z włączonym skanerem „Sowa” (fala sonaru, prześwietleni wrogowie, znajdźki)
+		if scp != null:
+			if scp._scan_view == null:
+				scp._scan_view = (load("res://scripts/scanner_view.gd") as GDScript).new()
+				scp._scan_view.player = scp
+				scp.add_child(scp._scan_view)
+			scp.scan_left = 30.0
+	if "--shotscream" in OS.get_cmdline_user_args():
+		var ssp: Node2D = _players.get_node_or_null("1")      # dev: --shotscream — gracz 1 krzyczy 0,3 s przed zrzutem (fala w połowie; z --shotseq cała fala)
+		if ssp != null:
+			get_tree().create_timer(maxf(0.05, delay - 0.3)).timeout.connect(func() -> void: ssp._scream_fx())
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
 	await get_tree().create_timer(delay).timeout
