@@ -134,6 +134,7 @@ var _lit_cd := 0.0
 var _spr: Array = []
 var _facing := 1.0
 var _last_x := 0.0
+var _moved_t := -1.0          ## s (zegar `_sprite_frame`): ostatnia zmiana pozycji — bieg trzyma się 0,1 s jak MOVE_HOLD w enemy.gd (klatki obrazu bez kroku fizyki)
 ## Ścieżka A* po powierzchniach (nav.gd) do target_pos.
 var _path: Array = []
 var _path_i := 0
@@ -830,12 +831,13 @@ func _sprite_frame(reveal: float, hunting: bool, t: float) -> void:
 	_last_x = global_position.x
 	if absf(dx) > 0.05:
 		_facing = signf(dx)
+		_moved_t = t
 	if winding and is_instance_valid(_windup_target):
 		var to_target := _windup_target.global_position.x - global_position.x
 		if not is_zero_approx(to_target): _facing = signf(to_target)
 	elif _grab_recovery_t > 0.0:
 		_facing = _grab_face
-	var anim := "windup" if winding else ("walk" if absf(dx) > 0.05 else "idle")
+	var anim := "windup" if winding else ("walk" if _moved_t >= 0.0 and t - _moved_t < 0.1 else "idle")      # 0,1 s jak MOVE_HOLD w enemy.gd
 	Sprites.play(_spr, anim, _facing < 0.0)
 	var body: AnimatedSprite2D = _spr[0]
 	var tint := Color(0.85, 0.8, 0.9) if hunting else Color.WHITE
