@@ -51,8 +51,10 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | creature_step_wood | nagranie | Sonniss GDC 2020 — Forest Creature Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0269_creature_wood_footstep_medium_004.wav |
 | crossbow_functions | nagranie | Sonniss GDC 2019 — Nocked | Eiravaein Works | sonniss-gdc-2.0 | Nocked,archery,crossbow1,composite,string,functions,bolt,slideintorest,set,drag,nock,remove,clatter,alt.wav |
 | crossbow_loose | nagranie | Sonniss GDC 2019 — Nocked | Eiravaein Works | sonniss-gdc-2.0 | Nocked,archery,firing,loose,crossbow1,carbonbolt,atbow,snap,buzz,airy,bright,alt.wav |
+| crushed_rock_drop | nagranie | Sonniss GDC 2023 — The Stone & Sand Library | Pole Position Production | sonniss-gdc-2.0 | Small Crushed Rock - DROP - Thick - Stereo.wav |
 | deep_thud_10 | nagranie | Sonniss GDC 2019 — IMPACT | Baxter Audio | sonniss-gdc-2.0 | 10 Hit Deep Thud.wav |
 | diesel_boat_idle | nagranie | Sonniss GDC 2026 — Public Spaces - Basic Transportation Sounds | Epic Stock Media | sonniss-gdc-2.0 | BOATMotr_Diesel Engine Boat Idle Steady Rpm Hum Motor Mic One 01_ESM_CPS.wav |
+| dig_spade_002 | nagranie | Sonniss GDC 2023 — Digging | TheWorkRoom Audio Post | sonniss-gdc-2.0 | DIG002.wav |
 | dirt_walk_loop | nagranie | Sonniss GDC 2019 — STEPS Dirt & Gravel | PMSFX | sonniss-gdc-2.0 | PM_SDNG_Stereo_Walk_Seamless_Loop_1.wav |
 | dog_bark_growl | nagranie | Sonniss GDC 2019 — Dogs - game ready | Bart Kamski | sonniss-gdc-2.0 | Dog_big_close_barking_growling.wav |
 | dog_whimper | nagranie | Sonniss GDC 2020 — Dogs | Soundopolis | sonniss-gdc-2.0 | Dog_German Short-Haired Pointer_Bark and Whimper_Fienup_001.wav |
@@ -109,6 +111,8 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | rain_hard_loop | nagranie | Sonniss GDC 2017 — Rain and Thunder | Double Trouble Audio | sonniss-gdc-2.0 | RATH - Rain Hard Loop 08.wav |
 | rain_on_plastic | nagranie | Sonniss GDC 2017 — Rain and Thunder | Double Trouble Audio | sonniss-gdc-2.0 | RATH - Rain on Plastic Outside Loop.wav |
 | rifle_pickup_004 | nagranie | Sonniss GDC 2017 — MECHANISM | SoundMorph | sonniss-gdc-2.0 | Mechanism - AssaultRifle_PickUp_004.wav |
+| rock_hit_dirt_07 | nagranie | Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02 | Mechanical Wave | sonniss-gdc-2.0 | Multiple Rock Hit Dirt_RBDII 07.wav |
+| rock_into_gravel_06 | nagranie | Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02 | Mechanical Wave | sonniss-gdc-2.0 | Hit Rock into Gravel_RBDII 06.wav |
 | rockslide_02 | nagranie | Sonniss GDC 2018 — Foley Elements Rocks, Dirt And Stone | Soundrangers | sonniss-gdc-2.0 | rockslide_02.wav |
 | saiga12_close_1m | nagranie | Sonniss GDC 2016 — Saiga-12 12g solid slug | Pole Position Production | sonniss-gdc-2.0 | SAIGA-12_12g_solid_slug_1m_left_off_axis_MKH416_clean_Single_shots_x_5.wav |
 | saiga12_cocking | nagranie | Sonniss GDC 2016 — Various Gun Foley & Handling | Pole Position Production | sonniss-gdc-2.0 | SAIGA-12_12g_solid_slug_foley_close_up_RSM191_R_cocking.wav |
@@ -121,7 +125,11 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | shell_load_eject | nagranie | Sonniss GDC 2016 — 12 Gauge Shotgun | TS Sound | sonniss-gdc-2.0 | Shell Load_Round Eject.wav |
 | shepherd_barks | nagranie | Sonniss GDC 2019 — Barking Dog | Pole Position | sonniss-gdc-2.0 | Dog_German_Shepherd_t2_Ext_Field_Bark_Many_TImes_Start_and_Stop_DPA4060.wav |
 | shotgun_quick_pump | nagranie | Sonniss GDC 2016 — 12 Gauge Shotgun | TS Sound | sonniss-gdc-2.0 | Shotgun_Quick Pump_01.wav |
+| soil_debris_13 | nagranie | Sonniss GDC 2016 — Rocks | Alexander Kopeikin | sonniss-gdc-2.0 | soil and dirt debris heavy 13.wav |
 | stab_punch_hit | nagranie | Sonniss GDC 2016 — Just Gore _ Add On | SoundBits | sonniss-gdc-2.0 | Stab_Punch_Hit_136.wav |
+| stone_hammer_015 | nagranie | Sonniss GDC 2024 — Stone Impact | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0297_stone_impact_hammer_015.wav |
+| stone_impact_015 | nagranie | Sonniss GDC 2024 — Stone Impact | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0297_stone_impact_015.wav |
+| stone_steel_bar_010 | nagranie | Sonniss GDC 2024 — Stone Impact | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0297_stone_impact_steel_bar_01_010.wav |
 | swamp_fish_damage_08 | nagranie | Sonniss GDC 2020 — Monster Roars | Phase 4 Libraries | sonniss-gdc-2.0 | MR - Swamp Fish Creature Damage VO 08.wav |
 | tape_play_stop | nagranie | Sonniss GDC 2020 — Studer A80 Master recorder analog tape machine | Ivo Vicic | sonniss-gdc-2.0 | 50 Studer A80_play_stop_15 IPS_mono_contact mic_B.wav |
 | thunder_clap_04 | nagranie | Sonniss GDC 2018 — Thunder | Soundrangers | sonniss-gdc-2.0 | thunder_clap_04.wav |

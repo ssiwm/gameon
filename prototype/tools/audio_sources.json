@@ -289,6 +289,14 @@
    "supplier": "Eiravaein Works",
    "license": "sonniss-gdc-2.0"
   },
+  "crushed_rock_drop": {
+   "kind": "lib",
+   "file": "sonniss/2023/Pole Position Production - The Stone & Sand Library/Small Crushed Rock - DROP - Thick - Stereo.wav",
+   "sha256": "8f6487ca760e67aa3333c69f959a04eeff5f4cfe565734dc46059cce8607c850",
+   "pack": "Sonniss GDC 2023 — The Stone & Sand Library",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
   "deep_thud_10": {
    "kind": "lib",
    "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 1of8/Baxter Audio - IMPACT/10 Hit Deep Thud.wav",
@@ -303,6 +311,14 @@
    "sha256": "c79d2c3436bfbc5eee8398a1111369fa3de82237914a5839e8a051a67019ef7c",
    "pack": "Sonniss GDC 2026 — Public Spaces - Basic Transportation Sounds",
    "supplier": "Epic Stock Media",
+   "license": "sonniss-gdc-2.0"
+  },
+  "dig_spade_002": {
+   "kind": "lib",
+   "file": "sonniss/2023/TheWorkRoom Audio Post - Digging/DIG002.wav",
+   "sha256": "803bbf9f7a14f965db94edc423308849c7ddb62b7caa8166af33b8cc5ffe69f2",
+   "pack": "Sonniss GDC 2023 — Digging",
+   "supplier": "TheWorkRoom Audio Post",
    "license": "sonniss-gdc-2.0"
   },
   "dirt_walk_loop": {
@@ -753,6 +769,22 @@
    "supplier": "SoundMorph",
    "license": "sonniss-gdc-2.0"
   },
+  "rock_hit_dirt_07": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/Mechanical Wave - Rock,Brick and Dirt - Part 02/Multiple Rock Hit Dirt_RBDII 07.wav",
+   "sha256": "9c8a547da787bbeae1b9aaf2fd5341557633ed7d2120624c5b0f0fc2a7927f53",
+   "pack": "Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02",
+   "supplier": "Mechanical Wave",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rock_into_gravel_06": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/Mechanical Wave - Rock,Brick and Dirt - Part 02/Hit Rock into Gravel_RBDII 06.wav",
+   "sha256": "7a79f805c2663d533ff01556abe3309cf2f9c39c56dc6776e158825142fcb7ff",
+   "pack": "Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02",
+   "supplier": "Mechanical Wave",
+   "license": "sonniss-gdc-2.0"
+  },
   "rockslide_02": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers - Foley Elements Rocks, Dirt And Stone/rockslide_02.wav",
@@ -849,12 +881,44 @@
    "supplier": "TS Sound",
    "license": "sonniss-gdc-2.0"
   },
+  "soil_debris_13": {
+   "kind": "lib",
+   "file": "sonniss/2016/Alexander Kopeikin - Rocks/soil and dirt debris heavy 13.wav",
+   "sha256": "0086b00ddff0f4f2ce0e8e6892381b07722c37b9109a9d3f127f53341a26e5e4",
+   "pack": "Sonniss GDC 2016 — Rocks",
+   "supplier": "Alexander Kopeikin",
+   "license": "sonniss-gdc-2.0"
+  },
   "stab_punch_hit": {
    "kind": "lib",
    "file": "sonniss/2016/SoundBits -  Just Gore _ Add On/Stab_Punch_Hit_136.wav",
    "sha256": "2af3adc1aabb1730b66724fe4ddb09023b620af40fc2094d4243b802e7c26a0d",
    "pack": "Sonniss GDC 2016 — Just Gore _ Add On",
    "supplier": "SoundBits",
+   "license": "sonniss-gdc-2.0"
+  },
+  "stone_hammer_015": {
+   "kind": "lib",
+   "file": "sonniss/2024/BluezoneCorp - Stone Impact/Bluezone_BC0297_stone_impact_hammer_015.wav",
+   "sha256": "f3d57b4446f7805219122d1f9ae73db3c271379c34eaba4f091b72b118acd4d9",
+   "pack": "Sonniss GDC 2024 — Stone Impact",
+   "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
+  "stone_impact_015": {
+   "kind": "lib",
+   "file": "sonniss/2024/BluezoneCorp - Stone Impact/Bluezone_BC0297_stone_impact_015.wav",
+   "sha256": "6db60f6559e180ffcb0addeacfa3394bb5734ec8ff0025f77dafb8d121de05cb",
+   "pack": "Sonniss GDC 2024 — Stone Impact",
+   "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
+  "stone_steel_bar_010": {
+   "kind": "lib",
+   "file": "sonniss/2024/BluezoneCorp - Stone Impact/Bluezone_BC0297_stone_impact_steel_bar_01_010.wav",
+   "sha256": "ad84aef413f7d078796e4fa2ec250909d9b110e15d75610740566ccd21716cdd",
+   "pack": "Sonniss GDC 2024 — Stone Impact",
+   "supplier": "BluezoneCorp",
    "license": "sonniss-gdc-2.0"
   },
   "swamp_fish_damage_08": {

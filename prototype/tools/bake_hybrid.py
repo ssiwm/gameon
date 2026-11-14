@@ -37,6 +37,7 @@ Odsłuch 2026-11-02 (rodziny dotąd tylko syntetyczne), z nagrań: mech_* (strze
 (braam); rzeznik_roar, zerca_grab, zerca_warn, moth_dust; flare_ignite, flare_loop, generator_loop; breath_loop, heart_fast_loop,
 heart_slow_loop, revive; amb_machine, amb_air, amb_drips. Zostały syntetyczne: kaplan_scream, moth_flutter_loop, moth_crack
 (odsłuch), alarm_bell (brak nagrania dzwonu kościelnego), mine_beep, radio_static, sygnały UI, muzyka.
+Odsłuch 2026-11-14, z nagrań: dig_dirt, dig_gravel, dig_rock (cios kilofem w strefie wydobycia).
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
@@ -1134,6 +1135,62 @@ def _hammer_bake() -> None:
         finalize("hammer_nail_%d" % (i + 1), d.limiter(_unit(d.filt(x, "hp", 80.0, order=2)), -9.0, release_ms=8.0), lufs=-17.4)
 
 
+# ============================================================ KOPANIE (bake_sfx.build_world)
+# Cios kilofem w strefie wydobycia (dig_zone.gd `_hit_rpc`, D5): uderzenie narzędzia w materiał + to, co się po nim osypuje.
+# Żyła gra dźwięk skały obniżony w grze. Bez pogłosu (dokłada go silnik). Głośność = zmierzona głośność syntezy (średnia rodziny
+# po finalize); ostre ataki nagrań najpierw przez limiter, inaczej szczyt nie pozwala dojść do celu. Ziemia przez filtr
+# dolnoprzepustowy — ma być głucha. Odsłuch 2026-11-14: wygrały te wersje nad syntezą i nad drugą rodziną (łopata w grysie,
+# kruszona cegła bez stali).
+DIG_DIRT_LUFS, DIG_GRAVEL_LUFS, DIG_ROCK_LUFS = -19.7, -22.0, -22.8
+_DIG_SEMIS = (0.0, -1.2, 0.9)
+
+
+def _dig_fin(key: str, x: np.ndarray, lufs: float, hp: float, lp: float = 0.0) -> None:
+    x = d.filt(x, "hp", hp, order=2)
+    if lp:
+        x = d.lp(x, lp)
+    finalize(key, d.limiter(_unit(x), -5.0), lufs=lufs, fade_out_ms=60)
+
+
+# Ziemia: pojedyncze wbicia łopaty z nagrania kopania (DIG002) + tąpnięcie grudy ziemi (Kopeikin, sub ok. 80 Hz).
+DIG_DIRT_NEEDS = ["dig_spade_002", "soil_debris_13"]
+_SPADE_HITS = (1.895, 9.823, 13.941)
+
+
+def _dig_dirt_bake() -> None:
+    for i, t0 in enumerate(_SPADE_HITS):
+        hit = _clip("dig_spade_002", t0 - 0.03, 0.8, _DIG_SEMIS[i] - 1.0, 0.55, tail=.25)
+        clod = _clip("soil_debris_13", 0.02, 0.7, _DIG_SEMIS[i], 0.55, tail=.3)
+        x = d.mix([(hit, 1.0), (clod, 0.55, .008)], ms(620))
+        _dig_fin("dig_dirt_%d" % (i + 1), x, DIG_DIRT_LUFS, 40.0, 3500.0)
+
+
+# Żwir: kamień wbity w żwir i kamienie w ziemi ze żwirem (Mechanical Wave „Rock, Brick and Dirt”).
+DIG_GRAVEL_NEEDS = ["rock_into_gravel_06", "rock_hit_dirt_07"]
+
+
+def _dig_gravel_bake() -> None:
+    xs = [_clip("rock_into_gravel_06", 0.07, 0.8, _DIG_SEMIS[0], 0.65, tail=.3),
+          _clip("rock_hit_dirt_07", 4.66, 0.8, _DIG_SEMIS[1], 0.6, tail=.3),
+          _clip("rock_hit_dirt_07", 6.20, 0.8, _DIG_SEMIS[2], 0.6, tail=.3)]
+    for i, x in enumerate(xs):
+        _dig_fin("dig_gravel_%d" % (i + 1), x, DIG_GRAVEL_LUFS, 60.0)
+
+
+# Skała: stal w kamień — stalowy pręt, młotek i kamień o kamień (Bluezone „Stone Impact”) + drobne okruchy (Pole Position).
+DIG_ROCK_NEEDS = ["stone_steel_bar_010", "stone_hammer_015", "stone_impact_015", "crushed_rock_drop"]
+_CRUSHED_AT = (0.36, 7.25, 22.19)                                    # sypnięcia drobnego tłucznia w crushed_rock_drop [s]
+
+
+def _dig_rock_bake() -> None:
+    hits = [_clip("stone_steel_bar_010", 0.0, 0.8, _DIG_SEMIS[0], 0.6, tail=.3),
+            _clip("stone_hammer_015", 0.0, 0.7, _DIG_SEMIS[1], 0.6, tail=.3),
+            _clip("stone_impact_015", 0.0, 0.9, _DIG_SEMIS[2], 0.6, tail=.3)]
+    for i, hit in enumerate(hits):
+        chips = _clip("crushed_rock_drop", _CRUSHED_AT[i], 0.5, 2.0, 0.45, tail=.25, onset=False)
+        _dig_fin("dig_rock_%d" % (i + 1), d.mix([(hit, 1.0), (chips, 0.3, .05)], ms(650)), DIG_ROCK_LUFS, 70.0)
+
+
 def world() -> None:
     """Wersje z nagrań dla dźwięków świata — wołane na końcu bake_sfx.build_world()."""
     bc.hybrid(_keys("wood_hit", 3), _wood_hit_bake, WOOD_HIT_NEEDS)
@@ -1151,6 +1208,9 @@ def world() -> None:
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
     bc.hybrid(["flare_ignite", "flare_loop"], _flare_bake, FLARE_NEEDS)
     bc.hybrid(["generator_loop"], _generator_bake, GENERATOR_NEEDS)
+    bc.hybrid(_keys("dig_dirt", 3), _dig_dirt_bake, DIG_DIRT_NEEDS)
+    bc.hybrid(_keys("dig_gravel", 3), _dig_gravel_bake, DIG_GRAVEL_NEEDS)
+    bc.hybrid(_keys("dig_rock", 3), _dig_rock_bake, DIG_ROCK_NEEDS)
 
 
 # ============================================================ SYGNAŁY (bake_sfx.build_ui)
