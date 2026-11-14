@@ -21,6 +21,7 @@ const DigZone := preload("res://scripts/dig_zone.gd")
 const DigGround := preload("res://scripts/dig_ground.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
+const GaitSpeed := preload("res://scripts/gait_speed.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const HubProp := preload("res://scripts/hub_prop.gd")
 const Throwables := preload("res://scripts/throwables.gd")
@@ -1404,10 +1405,7 @@ func _sync_enemies(delta: float) -> void:
 			vy_now = (ypx - float(st["py"])) / enemy_dt
 		st["py"] = ypx
 		var xpx := body.global_position.x if body != null else src.global_position.x
-		var vx_now := 0.0
-		if not is_nan(float(st.get("px", NAN))) and enemy_dt > 0.0 and enemy_dt < 0.1:
-			vx_now = absf(xpx - float(st["px"])) / enemy_dt
-		st["px"] = xpx
+		var vx_now := GaitSpeed.update(st, xpx, enemy_dt)      # z drogi między krokami symulacji, nie z jednej klatki obrazu (gait_speed.gd)
 		st["vx"] = lerpf(float(st.get("vx", 0.0)), vx_now, 0.5)
 		st["vy"] = lerpf(float(st["vy"]), vy_now, 0.45)
 		_estate[id] = st
@@ -1428,7 +1426,7 @@ func _sync_enemies(delta: float) -> void:
 						ground[side] = {"height": height, "normal": Vector3(normal.x, -normal.y, 0.0)}
 		e.set("ground_profile", ground)
 		e.set("lit", float(info.get("lit", 0.0)))                        # Ćma w snopie latarki świeci (enemy_moth.gd: view_extra)
-		e.call("pose", enemy_dt, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)), vx_now)      # tempo kroków z przebytej drogi, także u obserwatora sieciowego
+		e.call("pose", enemy_dt, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)), vx_now, float(st["gd"]))      # faza kroku z przebytej drogi, także u obserwatora sieciowego
 
 ## Sfera (środek, promień w m) choć częściowo w bryle widzenia (`Camera3D.get_frustum`: normalne płaszczyzn na zewnątrz).
 func _in_frustum(c: Vector3, r: float, planes: Array[Plane]) -> bool:

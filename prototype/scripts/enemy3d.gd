@@ -992,7 +992,7 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 ## anim: nazwa animacji sprite'a 2D (sleep / idle / walk / run / windup, bossowie: dormant / open / spit / peek / strike / grab / dive / ...).
 ## flip: sprite odbity (patrzy w lewo). mod: modulate sprite'a. fr: numer klatki + postęp w klatce, nfr: liczba klatek animacji, loop: czy pętla
 ## (modele statyczne dostają pozę z numeru klatki, żeby animacja szła w tempie gry — np. trafienie Pijawki na klatce 2).
-func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0, alert := false, horizontal_speed := NAN) -> void:
+func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0, alert := false, horizontal_speed := NAN, step_px := NAN) -> void:
 	_ground_cache.clear()
 	_t += delta
 	if flip != _last_flip or anim != _prev_anim or global_position.distance_to(_last_position) > 0.8:
@@ -1058,7 +1058,9 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		_run_rate = rate
 		var cycle := float(_spec.get("cycle", 1.0))
 		if _sp == 2 and bool(_spec.get("body_motion", false)): cycle = 1.0
-		_phase += delta * TAU / cycle * rate
+		# faza kroku z drogi w tej klatce (view3d: `GaitSpeed`), a nie z prędkości × dt: łapy idą dokładnie z ruchem przy każdym FPS;
+		# prędkość z okna (`horizontal_speed`) wybiera tylko stęp / galop i postój
+		_phase += (step_px / maxf(reference, 1.0) if is_finite(step_px) else delta * rate) * TAU / cycle
 		if is_finite(horizontal_speed) and absf(horizontal_speed) < 0.5:
 			anim = "idle"
 	_advance_motion(delta, anim)

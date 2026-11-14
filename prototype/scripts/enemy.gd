@@ -121,6 +121,10 @@ var _facing := 1.0             ## SYMULACJA (serwer): w którą stronę patrzy w
 var _phys_x := 0.0
 var _view_facing := 1.0        ## PREZENTACJA (każdy peer): zwrot modelu; Podsłuchacz patrzy tu na lokalnego gracza, u klientów kierunek z przesunięcia pozycji
 var _last_x := 0.0
+var _still_t := 1.0             ## PREZENTACJA: s bez zmiany pozycji; animacja „idle” dopiero po MOVE_HOLD (fizyka 60 Hz, obraz bywa szybszy)
+## Ruch w klatce obrazu bez kroku fizyki to dalej ruch: przy obrazie > 60 kl./s część klatek nie przesuwa wroga (przy 144 kl./s ok. 60%),
+## a animacja przełączana z jednej klatki migała bieg / „idle” i model 3D sunął w pozie stojącej. Dłużej bez ruchu = stoi.
+const MOVE_HOLD := 0.1
 ## Percepcja i nawigacja (serwer)
 var omniscient := false       ## potomstwo Żyły zawsze zna położenie graczy
 var summoned := false         ## przywołany przez bossa (potomstwo Żyły, Trzoski Pijawki): bez XP i dropów — inaczej dałoby się na nich farmić
@@ -1592,19 +1596,20 @@ func _present_tick(delta: float) -> void:
 		if has_meta("hurt_shape") and is_instance_valid(get_meta("hurt_shape")):
 			(get_meta("hurt_shape") as CollisionShape2D).set_deferred("disabled", hid)        # tylko strefa trafień — ciało ruchu zostaje (ukryty Żerca chodzi po podłodze)
 	if visible:
-		_update_sprite()
+		_update_sprite(delta)
 		queue_redraw()
 
 ## Animacja: sen / zapowiedź / bieg / czuwanie. Kierunek z przesunięcia pozycji
 ## (u klientów prędkość wroga nie jest replikowana).
-func _update_sprite() -> void:
+func _update_sprite(delta: float) -> void:
 	if _spr.is_empty():
 		return
 	var dx := global_position.x - _last_x
 	_last_x = global_position.x
 	if absf(dx) > 0.05:
 		_view_facing = signf(dx)
-	var moving := absf(dx) > 0.05
+	_still_t = 0.0 if absf(dx) > 0.05 else _still_t + delta
+	var moving := _still_t < MOVE_HOLD
 	if _ai == Ai.ALERT:
 		# „zauważył": odwraca się ku źródłu — serwer (host) zna kierunek, klient dostaje go w `_sync`
 		var face := _facing if NoiseMgr.is_server() else _net_face

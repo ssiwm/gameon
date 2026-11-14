@@ -207,6 +207,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_fps.gd 2>&1 | tee fps.log
           grep -a "^PASS" fps.log
+      - name: Tempo kroku wrogów przy różnych FPS (test_gait_speed.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_gait_speed.gd 2>&1 | tee gait_speed.log
+          grep -a "^PASS" gait_speed.log
       - name: Postacie — magazyn i migracja zapisu (test_characters.gd)
         run: |
           godot --headless --path prototype -s tools/test_characters.gd 2>&1 | tee characters.log
