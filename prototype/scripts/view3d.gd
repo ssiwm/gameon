@@ -177,6 +177,8 @@ var _estate := {}                        ## id węzła wroga 2D → stan do wykr
 var _fog_dens := 1.0                     ## gęstość bryły mgły względem bazowej (`_sync_weather`): MGŁA podnosi ją do ok. 10×
 var fog_sym := 1                         ## bryła symetryczna kamery świata (`_sync_camera`): 0 — nigdy (dawny „shift”), 1 — w gęstej mgle, 2 — zawsze (pomiary)
 var _fog_sym_on := false                 ## tryb 1: bryła mgły gęstsza niż FOG_SYM_DENS (z histerezą)
+var _fog_skew := 0.0                      ## bez bryły symetrycznej: mgła w punkcie Y widać tam, gdzie leży Y − skew·D (D — głębokość od kamery); pył wykopu to kompensuje
+var _fog_cam_z := 0.0
 var _fog_rows := 0                       ## wierszy obrazu świata ponad kadrem gry (symetryczna bryła dla mgły wolumetrycznej)
 var _atlas_warm: OmniLight3D             ## światło z cieniem tuż przed kamerą świata na pierwsze klatki (`_atlas_warm_sync`); potem null
 var _atlas_warm_frames := 0
@@ -570,6 +572,7 @@ func _tick(delta: float) -> void:
 	_sync_props()
 	tp = _tp("props", tp)
 	_sync_dig_zones()
+	_tick_dig_dust(delta)
 	_sync_items()
 	tp = _tp("items", tp)
 	if warm == 1:
@@ -768,6 +771,7 @@ func _sync_camera() -> void:
 	elif _fog_dens < FOG_SYM_DENS * 0.75:
 		_fog_sym_on = false
 	var sym := fog_sym == 2 or (fog_sym == 1 and _fog_sym_on)
+	var skew := -foff.y / near                               # przesunięty frustum: mgła wolumetryczna liczy się jak dla symetrycznego
 	if sym and env_a != null and env_a.volumetric_fog_enabled and need > 0.5 and fe <= 0.0 and re <= 0.0:
 		if float(_fog_rows) < need or float(_fog_rows) > need + 48.0:
 			_fog_rows = int(ceil(need / 32.0)) * 32
@@ -781,6 +785,8 @@ func _sync_camera() -> void:
 		_fog_top = 0
 	_cam_a.set_frustum(fsize, foff, near, 160.0)
 	_cam_a.global_transform = xf
+	_fog_skew = 0.0 if _fog_rows > 0 else skew
+	_fog_cam_z = xf.origin.z
 	if env_a != null:                                       # mgła głębi zaczyna się tuż za płaszczyzną gry
 		env_a.fog_depth_begin = dist + FOG_BEGIN_M
 		env_a.fog_depth_end = dist + FOG_END_M
@@ -8236,6 +8242,166 @@ func _draw_spoil(st: Dictionary) -> void:
 			mm.set_instance_transform(i, Transform3D((piece["b"] as Basis).scaled(Vector3.ONE * sc), pos))
 			mm.set_instance_color(i, (piece["c"] as Color).darkened(DIG_SPOIL_DARK))
 			mm.set_instance_custom_data(i, piece["w"])
+
+## Pył w powietrzu wykopu (kopanie P2a): bryła mgły wolumetrycznej (`FogVolume`, jak dym — działa przy jakości MEDIUM i HIGH, na LOW
+## zostają cząsteczki z `_hit_rpc`) w miejscu ciosu, przez całą głębokość wykopu — tam, gdzie przed nią jest skała, mgły nie widać, więc
+## bryła nie wychodzi przed przód strefy. Kolejne ciosy w pobliżu zagęszczają tę samą bryłę (seria = gęstniejąca chmura), a pył opada:
+## gęstość maleje wykładniczo (po 20 s zostaje kilka procent), bryła lekko osiada. Najjaśniej w snopie latarki — mgła łapie jej światło.
+## Tylko obraz u każdego peera z widokiem 3D (bez sieci, bez wpływu na widoczność AI).
+## Kamera świata ma przesunięty frustum, a mgła wolumetryczna Godota liczy się jak dla symetrycznego (bryła symetryczna `fog_sym` tylko
+## w pogodzie MGŁA, +1,6 ms): mała bryła pokazywała się metr niżej, a światło latarki liczyło się w złym miejscu (zrzuty 2026-11-14,
+## shots_digp2). Dlatego bryła stoi przesunięta o błąd mapowania (`_fog_skew`) — widać ją w miejscu ciosu — i nie rozprasza światła
+## (albedo czarne), tylko świeci emisją ze stożków latarek graczy liczonych w shaderze (`DIG_DUST_SHADER`) — widać snop w pyle.
+const DIG_DUST_MAX := 4                   ## brył naraz (wszystkie strefy); nowa ponad limit zastępuje najrzadszą
+const DIG_DUST_JOIN := 1.6                ## m: cios bliżej środka bryły zagęszcza ją zamiast tworzyć nową
+const DIG_DUST_HIT := 0.14                ## gęstość z jednego ciosu kilofem (broń biała × 0,5; materiał × udział pyłu z dig_materials.gd)
+const DIG_DUST_CAP := 0.6               ## jak pogoda MGŁA (0,35) i ponad: przy większej pył tylko pochłania latarkę zamiast świecić w snopie
+const DIG_DUST_LIGHT := 0.45             ## rozjaśnienie koloru pyłu z dig_materials.gd (tam ciemny pod cząsteczki) — jasny pył rozprasza światło
+const DIG_DUST_TAU := 7.0                 ## s: stała zaniku (e^(−20/7) ≈ 6% po 20 s)
+const DIG_DUST_SINK := 0.025              ## m/s: osiadanie środka bryły
+const DIG_DUST_SIZE := Vector2(3.0, 2.6)  ## m: bryła przy pierwszym ciosie (rośnie do ×1,4 z gęstością)
+const DIG_DUST_RISE := 0.5               ## m: środek bryły nad miejscem ciosu
+const DIG_DUST_GLOW := 1.2                ## jasność pyłu w snopie latarki (emisja × kolor; mgła sama nie bierze światła — patrz niżej)
+const DIG_DUST_CONE := Vector2(0.80, 0.96)   ## cos kąta od osi snopu: od tej wartości pył zaczyna świecić, od tej — w pełni
+const DIG_DUST_RANGE := 7.0               ## m: zasięg snopu w pyle
+const DIG_DUST_TORCH := Color(1.0, 0.8, 0.55)   ## barwa żarówki latarki (4,5 V, ciepła) — pył w snopie jest ciepły, nie szary
+var _dig_dust: Array = []                 ## {"fv": FogVolume, "d": gęstość, "p": Vector3 środek, "z": głębokość}
+
+func dig_dust(z: Node2D, at: Vector2, mat: int, k: float) -> void:
+	var st: Dictionary = _dig3d.get(z.get_instance_id(), {})
+	if st.is_empty() or _geo == null:
+		return
+	var key := DigZone.Mats.key_of(mat)
+	var dc: Color = DigZone.Mats.MATS[key]["dust"]
+	var add := DIG_DUST_HIT * k * clampf(dc.a / 0.16, 0.6, 1.4)
+	var zf: float = st.get("zf", Level3D.DEPTH_FRONT)
+	var pos := Level3D.px_to_m(at) + Vector3(0.0, DIG_DUST_RISE, 0.0)   # pył wznosi się z czoła na wysokość głowy, tam, gdzie świeci latarka
+	pos.z = (zf - Level3D.DEPTH_BACK) * 0.5
+	var best := -1
+	var best_d := DIG_DUST_JOIN
+	for i in _dig_dust.size():
+		var d := ((_dig_dust[i]["p"] as Vector3) - pos).length()
+		if d < best_d:
+			best_d = d
+			best = i
+	if best < 0:
+		if _dig_dust.size() >= DIG_DUST_MAX:
+			var thin := 0
+			for i in _dig_dust.size():
+				if float(_dig_dust[i]["d"]) < float(_dig_dust[thin]["d"]):
+					thin = i
+			if is_instance_valid(_dig_dust[thin]["fv"]):
+				(_dig_dust[thin]["fv"] as Node).queue_free()
+			_dig_dust.remove_at(thin)
+		var fv := FogVolume.new()
+		fv.name = "DigDust"
+		fv.shape = RenderingServer.FOG_VOLUME_SHAPE_ELLIPSOID
+		if _dust_shader == null:
+			_dust_shader = Shader.new()
+			_dust_shader.code = DIG_DUST_SHADER
+		var fm := ShaderMaterial.new()
+		fm.shader = _dust_shader
+		fm.set_shader_parameter("glow", DIG_DUST_GLOW)
+		fm.set_shader_parameter("cone", DIG_DUST_CONE)
+		fm.set_shader_parameter("range", DIG_DUST_RANGE)
+		fv.material = fm
+		_geo.add_child(fv)
+		_dig_dust.append({"fv": fv, "d": 0.0, "p": pos, "z": zf + Level3D.DEPTH_BACK, "c": Color(dc.r, dc.g, dc.b).lightened(DIG_DUST_LIGHT)})
+		best = _dig_dust.size() - 1
+	var e: Dictionary = _dig_dust[best]
+	var d0 := float(e["d"])
+	e["p"] = ((e["p"] as Vector3) * d0 + pos * add) / maxf(d0 + add, 0.001)   # środek idzie w stronę nowych ciosów
+	e["d"] = minf(d0 + add, DIG_DUST_CAP)
+	e["c"] = (e["c"] as Color).lerp(Color(dc.r, dc.g, dc.b).lightened(DIG_DUST_LIGHT), add / maxf(d0 + add, 0.001))
+
+## Shader pyłu: gęstość z kształtu bryły (SDF, miękka krawędź), światło tylko z emisji — stożki snopów latarek graczy (do 4) liczone
+## w punkcie, który ten woksel naprawdę pokazuje (pozycja mgły − skew · głębokość, patrz `_fog_skew`). Albedo czarne: oświetlenie mgły
+## przez Godota liczyłoby się w złym miejscu.
+const DIG_DUST_SHADER := """
+shader_type fog;
+uniform vec3 col = vec3(0.6);
+uniform float dens = 0.0;
+uniform float glow = 1.0;
+uniform float skew = 0.0;
+uniform float cam_z = 0.0;
+uniform vec2 cone = vec2(0.8, 0.96);
+uniform float range = 7.0;
+uniform int tn = 0;
+uniform vec4 tpos[4];
+uniform vec4 tdir[4];
+
+void fog() {
+	vec3 p = WORLD_POSITION;
+	p.y -= skew * (cam_z - p.z);
+	float edge = clamp(-SDF / 0.45, 0.0, 1.0);
+	DENSITY = dens * edge * edge;
+	float lit = 0.0;
+	for (int i = 0; i < tn; i++) {
+		vec3 to = p - tpos[i].xyz;
+		float d = length(to);
+		float c = smoothstep(cone.x, cone.y, dot(to / max(d, 0.001), tdir[i].xyz));
+		float near_k = 1.0 - smoothstep(0.15, 0.6, d);            // tuż przy szkle latarki pył świeci w każdą stronę
+		float fall = clamp(1.0 - d / range, 0.0, 1.0);
+		lit += tpos[i].w * max(c, near_k * 0.5) * fall * fall;
+	}
+	ALBEDO = vec3(0.0);
+	EMISSION = col * glow * min(lit, 1.5);
+}
+"""
+static var _dust_shader: Shader
+
+## Latarki graczy na tę klatkę: [pozycje (xyz, w = siła × bateria), kierunki], najwyżej 4.
+func _dust_torches() -> Array:
+	var pos: Array = []
+	var dir: Array = []
+	for pl in get_tree().get_nodes_in_group("players"):
+		if pos.size() >= 4 or not (pl is Node2D) or not bool(pl.get("flashlight")) or bool(pl.get("dead")):
+			continue
+		var o := Level3D.px_to_m((pl as Node2D).global_position + Vector2(0.0, -14.0))
+		var aim: Vector2 = pl.get("aim_dir")
+		pos.append(Vector4(o.x, o.y, 0.0, float(pl.get("beam_mult"))))   # słabnąca bateria — słabszy snop
+		var ax := Vector3(aim.x, -aim.y, 0.0).normalized()
+		dir.append(Vector4(ax.x, ax.y, ax.z, 0.0))
+	while pos.size() < 4:
+		pos.append(Vector4.ZERO)
+		dir.append(Vector4.ZERO)
+	return [pos, dir]
+
+func _tick_dig_dust(delta: float) -> void:
+	if _dig_dust.is_empty():
+		return
+	var fall := exp(-delta / DIG_DUST_TAU)
+	var tor := _dust_torches()
+	var tn := 0
+	for v in tor[0]:
+		if (v as Vector4).w > 0.0:
+			tn += 1
+	for i in range(_dig_dust.size() - 1, -1, -1):
+		var e: Dictionary = _dig_dust[i]
+		var fv := e["fv"] as FogVolume
+		if not is_instance_valid(fv):
+			_dig_dust.remove_at(i)
+			continue
+		var d := float(e["d"]) * fall
+		if d < 0.02:
+			fv.queue_free()
+			_dig_dust.remove_at(i)
+			continue
+		e["d"] = d
+		e["p"] = (e["p"] as Vector3) + Vector3(0.0, -DIG_DUST_SINK * delta, 0.0)
+		var g := 1.0 + 0.4 * d / DIG_DUST_CAP
+		var p: Vector3 = e["p"]
+		fv.position = p + Vector3(0.0, _fog_skew * (_fog_cam_z - p.z), 0.0)
+		fv.size = Vector3(DIG_DUST_SIZE.x * g, DIG_DUST_SIZE.y * g, float(e["z"]))
+		var fm := fv.material as ShaderMaterial
+		var c: Color = e["c"]
+		fm.set_shader_parameter("col", Vector3(c.r * DIG_DUST_TORCH.r, c.g * DIG_DUST_TORCH.g, c.b * DIG_DUST_TORCH.b))
+		fm.set_shader_parameter("dens", d)
+		fm.set_shader_parameter("skew", _fog_skew)
+		fm.set_shader_parameter("cam_z", _fog_cam_z)
+		fm.set_shader_parameter("tn", tn)
+		fm.set_shader_parameter("tpos", tor[0])
+		fm.set_shader_parameter("tdir", tor[1])
 
 ## Znak strefy wydobycia przy jej wejściu (dig_zone.gd `entrance`, po pytaniu z 2026-11-06 „czy sygnalizujemy możliwość kopania”):
 ## kilof wbity w skałę na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień), kupka
