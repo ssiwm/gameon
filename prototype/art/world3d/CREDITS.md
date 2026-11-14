@@ -25,6 +25,10 @@ Budynek 3D (`building3d.gd`, od 1.7.527) — Poly Haven (CC0), 1K po gradingu pr
 `concrete_layers_02`, `bld_slab` (stropodach, belki, żebra) `concrete`, `bld_cut` (płaszczyzna przekroju) `granular_concrete`, `bld_plinth` (cokół)
 `concrete_wall_007`; `world_pbr_import.py --only=bld_wall,bld_slab,bld_cut,bld_plinth`.
 
+Strefy wydobycia (`dig_ground.gd`, od 1.7.559) — Poly Haven (CC0), 1K po gradingu do tonu gruntu gry: `dig_dirt` (ziemia) `brown_mud_dry`
+i `dig_gravel` (żwir) `floor_pebbles_01` (Rob Tuytel), `dig_rock` (skała i żyła) `quarry_wall` (Dimitrios Savva); mieszane triplanarnie z `terrain`
+w ścianach wykopu i bryłkach urobku; `world_pbr_import.py --only=dig_dirt,dig_gravel,dig_rock`.
+
 Pierwszy plan (`front/pipe_parts.glb`, od 1.7.519): części rur z modelu Poly Haven `modular_industrial_pipes_01` (CC0) — sama geometria wycięta przez `tools/front_parts.py`; tekstury te same co dekoracji `pipes` w `art/items3d/`.
 
 

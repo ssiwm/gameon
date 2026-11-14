@@ -44,6 +44,10 @@ PH = {
     "bld_slab": "concrete",               # płyta, belki, attyka: goły beton z podziałem na panele (4 m)
     "bld_cut": "granular_concrete",       # jednolity materiał przekroju na SHELL_Z: gruboziarnisty (2,4 m)
     "bld_plinth": "concrete_wall_007",    # cokół i parapety: brudny, z przebarwieniami (2,16 m)
+    # ściany wykopu w strefach wydobycia (dig_zone.gd `chunk_mesh`, kopanie P1, 2026-11-14): materiał widać dopiero w wykopie
+    "dig_dirt": "brown_mud_dry",          # ziemia: grudy i okruchy suchej gliny
+    "dig_gravel": "floor_pebbles_01",     # żwir: gęste drobne otoczaki
+    "dig_rock": "quarry_wall",            # skała (i żyła z odcieniem): ściana kamieniołomu z bruzdami po narzędziach
 }
 PH_URL = "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/{id}/{id}_{kind}_1k.jpg"
 
@@ -63,6 +67,9 @@ GRADE = {
     "bld_slab": dict(target=0.15, sat=0.45, tint=(0.88, 0.94, 1.00)),
     "bld_cut": dict(target=0.19, sat=0.40, tint=(0.90, 0.94, 1.00)),
     "bld_plinth": dict(target=0.10, sat=0.50, tint=(0.90, 0.94, 1.00)),
+    "dig_dirt": dict(target=0.11, sat=0.55, tint=(0.95, 0.95, 0.92)),
+    "dig_gravel": dict(target=0.13, sat=0.45, tint=(0.92, 0.95, 0.97)),
+    "dig_rock": dict(target=0.12, sat=0.40, tint=(0.90, 0.94, 0.98)),
 }
 
 
@@ -84,6 +91,9 @@ FINISH = {
     "bld_slab": dict(nk=0.85, blur=0.0, macro=0.14, hue=(0.0, 0.0, 0.05)),
     "bld_cut": dict(nk=0.70, blur=0.0, macro=0.08, hue=(0.0, 0.0, 0.0)),
     "bld_plinth": dict(nk=0.85, blur=0.0, macro=0.16, hue=(0.04, 0.0, 0.0)),
+    "dig_dirt": dict(nk=0.85, blur=0.0, macro=0.18, hue=(0.05, 0.02, -0.04)),
+    "dig_gravel": dict(nk=0.9, blur=0.0, macro=0.12, hue=(0.0, 0.0, 0.0)),
+    "dig_rock": dict(nk=1.0, blur=0.0, macro=0.16, hue=(0.03, 0.0, 0.02)),
 }
 
 

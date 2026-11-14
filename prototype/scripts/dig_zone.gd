@@ -344,6 +344,8 @@ func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, metal
 	# urobek ze stropu: drobne bryłki spadają same z siebie (bez prędkości początkowej). Bryłki, nie plamki-billboardy: te w świetle
 	# aury postaci świeciły jak świetliki (zrzut 2026-11-14)
 	Vfx.burst(lvl, top, chip, roundi(5.0 * k), 0.0, 14.0, Vector2.DOWN, 70.0, 520.0, 0.7, Vector2(0.35, 0.75), false, false, {"mesh": "chip"})
+	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):    # urobek zostaje na dnie wykopu (widok 3D, kopanie P1)
+		Vfx.view3d.call("dig_spoil", self, at, out, mat, 3 if tool == Mats.Tool.PICK else 1)
 	if pick and randf() < float(m["sparks"]):
 		Vfx.burst(lvl, at, Color(1.0, 0.82, 0.45), randi_range(2, 4), 60.0, 170.0, out, 45.0, 380.0, 0.16, Vector2(0.5, 0.9), true)
 	Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - (3.0 if not pick else 0.0), float(snd[2]) * (1.12 if not pick else 1.0))
@@ -1210,12 +1212,14 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	if verts.is_empty():
 		return mesh
+	var uv2 := _mat_weights(verts, cols, gp, px, front)
 	_jag_mesh(verts, norms, gp, px, front, back)
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts
 	arr[Mesh.ARRAY_NORMAL] = norms
 	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_TEX_UV2] = uv2
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return mesh
 
@@ -1290,6 +1294,44 @@ func _jag(v: Vector3, gp: Vector2, px: float, front: float, back: float) -> Vect
 		d.y = 0.0                                              # podłoga: stopy stoją na tym, co widać
 	return v + d
 
+## Wagi materiału wierzchołków dla shadera stref (dig_ground.gd): UV2 = (żwir, skała; reszta — ziemia, żyła liczy się jako skała), alfa koloru =
+## udział materiału strefy względem gruntu mapy: 1 tylko na powierzchni wykopanej (w danych mapy było tu pełno skały), 0 na przodzie i na
+## pierwotnej powierzchni strefy — nietknięta strefa wygląda jak zwykła mapa, materiał widać w wykopie. Z położenia przed `_jag`.
+func _mat_weights(verts: PackedVector3Array, cols: PackedColorArray, gp: Vector2, px: float, front: float) -> PackedVector2Array:
+	var uv2 := PackedVector2Array()
+	uv2.resize(verts.size())
+	var memo := {}
+	for k in verts.size():
+		var v := verts[k]
+		if not memo.has(v):
+			if v.z >= front - 0.001:                           # przód: zawsze grunt mapy (wagi bez znaczenia)
+				memo[v] = Vector3.ZERO
+			else:
+				var g := Vector2(v.x, -v.y) / px
+				var f := _dug_at(g)
+				var key := material_at_px(g) if f > 0.0 else ""
+				memo[v] = Vector3(1.0 if key == "gravel" else 0.0, 1.0 if key == "rock" or key == "vein" else 0.0, f)
+		var w: Vector3 = memo[v]
+		uv2[k] = Vector2(w.x, w.y)
+		var c := cols[k]
+		c.a = w.z
+		cols[k] = c
+	return uv2
+
+## 1 — punkt świata leży w miejscu, które w danych mapy było pełną skałą (najbliższy narożnik i jego sąsiedzi), czyli na powierzchni wykopanej;
+## 0 — pierwotna powierzchnia strefy (styk z powietrzem mapy) albo pierścień.
+func _dug_at(g: Vector2) -> float:
+	var p := (g - global_position) / CELL + Vector2(1, 1)
+	var i := roundi(p.x)
+	var j := roundi(p.y)
+	for dj in range(-1, 2):
+		for di in range(-1, 2):
+			var a := i + di
+			var b := j + dj
+			if a < 0 or b < 0 or a >= _w or b >= _h or _fixed[b * _w + a] == 1 or _d0[b * _w + a] < ISO:
+				return 0.0
+	return 1.0
+
 ## Narożnik (i, j) leży na konturze: skała, a obok (8 sąsiadów) powietrze.
 func _rim_corner(i: int, j: int) -> bool:
 	if i < 0 or j < 0 or i >= _w or j >= _h or _d[j * _w + i] < ISO:
@@ -1306,7 +1348,8 @@ func _rim_corner(i: int, j: int) -> bool:
 func _rim_cell(i: int, j: int) -> bool:
 	return _rim_corner(i, j) or _rim_corner(i + 1, j) or _rim_corner(i + 1, j + 1) or _rim_corner(i, j + 1)
 
-## Przesuwa wszystkie wierzchołki (`_jag`, raz na położenie) i liczy płaskie normalne trójkątów od nowa, ze zwrotem starej normalnej.
+## Przesuwa wszystkie wierzchołki (`_jag`, raz na położenie) i liczy normalne od nowa: przód płaski (+z), ściany wykopu gładkie — średnia
+## normalnych trójkątów ścian w tym samym punkcie (bez przodu, więc krawędź przy przodzie zostaje ostra), ze zwrotem starej normalnej.
 func _jag_mesh(verts: PackedVector3Array, norms: PackedVector3Array, gp: Vector2, px: float, front: float, back: float) -> void:
 	var memo := {}
 	for k in verts.size():
@@ -1314,16 +1357,26 @@ func _jag_mesh(verts: PackedVector3Array, norms: PackedVector3Array, gp: Vector2
 		if not memo.has(v):
 			memo[v] = _jag(v, gp, px, front, back)
 		verts[k] = memo[v]
-	for k in range(0, verts.size(), 3):
+	var acc := {}
+	var tri_n := PackedVector3Array()
+	tri_n.resize(verts.size() / 3)
+	for t in tri_n.size():
+		var k := t * 3
 		var n := (verts[k + 2] - verts[k]).cross(verts[k + 1] - verts[k])
 		if n.length_squared() < 1e-12:
-			continue
+			n = norms[k]
 		n = n.normalized()
 		if n.dot(norms[k]) < 0.0:
 			n = -n
-		norms[k] = n
-		norms[k + 1] = n
-		norms[k + 2] = n
+		tri_n[t] = n
+		if absf(norms[k].z) > 0.99:                          # przód: płaski
+			continue
+		for q in 3:
+			acc[verts[k + q]] = (acc.get(verts[k + q], Vector3.ZERO) as Vector3) + n
+	for t in tri_n.size():
+		var k := t * 3
+		for q in 3:
+			norms[k + q] = (acc[verts[k + q]] as Vector3).normalized() if absf(tri_n[t].z) < 0.99 and acc.has(verts[k + q]) and absf(norms[k + q].z) <= 0.99 else tri_n[t]
 
 ## Prostokąt przodu skały (a, b, c, d zgodnie z ruchem wskazówek na ekranie i w 3D), normalna +z.
 static func _quad(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, col: Color, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
