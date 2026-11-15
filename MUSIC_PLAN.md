@@ -96,7 +96,7 @@ Histereza i opóźnione zejście zostają z obecnego silnika. Stan (oś A) wybie
 | **E0** | Wynik zagrożenia T zamiast samej Uwagi; prawdziwa cisza (eksploracja bez `mus_silence`); menu bez muzyki rozgrywki; czas w każdym stanie i warstwie w dzienniku sesji | `hud.gd`, `audio_director.gd`, nowy `music_director.gd`, test `tools/test_music.gd` | Muzyka mówi prawdę na obecnych stemach |
 | **E1** | Leitmotiv Stalkera od odległości; sygnały elity i hordy; niskie HP | `stalker.gd`, `director.gd`, `bake_music.py` | **Odsłuch z testerem** |
 | **E2** | Silnik segmentów: kolejki taktów, przejścia na takcie, ogony / kadencje, palety stref | `audio_director.gd`, manifest (`MUSIC_SEGMENTS`) | Mniej powtórzeń (P3, P5) |
-| **E3** | Materiał: kontakt / walka / pościg × 3 strefy, pętle 2–4 min z wariantami, sampler z nagrań w `bake_music.py` | `bake_music.py`, `audio/music/` | **Odsłuch z testerem** |
+| **E3** | Materiał: kontakt / walka / pościg × 3 strefy, pętle 2–4 min z wariantami, sampler z nagrań w `bake_music.py`; po odsłuchu 1.7.580 nowy kierunek — mroczny ambient (§8) | `bake_music.py`, `audio/music/` | **Odsłuch z testerem** |
 | **E4** | Żyła i B1 (sekcje wg faz), „przetrzymaj” i odwrót | `boss_base.gd`, Żyła, B1 | Momenty (P6) |
 | **E5** | Temat główny w menu, radio w kryjówce, kadencje wyniku i śmierci | `main_menu.gd`, `radio_set.gd`, `result_screen.gd` | Tożsamość gry |
 
@@ -122,3 +122,70 @@ Każdy etap: osobna gałąź i PR, podbicie `config/version`, wiersz w `CHANGELO
 - **Materiał E3 jest najdroższy** — synteza z samplerem może nie dorównać nagraniom; D4 zakłada kompozytora przed wydaniem, a silnik
   E2 ma przyjąć jego stemy bez zmian w kodzie (format segmentów w manifeście).
 - **Repo publiczne:** sample z biblioteki trafiają tylko do `audio_licensed/` (jak efekty), w repo zostaje wersja z syntezy.
+
+## 8. E3 — nowy materiał: mroczny ambient zamiast synthwave (po odsłuchu 1.7.580, przyjęte 2026-11-15)
+
+### 8.1 Odsłuch
+
+Odsłuch E2 (2026-11-15, sesja 9,5 min): „muzyka nie jest spójna, jest chaotyczna, nie oddaje atmosfery gry, jest zbyt dużo różnych
+niepowiązanych dźwięków, tempo zmienia się zbyt szybko”. Część dotyczyła silnika i została poprawiona w PR #694:
+- sekcje zmieniane całą muzyką naraz, najwcześniej co 40 s;
+- pościg trzymany ≥ 20 s;
+- horda tylko na starcie walki;
+- motyw Stalkera w d-moll.
+
+Zostaje sam **materiał**, którego silnik nie naprawi:
+
+| Problem | Skąd |
+|---|---|
+| Brzmi jak strzelanka, nie horror | Bramkowany werbel, piłowe arpeggia, akordowe staby, crash — język synthwave akcji lat 80. |
+| Wejście warstwy = nowy utwór | Każda warstwa to inne instrumenty i inny podział rytmu (ósemki → szesnastki → trzydziestodwójki), więc pościg brzmi jak przyspieszenie tempa |
+| Za dużo niepowiązanych dźwięków | Motyw, sygnały i stingery robione osobno, każdy z inną barwą; nic ich nie łączy z warstwami |
+| Brak świata gry w muzyce | Ani taśmy, ani radia, ani metalu z naszych nagrań — §4.4 zostało na papierze |
+
+### 8.2 Kierunek
+
+Jeden materiał, który gęstnieje — zamiast czterech utworów, które się nakładają. Odniesienia:
+- **S.T.A.L.K.E.R.** — dark ambient, dron i odległe dźwięki zamiast melodii;
+- **Metro 2033** — muzyka z rur, metalu i przesteru, rzadka;
+- **Hunt: Showdown** — prawie bez muzyki, napięcie z ciszy i świata;
+- **Dead Space** — smyczki bez melodii (tremolo, klastery), które rosną przy zagrożeniu.
+
+Zasady:
+1. **Jedno tempo i jedna tonacja przez całą grę.** Dron na D; harmonia stoi (pedał), zamiast progresji akordów co takt. Wolne tempo,
+   puls bardziej jak serce albo maszyna niż jak perkusja.
+2. **Intensywność to gęstość i głośność tej samej faktury, nie nowe instrumenty.** Każda warstwa dokłada się do tego samego materiału:
+
+   | Warstwa | Dziś | E3 |
+   |---|---|---|
+   | 0 Dron | Pad z akordami, sub, „szklane” nuty | Niskie D z taśmy, szum, odległy metal i wiatr w rurach; bez akordów |
+   | 1 Napięcie | Ostinato basowe ósemkami, puls, melodia | Puls (uderzenie serca / tłoka) na tym samym D, rzadkie tarcie smyczka |
+   | 2 Walka | Perkusja 16-tkowa z bramkowanym werblem, bas, staby | Ten sam puls gęściej i głośniej, metalowe uderzenia (rura, blacha) zamiast werbla, przesterowany dron |
+   | 3 Pościg | Arpeggio 16-tkowe, tomy, crash, riser | Tremolo smyczków i zgrzyt metalu narastający klasterem; rytm ten sam, rośnie gęstość i głośność |
+
+3. **Brzmienie 1987 z materiału świata.** Taśma (wow / flutter, szum), krótkofalówka jako faktura, metal i blacha z nagrań gry
+   (§4.4, D4: synteza w repo, sample z biblioteki tylko w `audio_licensed/`).
+4. **Jedyna melodia to motyw Stalkera** — zagrany tym samym „smyczkiem” co faktura warstw, nie osobnym instrumentem.
+5. **Sygnały i kadencje z tego samego materiału.** Horda to zagęszczenie pulsu z metalowym uderzeniem, elita to dron
+   wchodzący w górę, koniec walki to ostatnie uderzenie z ogonem w pogłosie. Bez osobnych „efektów muzycznych”.
+
+Silnik z E0–E2 zostaje bez zmian. Nowe stemy wchodzą przez manifest; zmieniają się tylko `bake_music.py` i pliki w `audio/music/`.
+
+### 8.3 Kroki
+
+| Krok | Zakres | Wynik |
+|---|---|---|
+| **E3a** | Prototyp nowej faktury: 4 warstwy, wariant B, kadencja, motyw Stalkera. Narzędzie `tools/music_preview.py` składa podgląd 3 min z przebiegu zagrożenia zapisanego w dzienniku sesji | **Odsłuch podglądu WAV przed wejściem do gry** |
+| **E3b** | Podmiana w grze (te same klucze manifestu), stingery `sting_tension` / `sting_chase` z tego samego materiału | Odsłuch w grze |
+| **E3c** | Sample metalu i taśmy z biblioteki (`audio_licensed/`); w repo zostaje wersja z syntezy | Bogatsza faktura lokalnie |
+| później | Palety stref 2–3 (Obiekt 86, Martwa Cisza), gdy powstaną mapy | — |
+
+### 8.4 Decyzje (przyjęte 2026-11-15, wszystkie zalecane)
+
+| # | Pytanie | Przyjęte | Odrzucone |
+|---|---|---|---|
+| D8 | Tempo | Wolne, ok. 64 BPM (ciężej, puls jak serce) | Zostać przy 96 BPM |
+| D9 | Perkusja | Metal i przedmioty (rura, blacha, tłok) | Klasyczne bębny; bez perkusji |
+| D10 | Harmonia | Pedał D, bez progresji akordów | Wolna progresja (akord co 2–4 takty) |
+| D11 | Melodia | Tylko motyw Stalkera | Także rzadkie frazy w eksploracji |
+| D12 | Odsłuch | Podgląd WAV 3 min do akceptacji przed grą | Od razu w grze |
