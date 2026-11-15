@@ -1,6 +1,8 @@
 # Pogoda immersyjna — plan
 
-Status: **plan z 2026-11-15 (main 1.7.570, b2a6361 + #681), scalony w #683.** Decyzje D1–D6 (§7) przyjęte 2026-11-15 — wszystkie warianty zalecane. **W0 + W1 w 1.7.572** (`weather_clock.gd`, test `tools/test_weather_clock.gd`, flagi `--weathert`, `--weatherseed`). Dalej równolegle: dźwięk W2–W4 i obraz W5–W7 (z obrazem W4 i W3).
+Status: **plan z 2026-11-15 (main 1.7.570, b2a6361 + #681), scalony w #683.** Decyzje D1–D6 (§7) przyjęte 2026-11-15 — wszystkie warianty zalecane. **W0 + W1 w 1.7.572** (`weather_clock.gd`, test `tools/test_weather_clock.gd`, flagi `--weathert`, `--weatherseed`). **Dźwięk W2–W4 w 1.7.573** (`weather_sound.gd`, synteza `tools/bake_weather.py`, wersje z nagrań
+`bake_hybrid.weather()`, test `tools/test_weather_sound.gd`); poza zakresem zostały: kapanie przez dziury w deskach, szelest mokrego
+stroju, łopot plandek, pył z sufitu przy bliskim grzmocie w podziemiach. Obraz W5–W7 (z obrazem W4 i W3) — równolegle.
 Etapy W0–W7 to dźwięk i obraz (bez zmian w rozgrywce); W8 zmienia rozgrywkę i zaczyna się dopiero po playteście (GDD §16.0a).
 
 ## 1. Skąd to

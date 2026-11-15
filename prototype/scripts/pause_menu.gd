@@ -260,6 +260,7 @@ func _build_settings(scroll: ScrollContainer) -> void:
 	_slider(left, "master", tr("Master volume"))
 	_slider(left, "music", tr("Music"))
 	_slider(left, "ambience", tr("Ambience"))
+	_slider(left, "weather", tr("Weather"))
 	_slider(left, "sfx", tr("Effects"))
 	_seg(left, tr("Microphone scream"), ["OFF", "LOW", "MED", "HIGH"], _mic_idx, _set_mic)
 	left.add_child(_gap())

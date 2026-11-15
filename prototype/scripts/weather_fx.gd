@@ -16,15 +16,11 @@ const WeatherClock := preload("res://scripts/weather_clock.gd")
 
 const FADE_IN := 0.25                       ## 1/s: ok. 4 s narastania po starcie misji
 const FADE_OUT := 0.5
-## Dźwięk (faza C): bazowa głośność pętli [dB] przy pełnej pogodzie. `rain` = deszcz pod otwartym niebem (amb_rain), `roof` = deszcz nad głową
-## (amb_rain_roof, pod dachem), `wind` = wiatr (amb_wind). Efektywna głośność = baza + 20·log10(siła pogody × udział nieba).
-const AUDIO := {
-	"rain": {"rain": -12.0, "roof": -15.0, "wind": -99.0},
-	"storm": {"rain": -8.0, "roof": -11.0, "wind": -15.0},
-	"fog": {"rain": -99.0, "roof": -99.0, "wind": -24.0},
-}
-const UNDERGROUND_DB := -14.0               ## deszcz słychać w podziemiach jak przez grubą warstwę ziemi
-const SILENT_DB := -55.0                    ## poniżej: pętla zatrzymana
+## Dźwięk pogody (WEATHER_PLAN.md W2–W4): deszcz z warstw i emiterów na materiałach, wiatr z podmuchami, grzmot warstwowy z kierunkiem —
+## składa go `weather_sound.gd` (dziecko tego węzła) z tego samego stanu co obraz. Pogody z dźwiękiem:
+const SOUND_KINDS := ["rain", "storm", "fog"]
+const WeatherSound := preload("res://scripts/weather_sound.gd")
+const SILENT_DB := -55.0                    ## poniżej: pętla tła miejsca zatrzymana
 ## Tło wg miejsca (_beds): las na otwartej przestrzeni / pod dachem, powietrze budynku pod dachem, kapanie w podziemiach.
 const BED_FOREST_OPEN_DB := -13.0
 const BED_FOREST_ROOF_DB := -19.0
@@ -39,7 +35,7 @@ static var dev_t := -1.0
 
 var _thunder_done := {}                     ## indeksy błysków, których grzmot już zagrał (dla bieżącego ziarna)
 var _thunder_seed := -1
-var _loops_on := {}                         ## klucze pętli dźwięku uruchomionych przez pogodę
+var _snd: Node                              ## weather_sound.gd: deszcz, wiatr, grzmot
 var _k := 0.0                               ## wygładzone „pogoda trwa” 0..1 (narastanie po starcie misji)
 var _i := 0.0                               ## siła pogody z zegara 0..1 (fronty: ulewa, przejaśnienie)
 var _wind := 0.5                            ## siła wiatru (skala `WeatherClock.WIND_BASE`, z podmuchem); bez pogody 0,5
@@ -58,6 +54,9 @@ var _main: Node
 
 func _ready() -> void:
 	layer = 1
+	_snd = WeatherSound.new()
+	_snd.name = "WeatherSound"
+	add_child(_snd)
 
 func _exit_tree() -> void:
 	_stop_audio()
@@ -142,26 +141,13 @@ func _flash(mode: int) -> float:
 
 # ---------------------------------------------------------------- dźwięk (faza C)
 
-## Pętle deszczu (na zewnątrz / pod dachem) i wiatru wg pogody i otwartości nieba nad lokalnym graczem; grzmot burzy z harmonogramu błyskawic.
+## Dźwięk pogody (W2–W4, `weather_sound.gd`) ze stanu tej klatki: siła, wiatr, podmuch, niebo i podziemia nad lokalnym graczem;
+## grzmot burzy z harmonogramu błyskawic. Przy OFF (D3) i bez pogody — cisza.
 func _audio(mode: int, lp: Node2D) -> void:
-	var cfg: Dictionary = AUDIO.get(_id, {})
-	var on := mode != Settings.WEATHER_FX_OFF and not cfg.is_empty() and _k > 0.02
-	var under := lp != null and _level != null and lp.global_position.y >= float(_level.underground_y)
-	var targets := {}
-	if on:
-		var k := _k * (0.3 + 0.7 * _i)                                      # ulewa pełną głośnością, przejaśnienie ok. −6…−10 dB
-		var wk := _k * clampf(_wind / float(WeatherClock.WIND_BASE.get(_id, 1.0)), 0.4, 1.6)    # wiatr z zapowiedzią i podmuchami
-		targets["amb_rain"] = float(cfg["rain"]) + _db(k * _sky)
-		targets["amb_rain_roof"] = float(cfg["roof"]) + _db(k * (1.0 - _sky)) + (UNDERGROUND_DB if under else 0.0)
-		targets["amb_wind"] = float(cfg["wind"]) + _db(wk)
-	for key in ["amb_rain", "amb_rain_roof", "amb_wind"]:
-		var v: float = targets.get(key, -99.0)
-		if v > SILENT_DB:
-			Audio.start_loop(key, Audio.BUS_AMB, v)                 # istniejąca pętla tylko zmienia głośność
-			_loops_on[key] = true
-		elif _loops_on.has(key):
-			Audio.stop_loop(key)
-			_loops_on.erase(key)
+	var on := mode != Settings.WEATHER_FX_OFF and _id in SOUND_KINDS and _k > 0.02
+	if _snd != null:
+		_snd.update(get_process_delta_time(), {"id": _id, "on": on, "k": _k, "i": _i, "wind": _wind, "gust": _gust, "wdir": _wdir,
+			"sky": _sky, "deep": _deep, "cave": _cave, "lp": lp, "level": _level})
 	if on and _id == "storm":
 		_thunder()
 
@@ -188,16 +174,15 @@ static func _db(x: float) -> float:
 	return 20.0 * log(maxf(x, 0.001)) / log(10.0)
 
 func _stop_audio() -> void:
-	for key in _loops_on.keys():
-		Audio.stop_loop(key)
-	_loops_on.clear()
+	if _snd != null and is_instance_valid(_snd):
+		_snd.stop_all()
 	for key in _beds_on.keys():
 		Audio.stop_loop(key)
 	_beds_on.clear()
 
 ## Grzmot po każdym błysku: opóźnienie = odległość błyskawicy / prędkość dźwięku (`WeatherClock.thunder_delay`, tak samo u wszystkich
-## graczy); bliski głośny z trzaskiem, daleki cichy pomruk (3 warianty: blisko < 1,5 km, średnio < 4 km, daleko). Woła go tylko `_audio`
-## z włączonym dźwiękiem pogody (nie przy OFF).
+## graczy); brzmienie składa `weather_sound.gd` (trzask blisko, toczenie, filtr i panorama z odległości i azymutu, napis z kierunkiem).
+## Woła go tylko `_audio` z włączonym dźwiękiem pogody (nie przy OFF).
 func _thunder() -> void:
 	if _thunder_seed != Weather.seed:
 		_thunder_seed = Weather.seed
@@ -214,9 +199,5 @@ func _thunder() -> void:
 		_thunder_done[i] = true
 		if now - due > 1.0:
 			continue                                                  # zaległy (np. dołączenie w trakcie misji) — nie odtwarzamy po fakcie
-		var r := RandomNumberGenerator.new()
-		r.seed = Weather.seed * 31 + i
-		var variant := 1 if dist < WeatherClock.NEAR_KM else (2 if dist < 4.0 else 3)
-		var far := clampf((dist - WeatherClock.BOLT_DIST.x) / (WeatherClock.BOLT_DIST.y - WeatherClock.BOLT_DIST.x), 0.0, 1.0)
-		Audio.play("thunder_%d" % variant, Audio.BUS_AMB, -2.0 - 10.0 * far, r.randf_range(0.93, 1.07))
-
+		if _snd != null:
+			_snd.thunder(b, _sky, Weather.seed)

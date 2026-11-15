@@ -58,6 +58,17 @@ const BUS_SFX := "SFX"
 const BUS_OCC_LIGHT := "OccLight"
 const BUS_OCC_HEAVY := "OccHeavy"
 const BUS_OCC_BLOCKED := "OccBlocked"
+## Pogoda (WEATHER_PLAN.md W2–W4, weather_sound.gd): własna szyna z suwakiem (D4), wpięta w „Ambience” (ogłuszenie, pogłos tła
+## i ściszanie pod strzałami działają na nią same). Na szynie: „Duck_weather” (ściszanie pod sygnałami, zasada 5) i filtr
+## podziemi; grzmot ma podszynę „Thunder” z filtrem odległości.
+const BUS_WEATHER := "Weather"
+const BUS_THUNDER := "Thunder"
+## Sygnały przed pogodą (zasada 5 planu): dźwięk o priorytecie głosu co najmniej tym (strzały, wrogowie, krzyki, Stalker, radio,
+## podpowiedzi) ścisza pogodę o WEATHER_DUCK_DB na czas WEATHER_DUCK_HOLD — ulewa nie zagłusza tego, co trzeba usłyszeć.
+const WEATHER_DUCK_PRIO := 42
+const WEATHER_DUCK_DB := -5.0
+const WEATHER_DUCK_HOLD := 0.7
+const WEATHER_UNDER_HZ := 400.0       ## pod ziemią pogoda słychać jak przez warstwę ziemi (filtr zamiast samego ściszenia)
 ## Zgodność wsteczna: dawny pojedynczy bus okluzji.
 const BUS_OCCLUDED := BUS_OCC_HEAVY
 const OCC_BUSES := [BUS_OCC_LIGHT, BUS_OCC_HEAVY, BUS_OCC_BLOCKED]
@@ -108,13 +119,27 @@ const VOICE := {
 const DEFAULT_VOICE := [40, 6, 0]
 
 ## Emitery ambientu: [baza, liczba wariantów, odległość min, odległość max, głośność dB,
-## waga, minimalna Uwaga, tylko gdy Stalker śpi]
+## waga, minimalna Uwaga, tylko gdy Stalker śpi]. Podmuch i skrzypienie (WIND_EMITTERS) ważone siłą wiatru z zegara pogody
+## (`weather_wind`, W3): w ciszy prawie znikają, w burzy przeważają; podmuch nadchodzi od strony wiatru.
 const EMITTERS := [
 	["amb_gust", 3, 200.0, 520.0, -4.0, 3.0, 0.0, false],
 	["amb_creak", 3, 260.0, 680.0, -3.0, 2.0, 0.0, false],
 	["amb_thud", 2, 650.0, 1050.0, 2.0, 1.2, 0.0, false],
 	["amb_far_cry", 2, 900.0, 1400.0, 4.0, 0.9, 25.0, true],
 ]
+const WIND_EMITTERS := ["amb_gust", "amb_creak"]
+const WIND_REF := 0.85                 ## siła wiatru (skala `WeatherClock.WIND_BASE`), przy której podmuch i skrzypienie mają wagę z EMITTERS
+
+## Wiatr z zegara pogody (weather_fx.gd → weather_sound.gd, W3) dla emiterów: siła (WIND_REF bez deszczu, burzy i mgły — waga z EMITTERS bez zmian) i kierunek (+1 z prawej).
+var weather_wind := WIND_REF
+var weather_wdir := 1.0
+var _wduck_db := 0.0
+var _wduck_hold := 0.0
+var _wduck_fx: AudioEffectAmplify
+var _wunder_fx: AudioEffectLowPassFilter
+var _wunder := 0.0                    ## 0..1: jak głęboko pod ziemią (filtr pogody), ustawia weather_sound.gd
+var _thunder_fx: AudioEffectLowPassFilter
+var _thunder_hz := 20500.0
 
 var _cache: Dictionary = {}          # String -> AudioStream
 var _warm: Dictionary = {}           # String -> ścieżka: klucz wczytywany w tle (_warm_all), jeszcze nie w _cache
@@ -529,6 +554,7 @@ func play(key: String, bus: String = BUS_PLAYER, vol_db := 0.0, pitch := 1.0) ->
 	p.volume_db = vol_db
 	p.pitch_scale = pitch
 	p.play()
+	_weather_signal(key)
 	_caption(key, _listener_pos)
 
 
@@ -602,6 +628,7 @@ func _emit_at(key: String, place: Array, bus: String, vol_db: float, pitch: floa
 	p.volume_db = vol_db
 	p.pitch_scale = pitch
 	p.play()
+	_weather_signal(key)
 
 
 func play_variant_at(base: String, count: int, pos: Vector2, bus: String = BUS_WORLD,
@@ -741,6 +768,8 @@ func stop_all() -> void:
 	_drop_at = -1.0
 	_deaf = 0.0
 	_duck_db = 0.0
+	_wduck_db = 0.0
+	_wduck_hold = 0.0
 
 
 func set_loop_volume(key: String, vol_db: float) -> void:
@@ -927,6 +956,19 @@ func _bind_effects() -> void:
 				_lp_fx.append(fx)
 	if _rev_fx == null or _lp_fx.size() < 3:
 		push_warning("[AUDIO] bus layout bez oczekiwanych efektów (Reverb na SFX, LP na Music/Ambience/SFX)")
+	var wb := AudioServer.get_bus_index(BUS_WEATHER)
+	if wb >= 0:
+		for i in AudioServer.get_bus_effect_count(wb):
+			var fx := AudioServer.get_bus_effect(wb, i)
+			if fx is AudioEffectAmplify:
+				_wduck_fx = fx
+			elif fx is AudioEffectLowPassFilter:
+				_wunder_fx = fx
+	var tb := AudioServer.get_bus_index(BUS_THUNDER)
+	if tb >= 0 and AudioServer.get_bus_effect_count(tb) > 0:
+		_thunder_fx = AudioServer.get_bus_effect(tb, 0) as AudioEffectLowPassFilter
+	if _wduck_fx == null or _wunder_fx == null or _thunder_fx == null:
+		push_warning("[AUDIO] bus layout bez szyn pogody (Weather: Amplify + LP, Thunder: LP)")
 
 
 ## Wachlarz 12 promieni wokół słuchawki → zamknięcie i średnia odległość ścian.
@@ -1183,16 +1225,76 @@ func _update_emitters(delta: float) -> void:
 		if bool(e[7]) and NoiseMgr.stalker_awake:
 			continue
 		cand.append(e)
-		total += float(e[5])
+		total += _emitter_weight(e)
 	if cand.is_empty():
 		return
 	var roll := randf() * total
 	for e in cand:
-		roll -= float(e[5])
+		roll -= _emitter_weight(e)
 		if roll <= 0.0:
 			var pos := _listener_pos + Vector2.from_angle(randf() * TAU) * randf_range(float(e[2]), float(e[3]))
+			if String(e[0]) == "amb_gust":
+				pos.x = _listener_pos.x + absf(pos.x - _listener_pos.x) * weather_wdir     # podmuch od strony wiatru
 			play_variant_at(String(e[0]), int(e[1]), pos, BUS_AMB, float(e[4]), 1.0, 0.05)
 			return
+
+
+## Waga emitera ambientu: podmuch i skrzypienie × (siła wiatru / WIND_REF)² (0,1–3) — ok. ×0,12 w pogodną noc, ×3 w burzy.
+func _emitter_weight(e: Array) -> float:
+	var w := float(e[5])
+	if String(e[0]) in WIND_EMITTERS:
+		w *= clampf(pow(weather_wind / WIND_REF, 2.0), 0.1, 3.0)
+	return w
+
+
+# ---------------------------------------------------------------- miks pogody (WEATHER_PLAN.md W2–W4)
+
+## Ważny dźwięk (priorytet głosu ≥ WEATHER_DUCK_PRIO) ścisza pogodę (zasada 5: sygnały przed pogodą).
+func _weather_signal(key: String) -> void:
+	if int(_voice(key)[0]) >= WEATHER_DUCK_PRIO:
+		duck_weather(WEATHER_DUCK_DB, WEATHER_DUCK_HOLD)
+
+
+## Ściszenie szyny pogody o `db` na `hold` s (potem ok. 0,8 s powrotu). Także z zewnątrz (podpowiedzi, radio).
+func duck_weather(db: float, hold: float) -> void:
+	_wduck_db = minf(_wduck_db, db)
+	_wduck_hold = maxf(_wduck_hold, hold)
+
+
+## Położenie słuchawki w świecie (dźwięk pogody stawia emitery względem niej).
+func listener_pos() -> Vector2:
+	return _listener_pos
+
+
+## Bieżące ściszenie pogody [dB] (testy, dziennik).
+func weather_duck_db() -> float:
+	return _wduck_fx.volume_db if _wduck_fx != null else 0.0
+
+
+## Pogoda pod ziemią: 0 — na powierzchni (bez filtra), 1 — głęboko (dolnoprzepustowy WEATHER_UNDER_HZ).
+func set_weather_underground(amount: float) -> void:
+	_wunder = clampf(amount, 0.0, 1.0)
+
+
+## Filtr odległości grzmotu (szyna „Thunder”): odcięcie dla najświeższego grzmotu, dojeżdża płynnie.
+func set_thunder_cutoff(hz: float) -> void:
+	_thunder_hz = clampf(hz, 200.0, 20500.0)
+
+
+func _update_weather_mix(delta: float) -> void:
+	if _wduck_hold > 0.0:
+		_wduck_hold -= delta
+	else:
+		_wduck_db = minf(0.0, _wduck_db + delta * 6.0)          # ok. 0,8 s powrotu z −5 dB
+	if _wduck_fx != null:
+		var cur := _wduck_fx.volume_db
+		var k := 1.0 - exp(-delta * (40.0 if _wduck_db < cur else 8.0))   # szybkie wejście, łagodne wyjście
+		_wduck_fx.volume_db = lerpf(cur, _wduck_db, k)
+	if _wunder_fx != null:
+		_wunder_fx.cutoff_hz = 20500.0 * pow(WEATHER_UNDER_HZ / 20500.0, _wunder)
+	if _thunder_fx != null:
+		var tk := 1.0 - exp(-delta * 4.0)
+		_thunder_fx.cutoff_hz = exp(lerpf(log(_thunder_fx.cutoff_hz), log(_thunder_hz), tk))
 
 
 # ---------------------------------------------------------------- per-frame
@@ -1213,6 +1315,7 @@ func _process(delta: float) -> void:
 	_update_deafness(delta)
 	_update_music(delta)
 	_update_emitters(delta)
+	_update_weather_mix(delta)
 
 
 ## Wyłącza cały dźwięk (np. przy starcie lobby, żeby nie grało na pustce).

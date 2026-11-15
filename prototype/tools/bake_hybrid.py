@@ -38,12 +38,16 @@ Odsłuch 2026-11-02 (rodziny dotąd tylko syntetyczne), z nagrań: mech_* (strze
 heart_slow_loop, revive; amb_machine, amb_air, amb_drips. Zostały syntetyczne: kaplan_scream, moth_flutter_loop, moth_crack
 (odsłuch), alarm_bell (brak nagrania dzwonu kościelnego), mine_beep, radio_static, sygnały UI, muzyka.
 Odsłuch 2026-11-14, z nagrań: dig_dirt, dig_gravel, dig_rock (cios kilofem w strefie wydobycia).
+Odsłuch 2026-11-15, z nagrań: cała pogoda (WEATHER_PLAN.md W2–W4) — tło deszczu, krople na materiałach, dach, okap, kaptur, wiatr,
+podmuch, świst w oknie, grzmot (trzask, toczenie, drżenie szyb).
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
 """
 
 from __future__ import annotations
+
+import zlib
 
 import numpy as np
 
@@ -687,9 +691,6 @@ def player() -> None:
 # wracało ok. 225 razy na godzinę). Źródło lasu nie ma głosów zwierząt — szum koron nocą.
 AMB_LOOPS = (                       # klucz, źródło, start [s], długość [s], głośność docelowa = zmierzona głośność syntezy, ścięcie szczytów [dB]
     ("amb_forest", "forest_night_woods", 92.0, 60.0, -14.6, -7.0),     # ciche nagranie z pojedynczymi szczytami (ścina ok. 1% czasu)
-    ("amb_rain", "rain_hard_loop", 1.0, 16.0, -16.0, 0.0),
-    ("amb_rain_roof", "rain_on_plastic", 0.5, 16.0, -17.0, -12.0),      # pojedyncze głośne krople: bez ścięcia pętla wychodzi za cicha
-    ("amb_wind", "wind_mountain_loop", 10.25, 16.0, -19.6, 0.0),
     # (2026-11-02) pompa ciśnieniowa z buczeniem, szum wentylacji, krople w jaskini; pętle stereo synteza osiąga w całości
     ("amb_machine", "hvac_pressure_pump", 22.5, 8.0, -15.0, 0.0),
     ("amb_air", "hvac_roomtone", 3.25, 10.0, -18.0, 0.0),
@@ -737,16 +738,6 @@ def _glass_bake() -> None:
     b = d.mix([(_unit(hit), 1.0, 0.0), (_unit(shards), 0.7, 0.06)], ms(1250))
     for i, x in enumerate((a, b)):
         finalize("glass_break_%d" % (i + 1), d.reverb(d.filt(x, "hp", 120.0), ir("room"), wet=.25), lufs=-21.0)
-
-
-# --- Grzmot: trzy nagrane uderzenia pioruna, przycięte do ok. 6 s (ogon dalej niesie pogłos silnika).
-THUNDER_SRC = ("thunder_crack_02", "thunder_clap_04", "thunder_strike_03")
-
-
-def _thunder_bake() -> None:
-    for i, sid in enumerate(THUNDER_SRC):
-        x = _fade(d.from_onset(bc.src(sid, 0.0, 7.0), 5.0, thr_db=-26.0), 3.6, 6.0)
-        finalize("thunder_%d" % (i + 1), d.filt(x, "hp", 25.0, order=2), lufs=-19.4, fade_out_ms=400)
 
 
 # ============================================================ WROGOWIE (bake_sfx.build_enemies)
@@ -1202,7 +1193,6 @@ def world() -> None:
     bc.hybrid(["radio_beep"], _radio_beep_bake, RADIO_BEEP_NEEDS)
     bc.hybrid(_keys("door", 2), _door_bake, DOOR_NEEDS)
     bc.hybrid(_keys("glass_break", 2), _glass_bake, GLASS_NEEDS)
-    bc.hybrid(_keys("thunder", 3), _thunder_bake, list(THUNDER_SRC))
     bc.hybrid(_keys("amb_creak", 3), _creak_bake, CREAK_NEEDS)
     bc.hybrid(_keys("amb_gust", 3), _gust_bake, GUST_NEEDS)
     bc.hybrid(_keys("amb_thud", 2), _thud_bake, THUD_NEEDS)
@@ -1211,6 +1201,125 @@ def world() -> None:
     bc.hybrid(_keys("dig_dirt", 3), _dig_dirt_bake, DIG_DIRT_NEEDS)
     bc.hybrid(_keys("dig_gravel", 3), _dig_gravel_bake, DIG_GRAVEL_NEEDS)
     bc.hybrid(_keys("dig_rock", 3), _dig_rock_bake, DIG_ROCK_NEEDS)
+
+
+# ============================================================ POGODA (bake_weather.build_weather, WEATHER_PLAN.md W2–W4)
+# Pętle ≥ 60 s jak w syntezie. Źródło dłuższe od pętli → najrówniejsze okno (audio_probe.py --steady) z szwem 1,5 s;
+# krótsze → przetasowanie: kawałki 4–9 s z różnych miejsc nagrania sklejone przenikaniem (prawo mocy, deszcz i wiatr to
+# szum bez rytmu, więc sklejek nie słychać), potem szew. Krople na materiałach, okap, podmuch i świst w oknie są mono
+# (emitery z pozycją), tła stereo. Grzmot: trzask = sam początek uderzenia bardzo bliskiego, toczenie bliższe (1–3) z całych
+# grzmotów bliskich, dalekie (4–6) z dalekich; drżenie szyb = wycinki z nagrania grzechoczącej blachy.
+# Głośność = cele syntezy (bake_weather.LOOPS / SHOTS), więc miks nie zależy od wersji.
+
+# klucz → (źródło, początek równego okna [s] albo None = przetasowanie, górne odcięcie [Hz] albo 0)
+WEATHER_LOOPS = {
+    "amb_rain_light": ("rain_light_washed", None, 0.0),
+    "amb_rain_mid": ("rain_forest_day", None, 0.0),
+    "amb_rain_heavy": ("rain_heavy_ext", 19.75, 0.0),
+    "rain_on_metal": ("rain_drops_metal", 3.75, 0.0),
+    "rain_on_wood": ("rain_cabin_porch", 0.0, 0.0),
+    "rain_on_dirt": ("rain_forest_leaves", None, 9000.0),
+    "rain_on_leaves": ("rain_vegetation", None, 0.0),
+    "rain_on_concrete": ("rain_concrete", None, 0.0),
+    "rain_on_water": ("rain_drippy", None, 0.0),
+    "rain_roof_metal": ("rain_metal_roof", 157.25, 0.0),
+    "rain_roof_wood": ("rain_porch_soft", 164.25 - 61.0, 0.0),
+    "rain_eave": ("rain_roof_runoff", 12.25, 0.0),
+    "rain_mask": ("rain_umbrella", None, 0.0),
+    "amb_wind_low": ("wind_desert_loop", None, 0.0),
+    "amb_wind_trees": ("wind_pines", 81.0, 0.0),
+    "amb_wind_whistle": ("wind_howl_mumble", None, 0.0),
+    "wind_gust": ("wind_gusts_long", 58.75, 0.0),
+    "wind_window": ("wind_open_window", None, 0.0),
+}
+_W_XF = 1.5                                                           # szew pętli [s]
+# (źródło, początek [s], długość [s]) — trzask: pierwsze uderzenie; toczenie: cały grzmot od ataku
+THUNDER_CRACKS = (("thunder_xclose_03", 1.15, 3.4), ("thunder_vclose_08", 1.9, 3.2), ("thunder_crack_02", 0.0, 3.8))
+THUNDER_ROLLS = (("thunder_vclose_03", 0.9, 16.5), ("thunder_powerful", 0.0, 15.0), ("thunder_clap_04", 0.05, 14.5),
+                 ("thunder_distant_insj", 0.7, 18.0), ("thunder_distant_03", 0.9, 10.6), ("thunder_distant_mono", 0.3, 17.0))
+THUNDER_RATTLES = ((1.0, 2.2), (8.4, 2.2))                             # wycinki metal_rattle_shudder [s]
+WEATHER_NEEDS = sorted({row[0] for row in WEATHER_LOOPS.values()})
+THUNDER_NEEDS = sorted({r[0] for r in THUNDER_CRACKS + THUNDER_ROLLS} | {"metal_rattle_shudder"})
+
+
+def _xcat(a: np.ndarray, b: np.ndarray, xf: int) -> np.ndarray:
+    """Sklejka z przenikaniem prawem mocy (materiał nieskorelowany)."""
+    th = (np.arange(xf) + 0.5) / xf * (np.pi / 2)
+    mid = a[..., -xf:] * np.cos(th) + b[..., :xf] * np.sin(th)
+    return np.concatenate([a[..., :-xf], mid, b[..., xf:]], axis=-1)
+
+
+def _shuffle(x: np.ndarray, dur: float, rng: Rng, chunk=(4.0, 9.0), xf: float = 1.0) -> np.ndarray:
+    """Dłuższy bufor z krótkiego nagrania: kawałki z miejsc w losowej kolejności (każde miejsce raz, zanim wróci)."""
+    L = x.shape[-1]
+    xn = d.sec(xf)
+    out = None
+    order: list = []
+    while out is None or out.shape[-1] < d.sec(dur):
+        c = min(L, d.sec(rng.uniform(*chunk)))
+        if not order:
+            slots = max(1, (L - c) // max(1, c // 2))
+            order = [int(i) for i in np.argsort(rng.uniform(0.0, 1.0, size=slots + 1))]
+        s = min(L - c, order.pop() * max(1, c // 2))
+        seg = x[..., s:s + c]
+        out = seg.copy() if out is None else _xcat(out, seg, xn)
+    return out[..., :d.sec(dur)]
+
+
+def _weather_loop_bake(key: str) -> None:
+    import bake_weather
+    sid, t0, lp = WEATHER_LOOPS[key]
+    dur, stereo, lufs = bake_weather.LOOPS[key]
+    mono = not stereo
+    x = None if t0 is None else bc.src(sid, t0, dur + _W_XF, mono=mono)
+    if x is None or x.shape[-1] < d.sec(dur + _W_XF):                # za krótkie okno → przetasowanie całego nagrania
+        x = _shuffle(bc.src(sid, mono=mono), dur + _W_XF, Rng(zlib.crc32(key.encode()) | 1))
+    x = d.filt(x, "hp", 40.0, order=2)
+    if lp > 0.0:
+        x = d.lp(x, lp)
+    x = d.seam_xfade(x, d.sec(_W_XF))
+    # pojedyncze głośne krople (szczyt 20–30 dB nad głośnością) nie mogą ściszyć całej pętli: ścięcie szczytów do zapasu
+    # między celem LUFS a sufitem true-peak (na kaflu potrójnym, żeby szew został ciągły)
+    room = -2.5 - lufs
+    for _ in range(3):
+        x = _unit(x)
+        lv = d.lufs(x)
+        if -lv <= room:
+            break
+        x = d.circ_filter(x, lambda t, c=lv + room: d.limiter(t, c))
+    finalize(key, x, loop=True, lufs=lufs)
+
+
+def _thunder_bake() -> None:
+    import bake_weather
+    for i, (sid, t0, ln) in enumerate(THUNDER_CRACKS):
+        x = d.filt(bc.src(sid, t0, ln, mono=False), "hp", 30.0, order=2)
+        n = x.shape[-1]
+        T = n / d.SR
+        x = x * d.env_pts(n, [(0, 0), (.003, 1), (T * .45, 1), (T, 0)])
+        finalize("thunder_crack_%d" % (i + 1), x, lufs=bake_weather.SHOTS["thunder_crack"], fade_out_ms=300)
+    for i, (sid, t0, ln) in enumerate(THUNDER_ROLLS):
+        x = bc.src(sid, t0, ln, mono=False)
+        if sid == "thunder_distant_mono":
+            x = d.decorrelate(x[0], Rng(0xB3D0 + i), 1.0)
+        x = d.filt(x, "hp", 25.0, order=2)
+        n = x.shape[-1]
+        T = n / d.SR
+        x = x * d.env_pts(n, [(0, 0), (.01, 1), (T - 2.0, 1), (T, 0)])
+        far = i >= 3
+        finalize("thunder_roll_%d" % (i + 1), x, lufs=bake_weather.SHOTS["thunder_roll"] - (3.0 if far else 0.0), fade_out_ms=800)
+    for i, (t0, ln) in enumerate(THUNDER_RATTLES):
+        x = d.filt(bc.src("metal_rattle_shudder", t0, ln), "hp", 120.0, order=2)
+        x = x * d.env_pts(len(x), [(0, 0), (.25, 1), (ln - .9, .8), (ln, 0)])
+        finalize("thunder_rattle_%d" % (i + 1), x, lufs=bake_weather.SHOTS["thunder_rattle"], fade_out_ms=200)
+
+
+def weather() -> None:
+    """Wersje z nagrań kluczy pogody — wołane z bake_amb.build_ambience() po bake_weather.build_weather()."""
+    for key, row in WEATHER_LOOPS.items():
+        bc.hybrid([key], lambda key=key: _weather_loop_bake(key), [row[0]])
+    bc.hybrid(_keys("thunder_crack", len(THUNDER_CRACKS)) + _keys("thunder_roll", len(THUNDER_ROLLS))
+              + _keys("thunder_rattle", len(THUNDER_RATTLES)), _thunder_bake, THUNDER_NEEDS)
 
 
 # ============================================================ SYGNAŁY (bake_sfx.build_ui)

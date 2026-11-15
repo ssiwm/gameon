@@ -550,6 +550,10 @@ Cisza radiowa (brak minimapy), Przeciążenie (Uwaga 50 start), Głód amunicji 
 - Brzmienie: analogowe syntezatory lat 80. (DX7, taśma, szum) + industrialne uderzenia w muzyce; efekty, kroki, bronie i głosy wrogów z nagrań (`AUDIO_PLAN.md`; nagrania żyją poza repo w `prototype/audio_licensed/` i trafiają tylko do buildów).
 - **Propagacja dźwięku przez ściany** — kroki i strzały są filtrowane (muffled) zależnie od geometrii; kluczowe dla horroru. Od 1.7.488 okna ze szkłem (1.2, 1.3) tłumią jak ściana, dopóki szyba jest cała; stłuczona przepuszcza dźwięk, kule i wzrok, a rama dalej zatrzymuje ruch.
 - Dźwięk 3D dla Stalkera (zawsze słyszysz, nigdy nie widzisz).
+- **Pogoda w dźwięku (1.7.573, `WEATHER_PLAN.md` W2–W4):** deszcz słychać na materiale, w który pada (blacha, deski, liście, beton, woda —
+  emitery przy kolumnach mapy z panoramą), w dachu nad głową i w strumieniach z okapów; wiatr ma warstwy i podmuchy od swojej strony, gwiżdże
+  w oknach; grzmot dzieli się na trzask (tylko blisko), toczenie bliższe i dalekie, z kierunkiem i odległością. Pogoda ma osobny suwak i cichnie
+  pod ważnymi sygnałami (zasada Hunta: deszcz nie może zabić dźwięku w rozgrywce).
 - Lektor: tylko radio (nadające głosy), brak pełnego dubbingu.
 
 ---

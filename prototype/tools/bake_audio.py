@@ -93,6 +93,9 @@ CAPTIONS = {
 # .ogg. Pętla Ogg w Godocie jest ciągła co do próbki (sprawdzone zrzutem dekodera przez szew).
 OGG_GROUPS = ("music/", "amb/")
 OGG_QUALITY = 6                                # ok. 190 kb/s stereo
+# pogoda (bake_weather.py): 29 pętli i grzmotów po 60–73 s — szum deszczu i wiatru nie traci na q4 (ok. 128 kb/s), a całość
+# mieści się w budżecie nagrań (WEATHER_PLAN.md: ≤ 25 MB) z zapasem
+OGG_QUALITY_BY = {"amb/weather/": 4}
 SKIP_IMPORT = b'[remap]\n\nimporter="skip"\n'
 
 
@@ -100,9 +103,9 @@ def is_ogg(rel: str) -> bool:
     return rel.startswith(OGG_GROUPS)
 
 
-def _ogg_encode(wav: str, ogg: str) -> None:
+def _ogg_encode(wav: str, ogg: str, quality: int = OGG_QUALITY) -> None:
     """WAV → Ogg Vorbis, deterministycznie (bez znaczników czasu i losowego numeru strumienia); długość co do próbki."""
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", wav, "-c:a", "libvorbis", "-q:a", str(OGG_QUALITY), "-map_metadata", "-1",
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", wav, "-c:a", "libvorbis", "-q:a", str(quality), "-map_metadata", "-1",
                     "-fflags", "+bitexact", "-flags:a", "+bitexact", ogg], check=True)
     with wave.open(wav) as w:
         frames, ch = w.getnframes(), w.getnchannels()
@@ -129,7 +132,7 @@ def write_ogg() -> int:
                 continue
             sha, ogg = bc.file_sha256(wav), os.path.join(root, rel + ".ogg")
             if idx.get(rel) != sha or not os.path.exists(ogg):
-                _ogg_encode(wav, ogg)
+                _ogg_encode(wav, ogg, next((q for pre, q in OGG_QUALITY_BY.items() if rel.startswith(pre)), OGG_QUALITY))
                 done += 1
             new[rel] = sha
             imp = wav + ".import"

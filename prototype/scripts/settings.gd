@@ -17,8 +17,9 @@ const STEP := 0.1
 ## sklepu Steam będzie publiczna (puste = bez przycisku [O]).
 const DEMO := true
 const STORE_URL := ""
-## Rodzaj głośności → szyny z default_bus_layout.tres. „Mic" (voice.gd) celowo poza listą.
-const VOLUME_BUSES := {"master": ["Master"], "music": ["Music"], "ambience": ["Ambience"], "sfx": ["SFX", "UI"]}
+## Rodzaj głośności → szyny z default_bus_layout.tres. „Mic" (voice.gd) celowo poza listą. Pogoda ma własny suwak (WEATHER_PLAN.md D4):
+## szyna „Weather” płynie do „Ambience”, więc suwak otoczenia ścisza też pogodę, a suwak pogody tylko ją.
+const VOLUME_BUSES := {"master": ["Master"], "music": ["Music"], "ambience": ["Ambience"], "weather": ["Weather"], "sfx": ["SFX", "UI"]}
 const SHAKE_NAMES := ["FULL", "HALF", "OFF"]
 ## Efekty pogody (weather_fx.gd): FULL — pełny błysk błyskawic; REDUCED — miękka poświata zamiast błysku i mniej cząsteczek (fotowrażliwość); OFF — bez efektów.
 const WEATHER_FX_NAMES := ["FULL", "REDUCED", "OFF"]
@@ -69,7 +70,7 @@ const BRIGHTNESS_EV := [-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0]
 const BRIGHTNESS_DEFAULT := 4
 const Actions := preload("res://scripts/actions.gd")
 
-var volume := {"master": 1.0, "music": 1.0, "ambience": 1.0, "sfx": 1.0}
+var volume := {"master": 1.0, "music": 1.0, "ambience": 1.0, "weather": 1.0, "sfx": 1.0}
 var shake_idx := 0
 var weather_fx_idx := WEATHER_FX_REDUCED
 var front_idx := 0                         ## indeks FRONT_NAMES (domyślnie ON)
