@@ -1,6 +1,8 @@
 # Wrogowie w spoczynku — plan
 
-Status: **plan z 2026-11-15 (main 1.7.583, c233cc54).** Nic nie wdrożone. Decyzje D1–D4 (§6) przyjęte 2026-11-15 — wszystkie warianty zalecane.
+Status: **plan z 2026-11-15 (main 1.7.583, c233cc54).** Decyzje D1–D4 (§6) przyjęte 2026-11-15 — wszystkie warianty zalecane.
+**I0 + I1 w 1.7.584** (`scripts/idle_life.gd`, SPEC `idle` w `enemy3d.gd`, test `tools/test_idle_life.gd`): przed zmianą dwa Ślepce w filmie
+oddychały z korelacją 0,98, po zmianie −0,34; koszt pozy ok. +0,01 ms na śpiącego wroga w kadrze. A5 (głowa za hałasem) to etap I4.
 Warstwy A i B zmieniają tylko obraz i dźwięk, więc nie czekają na playtest (GDD §16.0a). Warstwa C (przechadzki) zmienia symulację,
 więc wchodzi dopiero po playteście.
 

@@ -13,6 +13,7 @@ const BODY_YAW := -22.0                      ## °: tułów zwrócony ku kamerze
 const CharClips := preload("res://scripts/char_clips.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const Motion := preload("res://scripts/enemy_motion.gd")
+const IdleLife := preload("res://scripts/idle_life.gd")
 const DIR := "res://art/enemy3d/"
 const PRE := "mixamorig_"
 const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Level3D.PX)
@@ -23,6 +24,7 @@ const LIT_GLOW := 1.6                      ## Ćma: emisja ciała w snopie latar
 ## fit: [„height" | „length", rozmiar w pikselach świata] — jak w wypieku; frame_h: wysokość ramki sprite'a (Skoczek wisi u jej góry);
 ## cycle: okres cyklu kroku (s); prof: profil pozy (jak PROF w wypieku); yaw: obrót modelu (stopnie), by przód patrzył w +X.
 ## no_shadow: model nie rzuca cienia (Ćma — rój małych siatek byłby rysowany w każdym przebiegu cieni).
+## idle: profil warstwy spoczynku (idle_life.gd, IDLE_PLAN.md warstwa A) — okres oddechu `breath` (s), tiki `tics`, odstępy `rate` [min, max] s.
 ## walk_clip: zestaw klipów chodu z char_clips.gd — „zombie" (powłóczysty krok) albo „human" (zwykły chód: Mimik udaje człowieka);
 ## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
@@ -32,6 +34,7 @@ const SPEC := {
 	# emisja jak `eye_glow` + ciepłe światło w zapowiedzi). `flare`: ciepła obwódka ciała w ostatniej ćwiartce sekundy zapowiedzi.
 	# `death_floor`: upadek opiera się na najniższym punkcie skóry (przewrót wokół stóp wbijał głowę i rogi w podłogę).
 	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 0.62, "prof": {"lean": 1.0, "lean_walk": 7.0}, "body_motion": true, "gait": "heavy", "clips": true, "clip_amp": 0.6, "stun": true,
+		"idle": {"breath": 3.2, "tics": ["heave", "look"], "rate": [4.0, 9.0]},
 		"eyes": true, "eye_off": [0.33, 0.118, 0.073], "eye_r": 0.028, "eye_lamp": true, "flare": 0.7,
 		"death": {"dir": -1.0, "lean": 12.0, "tilt": 70.0, "dur": 1.2}, "death_floor": true},
 	# Rzeźnik (F4e): model z TRELLIS-a z osobnym tasakiem przypiętym do prawej dłoni (`tools/rig_trellis.py`, art/enemy3d/rzeznik.glb)
@@ -40,20 +43,25 @@ const SPEC := {
 	# `death_blade`: tasak (powierzchnia 1 siatki) wisi z dłoni ostrzem w dół i podpierał zwłoki na sztorc — w przewrocie
 	# dłoń kładzie go płasko na ziemi w kierunku `dir` (układ wroga: +x przód, +z strona kamery).
 	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 0.5, "prof": {"windup": "cleave", "lean": 2.0, "lean_walk": 5.0}, "body_motion": true, "walk_clip": "human", "eye_glow": 0.0, "attack_kind": "cleave", "clips": true, "clip_amp": 0.6, "stun": true,
+		"idle": {"breath": 3.0, "tics": ["heave", "look", "twitch"], "rate": [4.0, 9.0]},
 		"death": {"dir": -1.0, "lean": 0.0, "tilt": 82.0, "dur": 1.2, "hands": [0.2, 1.0, 0.9], "feet": [-0.10, -0.25], "shift": 0.10, "straighten": 1.0}, "death_floor": true, "death_blade": {"surface": 1, "dir": [1.0, -0.5, 0.5]}},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35, "windup": "claw"}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie",
+		"idle": {"breath": 2.2, "tics": ["jerk", "shudder", "twitch", "look"], "rate": [2.5, 7.0]},
 		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}, "death_floor": true},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "zombie",
+		"idle": {"tics": ["look", "jerk", "twitch"], "rate": [3.0, 8.0]},
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	# Kapłan (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/kaplan.glb). Chód `human`, cykl 0,75 s: klip `zombie` z cyklem 1,0 s przy 42 px/s
 	# wlókł prawą stopę po ziemi przez ponad połowę cyklu (1,27 m), a sylwetka przysiadała w wykroku (ELITE_PLACEMENT_PLAN.md K1).
 	# Oczy (`eye_lamp`) i obwódka (`flare`): w ciemności sama sylwetka z zapowiedzią ginie, więc gest musi być widoczny także bez latarki (K4).
 	"kaplan": {"fit": ["height", 44.0], "frame_h": 52.0, "cycle": 0.75, "eyes": true, "eye_off": [0.145, 0.0, 0.035], "eye_r": 0.012, "eye_lamp": true, "flare": 0.6,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "human",
+		"idle": {"breath": 2.8, "tics": ["nod", "look"], "rate": [4.0, 10.0]},
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
 		"prof": {"lean": 5.0, "lean_walk": 8.0, "hy": 0.42, "hz": 0.62, "stride": 0.28, "windup": "reach"}, "clips": true, "attack_kind": "grab", "walk_clip": "zombie",
+		"idle": {"breath": 2.8, "tics": ["jerk", "shudder"], "rate": [4.0, 10.0]},
 		"death": {"dir": 1.0, "lean": 0.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	"skoczek": {"fit": ["height", 17.0], "frame_h": 26.0, "cycle": 0.5, "crawler": true, "clips": true},
 	# Żerca (F4e): model z TRELLIS-a szkieletowany `tools/rig_trellis.py` (art/enemy3d/zerca.glb)
@@ -63,6 +71,7 @@ const SPEC := {
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
 	"mimik": {"model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
+		"idle": {"tics": ["look", "twitch"], "rate": [3.0, 7.0]},
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
 	# Ćma: naturalna rozpiętość ok. 14 cm (1,7 px; było 18 px = 1,5 m); skrzydła machają z własnego zegara (WING_HZ), nie w tempie klatek sprite'a
 	"cma": {"fit": ["width", 1.7], "frame_h": 2.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9, "no_shadow": true},
@@ -249,6 +258,8 @@ var _arm_len := {}
 var _x0 := 0.0                             ## oś ciała (m, układ modelu)
 var _scale := 1.0
 var _t := 0.0
+var life_seed := -1                         ## ziarno warstwy spoczynku (view3d: z nazwy węzła wroga); −1 = z id tego węzła
+var _life: IdleLife                          ## oddech, ciężar i tiki w spoczynku (IDLE_PLAN.md warstwa A)
 var _face := 1.0                             ## −1..1: zwrot w trakcie obrotu (SPEC „turn": Mimik), jak Char3D._face
 var _cam_c := 1.0                            ## −1..1: strona kamery względem modelu (znak zwrotu tułowia ku kamerze)
 var _phase := 0.0
@@ -995,6 +1006,9 @@ func _two_bone(a: int, m: int, e: int, la: float, lb: float, target: Vector3, po
 func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 1, loop := true, air_vy := 0.0, sp := 0, alert := false, horizontal_speed := NAN, step_px := NAN) -> void:
 	_ground_cache.clear()
 	_t += delta
+	if _life == null:
+		_life = IdleLife.new(life_seed if life_seed >= 0 else get_instance_id(), _spec.get("idle", {}))
+	_life.step(delta, anim == "sleep", not _dead and not alert and anim != "windup" and _clip == "" and _sp == 0 and not _airborne)
 	if flip != _last_flip or anim != _prev_anim or global_position.distance_to(_last_position) > 0.8:
 		_foot_locks.clear()
 	_last_flip = flip
@@ -1472,9 +1486,9 @@ func _pose_quad(anim: String, delta: float) -> void:
 	_gallop_w = move_toward(_gallop_w, smoothstep(QUAD_GALLOP[0], QUAD_GALLOP[1], _run_rate) if running else _gallop_w, delta * 4.0)
 	var sy := 1.0
 	if anim == "sleep":                           # zwinięty: spłaszczony, powoli oddycha
-		sy = (0.60 if _no_sit else 1.0) + 0.012 * sin(_t * 1.7)      # siedzi (siad niżej), oddycha wolniej niż obudzony
+		sy = (0.60 if _no_sit else 1.0) + 0.012 * sin(_lt() * 1.7)      # siedzi (siad niżej), oddycha wolniej niż obudzony
 	else:
-		sy = 1.0 + 0.018 * sin(_t * 2.6)
+		sy = 1.0 + 0.018 * sin(_lt() * 2.6)
 	# próbki klipów zbierane przed składaniem pozy (każda próbka przestawia szkielet)
 	var s_run: Array = []
 	var s_gallop: Array = []
@@ -1550,7 +1564,7 @@ func _pose_quad(anim: String, delta: float) -> void:
 	var shift := 0.0
 	var lift := 0.0
 	var arch := 0.0                               # rad: wygięcie kręgosłupa (+ = grzbiet w dół, głowa w górę)
-	arch += deg_to_rad(1.6) * sin(_t * 2.6)
+	arch += deg_to_rad(1.6) * sin(_lt() * 2.6)
 	if _air_w > 0.002 and not clips:              # wznosząc się: nos w górę, spadając: w dół
 		pitch += deg_to_rad(22.0) * clampf(-_air_vy / 275.0, -1.0, 1.0) * _air_w
 		arch += deg_to_rad(6.0) * clampf(-_air_vy / 275.0, -1.0, 1.0) * _air_w
@@ -1741,7 +1755,7 @@ func _death_dur() -> float:
 func _pose_crawler(anim: String) -> void:
 	_sk.reset_bone_poses()
 	var hips: int = _b["Hips"]
-	var ph := _t * TAU / 2.4
+	var ph := _lt() * TAU / 2.4
 	var tilt := 0.0
 	var lift := 0.0
 	var curl := 0.0                                # rad: zwijanie kończyn (śmierć)
@@ -1840,7 +1854,7 @@ func _pose_crawler(anim: String) -> void:
 ## Parametry pozy bazowej dla animacji 2D (jak w wypieku `monster_tripo_bake.py`).
 func _biped_params(anim: String) -> Dictionary:
 	var prof: Dictionary = _spec.get("prof", {})
-	var ph := _phase if (anim == "walk" or anim == "run" or anim == "charge") else _t * TAU / 2.4
+	var ph := _phase if (anim == "walk" or anim == "run" or anim == "charge") else (_life.breath_phase() if _life != null else _t * TAU / 2.4)
 	var l0: float = prof.get("lean", 12.0)
 	var lw: float = prof.get("lean_walk", 14.0)
 	var hy: float = prof.get("hy", 0.62)
@@ -1853,11 +1867,12 @@ func _biped_params(anim: String) -> Dictionary:
 		"hR": Vector3(_x0 + 0.05, hz, hy), "hL": Vector3(_x0 + 0.05, hz, -hy)}
 	match anim:
 		"idle":
-			p["lean"] = l0 + 1.6 * sin(ph)
-			p["bob"] = 0.012 * sin(ph)
+			# oddech niesie klatka i barki (`_idle_post`); tułów kołysze się już tylko lekko, w fazie oddechu egzemplarza
+			p["lean"] = l0 + 0.6 * sin(ph)
+			p["bob"] = 0.006 * sin(ph)
 			p["fR"] = Vector3(0.04, 0, 0)
 			p["fL"] = Vector3(-0.04, 0, 0)
-			var sw := 0.06 * sin(ph)
+			var sw := 0.025 * sin(ph)
 			p["hR"] = Vector3(_x0 + 0.05 + sw, hz, hy)
 			p["hL"] = Vector3(_x0 + 0.05 - sw, hz, -hy)
 		"walk", "run":
@@ -1942,9 +1957,9 @@ func _biped_params(anim: String) -> Dictionary:
 			p["hR"] = Vector3(_x0 + 0.34, hz + 0.28, hy)
 			p["hL"] = Vector3(_x0 + 0.20, hz + 0.36, -hy)
 		"sleep":
-			p["lean"] = sl + 2.0 * sin(ph)
+			p["lean"] = sl + 0.8 * sin(ph)
 			p["drop"] = 0.06
-			p["bob"] = 0.01 * sin(ph)
+			p["bob"] = 0.006 * sin(ph)
 			p["hk"] = 0.3
 			p["fR"] = Vector3(0.05, 0, 0)
 			p["fL"] = Vector3(-0.05, 0, 0)
@@ -1965,7 +1980,66 @@ func _biped_params(anim: String) -> Dictionary:
 		if moving: p["drop"] = 0.01
 		if moving and String(_spec.get("gait", "")) == "heavy":
 			_heavy_gait(p, ph)
+	if (anim == "idle" or anim == "sleep") and _life != null:
+		_idle_shift(p)
 	return p
+
+## Przenoszenie ciężaru w spoczynku (IDLE_PLAN.md A3): biodra nad nogą podporową, druga noga odciążona (lekko z przodu, kolano ugięte —
+## biodro po tej stronie opada), barki przechylają się ku podporze. `IdleLife.shift`: + = ciężar na prawej nodze.
+func _idle_shift(p: Dictionary) -> void:
+	var s: float = _life.shift
+	var a := absf(s)
+	p["sway"] = float(p["sway"]) + 0.035 * s
+	p["drop"] = float(p["drop"]) + 0.012 * a
+	p["roll"] = float(p["roll"]) + 3.0 * s
+	var free_key := "fL" if s > 0.0 else "fR"
+	p[free_key] = (p[free_key] as Vector3) + Vector3(0.035 * a, 0.0, 0.0)
+
+## Oddech klatki i barków oraz tiki (IDLE_PLAN.md A2, A4) nakładane po IK na gotową pozę spoczynku z wagą `w` (0 w ruchu, ciosie, locie).
+## Wszystko poniżej linii barków: tik nie może wyglądać jak zapowiedź ciosu (oczy, uniesione ręce). Ręce idą za klatką, bo są jej dziećmi.
+func _idle_post(w: float) -> void:
+	if _life == null or w < 0.01:
+		return
+	var b: float = _life.breath()
+	var chest := 1.8
+	var tk: float = _life.tic_k * w
+	var tic: String = _life.tic
+	var sg: float = _life.tic_sign
+	if tic == "heave":
+		chest += 4.5 * tk
+		b = maxf(b, tk)
+	# klatka unosi się przy wdechu (obrót w tył), barki idą w górę
+	if _b.has("Spine2"):
+		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(chest) * (b - 0.5) * w)
+	for side in ["Right", "Left"]:
+		if _b.has(side + "Shoulder"):
+			var ss := 1.0 if side == "Right" else -1.0
+			_rot_world(_b[side + "Shoulder"], Vector3.RIGHT, -ss * deg_to_rad(2.2 + (3.0 * tk if tic == "heave" else 0.0)) * b * w)
+	if tk < 0.002:
+		return
+	var head: int = _b["Head"]
+	match tic:
+		"jerk":                                       # szarpnięcie: głowa w bok i w dół, szybko
+			_rot_world(head, Vector3.UP, deg_to_rad(16.0) * sg * tk)
+			_rot_world(head, Vector3.BACK, deg_to_rad(-9.0) * tk)
+		"shudder":                                    # dreszcz tułowia i głowy
+			var o: float = _life.tic_osc()
+			if _b.has("Spine1"):
+				_rot_world(_b["Spine1"], Vector3.BACK, deg_to_rad(1.8) * o * tk)
+			_rot_world(head, Vector3.UP, deg_to_rad(4.0) * o * tk)
+		"twitch":                                     # drgnięcie dłoni po jednej stronie
+			var hand: int = _b["RightHand" if sg > 0.0 else "LeftHand"]
+			_rot_world(hand, Vector3.BACK, deg_to_rad(28.0) * tk)
+		"look":                                       # powolny obrót głowy (przód modelu +X, kamera +Z)
+			_rot_world(head, Vector3.UP, deg_to_rad(30.0) * sg * tk)
+		"heave":
+			_rot_world(head, Vector3.BACK, deg_to_rad(4.0) * tk)
+		"nod":                                        # głowa opada w drzemce, potem się podrywa
+			_rot_world(head, Vector3.BACK, deg_to_rad(-14.0) * tk)
+
+## Zegar spoczynku egzemplarza (oddech czworonoga i pełzacza): bez wspólnej fazy przy wczytaniu mapy.
+func _lt() -> float:
+	return _life.t if _life != null else _t
 
 ## Ciężki chód goryli (SPEC `gait: heavy`). Każda stopa: podpora przez GAIT_STANCE cyklu przesuwa ją liniowo do tyłu z prędkością
 ## ciała (długość kroku = prędkość z DEFS × cykl × podpora, więc stopa nie ślizga się w żadnym tempie), potem przenoszenie z uniesieniem.
@@ -2192,6 +2266,9 @@ func _pose_biped(anim: String, delta: float) -> void:
 	_tilt.basis = Basis(Vector3.BACK, tilt)
 	_tilt.position = Vector3(0.0, lift, 0.0)
 	_apply_biped(p)
+	if not _dead:
+		var rest_w := (float(_w["idle"]) + float(_w["sleep"])) / maxf(sum, 0.0001)
+		_idle_post(rest_w * (1.0 - w_att) * (1.0 - _air_w) * (1.0 - _motion_weight) * (0.0 if _clip == "hit" else 1.0))
 	if _dead:
 		_lay_blade(smoothstep(0.3, 0.85, clampf(_dead_t / _death_dur(), 0.0, 1.0)))
 		# Przewrót wokół stóp wbijał dwunożnych głową, rogami i barkami w podłogę: ciało (SPEC `death_floor`) opiera się na najniższym
