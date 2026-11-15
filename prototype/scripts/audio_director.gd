@@ -174,7 +174,8 @@ var _stem_target: Array[float] = []
 var _stem_enter_at: Array[float] = []  # od kiedy (zegar) stem może zacząć wchodzić
 var _music_layer := -1
 var _music_started := false
-var _drop_to := -1
+const NO_DROP := -2                    # _drop_to: brak zaplanowanego zejścia (-1 to zejście do ciszy)
+var _drop_to := NO_DROP
 var _drop_at := -1.0
 var _duck_db := 0.0
 var _duck_hold := 0.0
@@ -305,6 +306,7 @@ func _shutdown() -> void:
 		n.stream = null
 	_music_layer = -1
 	_music_started = false
+	_drop_to = NO_DROP
 	for wp in _warm_paths:                 # wczytywanie w tle (`_warm_all`) odbieramy przed wyjściem — wątek nie trzyma zasobu przy zamykaniu
 		ResourceLoader.load_threaded_get(wp)
 	_warm.clear()
@@ -764,7 +766,7 @@ func stop_all() -> void:
 		_stem_target[i] = 0.0
 	_music_layer = -1
 	_music_started = false
-	_drop_to = -1
+	_drop_to = NO_DROP
 	_drop_at = -1.0
 	_deaf = 0.0
 	_duck_db = 0.0
@@ -1083,20 +1085,24 @@ func _update_deafness(delta: float) -> void:
 
 # ---------------------------------------------------------------- muzyka
 
-## layer: 0 cisza, 1 napięcie, 2 walka, 3 pościg — STEMY NAKŁADAJĄ SIĘ (0..layer grają).
+## layer: -1 cisza (żaden stem), 0 dron (oddech), 1 napięcie, 2 walka, 3 pościg — STEMY NAKŁADAJĄ SIĘ (0..layer grają).
+## Warstwę wybiera `MusicDirector` (MUSIC_PLAN.md E0); stemy ruszają dopiero przy pierwszej warstwie ≥ 0, potem grają
+## dalej po cichu (-80 dB), żeby wejście kolejnej warstwy trzymało rytm.
 ## Wejście stemu kwantyzowane do beatu; zejście w dół opóźnione (hold), żeby muzyka
 ## nie opadała w sekundę po ostatnim strzale.
 func music_set_layer(layer: int) -> void:
 	if not _enabled:
 		return
 	var top := Manifest.MUSIC_STEMS.size() - 1
-	layer = clampi(layer, 0, top)
+	layer = clampi(layer, -1, top)
+	if layer < 0 and not _music_started:
+		return                                # cisza przed pierwszym zagrożeniem: stemy nawet nie ruszają (menu, początek misji)
 	if not _music_start():
 		return
-	if layer == _music_layer and _drop_to < 0:
+	if layer == _music_layer and _drop_to == NO_DROP:
 		return
 	if layer >= _music_layer:
-		_drop_to = -1
+		_drop_to = NO_DROP
 		_drop_at = -1.0
 		for i in range(layer + 1):
 			if _stem_target[i] < 1.0:
@@ -1147,11 +1153,11 @@ func _quant_delay(stem: int) -> float:
 func _update_music(delta: float) -> void:
 	if not _music_started:
 		return
-	if _drop_to >= 0 and _clock >= _drop_at:
+	if _drop_to != NO_DROP and _clock >= _drop_at:
 		for i in range(_drop_to + 1, _stem_target.size()):
 			_stem_target[i] = 0.0
 		_music_layer = _drop_to
-		_drop_to = -1
+		_drop_to = NO_DROP
 		_drop_at = -1.0
 	if _duck_hold > 0.0:
 		_duck_hold -= delta

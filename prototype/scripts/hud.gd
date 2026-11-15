@@ -42,6 +42,8 @@ const Captions := preload("res://scripts/captions.gd")
 const W := preload("res://scripts/ui_widgets.gd")
 const HudIcon := preload("res://scripts/hud_icon.gd")
 const ResultScreen := preload("res://scripts/result_screen.gd")
+const MusicDirector := preload("res://scripts/music_director.gd")
+const SessionLog := preload("res://scripts/session_log.gd")
 
 ## HUD o kolejne 30% mniejszy (0,8 → 0,56) po przebudowie na układ bez ramek; razem z mnożnikiem SMALL / NORMAL / LARGE (celownik ma własne CROSS_SCALE).
 const UI_SCALE := 0.56
@@ -411,6 +413,7 @@ var _warn_was := false
 var _journal: Control                ## dziennik komunikatów i porad (klawisz akcji „journal”): journal_view.gd
 var _msgs: Control                   ## renderer kanałów komunikatów (alert, toasty, karta tytułowa): message_view.gd
 var _music_layer := -1
+var _music_dir := MusicDirector.new()     ## wynik zagrożenia → warstwa muzyki (MUSIC_PLAN.md E0)
 var _session_t := 0.0
 ## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
 var _controls_mode := -1
@@ -1353,7 +1356,7 @@ func _drive_report_fade() -> void:
 # ---------------------------------------------------------------- klatka
 
 func _process(delta: float) -> void:
-	_drive_music()
+	_drive_music(delta)
 	var in_session := NoiseMgr.has_network()
 	visible = in_session and not Settings.dev_nohud
 	if not in_session:
@@ -2479,16 +2482,12 @@ func _drive_controls() -> void:
 	_f1.visible = not show
 
 ## Muzyka adaptacyjna: 4 warstwy po progach Uwagi (GDD §13).
-func _drive_music() -> void:
-	var lvl := NoiseMgr.level
-	var layer := 0
-	if lvl >= 20.0:
-		layer = 1
-	if lvl >= 45.0:
-		layer = 2
-	if lvl >= 70.0:
-		layer = 3
+## Muzyka (MUSIC_PLAN.md E0): warstwę wybiera wynik zagrożenia lokalnego gracza (`music_director.gd`), nie sama Uwaga;
+## poza misją i w kryjówce cisza. Każda zmiana warstwy trafia do dziennika sesji (`music`: z, do, T) — czas w każdej warstwie.
+func _drive_music(delta: float) -> void:
+	var layer: int = _music_dir.update(delta, _find_local_player() as Node2D, NoiseMgr.has_network())
 	if layer != _music_layer:
+		SessionLog.event("music", {"from": _music_layer, "to": layer, "threat": roundi(_music_dir.threat)})
 		_music_layer = layer
 		Audio.music_set_layer(layer)
 
