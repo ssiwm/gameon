@@ -51,12 +51,16 @@
   "amb/amb_machine",
   1
  ],
- "amb_rain": [
-  "amb/amb_rain",
+ "amb_rain_heavy": [
+  "amb/weather/amb_rain_heavy",
   1
  ],
- "amb_rain_roof": [
-  "amb/amb_rain_roof",
+ "amb_rain_light": [
+  "amb/weather/amb_rain_light",
+  1
+ ],
+ "amb_rain_mid": [
+  "amb/weather/amb_rain_mid",
   1
  ],
  "amb_thud_1": [
@@ -67,8 +71,16 @@
   "sfx/world/amb_thud_2",
   0
  ],
- "amb_wind": [
-  "amb/amb_wind",
+ "amb_wind_low": [
+  "amb/weather/amb_wind_low",
+  1
+ ],
+ "amb_wind_trees": [
+  "amb/weather/amb_wind_trees",
+  1
+ ],
+ "amb_wind_whistle": [
+  "amb/weather/amb_wind_whistle",
   1
  ],
  "ammo_pickup": [
@@ -571,6 +583,46 @@
   "sfx/world/radio_static_loop",
   1
  ],
+ "rain_eave": [
+  "amb/weather/rain_eave",
+  1
+ ],
+ "rain_mask": [
+  "amb/weather/rain_mask",
+  1
+ ],
+ "rain_on_concrete": [
+  "amb/weather/rain_on_concrete",
+  1
+ ],
+ "rain_on_dirt": [
+  "amb/weather/rain_on_dirt",
+  1
+ ],
+ "rain_on_leaves": [
+  "amb/weather/rain_on_leaves",
+  1
+ ],
+ "rain_on_metal": [
+  "amb/weather/rain_on_metal",
+  1
+ ],
+ "rain_on_water": [
+  "amb/weather/rain_on_water",
+  1
+ ],
+ "rain_on_wood": [
+  "amb/weather/rain_on_wood",
+  1
+ ],
+ "rain_roof_metal": [
+  "amb/weather/rain_roof_metal",
+  1
+ ],
+ "rain_roof_wood": [
+  "amb/weather/rain_roof_wood",
+  1
+ ],
  "reload_1": [
   "sfx/weapons/reload_1",
   0
@@ -867,16 +919,48 @@
   "sfx/world/tape_stop",
   0
  ],
- "thunder_1": [
-  "sfx/world/thunder_1",
+ "thunder_crack_1": [
+  "amb/weather/thunder_crack_1",
   0
  ],
- "thunder_2": [
-  "sfx/world/thunder_2",
+ "thunder_crack_2": [
+  "amb/weather/thunder_crack_2",
   0
  ],
- "thunder_3": [
-  "sfx/world/thunder_3",
+ "thunder_crack_3": [
+  "amb/weather/thunder_crack_3",
+  0
+ ],
+ "thunder_rattle_1": [
+  "amb/weather/thunder_rattle_1",
+  0
+ ],
+ "thunder_rattle_2": [
+  "amb/weather/thunder_rattle_2",
+  0
+ ],
+ "thunder_roll_1": [
+  "amb/weather/thunder_roll_1",
+  0
+ ],
+ "thunder_roll_2": [
+  "amb/weather/thunder_roll_2",
+  0
+ ],
+ "thunder_roll_3": [
+  "amb/weather/thunder_roll_3",
+  0
+ ],
+ "thunder_roll_4": [
+  "amb/weather/thunder_roll_4",
+  0
+ ],
+ "thunder_roll_5": [
+  "amb/weather/thunder_roll_5",
+  0
+ ],
+ "thunder_roll_6": [
+  "amb/weather/thunder_roll_6",
   0
  ],
  "trzosek_attack_1": [
@@ -966,6 +1050,14 @@
  "widmo1_shot_2": [
   "sfx/weapons/widmo1_shot_2",
   0
+ ],
+ "wind_gust": [
+  "amb/weather/wind_gust",
+  1
+ ],
+ "wind_window": [
+  "amb/weather/wind_window",
+  1
  ],
  "wolek_attack_1": [
   "sfx/enemies/wolek_attack_1",

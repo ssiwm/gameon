@@ -355,6 +355,50 @@ func sky_open_at(p: Vector2) -> bool:
 			return false
 	return true
 
+## Gdzie w kolumnie `c` spada deszcz (WEATHER_PLAN.md W2, weather_sound.gd): [wiersz pierwszej bryły albo kładki od góry, materiał
+## kropel, pod nią powietrze (okap: z krawędzi takiego dachu kapie)]. Materiał: "metal", "wood", "dirt", "concrete", "water",
+## "leaves" (grunt pod drzewem — korony nad lasem); [-1, "", false] poza mapą. Ta sama zasada co tekstura dachów deszczu w widoku 3D:
+## pod pierwszą bryłą nie pada.
+func rain_top(c: int) -> Array:
+	if _map.is_empty() or c < 0 or c >= (_map[0] as String).length():
+		return [-1, "", false]
+	var tree := false
+	for r in _map.size():
+		var ch := _ch(c, r)
+		if ch == "w":
+			tree = true
+		var cell := Vector2i(c, r)
+		if _wall_cells.has(cell):
+			return [r, _wall_rain_mat(String(_wall_cells[cell])), not _is_solid(c, r + 1)]
+		if _dig_cells.has(cell):
+			return [r, "dirt", not _is_solid(c, r + 1)]
+		if ch == "|":
+			return [r, "concrete", not _is_solid(c, r + 1)]                              # szyba okna: twarde kropelki
+		if not KINDS.has(ch) or int(KINDS[ch][2]) == 2:
+			continue
+		var surf := String(KINDS[ch][1])
+		if ch == "-":
+			surf = "wood"                                       # kładka z desek
+		elif surf in ["mud", "oil"]:
+			surf = "water"                                      # bagno i kałuża oleju: plusk
+		elif surf in ["ice", "snow", ""]:
+			surf = "concrete" if surf == "ice" else "dirt"
+		if surf == "dirt" and tree:
+			surf = "leaves"
+		return [r, surf, not _is_solid(c, r + 1)]
+	return [_map.size(), "dirt", false]
+
+func _wall_rain_mat(wall_name: String) -> String:
+	for d in _wall_defs:
+		if String(d["name"]) == wall_name:
+			match String(d.get("material", "")):
+				"planks":
+					return "wood"
+				"grate":
+					return "metal"
+			return "concrete"
+	return "concrete"
+
 ## Znak tła w komórce ze znacznikiem (S, W, Y, g…) albo „.” gdy brak. Słup (pień `w`) przechodzi przez komórkę, jeśli jest nad nią albo pod nią —
 ## inaczej pień kończył się kafel nad ziemią, gdy u podstawy stał znacznik, i wyglądał jak wiszący w powietrzu. W pozostałych przypadkach tło
 ## dziedziczymy z lewego sąsiada (szukamy w lewo ponad sąsiednimi znacznikami — kilka znaczników obok siebie nie zostawia czarnych dziur w ścianie),

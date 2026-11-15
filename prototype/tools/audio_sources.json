@@ -641,6 +641,14 @@
    "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
+  "metal_rattle_shudder": {
+   "kind": "lib",
+   "file": "sonniss/2024/Pole Position - The Stormbat Hull Interaction Library/Metal - RATTLE - Shudder Constant - Geofon.wav",
+   "sha256": "eba66252b0ef1589fbee0009458efe6fda60985c3da8be0bb09a89ce45264571",
+   "pack": "Sonniss GDC 2024 — The Stormbat Hull Interaction Library",
+   "supplier": "Pole Position",
+   "license": "sonniss-gdc-2.0"
+  },
   "monster1_breathing3": {
    "kind": "lib",
    "file": "sonniss/2020/David Dumais Audio - Monster Sound FX Pack 1/Monster1_Breathing3.wav",
@@ -745,6 +753,54 @@
    "supplier": "MatiasMacSD",
    "license": "sonniss-gdc-2.0"
   },
+  "rain_cabin_porch": {
+   "kind": "lib",
+   "file": "sonniss/2020/Ivo Vicic - Rain in urban and natural environment/92 Rain_mountain_cabin_porch MS STEREO.WAV",
+   "sha256": "695cd213d07b33c9c473e13fca61090c2b899f73b6ffafbe65e2dc0d733e948e",
+   "pack": "Sonniss GDC 2020 — Rain in urban and natural environment",
+   "supplier": "Ivo Vicic",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_concrete": {
+   "kind": "lib",
+   "file": "sonniss/2023/InspectorJ - Essentials 06 Rain/RAINConc_InsJ_Ambience_Rain_Moderate_03_LOOP.wav",
+   "sha256": "bf18dc8607ff12946b7915f911acbf1743cf1df182c02a0f764063cde60db37d",
+   "pack": "Sonniss GDC 2023 — Essentials 06 Rain",
+   "supplier": "InspectorJ",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_drippy": {
+   "kind": "lib",
+   "file": "sonniss/2020/PMSFX - Rain Designer/PM_RD_RAIN_8_MODERATE_DRIPPY.wav",
+   "sha256": "bde8c266a247b9843a8813cf52e587d135e9c94dba201d00ca11908a49047488",
+   "pack": "Sonniss GDC 2020 — Rain Designer",
+   "supplier": "PMSFX",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_drops_metal": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 5of8/Pole Position - Thunder & Rain/rain_medium_steady_some_drops_on_metal_h4n.wav",
+   "sha256": "8aa39f7166b8ef6a7f6598ed6a349b25cbc272806930f42098a1d15b3aec7fb6",
+   "pack": "Sonniss GDC 2019 — Thunder & Rain",
+   "supplier": "Pole Position",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_forest_day": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 2of9/Charlie Atanasyan - Thailand sound library by Faunethic/Rain in forest the day_120118_13.wav",
+   "sha256": "7ffb4e6e50faa5500ff27afbdffbc9b5cfa6f116159d7c65bfa6370e9585204c",
+   "pack": "Sonniss GDC 2017 — Thailand sound library by Faunethic",
+   "supplier": "Charlie Atanasyan",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_forest_leaves": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Invisible - Storm, gale and thunderstorm/rain_shower of rain_steady rain_forest_leaves.wav",
+   "sha256": "3e56fdf6938b1db8e2790433c396dabb7362a69cd59917db5f6b74d3921e3925",
+   "pack": "Sonniss GDC 2019 — Storm, gale and thunderstorm",
+   "supplier": "Invisible",
+   "license": "sonniss-gdc-2.0"
+  },
   "rain_hard_loop": {
    "kind": "lib",
    "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 3of9/Double Trouble Audio - Rain and Thunder/RATH - Rain Hard Loop 08.wav",
@@ -753,12 +809,68 @@
    "supplier": "Double Trouble Audio",
    "license": "sonniss-gdc-2.0"
   },
+  "rain_heavy_ext": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 1of8/3maze - EXT/rain_heavy_001.wav",
+   "sha256": "85570578c957d2359e0491d6cf0d5f3187105acd44fbcb687b9746511059bce8",
+   "pack": "Sonniss GDC 2019 — EXT",
+   "supplier": "3maze",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_light_washed": {
+   "kind": "lib",
+   "file": "sonniss/2020/Soundholder - Rain & Thunder/ambient rain light washed out stereo MS.wav",
+   "sha256": "201d1f55c97b1f2c115197eeb7b810aead513348ad93554bab64888b89739b1e",
+   "pack": "Sonniss GDC 2020 — Rain & Thunder",
+   "supplier": "Soundholder",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_metal_roof": {
+   "kind": "lib",
+   "file": "sonniss/2023/toneglowlibraries - Wind and Rain Interior/Rain, Interior, Garage, Rainfall, Pour, Metal roof.wav",
+   "sha256": "616304f0e7126e9f78d6bb725ca908729198f897ae6a2dad1ba68f00b89683a9",
+   "pack": "Sonniss GDC 2023 — Wind and Rain Interior",
+   "supplier": "toneglowlibraries",
+   "license": "sonniss-gdc-2.0"
+  },
   "rain_on_plastic": {
    "kind": "lib",
    "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 3of9/Double Trouble Audio - Rain and Thunder/RATH - Rain on Plastic Outside Loop.wav",
    "sha256": "09215ed515ebf00d1520fcb28a2d5754b76d7e09bddf27c06bf44d41f4705dbd",
    "pack": "Sonniss GDC 2017 — Rain and Thunder",
    "supplier": "Double Trouble Audio",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_porch_soft": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 2of8/Borg Sound – Rain Indoor Ambiences/Rain EXT_Porch, Soft rain.wav",
+   "sha256": "dc33a9a8afcb74f6c5b5a6b8e7087e69054b71cde33e58a9b7b5550a909b0d85",
+   "pack": "Sonniss GDC 2018 — Rain Indoor Ambiences",
+   "supplier": "Borg Sound",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_roof_runoff": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 5of8/Sound Ex Machina - RAIN CITY/Soft rain, water flowing down from the roof and splashes on cement, city ambience, loop.wav",
+   "sha256": "bd960b5e36f30c5a77b2f8d9bcf02d75b7ebe901cad90450821324b183fbd86c",
+   "pack": "Sonniss GDC 2019 — RAIN CITY",
+   "supplier": "Sound Ex Machina",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_umbrella": {
+   "kind": "lib",
+   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 1of9/3maze - European Ambiances/rain_umbrella_001_wide.wav",
+   "sha256": "816901c7f78c4d88b0d76adb7f63f8aaab72093500b25b2f40257dc489a67052",
+   "pack": "Sonniss GDC 2017 — European Ambiances",
+   "supplier": "3maze",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rain_vegetation": {
+   "kind": "lib",
+   "file": "sonniss/2023/InspectorJ - Essentials 06 Rain/RAINVege_InsJ_Ambience_Rain_Moderate_02_LOOP.wav",
+   "sha256": "6b0750433cde58b386831eaa3a90ef99f0a53aea02be17aa99bedc3c32586198",
+   "pack": "Sonniss GDC 2023 — Essentials 06 Rain",
+   "supplier": "InspectorJ",
    "license": "sonniss-gdc-2.0"
   },
   "rifle_pickup_004": {
@@ -953,12 +1065,68 @@
    "supplier": "Soundrangers",
    "license": "sonniss-gdc-2.0"
   },
+  "thunder_distant_03": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers – Thunder/thunder_mountainous_distant_03.wav",
+   "sha256": "826819caa8d1639270e510fe9805cf1aafffa284f7e5eb10120d95d6b79db9f5",
+   "pack": "Sonniss GDC 2018 — Thunder",
+   "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
+  "thunder_distant_insj": {
+   "kind": "lib",
+   "file": "sonniss/2023/InspectorJ - Essentials 01 Thunder/THUN_InsJ_Thunder_Distant_01_EQ.wav",
+   "sha256": "a9b412423cc5706dc887eaa2b6f415d4b96b531ef19bd102d2aa890627e27abf",
+   "pack": "Sonniss GDC 2023 — Essentials 01 Thunder",
+   "supplier": "InspectorJ",
+   "license": "sonniss-gdc-2.0"
+  },
+  "thunder_distant_mono": {
+   "kind": "lib",
+   "file": "sonniss/2020/Soundholder - Rain & Thunder/ambient thunder clap distant with rain mono.wav",
+   "sha256": "2236611c88a7709c89d03a7c775b35dddd025d9606793ddace59db4cdcb9216b",
+   "pack": "Sonniss GDC 2020 — Rain & Thunder",
+   "supplier": "Soundholder",
+   "license": "sonniss-gdc-2.0"
+  },
+  "thunder_powerful": {
+   "kind": "lib",
+   "file": "sonniss/2023/Stefano Cremona - Pure Nature Ambiences/ThunderPowerful.wav",
+   "sha256": "a724c0841081b3748a8fa5509fa98a3a5ec3834e3a97030b3d04c0a07bce599d",
+   "pack": "Sonniss GDC 2023 — Pure Nature Ambiences",
+   "supplier": "Stefano Cremona",
+   "license": "sonniss-gdc-2.0"
+  },
   "thunder_strike_03": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers – Thunder/thunder_strike_03.wav",
    "sha256": "4e339f274349e1aa216f4dd520688bb572e5b1c58d7085449d9b7905d21ab436",
    "pack": "Sonniss GDC 2018 — Thunder",
    "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
+  "thunder_vclose_03": {
+   "kind": "lib",
+   "file": "sonniss/2023/InspectorJ - Essentials 01 Thunder/THUN_InsJ_Thunder_Very-Close_Rain_03.wav",
+   "sha256": "dae1d99d7223458ae674a5b24c3d055149bc020ed35126fa801741b71bd45b3e",
+   "pack": "Sonniss GDC 2023 — Essentials 01 Thunder",
+   "supplier": "InspectorJ",
+   "license": "sonniss-gdc-2.0"
+  },
+  "thunder_vclose_08": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/InspectorJ - 44.1 General Library/Thunder_Very-Close_Rain_08.wav",
+   "sha256": "1bb87040a855df977893de4d9dae6e5e1b4164d78fa23d5c792e44857b305b7f",
+   "pack": "Sonniss GDC 2019 — 44.1 General Library",
+   "supplier": "InspectorJ",
+   "license": "sonniss-gdc-2.0"
+  },
+  "thunder_xclose_03": {
+   "kind": "lib",
+   "file": "sonniss/2023/InspectorJ - Essentials 01 Thunder/THUN_InsJ_Thunder_Extremely-Close_03.wav",
+   "sha256": "9761f1b47f73027f5e409b5c4b2faff8bd2736b0bd54fd9fe84f104c338f4ac4",
+   "pack": "Sonniss GDC 2023 — Essentials 01 Thunder",
+   "supplier": "InspectorJ",
    "license": "sonniss-gdc-2.0"
   },
   "troll_death_01": {
@@ -1025,10 +1193,34 @@
    "supplier": "Rescopic Sound",
    "license": "sonniss-gdc-2.0"
   },
+  "wind_desert_loop": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers - Wind/wind_desert_01_60_loop.wav",
+   "sha256": "f1302790e4ac24fa024b6a45409b165afe3d72e21e6aaa52717e6128505d6674",
+   "pack": "Sonniss GDC 2018 — Wind",
+   "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
+  "wind_gusts_long": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 2of8/Discover Oregon - Wind and Storms/Wind Gusts 2016 Lookout Snow - Biggest Gusts Long.wav",
+   "sha256": "46593657e18983fca11b6dd7f5a7d25f1462104b06cc2fd53b1146b238325f44",
+   "pack": "Sonniss GDC 2018 — Wind and Storms",
+   "supplier": "Discover Oregon",
+   "license": "sonniss-gdc-2.0"
+  },
   "wind_howl_gust": {
    "kind": "lib",
    "file": "sonniss/2016/Hzandbits - Howling Winds - Interior/Wind,Int,Howl,Forceful,Tonal,Vocal,Gust.wav",
    "sha256": "9486561415e15a37f145676149511a16e5981e599da405ce91ccbbda2e03ee71",
+   "pack": "Sonniss GDC 2016 — Howling Winds - Interior",
+   "supplier": "Hzandbits",
+   "license": "sonniss-gdc-2.0"
+  },
+  "wind_howl_mumble": {
+   "kind": "lib",
+   "file": "sonniss/2016/Hzandbits - Howling Winds - Interior/Wind,Int,Howl,Tonal,Mumble.wav",
+   "sha256": "ded7eb618120fba3a8534ef6ced241eabc6567f76ec212935ebc19f670d441a9",
    "pack": "Sonniss GDC 2016 — Howling Winds - Interior",
    "supplier": "Hzandbits",
    "license": "sonniss-gdc-2.0"
@@ -1039,6 +1231,22 @@
    "sha256": "df2c0f7af4e6158f93b31fb1d9eb432c043d4d7a223ca9be95c786fff647afdb",
    "pack": "Sonniss GDC 2018 — Wind",
    "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
+  "wind_open_window": {
+   "kind": "lib",
+   "file": "sonniss/2016/Hzandbits - Howling Winds - Interior/Wind,Raindrops,Int,Open window,Long whoosh.wav",
+   "sha256": "48ad04ea455679976d25169c57a39e545d3ab897bd95a7fe80db69cdcd42f6ec",
+   "pack": "Sonniss GDC 2016 — Howling Winds - Interior",
+   "supplier": "Hzandbits",
+   "license": "sonniss-gdc-2.0"
+  },
+  "wind_pines": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Ivo Vicic - Winter textures vol.1/58 Wind in pines_mid field_MS stereo.wav",
+   "sha256": "e9e1eec383cb39c39465d225429ab21290a9dfa34d650bed38900228d54a2a17",
+   "pack": "Sonniss GDC 2019 — Winter textures vol.1",
+   "supplier": "Ivo Vicic",
    "license": "sonniss-gdc-2.0"
   },
   "wood_crash_13": {

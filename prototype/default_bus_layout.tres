@@ -22,6 +22,15 @@ db = 1
 cutoff_hz = 480.0
 db = 2
 
+[sub_resource type="AudioEffectAmplify" id="Duck_weather"]
+
+[sub_resource type="AudioEffectLowPassFilter" id="Under_weather"]
+cutoff_hz = 20500.0
+db = 1
+
+[sub_resource type="AudioEffectLowPassFilter" id="Thunder_lp"]
+cutoff_hz = 20500.0
+
 [sub_resource type="AudioEffectReverb" id="Reverb_amb"]
 room_size = 0.85
 damping = 0.2
@@ -143,3 +152,21 @@ bus/11/volume_db = -8.0
 bus/11/send = &"SFX"
 bus/11/effect/0/effect = SubResource("Occ_blocked")
 bus/11/effect/0/enabled = true
+bus/12/name = &"Weather"
+bus/12/solo = false
+bus/12/mute = false
+bus/12/bypass_fx = false
+bus/12/volume_db = 0.0
+bus/12/send = &"Ambience"
+bus/12/effect/0/effect = SubResource("Duck_weather")
+bus/12/effect/0/enabled = true
+bus/12/effect/1/effect = SubResource("Under_weather")
+bus/12/effect/1/enabled = true
+bus/13/name = &"Thunder"
+bus/13/solo = false
+bus/13/mute = false
+bus/13/bypass_fx = false
+bus/13/volume_db = 0.0
+bus/13/send = &"Weather"
+bus/13/effect/0/effect = SubResource("Thunder_lp")
+bus/13/effect/0/enabled = true

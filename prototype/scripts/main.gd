@@ -20,6 +20,7 @@ const Look := preload("res://scripts/look.gd")
 const Lights := preload("res://scripts/lights.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const WeatherSound := preload("res://scripts/weather_sound.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const WORKSHOP_TEST := preload("res://scripts/workshop_test.gd")
@@ -4137,8 +4138,12 @@ func _gen_test() -> void:
 	for wid in Weather.KINDS:
 		w_hud_ok = w_hud_ok and Weather.short_of(String(wid)) != "" and Weather.name_of(String(wid)) != "" and Weather.color_of(String(wid)) != Color.WHITE
 	check.call("pogoda (HUD, radiostacja): każda pogoda ma nazwę, kolor i krótki opis skutków", w_hud_ok)
-	check.call("pogoda (dźwięk): są pętle deszczu i grzmoty (amb_rain, amb_rain_roof, thunder_1..3)",
-		Audio.stream("amb_rain") != null and Audio.stream("amb_rain_roof") != null and Audio.variant("thunder", 3) >= 0)
+	var w_snd_ok := Audio.variant("thunder_crack", 3) >= 0 and Audio.variant("thunder_roll", 6) >= 0 and Audio.variant("thunder_rattle", 2) >= 0
+	for wk in WeatherSound.BEDS + ["rain_roof_metal", "rain_roof_wood", "rain_eave", "rain_mask", "wind_gust", "wind_window"] + WeatherSound.WIND_LAYERS.keys():
+		w_snd_ok = w_snd_ok and Audio.stream(String(wk)) != null
+	for wm in WeatherSound.DROPS:
+		w_snd_ok = w_snd_ok and Audio.stream(String(WeatherSound.DROPS[wm][0])) != null
+	check.call("pogoda (dźwięk): pętle deszczu (tło, krople na materiałach, dach, okap, kaptur), wiatru i grzmoty (trzask 3, toczenie 6, szyby 2)", w_snd_ok)
 	check.call("pogoda: burza / mgła / deszcz / pogodnie dają swoje mnożniki hałasu, amunicji i progów Stalkera, brak pogody = bez zmian", w_ok)
 	check.call("odprawa następnej misji (%s): tytuł, cel, %d rodzajów wrogów, %d gniazd, boss=%s" % [after_hub, (brief["counts"] as Dictionary).size(), int(brief["nests"]), str(brief["boss"])],
 		String(brief["title"]) != "" and String(brief["brief"]) != "" and (brief["counts"] as Dictionary).has("trzosek") and int(brief["nests"]) == 4 and bool(brief["boss"]))

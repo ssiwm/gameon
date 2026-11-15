@@ -16,6 +16,7 @@ import numpy as np
 
 import audio_dsp as d
 import bake_hybrid
+import bake_weather
 from audio_dsp import SR, Rng, ms, sec
 from bake_common import asset, finalize, group, ir, ring, thump, tick
 
@@ -169,12 +170,9 @@ def _rain_roof(n: int, rng: Rng, shared: np.ndarray) -> np.ndarray:
 def build_ambience() -> None:
     group("amb")
     specs = [
-        ("amb_wind", 12.0, _wind, -18.0, 0xA100),
         ("amb_forest", 12.0, _forest, -14.0, 0xA200),
         ("amb_machine", 8.0, _machine, -15.0, 0xA300),
         ("amb_air", 10.0, _air, -18.0, 0xA500),
-        ("amb_rain", 12.0, _rain, -16.0, 0xA600),
-        ("amb_rain_roof", 10.0, _rain_roof, -17.0, 0xA700),
     ]
     for key, dur, fn, target, seed in specs:
         asset(key, "amb/" + key, loop=True)
@@ -193,4 +191,6 @@ def build_ambience() -> None:
     bed = _drips(n, r)
     floor = d.stereo_noise_bed(lambda rr: d.circ_filter(d.colored(n, rr, 1.6), lambda z: d.lp(z, 300.0, order=2)) * 0.12, r)
     finalize("amb_drips", bed + floor, loop=True, lufs=-20.0)
+    bake_weather.build_weather()                            # pogoda (WEATHER_PLAN.md W2–W4): deszcz, wiatr, grzmot
     bake_hybrid.ambience()                                  # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
+    bake_hybrid.weather()                                   # pogoda z nagrań → audio_licensed/

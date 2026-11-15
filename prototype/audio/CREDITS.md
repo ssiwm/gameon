@@ -95,6 +95,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | male_grunt_shout_317 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Humans | SoundBits | sonniss-gdc-2.0 | Male_Grunt-Shout_317.wav |
 | male_shout_pain_132 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Humans | SoundBits | sonniss-gdc-2.0 | Male_Shout-of-Pain_132.wav |
 | metal_creak_13 | nagranie | Sonniss GDC 2017 — Unsettling Creaks and Squeaks | SoundBits | sonniss-gdc-2.0 | Metal_Creak_13.wav |
+| metal_rattle_shudder | nagranie | Sonniss GDC 2024 — The Stormbat Hull Interaction Library | Pole Position | sonniss-gdc-2.0 | Metal - RATTLE - Shudder Constant - Geofon.wav |
 | monster1_breathing3 | nagranie | Sonniss GDC 2020 — Monster Sound FX Pack 1 | David Dumais Audio | sonniss-gdc-2.0 | Monster1_Breathing3.wav |
 | monster_growls_4 | nagranie | Sonniss GDC 2018 — Monsters | Olivier Girardot | sonniss-gdc-2.0 | Monster Growls 4.wav |
 | monster_roar_growl_009 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Monsters | SoundBits | sonniss-gdc-2.0 | Monster_Roar_Growl_009.wav |
@@ -108,8 +109,21 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | puddle_splashes | nagranie | Sonniss GDC 2020 — Footsteps | Wav Junction Sound Effects | sonniss-gdc-2.0 | 0014_Footsteps_water_puddle_single_splashes.wav |
 | quake_rumble | nagranie | Sonniss GDC 2024 — Alien Tripod | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0292_alien_tripod_debris_rock_collapse_earthquake_rumble_large_005.wav |
 | radio_tuning_static | nagranie | Sonniss GDC 2016 — NOISE | MatiasMacSD | sonniss-gdc-2.0 | OldRadioTuningStaticNoise_001.wav |
+| rain_cabin_porch | nagranie | Sonniss GDC 2020 — Rain in urban and natural environment | Ivo Vicic | sonniss-gdc-2.0 | 92 Rain_mountain_cabin_porch MS STEREO.WAV |
+| rain_concrete | nagranie | Sonniss GDC 2023 — Essentials 06 Rain | InspectorJ | sonniss-gdc-2.0 | RAINConc_InsJ_Ambience_Rain_Moderate_03_LOOP.wav |
+| rain_drippy | nagranie | Sonniss GDC 2020 — Rain Designer | PMSFX | sonniss-gdc-2.0 | PM_RD_RAIN_8_MODERATE_DRIPPY.wav |
+| rain_drops_metal | nagranie | Sonniss GDC 2019 — Thunder & Rain | Pole Position | sonniss-gdc-2.0 | rain_medium_steady_some_drops_on_metal_h4n.wav |
+| rain_forest_day | nagranie | Sonniss GDC 2017 — Thailand sound library by Faunethic | Charlie Atanasyan | sonniss-gdc-2.0 | Rain in forest the day_120118_13.wav |
+| rain_forest_leaves | nagranie | Sonniss GDC 2019 — Storm, gale and thunderstorm | Invisible | sonniss-gdc-2.0 | rain_shower of rain_steady rain_forest_leaves.wav |
 | rain_hard_loop | nagranie | Sonniss GDC 2017 — Rain and Thunder | Double Trouble Audio | sonniss-gdc-2.0 | RATH - Rain Hard Loop 08.wav |
+| rain_heavy_ext | nagranie | Sonniss GDC 2019 — EXT | 3maze | sonniss-gdc-2.0 | rain_heavy_001.wav |
+| rain_light_washed | nagranie | Sonniss GDC 2020 — Rain & Thunder | Soundholder | sonniss-gdc-2.0 | ambient rain light washed out stereo MS.wav |
+| rain_metal_roof | nagranie | Sonniss GDC 2023 — Wind and Rain Interior | toneglowlibraries | sonniss-gdc-2.0 | Rain, Interior, Garage, Rainfall, Pour, Metal roof.wav |
 | rain_on_plastic | nagranie | Sonniss GDC 2017 — Rain and Thunder | Double Trouble Audio | sonniss-gdc-2.0 | RATH - Rain on Plastic Outside Loop.wav |
+| rain_porch_soft | nagranie | Sonniss GDC 2018 — Rain Indoor Ambiences | Borg Sound | sonniss-gdc-2.0 | Rain EXT_Porch, Soft rain.wav |
+| rain_roof_runoff | nagranie | Sonniss GDC 2019 — RAIN CITY | Sound Ex Machina | sonniss-gdc-2.0 | Soft rain, water flowing down from the roof and splashes on cement, city ambience, loop.wav |
+| rain_umbrella | nagranie | Sonniss GDC 2017 — European Ambiances | 3maze | sonniss-gdc-2.0 | rain_umbrella_001_wide.wav |
+| rain_vegetation | nagranie | Sonniss GDC 2023 — Essentials 06 Rain | InspectorJ | sonniss-gdc-2.0 | RAINVege_InsJ_Ambience_Rain_Moderate_02_LOOP.wav |
 | rifle_pickup_004 | nagranie | Sonniss GDC 2017 — MECHANISM | SoundMorph | sonniss-gdc-2.0 | Mechanism - AssaultRifle_PickUp_004.wav |
 | rock_hit_dirt_07 | nagranie | Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02 | Mechanical Wave | sonniss-gdc-2.0 | Multiple Rock Hit Dirt_RBDII 07.wav |
 | rock_into_gravel_06 | nagranie | Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02 | Mechanical Wave | sonniss-gdc-2.0 | Hit Rock into Gravel_RBDII 06.wav |
@@ -134,7 +148,14 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | tape_play_stop | nagranie | Sonniss GDC 2020 — Studer A80 Master recorder analog tape machine | Ivo Vicic | sonniss-gdc-2.0 | 50 Studer A80_play_stop_15 IPS_mono_contact mic_B.wav |
 | thunder_clap_04 | nagranie | Sonniss GDC 2018 — Thunder | Soundrangers | sonniss-gdc-2.0 | thunder_clap_04.wav |
 | thunder_crack_02 | nagranie | Sonniss GDC 2018 — Thunder | Soundrangers | sonniss-gdc-2.0 | thunder_mountainous_big_crack_02.wav |
+| thunder_distant_03 | nagranie | Sonniss GDC 2018 — Thunder | Soundrangers | sonniss-gdc-2.0 | thunder_mountainous_distant_03.wav |
+| thunder_distant_insj | nagranie | Sonniss GDC 2023 — Essentials 01 Thunder | InspectorJ | sonniss-gdc-2.0 | THUN_InsJ_Thunder_Distant_01_EQ.wav |
+| thunder_distant_mono | nagranie | Sonniss GDC 2020 — Rain & Thunder | Soundholder | sonniss-gdc-2.0 | ambient thunder clap distant with rain mono.wav |
+| thunder_powerful | nagranie | Sonniss GDC 2023 — Pure Nature Ambiences | Stefano Cremona | sonniss-gdc-2.0 | ThunderPowerful.wav |
 | thunder_strike_03 | nagranie | Sonniss GDC 2018 — Thunder | Soundrangers | sonniss-gdc-2.0 | thunder_strike_03.wav |
+| thunder_vclose_03 | nagranie | Sonniss GDC 2023 — Essentials 01 Thunder | InspectorJ | sonniss-gdc-2.0 | THUN_InsJ_Thunder_Very-Close_Rain_03.wav |
+| thunder_vclose_08 | nagranie | Sonniss GDC 2019 — 44.1 General Library | InspectorJ | sonniss-gdc-2.0 | Thunder_Very-Close_Rain_08.wav |
+| thunder_xclose_03 | nagranie | Sonniss GDC 2023 — Essentials 01 Thunder | InspectorJ | sonniss-gdc-2.0 | THUN_InsJ_Thunder_Extremely-Close_03.wav |
 | troll_death_01 | nagranie | Sonniss GDC 2017 — Troll Monster Vocalizations | Gamemaster Audio | sonniss-gdc-2.0 | troll_monster_death_01.wav |
 | troll_growl_long_05 | nagranie | Sonniss GDC 2017 — Troll Monster Vocalizations | Gamemaster Audio | sonniss-gdc-2.0 | troll_monster_growl_long_05.wav |
 | usas12_close_1m | nagranie | Sonniss GDC 2016 — USAS-12 12g solid slug | Pole Position Production | sonniss-gdc-2.0 | USAS-12_12g_solid_slug_1m_right_CS3_clean_Double_shots_x_1.wav |
@@ -143,8 +164,13 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | werewolf_growl_06 | nagranie | Sonniss GDC 2026 — Halloween Game - Haunted House and Horror Audio Scare Kit | Epic Stock Media | sonniss-gdc-2.0 | CREABeast_Creature Werewolf Growl Menacing Monstrous 06_ESM_HALG.wav |
 | whip_21 | nagranie | Sonniss GDC 2020 — Hand Guns Sound Effects Pack | Olivier Girardot | sonniss-gdc-2.0 | Whip sound 21.wav |
 | whoosh_wind_gust_11 | nagranie | Sonniss GDC 2024 — Distinct Whooshes | Rescopic Sound | sonniss-gdc-2.0 | WHSH_Airy-Whoosh Wind Gust 11_RSCPC_DW.wav |
+| wind_desert_loop | nagranie | Sonniss GDC 2018 — Wind | Soundrangers | sonniss-gdc-2.0 | wind_desert_01_60_loop.wav |
+| wind_gusts_long | nagranie | Sonniss GDC 2018 — Wind and Storms | Discover Oregon | sonniss-gdc-2.0 | Wind Gusts 2016 Lookout Snow - Biggest Gusts Long.wav |
 | wind_howl_gust | nagranie | Sonniss GDC 2016 — Howling Winds - Interior | Hzandbits | sonniss-gdc-2.0 | Wind,Int,Howl,Forceful,Tonal,Vocal,Gust.wav |
+| wind_howl_mumble | nagranie | Sonniss GDC 2016 — Howling Winds - Interior | Hzandbits | sonniss-gdc-2.0 | Wind,Int,Howl,Tonal,Mumble.wav |
 | wind_mountain_loop | nagranie | Sonniss GDC 2018 — Wind | Soundrangers | sonniss-gdc-2.0 | wind_harsh_mountain_02_30_loop.wav |
+| wind_open_window | nagranie | Sonniss GDC 2016 — Howling Winds - Interior | Hzandbits | sonniss-gdc-2.0 | Wind,Raindrops,Int,Open window,Long whoosh.wav |
+| wind_pines | nagranie | Sonniss GDC 2019 — Winter textures vol.1 | Ivo Vicic | sonniss-gdc-2.0 | 58 Wind in pines_mid field_MS stereo.wav |
 | wood_crash_13 | nagranie | Sonniss GDC 2024 — Explosion SFX Pack | DavidDumais | sonniss-gdc-2.0 | WOODCrsh_Designed Wood Crash And Debris 13_DDUMAIS_NONE.wav |
 | wood_impact_23 | nagranie | Sonniss GDC 2023 — Melee Weapons Sound Effects Pack 1 | David Dumais Audio | sonniss-gdc-2.0 | WOODImpt_Impact Wood 23_DDUMAIS_NONE.wav |
 | yeti_grumble_02 | nagranie | Sonniss GDC 2018 — Yeti Monster | Articulated Sounds | sonniss-gdc-2.0 | MONSTER Yeti grumble 02.wav |
