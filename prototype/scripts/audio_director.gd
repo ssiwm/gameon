@@ -196,6 +196,31 @@ var _health := 0
 var _health_db := 0.0                             # wygładzone
 var _music_lp_hz := 20500.0                       # wygładzone; łączy się z głuchotą (min)
 var _music_lp: AudioEffectLowPassFilter
+## Segmenty (MUSIC_PLAN.md E2): wszystkie warianty warstwy grają razem na wspólnej siatce, słychać jeden. Cała muzyka
+## zmienia sekcję (wariant każdej warstwy) NARAZ i tylko na początku pętli; przenikanie kończy się dokładnie na granicy.
+## Po odsłuchu 1.7.580: warstwy zmieniane osobno co 1–3 frazy brzmiały chaotycznie, jak zmiany tempa.
+const SEG_XF := 0.6                               ## s przenikania sekcji tuż przed początkiem pętli (ok. jeden beat)
+const SEG_RUN := Vector2i(2, 4)                   ## ile pętli (po 20 s) gra sekcja, zanim przyjdzie następna
+const CADENCE_CUT := 0.7                          ## s wyciszenia warstwy pod uderzeniem kadencji (zamiast 5–6 s)
+const CADENCE_MIN_GAIN := 0.6                     ## kadencja tylko, gdy kończąca się warstwa była naprawdę słychać
+const PALETTE_CHECK := 1.0                        ## s między sprawdzeniami mapy (paleta zmienia się dopiero w ciszy)
+var _seg: Array = []                              # per stem: Array[AudioStreamPlayer], [0] = _music[i]
+var _seg_n: Array[int] = []                       # per stem: ile wariantów ma paleta
+var _seg_cur: Array[int] = []                     # per stem: słyszany wariant
+var _seg_prev: Array[int] = []                    # per stem: wariant, z którego trwa przenikanie (-1 brak)
+var _sec := 0                                     # grająca sekcja (wariant warstwy = _sec % liczba wariantów)
+var _sec_left := 2                                # pętli do zmiany sekcji
+var _seg_xf_end := -1.0                           # zegar: koniec przenikania (= granica frazy)
+var _seg_next_ok := 0.0                           # zegar: od kiedy wolno zaplanować kolejną granicę
+var _seg_rng := RandomNumberGenerator.new()
+var _palette := "default"
+var _palette_want := "default"
+var _palette_t := 0.0
+var _cad: AudioStreamPlayer
+var _cad_key := ""                                # kadencja w drodze ("" brak)
+var _cad_land := -1.0                             # zegar: początek taktu, w który trafia uderzenie
+var _cad_started := false
+var _stem_fast: Array[bool] = []                  # per stem: wycinany pod kadencją (CADENCE_CUT)
 var _duck_db := 0.0
 var _duck_hold := 0.0
 
@@ -251,6 +276,15 @@ func _ready() -> void:
 		_stem_gain.append(0.0)
 		_stem_target.append(0.0)
 		_stem_enter_at.append(0.0)
+		_stem_fast.append(false)
+		_seg.append([m])
+		_seg_n.append(1)
+		_seg_cur.append(0)
+		_seg_prev.append(-1)
+	_cad = AudioStreamPlayer.new()
+	_cad.bus = BUS_MUSIC
+	add_child(_cad)
+	_seg_rng.randomize()
 	for _k in MOTIF_KEYS:
 		var mm := AudioStreamPlayer.new()
 		mm.bus = BUS_MUSIC
@@ -326,12 +360,17 @@ func _shutdown() -> void:
 	for n in _pos_pool:
 		n.stop()
 		n.stream = null
-	for n in _music:
-		n.stop()
-		n.stream = null
+	for players in _seg:
+		for n in players:
+			n.stop()
+			n.stream = null
 	for n in _motif:
 		n.stop()
 		n.stream = null
+	if _cad != null:
+		_cad.stop()
+		_cad.stream = null
+	_reset_segments()
 	for i in _stem_target.size():               # po ponownym włączeniu stemy nie wracają do warstw sprzed wyłączenia
 		_stem_target[i] = 0.0
 		_stem_gain[i] = 0.0
@@ -797,9 +836,12 @@ func stop_all() -> void:
 	for n in _pos_pool:
 		n.stop()
 	for i in _music.size():
-		_music[i].stop()
+		for n in _seg[i]:
+			n.stop()
 		_stem_gain[i] = 0.0
 		_stem_target[i] = 0.0
+	_cad.stop()
+	_reset_segments()
 	for i in _motif.size():
 		_motif[i].stop()
 		_motif_x[i] = 0.0
@@ -1152,6 +1194,9 @@ func music_set_layer(layer: int) -> void:
 	if layer >= _music_layer:
 		_drop_to = NO_DROP
 		_drop_at = -1.0
+		_cad_key = ""                                        # walka wróciła: zejście odwołane (zagrana kadencja wybrzmiewa sama)
+		_cad_land = -1.0
+		_cad_started = false
 		for i in range(layer + 1):
 			if _stem_target[i] < 1.0:
 				_stem_target[i] = 1.0
@@ -1166,28 +1211,96 @@ func music_set_layer(layer: int) -> void:
 func _music_start() -> bool:
 	if _music_started:
 		return true
-	var ok := true
-	for i in Manifest.MUSIC_STEMS.size():
-		if stream(Manifest.MUSIC_STEMS[i]) == null:
-			ok = false
-	if not ok:
+	var keys := _palette_keys(_palette_want)
+	if keys.is_empty():
 		return false
-	# Start wszystkich stemów w TEJ SAMEJ chwili miksu (lock = wątek audio czeka),
-	# inaczej jeden z nich mógłby ruszyć bufor później → przesunięcie fazy rytmu.
+	_palette = _palette_want
+	_start_players(keys)
+	_music_started = true
+	_music_layer = -1                                    # warstwy ustawia music_set_layer (start mógł przyjść od motywu)
+	return true
+
+
+## Warianty warstw z palety (E2) — tylko te, które mają plik; warstwa bez żadnego wariantu wraca do stemu bazowego.
+## Pusta tablica = muzyki nie da się uruchomić.
+func _palette_keys(pal: String) -> Array:
+	var segs: Dictionary = Manifest.MUSIC_SEGMENTS
+	var layers: Array = segs.get(pal, segs.get("default", []))
+	var out: Array = []
+	for i in Manifest.MUSIC_STEMS.size():
+		var ok: Array = []
+		for k in (layers[i] if i < layers.size() else []):
+			if Manifest.PATHS.has(k) and stream(k) != null:
+				ok.append(k)
+		if ok.is_empty() and stream(Manifest.MUSIC_STEMS[i]) != null:
+			ok.append(Manifest.MUSIC_STEMS[i])
+		if ok.is_empty():
+			return []
+		out.append(ok)
+	return out
+
+
+## Paleta dla mapy: najpierw cała nazwa („z1_b1”), potem strefa („z1”), na końcu „default”.
+static func palette_for(map_id: String) -> String:
+	var segs: Dictionary = Manifest.MUSIC_SEGMENTS
+	if segs.has(map_id):
+		return map_id
+	var zone := map_id.get_slice("_", 0)
+	return zone if segs.has(zone) else "default"
+
+
+## Start wszystkich wariantów wszystkich warstw i motywu w TEJ SAMEJ chwili miksu (lock = wątek audio czeka),
+## inaczej któryś mógłby ruszyć bufor później → przesunięcie fazy rytmu.
+func _start_players(keys: Array) -> void:
+	for i in _seg.size():
+		while _seg[i].size() < keys[i].size():
+			var p := AudioStreamPlayer.new()
+			p.bus = BUS_MUSIC
+			p.volume_db = -80.0
+			add_child(p)
+			_seg[i].append(p)
+	_reset_segments()
 	AudioServer.lock()
-	for i in _music.size():
-		_music[i].stream = stream(Manifest.MUSIC_STEMS[i])
-		_music[i].volume_db = -80.0
-		_music[i].play()
+	for i in _seg.size():
+		_seg_n[i] = keys[i].size()
+		for v in _seg[i].size():
+			var p: AudioStreamPlayer = _seg[i][v]
+			p.stop()
+			p.volume_db = -80.0
+			p.stream = stream(keys[i][v]) if v < keys[i].size() else null
+			if p.stream != null:
+				p.play()
 	for i in _motif.size():                              # motyw na tej samej siatce: start w tej samej chwili miksu
 		_motif[i].stream = stream(MOTIF_KEYS[i]) if Manifest.PATHS.has(MOTIF_KEYS[i]) else null
 		_motif[i].volume_db = -80.0
 		if _motif[i].stream != null:
 			_motif[i].play()
 	AudioServer.unlock()
-	_music_started = true
-	_music_layer = -1                                    # warstwy ustawia music_set_layer (start mógł przyjść od motywu)
-	return true
+
+
+func _reset_segments() -> void:
+	for i in _seg_cur.size():
+		_seg_cur[i] = 0
+		_seg_prev[i] = -1
+		_stem_fast[i] = false
+	_sec = 0
+	_sec_left = _seg_rng.randi_range(SEG_RUN.x, SEG_RUN.y)
+	_seg_xf_end = -1.0
+	_seg_next_ok = 0.0
+	_cad_key = ""
+	_cad_land = -1.0
+	_cad_started = false
+
+
+## Pozycja w pętli (s) wg pierwszego stemu — wszystkie warianty i motyw grają na tej samej siatce.
+func _music_pos() -> float:
+	if not _music_started or not _music[0].playing:
+		return 0.0
+	return _music[0].get_playback_position() + AudioServer.get_time_since_last_mix()
+
+
+func _bar_len() -> float:
+	return 4.0 * 60.0 / float(Manifest.MUSIC_BPM)
 
 
 ## Czas do następnej siatki rytmicznej danego stemu (s). 0 = natychmiast.
@@ -1196,20 +1309,144 @@ func _quant_delay(stem: int) -> float:
 		return 0.0
 	var beat := 60.0 / float(Manifest.MUSIC_BPM)
 	var grid: float = beat * [1.0, 1.0, 0.5, 0.25][clampi(stem, 0, 3)]
-	var pos := _music[0].get_playback_position() + AudioServer.get_time_since_last_mix()
-	var d := grid - fmod(pos, grid)
+	var d := grid - fmod(_music_pos(), grid)
 	return 0.0 if d > grid - 0.02 else d
 
 
+## Ile sekund do taktu, w który trafi kadencja: następny początek taktu, ale nie na takt z MUSIC_CADENCE_SKIP_BARS (manifest)
+## i nie bliżej niż przedbieg pliku (inaczej uderzenie spóźniłoby się o ułamek).
+func _cadence_wait(pos: float) -> float:
+	var bar := _bar_len()
+	var bars := int(Manifest.MUSIC_BEATS / 4)
+	var cur := int(floor(pos / bar)) % bars
+	var wait := bar - fmod(pos, bar)
+	var nxt := (cur + 1) % bars
+	if wait < float(Manifest.MUSIC_CADENCE_PRE) + 0.03:
+		wait += bar
+		nxt = (nxt + 1) % bars
+	while nxt in Manifest.MUSIC_CADENCE_SKIP_BARS:
+		wait += bar
+		nxt = (nxt + 1) % bars
+	return wait
+
+
+## Kadencja przy zejściu z `from` do `to`: najwyższa gasnąca warstwa, która ma kadencję i była słychać.
+func _cadence_key(from: int, to: int) -> String:
+	var cads: Array = Manifest.MUSIC_CADENCES
+	for i in range(mini(from, _stem_gain.size() - 1), to, -1):
+		if i < cads.size() and String(cads[i]) != "" and _stem_gain[i] >= CADENCE_MIN_GAIN and Manifest.PATHS.has(cads[i]):
+			return cads[i]
+	return ""
+
+
+## Sekcje (E2): tuż przed początkiem pętli, gdy skończył się przydział pętli, cała muzyka przechodzi na następną sekcję —
+## każda warstwa na swój wariant tej sekcji. Przenikanie SEG_XF kończy się na samej granicy pętli.
+func _update_segments(pos: float) -> void:
+	if _seg_xf_end >= 0.0 and _clock >= _seg_xf_end:
+		for i in _seg_prev.size():
+			_seg_prev[i] = -1
+		_seg_xf_end = -1.0
+	var loop := float(Manifest.MUSIC_LOOP_SEC)
+	var to_b := loop - fmod(pos, loop)
+	if to_b > SEG_XF or _clock < _seg_next_ok:
+		return
+	_seg_next_ok = _clock + to_b + 1.0                   # jedna decyzja na granicę
+	_sec_left -= 1
+	if _sec_left > 0:
+		return
+	_sec_left = _seg_rng.randi_range(SEG_RUN.x, SEG_RUN.y)
+	var n_max := 1
+	for n in _seg_n:
+		n_max = maxi(n_max, n)
+	if n_max < 2:
+		return
+	var nxt := _seg_rng.randi_range(0, n_max - 2)
+	if nxt >= _sec:
+		nxt += 1                                         # zawsze inna niż grająca
+	_sec = nxt
+	_seg_xf_end = _clock + to_b
+	for i in _seg_cur.size():
+		var v := _sec % _seg_n[i]
+		if v != _seg_cur[i]:
+			_seg_prev[i] = _seg_cur[i]
+			_seg_cur[i] = v
+
+
+## Udział wariantu v warstwy i w jej głośności (0..1) — liniowe przenikanie, warianty mają tę samą głośność, harmonię i rytm.
+func _seg_weight(i: int, v: int) -> float:
+	var k := 1.0
+	if _seg_prev[i] >= 0 and _seg_xf_end >= 0.0:
+		k = clampf(1.0 - (_seg_xf_end - _clock) / SEG_XF, 0.0, 1.0)
+	if v == _seg_cur[i]:
+		return k
+	if v == _seg_prev[i]:
+		return 1.0 - k
+	return 0.0
+
+
+## Kadencja w drodze: uruchomiona z przedbiegiem pliku (play od MUSIC_CADENCE_PRE − czas do taktu), żeby uderzenie
+## trafiło w początek taktu co do bufora miksu, a nie co do klatki.
+func _update_cadence(pos: float) -> void:
+	if _cad_key == "" or _cad_started:
+		return
+	var pre := float(Manifest.MUSIC_CADENCE_PRE)
+	var est := _cad_land - _clock
+	if est > pre:
+		return
+	var bar := _bar_len()
+	var to_bar := bar - fmod(pos, bar)
+	var lead := to_bar if absf(to_bar - est) < 0.2 else maxf(est, 0.0)   # pozycja audio dokładniejsza niż zegar klatek
+	_cad.stream = stream(_cad_key)
+	_cad.volume_db = _health_db
+	if _cad.stream != null:
+		_cad.play(clampf(pre - lead, 0.0, pre))
+	_cad_started = true
+
+
+## Paleta zmienia się z mapą (E2), ale stemy grają przez całą sesję — podmiana dopiero, gdy wszystko ucichło.
+func _update_palette(delta: float) -> void:
+	_palette_t -= delta
+	if _palette_t > 0.0:
+		return
+	_palette_t = PALETTE_CHECK
+	var lvl := get_tree().get_first_node_in_group("level") if is_inside_tree() else null
+	if lvl == null or lvl.get("map_id") == null:
+		return
+	_palette_want = palette_for(String(lvl.get("map_id")))
+	if not _music_started or _palette_want == _palette:
+		return
+	if _stem_gain.any(func(g: float) -> bool: return g > 0.0) or _motif_x.any(func(x: float) -> bool: return x > 0.0):
+		return
+	var keys := _palette_keys(_palette_want)
+	if keys.is_empty():
+		return
+	_palette = _palette_want
+	_start_players(keys)
+
+
 func _update_music(delta: float) -> void:
+	_update_palette(delta)
 	if not _music_started:
 		return
+	var pos := _music_pos()
 	if _drop_to != NO_DROP and _clock >= _drop_at:
-		for i in range(_drop_to + 1, _stem_target.size()):
-			_stem_target[i] = 0.0
-		_music_layer = _drop_to
-		_drop_to = NO_DROP
-		_drop_at = -1.0
+		if _cad_key == "":
+			_cad_key = _cadence_key(_music_layer, _drop_to)
+			if _cad_key != "":
+				_cad_land = _clock + _cadence_wait(pos)
+				_cad_started = false
+		if _cad_key == "" or _clock >= _cad_land:
+			var cads: Array = Manifest.MUSIC_CADENCES
+			for i in range(_drop_to + 1, _stem_target.size()):
+				_stem_target[i] = 0.0
+				_stem_fast[i] = _cad_key != "" and i < cads.size() and String(cads[i]) != ""
+			_music_layer = _drop_to
+			_drop_to = NO_DROP
+			_drop_at = -1.0
+			_cad_key = ""
+			_cad_land = -1.0
+	_update_cadence(pos)
+	_update_segments(pos)
 	if _duck_hold > 0.0:
 		_duck_hold -= delta
 	else:
@@ -1219,12 +1456,16 @@ func _update_music(delta: float) -> void:
 	for i in _music.size():
 		var blend: float = Manifest.MUSIC_BLEND[i]
 		if _stem_target[i] > 0.5:
+			_stem_fast[i] = false
 			if _clock >= _stem_enter_at[i]:
 				_stem_gain[i] = minf(1.0, _stem_gain[i] + delta / maxf(0.05, blend))
 		else:
-			_stem_gain[i] = maxf(0.0, _stem_gain[i] - delta / float(MUSIC_FADE_OUT[mini(i, MUSIC_FADE_OUT.size() - 1)]))
+			var out_s: float = CADENCE_CUT if _stem_fast[i] else float(MUSIC_FADE_OUT[mini(i, MUSIC_FADE_OUT.size() - 1)])
+			_stem_gain[i] = maxf(0.0, _stem_gain[i] - delta / out_s)
 		var g := _fade_gain(_stem_gain[i]) * duck * life
-		_music[i].volume_db = -80.0 if g <= 0.0001 else linear_to_db(g)
+		for v in _seg_n[i]:
+			var gv := g * _seg_weight(i, v)
+			_seg[i][v].volume_db = -80.0 if gv <= 0.0001 else linear_to_db(gv)
 	for i in _motif.size():
 		var tgt: float = _motif_target[i]
 		if _motif_x[i] < tgt:

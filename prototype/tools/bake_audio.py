@@ -195,6 +195,18 @@ def write_manifest() -> None:
         "const MUSIC_BPM := %.1f" % m.BPM,
         "const MUSIC_BEATS := %d" % m.BEATS,
         "const MUSIC_LOOP_SEC := %.6f" % (m.LOOP_N / bc.SR),
+        "# Segmenty (MUSIC_PLAN.md E2): warianty warstw grają razem, runtime zmienia całą sekcję naraz na początku pętli.",
+        "# Paleta: map_id poziomu -> strefa (prefiks przed „_”) -> \"default\". Kadencja: warstwa -> klucz zakończenia.",
+        "const MUSIC_SEGMENTS := {",
+    ]
+    for pal, layers in m.SEGMENTS.items():
+        lines.append('	"%s": [%s],' % (pal, ", ".join("[%s]" % ", ".join('"%s"' % k for k in lay) for lay in layers)))
+    lines += [
+        "}",
+        "const MUSIC_CADENCES := [%s]" % ", ".join('"%s"' % k for k in m.CADENCES),
+        "const MUSIC_CADENCE_PRE := %.3f" % m.CADENCE_PRE,
+        "# Takty, na które kadencja nie siada (czeka takt dłużej) — zależy od harmonii materiału.",
+        "const MUSIC_CADENCE_SKIP_BARS := [%s]" % ", ".join(str(b) for b in m.CADENCE_SKIP_BARS),
         "",
         "# Napisy dla niesłyszących: prefiks klucza -> [tekst, ważność 0-3].",
         "const CAPTIONS := {",

@@ -491,12 +491,32 @@
   "music/mus_chase",
   1
  ],
+ "mus_chase_b": [
+  "music/mus_chase_b",
+  1
+ ],
+ "mus_chase_end": [
+  "music/mus_chase_end",
+  0
+ ],
  "mus_combat": [
   "music/mus_combat",
   1
  ],
+ "mus_combat_b": [
+  "music/mus_combat_b",
+  1
+ ],
+ "mus_combat_end": [
+  "music/mus_combat_end",
+  0
+ ],
  "mus_silence": [
   "music/mus_silence",
+  1
+ ],
+ "mus_silence_b": [
+  "music/mus_silence_b",
   1
  ],
  "mus_stalker_far": [
@@ -509,6 +529,10 @@
  ],
  "mus_tension": [
   "music/mus_tension",
+  1
+ ],
+ "mus_tension_b": [
+  "music/mus_tension_b",
   1
  ],
  "oc_load": [

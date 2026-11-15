@@ -145,6 +145,36 @@ func _initialize() -> void:
 	for i in 600:
 		sm.step(0.1, MD.NOISE_MAX)
 	_check("sam hałas (najwyżej NOISE_MAX) nie podtrzymuje muzyki", sm.layer == -1 and MD.NOISE_MAX < float(MD.DOWN[0]))
+	# przebieg z odsłuchu 1.7.580 (dziennik sesji): T walki krąży wokół progu pościgu — surowo 85 przez 7 s, 40 przez 9 s
+	sm = MD.new(3)
+	var chase_in := 0
+	var chase_len := 0.0
+	var chase_min := 1e9
+	var flips := 0
+	last = -1
+	for i in 3000:
+		sm.step(0.1, 85.0 if (i % 160) < 70 else 40.0)
+		if sm.layer == 3:
+			chase_len += 0.1
+		if sm.layer != last:
+			flips += 1
+			if sm.layer == 3:
+				chase_in += 1
+			elif last == 3:
+				chase_min = minf(chase_min, chase_len)
+			if sm.layer != 3:
+				chase_len = 0.0
+			last = sm.layer
+	_check("T krąży wokół progu pościgu przez 5 min: %d wejść pościgu (było ~14), najkrótszy %.0f s, %d zmian warstwy" % [chase_in, chase_min, flips],
+		chase_in <= 6 and chase_min >= MD.CHASE_MIN_ON - 0.01 and flips <= 13)
+	var hc = MD.new(4)
+	hc._base = 2
+	var hme := Vector2.ZERO
+	var harr: Array = []
+	for i in MD.HORDE_N:
+		harr.append({"pos": Vector2(100 + i * 10, 0), "what": "enemy", "aware": 2, "elite": false, "id": 900 + i, "scream": false})
+	hc.cues(0.1, hme, harr)
+	_check("w trwającej walce horda nie gra drugi raz", hc.cue == "")
 
 	# --- E1: motyw Stalkera
 	var mo = MD.new(5)
@@ -289,7 +319,131 @@ func _initialize() -> void:
 	var man: GDScript = load("res://scripts/audio_manifest.gd")
 	_check("w manifeście motyw (pętle) i sygnały", ["mus_stalker_far", "mus_stalker_near", "cue_elite", "cue_horde"].all(func(k: String) -> bool: return man.PATHS.has(k))
 		and man.LOOPS.has("mus_stalker_far") and man.LOOPS.has("mus_stalker_near"))
+	# --- E2: segmenty, kadencje, palety
+	var segs: Dictionary = man.MUSIC_SEGMENTS
+	var seg_ok := true
+	for pal in segs:
+		for lay in segs[pal]:
+			for k in lay:
+				seg_ok = seg_ok and man.PATHS.has(k) and man.LOOPS.has(k)
+	_check("palety: każdy wariant w manifeście i zapętlony", seg_ok and segs.has("default") and (segs["default"] as Array).size() == man.MUSIC_STEMS.size())
+	_check("domyślna paleta: każda warstwa ma ≥ 2 warianty, pierwszy = stem bazowy",
+		range(man.MUSIC_STEMS.size()).all(func(i: int) -> bool: return (segs["default"][i] as Array).size() >= 2 and segs["default"][i][0] == man.MUSIC_STEMS[i]))
+	_check("kadencje walki i pościgu w manifeście, jednorazowe", ["mus_combat_end", "mus_chase_end"].all(func(k: String) -> bool: return man.PATHS.has(k) and not man.LOOPS.has(k))
+		and man.MUSIC_CADENCES[2] == "mus_combat_end" and man.MUSIC_CADENCES[3] == "mus_chase_end" and man.MUSIC_CADENCES[0] == "")
+	_check("paleta wg mapy: z1_b1 → własna, z1_m1 → default, pusta → default",
+		audio.palette_for("z1_b1") == "z1_b1" and audio.palette_for("z1_m1") == "default" and audio.palette_for("") == "default")
+	audio.set_enabled(true)
+	audio.music_set_layer(2)
+	var all_play := true
+	for i in audio._seg.size():
+		for v in audio._seg_n[i]:
+			all_play = all_play and audio._seg[i][v].playing
+	_check("start: wszystkie warianty grają razem (%s)" % str(audio._seg_n), all_play and audio._seg_n == [2, 2, 2, 2])
+	audio._stem_gain[2] = 1.0
+	audio._health_db = 0.0
+	audio._duck_db = 0.0
+	audio._update_music(0.0)
+	_check("słychać tylko pierwszy wariant (%.0f / %.0f dB)" % [audio._seg[2][0].volume_db, audio._seg[2][1].volume_db],
+		audio._seg[2][0].volume_db > -3.0 and audio._seg[2][1].volume_db <= -79.0)
+	var loop_s: float = man.MUSIC_LOOP_SEC
+	audio._seg_rng.seed = 87
+	audio._sec_left = 2
+	audio._seg_next_ok = 0.0
+	audio._update_segments(audio._bar_len() * 4.0 - 0.3)
+	_check("granica frazy w środku pętli: sekcja się nie zmienia", audio._seg_cur.all(func(v: int) -> bool: return v == 0) and audio._sec_left == 2)
+	audio._update_segments(loop_s - 0.3)
+	_check("pierwsza granica pętli: sekcja trwa dalej (przydział 2 pętle)", audio._seg_cur.all(func(v: int) -> bool: return v == 0) and audio._sec_left == 1)
+	audio._clock += 1.5
+	audio._update_segments(loop_s - 0.3)
+	_check("koniec przydziału: cała muzyka naraz w sekcji B (%s)" % str(audio._seg_cur), audio._seg_cur.all(func(v: int) -> bool: return v == 1) and audio._seg_prev.all(func(v: int) -> bool: return v == 0))
+	var wcur: float = audio._seg_weight(2, 1)
+	_check("przenikanie w połowie (%.2f) kończy się na początku pętli" % wcur, wcur > 0.4 and wcur < 0.6 and absf(wcur + audio._seg_weight(2, 0) - 1.0) < 0.001)
+	var cur_before: Array = audio._seg_cur.duplicate()
+	audio._update_segments(loop_s - 0.1)
+	_check("jedna decyzja na granicę", audio._seg_cur == cur_before)
+	audio._clock += 0.31
+	audio._update_segments(0.01)
+	_check("po granicy gra sama sekcja B", audio._seg_prev.all(func(v: int) -> bool: return v == -1) and audio._seg_weight(2, 1) == 1.0 and audio._seg_weight(2, 0) == 0.0)
+	# 8 minut: sekcje się zmieniają, ale nigdy częściej niż co 2 pętle (40 s), i zawsze wszystkie warstwy razem
+	var sec_changes := 0
+	var min_gap := 1e9
+	var since := 0.0
+	var together := true
+	var prev_cur: Array = audio._seg_cur.duplicate()
+	for k in int(480.0 / loop_s):
+		audio._clock += loop_s
+		since += loop_s
+		audio._update_segments(loop_s - 0.3)
+		audio._clock += 0.5
+		audio._update_segments(0.2)
+		together = together and audio._seg_cur.all(func(v: int) -> bool: return v == audio._seg_cur[0])
+		if audio._seg_cur != prev_cur:
+			sec_changes += 1
+			min_gap = minf(min_gap, since)
+			since = 0.0
+		prev_cur = audio._seg_cur.duplicate()
+	_check("8 min: %d zmian sekcji, najkrócej %.0f s, zawsze cała muzyka naraz" % [sec_changes, min_gap], sec_changes >= 3 and min_gap >= 2.0 * loop_s and together)
+	# kadencja: walka kończy się uderzeniem na takcie, nie wyciszeniem
+	var bar: float = audio._bar_len()
+	_check("kadencja: następny takt (%.2f s)" % audio._cadence_wait(0.1), absf(audio._cadence_wait(0.1) - (bar - 0.1)) < 0.001)
+	var skip: Array = man.MUSIC_CADENCE_SKIP_BARS
+	_check("kadencja siada na następnym takcie poza MUSIC_CADENCE_SKIP_BARS (%s)" % str(skip),
+		absf(audio._cadence_wait(2.0 * bar + 0.5) - ((2.0 if skip.has(3) else 1.0) * bar - 0.5)) < 0.001
+		and absf(audio._cadence_wait(6.0 * bar + 0.5) - ((2.0 if skip.has(7) else 1.0) * bar - 0.5)) < 0.001)
+	_check("E3: 64 BPM, pętla 30 s, pedał D — kadencja na każdym takcie", man.MUSIC_BPM == 64.0 and absf(man.MUSIC_LOOP_SEC - 30.0) < 0.001 and skip.is_empty())
+	_check("kadencja nie bliżej niż przedbieg pliku", absf(audio._cadence_wait(bar - 0.1) - (bar + 0.1)) < 0.001)
+	audio.music_set_layer(2)
+	audio._stem_gain[1] = 1.0
+	audio._stem_gain[2] = 1.0
+	audio.music_set_layer(1)
+	audio._clock = audio._drop_at
+	audio._update_music(0.0)
+	_check("zejście z walki: kadencja w drodze (%s za %.2f s), walka gra do taktu" % [audio._cad_key, audio._cad_land - audio._clock],
+		audio._cad_key == "mus_combat_end" and audio._cad_land > audio._clock and audio._stem_target[2] == 1.0)
+	audio._clock = audio._cad_land - 0.1
+	audio._update_music(0.0)
+	_check("kadencja rusza z przedbiegiem przed taktem", audio._cad_started and audio._cad.playing)
+	audio._clock = audio._cad_land + 0.01
+	audio._update_music(0.0)
+	audio._update_music(0.35)
+	_check("na takcie walka schodzi pod uderzeniem (%.2f), napięcie zostaje (%.2f)" % [audio._stem_gain[2], audio._stem_gain[1]],
+		audio._music_layer == 1 and audio._stem_fast[2] and audio._stem_gain[2] < 0.6 and audio._stem_gain[1] == 1.0 and audio._cad_key == "")
+	audio._update_music(0.5)
+	_check("walka ucichła w < 1 s", audio._stem_gain[2] == 0.0)
+	audio.music_set_layer(2)
+	audio._stem_gain[2] = 1.0
+	audio.music_set_layer(1)
+	audio._clock = audio._drop_at
+	audio._update_music(0.0)
+	audio.music_set_layer(2)
+	_check("walka wraca przed taktem: kadencja odwołana", audio._cad_key == "" and audio._drop_to == audio.NO_DROP and audio._stem_target[2] == 1.0)
+	audio._stem_gain[2] = 0.3
+	audio.music_set_layer(1)
+	audio._clock = audio._drop_at
+	audio._update_music(0.0)
+	_check("ledwo słyszana walka: bez kadencji, zwykłe wyciszenie", audio._cad_key == "" and audio._stem_target[2] == 0.0 and not audio._stem_fast[2])
+	# paleta strefy podmienia się dopiero w ciszy
+	var gs := GDScript.new()
+	gs.source_code = "extends Node\nvar map_id := \"z1_b1\"\n"
+	gs.reload()
+	var lvl: Node = gs.new()
+	lvl.add_to_group("level")
+	root.add_child(lvl)
+	audio._palette_t = 0.0
+	audio._update_music(0.0)
+	_check("mapa bossa, muzyka gra: paleta czeka (%s)" % audio._palette, audio._palette == "default" and audio._palette_want == "z1_b1")
+	for i in audio._stem_gain.size():
+		audio._stem_gain[i] = 0.0
+		audio._stem_target[i] = 0.0
+	audio._motif_x.fill(0.0)
+	audio._palette_t = 0.0
+	audio._update_music(0.0)
+	_check("w ciszy paleta bossa: zaczyna od sekcji B (%s)" % audio._seg[1][0].stream.resource_path.get_file(),
+		audio._palette == "z1_b1" and audio._seg[1][0].stream.resource_path.ends_with("mus_tension_b.ogg") and audio._seg_n[1] == 2 and audio._seg[1][0].playing)
+	lvl.queue_free()
 	audio.shutdown()
+	_check("wyłączenie: wszystkie warianty i kadencja stoją", audio._seg.all(func(a: Array) -> bool: return a.all(func(p: AudioStreamPlayer) -> bool: return not p.playing and p.stream == null)) and not audio._cad.playing)
 
 	print("%s (test_music: %d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	quit(0 if _fails == 0 else 1)

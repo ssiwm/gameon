@@ -126,11 +126,17 @@ const PATHS := {
 	"moth_dust_2": "res://audio/sfx/enemies/moth_dust_2.wav",
 	"moth_flutter_loop": "res://audio/sfx/enemies/moth_flutter_loop.wav",
 	"mus_chase": "res://audio/music/mus_chase.ogg",
+	"mus_chase_b": "res://audio/music/mus_chase_b.ogg",
+	"mus_chase_end": "res://audio/music/mus_chase_end.ogg",
 	"mus_combat": "res://audio/music/mus_combat.ogg",
+	"mus_combat_b": "res://audio/music/mus_combat_b.ogg",
+	"mus_combat_end": "res://audio/music/mus_combat_end.ogg",
 	"mus_silence": "res://audio/music/mus_silence.ogg",
+	"mus_silence_b": "res://audio/music/mus_silence_b.ogg",
 	"mus_stalker_far": "res://audio/music/mus_stalker_far.ogg",
 	"mus_stalker_near": "res://audio/music/mus_stalker_near.ogg",
 	"mus_tension": "res://audio/music/mus_tension.ogg",
+	"mus_tension_b": "res://audio/music/mus_tension_b.ogg",
 	"oc_load": "res://audio/sfx/ui/oc_load.wav",
 	"p64_far_1": "res://audio/sfx/weapons/p64_far_1.wav",
 	"p64_far_2": "res://audio/sfx/weapons/p64_far_2.wav",
@@ -311,11 +317,15 @@ const LOOPS := [
 	"mine_beep_loop",
 	"moth_flutter_loop",
 	"mus_chase",
+	"mus_chase_b",
 	"mus_combat",
+	"mus_combat_b",
 	"mus_silence",
+	"mus_silence_b",
 	"mus_stalker_far",
 	"mus_stalker_near",
 	"mus_tension",
+	"mus_tension_b",
 	"radio_static_loop",
 	"rain_eave",
 	"rain_mask",
@@ -338,9 +348,19 @@ const MUSIC_STEMS := ["mus_silence", "mus_tension", "mus_combat", "mus_chase"]
 # Czas dochodzenia stemu do pełnej głośności [s] (krzywa w dB, AudioDirector; od 1.7.578 dłużej — wejście 0,35–1,6 s brzmiało jak cięcie).
 const MUSIC_BLEND := [6.0, 4.0, 2.5, 1.5]
 # Tempo i długość pętli — runtime kwantyzuje wejścia stemów do beatu.
-const MUSIC_BPM := 96.0
+const MUSIC_BPM := 64.0
 const MUSIC_BEATS := 32
-const MUSIC_LOOP_SEC := 20.000000
+const MUSIC_LOOP_SEC := 30.000000
+# Segmenty (MUSIC_PLAN.md E2): warianty warstw grają razem, runtime zmienia całą sekcję naraz na początku pętli.
+# Paleta: map_id poziomu -> strefa (prefiks przed „_”) -> "default". Kadencja: warstwa -> klucz zakończenia.
+const MUSIC_SEGMENTS := {
+	"default": [["mus_silence", "mus_silence_b"], ["mus_tension", "mus_tension_b"], ["mus_combat", "mus_combat_b"], ["mus_chase", "mus_chase_b"]],
+	"z1_b1": [["mus_silence_b", "mus_silence"], ["mus_tension_b", "mus_tension"], ["mus_combat_b", "mus_combat"], ["mus_chase_b", "mus_chase"]],
+}
+const MUSIC_CADENCES := ["", "", "mus_combat_end", "mus_chase_end"]
+const MUSIC_CADENCE_PRE := 0.250
+# Takty, na które kadencja nie siada (czeka takt dłużej) — zależy od harmonii materiału.
+const MUSIC_CADENCE_SKIP_BARS := []
 
 # Napisy dla niesłyszących: prefiks klucza -> [tekst, ważność 0-3].
 const CAPTIONS := {
