@@ -10,6 +10,9 @@ przejścia). Teraz stemy są zaprojektowane jako addytywne:
     S2 mus_combat   perkusja 16-tkowa z gated snare, bas 16-tkowy, stab   (+ walka)
     S3 mus_chase    arpeggio 16-tkowe, toomy, crash, riser, dysonans      (+ pościg)
 
+Poza warstwami (MUSIC_PLAN.md E1): motyw Stalkera mus_stalker_far / mus_stalker_near (ta sama siatka, runtime przenika
+wg odległości) i jednorazowe sygnały cue_elite / cue_horde.
+
 Runtime (audio_director.gd) ustawia głośność stemów niezależnie i kwantyzuje wejścia do
 beatu/taktu — dlatego wszystkie stemy mają IDENTYCZNĄ długość i siatkę.
 
@@ -309,14 +312,99 @@ def build_stingers() -> None:
     finalize("sting_chase", x, lufs=-10.0, fade_out_ms=300)
 
 
+# ------------------------------------------------------------------ motyw Stalkera i sygnały zagrożeń (MUSIC_PLAN.md E1)
+# Motyw: D3 – F3 – E♭3 … A♭2 (tryton od toniki), „smyczek” FM z taśmą. Brzmi obco wobec d-moll stemów celowo — to obcy.
+# Dwie pętle na tej samej siatce co stemy (20 s, 96 BPM), runtime przenika je wg odległości Stalkera:
+#   mus_stalker_far  — motyw co 4 takty, ciemny, w dużym pogłosie (gdzieś poluje)
+#   mus_stalker_near — motyw co 2 takty, jaśniejszy, z pulsem sub i klastrem (jest blisko)
+MOTIF = ((50, 0.0, 1.4), (53, 1.5, 0.5), (51, 2.0, 1.9), (44, 4.0, 3.2))   # (MIDI, beat, długość w beatach)
+
+
+def bowed(f: float, dur: float, rng: Rng, bright: float = 1.0) -> np.ndarray:
+    """Ton „smyczkowy” FM: wolne natarcie, wibrato opóźnione, indeks modulacji rośnie z natarciem (jak nacisk smyczka)."""
+    n = sec(dur)
+    fr = d.vibrato(f, n, 4.6, 14.0, rng.uniform(0, TAU)) * d.env_pts(n, [(0, 0.996), (0.25, 1.0), (dur, 1.0)])
+    idx = (0.6 + 1.6 * bright) * d.env_pts(n, [(0, 0.1), (min(0.35, dur * 0.4), 1.0), (dur, 0.7)])
+    y = d.fm(fr, n, ratio=1.0, index=idx, fb=0.0) * 0.6 + d.fm(fr * 0.5, n, ratio=2.0, index=idx * 0.5) * 0.4
+    y = d.lp(y, 900.0 + 2600.0 * bright, 0.9)
+    return y * d.env_adsr(n, min(0.22, dur * 0.3), 0.2, 0.8, min(0.5, dur * 0.35))
+
+
+def motif_into(s: "Stem", beat0: float, rng: Rng, bright: float, gain: float) -> None:
+    for m, b, dur in MOTIF:
+        s.put(bowed(mtof(m), dur * 60.0 / BPM + 0.3, rng, bright), beat0 + b, gain, pan=rng.uniform(-0.25, 0.25))
+
+
+def stem_stalker_far(rng: Rng) -> np.ndarray:
+    s = Stem()
+    for bar in (0, 4):
+        motif_into(s, bar * 4, rng, 0.15, 0.55)
+    # cichy szum taśmy pod spodem — „coś jest w eterze”
+    L = LOOP_N + TAIL
+    s.buf += np.stack([d.lp(d.pink(L, rng), 700.0), d.lp(d.pink(L, rng), 700.0)]) * 0.02
+    out = s.render(ir("cave_st"), wet=0.6)
+    out = d.tape(out, wow_hz=round(0.5 * LOOP_N / SR) / (LOOP_N / SR), wow_depth=0.004, sat=1.1)
+    return d.circ_filter(out, lambda t: d.lp(t, 1500.0, order=2))
+
+
+def stem_stalker_near(rng: Rng) -> np.ndarray:
+    s = Stem()
+    for bar in (0, 2, 4, 6):
+        motif_into(s, bar * 4, rng, 0.6 if bar % 4 == 0 else 0.45, 0.7)
+    # puls „serca” sub na 1 i 1,5 każdego taktu (podwójne uderzenie) — tempo stemów, żeby siedział w rytmie
+    for bar in range(BARS):
+        for b, g in ((0.0, 1.0), (0.5, 0.7)):
+            s.put(thump(0.45, 70.0, 38.0, 0.05, 0.16, attack=0.004), bar * 4 + b, 0.55 * g)
+    # klaster tryton + półton, wchodzi i gaśnie z każdym motywem
+    for bar in (0, 2, 4, 6):
+        n = T(8.0)
+        cl = sum(d.osc("saw", mtof(m), n, phase0=rng.uniform(0, 1)) for m in (44, 50, 51)) / 3.0
+        cl = d.lp(cl, 520.0, 1.2) * d.env_pts(n, [(0, 0), (n / SR * 0.4, 1), (n / SR, 0)])
+        s.put(cl, bar * 4, 0.16)
+    out = s.render(ir("cave_st"), wet=0.35)
+    out = d.tape(out, wow_hz=round(0.5 * LOOP_N / SR) / (LOOP_N / SR), wow_depth=0.003, sat=1.25)
+    return d.circ_filter(out, lambda t: d.compress(t, -20.0, 2.5, 20.0, 300.0))
+
+
+def build_cues() -> None:
+    rng = Rng(0xE11E)
+    # elita: niski „dęty” tryton FM narasta do metalowego uderzenia — ktoś większy niż zwykle cię zauważył
+    n = sec(3.2)
+    sw = d.env_pts(n, [(0, 0), (1.1, 1), (1.25, 0.8), (3.2, 0)])
+    br = sum(d.fm(mtof(m), n, ratio=1.0, index=2.2 * sw + 0.3) for m in (33, 39, 45)) / 3.0
+    br = d.sweep(br, "lp", np.geomspace(300.0, 2600.0, n) * (0.4 + 0.6 * sw), 1.1) * sw
+    hit = d.modal([97.0, 141.0, 233.0, 367.0, 512.0], [1.0, .7, .5, .35, .2], [2.4, 2.0, 1.5, 1.0, .7], sec(2.2), rng, .004)
+    x = d.mix([(br, 0.9), (thump(1.2, 80.0, 34.0, .12, .5, attack=.003), 0.9, 1.15), (hit, 0.5, 1.15)], n)
+    x = d.tape(d.saturate(x, 1.5), wow_hz=0.7, wow_depth=0.003, sat=1.1)
+    x = d.reverb_stereo(np.stack([x, x]), ir("hall_st"), wet=0.45, dry=0.8)
+    asset("cue_elite", "music/cue_elite")
+    finalize("cue_elite", x, lufs=-16.0, fade_out_ms=400)
+
+    # horda: przyspieszające tomy (alarm się niesie), syrena z rozstrojonych pił w górę, crash na końcu
+    n = sec(4.2)
+    x = np.zeros(n)
+    t, gap = 0.0, 0.42
+    while t < 2.9:
+        x = d.mix([(x, 1.0), (tom(rng.uniform(70.0, 95.0), rng), 0.55 + 0.45 * t / 2.9, t)], n)
+        t += gap
+        gap = max(0.09, gap * 0.82)
+    sir = (d.osc("saw", d.glide(180.0, 520.0, n, 1.6), n) + d.osc("saw", d.glide(186.0, 540.0, n, 1.6), n)) * 0.5
+    sir = d.lp(sir, 1800.0, 1.4) * d.env_pts(n, [(0, 0), (2.6, 0.8), (3.0, 1), (4.2, 0)])
+    x = d.mix([(x, 1.0), (sir, 0.35), (crash(rng, 1.4), 0.5, 3.0), (thump(0.8, 110.0, 32.0, .1, .35), 0.9, 3.0)], n)
+    x = d.reverb_stereo(np.stack([x, x]), ir("hall_st"), wet=0.35, dry=0.85)
+    asset("cue_horde", "music/cue_horde")
+    finalize("cue_horde", x, lufs=-14.0, fade_out_ms=400)
+
+
 def build_music() -> None:
     group("music")
     rng = Rng(0x2200)
     specs = (("mus_silence", stem_silence, -26.0), ("mus_tension", stem_tension, -25.0),
              ("mus_combat", stem_combat, -21.0), ("mus_chase", stem_chase, -22.0))
-    for key, fn, target in specs:
+    for key, fn, target in specs + (("mus_stalker_far", stem_stalker_far, -31.0), ("mus_stalker_near", stem_stalker_near, -25.0)):
         asset(key, "music/" + key, loop=True)
         x = fn(rng.fork(zlib.crc32(key.encode()) & 0xFFFF))
         assert x.shape[-1] == LOOP_N, (key, x.shape)
         finalize(key, x, loop=True, lufs=target)
     build_stingers()
+    build_cues()

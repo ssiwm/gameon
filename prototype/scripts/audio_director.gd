@@ -177,9 +177,25 @@ var _music_started := false
 const MUSIC_FADE_OUT := [10.0, 8.0, 6.0, 5.0]   ## s wyciszania stemu (cisza … pościg); od 1.7.578 dłużej i krzywą w dB (`_fade_gain`)
 const MUSIC_FADE_FLOOR_DB := -40.0               ## początek / koniec krzywej przejścia (poniżej tego stem jest niesłyszalny)
 const MUSIC_DROP_HOLD := [0.0, 2.0, 3.0, 4.0]    ## s czekania przed zejściem z warstwy (resztę trzyma MusicDirector: MIN_ON, MIN_STEP)
+## Motyw Stalkera (MUSIC_PLAN.md E1): dwie pętle na siatce stemów, startują razem z nimi; głośność z `music_set_motif`.
+const MOTIF_KEYS := ["mus_stalker_far", "mus_stalker_near"]
+const MOTIF_FADE_IN := 3.0
+const MOTIF_FADE_OUT := 6.0
+## Stan życia lokalnego gracza (E1): 0 zdrowy, 1 ostatnie serce, 2 leży. Muzyka ciszej i „przez ścianę”, a pod nią serce.
+const HEALTH_DB := [0.0, -7.0, -12.0]
+const HEALTH_LP_HZ := [20500.0, 1500.0, 650.0]
+const HEALTH_HEART_DB := [-80.0, -17.0, -12.0]
+const STALKER_DUCK_DB := -5.0                     ## muzyka ustępuje głosowi Stalkera (jednorazowe dźwięki na szynie Stalker, nie pętle)
 const NO_DROP := -2                    # _drop_to: brak zaplanowanego zejścia (-1 to zejście do ciszy)
 var _drop_to := NO_DROP
 var _drop_at := -1.0
+var _motif: Array[AudioStreamPlayer] = []
+var _motif_x: Array[float] = [0.0, 0.0]          # postęp przejścia 0..1 (krzywa `_fade_gain`)
+var _motif_target: Array[float] = [0.0, 0.0]     # docelowy postęp = głośność z odległości
+var _health := 0
+var _health_db := 0.0                             # wygładzone
+var _music_lp_hz := 20500.0                       # wygładzone; łączy się z głuchotą (min)
+var _music_lp: AudioEffectLowPassFilter
 var _duck_db := 0.0
 var _duck_hold := 0.0
 
@@ -235,6 +251,12 @@ func _ready() -> void:
 		_stem_gain.append(0.0)
 		_stem_target.append(0.0)
 		_stem_enter_at.append(0.0)
+	for _k in MOTIF_KEYS:
+		var mm := AudioStreamPlayer.new()
+		mm.bus = BUS_MUSIC
+		mm.volume_db = -80.0
+		add_child(mm)
+		_motif.append(mm)
 
 	_bind_effects()
 	_verify_manifest()
@@ -307,6 +329,17 @@ func _shutdown() -> void:
 	for n in _music:
 		n.stop()
 		n.stream = null
+	for n in _motif:
+		n.stop()
+		n.stream = null
+	for i in _stem_target.size():               # po ponownym włączeniu stemy nie wracają do warstw sprzed wyłączenia
+		_stem_target[i] = 0.0
+		_stem_gain[i] = 0.0
+	_motif_x = [0.0, 0.0]
+	_motif_target = [0.0, 0.0]
+	_health = 0
+	_health_db = 0.0
+	_music_lp_hz = 20500.0
 	_music_layer = -1
 	_music_started = false
 	_drop_to = NO_DROP
@@ -767,6 +800,13 @@ func stop_all() -> void:
 		_music[i].stop()
 		_stem_gain[i] = 0.0
 		_stem_target[i] = 0.0
+	for i in _motif.size():
+		_motif[i].stop()
+		_motif_x[i] = 0.0
+		_motif_target[i] = 0.0
+	_health = 0
+	_health_db = 0.0
+	_music_lp_hz = 20500.0
 	_music_layer = -1
 	_music_started = false
 	_drop_to = NO_DROP
@@ -959,6 +999,8 @@ func _bind_effects() -> void:
 			var fx := AudioServer.get_bus_effect(idx, i)
 			if fx is AudioEffectLowPassFilter:
 				_lp_fx.append(fx)
+				if b == BUS_MUSIC:
+					_music_lp = fx
 	if _rev_fx == null or _lp_fx.size() < 3:
 		push_warning("[AUDIO] bus layout bez oczekiwanych efektów (Reverb na SFX, LP na Music/Ambience/SFX)")
 	var wb := AudioServer.get_bus_index(BUS_WEATHER)
@@ -1082,8 +1124,11 @@ func _update_deafness(delta: float) -> void:
 	elif _deaf > 0.0:
 		_deaf = maxf(0.0, _deaf - delta * 0.3)         # ~3 s powrotu do pełnego słuchu
 	var cutoff := 20500.0 * pow(850.0 / 20500.0, _deaf)
+	var k := 1.0 - exp(-delta / 0.8)                   # stan życia przechodzi w ~1 s
+	_health_db += (float(HEALTH_DB[_health]) - _health_db) * k
+	_music_lp_hz = exp(lerpf(log(_music_lp_hz), log(float(HEALTH_LP_HZ[_health])), k))
 	for fx in _lp_fx:
-		fx.cutoff_hz = cutoff
+		fx.cutoff_hz = minf(cutoff, _music_lp_hz) if fx == _music_lp else cutoff
 
 
 # ---------------------------------------------------------------- muzyka
@@ -1134,11 +1179,14 @@ func _music_start() -> bool:
 		_music[i].stream = stream(Manifest.MUSIC_STEMS[i])
 		_music[i].volume_db = -80.0
 		_music[i].play()
+	for i in _motif.size():                              # motyw na tej samej siatce: start w tej samej chwili miksu
+		_motif[i].stream = stream(MOTIF_KEYS[i]) if Manifest.PATHS.has(MOTIF_KEYS[i]) else null
+		_motif[i].volume_db = -80.0
+		if _motif[i].stream != null:
+			_motif[i].play()
 	AudioServer.unlock()
 	_music_started = true
-	_stem_target[0] = 1.0
-	_stem_enter_at[0] = _clock
-	_music_layer = 0
+	_music_layer = -1                                    # warstwy ustawia music_set_layer (start mógł przyjść od motywu)
 	return true
 
 
@@ -1167,6 +1215,7 @@ func _update_music(delta: float) -> void:
 	else:
 		_duck_db = minf(0.0, _duck_db + delta * 6.0)    # ~1 s powrotu z -6 dB
 	var duck := db_to_linear(_duck_db)
+	var life := db_to_linear(_health_db)
 	for i in _music.size():
 		var blend: float = Manifest.MUSIC_BLEND[i]
 		if _stem_target[i] > 0.5:
@@ -1174,8 +1223,64 @@ func _update_music(delta: float) -> void:
 				_stem_gain[i] = minf(1.0, _stem_gain[i] + delta / maxf(0.05, blend))
 		else:
 			_stem_gain[i] = maxf(0.0, _stem_gain[i] - delta / float(MUSIC_FADE_OUT[mini(i, MUSIC_FADE_OUT.size() - 1)]))
-		var g := _fade_gain(_stem_gain[i]) * duck
+		var g := _fade_gain(_stem_gain[i]) * duck * life
 		_music[i].volume_db = -80.0 if g <= 0.0001 else linear_to_db(g)
+	for i in _motif.size():
+		var tgt: float = _motif_target[i]
+		if _motif_x[i] < tgt:
+			_motif_x[i] = minf(tgt, _motif_x[i] + delta / MOTIF_FADE_IN)
+		else:
+			_motif_x[i] = maxf(tgt, _motif_x[i] - delta / MOTIF_FADE_OUT)
+		var mg := _fade_gain(_motif_x[i]) * duck * life
+		_motif[i].volume_db = -80.0 if mg <= 0.0001 else linear_to_db(mg)
+
+
+## Motyw Stalkera (E1): docelowa głośność pętli dalekiej i bliskiej, 0..1 na krzywej `_fade_gain` (0,75 ≈ −10 dB).
+## Stemy i motyw startują razem (wspólna siatka); sam motyw nie włącza warstw.
+func music_set_motif(far: float, near: float) -> void:
+	if not _enabled or _motif.is_empty():
+		return
+	if far <= 0.0 and near <= 0.0 and not _music_started:
+		return
+	if not _music_start():
+		return
+	_motif_target[0] = clampf(far, 0.0, 1.0)
+	_motif_target[1] = clampf(near, 0.0, 1.0)
+
+
+## Stan życia lokalnego gracza (E1): 0 zdrowy, 1 ostatnie serce, 2 leży — muzyka ciszej, za filtrem, a pod nią serce.
+func music_set_health(state: int) -> void:
+	state = clampi(state, 0, HEALTH_DB.size() - 1)
+	if state == _health:
+		return
+	_health = state
+	if not _enabled:
+		return
+	if state == 0:
+		stop_loop("heart_slow_loop")
+	else:
+		stop_loop("heart_slow_loop")
+		start_loop("heart_slow_loop", BUS_PLAYER, float(HEALTH_HEART_DB[state]))
+
+
+## Jednorazowy sygnał zagrożenia (E1: `cue_elite`, `cue_horde`) — gra na muzyce, a ona na chwilę ustępuje.
+func music_cue(key: String) -> void:
+	if not _enabled or not Manifest.PATHS.has(key):
+		return
+	play(key, BUS_MUSIC, -2.0)
+	duck_music(-6.0, 2.5)
+
+
+## Muzyka ustępuje głosowi Stalkera: wołany co klatkę, patrzy tylko na jednorazowe głosy (pule), nie na pętle (szept).
+func _duck_under_stalker() -> void:
+	for q in _pos_pool:
+		if q.playing and q.bus == BUS_STALKER:
+			duck_music(STALKER_DUCK_DB, 0.4)
+			return
+	for q in _pool:
+		if q.playing and q.bus == BUS_STALKER:
+			duck_music(STALKER_DUCK_DB, 0.4)
+			return
 
 
 ## Postęp przejścia 0..1 → amplituda: równo w decybelach od MUSIC_FADE_FLOOR_DB do 0 dB. Liniowa amplituda (do 1.7.577)
@@ -1330,6 +1435,7 @@ func _process(delta: float) -> void:
 	_update_loop_routes(delta)
 	_update_reverb(delta)
 	_update_deafness(delta)
+	_duck_under_stalker()
 	_update_music(delta)
 	_update_emitters(delta)
 	_update_weather_mix(delta)

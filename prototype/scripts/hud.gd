@@ -414,6 +414,7 @@ var _journal: Control                ## dziennik komunikatów i porad (klawisz a
 var _msgs: Control                   ## renderer kanałów komunikatów (alert, toasty, karta tytułowa): message_view.gd
 var _music_layer := -1
 var _music_dir := MusicDirector.new()     ## wynik zagrożenia → warstwa muzyki (MUSIC_PLAN.md E0)
+var _music_motif := 0                       ## 0 bez motywu, 1 daleki, 2 bliski (dziennik sesji)
 var _session_t := 0.0
 ## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
 var _controls_mode := -1
@@ -2490,6 +2491,16 @@ func _drive_music(delta: float) -> void:
 		SessionLog.event("music", {"from": _music_layer, "to": layer, "threat": roundi(_music_dir.threat), "raw": roundi(_music_dir.raw_threat)})
 		_music_layer = layer
 		Audio.music_set_layer(layer)
+	# E1: motyw Stalkera, sygnały elity i hordy, stan życia (MUSIC_PLAN.md §4.3)
+	Audio.music_set_motif(_music_dir.motif_far, _music_dir.motif_near)
+	Audio.music_set_health(_music_dir.health)
+	var motif := 2 if _music_dir.motif_near > 0.0 else (1 if _music_dir.motif_far > 0.0 else 0)
+	if motif != _music_motif:
+		SessionLog.event("music_motif", {"from": _music_motif, "to": motif})
+		_music_motif = motif
+	if _music_dir.cue != "":
+		SessionLog.event("music_cue", {"cue": _music_dir.cue})
+		Audio.music_cue(_music_dir.cue)
 
 ## Winieta: błysk po trafieniu, puls przy 1 HP, mrok przy leżeniu.
 func _draw() -> void:
