@@ -371,7 +371,7 @@ func _initialize() -> void:
 	var since := 0.0
 	var together := true
 	var prev_cur: Array = audio._seg_cur.duplicate()
-	for k in 24:
+	for k in int(480.0 / loop_s):
 		audio._clock += loop_s
 		since += loop_s
 		audio._update_segments(loop_s - 0.3)
@@ -383,12 +383,15 @@ func _initialize() -> void:
 			min_gap = minf(min_gap, since)
 			since = 0.0
 		prev_cur = audio._seg_cur.duplicate()
-	_check("8 min: %d zmian sekcji, najkrócej %.0f s, zawsze cała muzyka naraz" % [sec_changes, min_gap], sec_changes >= 4 and min_gap >= 2.0 * loop_s and together)
+	_check("8 min: %d zmian sekcji, najkrócej %.0f s, zawsze cała muzyka naraz" % [sec_changes, min_gap], sec_changes >= 3 and min_gap >= 2.0 * loop_s and together)
 	# kadencja: walka kończy się uderzeniem na takcie, nie wyciszeniem
 	var bar: float = audio._bar_len()
 	_check("kadencja: następny takt (%.2f s)" % audio._cadence_wait(0.1), absf(audio._cadence_wait(0.1) - (bar - 0.1)) < 0.001)
-	_check("kadencja omija dominantę A (takt 4 i 8)", absf(audio._cadence_wait(2.0 * bar + 0.5) - (2.0 * bar - 0.5)) < 0.001
-		and absf(audio._cadence_wait(6.0 * bar + 0.5) - (2.0 * bar - 0.5)) < 0.001)
+	var skip: Array = man.MUSIC_CADENCE_SKIP_BARS
+	_check("kadencja siada na następnym takcie poza MUSIC_CADENCE_SKIP_BARS (%s)" % str(skip),
+		absf(audio._cadence_wait(2.0 * bar + 0.5) - ((2.0 if skip.has(3) else 1.0) * bar - 0.5)) < 0.001
+		and absf(audio._cadence_wait(6.0 * bar + 0.5) - ((2.0 if skip.has(7) else 1.0) * bar - 0.5)) < 0.001)
+	_check("E3: 64 BPM, pętla 30 s, pedał D — kadencja na każdym takcie", man.MUSIC_BPM == 64.0 and absf(man.MUSIC_LOOP_SEC - 30.0) < 0.001 and skip.is_empty())
 	_check("kadencja nie bliżej niż przedbieg pliku", absf(audio._cadence_wait(bar - 0.1) - (bar + 0.1)) < 0.001)
 	audio.music_set_layer(2)
 	audio._stem_gain[1] = 1.0

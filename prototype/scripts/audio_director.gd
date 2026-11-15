@@ -203,7 +203,6 @@ const SEG_XF := 0.6                               ## s przenikania sekcji tuż p
 const SEG_RUN := Vector2i(2, 4)                   ## ile pętli (po 20 s) gra sekcja, zanim przyjdzie następna
 const CADENCE_CUT := 0.7                          ## s wyciszenia warstwy pod uderzeniem kadencji (zamiast 5–6 s)
 const CADENCE_MIN_GAIN := 0.6                     ## kadencja tylko, gdy kończąca się warstwa była naprawdę słychać
-const CADENCE_SKIP_BARS := [3, 7]                 ## takty na A-dur (dominanta): tonika D tam nie siada, kadencja czeka takt dłużej
 const PALETTE_CHECK := 1.0                        ## s między sprawdzeniami mapy (paleta zmienia się dopiero w ciszy)
 var _seg: Array = []                              # per stem: Array[AudioStreamPlayer], [0] = _music[i]
 var _seg_n: Array[int] = []                       # per stem: ile wariantów ma paleta
@@ -1314,7 +1313,7 @@ func _quant_delay(stem: int) -> float:
 	return 0.0 if d > grid - 0.02 else d
 
 
-## Ile sekund do taktu, w który trafi kadencja: następny początek taktu, ale nie na dominantę (CADENCE_SKIP_BARS)
+## Ile sekund do taktu, w który trafi kadencja: następny początek taktu, ale nie na takt z MUSIC_CADENCE_SKIP_BARS (manifest)
 ## i nie bliżej niż przedbieg pliku (inaczej uderzenie spóźniłoby się o ułamek).
 func _cadence_wait(pos: float) -> float:
 	var bar := _bar_len()
@@ -1325,7 +1324,7 @@ func _cadence_wait(pos: float) -> float:
 	if wait < float(Manifest.MUSIC_CADENCE_PRE) + 0.03:
 		wait += bar
 		nxt = (nxt + 1) % bars
-	while nxt in CADENCE_SKIP_BARS:
+	while nxt in Manifest.MUSIC_CADENCE_SKIP_BARS:
 		wait += bar
 		nxt = (nxt + 1) % bars
 	return wait

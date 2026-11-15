@@ -8,13 +8,12 @@ i składa z tego stereo WAV. Bez efektów świata — tylko szyna muzyki, tak ja
 
 Surowe T w dzienniku jest zapisane tylko przy zmianie warstwy; między zdarzeniami trzymamy ostatnią wartość.
 
-    python tools/music_preview.py --log <sesja.jsonl> --set current --from 300 --to 480 --out podglad_teraz.wav
-    python tools/music_preview.py --log <sesja.jsonl> --set e3 --e3-dir <katalog z bake_music_e3.py> --out podglad_e3.wav
-    python tools/music_preview.py --script "0:0,8:20,38:45,70:80,108:30,140:0" --set e3 --e3-dir ... --out pokaz_e3.wav
+    python tools/music_preview.py --log <sesja.jsonl> --from 300 --to 480 --out podglad.wav
+    python tools/music_preview.py --script "0:0,8:20,40:45,75:80,115:30,150:0" --out pokaz.wav
 
 `--script` zamiast dziennika: surowe T w punktach czas:wartość (pokaz warstw po kolei: cisza → napięcie → walka → pościg → koniec).
 
-Zbiory: `current` = pliki z audio/music (E2), `e3` = stemy z tools/bake_music_e3.py.
+Siatka, palety i kadencje z tools/bake_music.py, pliki z audio/music (albo --dir: inny katalog z tymi samymi kluczami).
 """
 
 from __future__ import annotations
@@ -52,22 +51,13 @@ MOTIF_FADE_IN, MOTIF_FADE_OUT = 3.0, 6.0
 CUE_DB = -2.0
 DT = 0.01
 
-SETS = {
-    "current": {
-        "bpm": 96.0, "beats": 32, "skip_bars": (3, 7), "pre": 0.25,
-        "layers": (("mus_silence", "mus_silence_b"), ("mus_tension", "mus_tension_b"),
-                   ("mus_combat", "mus_combat_b"), ("mus_chase", "mus_chase_b")),
-        "cadences": ("", "", "mus_combat_end", "mus_chase_end"),
-        "motif": ("mus_stalker_far", "mus_stalker_near"),
-    },
-    "e3": {
-        "bpm": 64.0, "beats": 32, "skip_bars": (), "pre": 0.25,
-        "layers": (("mus_silence", "mus_silence_b"), ("mus_tension", "mus_tension_b"),
-                   ("mus_combat", "mus_combat_b"), ("mus_chase", "mus_chase_b")),
-        "cadences": ("", "", "mus_combat_end", "mus_chase_end"),
-        "motif": ("mus_stalker_far", "mus_stalker_near"),
-    },
-}
+
+
+def music_cfg() -> dict:
+    """Siatka, palety i kadencje z generatora — ten sam stan co manifest w grze."""
+    import bake_music as bm
+    return {"bpm": bm.BPM, "beats": bm.BEATS, "skip_bars": tuple(bm.CADENCE_SKIP_BARS), "pre": bm.CADENCE_PRE,
+            "layers": bm.SEGMENTS["default"], "cadences": bm.CADENCES, "motif": ("mus_stalker_far", "mus_stalker_near")}
 
 
 def fade_gain(x: float) -> float:
@@ -319,15 +309,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--log", default="")
     ap.add_argument("--script", default="", help="surowe T: czas:wartość,czas:wartość,…")
-    ap.add_argument("--set", choices=sorted(SETS), default="current")
-    ap.add_argument("--e3-dir", default="")
+    ap.add_argument("--dir", default=MUSIC_DIR, help="katalog z WAV-ami muzyki (domyślnie audio/music)")
     ap.add_argument("--from", dest="t_from", type=float, default=0.0)
     ap.add_argument("--to", dest="t_to", type=float, default=0.0)
     ap.add_argument("--seed", type=int, default=87)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
-    cfg = SETS[a.set]
-    folder = a.e3_dir if a.set == "e3" else MUSIC_DIR
+    cfg = music_cfg()
+    folder = a.dir
     if a.script:
         raw_pts = [(0.0, 0.0)] + [(float(p.split(":")[0]), float(p.split(":")[1])) for p in a.script.split(",")]
         motif_pts, cue_pts, end = [(0.0, 0)], [], raw_pts[-1][0] + 25.0

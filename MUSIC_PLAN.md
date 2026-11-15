@@ -1,7 +1,7 @@
 # Muzyka adaptacyjna — plan
 
 Status: **plan z 2026-11-15 (main 1.7.576, 35b8c6ff).** Decyzje D1–D7 (§6) przyjęte 2026-11-15 — wszystkie warianty zalecane.
-**E0 w 1.7.578** (`music_director.gd`, test `tools/test_music.gd`, zdarzenie `music` w dzienniku sesji). **E1 w 1.7.579** (motyw Stalkera `mus_stalker_far` / `mus_stalker_near`, sygnały `cue_elite` / `cue_horde`, ostatnie serce i leżenie; zdarzenia `music_motif`, `music_cue`). **E2 w 1.7.580** (sekcje A/B o tym samym rytmie zmieniane całą muzyką na początku pętli, spokojniejszy pościg, motyw Stalkera w d-moll, kadencje `mus_combat_end` / `mus_chase_end`, palety `MUSIC_SEGMENTS`, boss `z1_b1`); dalej odsłuch z testerem i E3. Równolegle `amb_machine` (stałe buczenie pod całą grą) usunięta w PR #690 (1.7.577).
+**E0 w 1.7.578** (`music_director.gd`, test `tools/test_music.gd`, zdarzenie `music` w dzienniku sesji). **E1 w 1.7.579** (motyw Stalkera `mus_stalker_far` / `mus_stalker_near`, sygnały `cue_elite` / `cue_horde`, ostatnie serce i leżenie; zdarzenia `music_motif`, `music_cue`). **E2 w 1.7.580** (sekcje A/B o tym samym rytmie zmieniane całą muzyką na początku pętli, spokojniejszy pościg, motyw Stalkera w d-moll, kadencje `mus_combat_end` / `mus_chase_end`, palety `MUSIC_SEGMENTS`, boss `z1_b1`); po odsłuchu nowy kierunek materiału (§8, PR #695): **E3a** podgląd poza grą (`tools/music_preview.py`, PR #696), **E3b w 1.7.581** — mroczny ambient w grze (64 BPM, pedał D, metal, smyczki). Równolegle `amb_machine` (stałe buczenie pod całą grą) usunięta w PR #690 (1.7.577).
 Muzyka nie zmienia rozgrywki, więc etapy nie czekają na playtest (GDD §16.0a), ale po E1 i E3 są punkty odsłuchu w grze z testerem.
 
 ## 1. Skąd to

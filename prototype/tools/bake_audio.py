@@ -205,6 +205,8 @@ def write_manifest() -> None:
         "}",
         "const MUSIC_CADENCES := [%s]" % ", ".join('"%s"' % k for k in m.CADENCES),
         "const MUSIC_CADENCE_PRE := %.3f" % m.CADENCE_PRE,
+        "# Takty, na które kadencja nie siada (czeka takt dłużej) — zależy od harmonii materiału.",
+        "const MUSIC_CADENCE_SKIP_BARS := [%s]" % ", ".join(str(b) for b in m.CADENCE_SKIP_BARS),
         "",
         "# Napisy dla niesłyszących: prefiks klucza -> [tekst, ważność 0-3].",
         "const CAPTIONS := {",

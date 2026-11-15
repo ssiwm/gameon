@@ -348,9 +348,9 @@ const MUSIC_STEMS := ["mus_silence", "mus_tension", "mus_combat", "mus_chase"]
 # Czas dochodzenia stemu do pełnej głośności [s] (krzywa w dB, AudioDirector; od 1.7.578 dłużej — wejście 0,35–1,6 s brzmiało jak cięcie).
 const MUSIC_BLEND := [6.0, 4.0, 2.5, 1.5]
 # Tempo i długość pętli — runtime kwantyzuje wejścia stemów do beatu.
-const MUSIC_BPM := 96.0
+const MUSIC_BPM := 64.0
 const MUSIC_BEATS := 32
-const MUSIC_LOOP_SEC := 20.000000
+const MUSIC_LOOP_SEC := 30.000000
 # Segmenty (MUSIC_PLAN.md E2): warianty warstw grają razem, runtime zmienia całą sekcję naraz na początku pętli.
 # Paleta: map_id poziomu -> strefa (prefiks przed „_”) -> "default". Kadencja: warstwa -> klucz zakończenia.
 const MUSIC_SEGMENTS := {
@@ -359,6 +359,8 @@ const MUSIC_SEGMENTS := {
 }
 const MUSIC_CADENCES := ["", "", "mus_combat_end", "mus_chase_end"]
 const MUSIC_CADENCE_PRE := 0.250
+# Takty, na które kadencja nie siada (czeka takt dłużej) — zależy od harmonii materiału.
+const MUSIC_CADENCE_SKIP_BARS := []
 
 # Napisy dla niesłyszących: prefiks klucza -> [tekst, ważność 0-3].
 const CAPTIONS := {
