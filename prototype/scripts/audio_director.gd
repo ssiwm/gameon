@@ -241,6 +241,26 @@ var _scene := ""
 var _scene_phase := 0
 var _hit_p: Array[AudioStreamPlayer] = []                  # uderzenia i kadencja sceny (dwa: faza tuż przed śmiercią)
 var _hits: Array = []                                      # w drodze: {key, land (zegar), grid (s)}
+## E5 (MUSIC_PLAN.md §10): temat menu „z eteru” — wejście mus_menu_in (strojenie odbiornika) i pętla mus_menu, która wchodzi
+## spod szumu; poza siatką rozgrywki (osobne odtwarzacze). Kadencje wyniku grają od razu, a gra cichnie pod nimi.
+## Wipe: cała muzyka zwalnia jak zatrzymywana taśma (wysokość i głośność), po niej mus_wipe, cisza do nowej próby i powrót.
+const MENU_LOOP_AT := 4.0                        ## s od startu wejścia, gdy pętla tematu zaczyna wchodzić
+const MENU_LOOP_IN := 5.0                        ## s wejścia pętli (krzywa `_fade_gain`)
+const MENU_FADE_OUT := 2.5                       ## s wyciszenia tematu, gdy rusza sesja
+const TAPE_STOP_S := 1.6                         ## s zwalniania taśmy
+const TAPE_PITCH_MIN := 0.25
+const TAPE_HOLD := 2.2                           ## s ciszy po zatrzymaniu (wipe trwa 3 s, potem nowa próba)
+const TAPE_BACK := 2.0                           ## s powrotu muzyki rozgrywki
+var _menu_in_p: AudioStreamPlayer
+var _menu_p: AudioStreamPlayer
+var _menu_on := false
+var _menu_t := 0.0
+var _menu_x := 0.0                                         # postęp wejścia pętli tematu
+var _menu_out := 0.0                                       # 1 gra, 0 wyciszony (zatrzymany)
+var _one_p: AudioStreamPlayer                              # kadencja wyniku / wipe'u (poza siatką)
+var _tape := -1.0                                          # s od zatrzymania taśmy; -1 = gra normalnie
+var _tape_gain := 1.0
+var _tape_cut := false
 
 # --- miks / środowisko
 var _deaf := 0.0
@@ -320,6 +340,12 @@ func _ready() -> void:
 		hp.bus = BUS_MUSIC
 		add_child(hp)
 		_hit_p.append(hp)
+	_menu_in_p = AudioStreamPlayer.new()
+	_menu_p = AudioStreamPlayer.new()
+	_one_p = AudioStreamPlayer.new()
+	for mp in [_menu_in_p, _menu_p, _one_p]:
+		mp.bus = BUS_MUSIC
+		add_child(mp)
 
 	_bind_effects()
 	_verify_manifest()
@@ -399,6 +425,17 @@ func _shutdown() -> void:
 	for n in _scene_p + _hit_p:
 		n.stop()
 		n.stream = null
+		n.pitch_scale = 1.0
+	for n in [_menu_in_p, _menu_p, _one_p]:
+		if n != null:
+			n.stop()
+			n.stream = null
+	_menu_on = false
+	_menu_out = 0.0
+	_menu_x = 0.0
+	_tape = -1.0
+	_tape_gain = 1.0
+	_tape_cut = false
 	_scene_x = [0.0, 0.0, 0.0, 0.0]
 	_scene_target = [0.0, 0.0, 0.0, 0.0]
 	_scene_cut_at = [-1.0, -1.0, -1.0, -1.0]
@@ -1375,6 +1412,8 @@ func _cadence_wait(pos: float) -> float:
 
 ## Kadencja przy zejściu z `from` do `to`: najwyższa gasnąca warstwa, która ma kadencję i była słychać.
 func _cadence_key(from: int, to: int) -> String:
+	if _tape >= 0.0:
+		return ""                                            # wipe: taśma stoi, zejścia bez kadencji
 	var cads: Array = Manifest.MUSIC_CADENCES
 	for i in range(mini(from, _stem_gain.size() - 1), to, -1):
 		if i < cads.size() and String(cads[i]) != "" and _stem_gain[i] >= CADENCE_MIN_GAIN and Manifest.PATHS.has(cads[i]):
@@ -1469,6 +1508,8 @@ func _update_palette(delta: float) -> void:
 
 
 func _update_music(delta: float) -> void:
+	_update_menu(delta)
+	_update_tape(delta)
 	_update_palette(delta)
 	if not _music_started:
 		return
@@ -1496,7 +1537,7 @@ func _update_music(delta: float) -> void:
 		_duck_hold -= delta
 	else:
 		_duck_db = minf(0.0, _duck_db + delta * 6.0)    # ~1 s powrotu z -6 dB
-	var duck := db_to_linear(_duck_db)
+	var duck := db_to_linear(_duck_db) * _tape_gain
 	var life := db_to_linear(_health_db)
 	for i in _music.size():
 		var blend: float = Manifest.MUSIC_BLEND[i]
@@ -1569,6 +1610,142 @@ func music_set_scene(scene: String, phase := 0, won := false) -> void:
 		elif want[i] < 0.5 and _scene_target[i] > 0.5:
 			_scene_cut_at[i] = land if won_boss else -1.0
 		_scene_target[i] = want[i]
+
+
+## Temat menu (E5): włączony przed sesją (menu, lobby, operatorzy), wyłączony, gdy rusza sieć. Wołane co klatkę.
+func music_set_menu(on: bool) -> void:
+	if not _enabled or on == _menu_on:
+		return
+	_menu_on = on
+	if not on:
+		return
+	_menu_t = 0.0
+	_menu_x = 0.0
+	_menu_out = 1.0
+	_menu_in_p.stream = stream("mus_menu_in")
+	_menu_p.stream = stream("mus_menu")
+	_menu_p.volume_db = -80.0
+	_menu_in_p.volume_db = 0.0
+	if _menu_in_p.stream != null:
+		_menu_in_p.play()
+	if _menu_p.stream != null:
+		_menu_p.play()
+
+
+func _update_menu(delta: float) -> void:
+	if _menu_out <= 0.0 and not _menu_on:
+		return
+	_menu_t += delta
+	if _menu_on:
+		_menu_out = 1.0
+		if _menu_t >= MENU_LOOP_AT:
+			_menu_x = minf(1.0, _menu_x + delta / MENU_LOOP_IN)
+	else:
+		_menu_out = maxf(0.0, _menu_out - delta / MENU_FADE_OUT)
+		if _menu_out <= 0.0:
+			for mp in [_menu_in_p, _menu_p]:
+				mp.stop()
+				mp.stream = null
+			return
+	var out := _fade_gain(_menu_out)
+	_menu_in_p.volume_db = -80.0 if out <= 0.0001 else linear_to_db(out)
+	var lg := _fade_gain(_menu_x) * out
+	_menu_p.volume_db = -80.0 if lg <= 0.0001 else linear_to_db(lg)
+
+
+## Raport po akcji (E5): gra cichnie od razu (warstwy, scena, motyw), a na muzyce zostaje kadencja wyniku.
+func music_result(win: bool) -> void:
+	if not _enabled:
+		return
+	_cut_game_music(false)
+	_play_one("mus_result_win" if win else "mus_result_fail")
+
+
+## Wipe (E5): muzyka zwalnia jak zatrzymywana taśma — „dźwięk zostaje w taśmie”.
+func music_tape_stop() -> void:
+	if not _enabled or _tape >= 0.0:
+		return
+	_tape = 0.0
+	_tape_cut = false
+	if not _music_started or (_stem_gain.all(func(g: float) -> bool: return g <= 0.0) and _scene_x.all(func(x: float) -> bool: return x <= 0.0)):
+		_tape = TAPE_STOP_S                                # nic nie grało: od razu kadencja i cisza do nowej próby
+
+
+func _update_tape(delta: float) -> void:
+	if _tape < 0.0:
+		return
+	_tape += delta
+	if _tape < TAPE_STOP_S:
+		var k := _tape / TAPE_STOP_S
+		_tape_gain = 1.0 - k
+		_set_music_pitch(lerpf(1.0, TAPE_PITCH_MIN, k * k))
+		return
+	if not _tape_cut:
+		# stan warstw i sceny zostaje (HUD wysyła tylko zmiany) — po nowej próbie wracają spod `_tape_gain` tam, gdzie każe dyrektor
+		_tape_cut = true
+		_set_music_pitch(1.0)
+		_hits.clear()
+		for n in _hit_p:
+			n.stop()
+		if _cad != null:
+			_cad.stop()
+		_cad_key = ""
+		_cad_land = -1.0
+		_play_one("mus_wipe")
+	var back := _tape - TAPE_STOP_S - TAPE_HOLD
+	_tape_gain = clampf(back / TAPE_BACK, 0.0, 1.0)
+	if back >= TAPE_BACK:
+		_tape = -1.0
+		_tape_gain = 1.0
+
+
+func _set_music_pitch(p: float) -> void:
+	for players in _seg:
+		for n in players:
+			n.pitch_scale = p
+	for n in _motif + _scene_p + _hit_p:
+		n.pitch_scale = p
+	if _cad != null:
+		_cad.pitch_scale = p
+
+
+## Muzyka rozgrywki cichnie (raport po akcji): warstwy, scena i motyw do zera (`now` — natychmiast, inaczej w CADENCE_CUT),
+## bez kadencji warstw. Dyrektor po końcu misji i tak podaje ciszę, więc stan zgadza się z HUD.
+func _cut_game_music(now: bool) -> void:
+	_drop_to = NO_DROP
+	_drop_at = -1.0
+	_cad_key = ""
+	_cad_land = -1.0
+	_cad_started = false
+	_hits.clear()
+	_music_layer = -1
+	for i in _stem_target.size():
+		_stem_target[i] = 0.0
+		_stem_fast[i] = true
+		if now:
+			_stem_gain[i] = 0.0
+	for i in _scene_target.size():
+		_scene_target[i] = 0.0
+		_scene_cut_at[i] = _clock
+		if now:
+			_scene_x[i] = 0.0
+	_scene = ""
+	_scene_phase = 0
+	_motif_target = [0.0, 0.0]
+	if now:
+		_motif_x = [0.0, 0.0]
+		for n in _hit_p:
+			n.stop()
+		if _cad != null:
+			_cad.stop()
+
+
+func _play_one(key: String) -> void:
+	_one_p.stream = stream(key)
+	_one_p.volume_db = 0.0
+	_one_p.pitch_scale = 1.0
+	if _one_p.stream != null:
+		_one_p.play()
 
 
 ## Czas (s) do następnej kratki siatki `grid` od pozycji `pos`, nie bliżej niż `pre` (przedbieg pliku).

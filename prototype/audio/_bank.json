@@ -531,6 +531,22 @@
   "music/mus_hit",
   0
  ],
+ "mus_menu": [
+  "music/mus_menu",
+  1
+ ],
+ "mus_menu_in": [
+  "music/mus_menu_in",
+  0
+ ],
+ "mus_result_fail": [
+  "music/mus_result_fail",
+  0
+ ],
+ "mus_result_win": [
+  "music/mus_result_win",
+  0
+ ],
  "mus_retreat": [
   "music/mus_retreat",
   1
@@ -558,6 +574,10 @@
  "mus_tension_b": [
   "music/mus_tension_b",
   1
+ ],
+ "mus_wipe": [
+  "music/mus_wipe",
+  0
  ],
  "oc_load": [
   "sfx/ui/oc_load",
@@ -638,6 +658,10 @@
  "radio_beep": [
   "sfx/world/radio_beep",
   0
+ ],
+ "radio_program": [
+  "music/radio_program",
+  1
  ],
  "radio_static_loop": [
   "sfx/world/radio_static_loop",

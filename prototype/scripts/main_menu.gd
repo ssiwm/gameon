@@ -661,6 +661,7 @@ func focus_first() -> void:
 	_focus_quiet(_cards[0])
 
 func _process(delta: float) -> void:
+	Audio.music_set_menu(not NoiseMgr.has_network())   # temat menu przed sesją (także pod lobby i ekranem OPERATORZY), MUSIC_PLAN.md E5
 	if visible and NoiseMgr.has_network():
 		visible = false                  # sesja ruszyła inną drogą niż PLAY (zaproszenie Steam, dołączenie) — menu nie może zostać na wierzchu
 	if not visible:

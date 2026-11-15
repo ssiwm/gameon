@@ -97,7 +97,7 @@ func _init(seed_value := -1) -> void:
 ## Klatka: zwraca warstwę muzyki dla gracza `me` (-1 = cisza). Poza misją (menu) i w kryjówce zawsze -1 i stan od nowa
 ## (muzyka kryjówki to radio z E5, MUSIC_PLAN.md §4.1).
 func update(delta: float, me: Node2D, in_session: bool) -> int:
-	if not in_session or NoiseMgr.safe_zone or not is_instance_valid(me):
+	if not in_session or NoiseMgr.safe_zone or not is_instance_valid(me) or _mission_over(me):
 		reset()
 		return layer
 	var hp: int = int(me.get("hp")) if me.get("hp") != null else 0
@@ -117,6 +117,12 @@ func update(delta: float, me: Node2D, in_session: bool) -> int:
 	motif(me.global_position, threats, NoiseMgr.stalker_awake)
 	cues(delta, me.global_position, threats)
 	return layer
+
+
+## Misja skończona (raport po akcji): gra cichnie, gra kadencja wyniku (E5).
+func _mission_over(me: Node2D) -> bool:
+	var mis := me.get_tree().get_first_node_in_group("mission")
+	return mis != null and mis.has_method("music_over") and mis.music_over()
 
 
 ## Scena E4 z drzewa sceny: najbliższy obudzony boss, martwy boss, odwrót z misji.

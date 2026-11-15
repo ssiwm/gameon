@@ -44,6 +44,10 @@
  "music/mus_combat_b": "8b66ef7a4400938bb15b444bdda0d9158a42eded4f5fc05d5d29a8a7f970ba92",
  "music/mus_combat_end": "176e13f407fb63b02d49cf34be11bc2939894509cc4ff9eef6674d467dbdd0aa",
  "music/mus_hit": "20137d0566bd33543209bc64a6ba182677a622fcd918b6d8a494a38535e3c389",
+ "music/mus_menu": "0b40cb2c1df7b58cec94ca4da5af97fb99800a1e7c64b92a8648fb4a4858aa71",
+ "music/mus_menu_in": "4648c9d7a02a50e60cffd0941713c3c7738b3ae7699f734589f3c7de4be41097",
+ "music/mus_result_fail": "fe45e2b5999da5120724eb02de994b43ebab3102ed6d1353f75190e87b35ea3a",
+ "music/mus_result_win": "cba031532a18942aed44d67a05d983cca4539ab5dbe3b62cb9853a606fba305f",
  "music/mus_retreat": "2f2a25a3e72f860a93e09c0f1733f6933863c4bdd0f5a7ebe3a6f2812e2cea8d",
  "music/mus_silence": "251b1597736e679c4907bf3bfb6d44fb2b5e0ff22417a43675f8997fa5faedcc",
  "music/mus_silence_b": "0ee349c513aea13026bf0688c613daf42a8be3a32c44586d4aad91549522831b",
@@ -51,6 +55,8 @@
  "music/mus_stalker_near": "95f07fd7cba11fabbc38442a18a3342df6aa8017dd40f430ac504252d3a9fbf5",
  "music/mus_tension": "d0445c4a19a974c17d66fbbc6cb54776a3769f7e8baf32eb32d852f1022be470",
  "music/mus_tension_b": "a79c7c05c2c3f25f47ac8854fb10658b03839c478550dd1db98fdafc14675c0b",
+ "music/mus_wipe": "71816b8b1c1c56d580e9bb7ad7def56bb192b187edd5e645464a345a8ce63338",
+ "music/radio_program": "423da20d77245033d38fff9658d1b9e739fa8e230f6b30e03200064a4768d5db",
  "music/sting_chase": "1fd99bb07414196d7e39a99c6816b69636bf66537fec31615ce7d15111a6caf6",
  "music/sting_tension": "68ebab55e94e8b8410c603ca78ef77b2d1977e1e2a690726512d985fd57af430"
 }
