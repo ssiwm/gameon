@@ -505,14 +505,6 @@
    "supplier": "SmartSoundFX",
    "license": "sonniss-gdc-2.0"
   },
-  "hvac_pressure_pump": {
-   "kind": "lib",
-   "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Hzandbits - Hvac Elements/Hvac,Heating,Pressure pump,Industrial,Whine,Slight rumble,Loop.wav",
-   "sha256": "5432274f1418fa29ed4ee6fc6b11ff857787ff17f8586e3038ee2f7b9b219815",
-   "pack": "Sonniss GDC 2017 — Hvac Elements",
-   "supplier": "Hzandbits",
-   "license": "sonniss-gdc-2.0"
-  },
   "hvac_roomtone": {
    "kind": "lib",
    "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 4of9/Hzandbits - Hvac Elements/Roomtone,Hvac,Drone,Hum,Low Mids,Loop.wav",

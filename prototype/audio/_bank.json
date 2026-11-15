@@ -47,10 +47,6 @@
   "sfx/world/amb_gust_3",
   0
  ],
- "amb_machine": [
-  "amb/amb_machine",
-  1
- ],
  "amb_rain_heavy": [
   "amb/weather/amb_rain_heavy",
   1

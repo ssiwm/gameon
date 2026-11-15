@@ -67,26 +67,6 @@ def _forest(n: int, rng: Rng, shared: np.ndarray) -> np.ndarray:
     return d.mix([(out, 1.0), (crick, 0.42)], n)
 
 
-def _machine(n: int, rng: Rng, shared: np.ndarray) -> np.ndarray:
-    t = np.arange(n) / SR
-    T = n / SR
-    hum = sum(a * np.sin(TAU * 50.0 * h * t + rng.uniform(0, TAU)) for h, a in ((1, 1.0), (2, 0.7), (3, 0.42), (4, 0.22), (6, 0.12)))
-    ballast = 0.25 * np.sin(TAU * 120.0 * t + rng.uniform(0, TAU))
-    fan_am = 0.65 + 0.35 * np.sin(TAU * 7.0 * t + rng.uniform(0, TAU))           # 7 Hz łopatki (56 cykli)
-    fan = d.circ_filter(d.colored(n, rng, 0.8), lambda z: d.bp(z, 760.0, 0.7)) * fan_am * 0.8
-    rumble = d.circ_filter(d.colored(n, rng, 2.0), lambda z: d.lp(z, 95.0, order=3)) * 1.2
-    clanks = np.zeros(n + sec(2.0))
-    for _ in range(3):
-        k = int(rng.uniform(0, n))
-        f = rng.uniform(220, 600)
-        c = d.mix([(tick(rng, 1400, 1.2, 20, .006), 1.0),
-                   (ring(rng, [f, f * 2.4, f * 4.1], [.5, .3, .2], dur=.9), .6)])
-        clanks[k:k + len(c)] += c * rng.uniform(.35, .7)
-    clanks = d.reverb(clanks, ir("metal"), wet=.5, keep_len=False)
-    clanks = d.fold_loop(clanks, n)
-    return d.mix([(hum, 0.22), (ballast, 0.18), (fan, 1.0), (rumble, 0.8), (clanks, 0.35)], n)
-
-
 def _drips(n: int, rng: Rng) -> np.ndarray:
     st = np.zeros((2, n + sec(4.0)))
     for _ in range(14):
@@ -171,7 +151,6 @@ def build_ambience() -> None:
     group("amb")
     specs = [
         ("amb_forest", 12.0, _forest, -14.0, 0xA200),
-        ("amb_machine", 8.0, _machine, -15.0, 0xA300),
         ("amb_air", 10.0, _air, -18.0, 0xA500),
     ]
     for key, dur, fn, target, seed in specs:

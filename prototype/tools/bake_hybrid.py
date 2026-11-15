@@ -35,7 +35,7 @@ leech_shriek, zyla_roar; door, glass_break, thunder, amb_creak, amb_gust, amb_th
 step_water, land_hard (buty), player_hurt, player_down; ui_confirm, mission_start; amb_forest, amb_rain, amb_rain_roof, amb_wind.
 Odsłuch 2026-11-02 (rodziny dotąd tylko syntetyczne), z nagrań: mech_* (strzelnica FPP), plate_ring, plate_fall; stalker_appear
 (braam); rzeznik_roar, zerca_grab, zerca_warn, moth_dust; flare_ignite, flare_loop, generator_loop; breath_loop, heart_fast_loop,
-heart_slow_loop, revive; amb_machine, amb_air, amb_drips. Zostały syntetyczne: kaplan_scream, moth_flutter_loop, moth_crack
+heart_slow_loop, revive; amb_air, amb_drips. Zostały syntetyczne: kaplan_scream, moth_flutter_loop, moth_crack
 (odsłuch), alarm_bell (brak nagrania dzwonu kościelnego), mine_beep, radio_static, sygnały UI, muzyka.
 Odsłuch 2026-11-14, z nagrań: dig_dirt, dig_gravel, dig_rock (cios kilofem w strefie wydobycia).
 Odsłuch 2026-11-15, z nagrań: cała pogoda (WEATHER_PLAN.md W2–W4) — tło deszczu, krople na materiałach, dach, okap, kaptur, wiatr,
@@ -691,8 +691,7 @@ def player() -> None:
 # wracało ok. 225 razy na godzinę). Źródło lasu nie ma głosów zwierząt — szum koron nocą.
 AMB_LOOPS = (                       # klucz, źródło, start [s], długość [s], głośność docelowa = zmierzona głośność syntezy, ścięcie szczytów [dB]
     ("amb_forest", "forest_night_woods", 92.0, 60.0, -14.6, -7.0),     # ciche nagranie z pojedynczymi szczytami (ścina ok. 1% czasu)
-    # (2026-11-02) pompa ciśnieniowa z buczeniem, szum wentylacji, krople w jaskini; pętle stereo synteza osiąga w całości
-    ("amb_machine", "hvac_pressure_pump", 22.5, 8.0, -15.0, 0.0),
+    # (2026-11-02) szum wentylacji, krople w jaskini (pompa amb_machine usunięta 2026-11-15); pętle stereo synteza osiąga w całości
     ("amb_air", "hvac_roomtone", 3.25, 10.0, -18.0, 0.0),
     ("amb_drips", "cave_drips_05", 7.25, 12.0, -20.0, -14.0),          # pojedyncze głośne krople: ścięcie jak w amb_rain_roof
 )

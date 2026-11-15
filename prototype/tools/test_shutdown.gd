@@ -32,7 +32,7 @@ func _run() -> void:
 	var source := Node2D.new()
 	root.add_child(source)
 	audio.start_loop("amb_forest", audio.BUS_AMB, -20.0)
-	audio.start_loop_at("amb_machine", source, audio.BUS_WORLD, -20.0, false, "shutdown-fixture")
+	audio.start_loop_at("generator_loop", source, audio.BUS_WORLD, -20.0, false, "shutdown-fixture")
 	audio.music_set_layer(2)
 	audio.play("ui_click", audio.BUS_UI, -20.0)
 	await create_timer(0.2).timeout
@@ -45,7 +45,7 @@ func _run() -> void:
 	players.append_array(audio._music)
 	_check("odtwarzacze nie trzymają strumieni po shutdown", players.all(func(node: Node) -> bool: return not node.playing and node.stream == null))
 	audio.start_loop("amb_forest")
-	audio.start_loop_at("amb_machine", source)
+	audio.start_loop_at("generator_loop", source)
 	audio.play("ui_click")
 	_check("wyłączone audio nie tworzy nowych głosów i pętli", not audio._enabled and audio._loops.is_empty() and audio._pos_loops.is_empty() and audio._cache.is_empty())
 	audio.shutdown()
