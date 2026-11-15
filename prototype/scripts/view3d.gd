@@ -33,6 +33,7 @@ const Parts := preload("res://scripts/parts.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const HubSigns := preload("res://scripts/hub_signs.gd")
 const Weather := preload("res://scripts/weather.gd")
+const WeatherClock := preload("res://scripts/weather_clock.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
 const Front3D := preload("res://scripts/front3d.gd")
@@ -7451,7 +7452,6 @@ const SKY_COVER := {"clear": 0.22, "rain": 0.85, "storm": 0.95, "fog": 0.7}     
 const SKY_WIND := {"clear": 0.006, "rain": 0.02, "storm": 0.05, "fog": 0.003}    # dryf chmur [jedn. szumu/s]
 const SKY_STARS := {"clear": 1.0, "rain": 0.0, "storm": 0.0, "fog": 0.1}         # gwiazdy w prześwitach
 const SKY_MOON := {"clear": 1.0, "rain": 0.08, "storm": 0.0, "fog": 0.22}         # tarcza księżyca (za chmurami deszczu i w mgle blednie)
-const WIND_K := {"clear": 0.3, "rain": 0.85, "storm": 1.9, "fog": 0.12}             # wiatr w koronach i runie (`Level3D.set_wind`); bez pogody 0,5
 const BACKDROP_VIS := {"clear": 1.0, "rain": 0.55, "storm": 0.45, "fog": 0.25}     # lampki masztu i okno wieży (`backdrop3d.gd`) za deszczem i mgłą
 ## Błysk burzy: jaka część błysku pada na plan gry (księżyc i światło otoczenia — oświetlają też postacie). Niebo, chmury, mgła głębi
 ## i las (`StormFlash`, warstwa lasu) rozbłyskują w pełni, a plan gry tylko lekko jaśnieje: błyskawica nie odsłania na chwilę całej
@@ -7461,7 +7461,8 @@ const FLASH_PLANE := 0.12
 const FLASH_FOREST := 1.3                       ## energia `StormFlash` na lesie przy pełnym błysku (zastępuje dawny pełny błysk księżyca i otoczenia)
 const CANOPY_HAZE_K := {"clear": 1.15, "rain": 0.7, "storm": 0.6, "fog": 0.35}   # zamglenie koron (`Level3D.build_canopy_haze`); w mgle warstwy daje mgła głębi
 
-## Pogoda w scenie 3D (stan z `weather_fx.gd`: siła `_k`, otwartość nieba `_sky`, rodzaj `_id`, błysk `_flash`; dźwięk zostaje tam):
+## Pogoda w scenie 3D (stan z `weather_fx.gd`: narastanie `_k`, siła frontu `_i`, wiatr `_wind` z podmuchem `_gust` i kierunkiem `_wdir`,
+## otwartość nieba `_sky`, rodzaj `_id`, błysk `_flash`; dźwięk zostaje tam; zegar pogody — `weather_clock.gd`, WEATHER_PLAN.md W1):
 ##  - deszcz: smugi kropel w całej głębi sceny (od planu przed graczami po las), pochylone wiatrem, z podmuchami burzy, plus plusk na gruncie;
 ##  - mgła: gęstsza bryła mgły wolumetrycznej z własną bladą poświatą (światła latarki i flar rysują w niej snopy) i bliższa mgła głębi;
 ##  - burza: błyskawica rozświetla niebo, chmury, mgłę głębi i las w pełni, a plan gry tylko w małej części (FLASH_PLANE).
@@ -7472,6 +7473,11 @@ func _sync_weather(delta: float) -> void:
 	var id := String(wx.get("_id"))
 	var k := float(wx.get("_k"))
 	var sky := float(wx.get("_sky"))
+	var wi := float(wx.get("_i"))                                   # siła frontu 0..1 (ulewa / przejaśnienie)
+	var wind := float(wx.get("_wind"))
+	var gust := float(wx.get("_gust"))
+	var wdir := float(wx.get("_wdir"))                              # +1: wiatr z prawej (krople i chmury płyną w lewo)
+	var ki := k * (0.55 + 0.45 * wi)                                # siła pogody dla nieba i światła: w przejaśnieniu bliżej nocy bez pogody
 	var mode: int = Settings.weather_fx_effective()
 	if _rain == null:
 		_rain = CPUParticles3D.new()
@@ -7525,7 +7531,7 @@ func _sync_weather(delta: float) -> void:
 	var lp0 = wx.call("_local_player")
 	var above: bool = lp0 != null and (lp0 as Node2D).global_position.y < float(_level.get("underground_y"))
 	_rain_open = move_toward(_rain_open, 1.0 if above else 0.0, get_process_delta_time() * 1.5)
-	var strength := k * _rain_open if raining else 0.0
+	var strength := k * _rain_open if raining and mode != Settings.WEATHER_FX_OFF else 0.0      # OFF: bez cząsteczek (mgła i niebo zostają, D3)
 	if raining and _roof_key != _geo_key and not _rows.is_empty():
 		_roof_key = _geo_key
 		var rt := _roof_texture()
@@ -7542,9 +7548,8 @@ func _sync_weather(delta: float) -> void:
 		var want := maxi(60, int(float(cfg[1]) * (0.6 if mode == Settings.WEATHER_FX_REDUCED else 1.0) * (0.5 if Settings.quality_idx == 0 else 1.0)))
 		if _rain.amount != want:
 			_rain.amount = want
-		var gust := 1.0 + (0.5 * sin(_life * 0.7) * sin(_life * 0.31) if id == "storm" else 0.0)
-		var a := deg_to_rad(float(cfg[0]) * gust)
-		var dir := Vector3(-sin(a), -cos(a), 0.0)             # wiatr z prawej: krople lecą w lewo w dół
+		var a := deg_to_rad(float(cfg[0]) * (0.75 + 0.25 * wi + 0.5 * gust))    # podmuch i ulewa pochylają deszcz
+		var dir := Vector3(-sin(a) * wdir, -cos(a), 0.0)      # wiatr z prawej (wdir +1): krople lecą w lewo w dół
 		var cam := _cam_a.global_position
 		var half_h := tan(deg_to_rad(FOV * 0.5)) * cam.z * 1.8      # zapas na głębię (dalsze plany widać szerzej)
 		var half_w := half_h * 1.9
@@ -7554,15 +7559,15 @@ func _sync_weather(delta: float) -> void:
 		_rain.initial_velocity_max = speed * 1.15
 		_rain.lifetime = (half_h * 2.0 + 2.0) / speed
 		_rain.emission_box_extents = Vector3(half_w + half_h * tan(a), 0.4, 8.0)
-		_rain.position = Vector3(cam.x + half_h * tan(a), cam.y - _eye_up + half_h + 1.0, -7.1)       # z od −15 do +0,9: krople przed frontem gruntu nie spadają „pod ziemię”
-		_rain.color = Color(0.55, 0.62, 0.74, (0.16 + 0.5 * flash) * clampf(strength, 0.0, 1.0))
+		_rain.position = Vector3(cam.x + half_h * tan(a) * wdir, cam.y - _eye_up + half_h + 1.0, -7.1)       # z od −15 do +0,9: krople przed frontem gruntu nie spadają „pod ziemię”
+		_rain.color = Color(0.55, 0.62, 0.74, (0.16 + 0.5 * flash) * clampf(strength, 0.0, 1.0) * (0.45 + 0.55 * wi))      # liczba kropel stała (zmiana `amount` restartuje emiter) — siłę frontu niesie krycie
 		var lp = wx.call("_local_player")
 		if lp != null:
 			_rain_splash.position = Level3D.px_to_m((lp as Node2D).global_position) + Vector3(0.0, 0.03, -1.0)
 			_rain_splash.emission_box_extents = Vector3(half_w, 0.01, 1.8)
-			_rain_splash.color = Color(0.6, 0.68, 0.8, 0.3 * clampf(strength, 0.0, 1.0))
+			_rain_splash.color = Color(0.6, 0.68, 0.8, 0.3 * clampf(strength, 0.0, 1.0) * (0.45 + 0.55 * wi))
 	# mgła i księżyc
-	var fogk := k * (0.45 + 0.55 * sky) if id == "fog" else (k * 0.25 * sky if raining else 0.0)
+	var fogk := k * (0.55 + 0.45 * wi) * (0.45 + 0.55 * sky) if id == "fog" else (k * 0.25 * sky * wi if raining else 0.0)      # mgła falami siły frontu
 	var fv := _geo.get_node_or_null("FogVolume") as FogVolume
 	if fv != null:
 		var fm := fv.material as FogMaterial
@@ -7600,32 +7605,34 @@ func _sync_weather(delta: float) -> void:
 		env.volumetric_fog_sky_affect = k if id == "fog" else 0.0
 		if env.sky != null and env.sky.sky_material is ShaderMaterial:
 			var skm := env.sky.sky_material as ShaderMaterial
-			skm.set_shader_parameter("glow", Vector3(0.016, 0.024, 0.044) * (1.0 + 14.0 * flash) * float(MOON_K.get(id, 1.0)))
-			_sky_drift.x -= lerpf(0.008, float(SKY_WIND.get(id, 0.008)), k) * delta      # wiatr z prawej (jak deszcz): chmury płyną w lewo
+			skm.set_shader_parameter("glow", Vector3(0.016, 0.024, 0.044) * (1.0 + 14.0 * flash) * lerpf(1.0, float(MOON_K.get(id, 1.0)), ki))
+			var wrel := clampf(wind / float(WeatherClock.WIND_BASE.get(id, 0.5)), 0.4, 2.0) if id != "" else 1.0
+			_sky_drift.x -= lerpf(0.008, float(SKY_WIND.get(id, 0.008)), k) * wrel * wdir * delta      # chmury płyną z wiatrem (wdir +1: w lewo)
 			skm.set_shader_parameter("drift", _sky_drift)
-			skm.set_shader_parameter("cover", lerpf(0.6, float(SKY_COVER.get(id, 0.6)), k))
-			skm.set_shader_parameter("stars", lerpf(0.3, float(SKY_STARS.get(id, 0.3)), k))
-			skm.set_shader_parameter("moon_vis", lerpf(0.85, float(SKY_MOON.get(id, 0.85)), k))
+			skm.set_shader_parameter("cover", lerpf(0.6, float(SKY_COVER.get(id, 0.6)), ki))
+			skm.set_shader_parameter("stars", lerpf(0.3, float(SKY_STARS.get(id, 0.3)), ki))
+			skm.set_shader_parameter("moon_vis", lerpf(0.85, float(SKY_MOON.get(id, 0.85)), ki))
 			skm.set_shader_parameter("flash", flash)
 	var haze_k := lerpf(1.0, float(CANOPY_HAZE_K.get(id, 1.0)), k)
 	for ch in _geo.get_children():                                 # zamglenie koron (`Level3D.build_canopy_haze`)
 		if String(ch.name).begins_with("CanopyHaze") and ch is MeshInstance3D:
 			((ch as MeshInstance3D).material_override as ShaderMaterial).set_shader_parameter("strength", haze_k)
-	var gusty := 0.5 * sin(_life * 0.7) * sin(_life * 0.31) if id == "storm" else 0.0     # te same podmuchy co pochylenie deszczu
-	Level3D.set_wind(lerpf(0.5, float(WIND_K.get(id, 0.5)), k) * (1.0 + gusty), (0.55 + 0.3 * gusty) * k if id == "storm" else 0.0)
+	# wiatr z zegara pogody: te same podmuchy co pochylenie deszczu i dźwięk; pochylenie roślin rośnie z siłą wiatru ponad bryzę, w stronę wiatru
+	var lean := (0.35 + 0.45 * gust) * clampf((wind - 0.5) / 1.4, 0.0, 1.0) * k * wdir
+	Level3D.set_wind(lerpf(0.5, wind, k), lean)
 	var bvis := lerpf(1.0, float(BACKDROP_VIS.get(id, 1.0)), k)
 	for ch in _geo.get_children():                                 # lampki punktów orientacyjnych tła (`backdrop3d.gd`)
 		if String(ch.name).begins_with("BackdropLamp") and ch is MeshInstance3D:
 			((ch as MeshInstance3D).material_override as ShaderMaterial).set_shader_parameter("vis", bvis)
 	var rim := _geo.get_node_or_null("MoonRim") as DirectionalLight3D
 	if rim != null:
-		rim.light_energy = Level3D.MOON_RIM * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 1.2 * flash
+		rim.light_energy = Level3D.MOON_RIM * lerpf(1.0, float(MOON_K.get(id, 1.0)), ki) + 1.2 * flash
 		Front3D.set_moon(rim.light_energy / Level3D.MOON_RIM)      # kontra księżyca na pierwszym planie lasu (front3d.gd) idzie za pogodą i błyskiem
 	var moon := _geo.get_node_or_null("Moon") as DirectionalLight3D
 	if moon != null:
 		if not moon.has_meta("base_e"):
 			moon.set_meta("base_e", moon.light_energy)
-		moon.light_energy = float(moon.get_meta("base_e")) * lerpf(1.0, float(MOON_K.get(id, 1.0)), k) + 0.7 * flash * FLASH_PLANE      # na planie gry tylko mały udział błysku
+		moon.light_energy = float(moon.get_meta("base_e")) * lerpf(1.0, float(MOON_K.get(id, 1.0)), ki) + 0.7 * flash * FLASH_PLANE      # na planie gry tylko mały udział błysku
 		moon.light_color = Color(0.62, 0.72, 0.95).lerp(Color(0.9, 0.93, 1.0), clampf(flash, 0.0, 1.0))
 	var bolt := _geo.get_node_or_null("StormFlash") as DirectionalLight3D
 	if bolt != null:

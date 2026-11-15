@@ -1,6 +1,6 @@
 # Pogoda immersyjna — plan
 
-Status: **plan z 2026-11-15 (main 1.7.570, b2a6361 + #681); nic nie wdrożone.** Decyzje D1–D6 (§7) czekają na użytkownika.
+Status: **plan z 2026-11-15 (main 1.7.570, b2a6361 + #681), scalony w #683.** Decyzje D1–D6 (§7) przyjęte 2026-11-15 — wszystkie warianty zalecane. **W0 + W1 w 1.7.572** (`weather_clock.gd`, test `tools/test_weather_clock.gd`, flagi `--weathert`, `--weatherseed`). Dalej równolegle: dźwięk W2–W4 i obraz W5–W7 (z obrazem W4 i W3).
 Etapy W0–W7 to dźwięk i obraz (bez zmian w rozgrywce); W8 zmienia rozgrywkę i zaczyna się dopiero po playteście (GDD §16.0a).
 
 ## 1. Skąd to
@@ -201,7 +201,7 @@ Odrzucone: wycieranie maski (Metro — kamera z boku), wiatr jako siła ruchu (C
 
 ## 7. Decyzje użytkownika
 
-| # | Pytanie | Warianty | Zalecane |
+| # | Pytanie | Warianty | Wybrane (2026-11-15) |
 |---|---|---|---|
 | D1 | Sylwetki wrogów w błysku | (a) przyciemnić tło za planem gry; (b) zostawić i opisać w karcie burzy; (c) G2 — obie strony | (a) teraz, (c) do playtestu |
 | D2 | Czy siła pogody zmienia mnożniki | (a) tylko obraz i dźwięk; (b) G4 od razu | (a) |
