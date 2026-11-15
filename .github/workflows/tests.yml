@@ -13,7 +13,7 @@ env:
 jobs:
   godot:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30                    # testy headless trwają 17–20 min; przy 20 min zadanie bywało przerywane po zielonych testach (#681, #682)
     steps:
       - uses: actions/checkout@v4
         with:
