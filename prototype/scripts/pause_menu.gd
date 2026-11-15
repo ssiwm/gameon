@@ -301,7 +301,7 @@ func _build_settings(scroll: ScrollContainer) -> void:
 	right.add_child(W.section(tr("DISPLAY")))
 	_toggle(right, tr("Fullscreen  (%s)") % Actions.text("fullscreen"), func() -> bool: return Settings.fullscreen, Settings.toggle_fullscreen)
 	_drop(right, tr("Window size"), func() -> String:
-			var r: Vector2i = Settings.RES_LIST[Settings.res_idx]
+			var r: Vector2i = Settings.window_size()
 			return "FULLSCREEN" if Settings.fullscreen else "%d × %d" % [r.x, r.y],
 		Settings.cycle_res)
 	_seg(right, tr("V-Sync"), Settings.VSYNC_NAMES, func() -> int: return Settings.vsync_idx,
