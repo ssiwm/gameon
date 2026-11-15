@@ -169,11 +169,14 @@ var _clock := 0.0
 
 # --- muzyka
 var _music: Array[AudioStreamPlayer] = []
-var _stem_gain: Array[float] = []     # amplituda liniowa 0..1
+var _stem_gain: Array[float] = []     # postęp przejścia 0..1 (głośność z krzywej `_fade_gain`, nie liniowo)
 var _stem_target: Array[float] = []
 var _stem_enter_at: Array[float] = []  # od kiedy (zegar) stem może zacząć wchodzić
 var _music_layer := -1
 var _music_started := false
+const MUSIC_FADE_OUT := [10.0, 8.0, 6.0, 5.0]   ## s wyciszania stemu (cisza … pościg); od 1.7.578 dłużej i krzywą w dB (`_fade_gain`)
+const MUSIC_FADE_FLOOR_DB := -40.0               ## początek / koniec krzywej przejścia (poniżej tego stem jest niesłyszalny)
+const MUSIC_DROP_HOLD := [0.0, 2.0, 3.0, 4.0]    ## s czekania przed zejściem z warstwy (resztę trzyma MusicDirector: MIN_ON, MIN_STEP)
 const NO_DROP := -2                    # _drop_to: brak zaplanowanego zejścia (-1 to zejście do ciszy)
 var _drop_to := NO_DROP
 var _drop_at := -1.0
@@ -1110,7 +1113,7 @@ func music_set_layer(layer: int) -> void:
 				_stem_enter_at[i] = _clock + _quant_delay(i)
 		_music_layer = layer
 	else:
-		var hold: float = [0.0, 2.5, 6.0, 8.0][clampi(_music_layer, 0, 3)]
+		var hold: float = MUSIC_DROP_HOLD[clampi(_music_layer, 0, MUSIC_DROP_HOLD.size() - 1)]
 		_drop_to = layer
 		_drop_at = _clock + hold
 
@@ -1170,9 +1173,17 @@ func _update_music(delta: float) -> void:
 			if _clock >= _stem_enter_at[i]:
 				_stem_gain[i] = minf(1.0, _stem_gain[i] + delta / maxf(0.05, blend))
 		else:
-			_stem_gain[i] = maxf(0.0, _stem_gain[i] - delta / maxf(1.2, blend * 1.5))
-		var g := _stem_gain[i] * duck
+			_stem_gain[i] = maxf(0.0, _stem_gain[i] - delta / float(MUSIC_FADE_OUT[mini(i, MUSIC_FADE_OUT.size() - 1)]))
+		var g := _fade_gain(_stem_gain[i]) * duck
 		_music[i].volume_db = -80.0 if g <= 0.0001 else linear_to_db(g)
+
+
+## Postęp przejścia 0..1 → amplituda: równo w decybelach od MUSIC_FADE_FLOOR_DB do 0 dB. Liniowa amplituda (do 1.7.577)
+## wskakiwała w słyszalne poziomy w pierwszych procentach wejścia i urywała się na końcu wyciszenia.
+static func _fade_gain(x: float) -> float:
+	if x <= 0.0:
+		return 0.0
+	return db_to_linear(MUSIC_FADE_FLOOR_DB * (1.0 - minf(x, 1.0)))
 
 
 func music_layer() -> int:

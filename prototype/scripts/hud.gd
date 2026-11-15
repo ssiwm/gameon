@@ -2483,11 +2483,11 @@ func _drive_controls() -> void:
 
 ## Muzyka adaptacyjna: 4 warstwy po progach Uwagi (GDD §13).
 ## Muzyka (MUSIC_PLAN.md E0): warstwę wybiera wynik zagrożenia lokalnego gracza (`music_director.gd`), nie sama Uwaga;
-## poza misją i w kryjówce cisza. Każda zmiana warstwy trafia do dziennika sesji (`music`: z, do, T) — czas w każdej warstwie.
+## poza misją i w kryjówce cisza. Każda zmiana warstwy trafia do dziennika sesji (`music`: z, do, T wygładzony, T surowy) — czas w każdej warstwie.
 func _drive_music(delta: float) -> void:
 	var layer: int = _music_dir.update(delta, _find_local_player() as Node2D, NoiseMgr.has_network())
 	if layer != _music_layer:
-		SessionLog.event("music", {"from": _music_layer, "to": layer, "threat": roundi(_music_dir.threat)})
+		SessionLog.event("music", {"from": _music_layer, "to": layer, "threat": roundi(_music_dir.threat), "raw": roundi(_music_dir.raw_threat)})
 		_music_layer = layer
 		Audio.music_set_layer(layer)
 

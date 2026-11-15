@@ -3,7 +3,9 @@ extends RefCounted
 ## co mu naprawdę grozi (D2): wrogowie świadomi w zasięgu, obudzony boss, Stalker na łowach, świeże trafienia. Uwaga jest tylko
 ## składnikiem (do NOISE_MAX), więc sam hałas nie włącza muzyki — muzyka nie kłamie (P1).
 ## Z T wybiera warstwę stemów z histerezą; bez zagrożenia muzyka milknie (D1, warstwa -1), a co 2–4 min gra krótki „oddech”
-## (warstwa 0, dron `mus_silence`). Stan każdego wroga liczy serwer i replikuje (`enemy._ai`, `boss.state`, `NoiseMgr.stalker_awake`),
+## (warstwa 0, dron `mus_silence`). T jest wygładzany (szybciej w górę, wolno w dół), a muzyka, która weszła, gra co najmniej
+## MIN_ON s: pierwszy odsłuch 1.7.578 (dziennik sesji 1.1) dał 28 wejść w 6 min, mediana 3,6 s, 30 zmian warstwy w < 1 s od
+## poprzedniej — stan wrogów migocze (zauważył → zgubił), a muzyka szła za nim „jak wyłącznik”. Stan każdego wroga liczy serwer i replikuje (`enemy._ai`, `boss.state`, `NoiseMgr.stalker_awake`),
 ## więc u klienta wynik wychodzi taki sam jak u hosta dla tej samej pozycji.
 
 const Enemy := preload("res://scripts/enemy.gd")
@@ -23,18 +25,26 @@ const W_STALKER_FAR := 14.0     ## Stalker na łowach gdziekolwiek na mapie
 const W_STALKER_NEAR := 40.0    ## … i tuż obok
 const W_HIT := 35.0             ## świeże trafienie; gaśnie w HIT_DECAY s
 const HIT_DECAY := 6.0
-const NOISE_K := 0.2            ## Uwaga × NOISE_K, najwyżej NOISE_MAX — sama nie przekracza progu kontaktu
-const NOISE_MAX := 12.0
+const NOISE_K := 0.1            ## Uwaga × NOISE_K, najwyżej NOISE_MAX — sama nie włącza muzyki ani jej nie podtrzymuje (< DOWN[0])
+const NOISE_MAX := 6.0
 
 const UP := [14.0, 36.0, 66.0]  ## T, od którego wchodzi warstwa 1 (kontakt / napięcie), 2 (walka), 3 (pościg)
-const HYST := 8.0               ## zejście o warstwę dopiero przy T < próg − HYST (opóźnienie zejścia trzyma jeszcze AudioDirector)
+const DOWN := [9.0, 28.0, 58.0] ## T, poniżej którego warstwa 1 / 2 / 3 schodzi niżej (histereza; DOWN[0] > NOISE_MAX — sam hałas nie trzyma muzyki)
+const ATTACK_TAU := 1.2         ## s: stała czasowa wzrostu wygładzonego T (mignięcie „zauważył” przez ułamek sekundy nie włącza muzyki)
+const RELEASE_TAU := 5.0        ## s: stała czasowa spadku — po ostatnim zagrożeniu muzyka opada stopniowo, nie znika
+const MIN_ON := 12.0            ## s: muzyka, która weszła, gra co najmniej tyle, zanim zejdzie do ciszy
+const MIN_STEP := 5.0           ## s: najkrótszy pobyt w warstwie przed zejściem o warstwę (bez „pompowania” walka ↔ pościg)
 
 const BREATH_EVERY := Vector2(120.0, 240.0)  ## s ciszy między „oddechami”
 const BREATH_LEN := Vector2(8.0, 20.0)       ## s trwania oddechu
 const BREATH_MAX_T := 6.0                     ## oddech tylko w prawdziwym spokoju
 
-var threat := 0.0               ## ostatni wynik T (do dziennika i testów)
-var layer := -1                 ## warstwa wybrana w tej klatce (-1 cisza … 3 pościg)
+var threat := 0.0               ## wygładzony wynik T — on wybiera warstwę (do dziennika i testów)
+var raw_threat := 0.0           ## T z tej klatki, przed wygładzeniem
+var layer := -1                 ## warstwa wybrana w tej klatce (-1 cisza … 3 pościg, z oddechem)
+var _base := -1                 ## warstwa z zagrożenia (bez oddechu)
+var _on_t := 0.0                ## s od wejścia muzyki z ciszy
+var _in_layer_t := 0.0          ## s w bieżącej warstwie _base
 var _hit_k := 0.0
 var _last_hp := -1
 var _breath_in := 0.0           ## s do następnego oddechu (0 = jeszcze nie zaplanowany)
@@ -60,15 +70,32 @@ func update(delta: float, me: Node2D, in_session: bool) -> int:
 		_hit_k = 1.0
 	_last_hp = hp
 	_hit_k = maxf(0.0, _hit_k - delta / HIT_DECAY)
-	threat = score(me.global_position, gather(me.get_tree()), NoiseMgr.level, NoiseMgr.stalker_awake, _hit_k)
-	layer = pick_layer(threat, layer if _breath_left <= 0.0 else -1)
-	_drive_breath(delta)
+	raw_threat = score(me.global_position, gather(me.get_tree()), NoiseMgr.level, NoiseMgr.stalker_awake, _hit_k)
+	step(delta, raw_threat)
 	return layer
+
+
+## Wygładzenie T, warstwa z histerezą i minimalnymi czasami, potem oddech. Osobno od `update`, żeby test mógł podać T wprost.
+func step(delta: float, raw: float) -> void:
+	raw_threat = raw
+	threat += (raw - threat) * (1.0 - exp(-delta / (ATTACK_TAU if raw > threat else RELEASE_TAU)))
+	var want := pick_layer(threat, _base)
+	if want < _base and (_in_layer_t < MIN_STEP or (want < 0 and _on_t < MIN_ON)):
+		want = _base
+	_in_layer_t = _in_layer_t + delta if want == _base else 0.0
+	_on_t = _on_t + delta if want >= 0 else 0.0
+	_base = want
+	layer = _base
+	_drive_breath(delta)
 
 
 func reset() -> void:
 	threat = 0.0
+	raw_threat = 0.0
 	layer = -1
+	_base = -1
+	_on_t = 0.0
+	_in_layer_t = 0.0
 	_hit_k = 0.0
 	_last_hp = -1
 	_breath_in = 0.0
@@ -77,7 +104,7 @@ func reset() -> void:
 
 ## Oddech: w długiej ciszy na chwilę wchodzi sam dron (warstwa 0); każde zagrożenie go przerywa i liczy ciszę od nowa.
 func _drive_breath(delta: float) -> void:
-	if layer > -1 or threat >= BREATH_MAX_T:
+	if _base > -1 or threat >= BREATH_MAX_T:
 		_breath_left = 0.0
 		_breath_in = _rng.randf_range(BREATH_EVERY.x, BREATH_EVERY.y)
 		return
@@ -105,7 +132,7 @@ static func pick_layer(t: float, prev: int) -> int:
 	if up >= prev:
 		return up
 	var keep := prev
-	while keep > up and t < float(UP[keep - 1]) - HYST:
+	while keep > up and t < float(DOWN[keep - 1]):
 		keep -= 1
 	return keep
 
