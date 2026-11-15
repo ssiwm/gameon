@@ -1,6 +1,6 @@
 # Wrogowie w spoczynku — plan
 
-Status: **plan z 2026-11-15 (main 1.7.583, c233cc54).** Nic nie wdrożone. Decyzje D1–D4 (§6) czekają na użytkownika.
+Status: **plan z 2026-11-15 (main 1.7.583, c233cc54).** Nic nie wdrożone. Decyzje D1–D4 (§6) przyjęte 2026-11-15 — wszystkie warianty zalecane.
 Warstwy A i B zmieniają tylko obraz i dźwięk, więc nie czekają na playtest (GDD §16.0a). Warstwa C (przechadzki) zmienia symulację,
 więc wchodzi dopiero po playteście.
 
@@ -89,7 +89,7 @@ Pozostałe przykłady z własnej znajomości gier.
 | Rzeźnik | „Pracuje” tasakiem przy zwłokach | `TreeChopping_Loop` |
 | Kapłan | Klęczy i modli się, szepcze | `Fixing_Kneeling` / `Spell_Simple_Idle_Loop` |
 | Stalker | Bez zmian w B (skryptowany, budzi go Uwaga), tylko warstwa A | — |
-| Trzosek | Wataha leży zwinięta; jeden siedzi i węszy, czasem jeden żre | `Idle_2_HeadLow`, `Eating`, nowa poza leżenia z kodu |
+| Trzosek | Wataha zwinięta w niskim siadzie (D1: w obecnym prostokącie); jeden siedzi i węszy, czasem jeden żre | `Idle_2_HeadLow`, `Eating`, poza zwinięta z kodu |
 | Mimik | Spoczywa jak żołnierz (siedzi oparty), wzmacnia przynętę | `Sitting_Idle_Loop` |
 | Skoczek, Żerca, Ćma | Bez zmian (wiszą / są ukryci) | — |
 
@@ -107,12 +107,15 @@ Pozostałe przykłady z własnej znajomości gier.
 
 ## 6. Decyzje
 
-| # | Pytanie | Warianty | Zalecany |
+| # | Pytanie | Warianty | Przyjęte 2026-11-15 |
 |---|---|---|---|
-| D1 | Niska sylwetka snu a hitbox | a) pozy tylko w obecnym prostokącie (kucanie, oparcie); b) serwer obniża hitbox śpiącego | a) na start; b) dopiero gdy leżenie Trzosków okaże się potrzebne |
-| D2 | Przechadzki w symulacji | a) tak, po playteście (C2); b) nie, tylko widok | a) |
-| D3 | Dźwięk snu | a) synteza w `bake_sfx.py`; b) nagrania w `audio_licensed/`; c) najpierw synteza, potem odsłuch A/B | c) |
-| D4 | Głowa nasłuchuje (A5) | a) tak, dla wszystkich; b) tylko Ślepiec i Podsłuchacz (słuchacze) | a) |
+| D1 | Niska sylwetka snu a hitbox | a) pozy tylko w obecnym prostokącie (kucanie, oparcie, klęczenie); b) serwer obniża hitbox śpiącego | **a)** — bez zmian na serwerze; leżenie Trzosków (b) dopiero, gdy okaże się potrzebne |
+| D2 | Przechadzki w symulacji | a) tak, po playteście (C2); b) nie, tylko widok | **a)** — 10–20% śpiących, wyłączone na trasach cichego przejścia, etap I5 |
+| D3 | Dźwięk snu | a) synteza w `bake_sfx.py`; b) nagrania w `audio_licensed/`; c) najpierw synteza, potem odsłuch A/B | **c)** |
+| D4 | Głowa nasłuchuje (A5) | a) tak, dla wszystkich; b) tylko Ślepiec i Podsłuchacz (słuchacze) | **a)** |
+
+Skutki dla etapów: w I2 pozy Trzosków to zwinięty siad / przysiad w obecnym prostokącie (nie leżenie płasko), poza Wołka i Kapłana
+sprawdzana w `test_proportions.gd`; I3 zaczyna od syntezy, odsłuch A/B z nagraniami przed podmianą.
 
 ## 7. Etapy
 
