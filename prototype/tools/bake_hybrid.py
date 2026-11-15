@@ -38,6 +38,8 @@ Odsłuch 2026-11-02 (rodziny dotąd tylko syntetyczne), z nagrań: mech_* (strze
 heart_slow_loop, revive; amb_machine, amb_air, amb_drips. Zostały syntetyczne: kaplan_scream, moth_flutter_loop, moth_crack
 (odsłuch), alarm_bell (brak nagrania dzwonu kościelnego), mine_beep, radio_static, sygnały UI, muzyka.
 Odsłuch 2026-11-14, z nagrań: dig_dirt, dig_gravel, dig_rock (cios kilofem w strefie wydobycia).
+Odsłuch 2026-11-15, z nagrań: cała pogoda (WEATHER_PLAN.md W2–W4) — tło deszczu, krople na materiałach, dach, okap, kaptur, wiatr,
+podmuch, świst w oknie, grzmot (trzask, toczenie, drżenie szyb).
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
