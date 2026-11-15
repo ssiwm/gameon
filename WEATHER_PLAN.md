@@ -2,7 +2,7 @@
 
 Status: **plan z 2026-11-15 (main 1.7.570, b2a6361 + #681), scalony w #683.** Decyzje D1–D6 (§7) przyjęte 2026-11-15 — wszystkie warianty zalecane. **W0 + W1 w 1.7.572** (`weather_clock.gd`, test `tools/test_weather_clock.gd`, flagi `--weathert`, `--weatherseed`). **Dźwięk W2–W4 w 1.7.573** (`weather_sound.gd`, synteza `tools/bake_weather.py`, wersje z nagrań
 `bake_hybrid.weather()`, test `tools/test_weather_sound.gd`); poza zakresem zostały: kapanie przez dziury w deskach, szelest mokrego
-stroju, łopot plandek, pył z sufitu przy bliskim grzmocie w podziemiach. Obraz W5–W7 (z obrazem W4 i W3) — równolegle.
+stroju, łopot plandek, pył z sufitu przy bliskim grzmocie w podziemiach. **Obraz W5–W7 oraz obraz W3 i W4 w 1.7.574** (`view3d._sync_weather`, `Level3D.wet_pass`, mgła z shaderem `fog`, `FlashShade`) — wyniki pomiarów w §6; poza zakresem zostały: strugi z okapów, krople spadające z postaci po wejściu pod dach, strugi na szybce maski.
 Etapy W0–W7 to dźwięk i obraz (bez zmian w rozgrywce); W8 zmienia rozgrywkę i zaczyna się dopiero po playteście (GDD §16.0a).
 
 ## 1. Skąd to
@@ -188,18 +188,18 @@ Odrzucone: wycieranie maski (Metro — kamera z boku), wiatr jako siła ruchu (C
 
 ## 6. Kryteria akceptacji (mierzone)
 
-| Kryterium | Dziś | Cel |
-|---|---|---|
-| Mgła HIGH: piksele < 8/255 w pasie gry | 37% | ≥ 75% |
-| Mgła LOW vs HIGH: różnica mediany pasa gry | 12/255 | ≤ 3/255 |
-| Pełny błysk: mediana pasa gry względem bez błysku | ok. ×8 (0 → 19) | wg D1; dno lasu bez „śniegu” (nasycenie barwy jak w świetle księżyca) |
-| Krople w kręgu latarki vs w ciemności (jasność) | 1× | ≥ 3× |
-| Gęstość deszczu burzy na ekranie (smug / Mpx) | zmierzyć w W0 | ×2–3 |
-| Najkrótsza pętla pogody w miksie | 16 s | ≥ 60 s, bez słyszalnej powtórki w 2 min (odsłuch) |
-| Grzmot: długość ogona, liczba wariantów | 6 s, 3 mono | 8–20 s, 6–9 stereo |
-| Koszt GPU całej pogody (HIGH 4K) | ok. 0 ms | ≤ +1,0 ms |
-| VRAM mgły | +286 MB | ≤ +100 MB |
-| `--weathertest` | — | PASS (deterministyka, dołączający) |
+| Kryterium | Dziś | Cel | Po obrazie W3–W7 (1.7.574, 4K HIGH, ziarno 7, 1.1) |
+|---|---|---|---|
+| Mgła HIGH: piksele < 8/255 w pasie gry | 37% | ≥ 75% | 95% (przed tą zmianą 40%) |
+| Mgła LOW vs HIGH: różnica mediany pasa gry | 12/255 | ≤ 3/255 | 2,7/255 (pas gry: HIGH 0, LOW 2,7) |
+| Pełny błysk: mediana pasa gry względem bez błysku | ok. ×8 (0 → 19) | wg D1; dno lasu bez „śniegu” (nasycenie barwy jak w świetle księżyca) | pas gry 0 → 14,3 (przed 19); tło na wysokości postaci mediana 15,7 (przed 43,3) — D1 a, „śnieg” znikł poza otwartym terenem bez lasu |
+| Krople w kręgu latarki vs w ciemności (jasność) | 1× | ≥ 3× | 8,4× (p99 detalu smug; przed 0,7×) |
+| Gęstość deszczu burzy na ekranie (smug / Mpx) | zmierzyć w W0 | ×2–3 | kropel ×3,2 (1500 → 4860 w trzech planach), plusk ×10 (90 → 900) |
+| Najkrótsza pętla pogody w miksie | 16 s | ≥ 60 s, bez słyszalnej powtórki w 2 min (odsłuch) | — (dźwięk) |
+| Grzmot: długość ogona, liczba wariantów | 6 s, 3 mono | 8–20 s, 6–9 stereo | — (dźwięk) |
+| Koszt GPU całej pogody (HIGH 4K) | ok. 0 ms | ≤ +1,0 ms | deszcz +0,4 ms, burza +0,4 ms, mgła ok. 0 (przed +1,8 ms) względem pogodnej nocy |
+| VRAM mgły | +286 MB | ≤ +100 MB | +38 MB (pas nad kadrem w niższej skali, dwuliniowo) |
+| `--weathertest` | — | PASS (deterministyka, dołączający) | — (obraz z zegara pogody: deterministyczny bez RPC; test zegara `test_weather_clock.gd` PASS) |
 
 ## 7. Decyzje użytkownika
 

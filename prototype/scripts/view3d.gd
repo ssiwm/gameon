@@ -195,7 +195,7 @@ var _cabinets := {}                      ## id gabloty (cabinet.gd) → {node, r
 var _guns := {}                          ## id pickupu z bronią → [pickup, Node3D przegub modelu, sprite 2D, z]
 var _gun_warm_t := 0.0                   ## s do następnego przeglądu ekwipunku graczy (_warm_loadouts)
 var _casings := {}                       ## id ciała łuski 2D → [RigidBody2D, MeshInstance3D, losowe odchylenie]
-var _rain: CPUParticles3D                ## deszcz 3D (smugi kropel)
+var _rain: Array = []                   ## deszcz 3D: plany bliski, środkowy i daleki (GPUParticles3D, `RAIN_PLANES`)
 var _ws_lamps := {}                      ## id warsztatu → lampa nad nim (Node3D w geometrii mapy)
 var _hub_signs: Array = []                ## tabliczki kryjówki (HUB_LAYOUT_PLAN.md E4): [płyta Node3D, napis Label3D, stanowisko Node2D albo null, kolumna, wiersz podłogi]
 var _tarps := {}                          ## id uśpionego stanowiska → plandeka (Node3D w geometrii mapy)
@@ -243,7 +243,16 @@ var _mine_dust: Array = []               ## pył finału kopalni: [drobny pył, 
 var _mine_dust_key := Vector2i(-999, -999)   ## kafel kamery, dla którego wyznaczono punkty stropu
 var _rain_open := 0.0                    ## 0..1: gracz jest nad poziomem podziemi (deszcz widać)
 var _roof_key := "?"                     ## mapa, dla której policzono wysokości dachów
-var _rain_splash: CPUParticles3D         ## plusk kropel na gruncie
+var _rain_splash: GPUParticles3D         ## plusk kropel na poziomych powierzchniach pod niebem (`SPLASH_PROCESS`)
+var _leaves: GPUParticles3D              ## liście i igliwie niesione wiatrem (W3)
+var _roof_tex: ImageTexture              ## wysokość wierzchu pierwszej bryły w kolumnie (deszcz, plusk, mokry świat, kręgi na wodzie, mgła przy gruncie)
+var _fog_drift := Vector3.ZERO           ## dryf ławic mgły (W7) — narasta z wiatrem pogody
+var _wet := -1.0                         ## mokry świat 0..1 wysłany do `weather_wet` (−1 — jeszcze nie)
+var _rain_g := -1.0                      ## siła deszczu wysłana do `weather_rain` (kręgi na wodzie)
+var _char_wet := {}                      ## id gracza → przemoczenie stroju 0..1 (char3d.gd `set_rain_wet`)
+var _fog_scale := 1.0                    ## skala renderu świata przy bryle symetrycznej mgły (W7: pas nad kadrem bez dodatkowej pamięci)
+var _wind_push := Vector3.ZERO           ## przyspieszenie boczne dymu od wiatru pogody [m/s²] (W3)
+static var dev_bolt := false             ## dev (--shotbolt): kanał pioruna stale widoczny przy `--shotflash` (zrzuty)
 var _sky_drift := Vector2.ZERO           ## przesunięcie chmur nieba (narasta z wiatrem pogody, `SKY_WIND`)
 var _blood: Array = []                   ## kałuże krwi: [MeshInstance3D, promień docelowy, promień bieżący, wiek]
 var _blood_shader: Shader
@@ -799,6 +808,13 @@ func _sync_camera() -> void:
 	else:
 		_fog_rows = 0
 		_fog_top = 0
+	# W7: pas nad kadrem kosztował w 4K ok. +250 MB pamięci wideo i +1,2 ms GPU — świat z pasem renderuje się w mniejszej skali tak, żeby
+	# liczba pikseli renderu 3D była taka jak bez pasa. Skalowanie dwuliniowe, nie FSR 1: FSR trzyma dwa dodatkowe bufory w pełnym rozmiarze
+	# viewportu z pasem (pomiar 4K: +190 MB zamiast +38 MB); we mgle i tak nie ma ostrych krawędzi, a postacie są na osobnej warstwie
+	var fsc := sqrt(float(sz.y) / float(sz.y + _fog_rows)) if _fog_rows > 0 else 1.0
+	if absf(fsc - _fog_scale) > 0.002:
+		_fog_scale = fsc
+		_apply_render_scale()
 	_cam_a.set_frustum(fsize, foff, near, 160.0)
 	_cam_a.global_transform = xf
 	_fog_skew = 0.0 if _fog_rows > 0 else skew
@@ -1124,6 +1140,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 			["canopy_haze", func() -> void: Level3D.build_canopy_haze(root, rows)],
 			["backdrop", func() -> void: Backdrop3D.build(root, rows, _level.get("backdrop") if _level.get("backdrop") != null else [])],
 			["ground_fog", func() -> void: Level3D.build_ground_fog(root, rows)],
+			["flash_shade", func() -> void: Level3D.build_flash_shade(root, rows)],
 		])
 	return steps
 
@@ -3466,8 +3483,9 @@ func _apply_render_scale() -> void:
 	# świat: „Render scale” × skala z „Effects quality” (MEDIUM 75%) przez FSR 1. Dawniej MEDIUM zmniejszało sam viewport, a obraz rozciągał
 	# sprite dwuliniowo (rozmyty, bez wyostrzenia). Warstwa graczy (przezroczyste tło) skaluje się dwuliniowo jak dotąd
 	var q := _quality_3d_scale()
-	var sc := Settings.render_scale() * q
-	_vp_bg.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if sc < 0.999 else Viewport.SCALING_3D_MODE_BILINEAR
+	var sc := Settings.render_scale() * q * _fog_scale
+	var fsr := Settings.render_scale() * q < 0.999          # sama skala pasa mgły (`_fog_scale`) — dwuliniowo (_sync_camera)
+	_vp_bg.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if fsr else Viewport.SCALING_3D_MODE_BILINEAR
 	_vp_bg.scaling_3d_scale = sc
 	_vp_fg.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	_vp_fg.scaling_3d_scale = q
@@ -4991,7 +5009,9 @@ func _sync_fires() -> void:
 			var sh_h := 9.0 * fl
 			_span_quad(shaft, Vector3(0.0, 0.2, -0.1), Vector3(0.0, sh_h, -0.1), 1.5)
 			(shaft.material_override as StandardMaterial3D).albedo_color = Color(fcol.r, fcol.g, fcol.b, 0.10 * fl if Settings.quality_idx >= 1 else 0.0)
-			(fire.get_node("Smoke") as CPUParticles3D).emitting = on and Settings.quality_idx >= 1
+			var fsm := fire.get_node("Smoke") as CPUParticles3D
+			fsm.emitting = on and Settings.quality_idx >= 1
+			fsm.gravity = Vector3(0.1, 0.15, 0.0) + _wind_at(src.global_position)      # dym znosi wiatr pogody (W3), pod dachem nie
 			# pierścień postępu ewakuacji na ziemi wokół flary (0 → 360°)
 			var pmesh := (fr[4] as MeshInstance3D).mesh as ImmediateMesh
 			(fr[4] as MeshInstance3D).visible = on
@@ -5651,6 +5671,7 @@ func _sync_burning() -> void:
 			pf.scale_amount_min = r * 0.5
 			pf.scale_amount_max = r * 0.9
 			pf.emitting = fade2 > 0.35
+			pf.gravity = Vector3(0.0, 0.12, 0.0) + _wind_at(src.global_position) * 0.6
 
 ## Wołane z `Vfx.burning`: płomienie na ciele (wróg, beczka) przez `seconds` s.
 func mirror_burning(host: Node2D, seconds: float) -> void:
@@ -7392,17 +7413,25 @@ func _sync_mine_dust() -> void:
 
 # ---------------------------------------------------------------- pogoda
 
-## Deszcz i plusk przycinane do dachów: każda kolumna mapy ma wysokość pierwszej litej bryły od góry (`roof`, tekstura 1×kolumny, metry).
-## Kropla poniżej tej wysokości jest odrzucana — pod stropem, w budynku i w jaskini nie pada, a na otwartym terenie krople kończą się na gruncie.
-## Za bryłą poziomu (las w głębi, `z_back`) dachów nie ma: tam krople lecą do `floor_y`. //BILLBOARD → wariant dla plusku (środek cząsteczki).
+## Deszcz oświetlany (WEATHER_PLAN.md W5): smuga dodawana do obrazu (`blend_add`) jako światło rozproszone na kropli — bez własnej barwy, więc
+## w ciemności jej prawie nie ma, a w snopie latarki, przy lampach, flarach i w błysku świeci (GDD §8.3). `light()` liczy rozproszenie niezależnie
+## od normalnej (kropla świeci pod każdym kątem) z tłumieniem i cieniem światła (za ścianą snop nie oświetla kropel). Bez mgły głębi (mgła dodana
+## do smugi w `blend_add` rozjaśniłaby czerń) — daleki plan gaśnie sam z głębią (`far_fade`). Przycinanie do dachów: każda kolumna mapy ma wysokość
+## pierwszej litej bryły od góry (`roof`, tekstura 1×kolumny, metry); kropla poniżej jest odrzucana — pod stropem, w budynku i w jaskini nie pada,
+## na otwartym terenie krople kończą się na gruncie. Za bryłą poziomu (las w głębi, `z_back`) dachów nie ma: tam krople lecą do `floor_y`.
+## //BILLBOARD → wariant dla plusku (środek cząsteczki).
 const RAIN_SHADER := "shader_type spatial;
-render_mode unshaded, cull_disabled, blend_mix, depth_draw_never;
+render_mode blend_add, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled, specular_disabled;
 uniform sampler2D roof : filter_nearest, repeat_disable;
 uniform float cols = 1.0;
 uniform float tile = 1.0;
 uniform float z_back = -2.7;
 uniform float floor_y = -1000.0;
 uniform float splash_band = 0.0;
+uniform float gain = 1.0;
+uniform float flash = 0.0;
+uniform float far_fade = 0.0;
+uniform float soft = 0.0;
 varying vec3 wp;
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -7420,15 +7449,102 @@ void fragment() {
 	if (wp.y < lim) {
 		discard;
 	}
-	ALBEDO = COLOR.rgb;
-	ALPHA = COLOR.a;
+	float across = 1.0 - abs(UV.x * 2.0 - 1.0);
+	float along = smoothstep(0.0, 0.3, UV.y) * smoothstep(1.0, 0.55, UV.y);
+	float k = gain * COLOR.a * mix(1.0, across, soft) * along * exp(-far_fade * max(-wp.z, 0.0));
+	ALBEDO = vec3(0.62, 0.68, 0.78) * k;
+	EMISSION = vec3(0.50, 0.57, 0.80) * k * flash * 0.3;
+}
+void light() {
+	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * 0.35;
 }
 "
 const RAIN_BILLBOARD := "wp = MODEL_MATRIX[3].xyz;
 	mat4 bw = mat4(normalize(INV_VIEW_MATRIX[0]), normalize(INV_VIEW_MATRIX[1]), normalize(INV_VIEW_MATRIX[2]), MODEL_MATRIX[3]);
 	MODELVIEW_MATRIX = VIEW_MATRIX * bw * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));"
 
-## Wysokość dachu / gruntu dla każdej kolumny mapy [m] jako tekstura dla `RAIN_SHADER`.
+## Plusk kropel (W5) na każdej poziomej powierzchni pod niebem w kadrze: cząsteczka rodzi się w losowej kolumnie pasa kamery na wierzchu pierwszej
+## litej bryły od góry (ta sama tekstura `roof` co przycinanie deszczu) — pluska na gruncie, deskach, dachach i parapetach, a pod stropem nie.
+## Kolumny poza kadrem w pionie (`extent.y`) i bez bryły nie dostają plusku (cząsteczka nieaktywna).
+const SPLASH_PROCESS := "shader_type particles;
+uniform sampler2D roof : filter_nearest, repeat_disable;
+uniform float cols = 1.0;
+uniform float tile = 1.0;
+uniform vec3 center = vec3(0.0);
+uniform vec3 extent = vec3(10.0, 10.0, 1.4);
+uniform float up_v = 1.2;
+uniform float side_v = 0.0;
+float rnd(uint n) {
+	n = (n << 13u) ^ n;
+	n = n * (n * n * 15731u + 789221u) + 1376312589u;
+	return float(n & 0x7fffffffu) / 2147483647.0;
+}
+void start() {
+	if (RESTART_POSITION) {
+		uint s = NUMBER * 747796405u + RANDOM_SEED;
+		float x = center.x + (rnd(s) * 2.0 - 1.0) * extent.x;
+		float z = center.z + (rnd(s + 17u) * 2.0 - 1.0) * extent.z;
+		float c = x / tile;
+		float y = -100000.0;
+		if (c >= 0.0 && c < cols) {
+			y = texture(roof, vec2((floor(c) + 0.5) / cols, 0.5)).r;
+		}
+		ACTIVE = abs(y - center.y) < extent.y;
+		TRANSFORM = mat4(1.0);
+		TRANSFORM[3].xyz = vec3(x, y + 0.02, z);
+		float a = (rnd(s + 31u) * 2.0 - 1.0);
+		float v = up_v * (0.5 + rnd(s + 53u));
+		VELOCITY = vec3(sin(a) * v * 0.6 + side_v, cos(a) * v, 0.0);
+		COLOR = vec4(1.0, 1.0, 1.0, 0.6 + 0.4 * rnd(s + 71u));
+	}
+}
+void process() {
+	VELOCITY.y -= 9.0 * DELTA;
+}
+"
+
+## Liście i igliwie w powietrzu (W3): cząsteczki niesione wiatrem z zegara pogody (`wind`, `gust`, `direction`), obrót w płaszczyźnie ekranu
+## z cząsteczki (`INSTANCE_CUSTOM.x`) i koziołkowanie (ściśnięcie w poprzek). Oświetlane — w ciemności ich nie widać, w snopie latarki i przy
+## lampach migają. Pod dachem (ta sama tekstura `roof` co deszcz) odrzucane.
+const LEAF_SHADER := "shader_type spatial;
+render_mode cull_disabled, depth_draw_opaque, shadows_disabled, specular_disabled;
+uniform sampler2D roof : filter_nearest, repeat_disable;
+uniform float cols = 1.0;
+uniform float tile = 1.0;
+uniform float z_back = -2.7;
+varying vec3 wp;
+varying float v_hue;
+void vertex() {
+	wp = MODEL_MATRIX[3].xyz;
+	float a = INSTANCE_CUSTOM.x;
+	float ph = INSTANCE_CUSTOM.y * 37.0 + float(INSTANCE_ID) * 1.7;
+	v_hue = fract(float(INSTANCE_ID) * 0.618);
+	vec2 v = VERTEX.xy * vec2(0.25 + 0.75 * abs(sin(ph)), 1.0);
+	v = vec2(v.x * cos(a) - v.y * sin(a), v.x * sin(a) + v.y * cos(a));
+	float s = length(MODEL_MATRIX[0].xyz);
+	vec3 world = wp + (normalize(INV_VIEW_MATRIX[0].xyz) * v.x + normalize(INV_VIEW_MATRIX[1].xyz) * v.y) * s;
+	POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(world, 1.0);
+}
+void fragment() {
+	float c = wp.x / tile;
+	if (wp.z > z_back && c >= 0.0 && c < cols) {
+		if (wp.y < texture(roof, vec2((floor(c) + 0.5) / cols, 0.5)).r) {
+			discard;
+		}
+	}
+	vec2 p = UV * 2.0 - 1.0;
+	float w = 0.42 * (1.0 - p.y * p.y);
+	if (abs(p.x) > w) {
+		discard;
+	}
+	ALBEDO = mix(vec3(0.20, 0.13, 0.06), vec3(0.17, 0.16, 0.07), v_hue) * (0.8 + 0.3 * (1.0 - abs(p.x) / max(w, 0.01)));
+	ROUGHNESS = 0.8;
+	BACKLIGHT = vec3(0.25, 0.18, 0.08);
+}
+"
+
+## Wysokość dachu / gruntu dla każdej kolumny mapy [m] jako tekstura dla `RAIN_SHADER` (i globalnie `weather_roof` — mokry świat, kręgi
+## na wodzie, mgła przy gruncie).
 func _roof_texture() -> ImageTexture:
 	var cols := 1
 	for r in _rows:
@@ -7443,7 +7559,20 @@ func _roof_texture() -> ImageTexture:
 		img.set_pixel(c, 0, Color(y, 0.0, 0.0))
 	return ImageTexture.create_from_image(img)
 
-const RAIN_3D := {"rain": [12.0, 700, 10.5], "storm": [26.0, 1500, 13.0]}      # kąt od pionu [°], liczba kropel, prędkość [m/s]
+## Plany deszczu (W5): [nazwa, z od, z do, rozmiar smugi (szer., dł.) [m], liczba kropel w pełnej burzy, rozmycie brzegów, gaśnięcie z głębią
+## [1/m], jasność]. Bliski plan przed graczami rzadki i grubszy (poza ostrością), środek w pasie gry, daleki gęsta zasłona w lesie, gasnąca
+## z odległością. Liczba cząsteczek stała (zmiana `amount` restartuje emiter) — siłę pogody i frontu niesie `amount_ratio`.
+const RAIN_PLANES := [
+	["near", 1.2, 5.0, Vector2(0.026, 1.0), 260, 1.0, 0.0, 0.6],
+	["mid", -2.7, 1.2, Vector2(0.015, 0.6), 1600, 0.35, 0.0, 1.0],
+	["far", -26.0, -2.7, Vector2(0.034, 1.15), 3000, 0.0, 0.06, 1.5],
+]
+const RAIN_3D := {"rain": [12.0, 0.5, 10.5], "storm": [26.0, 1.0, 13.0]}      # kąt od pionu [°], udział kropel planów, prędkość [m/s]
+const SPLASH_MAX := 900                     ## plusk: cząsteczek przy pełnej burzy (na każdej poziomej powierzchni pod niebem w kadrze)
+const LEAF_MAX := 160                       ## liście w powietrzu przy silnym wietrze (W3)
+const WET_RISE_S := 90.0                    ## mokry świat (W6): narastanie od początku deszczu [s]
+const CHAR_WET_RISE_S := 25.0               ## strój pod niebem moknie w tyle [s] …
+const CHAR_WET_DRY_S := 150.0               ## … i schnie pod dachem
 const HAZE_K := {"clear": 0.12, "rain": 0.8, "storm": 0.8, "fog": 1.0}          # zamglenie powietrza wg pogody (mnożnik gęstości bazowej)
 const GROUND_FOG_K := {"clear": 0.0, "rain": 0.5, "storm": 0.4, "fog": 1.6}    # wstęgi mgły przy ziemi wg pogody
 const MOON_K := {"clear": 1.35, "rain": 0.75, "storm": 0.55, "fog": 1.0}       # jasność księżyca wg pogody
@@ -7459,13 +7588,24 @@ const BACKDROP_VIS := {"clear": 1.0, "rain": 0.55, "storm": 0.45, "fog": 0.25}  
 ## REDUCED (wcześniej ×20,5 i ×4,3); niebo ×29, korony ×37, dno lasu ×67 jak dotąd w tym rzędzie wielkości.
 const FLASH_PLANE := 0.12
 const FLASH_FOREST := 1.3                       ## energia `StormFlash` na lesie przy pełnym błysku (zastępuje dawny pełny błysk księżyca i otoczenia)
+const FLASH_SHADE := 0.85                       ## D1 a: o ile błysk przyciemnia pas tła za płaszczyzną gry na wysokości postaci (`Level3D.FLASH_SHADE_SHADER`)
 const CANOPY_HAZE_K := {"clear": 1.15, "rain": 0.7, "storm": 0.6, "fog": 0.35}   # zamglenie koron (`Level3D.build_canopy_haze`); w mgle warstwy daje mgła głębi
+## Mgła (W7): ławice i przyrost przy gruncie bryły mgły (`Level3D.FOG_VOLUME_SHADER`) wg pogody; w MGLE pełne, w deszczu słabe.
+const FOG_BANKS := {"clear": 0.0, "rain": 0.25, "storm": 0.3, "fog": 1.0}
+const FOG_GROUND := {"clear": 0.3, "rain": 0.6, "storm": 0.6, "fog": 1.4}
+## Mgła na LOW (bez mgły wolumetrycznej, W7 — parytet z HIGH, zasada 3): mgła głębi podchodzi bliżej i wstęgi przy ziemi są gęstsze.
+const FOG_LOW_BEGIN := 1.0
+const FOG_LOW_GROUND := 1.6
 
 ## Pogoda w scenie 3D (stan z `weather_fx.gd`: narastanie `_k`, siła frontu `_i`, wiatr `_wind` z podmuchem `_gust` i kierunkiem `_wdir`,
-## otwartość nieba `_sky`, rodzaj `_id`, błysk `_flash`; dźwięk zostaje tam; zegar pogody — `weather_clock.gd`, WEATHER_PLAN.md W1):
-##  - deszcz: smugi kropel w całej głębi sceny (od planu przed graczami po las), pochylone wiatrem, z podmuchami burzy, plus plusk na gruncie;
-##  - mgła: gęstsza bryła mgły wolumetrycznej z własną bladą poświatą (światła latarki i flar rysują w niej snopy) i bliższa mgła głębi;
-##  - burza: błyskawica rozświetla niebo, chmury, mgłę głębi i las w pełni, a plan gry tylko w małej części (FLASH_PLANE).
+## otwartość nieba `_sky`, rodzaj `_id`, błysk `_flash` z ostatnią błyskawicą `_bolt`; dźwięk zostaje tam; zegar pogody — `weather_clock.gd`,
+## WEATHER_PLAN.md W1, obraz W3–W7):
+##  - deszcz: trzy plany oświetlanych smug (`RAIN_PLANES`), plusk na wierzchach pod niebem, kręgi na wodzie (`weather_rain`), mokry świat
+##    (`weather_wet`, `Level3D.WET_SHADER`) i przemoczone stroje graczy pod niebem;
+##  - mgła: bryła mgły z ławicami dryfującymi z wiatrem, bez własnej poświaty (widać ją w świetle latarki, lamp i flar), bliższa mgła głębi;
+##  - burza: błyskawica od strony z zegara rozświetla niebo, chmury i las, a plan gry tylko w małej części (FLASH_PLANE); pas tła za postaciami
+##    zostaje ciemny (D1 a), bliska ma kanał pioruna na niebie (tylko FULL);
+##  - wiatr: rośliny, liście w powietrzu, dym flar i chmur dymu, dryf mgły i chmur.
 func _sync_weather(delta: float) -> void:
 	var wx := get_tree().root.find_child("WeatherFx", true, false)
 	if wx == null:
@@ -7477,114 +7617,56 @@ func _sync_weather(delta: float) -> void:
 	var wind := float(wx.get("_wind"))
 	var gust := float(wx.get("_gust"))
 	var wdir := float(wx.get("_wdir"))                              # +1: wiatr z prawej (krople i chmury płyną w lewo)
+	var clock := float(wx.get("_clock"))
 	var ki := k * (0.55 + 0.45 * wi)                                # siła pogody dla nieba i światła: w przejaśnieniu bliżej nocy bez pogody
 	var mode: int = Settings.weather_fx_effective()
-	if _rain == null:
-		_rain = CPUParticles3D.new()
-		_rain.name = "Rain"
-		_rain.local_coords = false
-		_rain.emitting = false
-		var q := QuadMesh.new()
-		q.size = Vector2(0.014, 0.55)
-		var rsh := Shader.new()
-		rsh.code = RAIN_SHADER
-		var m := ShaderMaterial.new()
-		m.shader = rsh
-		q.material = m
-		_rain.mesh = q
-		_rain.particle_flag_align_y = true                      # smuga wzdłuż toru lotu
-		_rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-		_rain.spread = 2.5
-		_rain.gravity = Vector3.ZERO
-		_rain.layers = LAYER_WORLD
-		_rain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_world.add_child(_rain)
-		_rain_splash = CPUParticles3D.new()
-		_rain_splash.name = "RainSplash"
-		_rain_splash.local_coords = false
-		_rain_splash.emitting = false
-		_rain_splash.amount = 90
-		_rain_splash.lifetime = 0.28
-		var sq := QuadMesh.new()
-		sq.size = Vector2(0.035, 0.035)
-		var ssh := Shader.new()
-		ssh.code = RAIN_SHADER.replace("//BILLBOARD", RAIN_BILLBOARD)
-		var smt := ShaderMaterial.new()
-		smt.shader = ssh
-		smt.set_shader_parameter("splash_band", 0.5)          # plusk tylko tuż nad gruntem swojej kolumny
-		sq.material = smt
-		_rain_splash.mesh = sq
-		_rain_splash.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-		_rain_splash.direction = Vector3.UP
-		_rain_splash.spread = 55.0
-		_rain_splash.initial_velocity_min = 0.6
-		_rain_splash.initial_velocity_max = 1.7
-		_rain_splash.gravity = Vector3(0.0, -9.0, 0.0)
-		_rain_splash.layers = LAYER_WORLD
-		_rain_splash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_world.add_child(_rain_splash)
+	if _rain.is_empty():
+		_make_rain()
 	var flash := float(wx.call("_flash", mode)) * k if id == "storm" else 0.0
-	# deszcz
 	var raining := RAIN_3D.has(id)
-	# obraz deszczu nie zależy już od tego, czy sam gracz stoi pod dachem (to steruje tylko dźwiękiem): pada wszędzie pod gołym niebem,
-	# a dachy przycina shader; pod ziemią (poniżej poziomu podziemi) emitery stoją
-	var lp0 = wx.call("_local_player")
-	var above: bool = lp0 != null and (lp0 as Node2D).global_position.y < float(_level.get("underground_y"))
-	_rain_open = move_toward(_rain_open, 1.0 if above else 0.0, get_process_delta_time() * 1.5)
-	var strength := k * _rain_open if raining and mode != Settings.WEATHER_FX_OFF else 0.0      # OFF: bez cząsteczek (mgła i niebo zostają, D3)
-	if raining and _roof_key != _geo_key and not _rows.is_empty():
+	if _roof_key != _geo_key and not _rows.is_empty():
 		_roof_key = _geo_key
-		var rt := _roof_texture()
-		for pm in [_rain.mesh.surface_get_material(0), _rain_splash.mesh.surface_get_material(0)]:
-			(pm as ShaderMaterial).set_shader_parameter("roof", rt)
-			(pm as ShaderMaterial).set_shader_parameter("cols", float(rt.get_width()))
-			(pm as ShaderMaterial).set_shader_parameter("tile", Level3D.T)
-			(pm as ShaderMaterial).set_shader_parameter("z_back", -(Level3D.DEPTH_BACK + 0.3))
-			(pm as ShaderMaterial).set_shader_parameter("floor_y", -float(_level.get("underground_y")) * PX)
-	_rain.emitting = strength > 0.02
-	_rain_splash.emitting = strength > 0.02
-	if raining:
-		var cfg: Array = RAIN_3D[id]
-		var want := maxi(60, int(float(cfg[1]) * (0.6 if mode == Settings.WEATHER_FX_REDUCED else 1.0) * (0.5 if Settings.quality_idx == 0 else 1.0)))
-		if _rain.amount != want:
-			_rain.amount = want
-		var a := deg_to_rad(float(cfg[0]) * (0.75 + 0.25 * wi + 0.5 * gust))    # podmuch i ulewa pochylają deszcz
-		var dir := Vector3(-sin(a) * wdir, -cos(a), 0.0)      # wiatr z prawej (wdir +1): krople lecą w lewo w dół
-		var cam := _cam_a.global_position
-		var half_h := tan(deg_to_rad(FOV * 0.5)) * cam.z * 1.8      # zapas na głębię (dalsze plany widać szerzej)
-		var half_w := half_h * 1.9
-		var speed := float(cfg[2])
-		_rain.direction = dir
-		_rain.initial_velocity_min = speed * 0.85
-		_rain.initial_velocity_max = speed * 1.15
-		_rain.lifetime = (half_h * 2.0 + 2.0) / speed
-		_rain.emission_box_extents = Vector3(half_w + half_h * tan(a), 0.4, 8.0)
-		_rain.position = Vector3(cam.x + half_h * tan(a) * wdir, cam.y - _eye_up + half_h + 1.0, -7.1)       # z od −15 do +0,9: krople przed frontem gruntu nie spadają „pod ziemię”
-		_rain.color = Color(0.55, 0.62, 0.74, (0.16 + 0.5 * flash) * clampf(strength, 0.0, 1.0) * (0.45 + 0.55 * wi))      # liczba kropel stała (zmiana `amount` restartuje emiter) — siłę frontu niesie krycie
-		var lp = wx.call("_local_player")
-		if lp != null:
-			_rain_splash.position = Level3D.px_to_m((lp as Node2D).global_position) + Vector3(0.0, 0.03, -1.0)
-			_rain_splash.emission_box_extents = Vector3(half_w, 0.01, 1.8)
-			_rain_splash.color = Color(0.6, 0.68, 0.8, 0.3 * clampf(strength, 0.0, 1.0) * (0.45 + 0.55 * wi))
+		_roof_tex = _roof_texture()
+		var info := Vector4(float(_roof_tex.get_width()), Level3D.T, -(Level3D.DEPTH_BACK + 0.3), -float(_level.get("underground_y")) * PX)
+		for pm in _rain_mats():
+			(pm as ShaderMaterial).set_shader_parameter("roof", _roof_tex)
+			(pm as ShaderMaterial).set_shader_parameter("cols", info.x)
+			(pm as ShaderMaterial).set_shader_parameter("tile", info.y)
+			(pm as ShaderMaterial).set_shader_parameter("z_back", info.z)
+			(pm as ShaderMaterial).set_shader_parameter("floor_y", info.w)
+		RenderingServer.global_shader_parameter_set("weather_roof", _roof_tex)
+		RenderingServer.global_shader_parameter_set("weather_roof_info", info)
+	_sync_rain(wx, id, k, wi, gust, wdir, flash, mode)
+	_sync_wet(id, k, clock, delta)
+	_sync_leaves(id, k, wind, gust, wdir, mode)
+	_wind_push = Vector3(-wdir * 0.32 * maxf(wind - 0.25, 0.0) * k, 0.0, 0.0)
 	# mgła i księżyc
 	var fogk := k * (0.55 + 0.45 * wi) * (0.45 + 0.55 * sky) if id == "fog" else (k * 0.25 * sky * wi if raining else 0.0)      # mgła falami siły frontu
+	var lowq := Settings.quality_idx == 0
 	var fv := _geo.get_node_or_null("FogVolume") as FogVolume
-	if fv != null:
-		var fm := fv.material as FogMaterial
-		if not fv.has_meta("base_density"):
-			fv.set_meta("base_density", fm.density)
+	if fv != null and fv.material is ShaderMaterial:
+		var fm := fv.material as ShaderMaterial
 		# zamglenie bazowe (snopy świateł w powietrzu) zależy od pogody: w noc pogodną powietrze jest czyste, w deszczu lekko zamglone
 		var haze := lerpf(1.0, float(HAZE_K.get(id, 1.0)), k)
 		_fog_dens = haze + 9.0 * fogk
-		fm.density = float(fv.get_meta("base_density")) * _fog_dens
-		for gf in _geo.get_children():                             # wstęgi mgły przy ziemi (`Level3D.build_ground_fog`)
-			if String(gf.name).begins_with("GroundFog") and gf is MeshInstance3D:
-				var gm := (gf as MeshInstance3D).material_override as ShaderMaterial
-				if gm != null:
-					if not gf.has_meta("base_density"):
-						gf.set_meta("base_density", gm.get_shader_parameter("density"))
-					gm.set_shader_parameter("density", float(gf.get_meta("base_density")) * lerpf(1.0, float(GROUND_FOG_K.get(id, 1.0)), k))
-		fm.emission = Color(0.092, 0.115, 0.140) * (1.1 * fogk)       # blada własna poświata mgły — czytelna także tam, gdzie nic nie świeci
+		fm.set_shader_parameter("density", float(fv.get_meta("base_density", 0.035)) * _fog_dens)
+		fm.set_shader_parameter("banks", float(FOG_BANKS.get(id, 0.0)) * k * (0.6 + 0.4 * wi))
+		fm.set_shader_parameter("ground", float(FOG_GROUND.get(id, 0.3)) * k)
+		_fog_drift += Vector3(-wdir * (0.006 + 0.03 * wind), 0.0, 0.004) * delta * k      # ławice płyną z wiatrem (wdir +1: w lewo)
+		fm.set_shader_parameter("drift", _fog_drift)
+	for gf in _geo.get_children():                                 # wstęgi mgły przy ziemi (`Level3D.build_ground_fog`)
+		if String(gf.name).begins_with("GroundFog") and gf is MeshInstance3D:
+			var gm := (gf as MeshInstance3D).material_override as ShaderMaterial
+			if gm != null:
+				if not gf.has_meta("base_density"):
+					gf.set_meta("base_density", gm.get_shader_parameter("density"))
+					gf.set_meta("base_speed", gm.get_shader_parameter("speed"))
+				var gk := float(GROUND_FOG_K.get(id, 1.0)) * (FOG_LOW_GROUND if lowq and id == "fog" else 1.0)
+				gm.set_shader_parameter("density", float(gf.get_meta("base_density")) * lerpf(1.0, gk, k))
+				# wstęgi płyną z wiatrem pogody (kierunek misji, siła bazowa); bez podmuchów — faza to TIME × speed, zmiana co klatkę szarpałaby wzór
+				var wsp := float(gf.get_meta("base_speed")) * (clampf(float(WeatherClock.WIND_BASE.get(id, 0.5)) / 0.5, 0.3, 3.0) * wdir if id != "" else 1.0)
+				if absf(float(gm.get_shader_parameter("speed")) - wsp) > 0.0001:
+					gm.set_shader_parameter("speed", wsp)
 	var ff := _geo.get_node_or_null("ForestFloor") as MeshInstance3D       # dno lasu (`Level3D.build_forest_floor`) tonie w mgle głębi tylko w mgle
 	if ff != null and ff.material_override is BaseMaterial3D:
 		var fog_on := id == "fog" and k > 0.5
@@ -7600,7 +7682,7 @@ func _sync_weather(delta: float) -> void:
 		env.ambient_light_energy = float(env.get_meta("base_amb")) * (float(deep) if deep != null else 1.0) + 0.3 * flash * FLASH_PLANE
 		env.fog_light_color = (env.get_meta("base_fog") as Color) * (1.0 + 1.6 * fogk + 3.0 * flash)       # w błysku las zostaje sylwetką na jasnym niebie (nie tonie w bieli)
 		if id == "fog":
-			env.fog_depth_begin -= 1.5 * k                        # mgła głębi podchodzi pod sam plan gry (początek ustawia co klatkę _sync_camera)
+			env.fog_depth_begin -= (1.5 + (FOG_LOW_BEGIN if lowq else 0.0)) * k      # mgła głębi podchodzi pod sam plan gry (początek ustawia co klatkę _sync_camera)
 		# w mgle bryła mgły zasłania też niebo widoczne między pniami poniżej linii lasu (bór jest prześwitujący), inaczej zostaje tam czarne
 		env.volumetric_fog_sky_affect = k if id == "fog" else 0.0
 		if env.sky != null and env.sky.sky_material is ShaderMaterial:
@@ -7613,6 +7695,7 @@ func _sync_weather(delta: float) -> void:
 			skm.set_shader_parameter("stars", lerpf(0.3, float(SKY_STARS.get(id, 0.3)), ki))
 			skm.set_shader_parameter("moon_vis", lerpf(0.85, float(SKY_MOON.get(id, 0.85)), ki))
 			skm.set_shader_parameter("flash", flash)
+			_sync_bolt(wx, skm, flash, mode, clock)
 	var haze_k := lerpf(1.0, float(CANOPY_HAZE_K.get(id, 1.0)), k)
 	for ch in _geo.get_children():                                 # zamglenie koron (`Level3D.build_canopy_haze`)
 		if String(ch.name).begins_with("CanopyHaze") and ch is MeshInstance3D:
@@ -7638,6 +7721,279 @@ func _sync_weather(delta: float) -> void:
 	if bolt != null:
 		bolt.visible = flash > 0.001
 		bolt.light_energy = FLASH_FOREST * flash
+		var az := float((wx.get("_bolt") as Dictionary).get("az", 0.3)) if wx.get("_bolt") is Dictionary else 0.3
+		# światło z kierunku błyskawicy (W4): azymut −1..1 (lewo..prawo) obraca źródło wokół pionu, zawsze z głębi lasu ku kamerze
+		bolt.basis = Basis.looking_at(Vector3(-0.75 * az, -0.35, -0.82), Vector3.UP)
+	var shade := _geo.get_node_or_null("FlashShade") as MeshInstance3D
+	if shade != null:
+		shade.visible = flash > 0.001
+		if shade.visible:
+			(shade.material_override as ShaderMaterial).set_shader_parameter("k", clampf(flash * 2.0, 0.0, 1.0) * FLASH_SHADE)
+
+## Kanał pioruna i strona błysku na niebie (W4): azymut błyskawicy (`_bolt.az`) przesuwa rozświetlenie chmur; bliska (< 2,5 km — ostry błysk
+## w `weather_fx._flash`) przy pełnych efektach rysuje kanał przez ok. 4 klatki (pierwszy impuls 0,07 s i drugi 0,22–0,28 s).
+func _sync_bolt(wx: Node, skm: ShaderMaterial, flash: float, mode: int, clock: float) -> void:
+	var b = wx.get("_bolt")
+	var az := 0.3
+	var dist := 4.0
+	var ch := 0.0
+	var sd := 0.0
+	if b is Dictionary and not (b as Dictionary).is_empty():
+		az = float(b["az"])
+		dist = float(b["dist"])
+		sd = float(int(b["i"]) % 97) * 1.37 + float(Weather.seed % 101) * 0.11
+		var dt := clock - float(b["t"])
+		if mode == Settings.WEATHER_FX_FULL and dist < 2.5 and ((dt >= 0.0 and dt < 0.07) or (dt >= 0.22 and dt < 0.28)):
+			ch = clampf(1.25 - dist / 2.5, 0.4, 1.0)
+	if dev_bolt and flash > 0.5:
+		ch = 1.0
+		az = 0.8
+		dist = 0.8
+		sd = 3.3
+	skm.set_shader_parameter("flash_x", az * 0.45)
+	skm.set_shader_parameter("flash_near", clampf(1.0 - (dist - 0.4) / 3.0, 0.0, 1.0))
+	skm.set_shader_parameter("bolt", ch)
+	skm.set_shader_parameter("bolt_seed", sd)
+
+## Materiały deszczu i plusku (tekstura dachów i stałe mapy wspólne).
+func _rain_mats() -> Array:
+	var out: Array = []
+	for p in _rain:
+		out.append(((p as GPUParticles3D).draw_pass_1 as QuadMesh).material)
+	out.append((_rain_splash.draw_pass_1 as QuadMesh).material)
+	out.append(_rain_splash.process_material)
+	out.append((_leaves.draw_pass_1 as QuadMesh).material)
+	return out
+
+func _make_rain() -> void:
+	var big := AABB(Vector3(-120.0, -90.0, -40.0), Vector3(240.0, 180.0, 80.0))
+	var rsh := Shader.new()
+	rsh.code = RAIN_SHADER
+	for spec in RAIN_PLANES:
+		var p := GPUParticles3D.new()
+		p.name = "Rain_%s" % String(spec[0])
+		p.local_coords = false
+		p.emitting = false
+		p.amount = int(spec[4])
+		p.amount_ratio = 0.0
+		p.lifetime = 2.0
+		p.visibility_aabb = big
+		var pm := ParticleProcessMaterial.new()
+		pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+		pm.spread = 2.5
+		pm.gravity = Vector3.ZERO
+		pm.particle_flag_align_y = true                      # smuga wzdłuż toru lotu
+		pm.color = Color(1.0, 1.0, 1.0, 1.0)
+		var cr := Gradient.new()                              # kropla od kropli różna jasność (bez równej siatki smug)
+		cr.set_color(0, Color(1.0, 1.0, 1.0, 0.45))
+		cr.set_color(1, Color(1.0, 1.0, 1.0, 1.0))
+		var crt := GradientTexture1D.new()
+		crt.gradient = cr
+		pm.color_initial_ramp = crt
+		p.process_material = pm
+		var q := QuadMesh.new()
+		q.size = spec[3]
+		var m := ShaderMaterial.new()
+		m.shader = rsh
+		m.set_shader_parameter("soft", float(spec[5]))
+		m.set_shader_parameter("far_fade", float(spec[6]))
+		q.material = m
+		p.draw_pass_1 = q
+		p.layers = LAYER_WORLD
+		p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_world.add_child(p)
+		_rain.append(p)
+	_rain_splash = GPUParticles3D.new()
+	_rain_splash.name = "RainSplash"
+	_rain_splash.local_coords = false
+	_rain_splash.emitting = false
+	_rain_splash.amount = SPLASH_MAX
+	_rain_splash.amount_ratio = 0.0
+	_rain_splash.lifetime = 0.3
+	_rain_splash.visibility_aabb = big
+	var psh := Shader.new()
+	psh.code = SPLASH_PROCESS
+	var ppm := ShaderMaterial.new()
+	ppm.shader = psh
+	_rain_splash.process_material = ppm
+	var sq := QuadMesh.new()
+	sq.size = Vector2(0.04, 0.04)
+	var ssh := Shader.new()
+	ssh.code = RAIN_SHADER.replace("//BILLBOARD", RAIN_BILLBOARD)
+	var smt := ShaderMaterial.new()
+	smt.shader = ssh
+	smt.set_shader_parameter("splash_band", 0.5)          # plusk tylko tuż nad gruntem swojej kolumny
+	smt.set_shader_parameter("soft", 1.0)
+	sq.material = smt
+	_rain_splash.draw_pass_1 = sq
+	_rain_splash.layers = LAYER_WORLD
+	_rain_splash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_world.add_child(_rain_splash)
+	_leaves = GPUParticles3D.new()
+	_leaves.name = "WindLeaves"
+	_leaves.local_coords = false
+	_leaves.emitting = false
+	_leaves.amount = LEAF_MAX
+	_leaves.amount_ratio = 0.0
+	_leaves.lifetime = 8.0
+	_leaves.visibility_aabb = big
+	var lpm := ParticleProcessMaterial.new()
+	lpm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	lpm.spread = 12.0
+	lpm.gravity = Vector3(0.0, -0.45, 0.0)
+	lpm.angle_min = -180.0
+	lpm.angle_max = 180.0
+	lpm.angular_velocity_min = -220.0
+	lpm.angular_velocity_max = 220.0
+	lpm.scale_min = 0.6
+	lpm.scale_max = 1.3
+	lpm.turbulence_enabled = true
+	lpm.turbulence_noise_strength = 1.4
+	lpm.turbulence_noise_scale = 4.0
+	lpm.turbulence_influence_min = 0.04
+	lpm.turbulence_influence_max = 0.14
+	_leaves.process_material = lpm
+	var lq := QuadMesh.new()
+	lq.size = Vector2(0.06, 0.09)
+	var lsh := Shader.new()
+	lsh.code = LEAF_SHADER
+	var lm := ShaderMaterial.new()
+	lm.shader = lsh
+	lq.material = lm
+	_leaves.draw_pass_1 = lq
+	_leaves.layers = LAYER_WORLD
+	_leaves.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_world.add_child(_leaves)
+
+## Wysokość połówki kadru [m] na głębokości `depth` od kamery i proporcje kadru.
+func _frame_half(depth: float) -> Vector2:
+	var hh := tan(deg_to_rad(FOV * 0.5)) * maxf(depth, 0.5)
+	var vs := Vector2(get_viewport().get_visible_rect().size)
+	return Vector2(hh * vs.x / maxf(vs.y, 1.0), hh)
+
+## Deszcz w trzech planach i plusk (W5). Gęstość: `amount_ratio` z siły pogody i frontu (zmiana `amount` restartowałaby emiter), kąt z frontu
+## i podmuchu. LOW: jeden plan (środkowy, mniej kropel) i plusk tylko przy graczu; REDUCED: 60% kropel; OFF: nic (mgła i niebo zostają, D3).
+func _sync_rain(wx: Node, id: String, k: float, wi: float, gust: float, wdir: float, flash: float, mode: int) -> void:
+	var raining := RAIN_3D.has(id)
+	# obraz deszczu nie zależy od tego, czy sam gracz stoi pod dachem (to steruje tylko dźwiękiem): pada wszędzie pod gołym niebem, dachy przycina
+	# shader; pod ziemią (poniżej poziomu podziemi) emitery stoją
+	var lp0 = wx.call("_local_player")
+	var above: bool = lp0 != null and (lp0 as Node2D).global_position.y < float(_level.get("underground_y"))
+	_rain_open = move_toward(_rain_open, 1.0 if above else 0.0, get_process_delta_time() * 1.5)
+	var strength := k * _rain_open if raining and mode != Settings.WEATHER_FX_OFF else 0.0
+	var lowq := Settings.quality_idx == 0
+	var cfg: Array = RAIN_3D.get(id, [12.0, 0.0, 10.5])
+	var base := strength * (0.35 + 0.65 * wi) * float(cfg[1]) * (0.6 if mode == Settings.WEATHER_FX_REDUCED else 1.0)
+	var rg := clampf(strength * (0.35 + 0.65 * wi), 0.0, 1.0) if raining and mode != Settings.WEATHER_FX_OFF else 0.0
+	if absf(rg - _rain_g) > 0.01 or (rg == 0.0 and _rain_g != 0.0):
+		_rain_g = rg
+		RenderingServer.global_shader_parameter_set("weather_rain", rg)      # kręgi kropel na wodzie (`Level3D.RAIN_RIPPLE`)
+	var cam := _cam_a.global_position
+	var dist := maxf(cam.z, 1.0)                               # płaszczyzna gry w z = 0
+	var a := deg_to_rad(float(cfg[0]) * (0.75 + 0.25 * wi + 0.5 * gust))    # podmuch i ulewa pochylają deszcz
+	var dir := Vector3(-sin(a) * wdir, -cos(a), 0.0)          # wiatr z prawej (wdir +1): krople lecą w lewo w dół
+	var speed := float(cfg[2])
+	var gain := clampf(strength, 0.0, 1.0) * (0.55 + 0.45 * wi)
+	for i in _rain.size():
+		var p := _rain[i] as GPUParticles3D
+		var spec: Array = RAIN_PLANES[i]
+		var ratio := base
+		if lowq:
+			ratio = base * 0.5 if spec[0] == "mid" else 0.0
+		p.emitting = ratio > 0.004
+		if not p.emitting:
+			continue
+		p.amount_ratio = clampf(ratio, 0.0, 1.0)
+		var z0 := float(spec[1])
+		var z1 := float(spec[2])
+		var d_far := dist - z0
+		var fh := _frame_half(d_far)
+		var cy := cam.y - _eye_up * ((dist - (z0 + z1) * 0.5) / dist)    # środek kadru na tej głębi (oko nad środkiem płaszczyzny gry)
+		var life := (fh.y * 2.0 + _eye_up * (z1 - z0) / dist + 2.0) / speed
+		if absf(p.lifetime - life) > life * 0.3:
+			p.lifetime = life
+		var pm := p.process_material as ParticleProcessMaterial
+		pm.direction = dir
+		pm.initial_velocity_min = speed * 0.85
+		pm.initial_velocity_max = speed * 1.15
+		pm.emission_box_extents = Vector3(fh.x * 1.1 + fh.y * tan(a), 0.4, (z1 - z0) * 0.5)
+		p.position = Vector3(cam.x + fh.y * tan(a) * wdir, cy + fh.y + 1.0, (z0 + z1) * 0.5)
+		var m := (p.draw_pass_1 as QuadMesh).material as ShaderMaterial
+		m.set_shader_parameter("gain", gain * float(spec[7]))
+		m.set_shader_parameter("flash", flash)
+	var sratio := base / maxf(float(cfg[1]), 0.01) * (0.5 if id == "rain" else 1.0)
+	_rain_splash.emitting = sratio > 0.004
+	if _rain_splash.emitting:
+		_rain_splash.amount_ratio = clampf(sratio, 0.0, 1.0)
+		var fh0 := _frame_half(dist)
+		var ctr := Vector3(cam.x, cam.y - _eye_up, -1.15)
+		var ext := Vector3(fh0.x * 1.05, fh0.y * 1.1, 1.3)
+		if lowq:                                                # LOW: plusk tylko przy graczu
+			if lp0 != null:
+				ctr.x = Level3D.px_to_m((lp0 as Node2D).global_position).x
+			ext.x = 4.0
+			_rain_splash.amount_ratio = clampf(sratio * 0.2, 0.0, 1.0)
+		var spm := _rain_splash.process_material as ShaderMaterial
+		spm.set_shader_parameter("center", ctr)
+		spm.set_shader_parameter("extent", ext)
+		spm.set_shader_parameter("side_v", -sin(a) * wdir * 0.6)
+		var sm := (_rain_splash.draw_pass_1 as QuadMesh).material as ShaderMaterial
+		sm.set_shader_parameter("gain", gain * 1.4)
+		sm.set_shader_parameter("flash", flash)
+
+## Liście i igliwie w powietrzu (W3): ilość z siły wiatru ponad bryzę i podmuchu, lot z wiatrem (kierunek misji), pas za płaszczyzną gry i tuż przed nią.
+func _sync_leaves(id: String, k: float, wind: float, gust: float, wdir: float, mode: int) -> void:
+	var r := clampf((wind - 0.35) / 1.6, 0.0, 1.0) * (0.35 + 0.65 * gust) * k if id != "" and mode != Settings.WEATHER_FX_OFF else 0.0
+	if Settings.quality_idx == 0:
+		r *= 0.5
+	_leaves.emitting = r > 0.01
+	if not _leaves.emitting:
+		return
+	_leaves.amount_ratio = clampf(r, 0.0, 1.0)
+	var cam := _cam_a.global_position
+	var dist := maxf(cam.z, 1.0)
+	var fh := _frame_half(dist + 6.0)
+	var v := 1.2 + 2.4 * wind * (0.7 + 0.6 * gust)
+	var pm := _leaves.process_material as ParticleProcessMaterial
+	pm.direction = Vector3(-wdir, -0.15, 0.0)
+	pm.initial_velocity_min = v * 0.7
+	pm.initial_velocity_max = v * 1.2
+	pm.emission_box_extents = Vector3(fh.x * 0.6, fh.y, 4.5)
+	var life := clampf(fh.x * 2.0 / v, 3.0, 12.0)
+	if absf(_leaves.lifetime - life) > life * 0.3:
+		_leaves.lifetime = life
+	_leaves.position = Vector3(cam.x + wdir * fh.x * 0.6, cam.y - _eye_up + fh.y * 0.3, -3.5)
+
+## Boczne przyspieszenie dymu od wiatru pogody (W3) w punkcie mapy: pod gołym niebem `_wind_push`, pod dachem i pod ziemią zero.
+func _wind_at(pos: Vector2) -> Vector3:
+	if _wind_push == Vector3.ZERO or _level == null or not _level.has_method("sky_open_at") or not bool(_level.sky_open_at(pos)):
+		return Vector3.ZERO
+	return _wind_push
+
+## Mokry świat (W6): `weather_wet` z zegara pogody — u wszystkich graczy to samo bez RPC (dołączający też): od 30% na starcie misji w deszczu do
+## pełna w ok. `WET_RISE_S` s, w przejaśnieniu (siła frontu ok. 20 s wcześniej) wysycha do ok. 55%. Stroje graczy mokną pod niebem i schną pod dachem
+## (lokalnie, jak urobek na stroju; char3d.gd `set_rain_wet`).
+func _sync_wet(id: String, k: float, clock: float, delta: float) -> void:
+	var w := 0.0
+	if RAIN_3D.has(id):
+		w = clampf(0.3 + clock / WET_RISE_S, 0.0, 1.0) * lerpf(0.55, 1.0, WeatherClock.intensity(id, Weather.seed, maxf(clock - 20.0, 0.0))) * k
+	if absf(w - _wet) > 0.005 or (w == 0.0 and _wet != 0.0):
+		_wet = w
+		RenderingServer.global_shader_parameter_set("weather_wet", w)
+	var raining := RAIN_3D.has(id) and k > 0.3
+	for p in get_tree().get_nodes_in_group("players"):
+		var c3d = p.get("c3d")
+		if c3d == null or not (c3d as Object).has_method("set_rain_wet"):
+			continue
+		var pid := (p as Node).get_instance_id()
+		var cur := float(_char_wet.get(pid, 0.0))
+		var open := raining and _level.has_method("sky_open_at") and bool(_level.sky_open_at((p as Node2D).global_position))
+		var nw := move_toward(cur, 1.0, delta / CHAR_WET_RISE_S) if open else move_toward(cur, 0.0, delta / CHAR_WET_DRY_S)
+		if absf(nw - cur) > 0.0 or not _char_wet.has(pid):
+			_char_wet[pid] = nw
+			if absf(nw - float((p as Node).get_meta("_rain_wet_sent", -1.0))) > 0.02 or (nw == 0.0 and cur > 0.0):
+				(p as Node).set_meta("_rain_wet_sent", nw)
+				c3d.set_rain_wet(nw)
 
 # ---------------------------------------------------------------- krew
 

@@ -176,8 +176,69 @@ static func make_pbr(name: String, per_m: float, fallback: Color, rough := 0.95,
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 		m.alpha_scissor_threshold = 0.5
 		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	elif not "--nowet" in OS.get_cmdline_user_args():            # dev: --nowet = bez mokrego przebiegu (porównanie, pomiar)
+		var last: Material = m
+		while last.next_pass != null:
+			last = last.next_pass
+		last.next_pass = wet_pass()
 	_pbr_cache[key] = m
 	return m
+
+## Mokry świat (WEATHER_PLAN.md W6): przebieg nakładany na materiały bryły (`make_pbr`, na końcu łańcucha `next_pass`) — ciemniejsze, gładkie
+## wierzchy pod gołym niebem i kałuże w płaskich miejscach, w których odbija się latarka, flara i lampy (bez własnego światła, GDD §8.3).
+## Tylko wierzchy pod niebem: normalna w górę i wysokość ≥ wierzch pierwszej bryły w kolumnie (`weather_roof`, `view3d._sync_weather`) —
+## pod dachem, w budynku i pod ziemią sucho. Ściany boczne i sucha pogoda zwijają trójkąt w wierzchołku (bez rasteryzacji).
+## `weather_wet` 0..1: narastanie od początku deszczu i schnięcie w przejaśnieniu z zegara pogody (u wszystkich graczy to samo).
+const WET_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_back, specular_schlick_ggx;
+global uniform float weather_wet;
+global uniform sampler2D weather_roof : filter_nearest, repeat_disable;
+global uniform vec4 weather_roof_info;
+varying vec3 v_w;
+varying float v_up;
+float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vn(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void vertex() {
+	v_w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_up = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
+	if (weather_wet < 0.01 || v_up < 0.5) {
+		VERTEX = vec3(0.0);
+	}
+}
+void fragment() {
+	float c = v_w.x / weather_roof_info.y;
+	float top = -100000.0;
+	if (v_w.z > weather_roof_info.z && c >= 0.0 && c < weather_roof_info.x) {
+		top = texture(weather_roof, vec2((floor(c) + 0.5) / weather_roof_info.x, 0.5)).r;
+	}
+	float w = weather_wet * step(top - 0.12, v_w.y) * smoothstep(0.5, 0.85, v_up);
+	if (w < 0.01) {
+		discard;
+	}
+	vec2 p = v_w.xz;
+	float n = vn(p * 0.55) * 0.6 + vn(p * 1.4 + 7.0) * 0.3 + vn(p * 4.0 + 3.0) * 0.1;
+	float pud = smoothstep(0.66 - 0.1 * weather_wet, 0.73 - 0.1 * weather_wet, n) * smoothstep(0.93, 0.99, v_up) * smoothstep(0.35, 0.9, weather_wet);
+	ALBEDO = vec3(0.012, 0.012, 0.014);
+	ROUGHNESS = mix(0.26, 0.03, pud);
+	SPECULAR = mix(0.45, 0.9, pud);
+	NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, pud));
+	ALPHA = w * mix(0.4, 0.88, pud);
+}
+"""
+static var _wet_pass: ShaderMaterial
+
+static func wet_pass() -> ShaderMaterial:
+	if _wet_pass == null:
+		var sh := Shader.new()
+		sh.code = WET_SHADER
+		_wet_pass = ShaderMaterial.new()
+		_wet_pass.shader = sh
+		_wet_pass.render_priority = 1
+	return _wet_pass
 
 ## Siatka modelu z art/items3d/<nazwa>.glb (`tools/prep_items3d.py`) i jej przekształcenie w scenie modelu: [Mesh, Transform3D] albo [] bez pliku.
 ## Drzewa, kłoda i słup mają 100 jednostek wysokości / długości — skalę nadaje wywołujący.
@@ -1271,6 +1332,37 @@ float fbm(vec2 p) {
 	return s;
 }
 """
+## Kręgi kropel na wodzie (WEATHER_PLAN.md W5): nachylenie normalnej od rozchodzących się kręgów w dwóch siatkach komórek; ilość kręgów
+## i ich siła z `weather_rain` (siła deszczu, view3d.gd). Pod dachem (`weather_roof`: woda poniżej wierzchu pierwszej bryły w kolumnie) nie ma.
+## Wstawiane w shader wody znacznikiem //RIPPLE; `rain_ripple(p, w)` zwraca przesunięcie normalnej w płaszczyźnie xz.
+const RAIN_RIPPLE := """
+global uniform float weather_rain;
+global uniform sampler2D weather_roof : filter_nearest, repeat_disable;
+global uniform vec4 weather_roof_info;
+vec2 rain_ripple(vec2 p, vec3 w) {
+	if (weather_rain < 0.01) { return vec2(0.0); }
+	float c = w.x / weather_roof_info.y;
+	if (w.z > weather_roof_info.z && c >= 0.0 && c < weather_roof_info.x) {
+		if (w.y < texture(weather_roof, vec2((floor(c) + 0.5) / weather_roof_info.x, 0.5)).r - 0.15) { return vec2(0.0); }
+	}
+	vec2 acc = vec2(0.0);
+	for (int l = 0; l < 2; l++) {
+		vec2 q = p * (3.4 + float(l) * 1.9) + float(l) * 13.7;
+		vec2 i = floor(q);
+		vec2 f = fract(q);
+		float hh = fract(sin(dot(i, vec2(127.1, 311.7)) + float(l) * 19.1) * 43758.5453);
+		if (hh > weather_rain) { continue; }
+		vec2 ctr = vec2(fract(hh * 13.31), fract(hh * 7.77)) * 0.6 + 0.2;
+		float ph = fract(TIME * (0.8 + 0.6 * fract(hh * 3.3)) + hh * 5.0);
+		vec2 dd = f - ctr;
+		float r = length(dd);
+		float rr = ph * 0.42;
+		float ring = sin((r - rr) * 48.0) * exp(-abs(r - rr) * 24.0) * (1.0 - ph);
+		acc += dd / max(r, 0.001) * ring;
+	}
+	return acc * (0.35 + 0.65 * weather_rain);
+}
+"""
 ## Profil niecki i wysokość powierzchni (fale wody, grudy błota) — wspólne dla tafli i górnej krawędzi przekroju, żeby się schodziły.
 const LIQUID_SURF := """
 uniform sampler2D prof : filter_linear, repeat_disable;
@@ -1316,8 +1408,10 @@ uniform float seed = 0.0;
 uniform vec4 prints[48];               // błoto: kroki przechodzących (view3d._sync_mud_prints) — x, z, czas powstania, kierunek ±1; „teraz” w print_now
 uniform float print_now = 0.0;
 varying vec2 v_w;
+varying float v_y;
 //COMMON
 //SURF
+//RIPPLE
 // Rozdeptany pas błota wzdłuż drogi przechodzących: x = rozmiękłe, mokre błoto, y = wypchnięta obwódka; znika po 35–60 s.
 // Pojedynczy odcisk stopy (~0,1 m w głąb) z bocznej kamery zajmuje ok. 1 px wysokości — widać dopiero pas szerokości ~0,5 m.
 vec2 mud_print(vec2 p) {
@@ -1341,6 +1435,7 @@ void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_w = wp.xz;
 	v_w.x = wp.x;
+	v_y = wp.y;
 	float vwd = depth_xz(wp.xz) - sink;
 	VERTEX.y += surf_h(vec2(wp.x, wp.z), max(vwd, 0.0));
 }
@@ -1363,6 +1458,10 @@ void fragment() {
 	n = normalize(n + vec3(r1, 0.0, r2) * amp);
 	if (kind == 0) {                                                       // błoto: drobne grudki i odciski w normalnych
 		n = normalize(n + vec3(vn(p * 38.0) - 0.5, 0.0, vn(p * 41.0 + 3.0) - 0.5) * 0.45);
+	}
+	if (kind == 2) {                                                       // kręgi kropel deszczu na wodzie pod niebem
+		vec2 rp = rain_ripple(p, vec3(p.x, v_y, p.y));
+		n = normalize(n + vec3(rp.x, 0.0, rp.y) * 0.5);
 	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	float edge = 1.0 - smoothstep(0.0, 0.35, wd);                          // przy brzegu ciecz jest płytka: piana, grubsza błona, widać dno
@@ -1990,9 +2089,12 @@ uniform float flow = 0.55;             // m/s: nurt ku kamerze
 uniform float fade0 = 18.0;
 uniform float fade1 = 30.0;
 varying float v_shade;
+varying vec3 v_wp;
 //COMMON
+//RIPPLE
 void vertex() {
 	v_shade = COLOR.r;
+	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 void fragment() {
 	float u = UV.x;                       // 0..1 w poprzek (z brzegami)
@@ -2003,7 +2105,8 @@ void fragment() {
 	vec2 q = vec2(u * 7.0, v * 1.7 + TIME * flow * 1.7);
 	float r1 = vn(q) - 0.5;
 	float r2 = vn(q * 1.9 + 7.0) - 0.5;
-	vec3 n = normalize(vec3(r1 * 0.30 * water, 1.0, r2 * 0.30 * water));
+	vec2 rp = rain_ripple(v_wp.xz, v_wp) * water;
+	vec3 n = normalize(vec3(r1 * 0.30 * water + rp.x * 0.5, 1.0, r2 * 0.30 * water + rp.y * 0.5));
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	float streak = smoothstep(0.60, 0.80, fbm(vec2(u * 9.0, v * 0.6 + TIME * flow * 0.6))) * smoothstep(0.30, 0.45, edge);
 	// ta sama woda torfowa co płycizna niecki (LIQUID_TOP przy brzegu) i mokry brzeg jaśniejszy od nurtu — w latarce koryto nie jest czarną plamą
@@ -2024,7 +2127,7 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 	if ft.is_empty():
 		return
 	var sh := Shader.new()
-	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("DEPTH_BACK_C", str(DEPTH_BACK))
+	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("//RIPPLE", RAIN_RIPPLE).replace("DEPTH_BACK_C", str(DEPTH_BACK))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x57E4
 	var rocks: Array = []
@@ -2150,7 +2253,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var kinds := {"m": 0, "O": 1, "~": 2}
 	var top_sh := Shader.new()
-	top_sh.code = LIQUID_TOP.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF)
+	top_sh.code = LIQUID_TOP.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF).replace("//RIPPLE", RAIN_RIPPLE)
 	var front_sh := Shader.new()
 	front_sh.code = LIQUID_FRONT.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF)
 	var drip_sh := Shader.new()
@@ -2376,10 +2479,13 @@ shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
 varying vec2 v_uv;
 varying float v_seed;
+varying vec3 v_wp;
 //COMMON
+//RIPPLE
 void vertex() {
 	v_uv = UV;
 	v_seed = INSTANCE_CUSTOM.x;
+	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 void fragment() {
 	vec2 p = (v_uv - 0.5) * 2.0;
@@ -2390,7 +2496,8 @@ void fragment() {
 	if (a < 0.01) { discard; }
 	float t = TIME * 0.4;
 	vec2 q = p * 3.5 + vec2(v_seed);
-	vec3 n = normalize(vec3((vn(q + vec2(t, 0.0)) - 0.5) * 0.10, 1.0, (vn(q * 1.7 - vec2(0.0, t)) - 0.5) * 0.10));
+	vec2 rp = rain_ripple(v_wp.xz, v_wp);
+	vec3 n = normalize(vec3((vn(q + vec2(t, 0.0)) - 0.5) * 0.10 + rp.x * 0.5, 1.0, (vn(q * 1.7 - vec2(0.0, t)) - 0.5) * 0.10 + rp.y * 0.5));
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	ALBEDO = vec3(0.013, 0.012, 0.010);
 	ROUGHNESS = 0.035;
@@ -2920,7 +3027,7 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 	var zf := DEPTH_FRONT
 	var zb := -DEPTH_BACK
 	var puddle_shader := Shader.new()
-	puddle_shader.code = PUDDLE_SHADER.replace("//COMMON", PROP_COMMON)
+	puddle_shader.code = PUDDLE_SHADER.replace("//COMMON", PROP_COMMON).replace("//RIPPLE", RAIN_RIPPLE)
 	var splat_shader := Shader.new()
 	splat_shader.code = SPLAT_SHADER.replace("//COMMON", PROP_COMMON)
 	var reed_shader := Shader.new()
@@ -3950,6 +4057,76 @@ static func build_ground_fog(parent: Node3D, rows: Array) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)
 
+## Błysk burzy a tło za płaszczyzną gry (WEATHER_PLAN.md D1 a): zasłona tuż za tyłem bryły poziomu mnoży obraz za sobą — od gruntu lasu do ok. 2 m
+## w górę w pełni, wyżej zanika do zera przy ok. 4,6 m (UV.y = wysokość nad gruntem lasu [m]). W błysku korony i niebo rozbłyskują, a pas, na którego
+## tle stoją postacie i wrogowie, zostaje ciemny: błyskawica nie robi z lasu jasnego tła do odcinania sylwetek. Siłę `k` ustawia
+## `view3d._sync_weather`; poza błyskiem węzeł jest ukryty (bez kosztu).
+const FLASH_SHADE_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_mul, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+uniform float k = 0.0;
+void fragment() {
+	float m = 1.0 - smoothstep(2.0, 4.6, UV.y);
+	ALBEDO = vec3(1.0 - k * m * COLOR.a);
+}
+"""
+const FLASH_SHADE_Z := -(DEPTH_BACK + 0.25)        ## zasłona tuż za tyłem bryły (przed pierwszą wstęgą mgły przy ziemi, z = −3,2)
+
+static func build_flash_shade(parent: Node3D, rows: Array) -> void:
+	var ft := forest_terrain(rows)
+	if ft.is_empty():
+		return
+	var mask: PackedByteArray = ft["mask"]
+	var verts := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var cols_c := PackedColorArray()
+	var idx := PackedInt32Array()
+	var c := 0
+	while c < mask.size():
+		if mask[c] == 0:
+			c += 1
+			continue
+		var c1 := c
+		while c1 < mask.size() and mask[c1] == 1:
+			c1 += 1
+		var base := verts.size()
+		for kc in range(c, c1 + 1):
+			var edge := 0.0 if (kc == c or kc == c1) else 1.0           # brzeg ciągu lasu (ściana budynku obok) — miękko
+			var x := float(kc) * T
+			var g := forest_ground_y(ft, x, -FLASH_SHADE_Z)
+			verts.append(Vector3(x, g - 1.0, 0.0))
+			verts.append(Vector3(x, g + 6.0, 0.0))
+			uvs.append(Vector2(x, -1.0))
+			uvs.append(Vector2(x, 6.0))
+			cols_c.append(Color(1, 1, 1, edge))
+			cols_c.append(Color(1, 1, 1, edge))
+		for kc in range(c1 - c):
+			var a := base + kc * 2
+			idx.append_array(PackedInt32Array([a, a + 1, a + 2, a + 1, a + 3, a + 2]))
+		c = c1
+	if verts.is_empty():
+		return
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_COLOR] = cols_c
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var sh := Shader.new()
+	sh.code = FLASH_SHADE_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	var mi := MeshInstance3D.new()
+	mi.name = "FlashShade"
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = Vector3(0.0, 0.0, FLASH_SHADE_Z)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visible = false
+	parent.add_child(mi)
+
 ## Zamglenie koron: nocą trzy pasy lasu zlewały się w jedną czarną ścianę (mgła głębi jest prawie czarna, żeby nie rozjaśniać planu gry).
 ## Między pasami stoją pionowe zasłony chłodnej, księżycowej poświaty (dodawane do obrazu za nimi, `blend_add`), które rosną z wysokością nad
 ## dnem lasu (`forest_terrain`): przy gruncie zero — tło za postaciami zostaje czarne (GDD §8.3) — a od kilku metrów w górę coraz więcej, więc każdy
@@ -4034,6 +4211,10 @@ uniform vec2 drift = vec2(0.0);
 uniform float stars = 0.3;
 uniform float moon_vis = 0.85;
 uniform float flash = 0.0;
+uniform float flash_x = 0.0;         // kierunek błyskawicy na ekranie (tangens kąta poziomego; azymut z zegara pogody)
+uniform float flash_near = 0.0;      // 0 daleka (poświata chmur szeroko), 1 bliska (jaśniej wokół kanału)
+uniform float bolt = 0.0;            // kanał pioruna 0..1 (tylko bliska błyskawica i pełne efekty, kilka klatek)
+uniform float bolt_seed = 0.0;
 vec2 g2(vec2 p) {
 	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
 	return -1.0 + 2.0 * fract(sin(p) * 43758.5453);
@@ -4081,15 +4262,75 @@ void sky() {
 	// chmury: jaśniejsze przy tarczy i na brzegach (srebrne obwódki), gęste rdzenie ciemniejsze; błysk burzy rozświetla je od środka
 	float rim = cloud * (1.0 - thick);
 	vec3 cloud_col = glow * band * (0.55 + 0.6 * (1.0 - thick) + 3.2 * halo * (0.4 + rim));
-	float bolt = flash * (0.5 + 0.8 * smoothstep(0.4, 0.9, fbm(q * 0.5 + vec2(17.0, 3.0)) + 0.5));
-	cloud_col += vec3(0.55, 0.62, 0.85) * bolt * band * (0.4 + thick);
+	// błysk od strony błyskawicy: bliska rozświetla chmury wokół kanału, daleka szeroko i słabiej (azymut `flash_x`)
+	float ax = d.x / max(-d.z, 0.08);
+	float side = mix(0.55, 0.25, flash_near) + mix(0.45, 0.75, flash_near) * exp(-(ax - flash_x) * (ax - flash_x) * mix(1.2, 5.0, flash_near));
+	float glare = flash * side * (0.5 + 0.8 * smoothstep(0.4, 0.9, fbm(q * 0.5 + vec2(17.0, 3.0)) + 0.5));
+	cloud_col += vec3(0.55, 0.62, 0.85) * glare * band * (0.4 + thick);
 	vec3 c = mix(clear_sky, cloud_col, cloud);
+	// kanał pioruna: postrzępiona linia od podstawy chmur ku horyzontowi z jedną odnogą; las przesłania dół (niebo jest za nim)
+	if (bolt > 0.001 && e > 0.0 && e < 0.62) {
+		float off = 0.0;
+		float amp = 0.07;
+		for (int i = 0; i < 4; i++) {
+			off += gn(vec2(e * 5.0 * pow(2.1, float(i)) + bolt_seed * 3.7, bolt_seed * 1.3 + float(i) * 7.1)) * amp;
+			amp *= 0.5;
+		}
+		float dx = abs(ax - flash_x - off);
+		float top = smoothstep(0.62, 0.5, e);
+		float ch = exp(-dx * 1400.0) + 0.3 * exp(-dx * 120.0);
+		float bs = 0.2 + 0.18 * fract(bolt_seed * 0.37);
+		float boff = off + (bs - e) * (0.6 * sign(fract(bolt_seed * 0.71) - 0.5)) + gn(vec2(e * 31.0, bolt_seed)) * 0.012;
+		float br = (exp(-abs(ax - flash_x - boff) * 1800.0) + 0.2 * exp(-abs(ax - flash_x - boff) * 160.0)) * smoothstep(bs - 0.12, bs - 0.04, e) * step(e, bs);
+		c += vec3(0.82, 0.88, 1.0) * (ch + 0.55 * br) * top * bolt * 7.0;
+	}
 	c += moon_col * disc * moon_vis * moon_vis * (1.0 - 0.85 * thick) * (1.0 - 0.5 * cloud);      // za mgłą i deszczem zostaje sama rozmyta poświata
 	COLOR = mix(c, vec3(0.16, 0.19, 0.24), lit);
 }
 """
+## Mgła wolumetryczna (W7): gęstość z ławic szumu 3D dryfujących z wiatrem pogody (`drift`) i większa tuż nad gruntem pod niebem —
+## w zagłębieniach i nad wodą (`weather_roof`: wierzch pierwszej bryły od góry w kolumnie, `view3d._sync_weather`). Bez własnej emisji:
+## mgłę widać tylko tam, gdzie świeci światło sceny (GDD §8.3). `banks` 0..1 — siła ławic (MGŁA ok. 1, inne pogody jednolite zamglenie),
+## `ground` — przyrost gęstości przy gruncie. Szum liczy się na komórkę bryły mgły (96³), nie na piksel.
+const FOG_VOLUME_SHADER := """
+shader_type fog;
+uniform float density = 0.035;
+uniform vec3 albedo : source_color = vec3(0.80, 0.86, 1.0);
+uniform float banks = 0.0;
+uniform float ground = 0.0;
+uniform vec3 drift = vec3(0.0);
+uniform float edge = 0.6;           // [m] zanik przy ścianach bryły (SDF)
+global uniform sampler2D weather_roof : filter_nearest, repeat_disable;
+global uniform vec4 weather_roof_info;
+float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float n3(vec3 x) {
+	vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(h3(i), h3(i + vec3(1.0, 0.0, 0.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 0.0)), h3(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+		mix(mix(h3(i + vec3(0.0, 0.0, 1.0)), h3(i + vec3(1.0, 0.0, 1.0)), f.x), mix(h3(i + vec3(0.0, 1.0, 1.0)), h3(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z);
+}
+void fog() {
+	vec3 w = WORLD_POSITION;
+	float d = 1.0;
+	if (banks > 0.001) {
+		vec3 q = w * vec3(0.11, 0.24, 0.17) + drift;
+		float n = n3(q) * 0.65 + n3(q * 2.1 + vec3(5.3, 1.7, 3.1)) * 0.35;
+		d = mix(1.0, smoothstep(0.30, 0.72, n) * 1.7 + 0.15, banks);
+	}
+	if (ground > 0.001) {
+		float c = w.x / weather_roof_info.y;
+		if (c >= 0.0 && c < weather_roof_info.x) {
+			float h = w.y - texture(weather_roof, vec2((floor(c) + 0.5) / weather_roof_info.x, 0.5)).r;
+			d *= 1.0 + ground * (1.0 - smoothstep(0.0, 2.6, h)) * step(-0.3, h);
+		}
+	}
+	DENSITY = density * d * clamp(-SDF / edge, 0.0, 1.0);
+	ALBEDO = albedo;
+}
+"""
+static var _fog_volume_shader: Shader
+
 ## Mgła wolumetryczna (Forward+): jedna bryła na całą mapę od 1,5 m przed płaszczyzną gry do 11 m w głąb. Światła sceny rozpraszają się w niej —
-## snop latarki, poświata flary i lampy, smugi księżyca między drzewami.
+## snop latarki, poświata flary i lampy, smugi księżyca między drzewami. Gęstość, ławice i dryf ustawia pogoda (`FOG_VOLUME_SHADER`).
 static func build_fog_volumes(parent: Node3D, rows: Array, density := 0.035) -> void:
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
@@ -4100,11 +4341,14 @@ static func build_fog_volumes(parent: Node3D, rows: Array, density := 0.035) -> 
 	fv.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
 	fv.size = Vector3(float(cols) * T + 40.0, float(nrows) * T + 30.0, 12.5)
 	fv.position = Vector3(float(cols) * T * 0.5, -float(nrows) * T * 0.5, -4.75)
-	var fm := FogMaterial.new()
-	fm.density = density
-	fm.albedo = Color(0.80, 0.86, 1.0)
-	fm.edge_fade = 0.3
+	if _fog_volume_shader == null:
+		_fog_volume_shader = Shader.new()
+		_fog_volume_shader.code = FOG_VOLUME_SHADER
+	var fm := ShaderMaterial.new()
+	fm.shader = _fog_volume_shader
+	fm.set_shader_parameter("density", density)
 	fv.material = fm
+	fv.set_meta("base_density", density)
 	parent.add_child(fv)
 
 ## Środowisko nocy (niebo, mgła głębi, glow, filmic) i księżyc z cieniami. `ambient` — kolor ciemności poziomu (jak w 2D) służy do ocieplenia
