@@ -1096,6 +1096,8 @@ func _handle_cmdline() -> void:
 			WEATHER_FX.dev_flash = 1.0                                                             # dev: błysk błyskawicy na stałe
 		elif a.begins_with("--shotflash="):
 			WEATHER_FX.dev_flash = clampf(float(a.substr("--shotflash=".length())), 0.0, 1.0)     # dev: stała siła błysku 0..1 (0 = bez błysków; pomiary A/B)
+		if a == "--shotbolt":
+			VIEW3D.dev_bolt = true                                                                 # dev: kanał pioruna na niebie przy --shotflash ≥ 0,5 (W4, zrzuty)
 		if a.begins_with("--weatherseed="):
 			Weather.dev_seed = maxi(int(a.substr("--weatherseed=".length())), 0)                 # dev: stałe ziarno pogody (powtarzalne zrzuty frontów i błyskawic)
 		if a.begins_with("--weathert="):

@@ -4,7 +4,7 @@ config_version=5
 [application]
 
 config/name="Dead Air '87 Prototype"
-config/version="1.7.573"
+config/version="1.7.574"
 config/description="Co-op horror run-and-gun prototype: 8-dir movement, 2-player online, noise-driven stalker."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
@@ -59,6 +59,25 @@ environment/ssao/quality=2
 textures/default_filters/anisotropic_filtering_level=4
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.035, 0.045, 0.07, 1)
+
+[shader_globals]
+
+weather_wet={
+"type": "float",
+"value": 0.0
+}
+weather_rain={
+"type": "float",
+"value": 0.0
+}
+weather_roof={
+"type": "sampler2D",
+"value": ""
+}
+weather_roof_info={
+"type": "vec4",
+"value": Vector4(1, 1, -2.7, -100000)
+}
 
 [internationalization]
 

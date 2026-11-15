@@ -59,6 +59,7 @@ uniform float blood_seed = 0.0;
 uniform float grime = 0.0;                // 0..1: zużycie stroju — barwna tkanina traci nasycenie i jasność, błoto od butów w górę (GRIME)
 uniform float soil = 0.0;                 // 0..1: urobek na stroju po kopaniu (player.gd `soil`, kopanie P2e) — kurz i grudy na całej postaci
 uniform vec3 soil_col = vec3(0.36, 0.29, 0.21);   // kolor pyłu ostatnio kopanego materiału (dig_materials.gd `dust`)
+uniform float rain_wet = 0.0;             // 0..1: strój przemoczony deszczem (view3d.gd `_sync_wet`, WEATHER_PLAN.md W6) — ciemniejszy i błyszczący
 varying float wy;                         // wysokość w świecie (m): krew gęstsza na tułowiu i ramionach niż na łydkach
 float bh(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -144,6 +145,14 @@ void fragment() {
 		c = mix(c, mix(crust, wetc, core), blood * 0.92);
 		wet = blood * core;
 	}
+	if (rain_wet > 0.001) {
+		// mokra tkanina ciemnieje (woda w splocie), skóra mniej; z góry (ramiona, kaptur) mokro najpierw, nogawki od pasa w dół później
+		float sk_w = skin_k(rgb2hsv(c));
+		float top_w = mix(smoothstep(0.2, 1.3, ly), 1.0, smoothstep(0.5, 1.0, rain_wet));
+		float dw = rain_wet * top_w * mix(1.0, 0.35, sk_w);
+		c *= 1.0 - 0.38 * dw;
+		wet = max(wet, dw * 0.75);
+	}
 	ALBEDO = c;
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).xyz;
@@ -156,6 +165,7 @@ void fragment() {
 		ROUGHNESS = 0.85;
 	}
 	ROUGHNESS = mix(ROUGHNESS, 0.34, wet);
+	SPECULAR = mix(0.5, 0.7, wet);
 	METALLIC = 0.0;
 }
 """
@@ -666,6 +676,11 @@ func set_soil(s: float, col: Color) -> void:
 		var sm := m as ShaderMaterial
 		sm.set_shader_parameter("soil", clampf(s, 0.0, 1.0))
 		sm.set_shader_parameter("soil_col", Vector3(col.r, col.g, col.b))
+
+## Przemoczenie stroju deszczem (view3d.gd `_sync_wet`, WEATHER_PLAN.md W6): 0..1, lokalnie — pod niebem moknie, pod dachem schnie.
+func set_rain_wet(w: float) -> void:
+	for m in _pal_mats:
+		(m as ShaderMaterial).set_shader_parameter("rain_wet", clampf(w, 0.0, 1.0))
 
 ## Krew na stroju (player.gd): d 0..1 — od lekkich plam do przesiąknięcia; seed rozmieszcza plamy inaczej u każdego gracza.
 func set_damage(d: float, seed: float) -> void:
