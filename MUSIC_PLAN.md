@@ -1,7 +1,7 @@
 # Muzyka adaptacyjna — plan
 
 Status: **plan z 2026-11-15 (main 1.7.576, 35b8c6ff).** Decyzje D1–D7 (§6) przyjęte 2026-11-15 — wszystkie warianty zalecane.
-**E0 w 1.7.578** (`music_director.gd`, test `tools/test_music.gd`, zdarzenie `music` w dzienniku sesji). **E1 w 1.7.579** (motyw Stalkera `mus_stalker_far` / `mus_stalker_near`, sygnały `cue_elite` / `cue_horde`, ostatnie serce i leżenie; zdarzenia `music_motif`, `music_cue`). **E2 w 1.7.580** (sekcje A/B o tym samym rytmie zmieniane całą muzyką na początku pętli, spokojniejszy pościg, motyw Stalkera w d-moll, kadencje `mus_combat_end` / `mus_chase_end`, palety `MUSIC_SEGMENTS`, boss `z1_b1`); po odsłuchu nowy kierunek materiału (§8, PR #695): **E3a** podgląd poza grą (`tools/music_preview.py`, PR #696), **E3b w 1.7.581** — mroczny ambient w grze (64 BPM, pedał D, metal, smyczki). **E4 w 1.7.582** — boss wg faz i odwrót (§9). Równolegle `amb_machine` (stałe buczenie pod całą grą) usunięta w PR #690 (1.7.577).
+**E0 w 1.7.578** (`music_director.gd`, test `tools/test_music.gd`, zdarzenie `music` w dzienniku sesji). **E1 w 1.7.579** (motyw Stalkera `mus_stalker_far` / `mus_stalker_near`, sygnały `cue_elite` / `cue_horde`, ostatnie serce i leżenie; zdarzenia `music_motif`, `music_cue`). **E2 w 1.7.580** (sekcje A/B o tym samym rytmie zmieniane całą muzyką na początku pętli, spokojniejszy pościg, motyw Stalkera w d-moll, kadencje `mus_combat_end` / `mus_chase_end`, palety `MUSIC_SEGMENTS`, boss `z1_b1`); po odsłuchu nowy kierunek materiału (§8, PR #695): **E3a** podgląd poza grą (`tools/music_preview.py`, PR #696), **E3b w 1.7.581** — mroczny ambient w grze (64 BPM, pedał D, metal, smyczki). **E4 w 1.7.582** — boss wg faz i odwrót (§9). **E5 w 1.7.583** — temat menu, radio w kryjówce, kadencje wyniku i wipe (§10). Równolegle `amb_machine` (stałe buczenie pod całą grą) usunięta w PR #690 (1.7.577).
 Muzyka nie zmienia rozgrywki, więc etapy nie czekają na playtest (GDD §16.0a), ale po E1 i E3 są punkty odsłuchu w grze z testerem.
 
 ## 1. Skąd to
@@ -214,3 +214,18 @@ Zasady:
 - Głośność: boss do ok. −15 LUFS z warstwami, odwrót ok. −17 (§4.5: momenty głośniejsze niż −20 LUFS reszty).
 
 Podgląd: `python prototype/tools/music_preview.py --script "0:22,45:30,100:45" --scene "6:boss1,50:boss2,100:boss3,150:won,240:none" --out boss.wav`.
+
+## 10. E5 — tożsamość: menu, radio, wynik, wipe (1.7.583)
+
+| Gdzie | Kiedy | Muzyka |
+|---|---|---|
+| Menu | przed sesją (menu, lobby, OPERATORZY) — `main_menu.gd` | `mus_menu_in` (strojenie: szum, gwizd, „87” Morse'em), spod niego `mus_menu` (60 s): dron D, motyw Stalkera przez radio, potem czysto; cichnie w 2,5 s przy starcie sesji |
+| Kryjówka | radiostacja (`radio_set.gd`), pozycyjnie | `radio_program` (mono 2:42): ballada „z estrady”, stacja numeryczna (pozytywka z motywem Stalkera, grupy cyfr Morse'em), instrumental syntezatorowy, strojenie między nimi; głośnik AM, zaniki, szum |
+| Raport — sukces | `result_screen.open` | gra milknie w 0,7 s; `mus_result_win`: A → D, pusta kwinta, cicha tercja wielka |
+| Raport — koniec serii | jw., faza FAILED | `mus_result_fail`: rura, klaster D / E♭ zsuwa się o pół tonu, taśma staje |
+| Wipe | `main._announce_wipe` | muzyka zwalnia jak taśma (1,6 s, wysokość do ¼), `mus_wipe` (niskie D dogasa), cisza 2,2 s, powrót 2 s; bez kadencji warstw |
+
+- Stacja numeryczna bez mowy: syntezatory mowy systemu nie mają jasnej licencji na użycie w grze, a prawdziwe stacje często nadawały Morse'em.
+- Utwory radia są diegetyczne — mogą mieć akordy i melodię (D11 dotyczy muzyki rozgrywki); słychać je tylko przy odbiorniku.
+- Stan warstw i sceny przez wipe zostaje (HUD wysyła tylko zmiany); po nowej próbie wracają spod wspólnego wzmocnienia taśmy.
+- Śmierć bez wipe'u (gracz leży) — bez zmian z E1 (ciszej, filtr, serce).

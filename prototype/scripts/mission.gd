@@ -1310,6 +1310,10 @@ func objective_hint() -> String:
 func music_retreat() -> bool:
 	return phase == Phase.EXTRACT and kind != "hub"
 
+## Muzyka (E5): po sukcesie i końcu serii gra tylko kadencja raportu.
+func music_over() -> bool:
+	return phase == Phase.SUCCESS or phase == Phase.FAILED
+
 ## Stan ekstrakcji lokalnego gracza (pasek kontekstowy HUD).
 func local_extract_state() -> Dictionary:
 	var me := _local_human()

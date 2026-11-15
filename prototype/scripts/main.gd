@@ -234,6 +234,7 @@ func _solo_may_bleed() -> bool:
 func _announce_wipe(seconds: float) -> void:
 	wipe_left = seconds
 	Audio.play("tape_stop", Audio.BUS_UI, -6.0)
+	Audio.music_tape_stop()                     # muzyka zwalnia razem z taśmą (MUSIC_PLAN.md E5)
 
 ## Restart misji (serwer): Uwaga, ładunki Q, wrogowie, gniazda i gracze wracają
 ## na start. new_run=false to kolejna próba po wipe (licznik prób +1), true to

@@ -162,6 +162,7 @@ func open(m: Node) -> void:
 		t = float(model["end_t"])
 		_cue_i = _cues.size()
 	visible = true
+	Audio.music_result(int(m.phase) == Mission.Phase.SUCCESS)      # kadencja wyniku; muzyka rozgrywki cichnie (MUSIC_PLAN.md E5)
 	_animate()
 
 func close() -> void:

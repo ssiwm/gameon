@@ -8,6 +8,8 @@ extends SceneTree
 ## E4: sceny bossa (wejście i histereza zasięgu, faza, śmierć → odwrót ze zwycięstwem, odwrót z misji), warstwy pod sceną,
 ## w AudioDirector warstwy sceny na takcie, uderzenie fazy na beat, kadencja śmierci na takcie z wycięciem bossa i odwrotem
 ## po ogonie, zwykłe wyciszenie bez zwycięstwa, paleta czeka na ciszę scen, pliki scen na siatce (odwrót = dwie pętle).
+## E5: temat menu (wejście, pętla spod szumu, wyciszenie przy starcie sesji, bez uruchamiania stemów), kadencja raportu (gra cichnie),
+## wipe jak zatrzymana taśma (wysokość, cisza, mus_wipe, bez kadencji, powrót), dyrektor milknie po końcu misji, pliki E5 i program radia.
 ##   godot --headless --path prototype -s tools/test_music.gd     → ostatni wiersz: PASS / FAIL
 
 var _fails := 0
@@ -478,6 +480,7 @@ func _initialize() -> void:
 	var sd3 = MD.new(9)
 	sd3._drive_scene(0.1, me2)
 	_check("misja w ekstrakcji (drzewo sceny): odwrót", sd3.scene == "retreat")
+	mis.remove_from_group("mission")              # queue_free działa dopiero po klatce, a test biegnie w jednej
 	mis.queue_free()
 	me2.queue_free()
 
@@ -546,8 +549,85 @@ func _initialize() -> void:
 	_check("koniec odwrotu bez zwycięstwa: zwykłe wyciszenie (po 1 s %.2f)" % audio._scene_x[3], audio._scene_x[3] > 0.7 and audio._scene_x[3] < 1.0
 		and audio._scene_cut_at[3] < 0.0 and audio._hits.is_empty())
 
+	# --- E5: menu, raport, wipe
+	var e5_ok := true
+	for k in ["mus_menu", "mus_menu_in", "mus_result_win", "mus_result_fail", "mus_wipe", "radio_program"]:
+		e5_ok = e5_ok and man_s.PATHS.has(k) and audio.stream(k) != null
+	_check("pliki E5 w manifeście (menu, kadencje, program radia)", e5_ok)
+	_check("temat menu = dwie pętle siatki (%.1f s), program radia pętlą ≥ 2 min (%.0f s)" % [audio.stream("mus_menu").get_length(), audio.stream("radio_program").get_length()],
+		absf(audio.stream("mus_menu").get_length() - 2.0 * loop_len) < 0.01 and man_s.LOOPS.has("mus_menu") and man_s.LOOPS.has("radio_program")
+		and audio.stream("radio_program").get_length() >= 120.0)
+	audio.shutdown()
+	audio.set_enabled(true)
+	audio.music_set_menu(true)
+	_check("menu: wejście i pętla tematu ruszają, stemy rozgrywki nie", audio._menu_in_p.playing and audio._menu_p.playing
+		and audio._menu_p.volume_db <= -79.0 and not audio._music_started)
+	for i in 30:
+		audio._update_music(0.1)
+	_check("po 3 s pętla tematu jeszcze pod szumem (%.0f dB)" % audio._menu_p.volume_db, audio._menu_p.volume_db <= -79.0)
+	for i in 70:
+		audio._update_music(0.1)
+	_check("po %.0f s temat gra w pełni (%.1f dB)" % [audio.MENU_LOOP_AT + audio.MENU_LOOP_IN, audio._menu_p.volume_db], audio._menu_p.volume_db > -0.5)
+	audio.music_set_menu(false)
+	audio._update_music(1.0)
+	_check("start sesji: temat cichnie (po 1 s %.0f dB)" % audio._menu_p.volume_db, audio._menu_p.playing and audio._menu_p.volume_db < -1.0)
+	for i in 20:
+		audio._update_music(0.1)
+	_check("temat zatrzymany po %.1f s" % audio.MENU_FADE_OUT, not audio._menu_p.playing and not audio._menu_in_p.playing)
+
+	audio.music_set_layer(2)
+	audio.music_set_scene("retreat")
+	for i in audio._stem_gain.size():
+		audio._stem_gain[i] = 1.0 if i <= 2 else 0.0
+	audio._scene_x[3] = 1.0
+	audio.music_result(true)
+	_check("raport (sukces): warstwy i scena gasną bez kadencji, gra mus_result_win",
+		audio._stem_target.all(func(v: float) -> bool: return v == 0.0) and audio._scene_target[3] == 0.0 and audio._cad_key == ""
+		and audio._music_layer == -1 and audio._one_p.playing and audio._one_p.stream.resource_path.contains("mus_result_win"))
+	audio._clock += 0.8
+	audio._update_music(0.8)
+	_check("pod kadencją raportu gra milknie w %.1f s" % audio.CADENCE_CUT, audio._stem_gain.all(func(g: float) -> bool: return g == 0.0) and audio._scene_x[3] == 0.0)
+	audio.music_result(false)
+	_check("koniec serii: mus_result_fail", audio._one_p.stream.resource_path.contains("mus_result_fail"))
+
+	audio.music_set_layer(2)
+	for i in 3:
+		audio._stem_gain[i] = 1.0
+	audio.music_tape_stop()
+	audio._update_music(0.8)
+	var mid_pitch: float = audio._seg[2][0].pitch_scale
+	_check("wipe: taśma zwalnia (wysokość %.2f, głośność ×%.2f)" % [mid_pitch, audio._tape_gain], mid_pitch < 0.95 and mid_pitch > audio.TAPE_PITCH_MIN and audio._tape_gain < 0.6)
+	audio._update_music(0.9)
+	_check("taśma stoi: cisza, wysokość wraca, gra mus_wipe, warstwy zostają w stanie dyrektora",
+		audio._tape_gain == 0.0 and audio._seg[2][0].pitch_scale == 1.0 and audio._one_p.stream.resource_path.contains("mus_wipe")
+		and audio._stem_target[2] == 1.0 and audio._music_layer == 2)
+	audio.music_set_layer(0)
+	audio._clock = audio._drop_at + 0.01
+	audio._update_music(0.01)
+	_check("zejście w czasie wipe'u bez kadencji", audio._cad_key == "" and audio._stem_target[2] == 0.0)
+	for i in 50:
+		audio._update_music(0.1)
+	_check("po nowej próbie muzyka wraca (×%.2f)" % audio._tape_gain, audio._tape_gain == 1.0 and audio._tape < 0.0)
+
+	var ms2 := GDScript.new()
+	ms2.source_code = "extends Node\nfunc music_over() -> bool:\n\treturn true\nfunc music_retreat() -> bool:\n\treturn false\n"
+	ms2.reload()
+	var mis2: Node = ms2.new()
+	mis2.add_to_group("mission")
+	root.add_child(mis2)
+	var me3 := FakePlayer.new()
+	root.add_child(me3)
+	var od = MD.new(9)
+	od.step(0.1, 80.0)
+	var lay_over: int = od.update(0.1, me3, true)
+	_check("po końcu misji dyrektor milknie (warstwa %d, scena „%s”)" % [lay_over, od.scene], lay_over == -1 and od.scene == "")
+	mis2.remove_from_group("mission")              # queue_free działa dopiero po klatce, a test biegnie w jednej
+	mis2.queue_free()
+	me3.queue_free()
+
 	lvl.queue_free()
 	audio.shutdown()
+	_check("wyłączenie: temat menu i kadencje stoją", not audio._menu_p.playing and not audio._one_p.playing and audio._tape < 0.0)
 	_check("wyłączenie: sceny i uderzenia stoją", audio._scene_p.all(func(sp: AudioStreamPlayer) -> bool: return not sp.playing and sp.stream == null)
 		and audio._scene == "" and audio._scene_x == [0.0, 0.0, 0.0, 0.0])
 	_check("wyłączenie: wszystkie warianty i kadencja stoją", audio._seg.all(func(a: Array) -> bool: return a.all(func(p: AudioStreamPlayer) -> bool: return not p.playing and p.stream == null)) and not audio._cad.playing)

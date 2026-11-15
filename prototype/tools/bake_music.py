@@ -14,6 +14,10 @@ Każda warstwa ma wariant B (`_b`) o tym samym rytmie i innej barwie; runtime zm
 (E2). Poza warstwami: motyw Stalkera (mus_stalker_far / _near), kadencje (mus_combat_end / mus_chase_end, z przedbiegiem
 PRE), sygnały cue_horde / cue_elite i stingery sting_tension / sting_chase — z tego samego materiału.
 
+E5 (tożsamość): temat menu mus_menu (60 s) z wejściem mus_menu_in (strojenie), program radia w kryjówce radio_program
+(pętla mono: ballada, stacja numeryczna, instrumental, strojenie między nimi), kadencje wyniku mus_result_win / mus_result_fail
+i wipe'u mus_wipe.
+
 E4 (momenty): sceny ponad warstwami, na tej samej siatce — boss mus_boss_1..3 (fazy dokładają się), odwrót mus_retreat
 (60 s), uderzenie momentu mus_hit (na beat) i kadencja śmierci bossa mus_boss_end (na takt), obie z przedbiegiem PRE.
 
@@ -450,6 +454,322 @@ def cadence_boss(rng: Rng) -> np.ndarray:
     return d.reverb_stereo(x, ir("cave_st"), wet=0.45, dry=1.0)
 
 
+# ------------------------------------------------------------------ E5: menu „z eteru”, radio w kryjówce, kadencje wyniku i wipe'u
+
+def qsb(n: int, cycles: int, depth: float = 0.35, phase: float = 0.0) -> np.ndarray:
+    """Zanik fal krótkich (QSB): powolne, okresowe w buforze pływanie siły sygnału."""
+    t = np.arange(n) / n
+    w = 0.6 * np.sin(TAU * cycles * t + phase) + 0.4 * np.sin(TAU * (cycles * 3 + 1) * t + 1.7 * phase + 0.4)
+    return 1.0 - depth * (0.5 + 0.5 * w)
+
+
+def am_band(x: np.ndarray, lo: float = 300.0, hi: float = 3400.0, drive: float = 1.6) -> np.ndarray:
+    """Głośnik odbiornika AM: wąskie pasmo i lekki przester."""
+    return d.saturate(d.lp(d.hp(x, lo, order=4), hi, order=4) * drive, 1.8) / drive
+
+
+def ep_note(f: float, dur: float, rng: Rng, vel: float = 1.0) -> np.ndarray:
+    """Fortepian elektryczny FM (jak DX7 E.PIANO): ton z opadającym indeksem i krótki „tine” wysoko."""
+    n = sec(dur + 1.2)
+    body = d.fm(f, n, ratio=1.0, index=(1.6 * vel) * d.env_exp(n, 0.35) + 0.2)
+    tine = d.fm(f, n, ratio=14.0, index=0.8 * d.env_exp(n, 0.03)) * 0.12 * vel
+    env = d.env_adsr(n, 0.003, 0.9, 0.35, 0.4) * d.env_pts(n, [(0, 1), (dur, 1), (dur + 1.2, 0)])
+    return (body * 0.7 + tine) * env * vel
+
+
+def pad_chord(ms_, dur: float, rng: Rng) -> np.ndarray:
+    """Smyczki „Solina”: piły rozstrojone, filtr, wolne natarcie."""
+    n = sec(dur + 0.8)
+    y = np.zeros(n)
+    for m in ms_:
+        f = mtof(m)
+        for det in (-0.004, 0.0, 0.005):
+            y += d.osc("saw", f * (1 + det), n, rng.uniform(0, 1))
+    y = d.lp(y / (3 * len(ms_)), 1800.0, 0.8)
+    return y * d.env_adsr(n, 0.5, 0.3, 0.85, 0.8)
+
+
+def flute(f: float, dur: float, rng: Rng) -> np.ndarray:
+    n = sec(dur + 0.3)
+    fr = d.vibrato(f, n, 5.2, 12.0, rng.uniform(0, TAU)) * np.where(np.arange(n) < sec(0.25), 1.0, 1.0)
+    y = d.osc("sine", fr, n) + d.osc("sine", fr * 2, n) * 0.18
+    breath = d.bp(d.white(n, rng), f * 2, 3.0) * 0.12
+    return (y + breath) * d.env_adsr(n, 0.06, 0.2, 0.8, 0.25)
+
+
+def lead_saw(f: float, dur: float, rng: Rng) -> np.ndarray:
+    n = sec(dur + 0.2)
+    fr = d.vibrato(f, n, 5.5, 8.0, rng.uniform(0, TAU))
+    y = d.osc("saw", fr, n) * 0.6 + d.osc("square", fr * 1.003, n, pw=0.4) * 0.4
+    y = d.sweep(y, "lp", d.glide_exp(4200.0, 1600.0, n, 0.15), 1.2)
+    return y * d.env_adsr(n, 0.01, 0.15, 0.7, 0.15)
+
+
+def pluck_sq(f: float, dur: float, rng: Rng, cut: float = 2600.0) -> np.ndarray:
+    n = sec(dur)
+    y = d.osc("square", f, n, pw=0.3)
+    return d.sweep(y, "lp", d.glide_exp(cut, 400.0, n, 0.05), 1.4) * d.env_perc(n, 0.002, dur * 0.4)
+
+
+def music_box(f: float, rng: Rng, dur: float = 2.2) -> np.ndarray:
+    """Pozytywka: grzebień stalowy, mody belki wspornikowej."""
+    n = sec(dur)
+    return d.modal([f, f * 6.27, f * 17.55], [1.0, 0.3, 0.08], [dur, dur * 0.4, dur * 0.15], n, rng, 0.001) * 0.5
+
+
+def kick_soft(rng: Rng) -> np.ndarray:
+    return thump(0.3, 95.0, 48.0, 0.03, 0.12, attack=0.002)
+
+
+def snare_dm(rng: Rng) -> np.ndarray:
+    n = sec(0.25)
+    tone = d.osc("sine", d.glide_exp(240.0, 180.0, n, 0.03), n) * d.env_perc(n, 0.001, 0.06)
+    nz = d.bp(d.white(n, rng), 2200.0, 0.8) * d.env_perc(n, 0.001, 0.09)
+    return tone * 0.5 + nz * 0.8
+
+
+class Mono:
+    """Bufor mono w sekundach (utwory radia, nie na siatce muzyki)."""
+
+    def __init__(self, dur: float):
+        self.buf = np.zeros(sec(dur) + sec(4.0))
+
+    def put(self, sig: np.ndarray, at: float, g: float = 1.0) -> None:
+        k = sec(at)
+        m = min(len(sig), len(self.buf) - k)
+        if m > 0:
+            self.buf[k:k + m] += sig[:m] * g
+
+
+RADIO_A_CHORDS = ((50, 57, 62, 65), (55, 58, 62, 67), (48, 55, 60, 64), (53, 57, 60, 65),
+                  (46, 53, 58, 62), (55, 58, 62, 67), (45, 57, 61, 64), (50, 57, 62, 65))     # Dm Gm C F B♭ Gm A Dm
+RADIO_A_MELODY = (((69, 0, 1.5), (67, 1.5, .5), (65, 2, 1), (64, 3, 1)), ((62, 0, 2), (67, 2, 1), (70, 3, 1)),
+                  ((69, 0, 1.5), (67, 1.5, .5), (64, 2, 2)), ((65, 0, 3),),
+                  ((74, 0, 1.5), (72, 1.5, .5), (70, 2, 1), (69, 3, 1)), ((67, 0, 1), (70, 1, 1), (74, 2, 2)),
+                  ((76, 0, 1.5), (74, 1.5, .5), (73, 2, 2)), ((74, 0, 3),))
+
+
+def radio_song_a(rng: Rng) -> np.ndarray:
+    """Ballada „z estrady” lat 80 (76 BPM, d-moll z A-dur przed toniką): fortepian elektryczny, smyczki, flet."""
+    beat = 60.0 / 76.0
+    bars = 16
+    m = Mono(bars * 4 * beat)
+    for b in range(bars):
+        t0 = b * 4 * beat
+        ch = RADIO_A_CHORDS[b % 8]
+        m.put(ep_note(mtof(ch[0] - 12), beat * 1.8, rng, 0.9), t0, 0.5)
+        for k in (1.0, 2.5):
+            for x in ch[1:]:
+                m.put(ep_note(mtof(x), beat * 1.2, rng, 0.6), t0 + k * beat + rng.uniform(0, 0.012), 0.22)
+        m.put(pad_chord(ch[1:], 4 * beat, rng), t0, 0.16)
+        m.put(kick_soft(rng), t0, 0.35)
+        for e in range(8):
+            m.put(tick(rng, 6500.0, 3.0, 12.0), t0 + e * 0.5 * beat, 0.05 if e % 2 else 0.08)
+        mel = RADIO_A_MELODY[b % 8]
+        up = 12 if (b >= 8 and b % 8 in (4, 5, 6)) else 0
+        for mm, off, du in mel:
+            m.put(flute(mtof(mm + up), du * beat, rng), t0 + off * beat, 0.32)
+    out = m.buf
+    return d.reverb(out, ir("plate_st")[0], wet=0.22, dry=1.0, keep_len=True)
+
+
+RADIO_B_CHORDS = ((50, 53, 57), (46, 50, 53), (53, 57, 60), (48, 52, 55))       # Dm B♭ F C
+RADIO_B_PHRASE = ((0, 69, 1), (1, 74, 1), (2, 72, .5), (2.5, 69, 1.5), (4, 70, 1), (5, 69, .5), (5.5, 67, .5), (6, 65, 2),
+                  (8, 65, .5), (8.5, 67, .5), (9, 69, 1), (10, 72, 2), (12, 72, 1), (13, 70, 1), (14, 69, 2))
+RADIO_B_END = ((12, 76, 1), (13, 74, 1), (14, 72, .5), (14.5, 74, 1.5))
+
+
+def radio_song_b(rng: Rng) -> np.ndarray:
+    """Instrumental syntezatorowy z radia lat 80 (112 BPM): automat perkusyjny, bas ósemkami, arpeggio, prowadzący syntezator."""
+    beat = 60.0 / 112.0
+    bars = 24
+    m = Mono(bars * 4 * beat)
+    for b in range(bars):
+        t0 = b * 4 * beat
+        ch = RADIO_B_CHORDS[b % 4]
+        for k in (0, 2):
+            m.put(kick_soft(rng), t0 + k * beat, 0.6)
+        if b >= 2:
+            for k in (1, 3):
+                m.put(snare_dm(rng), t0 + k * beat, 0.35)
+        for e in range(8):
+            m.put(tick(rng, 7000.0, 3.0, 10.0), t0 + e * 0.5 * beat, 0.07 if e % 2 else 0.04)
+            m.put(pluck_sq(mtof(ch[0] - 12), 0.45 * beat, rng, 1200.0), t0 + e * 0.5 * beat, 0.32)
+        for st in range(16):
+            x = ch[(0, 1, 2, 1)[st % 4]] + 12 + (12 if st % 8 >= 4 else 0)
+            m.put(pluck_sq(mtof(x), 0.22 * beat, rng), t0 + st * 0.25 * beat, 0.09)
+        if 4 <= b < 20:
+            ph = (b - 4) // 4
+            if b % 4 == 0:
+                notes = RADIO_B_PHRASE if ph % 2 == 0 else RADIO_B_PHRASE[:-3] + RADIO_B_END
+                for off, mm, du in notes:
+                    m.put(lead_saw(mtof(mm), du * beat * 0.95, rng), t0 + off * beat, 0.2)
+    out = m.buf
+    return d.reverb(out, ir("plate_st")[0], wet=0.18, dry=1.0, keep_len=True)
+
+
+MORSE = {"0": "-----", "1": ".----", "2": "..---", "3": "...--", "4": "....-", "5": ".....", "6": "-....", "7": "--...",
+         "8": "---..", "9": "----."}
+NUMBERS_GROUPS = ("19870", "31586", "00427", "87087")          # „87” w każdej transmisji — rok, w którym ucichło
+
+
+def morse(text: str, wpm: float = 18.0, f: float = 880.0) -> np.ndarray:
+    dit = 1.2 / wpm
+    parts = []
+    for ch in text:
+        if ch == " ":
+            parts.append(np.zeros(sec(dit * 7)))
+            continue
+        for sym in MORSE[ch]:
+            n = sec(dit * (3 if sym == "-" else 1))
+            tone = d.osc("sine", f, n) * d.env_pts(n, [(0, 0), (0.004, 1), (n / SR - 0.004, 1), (n / SR, 0)])
+            parts.append(tone)
+            parts.append(np.zeros(sec(dit)))
+        parts.append(np.zeros(sec(dit * 2)))
+    return np.concatenate(parts)
+
+
+def radio_numbers(rng: Rng) -> np.ndarray:
+    """Stacja numeryczna: sygnał interwałowy na pozytywce (motyw Stalkera, dwie oktawy wyżej) i grupy cyfr Morse'em."""
+    def interval(m: Mono, t0: float) -> float:
+        for mm, b, _ in MOTIF:
+            m.put(music_box(mtof(mm + 24), rng), t0 + b * 0.55, 0.5)
+        return t0 + 4.0 * 0.55 + 1.6
+    m = Mono(48.0)
+    t = 0.3
+    for _ in range(3):
+        t = interval(m, t)
+    t += 0.8
+    mo = morse(" ".join(NUMBERS_GROUPS))
+    m.put(mo, t, 0.35)
+    t += len(mo) / SR + 1.2
+    t = interval(m, t)
+    return m.buf[:sec(t + 1.5)]
+
+
+def tuning(rng: Rng, dur: float = 4.0) -> np.ndarray:
+    """Strojenie odbiornika: szum przez sunący filtr, gwizd heterodyny, trzaski."""
+    n = sec(dur)
+    nz = d.sweep(d.white(n, rng), "bp", np.geomspace(2600.0, 700.0, n) * (1 + 0.3 * np.sin(np.linspace(0, 7, n))), 2.0) * 0.5
+    wh = d.osc("sine", d.glide_exp(2600.0, 900.0, n, dur * 0.4) + 180 * np.sin(np.linspace(0, 11, n)), n) * 0.08
+    cr = np.zeros(n)
+    for _ in range(int(dur * 9)):
+        k = int(rng.integers(0, n - 200))
+        cr[k:k + 120] += d.white(120, rng) * d.env_perc(120, 0.0002, 0.0015) * rng.uniform(0.2, 0.8)
+    return (nz + wh + cr) * d.env_pts(n, [(0, 0), (0.4, 1), (dur - 0.4, 1), (dur, 0)])
+
+
+def radio_program(rng: Rng) -> np.ndarray:
+    """Program radia w kryjówce (pętla mono): ballada → strojenie → stacja numeryczna → strojenie → instrumental → strojenie.
+    Wszystko przez głośnik AM, z szumem eteru i zanikami QSB; ogony zawinięte na początek, więc pętla jest bez szwu."""
+    segs = [radio_song_a(rng), tuning(rng), radio_numbers(rng), tuning(rng), radio_song_b(rng) * 1.45, tuning(rng, 4.5)]   # instrumental rzadszy — wyrównany do ballady
+    lens = [len(x) for x in segs]
+    ov = sec(0.8)
+    total = sum(lens) - ov * len(segs)
+    buf = np.zeros(total + max(lens))
+    k = 0
+    for x in segs:
+        x = d.fade_edges(x, 300.0, 800.0)
+        buf[k:k + len(x)] += x
+        k += len(x) - ov
+    prog = d.fold_loop(buf, total)
+    prog = d.circ_filter(prog, lambda x: am_band(x * 1.4))
+    hiss = d.circ_filter(d.white(total, rng), lambda x: d.lp(d.hp(x, 1200.0), 6000.0)) * 0.02
+    hum = np.sin(TAU * round(100.0 * total / SR) / (total / SR) * np.arange(total) / SR) * 0.006
+    cycles = max(1, int(total / SR / 18))
+    return (prog * qsb(total, cycles, 0.3) + hiss + hum)
+
+
+MENU_N = 2 * LOOP_N                  # temat menu: 60 s na siatce muzyki (te same 64 BPM i pedał D)
+
+
+def stem_menu(rng: Rng) -> np.ndarray:
+    """Temat menu „z eteru”: dron D z taśmy, motyw Stalkera najpierw z odbiornika (wąskie pasmo, zaniki), potem czysto
+    smyczkiem — temat wyłania się z szumu. Daleki metal; nic poza tym (D11: jedyna melodia to motyw)."""
+    bed = drone_bed(rng)
+    bed = np.concatenate([bed, bed], axis=1)
+    radio = Stem(MENU_N)
+    clean = Stem(MENU_N)
+    for bar in (1, 3):
+        motif_into(radio, bar * 4, rng, 0.5, 0.75)
+    for bar in (9, 11):
+        motif_into(clean, bar * 4, rng, 0.3, 0.5)
+    r = radio.render(ir("cave_st"), wet=0.2)
+    r = d.circ_filter(r, lambda x: am_band(x, 380.0, 2600.0, 2.0)) * qsb(MENU_N, 5, 0.45)
+    c = clean.render(ir("cave_st"), wet=0.55)
+    ev = Stem(MENU_N)
+    for bar, m in ((6, 50), (14, 45)):
+        ev.put(pipe(mtof(m), rng, 5.0, 0.6), bar * 4 + 2.5, 0.2, pan=-0.4 if bar == 6 else 0.4)
+    e = ev.render(ir("cave_st"), wet=0.8)
+    st = d.circ_filter(d.white(MENU_N, rng), lambda x: d.bp(x, 1400.0, 0.7)) * 0.012 * qsb(MENU_N, 7, 0.8, 1.0)
+    out = bed * 0.8 + r + c + e + np.stack([st, np.roll(st, sec(0.02))])
+    return tape(out, 0.004, 1.15)
+
+
+def menu_intro(rng: Rng) -> np.ndarray:
+    """Wejście do menu: strojenie odbiornika — szum, gwizd, urywek Morse'a — i zanik szumu, spod którego wychodzi dron."""
+    n = sec(7.0)
+    tu = tuning(rng, 6.0)
+    x = np.zeros(n)
+    x[:len(tu)] += tu * d.env_pts(len(tu), [(0, 0.6), (3.5, 1.0), (6.0, 0.0)])
+    mo = morse("87", 20.0, 760.0)
+    k = sec(1.6)
+    x[k:k + len(mo)] += mo * 0.18
+    x = am_band(x, 250.0, 3800.0)
+    st = np.stack([x, np.roll(x, sec(0.015))])
+    return d.reverb_stereo(st, ir("cave_st"), wet=0.25, dry=1.0)
+
+
+def cadence_result_win(rng: Rng) -> np.ndarray:
+    """Udana ekstrakcja: smyczek schodzi z A na D (koniec motywu), pusta kwinta i — cicho, wysoko — tercja wielka (ulga)."""
+    x = oneshot(9.0)
+    put1(x, bowed(mtof(45), 1.6, rng, 0.3) * d.env_pts(sec(1.6), [(0, 0.3), (0.6, 1.0), (1.6, 0.0)]), 0.0, 0.3)
+    n = sec(7.0)
+    for i, m in enumerate((38, 45, 50)):
+        put1(x, bowed(mtof(m), 7.0, rng, 0.25) * d.env_pts(n, [(0, 0), (0.8, 1.0), (7.0, 0.0)]), 1.4, 0.22, pan=(-0.4, 0.0, 0.4)[i])
+    put1(x, pipe(mtof(38), rng, 5.0, 0.6), 1.4, 0.4)
+    put1(x, music_box(mtof(78), rng, 4.0), 2.6, 0.18, pan=0.3)            # F♯5
+    put1(x, music_box(mtof(74), rng, 4.0), 3.2, 0.16, pan=-0.3)           # D5
+    return tape(d.reverb_stereo(x, ir("cave_st"), wet=0.45, dry=1.0), 0.002, 1.1)
+
+
+def cadence_result_fail(rng: Rng) -> np.ndarray:
+    """Koniec serii (Nocny Dyżur): uderzenie w rurę, klaster D / E♭ zsuwa się o pół tonu, taśma zwalnia na końcu."""
+    x = oneshot(8.0)
+    put1(x, pipe(mtof(26), rng, 6.0, 0.8), 0.0, 0.8)
+    put1(x, thump(1.4, 60.0, 28.0, 0.3, 0.8, attack=0.003), 0.0, 0.9)
+    n = sec(6.5)
+    for i, m in enumerate((50, 51)):
+        gl = d.glide_exp(mtof(m), mtof(m - 1), n, 2.5)
+        put1(x, bowed(gl, 6.5, rng, 0.3) * d.env_pts(n, [(0, 0), (0.5, 1.0), (6.5, 0.0)]), 0.2, 0.22, pan=(-0.35, 0.35)[i])
+    y = d.reverb_stereo(x, ir("cave_st"), wet=0.4, dry=1.0)[:, :sec(PRE) + sec(7.5)]
+    return tape_stop_tail(y, 2.5)
+
+
+def tape_stop_tail(x: np.ndarray, dur: float) -> np.ndarray:
+    """Ostatnie `dur` s zwalnia jak zatrzymywana taśma (prędkość odczytu → 0)."""
+    n = x.shape[-1]
+    k = n - sec(dur)
+    sp = np.ones(n)
+    sp[k:] = np.linspace(1.0, 0.0, n - k) ** 1.6
+    pos = np.cumsum(sp) - sp[0]
+    i0 = np.clip(pos.astype(np.int64), 0, n - 2)
+    fr = pos - i0
+    y = np.stack([c[i0] * (1 - fr) + c[i0 + 1] * fr for c in x])
+    return y * d.env_pts(n, [(0, 1.0), (k / SR, 1.0), (n / SR, 0.0)]) ** 0.7
+
+
+def cadence_wipe(rng: Rng) -> np.ndarray:
+    """Wipe: po zatrzymaniu muzyki (silnik zwalnia stemy jak taśmę) zostaje niskie D, które dogasa, i szum końca taśmy."""
+    x = oneshot(5.0)
+    put1(x, thump(1.8, 48.0, 26.0, 0.4, 1.0, attack=0.01), 0.0, 0.7)
+    n = sec(4.5)
+    put1(x, bowed(mtof(26 + 12), 4.5, rng, 0.15) * d.env_pts(n, [(0, 1.0), (4.5, 0.0)]) ** 1.5, 0.0, 0.3)
+    hiss = d.lp(d.white(n, rng), 3000.0) * d.env_pts(n, [(0, 0.0), (0.3, 1.0), (4.5, 0.0)]) * (0.6 + 0.4 * np.sin(np.linspace(0, 40, n)) ** 2)
+    put1(x, hiss, 0.0, 0.05)
+    return d.reverb_stereo(x, ir("cave_st"), wet=0.4, dry=1.0)
+
+
 def build_stingers() -> None:
     rng = Rng(0x5710)
     # napięcie: zgrzyt metalu narasta, pod nim smyczek D / E♭ i miękkie tąpnięcie na końcu
@@ -504,11 +824,11 @@ def build_music() -> None:
              ("mus_chase", lambda r: stem_chase(r), -22.0), ("mus_chase_b", lambda r: stem_chase(r, True), -22.0),
              ("mus_stalker_far", stem_stalker_far, -31.0), ("mus_stalker_near", stem_stalker_near, -25.0),
              ("mus_boss_1", stem_boss_1, -24.0), ("mus_boss_2", stem_boss_2, -23.0), ("mus_boss_3", stem_boss_3, -24.0),
-             ("mus_retreat", stem_retreat, -21.0))
+             ("mus_retreat", stem_retreat, -21.0), ("mus_menu", stem_menu, -23.0))
     for key, fn, target in loops:
         asset(key, "music/" + key, loop=True)
         x = fn(_rng(key))
-        assert x.shape == (2, RETREAT_N if key == "mus_retreat" else LOOP_N), (key, x.shape)
+        assert x.shape == (2, {"mus_retreat": RETREAT_N, "mus_menu": MENU_N}.get(key, LOOP_N)), (key, x.shape)
         finalize(key, x, loop=True, lufs=target)
     # kadencje: przedbieg PRE ciszy musi zostać (runtime startuje je z przesunięciem), więc bez narastania na początku;
     # ogon pogłosu w całości (trim przy −55 dBFS przed normalizacją ucinał go słyszalnie)
@@ -516,6 +836,13 @@ def build_music() -> None:
                             ("mus_boss_end", cadence_boss, -16.0), ("mus_hit", hit_moment, -15.0)):
         asset(key, "music/" + key)
         finalize(key, fn(_rng(key)), lufs=target, fade_out_ms=600, fade_in_ms=0.0, trim=False)
+    # E5: grane od razu (bez siatki), więc bez przedbiegu; program radia to pętla mono (głośnik w świecie)
+    for key, fn, target in (("mus_result_win", cadence_result_win, -18.0), ("mus_result_fail", cadence_result_fail, -18.0),
+                            ("mus_wipe", cadence_wipe, -21.0), ("mus_menu_in", menu_intro, -24.0)):
+        asset(key, "music/" + key)
+        finalize(key, fn(_rng(key))[:, sec(PRE):], lufs=target, fade_out_ms=500, trim=False)
+    asset("radio_program", "music/radio_program", loop=True)
+    finalize("radio_program", radio_program(_rng("radio_program")), loop=True, lufs=-17.0)
     for key, fn, target in (("cue_horde", cue_horde, -16.0), ("cue_elite", cue_elite, -17.0)):
         asset(key, "music/" + key)
         finalize(key, fn(_rng(key))[:, sec(PRE):], lufs=target, fade_out_ms=400, trim=False)
