@@ -123,7 +123,7 @@ Każdy etap: osobna gałąź i PR, podbicie `config/version`, wiersz w `CHANGELO
   E2 ma przyjąć jego stemy bez zmian w kodzie (format segmentów w manifeście).
 - **Repo publiczne:** sample z biblioteki trafiają tylko do `audio_licensed/` (jak efekty), w repo zostaje wersja z syntezy.
 
-## 8. E3 — nowy materiał: mroczny ambient zamiast synthwave (po odsłuchu 1.7.580, do akceptacji)
+## 8. E3 — nowy materiał: mroczny ambient zamiast synthwave (po odsłuchu 1.7.580, przyjęte 2026-11-15)
 
 ### 8.1 Odsłuch
 
@@ -180,9 +180,9 @@ Silnik z E0–E2 zostaje bez zmian. Nowe stemy wchodzą przez manifest; zmieniaj
 | **E3c** | Sample metalu i taśmy z biblioteki (`audio_licensed/`); w repo zostaje wersja z syntezy | Bogatsza faktura lokalnie |
 | później | Palety stref 2–3 (Obiekt 86, Martwa Cisza), gdy powstaną mapy | — |
 
-### 8.4 Decyzje do akceptacji
+### 8.4 Decyzje (przyjęte 2026-11-15, wszystkie zalecane)
 
-| # | Pytanie | Zalecane | Inne |
+| # | Pytanie | Przyjęte | Odrzucone |
 |---|---|---|---|
 | D8 | Tempo | Wolne, ok. 64 BPM (ciężej, puls jak serce) | Zostać przy 96 BPM |
 | D9 | Perkusja | Metal i przedmioty (rura, blacha, tłok) | Klasyczne bębny; bez perkusji |
