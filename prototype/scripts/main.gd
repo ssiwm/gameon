@@ -454,7 +454,7 @@ func _update_weather(new_run: bool, carry: bool) -> void:
 			Weather.forecast = Weather.roll()
 	elif new_run:
 		Weather.current = Weather.forecast if (carry and not NightShift.active) else ""
-		Weather.seed = randi()           # ziarno harmonogramu błyskawic tej misji (replikowane z pogodą)
+		Weather.seed = randi() if Weather.dev_seed < 0 else Weather.dev_seed      # ziarno zegara pogody tej misji (replikowane z pogodą); dev --weatherseed
 		if not carry:
 			Weather.forecast = "clear"
 
@@ -1095,6 +1095,10 @@ func _handle_cmdline() -> void:
 			WEATHER_FX.dev_flash = 1.0                                                             # dev: błysk błyskawicy na stałe
 		elif a.begins_with("--shotflash="):
 			WEATHER_FX.dev_flash = clampf(float(a.substr("--shotflash=".length())), 0.0, 1.0)     # dev: stała siła błysku 0..1 (0 = bez błysków; pomiary A/B)
+		if a.begins_with("--weatherseed="):
+			Weather.dev_seed = maxi(int(a.substr("--weatherseed=".length())), 0)                 # dev: stałe ziarno pogody (powtarzalne zrzuty frontów i błyskawic)
+		if a.begins_with("--weathert="):
+			WEATHER_FX.dev_t = maxf(float(a.substr("--weathert=".length())), 0.0)                 # dev: zegar pogody przesunięty o S s (WEATHER_PLAN.md W0: zrzut chwili frontu)
 		if a == "--char3d-lq":
 			Sprites.char3d = true                                                                  # dev: postać 3D w niskiej jakości (SS 2, bez MSAA) — test kosztu na słabszym GPU
 			load("res://scripts/char3d.gd").set_low_quality(true)
