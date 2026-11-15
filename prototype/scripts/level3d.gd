@@ -3361,7 +3361,7 @@ static func forest_terrain(rows: Array) -> Dictionary:
 			var e := r
 			while e < nrows and is_solid_ch(_ch(rows, c, e)):
 				e += 1
-			if e >= nrows or (e - r > FOREST_THIN and _ch(rows, c, e) != "."):
+			if e >= nrows or (e - r > FOREST_THIN and not _sky_open_below(rows, c, e)):
 				surf[c] = float(r)
 				break
 			r = e                                          # cienka warstwa albo nawis: szukaj gruntu niżej
@@ -3425,6 +3425,26 @@ static func forest_stand(x: float) -> Dictionary:
 ## Wiek drzewostanu w punkcie x (m): mnożnik wysokości drzew 0,8 … 1,2 (płaty młodszego i starszego lasu, inny rytm niż polany).
 static func forest_age(x: float) -> float:
 	return lerpf(0.8, 1.2, _vn1(x / 24.0, 5.3))
+
+## Czy pod warstwą litą kolumny `c` (pierwszy wolny kafel w wierszu `e`) jest otwarte powietrze nawisu: kafel `.`, z którego wzdłuż wiersza
+## (przez wolne kafle, do FOREST_MEDIAN kolumn w każdą stronę) dochodzi się do kolumny wolnej od nieba aż do tego wiersza. Zamknięta pustka
+## pod grubą skałą (strefa kopania `DIG_ZONES` wycięta w widoku jako `.`, pieczara, korytarz) nie jest nawisem — tam grunt lasu zostaje na górze.
+static func _sky_open_below(rows: Array, c: int, e: int) -> bool:
+	if _ch(rows, c, e) != ".":
+		return false
+	var cols: int = (rows[0] as String).length()
+	for dir in [-1, 1]:
+		var k := c
+		while k >= 0 and k < cols and absi(k - c) <= FOREST_MEDIAN and not is_solid_ch(_ch(rows, k, e)):
+			var open := true
+			for r in e:
+				if is_solid_ch(_ch(rows, k, r)):
+					open = false
+					break
+			if open:
+				return true
+			k += dir
+	return false
 
 ## y dna lasu (m) w punkcie x (m) i głębokości `d` (m w głąb, dodatnia): interpolacja między kolumnami i węzłami głębi profilu `forest_terrain`.
 static func forest_ground_y(ft: Dictionary, x: float, d: float) -> float:

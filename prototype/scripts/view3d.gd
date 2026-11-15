@@ -7336,6 +7336,48 @@ void light() {
 	DIFFUSE_LIGHT += ATTENUATION * LIGHT_COLOR * 0.9;
 }
 "
+## Pył kopalni w finale (`_sync_mine_dust`): widać go tylko w świetle. Bez własnej poświaty (ciemny chodnik zostaje czarny), albedo przygaszone,
+## a światło każdej lampy przechodzi przez miękkie kolano (`knee`): przy lampie pył jaśnieje do barwy światła, ale nie przepala się do bieli,
+## nawet gdy kilkanaście warstw nakłada się w jednym miejscu. Rozpraszanie w przód (`fwd`): pod światło (lampa za pyłem) drobiny świecą mocniej
+## niż oświetlone od strony kamery — tak jak kurz w snopie. Kształt cząsteczki liczony w shaderze (Gauss bez twardego środka). Wariant smugi
+## (//STREAK) stoi pionowo i obraca się tylko wokół osi Y do kamery: długi, wąski quad rozmyty na końcach — strużka sypiącego się urobku jako
+## ciągła, rzednąca w dół zasłona zamiast sznura kul.
+const MINE_DUST_SHADER := """shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_disabled, specular_disabled, shadows_disabled;
+//STREAK
+uniform float albedo_k = 1.0;
+uniform float knee = 1.8;
+uniform float fwd = 1.2;
+void vertex() {
+	vec3 sc = vec3(length(MODEL_MATRIX[0].xyz), length(MODEL_MATRIX[1].xyz), length(MODEL_MATRIX[2].xyz));
+#ifdef STREAK
+	vec3 up = vec3(0.0, 1.0, 0.0);
+	vec3 to_cam = INV_VIEW_MATRIX[3].xyz - MODEL_MATRIX[3].xyz;
+	vec3 side = normalize(cross(up, to_cam));
+	mat4 w = mat4(vec4(side, 0.0), vec4(up, 0.0), vec4(cross(side, up), 0.0), MODEL_MATRIX[3]);
+#else
+	mat4 w = mat4(normalize(INV_VIEW_MATRIX[0]), normalize(INV_VIEW_MATRIX[1]), normalize(INV_VIEW_MATRIX[2]), MODEL_MATRIX[3]);
+#endif
+	MODELVIEW_MATRIX = VIEW_MATRIX * w * mat4(vec4(sc.x, 0.0, 0.0, 0.0), vec4(0.0, sc.y, 0.0, 0.0), vec4(0.0, 0.0, sc.z, 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
+}
+void fragment() {
+	vec2 d = UV * 2.0 - 1.0;
+#ifdef STREAK
+	float a = exp(-d.x * d.x * 2.6) * (1.0 - smoothstep(0.2, 1.0, abs(d.y)));
+#else
+	float a = exp(-dot(d, d) * 4.0);
+#endif
+	ALBEDO = COLOR.rgb * albedo_k;
+	ALPHA = COLOR.a * a;
+}
+void light() {
+	vec3 l = ATTENUATION * LIGHT_COLOR;
+	float f = max(dot(LIGHT, -VIEW), 0.0);
+	l *= 0.6 + fwd * f * f;
+	DIFFUSE_LIGHT += l / (1.0 + max(l.r, max(l.g, l.b)) / knee);
+}
+"""
 const DUST_COLS := 13                    ## pół szerokości pasa stropu wokół kamery, z którego sypie się pył [kafle]
 const DUST_ROWS := 8                     ## pół wysokości tego pasa [kafle]
 
@@ -7351,33 +7393,47 @@ func _sync_mine_dust() -> void:
 		var fs = _level.get("finale_spawns")
 		if not (on or (can and fs is Array and not (fs as Array).is_empty())):
 			return
-		var sh := Shader.new()
-		sh.code = DUST_SHADER
-		var mat := ShaderMaterial.new()
-		mat.shader = sh
-		mat.set_shader_parameter("tex", _soft())
 		for i in 2:
+			var sh := Shader.new()
+			sh.code = MINE_DUST_SHADER.replace("//STREAK", "#define STREAK" if i == 1 else "")
+			var mat := ShaderMaterial.new()
+			mat.shader = sh
 			var p := CPUParticles3D.new()
 			p.name = "MineDust" if i == 0 else "MineDustStreams"
 			p.emitting = false
 			p.local_coords = false
-			p.amount = 520 if i == 0 else 150
-			p.lifetime = 1.7 if i == 0 else 1.5                 # krótko: pył rozwiewa się w połowie wysokości chodnika, nie przelatuje przez podłogi
+			# drobny pył: dużo drobin różnej wielkości (quad 2–16 cm, widoczna plamka ok. połowy) i jasności, opada wolno i rozwiewa się; smugi: wąskie, długie quady gęsto jeden
+			# za drugim, więc strużka jest ciągła i rzednie w dół (rośnie wszerz i gaśnie) zamiast kul sznurem
+			p.amount = 520 if i == 0 else 900
+			p.lifetime = 1.9 if i == 0 else 1.3                 # krótko: pył rozwiewa się w połowie wysokości chodnika, nie przelatuje przez podłogi
 			var q := QuadMesh.new()
-			q.size = Vector2(0.06, 0.06) if i == 0 else Vector2(0.42, 0.42)
+			q.size = Vector2(0.06, 0.06) if i == 0 else Vector2(0.4, 0.8)
 			q.material = mat
 			p.mesh = q
 			p.emission_shape = CPUParticles3D.EMISSION_SHAPE_POINTS
 			p.direction = Vector3.DOWN
-			p.spread = 12.0 if i == 0 else 4.0
-			p.initial_velocity_min = 0.25 if i == 0 else 0.7
-			p.initial_velocity_max = 0.9 if i == 0 else 1.5
-			p.gravity = Vector3(0.0, -1.3 if i == 0 else -2.4, 0.0)
-			p.scale_amount_min = 0.5
-			p.scale_amount_max = 1.5
+			p.spread = 25.0 if i == 0 else 7.0
+			p.initial_velocity_min = 0.1 if i == 0 else 0.9
+			p.initial_velocity_max = 0.6 if i == 0 else 1.5
+			p.gravity = Vector3(0.0, -1.0 if i == 0 else -2.2, 0.0)
+			p.damping_min = 0.2 if i == 0 else 0.0
+			p.damping_max = 0.6 if i == 0 else 0.3
+			p.scale_amount_min = 0.4 if i == 0 else 0.7
+			p.scale_amount_max = 2.6 if i == 0 else 1.2
+			if i == 1:
+				var sc := Curve.new()
+				sc.add_point(Vector2(0.0, 0.45))
+				sc.add_point(Vector2(1.0, 1.0))
+				p.scale_amount_curve = sc
+			var gi := Gradient.new()                            # jasność i krycie drobiny losowane na starcie (nie wszystkie jednakowe)
+			gi.set_color(0, Color(0.5, 0.48, 0.43, 0.3))
+			gi.set_color(1, Color(1.0, 0.97, 0.9, 1.0))
+			p.color_initial_ramp = gi
 			var gr := Gradient.new()
-			gr.set_color(0, Color(0.7, 0.68, 0.6, 0.0))
-			gr.add_point(0.12, Color(0.7, 0.68, 0.6, 0.8 if i == 0 else 0.22))
+			gr.set_color(0, Color(0.72, 0.7, 0.62, 0.0))
+			gr.add_point(0.12, Color(0.72, 0.7, 0.62, 0.85 if i == 0 else 0.05))
+			if i == 1:
+				gr.add_point(0.55, Color(0.68, 0.66, 0.58, 0.035))
 			gr.set_color(gr.get_point_count() - 1, Color(0.6, 0.58, 0.52, 0.0))
 			p.color_ramp = gr
 			p.layers = LAYER_WORLD
