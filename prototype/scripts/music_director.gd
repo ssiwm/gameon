@@ -36,6 +36,11 @@ const ATTACK_TAU := 1.2         ## s: stała czasowa wzrostu wygładzonego T (mi
 const RELEASE_TAU := 5.0        ## s: stała czasowa spadku — po ostatnim zagrożeniu muzyka opada stopniowo, nie znika
 const MIN_ON := 12.0            ## s: muzyka, która weszła, gra co najmniej tyle, zanim zejdzie do ciszy
 const MIN_STEP := 5.0           ## s: najkrótszy pobyt w warstwie przed zejściem o warstwę (bez „pompowania” walka ↔ pościg)
+## Pościg (warstwa 3) po odsłuchu 1.7.580: przy T krążącym między DOWN[2] a UP[2] przełączał się z walką 14 razy w 5 min
+## (co 6–20 s), a dokłada szybkie arpeggio i tomy — słychać to jak skoki tempa. Teraz trzyma się co najmniej CHASE_MIN_ON,
+## a po zejściu wraca dopiero po CHASE_REST.
+const CHASE_MIN_ON := 20.0
+const CHASE_REST := 30.0
 
 const MOTIF_RANGE := 1400.0      ## px: Stalker dalej słychać tylko jako cichy motyw daleki (stała obecność, gdy poluje)
 const MOTIF_NEAR := Vector2(700.0, 280.0)   ## px: od 700 motyw bliski zaczyna wchodzić, przy 280 gra w pełni
@@ -44,7 +49,7 @@ const MOTIF_NEAR_MIN := 0.6     ## głośność, od której wchodzi motyw bliski
 const CUE_RANGE := 620.0        ## px: wróg dalej nie wywołuje sygnału elity ani hordy
 const HORDE_N := 4              ## tylu nowych świadomych wrogów w HORDE_WINDOW s = horda
 const HORDE_WINDOW := 4.0
-const HORDE_COOLDOWN := 45.0
+const HORDE_COOLDOWN := 180.0   ## s; horda gra tylko na starcie walki (warstwa ≤ 1) — było 45 s, 8 razy w 9 min
 const ELITE_COOLDOWN := 20.0
 
 const BREATH_EVERY := Vector2(120.0, 240.0)  ## s ciszy między „oddechami”
@@ -64,6 +69,7 @@ var _breath_left := 0.0
 var _rng := RandomNumberGenerator.new()
 var motif_far := 0.0            ## głośność motywu dalekiego 0..1 (dla AudioDirector.music_set_motif)
 var motif_near := 0.0
+var _chase_rest := 0.0          # s do ponownego wejścia pościgu
 var cue := ""                   ## sygnał do zagrania w tej klatce ("" = nic): cue_elite / cue_horde
 var health := 0                 ## 0 zdrowy, 1 ostatnie serce, 2 leży (AudioDirector.music_set_health)
 var _aware_ids := {}            ## wrogowie świadomi w CUE_RANGE w poprzedniej klatce (id → true)
@@ -143,7 +149,7 @@ func cues(delta: float, me: Vector2, threats: Array) -> void:
 	_aware_ids = now
 	while not _wave.is_empty() and _clock - _wave[0] > HORDE_WINDOW:
 		_wave.pop_front()
-	if _horde_cd <= 0.0 and (scream or _wave.size() >= HORDE_N):
+	if _horde_cd <= 0.0 and _base <= 1 and (scream or _wave.size() >= HORDE_N):
 		cue = "cue_horde"
 		_horde_cd = HORDE_COOLDOWN
 		_elite_cd = maxf(_elite_cd, 6.0)              # elita w samej hordzie nie dokłada drugiego sygnału
@@ -158,8 +164,14 @@ func step(delta: float, raw: float) -> void:
 	raw_threat = raw
 	threat += (raw - threat) * (1.0 - exp(-delta / (ATTACK_TAU if raw > threat else RELEASE_TAU)))
 	var want := pick_layer(threat, _base)
-	if want < _base and (_in_layer_t < MIN_STEP or (want < 0 and _on_t < MIN_ON)):
+	_chase_rest = maxf(0.0, _chase_rest - delta)
+	if want == 3 and _base < 3 and _chase_rest > 0.0:
+		want = 2
+	var hold := CHASE_MIN_ON if _base == 3 else MIN_STEP
+	if want < _base and (_in_layer_t < hold or (want < 0 and _on_t < MIN_ON)):
 		want = _base
+	if _base == 3 and want < 3:
+		_chase_rest = CHASE_REST
 	_in_layer_t = _in_layer_t + delta if want == _base else 0.0
 	_on_t = _on_t + delta if want >= 0 else 0.0
 	_base = want
@@ -185,6 +197,7 @@ func reset() -> void:
 	_wave.clear()
 	_elite_cd = 0.0
 	_horde_cd = 0.0
+	_chase_rest = 0.0
 	_breath_in = 0.0
 	_breath_left = 0.0
 

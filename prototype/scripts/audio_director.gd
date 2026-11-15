@@ -196,10 +196,11 @@ var _health := 0
 var _health_db := 0.0                             # wygładzone
 var _music_lp_hz := 20500.0                       # wygładzone; łączy się z głuchotą (min)
 var _music_lp: AudioEffectLowPassFilter
-## Segmenty (MUSIC_PLAN.md E2): wszystkie warianty warstwy grają razem na wspólnej siatce, słychać jeden; na granicy
-## frazy (4 takty) kolejka może przełączyć wariant krótkim przenikaniem, które kończy się dokładnie na granicy.
-const SEG_XF := 0.12                              ## s przenikania wariantów tuż przed granicą frazy
-const SEG_RUN := Vector2i(1, 3)                   ## ile fraz wariant trzyma się, zanim kolejka wybierze inny
+## Segmenty (MUSIC_PLAN.md E2): wszystkie warianty warstwy grają razem na wspólnej siatce, słychać jeden. Cała muzyka
+## zmienia sekcję (wariant każdej warstwy) NARAZ i tylko na początku pętli; przenikanie kończy się dokładnie na granicy.
+## Po odsłuchu 1.7.580: warstwy zmieniane osobno co 1–3 frazy brzmiały chaotycznie, jak zmiany tempa.
+const SEG_XF := 0.6                               ## s przenikania sekcji tuż przed początkiem pętli (ok. jeden beat)
+const SEG_RUN := Vector2i(2, 4)                   ## ile pętli (po 20 s) gra sekcja, zanim przyjdzie następna
 const CADENCE_CUT := 0.7                          ## s wyciszenia warstwy pod uderzeniem kadencji (zamiast 5–6 s)
 const CADENCE_MIN_GAIN := 0.6                     ## kadencja tylko, gdy kończąca się warstwa była naprawdę słychać
 const CADENCE_SKIP_BARS := [3, 7]                 ## takty na A-dur (dominanta): tonika D tam nie siada, kadencja czeka takt dłużej
@@ -208,7 +209,8 @@ var _seg: Array = []                              # per stem: Array[AudioStreamP
 var _seg_n: Array[int] = []                       # per stem: ile wariantów ma paleta
 var _seg_cur: Array[int] = []                     # per stem: słyszany wariant
 var _seg_prev: Array[int] = []                    # per stem: wariant, z którego trwa przenikanie (-1 brak)
-var _seg_left: Array[int] = []                    # per stem: fraz do następnej decyzji kolejki
+var _sec := 0                                     # grająca sekcja (wariant warstwy = _sec % liczba wariantów)
+var _sec_left := 2                                # pętli do zmiany sekcji
 var _seg_xf_end := -1.0                           # zegar: koniec przenikania (= granica frazy)
 var _seg_next_ok := 0.0                           # zegar: od kiedy wolno zaplanować kolejną granicę
 var _seg_rng := RandomNumberGenerator.new()
@@ -280,7 +282,6 @@ func _ready() -> void:
 		_seg_n.append(1)
 		_seg_cur.append(0)
 		_seg_prev.append(-1)
-		_seg_left.append(1)
 	_cad = AudioStreamPlayer.new()
 	_cad.bus = BUS_MUSIC
 	add_child(_cad)
@@ -1282,8 +1283,9 @@ func _reset_segments() -> void:
 	for i in _seg_cur.size():
 		_seg_cur[i] = 0
 		_seg_prev[i] = -1
-		_seg_left[i] = _seg_rng.randi_range(SEG_RUN.x, SEG_RUN.y)
 		_stem_fast[i] = false
+	_sec = 0
+	_sec_left = _seg_rng.randi_range(SEG_RUN.x, SEG_RUN.y)
 	_seg_xf_end = -1.0
 	_seg_next_ok = 0.0
 	_cad_key = ""
@@ -1338,34 +1340,40 @@ func _cadence_key(from: int, to: int) -> String:
 	return ""
 
 
-## Kolejka segmentów (E2): tuż przed granicą frazy każda warstwa, której skończył się przydział fraz, losuje inny
-## wariant; przenikanie SEG_XF kończy się na samej granicy, więc nowa fraza zaczyna się czysto od nowego wariantu.
+## Sekcje (E2): tuż przed początkiem pętli, gdy skończył się przydział pętli, cała muzyka przechodzi na następną sekcję —
+## każda warstwa na swój wariant tej sekcji. Przenikanie SEG_XF kończy się na samej granicy pętli.
 func _update_segments(pos: float) -> void:
 	if _seg_xf_end >= 0.0 and _clock >= _seg_xf_end:
 		for i in _seg_prev.size():
 			_seg_prev[i] = -1
 		_seg_xf_end = -1.0
-	var phrase := _bar_len() * float(Manifest.MUSIC_PHRASE_BARS)
-	var to_b := phrase - fmod(pos, phrase)
+	var loop := float(Manifest.MUSIC_LOOP_SEC)
+	var to_b := loop - fmod(pos, loop)
 	if to_b > SEG_XF or _clock < _seg_next_ok:
 		return
-	_seg_next_ok = _clock + to_b + 0.5                   # jedna decyzja na granicę
+	_seg_next_ok = _clock + to_b + 1.0                   # jedna decyzja na granicę
+	_sec_left -= 1
+	if _sec_left > 0:
+		return
+	_sec_left = _seg_rng.randi_range(SEG_RUN.x, SEG_RUN.y)
+	var n_max := 1
+	for n in _seg_n:
+		n_max = maxi(n_max, n)
+	if n_max < 2:
+		return
+	var nxt := _seg_rng.randi_range(0, n_max - 2)
+	if nxt >= _sec:
+		nxt += 1                                         # zawsze inna niż grająca
+	_sec = nxt
 	_seg_xf_end = _clock + to_b
 	for i in _seg_cur.size():
-		_seg_left[i] -= 1
-		if _seg_left[i] > 0:
-			continue
-		_seg_left[i] = _seg_rng.randi_range(SEG_RUN.x, SEG_RUN.y)
-		if _seg_n[i] < 2:
-			continue
-		var nxt := _seg_rng.randi_range(0, _seg_n[i] - 2)
-		if nxt >= _seg_cur[i]:
-			nxt += 1                                     # zawsze inny niż grający
-		_seg_prev[i] = _seg_cur[i]
-		_seg_cur[i] = nxt
+		var v := _sec % _seg_n[i]
+		if v != _seg_cur[i]:
+			_seg_prev[i] = _seg_cur[i]
+			_seg_cur[i] = v
 
 
-## Udział wariantu v warstwy i w jej głośności (0..1) — liniowe przenikanie, warianty mają tę samą głośność i harmonię.
+## Udział wariantu v warstwy i w jej głośności (0..1) — liniowe przenikanie, warianty mają tę samą głośność, harmonię i rytm.
 func _seg_weight(i: int, v: int) -> float:
 	var k := 1.0
 	if _seg_prev[i] >= 0 and _seg_xf_end >= 0.0:

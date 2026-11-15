@@ -507,10 +507,6 @@
   "music/mus_combat_b",
   1
  ],
- "mus_combat_c": [
-  "music/mus_combat_c",
-  1
- ],
  "mus_combat_end": [
   "music/mus_combat_end",
   0
@@ -537,10 +533,6 @@
  ],
  "mus_tension_b": [
   "music/mus_tension_b",
-  1
- ],
- "mus_tension_c": [
-  "music/mus_tension_c",
   1
  ],
  "oc_load": [

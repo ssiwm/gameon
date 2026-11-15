@@ -280,20 +280,20 @@ def stem_chase(rng: Rng) -> np.ndarray:
 
 
 # ------------------------------------------------------------------ warianty segmentów (MUSIC_PLAN.md E2)
-# Ta sama siatka, progresja i rola warstwy co stem bazowy, inny rytm / figura / rejestr. Runtime gra wszystkie warianty
-# warstwy razem (ta sama chwila startu) i przenika je krótko na granicy frazy (4 takty) — pętla 20 s przestaje się
-# powtarzać co 20 s. Osobne funkcje zamiast parametrów: stemy bazowe zostają bit w bit (ten sam przebieg Rng).
+# Ta sama siatka, progresja i RYTM co stem bazowy — inna tylko barwa i melodia (po odsłuchu 1.7.580: warianty z innym
+# groove'em brzmiały jak zmiana tempa). Runtime gra wszystkie warianty razem i przełącza całą muzykę naraz („sekcja”)
+# na początku pętli, co 2–4 pętle. Osobne funkcje zamiast parametrów: stemy bazowe zostają bit w bit (ten sam przebieg Rng).
 
 def stem_silence_b(rng: Rng) -> np.ndarray:
     s = Stem()
     bar = 4
-    # pad z noną zamiast oktawy, ciemniejszy; akordy wchodzą pół beatu później (oddech)
+    # pad z noną zamiast oktawy, ciemniejszy; akordy zmieniają się na raz taktu jak w bazie
     for b in range(BARS):
         ch = [mtof(m) for m in CHORDS[b]] + [mtof(CHORDS[b][0] + 14)]
-        seg = T(bar + 0.7)
+        seg = T(bar + 1.2)
         pad = saw_pad(ch, seg, rng, cutoff=640.0, detune=12.0)
         pad *= d.env_adsr(seg, 1.6 * SPB / SR, 0.5, 0.8, 1.4 * SPB / SR)
-        s.put(pad, b * bar + 0.5, 0.48)
+        s.put(pad, b * bar, 0.48)
     L = LOOP_N / SR
     t = np.arange(LOOP_N) / SR
     f1 = round(36.708 * L) / L
@@ -307,145 +307,95 @@ def stem_silence_b(rng: Rng) -> np.ndarray:
 
 
 def stem_tension_b(rng: Rng) -> np.ndarray:
+    # rytm 1:1 jak baza (ósemki z tymi samymi akcentami, puls na 1 i 3, risery w taktach 4 i 8) — inna barwa:
+    # ciemniejszy filtr, dłuższe wybrzmienie, melodia w taktach 1–4 zamiast 5–8
     s = Stem()
-    # ostinato z pauzami (oddech między nutami), wyżej w taktach 5–8
-    pat = ((0, 0), (1, 12), (3, 0), (4, 7), (5, 12), (7, 10))   # (ósemka, interwał)
+    off_sets = {0: (0, 12, 0, 7, 0, 12, 0, 10), 1: (0, 12, 0, 7, 0, 12, 0, 11),
+                2: (0, 12, 0, 7, 0, 12, 0, 10), 3: (0, 12, 0, 7, 0, 12, 0, 10)}
+    acc = (1.0, .55, .8, .55, .9, .55, .8, .6)
     for b in range(BARS):
-        root = ROOTS[b] + (12 if b >= 4 and b % 2 else 0)
-        for i, iv in pat:
-            hi = 1700.0 + 700.0 * np.sin(TAU * (b * 8 + i) / 64.0 + 1.3)
-            note = pluck_bass(mtof(root + iv), 0.62 * 60.0 / BPM * 2, rng, cut_hi=hi, cut_lo=220.0, q=2.8, tau=.11, sub=.45)
-            s.put(note, b * 4 + i * 0.5, 0.6 if i in (0, 4) else 0.45)
-        s.put(thump(.4, 74.0, 38.0, .05, .14), b * 4, 0.6)
-        s.put(thump(.3, 70.0, 38.0, .04, .10), b * 4 + 2.5, 0.35)
-    # melodia w taktach 1–4, niżej i wolniej niż w bazie (pytanie, na które baza odpowiada)
-    melody = {0: ((1, 69, 2.0),), 1: ((0.5, 70, 1.5), (2.5, 74, 1.0)), 2: ((1, 67, 2.0), (3, 70, 1.0)), 3: ((0, 69, 1.5), (2, 73, 2.0))}
+        root = ROOTS[b]
+        for i in range(8):
+            f = mtof(root + off_sets[b % 4][i])
+            phase = TAU * (b * 8 + i) / 64.0 + np.pi
+            hi = 1500.0 + 600.0 * np.sin(phase) + (400.0 if i in (0, 4) else 0.0)
+            note = pluck_bass(f, 0.46 * 60.0 / BPM * 2, rng, cut_hi=hi, cut_lo=220.0, q=2.2, tau=.13, sub=.55)
+            s.put(note, b * 4 + i * 0.5, 0.55 * acc[i], pan=0.0)
+        for beat in (0, 2):
+            s.put(thump(.4, 78.0, 40.0, .05, .12), b * 4 + beat, 0.55)
+    melody = {0: ((0, 69, 2.0), (2, 74, 2.0)), 1: ((0, 70, 2.0), (2, 77, 2.0)),
+              2: ((0, 70, 2.0), (2, 74, 2.0)), 3: ((0, 69, 2.0), (2, 73, 2.0))}
     for b, notes in melody.items():
         for off, m, _ in notes:
-            s.put(glass_ping(mtof(m), rng, 2.2) * 0.5, b * 4 + off, 1.0, pan=0.3 if m % 2 else -0.3)
-    s.put(riser(T(1.8), rng, 350.0, 4800.0) * 0.25, 7 * 4 + 2.2, 1.0)
-    out = s.render(ir("plate_st"), wet=0.32)
-    return d.circ_filter(out, lambda t: d.compress(t, -20.0, 2.5, 12.0, 200.0))
-
-
-def stem_tension_c(rng: Rng) -> np.ndarray:
-    s = Stem()
-    # pedał D pod zmieniającymi się akordami (napięcie z dysonansu), co drugą ósemkę ton akordu
-    for b in range(BARS):
-        ch = CHORDS[b]
-        for i in range(8):
-            m = 38 if i % 2 == 0 else ch[(i // 2) % 3] - 12
-            hi = 1500.0 + (700.0 if i == 0 else 0.0) + 500.0 * np.sin(TAU * (b * 8 + i) / 64.0)
-            note = pluck_bass(mtof(m), 0.4 * 60.0 / BPM * 2, rng, cut_hi=hi, cut_lo=260.0, q=2.4, tau=.08, sub=.55)
-            s.put(note, b * 4 + i * 0.5, 0.55 if i % 2 == 0 else 0.42)
-        for beat in (0, 1.5, 2.5):
-            s.put(thump(.35, 76.0, 40.0, .05, .11), b * 4 + beat, 0.5 if beat == 0 else 0.3)
-    # wysoki pad (smyczki) narasta przez takty 5–8
-    for b in range(4, BARS):
-        ch = [mtof(m + 24) for m in CHORDS[b]]
-        seg = T(4.6)
-        pad = saw_pad(ch, seg, rng, cutoff=1800.0, detune=6.0) * d.env_adsr(seg, 1.4 * SPB / SR, 0.4, 0.8, 1.2 * SPB / SR)
-        s.put(pad, b * 4, 0.12 + 0.03 * (b - 4), pan=0.2 if b % 2 else -0.2)
+            s.put(glass_ping(mtof(m), rng, 2.4) * 0.42, b * 4 + off, 1.0, pan=0.25 if m % 2 else -0.25)
     for b in (3, 7):
-        s.put(riser(T(1.6), rng, 500.0, 6000.0) * 0.22, b * 4 + 2.4, 1.0)
-    out = s.render(ir("plate_st"), wet=0.28)
+        r_ = riser(T(1.8), rng, 400.0, 5200.0) * 0.22
+        s.put(r_, b * 4 + 2.2, 1.0)
+    out = s.render(ir("plate_st"), wet=0.34)
     return d.circ_filter(out, lambda t: d.compress(t, -20.0, 2.5, 12.0, 200.0))
 
 
 def stem_combat_b(rng: Rng) -> np.ndarray:
+    # rytm 1:1 jak baza (stopa, werbel 2 i 4, szesnastkowe hi-haty, bas szesnastkowy, staby na synkopach) — inna barwa:
+    # bas bez skoków o oktawę, staby niżej i ciemniej, hi-haty bez otwartych
     s = Stem()
     gate = ir("gate_st")
-    # half-time: ciężko, snare na 3, kick na 1 i „i” 3; tomy domykają frazę
     for b in range(BARS):
         base = b * 4
         root = ROOTS[b]
-        for pos, g in ((0, 1.0), (0.75, .55), (2.5, .85)):
-            s.put(kick(rng, 1.15) * 1.2, base + pos, g)
-        sn = snare(rng)
-        gated = d.reverb_stereo(np.stack([sn, sn]), gate, wet=1.0, dry=0.0, keep_len=False)
-        env = d.env_pts(gated.shape[1], [(0, 1), (.28, 1), (.33, 0)])
-        s.put(gated * env, base + 2.0, 1.0)
-        s.put(sn, base + 2.0, 1.0)
-        for st in range(8):
-            s.put(hat(rng, st % 4 == 3), base + st * 0.5, .4 if st % 2 == 0 else .28, pan=.2 if st % 2 else -.2)
-        for st in range(8):
-            oct_ = 12 if st in (3, 6) else 0
-            note = pluck_bass(mtof(root + oct_), .30, rng, cut_hi=2200.0, cut_lo=260.0, q=2.2, tau=.08, sub=.7)
-            s.put(note, base + st * 0.5, 0.65 if st % 4 == 0 else 0.5)
-        ch = [mtof(m + 12) for m in CHORDS[b]]
-        s.put(stab(ch, 0.5, rng, 3200.) * 0.9, base + 1.5, 0.5, pan=-0.15)
-        if b in (3, 7):
-            for i, f in enumerate((196., 174., 155., 130., 110., 98.)):
-                s.put(tom(f, rng), base + 3.0 + i * 1.0 / 6.0, .55 + .05 * i, pan=-.4 + i * .16)
-    out = s.render(ir("plate_st"), wet=0.18)
-    out = d.saturate(out, 1.5)
-    return d.circ_filter(out, lambda t: d.compress(t, -16.0, 3.0, 8.0, 120.0))
-
-
-def stem_combat_c(rng: Rng) -> np.ndarray:
-    s = Stem()
-    # motorycznie: stopa na każdą ćwierćnutę, snare 2 i 4 bez bramki, otwarte hi-haty na „i”, bas „galop”
-    for b in range(BARS):
-        base = b * 4
-        root = ROOTS[b]
-        for q in range(4):
-            s.put(kick(rng, 0.9) * 1.1, base + q, 1.0 if q % 2 == 0 else 0.85)
-            s.put(hat(rng, True), base + q + 0.5, .32, pan=.35)
+        for pos, g in ((0, 1.0), (1.5, .8), (2.5, .9), (3.75, .5)):
+            s.put(kick(rng) * 1.2, base + pos, g)
         for pos in (1.0, 3.0):
             sn = snare(rng)
-            s.put(sn * 0.95, base + pos, 1.0)
-        for q in range(4):
-            for off, g in ((0.0, .62), (0.5, .48), (0.75, .52)):
-                oct_ = 12 if (q == 3 and off == 0.75) else 0
-                note = pluck_bass(mtof(root + oct_), .17, rng, cut_hi=2800.0, cut_lo=320.0, q=2.0, tau=.05, sub=.5)
-                s.put(note, base + q + off, g)
-        if b % 2 == 0:
-            ch = [mtof(m + 12) for m in CHORDS[b]]
-            s.put(stab(ch, 0.8, rng, 4200.) * 0.9, base, 0.45, pan=0.1)
-        else:
-            ch = [mtof(m + 12) for m in CHORDS[b]]
-            for pos in (2.75, 3.5):
-                s.put(stab(ch, 0.25, rng) * 0.9, base + pos, 0.4, pan=-0.1)
-    out = s.render(ir("plate_st"), wet=0.14)
+            gated = d.reverb_stereo(np.stack([sn, sn]), gate, wet=1.0, dry=0.0, keep_len=False)
+            env = d.env_pts(gated.shape[1], [(0, 1), (.20, 1), (.24, 0)])
+            s.put(gated * env * 0.7, base + pos, 1.0)
+            s.put(sn * 0.9, base + pos, 1.0)
+        for st in range(16):
+            beat = st * 0.25
+            acc = 1.0 if st % 4 == 0 else (.62 if st % 2 == 0 else .38)
+            s.put(hat(rng), base + beat, .3 * acc, pan=-.25 if st % 2 else .25)
+        for st in range(16):
+            note = pluck_bass(mtof(root), .20, rng, cut_hi=2000.0 + 400.0 * (st % 4 == 0), cut_lo=260.0, q=2.0, tau=.07, sub=.7)
+            s.put(note, base + st * 0.25, 0.55 if st % 4 else 0.7)
+        ch = [mtof(m) for m in CHORDS[b]]
+        for pos in (0.75, 2.25):
+            s.put(stab(ch, 0.34, rng, 2400.) * 0.9, base + pos, 0.55, pan=-0.15)
+    out = s.render(ir("plate_st"), wet=0.2)
     out = d.saturate(out, 1.4)
     return d.circ_filter(out, lambda t: d.compress(t, -16.0, 3.0, 8.0, 120.0))
 
 
 def stem_chase_b(rng: Rng) -> np.ndarray:
+    # rytm 1:1 jak baza (arpeggio szesnastkowe, bas ósemkowy, tryton co 2 takty, crash, riser i tomy w tych samych miejscach)
+    # — inna barwa: arpeggio innym konturem i ciemniejsze, bez dublowanych hi-hatów
     s = Stem()
     for b in range(BARS):
         base = b * 4
         root = ROOTS[b]
         ch = CHORDS[b]
-        # arpeggio w górę skokami (inny kontur niż baza), filtr otwiera się w drugiej połowie frazy
-        pattern = (0, 2, 1, 3, 2, 1, 3, 2)
-        bright = 4200.0 if b % 4 < 2 else 6400.0
+        pattern = (0, 2, 1, 2, 0, 2, 1, 3)
         for st in range(16):
-            p_ = pattern[st % 8]
-            m = ch[p_ % 3] + 24 + (12 if p_ == 3 else 0)
-            n = sec(0.15)
+            m = ch[pattern[st % 8] % 3] + 24 + (12 if pattern[st % 8] == 3 else 0)
+            n = sec(0.17)
             f = mtof(m)
-            y = d.osc("saw", f, n) * .55 + d.osc("square", f * 0.997, n, pw=.3) * .45
-            y = d.sweep(y, "lp", d.glide_exp(bright, 800., n, .05), 2.2) * d.env_perc(n, .002, .045)
-            s.put(y, base + st * 0.25, .2, pan=.4 - .8 * (st % 4) / 3.0)
-        # bas ósemkowy z przednutką
+            y = d.osc("saw", f, n) * .5 + d.osc("square", f * 0.997, n, pw=.35) * .5
+            y = d.sweep(y, "lp", d.glide_exp(3800., 700., n, .06), 1.8) * d.env_perc(n, .002, .05)
+            s.put(y, base + st * 0.25, .22, pan=.4 - .8 * (st % 4) / 3.0)
         for i in range(8):
-            note = pluck_bass(mtof(root + (19 if i == 7 else 12)), .2, rng, cut_hi=3400., cut_lo=480., q=3.0, tau=.05, sub=.1)
+            note = pluck_bass(mtof(root + 12), .22, rng, cut_hi=3000., cut_lo=450., q=2.6, tau=.05, sub=.15)
             s.put(d.saturate(note * 1.5, 3.0), base + i * 0.5, .28)
-        # tryton w taktach nieparzystych, crash na 3 i 7, tomy szesnastkami przez całą drugą połowę taktu 4 i 8
-        if b % 2 == 1:
-            s.put(stab([mtof(root + 24), mtof(root + 30)], 0.6, rng, 4800.) * 1.1, base + 1.0, .38)
-        if b in (2, 6):
-            s.put(crash(rng, 1.8), base, .32)
+        if b % 2 == 0:
+            tri = [mtof(root + 24), mtof(root + 30)]
+            s.put(stab(tri, 0.5, rng, 3600.) * 1.1, base + 3.0, .36)
+        if b in (0, 4):
+            s.put(crash(rng), base, .3)
         if b in (3, 7):
-            for i in range(8):
-                f = (196., 185., 174., 155., 146., 130., 116., 98.)[i]
-                s.put(tom(f, rng), base + 2.0 + i * 0.25, .5 + .04 * i, pan=.5 - i * .14)
-        else:
-            for st in range(8):
-                s.put(hat(rng), base + st * 0.5 + 0.25, .16, pan=.3 if st % 2 else -.3)
+            s.put(riser(T(1.7), rng, 500., 7000.) * .35, base + 2.2, 1.0)
+            for i, f in enumerate((220., 196., 174., 155., 138., 123., 110., 98.)):
+                s.put(tom(f, rng) * 1.1, base + 3.0 + i * 0.125, .5 + .05 * i, pan=.5 - i * .14)
     out = s.render(ir("hall_st"), wet=0.2)
-    out = d.saturate(out, 1.5)
+    out = d.saturate(out, 1.4)
     return d.circ_filter(out, lambda t: d.compress(t, -15.0, 3.0, 6.0, 120.0))
 
 
@@ -456,11 +406,11 @@ CADENCE_PRE = 0.25
 # Palety segmentów: klucz palety -> warianty każdej warstwy (cisza, napięcie, walka, pościg). Runtime szuka palety po
 # map_id poziomu („z1_b1”), potem po strefie („z1”), na końcu „default”. Pierwszy wariant warstwy startuje frazę.
 SEGMENTS = {
-    "default": (("mus_silence", "mus_silence_b"), ("mus_tension", "mus_tension_b", "mus_tension_c"),
-                ("mus_combat", "mus_combat_b", "mus_combat_c"), ("mus_chase", "mus_chase_b")),
-    # boss 1.4: bez jasnej melodii napięcia, walka cięższa (half-time i motoryka zamiast bazowego groove)
-    "z1_b1": (("mus_silence_b", "mus_silence"), ("mus_tension_c", "mus_tension_b"),
-              ("mus_combat_b", "mus_combat_c"), ("mus_chase_b", "mus_chase")),
+    "default": (("mus_silence", "mus_silence_b"), ("mus_tension", "mus_tension_b"),
+                ("mus_combat", "mus_combat_b"), ("mus_chase", "mus_chase_b")),
+    # boss 1.4: zaczyna od ciemniejszej sekcji B
+    "z1_b1": (("mus_silence_b", "mus_silence"), ("mus_tension_b", "mus_tension"),
+              ("mus_combat_b", "mus_combat"), ("mus_chase_b", "mus_chase")),
 }
 # Kadencja grana, gdy warstwa gaśnie (indeks = warstwa); "" = zwykłe wyciszenie
 CADENCES = ("", "", "mus_combat_end", "mus_chase_end")
@@ -544,11 +494,11 @@ def build_stingers() -> None:
 
 
 # ------------------------------------------------------------------ motyw Stalkera i sygnały zagrożeń (MUSIC_PLAN.md E1)
-# Motyw: D3 – F3 – E♭3 … A♭2 (tryton od toniki), „smyczek” FM z taśmą. Brzmi obco wobec d-moll stemów celowo — to obcy.
+# Motyw: D3 – F3 – E3 … A2, „smyczek” FM z taśmą. Od 1.7.580 w d-moll jak stemy (wersja z trytonem E♭ / A♭ brzmiała jak obcy utwór obok).
 # Dwie pętle na tej samej siatce co stemy (20 s, 96 BPM), runtime przenika je wg odległości Stalkera:
 #   mus_stalker_far  — motyw co 4 takty, ciemny, w dużym pogłosie (gdzieś poluje)
 #   mus_stalker_near — motyw co 2 takty, jaśniejszy, z pulsem sub i klastrem (jest blisko)
-MOTIF = ((50, 0.0, 1.4), (53, 1.5, 0.5), (51, 2.0, 1.9), (44, 4.0, 3.2))   # (MIDI, beat, długość w beatach)
+MOTIF = ((50, 0.0, 1.4), (53, 1.5, 0.5), (52, 2.0, 1.9), (45, 4.0, 3.2))   # (MIDI, beat, długość w beatach)
 
 
 def bowed(f: float, dur: float, rng: Rng, bright: float = 1.0) -> np.ndarray:
@@ -599,10 +549,10 @@ def stem_stalker_near(rng: Rng) -> np.ndarray:
 
 def build_cues() -> None:
     rng = Rng(0xE11E)
-    # elita: niski „dęty” tryton FM narasta do metalowego uderzenia — ktoś większy niż zwykle cię zauważył
+    # elita: niska „dęta” kwinta FM (A–E–A, w d-moll) narasta do metalowego uderzenia — ktoś większy niż zwykle cię zauważył
     n = sec(3.2)
     sw = d.env_pts(n, [(0, 0), (1.1, 1), (1.25, 0.8), (3.2, 0)])
-    br = sum(d.fm(mtof(m), n, ratio=1.0, index=2.2 * sw + 0.3) for m in (33, 39, 45)) / 3.0
+    br = sum(d.fm(mtof(m), n, ratio=1.0, index=2.2 * sw + 0.3) for m in (33, 40, 45)) / 3.0
     br = d.sweep(br, "lp", np.geomspace(300.0, 2600.0, n) * (0.4 + 0.6 * sw), 1.1) * sw
     hit = d.modal([97.0, 141.0, 233.0, 367.0, 512.0], [1.0, .7, .5, .35, .2], [2.4, 2.0, 1.5, 1.0, .7], sec(2.2), rng, .004)
     x = d.mix([(br, 0.9), (thump(1.2, 80.0, 34.0, .12, .5, attack=.003), 0.9, 1.15), (hit, 0.5, 1.15)], n)
@@ -634,8 +584,7 @@ def build_music() -> None:
              ("mus_combat", stem_combat, -21.0), ("mus_chase", stem_chase, -22.0))
     # E2: warianty segmentów — ta sama głośność co stem bazowy, żeby przenikanie na granicy frazy nie zmieniało poziomu
     variants = (("mus_silence_b", stem_silence_b, -26.0), ("mus_tension_b", stem_tension_b, -25.0),
-                ("mus_tension_c", stem_tension_c, -25.0), ("mus_combat_b", stem_combat_b, -21.0),
-                ("mus_combat_c", stem_combat_c, -21.0), ("mus_chase_b", stem_chase_b, -22.0))
+                ("mus_combat_b", stem_combat_b, -21.0), ("mus_chase_b", stem_chase_b, -22.0))
     for key, fn, target in specs + (("mus_stalker_far", stem_stalker_far, -31.0), ("mus_stalker_near", stem_stalker_near, -25.0)) + variants:
         asset(key, "music/" + key, loop=True)
         x = fn(rng.fork(zlib.crc32(key.encode()) & 0xFFFF))

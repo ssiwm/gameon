@@ -130,7 +130,6 @@ const PATHS := {
 	"mus_chase_end": "res://audio/music/mus_chase_end.ogg",
 	"mus_combat": "res://audio/music/mus_combat.ogg",
 	"mus_combat_b": "res://audio/music/mus_combat_b.ogg",
-	"mus_combat_c": "res://audio/music/mus_combat_c.ogg",
 	"mus_combat_end": "res://audio/music/mus_combat_end.ogg",
 	"mus_silence": "res://audio/music/mus_silence.ogg",
 	"mus_silence_b": "res://audio/music/mus_silence_b.ogg",
@@ -138,7 +137,6 @@ const PATHS := {
 	"mus_stalker_near": "res://audio/music/mus_stalker_near.ogg",
 	"mus_tension": "res://audio/music/mus_tension.ogg",
 	"mus_tension_b": "res://audio/music/mus_tension_b.ogg",
-	"mus_tension_c": "res://audio/music/mus_tension_c.ogg",
 	"oc_load": "res://audio/sfx/ui/oc_load.wav",
 	"p64_far_1": "res://audio/sfx/weapons/p64_far_1.wav",
 	"p64_far_2": "res://audio/sfx/weapons/p64_far_2.wav",
@@ -322,14 +320,12 @@ const LOOPS := [
 	"mus_chase_b",
 	"mus_combat",
 	"mus_combat_b",
-	"mus_combat_c",
 	"mus_silence",
 	"mus_silence_b",
 	"mus_stalker_far",
 	"mus_stalker_near",
 	"mus_tension",
 	"mus_tension_b",
-	"mus_tension_c",
 	"radio_static_loop",
 	"rain_eave",
 	"rain_mask",
@@ -355,15 +351,14 @@ const MUSIC_BLEND := [6.0, 4.0, 2.5, 1.5]
 const MUSIC_BPM := 96.0
 const MUSIC_BEATS := 32
 const MUSIC_LOOP_SEC := 20.000000
-# Segmenty (MUSIC_PLAN.md E2): warianty warstw grają razem, runtime przenika je na granicy frazy.
+# Segmenty (MUSIC_PLAN.md E2): warianty warstw grają razem, runtime zmienia całą sekcję naraz na początku pętli.
 # Paleta: map_id poziomu -> strefa (prefiks przed „_”) -> "default". Kadencja: warstwa -> klucz zakończenia.
 const MUSIC_SEGMENTS := {
-	"default": [["mus_silence", "mus_silence_b"], ["mus_tension", "mus_tension_b", "mus_tension_c"], ["mus_combat", "mus_combat_b", "mus_combat_c"], ["mus_chase", "mus_chase_b"]],
-	"z1_b1": [["mus_silence_b", "mus_silence"], ["mus_tension_c", "mus_tension_b"], ["mus_combat_b", "mus_combat_c"], ["mus_chase_b", "mus_chase"]],
+	"default": [["mus_silence", "mus_silence_b"], ["mus_tension", "mus_tension_b"], ["mus_combat", "mus_combat_b"], ["mus_chase", "mus_chase_b"]],
+	"z1_b1": [["mus_silence_b", "mus_silence"], ["mus_tension_b", "mus_tension"], ["mus_combat_b", "mus_combat"], ["mus_chase_b", "mus_chase"]],
 }
 const MUSIC_CADENCES := ["", "", "mus_combat_end", "mus_chase_end"]
 const MUSIC_CADENCE_PRE := 0.250
-const MUSIC_PHRASE_BARS := 4
 
 # Napisy dla niesłyszących: prefiks klucza -> [tekst, ważność 0-3].
 const CAPTIONS := {
