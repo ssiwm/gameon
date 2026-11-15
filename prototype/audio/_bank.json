@@ -103,6 +103,14 @@
   "sfx/world/collapse",
   0
  ],
+ "cue_elite": [
+  "music/cue_elite",
+  0
+ ],
+ "cue_horde": [
+  "music/cue_horde",
+  0
+ ],
  "dig_dirt_1": [
   "sfx/world/dig_dirt_1",
   0
@@ -489,6 +497,14 @@
  ],
  "mus_silence": [
   "music/mus_silence",
+  1
+ ],
+ "mus_stalker_far": [
+  "music/mus_stalker_far",
+  1
+ ],
+ "mus_stalker_near": [
+  "music/mus_stalker_near",
   1
  ],
  "mus_tension": [

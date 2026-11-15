@@ -3,7 +3,8 @@ extends SceneTree
 ## wynik zagrożenia T (sam hałas nie włącza muzyki, świadomy wróg w zasięgu tak, dalszy słabiej, poza zasięgiem wcale, elita mocniej,
 ## boss, Stalker na łowach wg odległości, świeże trafienie), stany AI → świadomość, warstwy z histerezą, cisza poza misją i w kryjówce,
 ## „oddech” w długiej ciszy i przerwanie go zagrożeniem, prawdziwy wróg ze sceny, a w AudioDirector: cisza nie uruchamia stemów,
-## warstwa -1 po zejściu wycisza wszystkie stemy.
+## warstwa -1 po zejściu wycisza wszystkie stemy; E1: motyw Stalkera wg odległości (tylko gdy poluje), sygnały elity i hordy
+## (raz, z odstępem), stan życia (ostatnie serce, leży: muzyka ciszej i za filtrem, serce), muzyka ustępuje głosowi Stalkera.
 ##   godot --headless --path prototype -s tools/test_music.gd     → ostatni wiersz: PASS / FAIL
 
 var _fails := 0
@@ -13,6 +14,7 @@ var MD: GDScript                ## music_director.gd odwołuje się do autoloadu
 ## Udawany gracz: pozycja i życie.
 class FakePlayer extends Node2D:
 	var hp := 3
+	var dead := false
 
 
 func _check(name: String, ok: bool) -> void:
@@ -144,6 +146,77 @@ func _initialize() -> void:
 		sm.step(0.1, MD.NOISE_MAX)
 	_check("sam hałas (najwyżej NOISE_MAX) nie podtrzymuje muzyki", sm.layer == -1 and MD.NOISE_MAX < float(MD.DOWN[0]))
 
+	# --- E1: motyw Stalkera
+	var mo = MD.new(5)
+	var st := func(dist: float) -> Array: return [{"pos": me + Vector2(dist, 0), "what": "stalker", "aware": 0, "elite": false}]
+	mo.motif(me, st.call(300.0), false)
+	_check("Stalker śpi: motywu nie ma", mo.motif_far == 0.0 and mo.motif_near == 0.0)
+	mo.motif(me, st.call(3000.0), true)
+	_check("Stalker poluje daleko: cichy motyw daleki (%.2f), bez bliskiego" % mo.motif_far, absf(mo.motif_far - MD.MOTIF_FAR_MIN) < 0.01 and mo.motif_near == 0.0)
+	mo.motif(me, st.call(500.0), true)
+	var mid_far: float = mo.motif_far
+	var mid_near: float = mo.motif_near
+	mo.motif(me, st.call(150.0), true)
+	_check("bliżej motyw bliski rośnie, daleki ustępuje (500 px: %.2f / %.2f, 150 px: %.2f / %.2f)" % [mid_far, mid_near, mo.motif_far, mo.motif_near],
+		mid_near > 0.0 and mid_near < 1.0 and mo.motif_near == 1.0 and mo.motif_far < mid_far)
+
+	# --- E1: sygnały elity i hordy
+	var cu = MD.new(5)
+	var foe_at := func(id: int, dx: float, elite: bool, scream := false) -> Dictionary:
+		return {"pos": me + Vector2(dx, 0), "what": "enemy", "aware": 2, "elite": elite, "id": id, "scream": scream}
+	cu.cues(0.1, me, [foe_at.call(1, 100.0, true)])
+	_check("elita zauważyła → sygnał elity", cu.cue == "cue_elite")
+	cu.cues(0.1, me, [foe_at.call(1, 100.0, true)])
+	_check("ta sama elita w następnej klatce → nic", cu.cue == "")
+	cu.cues(0.1, me, [])
+	for i in 300:
+		cu.cues(0.1, me, [])
+	cu.cues(0.1, me, [foe_at.call(1, 100.0, true)])
+	_check("ta sama elita znów świadoma po przerwie → bez drugiego sygnału", cu.cue == "")
+	cu.cues(0.1, me, [foe_at.call(2, MD.CUE_RANGE + 50.0, true)])
+	_check("elita poza zasięgiem sygnałów → nic", cu.cue == "")
+	var hd = MD.new(5)
+	var pack: Array = []
+	var got := ""
+	for i in MD.HORDE_N:
+		pack.append(foe_at.call(10 + i, 80.0 + i * 30.0, false))
+		hd.cues(0.3, me, pack)
+		if hd.cue != "":
+			got = hd.cue
+	_check("%d nowych świadomych w %.1f s → sygnał hordy" % [MD.HORDE_N, 0.3 * MD.HORDE_N], got == "cue_horde")
+	pack.append(foe_at.call(99, 60.0, false, true))
+	hd.cues(0.1, me, pack)
+	_check("krzyk w trakcie odstępu hordy → bez drugiego sygnału", hd.cue == "")
+	var sc = MD.new(5)
+	sc.cues(0.1, me, [foe_at.call(50, 200.0, false, true)])
+	_check("krzyk alarmu blisko → sygnał hordy", sc.cue == "cue_horde")
+	var slow = MD.new(5)
+	var slow_got := ""
+	for i in MD.HORDE_N:
+		var arr: Array = []
+		for j in i + 1:
+			arr.append(foe_at.call(70 + j, 100.0, false))
+		slow.cues(MD.HORDE_WINDOW / 2.0 + 0.1, me, arr)
+		slow_got += slow.cue
+	_check("wrogowie zauważają powoli (co %.1f s) → to nie horda" % (MD.HORDE_WINDOW / 2.0), slow_got == "")
+
+	# --- E1: stan życia
+	var hp_p := FakePlayer.new()
+	hp_p.position = me
+	root.add_child(hp_p)
+	var hm = MD.new(5)
+	hm.update(0.1, hp_p, true)
+	var h0: int = hm.health
+	hp_p.hp = 1
+	hm.update(0.1, hp_p, true)
+	var h1: int = hm.health
+	hp_p.dead = true
+	hm.update(0.1, hp_p, true)
+	_check("stan życia: zdrowy %d, ostatnie serce %d, leży %d" % [h0, h1, hm.health], h0 == 0 and h1 == 1 and hm.health == 2)
+	hm.update(0.1, hp_p, false)
+	_check("poza misją stan życia i motyw od nowa", hm.health == 0 and hm.motif_far == 0.0 and hm.cue == "")
+	hp_p.queue_free()
+
 	# --- prawdziwy wróg ze sceny
 	var foe: Node2D = load("res://scenes/enemy.tscn").instantiate()
 	foe.position = me + Vector2(50, 0)
@@ -180,6 +253,42 @@ func _initialize() -> void:
 	var blend: Array = load("res://scripts/audio_manifest.gd").MUSIC_BLEND
 	_check("wejście stemów ≥ 1,5 s, wyciszanie ≥ 5 s (było 0,35–1,6 s i 1,2–6 s)",
 		blend.all(func(v: float) -> bool: return v >= 1.5) and audio.MUSIC_FADE_OUT.all(func(v: float) -> bool: return v >= 5.0))
+	# --- AudioDirector E1
+	audio.shutdown()
+	audio.set_enabled(true)
+	audio.music_set_motif(0.0, 0.0)
+	_check("motyw zero nie uruchamia muzyki", not audio._music_started)
+	audio.music_set_motif(0.75, 0.0)
+	_check("motyw uruchamia stemy po cichu, warstwy zostają w ciszy", audio._music_started and audio._music_layer == -1
+		and audio._stem_target.all(func(v: float) -> bool: return v == 0.0) and audio._motif_target[0] == 0.75 and audio._motif[0].playing)
+	for i in 40:
+		audio._update_music(0.1)
+	_check("motyw daleki dochodzi do celu (%.2f) w %.0f s" % [audio._motif_x[0], audio.MOTIF_FADE_IN], absf(audio._motif_x[0] - 0.75) < 0.01)
+	audio.music_set_motif(0.0, 0.0)
+	audio._update_music(1.0)
+	_check("motyw gaśnie powoli (po 1 s %.2f)" % audio._motif_x[0], audio._motif_x[0] > 0.5)
+	audio.music_set_health(1)
+	_check("ostatnie serce: bije serce", audio.loop_playing("heart_slow_loop"))
+	for i in 30:
+		audio._update_deafness(0.1)
+	_check("ostatnie serce: muzyka ciszej (%.1f dB) i za filtrem (%.0f Hz)" % [audio._health_db, audio._music_lp_hz],
+		absf(audio._health_db - audio.HEALTH_DB[1]) < 0.5 and audio._music_lp_hz < 2000.0)
+	audio.music_set_health(2)
+	for i in 30:
+		audio._update_deafness(0.1)
+	_check("leży: ciszej i głębiej za filtrem (%.1f dB, %.0f Hz)" % [audio._health_db, audio._music_lp_hz], audio._health_db < -10.0 and audio._music_lp_hz < 900.0)
+	audio.music_set_health(0)
+	_check("zdrowy: serce milknie", not audio.loop_playing("heart_slow_loop"))
+	audio._duck_db = 0.0
+	audio.music_cue("cue_elite")
+	_check("sygnał gra na muzyce, a muzyka ustępuje (%.0f dB)" % audio._duck_db, audio._duck_db <= -6.0)
+	audio._duck_db = 0.0
+	audio.play("ui_click", audio.BUS_STALKER, -20.0)
+	audio._duck_under_stalker()
+	_check("muzyka ustępuje głosowi Stalkera (%.0f dB)" % audio._duck_db, audio._duck_db <= audio.STALKER_DUCK_DB)
+	var man: GDScript = load("res://scripts/audio_manifest.gd")
+	_check("w manifeście motyw (pętle) i sygnały", ["mus_stalker_far", "mus_stalker_near", "cue_elite", "cue_horde"].all(func(k: String) -> bool: return man.PATHS.has(k))
+		and man.LOOPS.has("mus_stalker_far") and man.LOOPS.has("mus_stalker_near"))
 	audio.shutdown()
 
 	print("%s (test_music: %d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])

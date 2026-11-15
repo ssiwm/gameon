@@ -128,7 +128,12 @@ def write_ogg() -> int:
         new = {}
         for key, (rel, _) in sorted(bc.REG.items()):
             wav = os.path.join(root, rel + ".wav")
-            if not is_ogg(rel) or not os.path.exists(wav):
+            if not is_ogg(rel):
+                continue
+            if not os.path.exists(wav):
+                # WAV poza repo (np. pogoda: .gitignore trzyma tylko .ogg) — wpis zostaje, inaczej --only gubi go z indeksu
+                if rel in idx and os.path.exists(os.path.join(root, rel + ".ogg")):
+                    new[rel] = idx[rel]
                 continue
             sha, ogg = bc.file_sha256(wav), os.path.join(root, rel + ".ogg")
             if idx.get(rel) != sha or not os.path.exists(ogg):
