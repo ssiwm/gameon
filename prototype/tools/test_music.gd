@@ -5,6 +5,9 @@ extends SceneTree
 ## „oddech” w długiej ciszy i przerwanie go zagrożeniem, prawdziwy wróg ze sceny, a w AudioDirector: cisza nie uruchamia stemów,
 ## warstwa -1 po zejściu wycisza wszystkie stemy; E1: motyw Stalkera wg odległości (tylko gdy poluje), sygnały elity i hordy
 ## (raz, z odstępem), stan życia (ostatnie serce, leży: muzyka ciszej i za filtrem, serce), muzyka ustępuje głosowi Stalkera.
+## E4: sceny bossa (wejście i histereza zasięgu, faza, śmierć → odwrót ze zwycięstwem, odwrót z misji), warstwy pod sceną,
+## w AudioDirector warstwy sceny na takcie, uderzenie fazy na beat, kadencja śmierci na takcie z wycięciem bossa i odwrotem
+## po ogonie, zwykłe wyciszenie bez zwycięstwa, paleta czeka na ciszę scen, pliki scen na siatce (odwrót = dwie pętle).
 ##   godot --headless --path prototype -s tools/test_music.gd     → ostatni wiersz: PASS / FAIL
 
 var _fails := 0
@@ -441,8 +444,112 @@ func _initialize() -> void:
 	audio._update_music(0.0)
 	_check("w ciszy paleta bossa: zaczyna od sekcji B (%s)" % audio._seg[1][0].stream.resource_path.get_file(),
 		audio._palette == "z1_b1" and audio._seg[1][0].stream.resource_path.ends_with("mus_tension_b.ogg") and audio._seg_n[1] == 2 and audio._seg[1][0].playing)
+	# --- E4: sceny (boss, odwrót)
+	var sd = MD.new(9)
+	sd.scene_step(0.1, 1200.0, 1, false, false)
+	_check("boss dalej niż zasięg wejścia: bez sceny", sd.scene == "")
+	sd.scene_step(0.1, 600.0, 1, false, false)
+	_check("obudzony boss w zasięgu: scena bossa, faza 1", sd.scene == "boss" and sd.boss_phase == 1 and not sd.scene_won)
+	sd.scene_step(0.1, 1200.0, 2, false, false)
+	_check("odejście do 1200 px: scena trwa (histereza), faza 2", sd.scene == "boss" and sd.boss_phase == 2)
+	sd.scene_step(0.1, INF, 0, true, false)
+	_check("boss padł: odwrót ze zwycięstwem", sd.scene == "retreat" and sd.scene_won and sd.boss_phase == 0)
+	sd.scene_step(0.1, INF, 0, true, false)
+	_check("zwycięstwo tylko w jednej klatce, odwrót czeka na ekstrakcję", sd.scene == "retreat" and not sd.scene_won)
+	sd.scene_step(3.0, INF, 0, true, false)
+	_check("bez ekstrakcji po %.0f s odwrót gaśnie" % sd.WON_HOLD, sd.scene == "")
+	sd.scene_step(0.1, INF, 0, false, true)
+	_check("ekstrakcja (cel, zawał, nadawanie): odwrót bez zwycięstwa", sd.scene == "retreat" and not sd.scene_won)
+	var sd2 = MD.new(9)
+	sd2.scene_step(0.1, 600.0, 3, false, false)
+	sd2.scene_step(0.1, 1500.0, 3, false, false)
+	_check("gracz uciekł poza 1400 px: scena znika bez zwycięstwa", sd2.scene == "" and not sd2.scene_won)
+	_check("pod bossem warstwy 1–2 (puls zawsze, bez pościgu), pod odwrotem ≥ 1, bez sceny bez zmian",
+		MD.scene_layer(-1, "boss") == 1 and MD.scene_layer(3, "boss") == 2 and MD.scene_layer(-1, "retreat") == 1
+		and MD.scene_layer(3, "retreat") == 3 and MD.scene_layer(-1, "") == -1 and MD.scene_layer(2, "") == 2)
+	var ms := GDScript.new()
+	ms.source_code = "extends Node\nfunc music_retreat() -> bool:\n\treturn true\n"
+	ms.reload()
+	var mis: Node = ms.new()
+	mis.add_to_group("mission")
+	root.add_child(mis)
+	var me2 := FakePlayer.new()
+	root.add_child(me2)
+	var sd3 = MD.new(9)
+	sd3._drive_scene(0.1, me2)
+	_check("misja w ekstrakcji (drzewo sceny): odwrót", sd3.scene == "retreat")
+	mis.queue_free()
+	me2.queue_free()
+
+	var man_s = load("res://scripts/audio_manifest.gd")
+	var loop_len: float = man_s.MUSIC_LOOP_SEC
+	var keys_ok := true
+	for k in audio.SCENE_KEYS + [audio.SCENE_HIT, audio.SCENE_BOSS_END]:
+		keys_ok = keys_ok and man_s.PATHS.has(k) and audio.stream(k) != null
+	_check("pliki scen w manifeście", keys_ok)
+	var lens: Array = audio.SCENE_KEYS.map(func(k: String) -> float: return audio.stream(k).get_length())
+	_check("sceny na siatce: boss = pętla, odwrót = dwie pętle (%s)" % str(lens),
+		absf(lens[0] - loop_len) < 0.01 and absf(lens[1] - loop_len) < 0.01 and absf(lens[2] - loop_len) < 0.01 and absf(lens[3] - 2.0 * loop_len) < 0.01)
+	audio.shutdown()
+	audio.set_enabled(true)
+	audio._health_db = 0.0
+	audio._duck_db = 0.0
+	var beat_s: float = 60.0 / float(man_s.MUSIC_BPM)
+	var bar_s: float = audio._bar_len()
+	audio.music_set_scene("boss", 1)
+	_check("scena bossa uruchamia muzykę i faza 1 (%s)" % str(audio._scene_target),
+		audio._music_started and audio._scene_target == [1.0, 0.0, 0.0, 0.0] and audio._scene_p[0].playing and audio._scene_p[3].playing)
+	_check("start bossa: uderzenie na najbliższym beacie, warstwa na takcie",
+		audio._hits.size() == 1 and audio._hits[0]["key"] == audio.SCENE_HIT and float(audio._hits[0]["land"]) - audio._clock <= beat_s + 0.3
+		and audio._scene_enter_at[0] - audio._clock <= bar_s + 0.01)
+	audio._clock = audio._scene_enter_at[0]
+	for i in 30:
+		audio._clock += 0.1
+		audio._update_music(0.1)
+	_check("faza 1 słychać w pełni (%.2f), uderzenie zagrane" % audio._scene_x[0], audio._scene_x[0] == 1.0 and audio._hits.is_empty()
+		and audio._hit_p.any(func(hp: AudioStreamPlayer) -> bool: return hp.stream != null))
+	audio.music_set_scene("boss", 2)
+	_check("faza 2: dokłada warstwę i uderzenie", audio._scene_target == [1.0, 1.0, 0.0, 0.0] and audio._hits.size() == 1)
+	audio._hits.clear()
+	audio.music_set_scene("boss", 2)
+	_check("ta sama faza co klatkę: nic nowego", audio._hits.is_empty())
+	audio._scene_x[1] = 1.0
+	audio.music_set_scene("retreat", 0, true)
+	var land: float = audio._scene_cut_at[0]
+	_check("śmierć bossa: kadencja na takcie, warstwy bossa wycinane pod nią, odwrót po %d taktach ogona" % audio.SCENE_RETREAT_AFTER_BARS,
+		audio._hits.size() == 1 and audio._hits[0]["key"] == audio.SCENE_BOSS_END and is_equal_approx(float(audio._hits[0]["land"]), land)
+		and land - audio._clock <= bar_s + 0.3 and audio._scene_cut_at[1] == land and audio._scene_target == [0.0, 0.0, 0.0, 1.0]
+		and is_equal_approx(audio._scene_enter_at[3], land + audio.SCENE_RETREAT_AFTER_BARS * bar_s))
+	audio._clock = land - 0.05
+	audio._update_music(0.05)
+	_check("boss gra aż do uderzenia (%.2f)" % audio._scene_x[0], audio._scene_x[0] == 1.0)
+	audio._clock = land + 0.8
+	audio._update_music(0.8)
+	_check("po uderzeniu boss cichnie w %.1f s" % audio.CADENCE_CUT, audio._scene_x[0] == 0.0 and audio._scene_x[1] == 0.0
+		and audio._hit_p.any(func(hp: AudioStreamPlayer) -> bool: return hp.stream != null and hp.stream.resource_path.contains("mus_boss_end")))
+	_check("odwrót jeszcze czeka na koniec ogona", audio._scene_x[3] == 0.0)
+	audio._clock = audio._scene_enter_at[3]
+	for i in 31:
+		audio._clock += 0.1
+		audio._update_music(0.1)
+	_check("odwrót gra (%.2f)" % audio._scene_x[3], audio._scene_x[3] == 1.0)
+	audio._palette_want = "z1_b1"
+	audio._palette = "default"
+	for i in audio._stem_gain.size():
+		audio._stem_gain[i] = 0.0
+	audio._palette_t = 0.0
+	audio._update_music(0.0)
+	_check("paleta czeka, dopóki gra scena", audio._palette == "default")
+	audio.music_set_scene("")
+	audio._clock += 1.0
+	audio._update_music(1.0)
+	_check("koniec odwrotu bez zwycięstwa: zwykłe wyciszenie (po 1 s %.2f)" % audio._scene_x[3], audio._scene_x[3] > 0.7 and audio._scene_x[3] < 1.0
+		and audio._scene_cut_at[3] < 0.0 and audio._hits.is_empty())
+
 	lvl.queue_free()
 	audio.shutdown()
+	_check("wyłączenie: sceny i uderzenia stoją", audio._scene_p.all(func(sp: AudioStreamPlayer) -> bool: return not sp.playing and sp.stream == null)
+		and audio._scene == "" and audio._scene_x == [0.0, 0.0, 0.0, 0.0])
 	_check("wyłączenie: wszystkie warianty i kadencja stoją", audio._seg.all(func(a: Array) -> bool: return a.all(func(p: AudioStreamPlayer) -> bool: return not p.playing and p.stream == null)) and not audio._cad.playing)
 
 	print("%s (test_music: %d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])

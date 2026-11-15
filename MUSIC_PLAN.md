@@ -1,7 +1,7 @@
 # Muzyka adaptacyjna — plan
 
 Status: **plan z 2026-11-15 (main 1.7.576, 35b8c6ff).** Decyzje D1–D7 (§6) przyjęte 2026-11-15 — wszystkie warianty zalecane.
-**E0 w 1.7.578** (`music_director.gd`, test `tools/test_music.gd`, zdarzenie `music` w dzienniku sesji). **E1 w 1.7.579** (motyw Stalkera `mus_stalker_far` / `mus_stalker_near`, sygnały `cue_elite` / `cue_horde`, ostatnie serce i leżenie; zdarzenia `music_motif`, `music_cue`). **E2 w 1.7.580** (sekcje A/B o tym samym rytmie zmieniane całą muzyką na początku pętli, spokojniejszy pościg, motyw Stalkera w d-moll, kadencje `mus_combat_end` / `mus_chase_end`, palety `MUSIC_SEGMENTS`, boss `z1_b1`); po odsłuchu nowy kierunek materiału (§8, PR #695): **E3a** podgląd poza grą (`tools/music_preview.py`, PR #696), **E3b w 1.7.581** — mroczny ambient w grze (64 BPM, pedał D, metal, smyczki). Równolegle `amb_machine` (stałe buczenie pod całą grą) usunięta w PR #690 (1.7.577).
+**E0 w 1.7.578** (`music_director.gd`, test `tools/test_music.gd`, zdarzenie `music` w dzienniku sesji). **E1 w 1.7.579** (motyw Stalkera `mus_stalker_far` / `mus_stalker_near`, sygnały `cue_elite` / `cue_horde`, ostatnie serce i leżenie; zdarzenia `music_motif`, `music_cue`). **E2 w 1.7.580** (sekcje A/B o tym samym rytmie zmieniane całą muzyką na początku pętli, spokojniejszy pościg, motyw Stalkera w d-moll, kadencje `mus_combat_end` / `mus_chase_end`, palety `MUSIC_SEGMENTS`, boss `z1_b1`); po odsłuchu nowy kierunek materiału (§8, PR #695): **E3a** podgląd poza grą (`tools/music_preview.py`, PR #696), **E3b w 1.7.581** — mroczny ambient w grze (64 BPM, pedał D, metal, smyczki). **E4 w 1.7.582** — boss wg faz i odwrót (§9). Równolegle `amb_machine` (stałe buczenie pod całą grą) usunięta w PR #690 (1.7.577).
 Muzyka nie zmienia rozgrywki, więc etapy nie czekają na playtest (GDD §16.0a), ale po E1 i E3 są punkty odsłuchu w grze z testerem.
 
 ## 1. Skąd to
@@ -189,3 +189,28 @@ Silnik z E0–E2 zostaje bez zmian. Nowe stemy wchodzą przez manifest; zmieniaj
 | D10 | Harmonia | Pedał D, bez progresji akordów | Wolna progresja (akord co 2–4 takty) |
 | D11 | Melodia | Tylko motyw Stalkera | Także rzadkie frazy w eksploracji |
 | D12 | Odsłuch | Podgląd WAV 3 min do akceptacji przed grą | Od razu w grze |
+
+## 9. E4 — momenty: boss wg faz i odwrót (1.7.582)
+
+Sceny grają ponad warstwami zagrożenia, z tego samego materiału (64 BPM, pedał D, metal, smyczek) i na tej samej siatce: pętle scen
+startują razem ze stemami, więc wchodzą w rytm bez przesunięcia.
+
+| Scena | Kiedy (`music_director.gd`) | Muzyka |
+|---|---|---|
+| Boss, faza 1 | obudzony boss ≤ 900 px (scena trwa do 1400 px) | `mus_boss_1`: rura D1 na „raz”, jęk smyczka D ↔ E♭ co 2 takty, fala subu |
+| Boss, faza 2 | `phase` bossa ≥ 2 | + `mus_boss_2`: „galop” 3-3-2 (rura, rura, blacha), tremolo wiolonczel D / A |
+| Boss, faza 3 | `phase` bossa = 3 | + `mus_boss_3`: klaster D5 / E♭5 tremolo, zgrzyt ku parze taktów, metalowy „zegar” szesnastkami |
+| Śmierć bossa | boss, przy którym grała scena, ma stan DEAD | kadencja `mus_boss_end` na takcie, boss gaśnie pod nią w 0,7 s |
+| Odwrót | `mission.music_retreat()` (faza EXTRACT poza kryjówką) albo 3 s po śmierci bossa | `mus_retreat` (60 s): ósemki rury, tremolo rośnie co 4 takty, druga połowa F / E♭ i blacha na 2 i 4 |
+
+Zasady:
+- Wejście warstwy sceny na takcie; przebudzenie bossa, zmiana fazy i odwrót bez bossa — uderzenie `mus_hit` na najbliższym beacie.
+  Stingery przy przebudzeniu i fazie 3 bossów oraz przy celu i nadawaniu usunięte: grał je moment muzyki.
+- Pod bossem warstwy zagrożenia 1–2 (puls zawsze, pościg nie — zderzałby się z fazą 3; boss nie liczy się do T). Pod odwrotem co najmniej
+  warstwa 1 (puls), wyżej wg zagrożenia.
+- Po śmierci bossa odwrót wchodzi po 2 taktach ogona kadencji. Restart, wipe i ucieczka poza zasięg — zwykłe wyciszenie (6 s).
+- Sukces misji kończy odwrót wyciszeniem; kadencje wyniku i śmierci to E5.
+- „Przetrzymaj” (obrona pozycji przed falą) nie istnieje jeszcze w grze — gdy powstanie, dostanie scenę odwrotu (warunek w `mission.gd`).
+- Głośność: boss do ok. −15 LUFS z warstwami, odwrót ok. −17 (§4.5: momenty głośniejsze niż −20 LUFS reszty).
+
+Podgląd: `python prototype/tools/music_preview.py --script "0:22,45:30,100:45" --scene "6:boss1,50:boss2,100:boss3,150:won,240:none" --out boss.wav`.
