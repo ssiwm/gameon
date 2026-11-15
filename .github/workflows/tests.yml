@@ -219,6 +219,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_weather_sound.gd 2>&1 | tee weather_sound.log
           grep -a "^PASS" weather_sound.log
+      - name: Muzyka — wynik zagrożenia, warstwy, cisza (test_music.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_music.gd 2>&1 | tee music.log
+          grep -a "^PASS" music.log
       - name: Tempo kroku wrogów przy różnych FPS (test_gait_speed.gd)
         run: |
           godot --headless --path prototype -s tools/test_gait_speed.gd 2>&1 | tee gait_speed.log

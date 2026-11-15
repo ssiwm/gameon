@@ -329,8 +329,8 @@ const LOOPS := [
 # Muzyka: STEMY NAKŁADAJĄ SIĘ (addytywne): cisza ⊂ napięcie ⊂ walka ⊂ pościg.
 # Wszystkie mają identyczną długość i siatkę, więc wchodzą w tym samym miejscu taktu.
 const MUSIC_STEMS := ["mus_silence", "mus_tension", "mus_combat", "mus_chase"]
-# Czas dochodzenia stemu do pełnej głośności [s] (asymetryczne: spokój wolno, akcja szybko).
-const MUSIC_BLEND := [4.0, 1.6, 0.7, 0.35]
+# Czas dochodzenia stemu do pełnej głośności [s] (krzywa w dB, AudioDirector; od 1.7.578 dłużej — wejście 0,35–1,6 s brzmiało jak cięcie).
+const MUSIC_BLEND := [6.0, 4.0, 2.5, 1.5]
 # Tempo i długość pętli — runtime kwantyzuje wejścia stemów do beatu.
 const MUSIC_BPM := 96.0
 const MUSIC_BEATS := 32

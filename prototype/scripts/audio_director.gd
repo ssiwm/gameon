@@ -169,12 +169,16 @@ var _clock := 0.0
 
 # --- muzyka
 var _music: Array[AudioStreamPlayer] = []
-var _stem_gain: Array[float] = []     # amplituda liniowa 0..1
+var _stem_gain: Array[float] = []     # postęp przejścia 0..1 (głośność z krzywej `_fade_gain`, nie liniowo)
 var _stem_target: Array[float] = []
 var _stem_enter_at: Array[float] = []  # od kiedy (zegar) stem może zacząć wchodzić
 var _music_layer := -1
 var _music_started := false
-var _drop_to := -1
+const MUSIC_FADE_OUT := [10.0, 8.0, 6.0, 5.0]   ## s wyciszania stemu (cisza … pościg); od 1.7.578 dłużej i krzywą w dB (`_fade_gain`)
+const MUSIC_FADE_FLOOR_DB := -40.0               ## początek / koniec krzywej przejścia (poniżej tego stem jest niesłyszalny)
+const MUSIC_DROP_HOLD := [0.0, 2.0, 3.0, 4.0]    ## s czekania przed zejściem z warstwy (resztę trzyma MusicDirector: MIN_ON, MIN_STEP)
+const NO_DROP := -2                    # _drop_to: brak zaplanowanego zejścia (-1 to zejście do ciszy)
+var _drop_to := NO_DROP
 var _drop_at := -1.0
 var _duck_db := 0.0
 var _duck_hold := 0.0
@@ -305,6 +309,7 @@ func _shutdown() -> void:
 		n.stream = null
 	_music_layer = -1
 	_music_started = false
+	_drop_to = NO_DROP
 	for wp in _warm_paths:                 # wczytywanie w tle (`_warm_all`) odbieramy przed wyjściem — wątek nie trzyma zasobu przy zamykaniu
 		ResourceLoader.load_threaded_get(wp)
 	_warm.clear()
@@ -764,7 +769,7 @@ func stop_all() -> void:
 		_stem_target[i] = 0.0
 	_music_layer = -1
 	_music_started = false
-	_drop_to = -1
+	_drop_to = NO_DROP
 	_drop_at = -1.0
 	_deaf = 0.0
 	_duck_db = 0.0
@@ -1083,20 +1088,24 @@ func _update_deafness(delta: float) -> void:
 
 # ---------------------------------------------------------------- muzyka
 
-## layer: 0 cisza, 1 napięcie, 2 walka, 3 pościg — STEMY NAKŁADAJĄ SIĘ (0..layer grają).
+## layer: -1 cisza (żaden stem), 0 dron (oddech), 1 napięcie, 2 walka, 3 pościg — STEMY NAKŁADAJĄ SIĘ (0..layer grają).
+## Warstwę wybiera `MusicDirector` (MUSIC_PLAN.md E0); stemy ruszają dopiero przy pierwszej warstwie ≥ 0, potem grają
+## dalej po cichu (-80 dB), żeby wejście kolejnej warstwy trzymało rytm.
 ## Wejście stemu kwantyzowane do beatu; zejście w dół opóźnione (hold), żeby muzyka
 ## nie opadała w sekundę po ostatnim strzale.
 func music_set_layer(layer: int) -> void:
 	if not _enabled:
 		return
 	var top := Manifest.MUSIC_STEMS.size() - 1
-	layer = clampi(layer, 0, top)
+	layer = clampi(layer, -1, top)
+	if layer < 0 and not _music_started:
+		return                                # cisza przed pierwszym zagrożeniem: stemy nawet nie ruszają (menu, początek misji)
 	if not _music_start():
 		return
-	if layer == _music_layer and _drop_to < 0:
+	if layer == _music_layer and _drop_to == NO_DROP:
 		return
 	if layer >= _music_layer:
-		_drop_to = -1
+		_drop_to = NO_DROP
 		_drop_at = -1.0
 		for i in range(layer + 1):
 			if _stem_target[i] < 1.0:
@@ -1104,7 +1113,7 @@ func music_set_layer(layer: int) -> void:
 				_stem_enter_at[i] = _clock + _quant_delay(i)
 		_music_layer = layer
 	else:
-		var hold: float = [0.0, 2.5, 6.0, 8.0][clampi(_music_layer, 0, 3)]
+		var hold: float = MUSIC_DROP_HOLD[clampi(_music_layer, 0, MUSIC_DROP_HOLD.size() - 1)]
 		_drop_to = layer
 		_drop_at = _clock + hold
 
@@ -1147,11 +1156,11 @@ func _quant_delay(stem: int) -> float:
 func _update_music(delta: float) -> void:
 	if not _music_started:
 		return
-	if _drop_to >= 0 and _clock >= _drop_at:
+	if _drop_to != NO_DROP and _clock >= _drop_at:
 		for i in range(_drop_to + 1, _stem_target.size()):
 			_stem_target[i] = 0.0
 		_music_layer = _drop_to
-		_drop_to = -1
+		_drop_to = NO_DROP
 		_drop_at = -1.0
 	if _duck_hold > 0.0:
 		_duck_hold -= delta
@@ -1164,9 +1173,17 @@ func _update_music(delta: float) -> void:
 			if _clock >= _stem_enter_at[i]:
 				_stem_gain[i] = minf(1.0, _stem_gain[i] + delta / maxf(0.05, blend))
 		else:
-			_stem_gain[i] = maxf(0.0, _stem_gain[i] - delta / maxf(1.2, blend * 1.5))
-		var g := _stem_gain[i] * duck
+			_stem_gain[i] = maxf(0.0, _stem_gain[i] - delta / float(MUSIC_FADE_OUT[mini(i, MUSIC_FADE_OUT.size() - 1)]))
+		var g := _fade_gain(_stem_gain[i]) * duck
 		_music[i].volume_db = -80.0 if g <= 0.0001 else linear_to_db(g)
+
+
+## Postęp przejścia 0..1 → amplituda: równo w decybelach od MUSIC_FADE_FLOOR_DB do 0 dB. Liniowa amplituda (do 1.7.577)
+## wskakiwała w słyszalne poziomy w pierwszych procentach wejścia i urywała się na końcu wyciszenia.
+static func _fade_gain(x: float) -> float:
+	if x <= 0.0:
+		return 0.0
+	return db_to_linear(MUSIC_FADE_FLOOR_DB * (1.0 - minf(x, 1.0)))
 
 
 func music_layer() -> int:
