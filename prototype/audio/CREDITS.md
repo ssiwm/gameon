@@ -78,7 +78,6 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | grenade_launcher_smoke | nagranie | Sonniss GDC 2023 — Detonation - Explosion | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0277_weapon_smoke_grenade_launcher_003.wav |
 | heartbeat_stetho | nagranie | Sonniss GDC 2016 — STETHOSCOPE | ShapingWaves | sonniss-gdc-2.0 | SW002_Stethoscope_Chest_Heart_Heartbeat_Blood_Flow_A.wav |
 | hellhound_idle | nagranie | Sonniss GDC 2020 — Monsters | SmartSoundFX | sonniss-gdc-2.0 | HELLHOUND Idle Weak 03.wav |
-| hvac_pressure_pump | nagranie | Sonniss GDC 2017 — Hvac Elements | Hzandbits | sonniss-gdc-2.0 | Hvac,Heating,Pressure pump,Industrial,Whine,Slight rumble,Loop.wav |
 | hvac_roomtone | nagranie | Sonniss GDC 2017 — Hvac Elements | Hzandbits | sonniss-gdc-2.0 | Roomtone,Hvac,Drone,Hum,Low Mids,Loop.wav |
 | impact_22 | nagranie | Sonniss GDC 2018 — Guns & Explosions | Olivier Girardot | sonniss-gdc-2.0 | Bullet Impact 22.wav |
 | impact_body_flesh_25 | nagranie | Sonniss GDC 2020 — Bullet Bys &Impacts | PMSFX | sonniss-gdc-2.0 | PM_BBI_Bullet_Impact_Hit_Body_Flesh_25.wav |

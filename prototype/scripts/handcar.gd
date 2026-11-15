@@ -317,7 +317,7 @@ func reset_handcar() -> void:
 
 func _update_audio() -> void:
 	if enabled and speed > 5.0:
-		Audio.start_loop_at("amb_machine", self, Audio.BUS_WORLD, -14.0 + speed * 0.04, true, name)
+		Audio.start_loop_at("generator_loop", self, Audio.BUS_WORLD, -14.0 + speed * 0.04, true, name)
 	else:
 		Audio.stop_loop(name)
 

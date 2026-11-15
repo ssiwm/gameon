@@ -322,7 +322,7 @@ gest i długość syntezy, głośność = zmierzona głośność syntezy); 23 wy
 | `generator_loop` | z nagrań | diesel łodzi na wolnych obrotach (pętla 4 s), bez infradźwięków, z podbitym środkiem |
 | `breath_loop`, `revive` | z nagrań | nagrane wdechy i wydechy w rytmie syntezy (4 × 0,75 s); podniesienie — nagrany wdech + akord kwinty z syntezy |
 | `heart_fast_loop`, `heart_slow_loop` | z nagrań | „lub” i „dub” ze stetoskopu ułożone w tempie 132 i 74 uderzeń/min |
-| `amb_machine`, `amb_air`, `amb_drips` | z nagrań | pompa ciśnieniowa z buczeniem, szum wentylacji, krople w jaskini (pętle stereo 8–12 s) |
+| `amb_air`, `amb_drips` | z nagrań | szum wentylacji, krople w jaskini (pętle stereo 10–12 s); `amb_machine` (pompa z buczeniem, grała wszędzie) usunięta w 1.7.577 |
 | `alarm_bell` | synteza (bez kandydata) | w bibliotece nie ma dzwonu kościelnego; zostają też `mine_beep`, `radio_static`, sygnały UI i muzyka |
 
 Pułapka pomiaru: pętle ambientu są stereo i synteza osiąga w nich cel nominalny — mierzyć surowe kanały, nie zmiksowane do mono (zaniża

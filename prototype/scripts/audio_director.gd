@@ -1210,7 +1210,7 @@ func _caption(key: String, pos: Vector2) -> void:
 # ---------------------------------------------------------------- emitery ambientu
 
 func _update_emitters(delta: float) -> void:
-	if not (_loops.has("amb_forest") or _loops.has("amb_machine")):
+	if not _loops.has("amb_forest"):
 		return
 	_emit_t -= delta
 	if _emit_t > 0.0:

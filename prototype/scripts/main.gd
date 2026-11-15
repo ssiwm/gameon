@@ -5030,11 +5030,10 @@ func _on_connected_to_server() -> void:
 	print("[NET] connected as peer %d" % multiplayer.get_unique_id())
 
 
-## Podłoże z GDD §13: las + maszyna. Dwie warstwy, obie zapętlone.
-## Domyślnie forest (las Obiektu 86 na powierzchni), maszyna w obiekcie.
+## Podłoże z GDD §13: las Obiektu 86 (zapętlony). Pomieszczenia i podziemia dokłada WeatherFx._beds() (amb_air, amb_drips);
+## stałe buczenie maszyny (amb_machine) usunięte 2026-11-15 — grało wszędzie, także w otwartym lesie.
 func _start_ambience() -> void:
 	Audio.start_loop("amb_forest", Audio.BUS_AMB, -13.0)
-	Audio.start_loop("amb_machine", Audio.BUS_AMB, -20.0)
 
 func _on_connection_failed() -> void:
 	_lobby.set_status("Connection failed — check the IP and that the host is running.", true)
