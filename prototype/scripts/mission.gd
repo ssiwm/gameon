@@ -1177,8 +1177,7 @@ func _sync(p: int, left: int, total: int, ex: Vector2, prog: float, el: float, d
 func _event(kind: String) -> void:
 	match kind:
 		"objective":
-			Audio.play("radio_beep", Audio.BUS_UI, -6.0)
-			Audio.sting(1)
+			Audio.play("radio_beep", Audio.BUS_UI, -6.0)          # muzyka: uderzenie i odwrót na siatce (E4), bez stingera
 		"success":
 			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
 			Audio.play("tape_stop", Audio.BUS_UI, -10.0)
@@ -1194,8 +1193,7 @@ func _event(kind: String) -> void:
 		"generator":
 			Audio.play("ui_confirm", Audio.BUS_UI, -6.0)
 		"broadcast":
-			Audio.play("alarm_bell", Audio.BUS_UI, -6.0)
-			Audio.sting(2)
+			Audio.play("alarm_bell", Audio.BUS_UI, -6.0)          # muzyka: odwrót (E4)
 		"silent_lost":
 			Msg.post("mission.silent", Msg.Ch.TOAST, tr("SILENT RUN LOST"), {"sub": tr("Attention reached 60% — the quiet bonus is gone for this attempt"), "style": Msg.Style.WARN, "ttl": 3.5, "prio": 45})
 		"checkpoint":
@@ -1307,6 +1305,10 @@ func objective_hint() -> String:
 				return "The mine is coming down — the way back is gone. Climb the shaft to the flare!"
 			return "The whole squad, standing, at the flare for 3 s"
 	return ""
+
+## Muzyka (MUSIC_PLAN.md E4): odwrót gra od otwarcia ekstrakcji (cel, boss, zawał 1.1, nadawanie 1.2) do końca misji.
+func music_retreat() -> bool:
+	return phase == Phase.EXTRACT and kind != "hub"
 
 ## Stan ekstrakcji lokalnego gracza (pasek kontekstowy HUD).
 func local_extract_state() -> Dictionary:

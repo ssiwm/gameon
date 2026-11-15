@@ -1067,8 +1067,7 @@ func _sync(s: int, h: float, mh: float, a: int, mo: bool, st: bool, ph: int, nl:
 func _event(kind: String) -> void:
 	match kind:
 		"awaken":
-			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, 0.0, 0.9)
-			Audio.sting(2)
+			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, 0.0, 0.9)     # muzyka: scena bossa z uderzeniem (E4)
 			_shake_near(5.0)
 		"lash_windup":
 			Audio.play_variant_at("zyla_growl", 2, global_position, Audio.BUS_STALKER, -2.0, 1.0)
@@ -1110,8 +1109,7 @@ func _event(kind: String) -> void:
 			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, -2.0, 1.0)
 			_shake_near(3.0)
 		"phase3":
-			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, 2.0, 0.8)
-			Audio.sting(2)
+			Audio.play_variant_at("zyla_roar", 2, global_position, Audio.BUS_STALKER, 2.0, 0.8)     # muzyka: faza 3 (E4)
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 3500
 			_shake_near(6.0)
 		"death":

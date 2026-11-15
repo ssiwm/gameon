@@ -768,8 +768,7 @@ func _event(kind: String) -> void:
 	var pos := global_position
 	match kind:
 		"awaken":
-			Audio.play_variant_at("leech_growl", 2, pos, Audio.BUS_STALKER, -4.0, 0.8)
-			Audio.sting(1)
+			Audio.play_variant_at("leech_growl", 2, pos, Audio.BUS_STALKER, -4.0, 0.8)     # muzyka: scena bossa z uderzeniem (E4)
 		"windup":
 			_set_anim("peek")
 			Audio.play_variant_at("step_water", 3, pos, Audio.BUS_WORLD, 0.0, 0.55)
@@ -801,8 +800,7 @@ func _event(kind: String) -> void:
 			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, -3.0, 0.9)
 			_shake_near(3.0)
 		"phase3":
-			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, 0.0, 0.8)
-			Audio.sting(2)
+			Audio.play_variant_at("leech_shriek", 2, pos, Audio.BUS_STALKER, 0.0, 0.8)     # muzyka: faza 3 (E4)
 			Lights.flicker_until_ms = Time.get_ticks_msec() + 3000
 			_shake_near(6.0)
 		"spit":

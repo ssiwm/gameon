@@ -487,6 +487,22 @@
   "sfx/enemies/moth_flutter_loop",
   1
  ],
+ "mus_boss_1": [
+  "music/mus_boss_1",
+  1
+ ],
+ "mus_boss_2": [
+  "music/mus_boss_2",
+  1
+ ],
+ "mus_boss_3": [
+  "music/mus_boss_3",
+  1
+ ],
+ "mus_boss_end": [
+  "music/mus_boss_end",
+  0
+ ],
  "mus_chase": [
   "music/mus_chase",
   1
@@ -510,6 +526,14 @@
  "mus_combat_end": [
   "music/mus_combat_end",
   0
+ ],
+ "mus_hit": [
+  "music/mus_hit",
+  0
+ ],
+ "mus_retreat": [
+  "music/mus_retreat",
+  1
  ],
  "mus_silence": [
   "music/mus_silence",

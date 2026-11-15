@@ -12,6 +12,10 @@ Surowe T w dzienniku jest zapisane tylko przy zmianie warstwy; między zdarzenia
     python tools/music_preview.py --script "0:0,8:20,40:45,75:80,115:30,150:0" --out pokaz.wav
 
 `--script` zamiast dziennika: surowe T w punktach czas:wartość (pokaz warstw po kolei: cisza → napięcie → walka → pościg → koniec).
+`--scene` (E4): sceny w punktach czas:scena — boss1 / boss2 / boss3 (faza bossa), won (boss padł → odwrót z kadencją),
+retreat (odwrót bez bossa), none (koniec sceny). Z dziennika sceny czyta zdarzenie `music_scene`.
+
+    python tools/music_preview.py --script "0:20,40:30" --scene "8:boss1,50:boss2,95:boss3,140:won,215:none" --out boss.wav
 
 Siatka, palety i kadencje z tools/bake_music.py, pliki z audio/music (albo --dir: inny katalog z tymi samymi kluczami).
 """
@@ -50,6 +54,12 @@ CADENCE_MIN_GAIN = 0.6
 MOTIF_FADE_IN, MOTIF_FADE_OUT = 3.0, 6.0
 CUE_DB = -2.0
 DT = 0.01
+# --- sceny E4 (music_director.gd SCENE_LAYERS, audio_director.gd SCENE_*)
+SCENE_KEYS = ("mus_boss_1", "mus_boss_2", "mus_boss_3", "mus_retreat")
+SCENE_BLEND = (2.5, 1.5, 1.5, 3.0)
+SCENE_FADE_OUT = 6.0
+SCENE_RETREAT_AFTER_BARS = 2
+SCENE_LAYERS = {"boss": (1, 2), "retreat": (1, 3)}
 
 
 
@@ -77,8 +87,19 @@ def pick_layer(t: float, prev: int) -> int:
     return keep
 
 
+def parse_scene(tok: str):
+    """Token sceny → (scena, faza, zwycięstwo)."""
+    if tok.startswith("boss"):
+        return "boss", int(tok[4:] or 1), False
+    if tok == "won":
+        return "retreat", 0, True
+    if tok == "retreat":
+        return "retreat", 0, False
+    return "", 0, False
+
+
 def read_log(path: str):
-    raw_pts, motif_pts, cue_pts = [(0.0, 0.0)], [(0.0, 0)], []
+    raw_pts, motif_pts, cue_pts, scene_pts = [(0.0, 0.0)], [(0.0, 0)], [], []
     end = 0.0
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -95,7 +116,9 @@ def read_log(path: str):
                 motif_pts.append((t, int(r.get("to", 0))))
             elif ev == "music_cue":
                 cue_pts.append((t, str(r.get("cue", ""))))
-    return raw_pts, motif_pts, cue_pts, end
+            elif ev == "music_scene":
+                scene_pts.append((t, (str(r.get("to", "")), int(r.get("phase", 0)), bool(r.get("won", False)))))
+    return raw_pts, motif_pts, cue_pts, scene_pts, end
 
 
 def step_at(pts, t):
@@ -113,7 +136,7 @@ def load(key: str, folder: str) -> np.ndarray:
     return x.T.astype(np.float64)
 
 
-def simulate(raw_pts, motif_pts, cue_pts, end: float, cfg: dict, seed: int):
+def simulate(raw_pts, motif_pts, cue_pts, scene_pts, end: float, cfg: dict, seed: int):
     """Przebieg sterowania: per krok DT głośności każdego wariantu, motywu i lista jednorazowych (czas, klucz, dB)."""
     rng = random.Random(seed)
     beat = 60.0 / cfg["bpm"]
@@ -124,7 +147,14 @@ def simulate(raw_pts, motif_pts, cue_pts, end: float, cfg: dict, seed: int):
     steps = int(end / DT) + 1
     vols = [np.zeros((len(cfg["layers"][i]), steps)) for i in range(n_layers)]
     mvol = np.zeros((2, steps))
+    svol = np.zeros((len(SCENE_KEYS), steps))
     shots: list[tuple[float, str, float]] = []
+    # sceny
+    scene, sphase, scene_i, out_layer = "", 0, 0, -1
+    s_target = [0.0] * len(SCENE_KEYS)
+    s_x = [0.0] * len(SCENE_KEYS)
+    s_enter = [0.0] * len(SCENE_KEYS)
+    s_cut = [-1.0] * len(SCENE_KEYS)
     # director
     threat, base, on_t, in_t, chase_rest = 0.0, -1, 0.0, 0.0, 0.0
     horde_cd, elite_cd = 0.0, 0.0
@@ -161,29 +191,68 @@ def simulate(raw_pts, motif_pts, cue_pts, end: float, cfg: dict, seed: int):
             chase_rest = CHASE_REST
         in_t = in_t + DT if want == base else 0.0
         on_t = on_t + DT if want >= 0 else 0.0
-        changed = want != base
         base = want
+        # --- scena (MusicDirector.scene_step + scene_layer)
+        new_scene = None
+        while scene_i < len(scene_pts) and scene_pts[scene_i][0] <= t:
+            new_scene = scene_pts[scene_i][1]
+            scene_i += 1
+        lay = base
+        cur_scene = new_scene[0] if new_scene is not None else scene
+        if cur_scene in SCENE_LAYERS:
+            lo, hi = SCENE_LAYERS[cur_scene]
+            lay = min(max(lay, lo), hi)
+        changed = lay != out_layer
+        out_layer = lay
         mstate = step_at(motif_pts, t)
         far, near = ((0.0, 0.0), (0.85, 0.0), (0.3, 0.85))[max(0, min(2, mstate))]
         # --- start stemów (pierwsza warstwa albo motyw)
-        if not started and (base >= 0 or far > 0 or near > 0):
+        if not started and (out_layer >= 0 or far > 0 or near > 0 or (new_scene is not None and new_scene[0])):
             started, t0 = True, t
         pos = t - t0 if started else 0.0
+        # --- AudioDirector.music_set_scene
+        if started and new_scene is not None and (new_scene[0], new_scene[1]) != (scene, sphase):
+            s_prev, prev_phase = scene, sphase
+            scene, sphase, won = new_scene
+            next_bar = t + (bar - (pos % bar))
+            want_s = [0.0] * len(SCENE_KEYS)
+            if scene == "boss":
+                want_s = [1.0, 1.0 if sphase >= 2 else 0.0, 1.0 if sphase >= 3 else 0.0, 0.0]
+            elif scene == "retreat":
+                want_s[3] = 1.0
+            won_boss = won and s_prev == "boss" and scene != "boss"
+            land = -1.0
+
+            def grid_land(grid: float) -> float:
+                w = grid - (pos % grid)
+                return t + (w + grid if w < cfg["pre"] + 0.03 else w)
+            if won_boss:
+                land = grid_land(bar)
+                shots.append((land - cfg["pre"], "mus_boss_end", 0.0))
+            elif (scene == "boss" and sphase > prev_phase) or (scene == "retreat" and s_prev != "retreat"):
+                shots.append((grid_land(beat) - cfg["pre"], "mus_hit", 0.0))
+            for i in range(len(SCENE_KEYS)):
+                if want_s[i] > 0.5 and s_target[i] < 0.5:
+                    s_enter[i] = land + SCENE_RETREAT_AFTER_BARS * bar if won_boss else next_bar
+                    s_cut[i] = -1.0
+                elif want_s[i] < 0.5 and s_target[i] > 0.5:
+                    s_cut[i] = land if won_boss else -1.0
+                s_target[i] = want_s[i]
         # --- AudioDirector.music_set_layer
         if started and changed:
-            log_layers.append((round(t, 1), base))
-            if base >= layer:
+            log_layers.append((round(t, 1), out_layer))
+            if out_layer >= layer:
                 drop_to, drop_at = None, -1.0
                 cad_key, cad_land = "", -1.0
-                for i in range(base + 1):
+                for i in range(out_layer + 1):
                     if target[i] < 1.0:
                         target[i] = 1.0
                         grid = beat * (1.0, 1.0, 0.5, 0.25)[min(i, 3)]
                         dq = grid - (pos % grid)
                         enter_at[i] = t + (0.0 if dq > grid - 0.02 else dq)
-                layer = base
+                layer = out_layer
             else:
-                drop_to, drop_at = base, t + DROP_HOLD[max(0, layer)]
+                drop_to, drop_at = out_layer, t + DROP_HOLD[max(0, layer)]
         if not started:
             continue
         # --- zejście z kadencją
@@ -266,10 +335,19 @@ def simulate(raw_pts, motif_pts, cue_pts, end: float, cfg: dict, seed: int):
         for j, tg in enumerate((far, near)):
             mx[j] = min(tg, mx[j] + DT / MOTIF_FADE_IN) if mx[j] < tg else max(tg, mx[j] - DT / MOTIF_FADE_OUT)
             mvol[j, k] = fade_gain(mx[j]) * duck
-    return vols, mvol, shots, t0, log_layers
+        for i in range(len(SCENE_KEYS)):
+            if s_target[i] > 0.5:
+                if t >= s_enter[i]:
+                    s_x[i] = min(1.0, s_x[i] + DT / SCENE_BLEND[i])
+            elif s_cut[i] < 0.0:
+                s_x[i] = max(0.0, s_x[i] - DT / SCENE_FADE_OUT)
+            elif t >= s_cut[i]:
+                s_x[i] = max(0.0, s_x[i] - DT / CADENCE_CUT)
+            svol[i, k] = fade_gain(s_x[i]) * duck
+    return vols, mvol, svol, shots, t0, log_layers
 
 
-def render(cfg: dict, folder: str, vols, mvol, shots, t0: float, t_from: float, t_to: float) -> np.ndarray:
+def render(cfg: dict, folder: str, vols, mvol, svol, shots, t0: float, t_from: float, t_to: float) -> np.ndarray:
     n_out = int((t_to - t_from) * SR)
     out = np.zeros((2, n_out))
     s0 = int(t_from * SR)
@@ -293,6 +371,10 @@ def render(cfg: dict, folder: str, vols, mvol, shots, t0: float, t_from: float, 
         e = env(mvol[j])
         if e.max() > 1e-5 and os.path.exists(os.path.join(folder, key + ".wav")):
             out += tiled(load(key, folder)) * e
+    for j, key in enumerate(SCENE_KEYS):
+        e = env(svol[j])
+        if e.max() > 1e-5 and os.path.exists(os.path.join(folder, key + ".wav")):
+            out += tiled(load(key, folder)) * e
     for ts, key, db in shots:
         path = os.path.join(folder, key + ".wav")
         if not os.path.exists(path):
@@ -309,6 +391,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--log", default="")
     ap.add_argument("--script", default="", help="surowe T: czas:wartość,czas:wartość,…")
+    ap.add_argument("--scene", default="", help="sceny E4: czas:boss1|boss2|boss3|won|retreat|none,…")
     ap.add_argument("--dir", default=MUSIC_DIR, help="katalog z WAV-ami muzyki (domyślnie audio/music)")
     ap.add_argument("--from", dest="t_from", type=float, default=0.0)
     ap.add_argument("--to", dest="t_to", type=float, default=0.0)
@@ -319,12 +402,15 @@ def main() -> None:
     folder = a.dir
     if a.script:
         raw_pts = [(0.0, 0.0)] + [(float(p.split(":")[0]), float(p.split(":")[1])) for p in a.script.split(",")]
-        motif_pts, cue_pts, end = [(0.0, 0)], [], raw_pts[-1][0] + 25.0
+        motif_pts, cue_pts, scene_pts, end = [(0.0, 0)], [], [], raw_pts[-1][0] + 25.0
     else:
-        raw_pts, motif_pts, cue_pts, end = read_log(a.log)
+        raw_pts, motif_pts, cue_pts, scene_pts, end = read_log(a.log)
+    if a.scene:
+        scene_pts = [(float(p.split(":")[0]), parse_scene(p.split(":")[1])) for p in a.scene.split(",")]
+        end = max(end, scene_pts[-1][0] + 20.0)
     t_to = a.t_to if a.t_to > 0 else end
-    vols, mvol, shots, t0, layers = simulate(raw_pts, motif_pts, cue_pts, t_to + 1.0, cfg, a.seed)
-    x = render(cfg, folder, vols, mvol, shots, t0, a.t_from, t_to)
+    vols, mvol, svol, shots, t0, layers = simulate(raw_pts, motif_pts, cue_pts, scene_pts, t_to + 1.0, cfg, a.seed)
+    x = render(cfg, folder, vols, mvol, svol, shots, t0, a.t_from, t_to)
     pk = np.abs(x).max()
     if pk > 0.97:
         x *= 0.97 / pk

@@ -415,6 +415,7 @@ var _msgs: Control                   ## renderer kanałów komunikatów (alert, 
 var _music_layer := -1
 var _music_dir := MusicDirector.new()     ## wynik zagrożenia → warstwa muzyki (MUSIC_PLAN.md E0)
 var _music_motif := 0                       ## 0 bez motywu, 1 daleki, 2 bliski (dziennik sesji)
+var _music_scene := "0"                     ## scena E4 + faza ostatnio zapisana w dzienniku sesji
 var _session_t := 0.0
 ## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
 var _controls_mode := -1
@@ -2487,6 +2488,11 @@ func _drive_controls() -> void:
 ## poza misją i w kryjówce cisza. Każda zmiana warstwy trafia do dziennika sesji (`music`: z, do, T wygładzony, T surowy) — czas w każdej warstwie.
 func _drive_music(delta: float) -> void:
 	var layer: int = _music_dir.update(delta, _find_local_player() as Node2D, NoiseMgr.has_network())
+	var scene_now := "%s%d" % [_music_dir.scene, _music_dir.boss_phase]
+	if scene_now != _music_scene:
+		SessionLog.event("music_scene", {"to": _music_dir.scene, "phase": _music_dir.boss_phase, "won": _music_dir.scene_won})
+		_music_scene = scene_now
+	Audio.music_set_scene(_music_dir.scene, _music_dir.boss_phase, _music_dir.scene_won)     # przed warstwą: scena może uruchomić stemy
 	if layer != _music_layer:
 		SessionLog.event("music", {"from": _music_layer, "to": layer, "threat": roundi(_music_dir.threat), "raw": roundi(_music_dir.raw_threat)})
 		_music_layer = layer

@@ -14,6 +14,9 @@ Każda warstwa ma wariant B (`_b`) o tym samym rytmie i innej barwie; runtime zm
 (E2). Poza warstwami: motyw Stalkera (mus_stalker_far / _near), kadencje (mus_combat_end / mus_chase_end, z przedbiegiem
 PRE), sygnały cue_horde / cue_elite i stingery sting_tension / sting_chase — z tego samego materiału.
 
+E4 (momenty): sceny ponad warstwami, na tej samej siatce — boss mus_boss_1..3 (fazy dokładają się), odwrót mus_retreat
+(60 s), uderzenie momentu mus_hit (na beat) i kadencja śmierci bossa mus_boss_end (na takt), obie z przedbiegiem PRE.
+
 Siatka: 64 BPM → 45000 próbek/beat (całkowita liczba), 8 taktów 4/4 = 32 beaty = 1 440 000 próbek = 30 s.
 Pętla zamyka się dokładnie: zdarzenia i pogłos zawijane fold_loop(), ciągłe oscylatory mają całkowitą liczbę okresów
 w pętli (loopf), szum filtrowany kołowo. Wersja synthwave (do 1.7.580) jest w historii gita.
@@ -60,8 +63,9 @@ def T(beat: float) -> int:
 
 
 class Stem:
-    def __init__(self):
-        self.buf = np.zeros((2, LOOP_N + TAIL))
+    def __init__(self, n_loop: int = LOOP_N):
+        self.n_loop = n_loop
+        self.buf = np.zeros((2, n_loop + TAIL))
 
     def put(self, sig: np.ndarray, beat: float, gain: float = 1.0, pan: float = 0.0) -> None:
         k = T(beat)
@@ -75,7 +79,7 @@ class Stem:
         x = self.buf
         if rev is not None and wet > 0.0:
             x = d.reverb_stereo(x, rev, wet=wet, dry=1.0, keep_len=False)
-        return d.fold_loop(x, LOOP_N)
+        return d.fold_loop(x, self.n_loop)
 
 
 # ------------------------------------------------------------------ instrumenty (metal, przedmioty, smyczek, taśma)
@@ -321,6 +325,130 @@ def cue_elite(rng: Rng) -> np.ndarray:
     return d.reverb_stereo(x, ir("cave_st"), wet=0.4, dry=1.0)
 
 
+# ------------------------------------------------------------------ E4: boss (fazy) i odwrót
+
+def glide_back(a: float, b: float, n: int) -> np.ndarray:
+    """Częstotliwość a → b → a (jęk o pół tonu: interwał motywu Stalkera)."""
+    h = n // 2
+    return np.concatenate([d.glide_exp(a, b, h, 0.6), d.glide_exp(b, a, n - h, 0.6)])
+
+
+def stem_boss_1(rng: Rng) -> np.ndarray:
+    """Faza 1: obecność bossa — dudnienie rury D1 na „raz” każdego taktu, jęk smyczka D2 ↔ E♭2 co dwa takty, fala subu."""
+    s = Stem()
+    for bar in range(BARS):
+        s.put(pipe(mtof(26), rng, 4.5, 0.7), bar * 4, 0.55)
+        s.put(thump(1.2, 52.0, 30.0, 0.3, 0.8, attack=0.004), bar * 4, 0.6)
+    seg = 2 * 4 * 60.0 / BPM + 0.8
+    n = sec(seg)
+    for bar in (0, 2, 4, 6):
+        gl = glide_back(mtof(38), mtof(39), n)
+        s.put(bowed(gl, seg, rng, 0.25), bar * 4, 0.34, pan=-0.3 if bar % 4 else 0.3)
+    out = s.render(ir("cave_st"), wet=0.45)
+    t = np.arange(LOOP_N) / SR
+    sub = np.sin(TAU * loopf(D1) * t) * (0.5 + 0.5 * lfo(4, -np.pi / 2)) ** 2 * 0.22    # fala co dwa takty
+    out = out + np.stack([sub, sub])
+    return tape(d.circ_filter(out, lambda x: d.compress(x, -20.0, 2.5, 15.0, 220.0)), 0.003, 1.2)
+
+
+def stem_boss_2(rng: Rng) -> np.ndarray:
+    """Faza 2: „galop” 3-3-2 ósemkami (rura, rura, blacha) — rytm tylko bossa; pod nim tremolo wiolonczel D2 + A2."""
+    s = Stem()
+    for bar in range(BARS):
+        b0 = bar * 4
+        s.put(pipe(mtof(38), rng, 2.4, 1.0), b0, 0.6, pan=-0.15)
+        s.put(piston(rng, 0.8), b0, 0.6)
+        s.put(pipe(mtof(38), rng, 2.0, 0.8), b0 + 1.5, 0.42, pan=0.15)
+        s.put(piston(rng, 0.8), b0 + 1.5, 0.4)
+        s.put(plate(rng, 130.0, 1.6), b0 + 3.0, 0.5, pan=0.25 if bar % 2 else -0.25)
+    seg = 2 * 4 * 60.0 / BPM + 0.6
+    n = sec(seg)
+    tr = tremolo(n, 0.55)
+    env = d.env_pts(n, [(0, 0.5), (seg * 0.8, 1.0), (seg, 0.6)])
+    for bar in (0, 2, 4, 6):
+        for i, m in enumerate((38, 45)):
+            s.put(bowed(mtof(m), seg, rng, 0.35) * tr * env, bar * 4, 0.15, pan=(-0.35, 0.35)[i])
+    out = s.render(ir("hall_st"), wet=0.25)
+    out = d.saturate(out, 1.25)
+    return tape(d.circ_filter(out, lambda x: d.compress(x, -18.0, 3.0, 8.0, 140.0)), 0.002, 1.2)
+
+
+def stem_boss_3(rng: Rng) -> np.ndarray:
+    """Faza 3: wysoki klaster D5 / E♭5 tremolo, zgrzyt rośnie ku każdej parze taktów, metalowy „zegar” szesnastkami."""
+    s = Stem()
+    seg = 2 * 4 * 60.0 / BPM + 0.6
+    n = sec(seg)
+    tr = tremolo(n, 0.85)
+    for bar in (0, 2, 4, 6):
+        for i, m in enumerate((74, 75)):
+            s.put(bowed(mtof(m), seg, rng, 0.6) * tr, bar * 4, 0.1, pan=(-0.45, 0.45)[i])
+        sc = scrape(sec(7.5), rng, 300.0, 3200.0)
+        s.put(sc * d.env_pts(sec(7.5), [(0, 0), (7.0, 1), (7.5, 0)]), bar * 4, 0.15, pan=0.35 if bar % 4 else -0.35)
+    for st in range(BEATS * 4):
+        acc = 1.0 if st % 4 == 0 else (0.55 if st % 2 == 0 else 0.35)
+        s.put(tick(rng, 4600.0, 6.0, 5.0), st * 0.25, 0.06 * acc, pan=0.3 if st % 2 else -0.3)
+    for bar in (3, 7):
+        s.put(pipe(mtof(51), rng, 3.0, 1.0), bar * 4 + 2.5, 0.35, pan=0.2)          # E♭3 — tarcie z pedałem
+    out = s.render(ir("hall_st"), wet=0.3)
+    return tape(d.circ_filter(out, lambda x: d.compress(x, -18.0, 2.5, 10.0, 160.0)), 0.003, 1.2)
+
+
+RETREAT_N = 2 * LOOP_N                 # odwrót: 60 s (dwie pętle siatki), pierwsza połowa pchnięcie, druga napięcie
+
+
+def stem_retreat(rng: Rng) -> np.ndarray:
+    """Odwrót: ósemki tłumionej rury na D2 (oktawa w dół na „raz”), tremolo wiolonczel rośnie co cztery takty;
+    w drugiej połowie tremolo przechodzi na F / E♭ i dochodzi blacha na 2 i 4 — napęd bez melodii, na tym samym pedale."""
+    bars = RETREAT_N // (SPB * 4)
+    s = Stem(RETREAT_N)
+    for bar in range(bars):
+        b0 = bar * 4
+        s.put(pipe(mtof(26), rng, 3.0, 0.7), b0, 0.5)
+        for e in range(8):
+            g = 0.36 if e % 2 == 0 else 0.22
+            if bar >= bars // 2 and e in (3, 6):
+                g += 0.08                                          # druga połowa: akcent przesunięty, pcha do przodu
+            s.put(pipe(mtof(38 if e % 4 else 50), rng, 0.7, 0.45), b0 + e * 0.5, g, pan=0.2 if e % 2 else -0.2)
+        if bar >= bars // 2:
+            for beat in (1, 3):
+                s.put(plate(rng, 200.0, 1.2), b0 + beat, 0.32, pan=0.3)
+    seg = 4 * 4 * 60.0 / BPM + 0.6
+    n = sec(seg)
+    tr = tremolo(n, 0.6)
+    cresc = d.env_pts(n, [(0, 0.15), (seg - 0.8, 1.0), (seg, 0.4)])
+    for bar in range(0, bars, 4):
+        pair = (38, 45) if bar < bars // 2 else ((41, 46) if bar % 8 == 0 else (39, 45))
+        for i, m in enumerate(pair):
+            s.put(bowed(mtof(m), seg, rng, 0.4) * tr * cresc, bar * 4, 0.16, pan=(-0.35, 0.35)[i])
+    out = s.render(ir("hall_st"), wet=0.22)
+    return tape(d.circ_filter(out, lambda x: d.compress(x, -18.0, 2.5, 10.0, 150.0)), 0.002, 1.2)
+
+
+def hit_moment(rng: Rng) -> np.ndarray:
+    """Uderzenie momentu (boss się budzi, zmiana fazy, start odwrotu): blacha, rura D1, sub i krótki jęk D2 / E♭2."""
+    x = oneshot(4.5)
+    put1(x, plate(rng, 150.0, 3.0, 1.3), 0.0, 0.9)
+    put1(x, pipe(mtof(26), rng, 4.5, 1.0), 0.0, 0.9)
+    put1(x, thump(1.8, 75.0, 28.0, 0.25, 0.8, attack=0.002), 0.0, 1.1)
+    n = sec(3.5)
+    for i, m in enumerate((38, 39)):
+        put1(x, bowed(mtof(m), 3.5, rng, 0.5) * d.env_pts(n, [(0, 1.0), (3.5, 0.0)]) ** 1.5, 0.0, 0.22, pan=(-0.3, 0.3)[i])
+    return d.reverb_stereo(x, ir("hall_st"), wet=0.35, dry=1.0)
+
+
+def cadence_boss(rng: Rng) -> np.ndarray:
+    """Śmierć bossa: ostatnie uderzenie i długa pusta kwinta D2 / A2 / D3 w pogłosie, zgrzyt opada — „po wszystkim”."""
+    x = oneshot(10.0)
+    put1(x, plate(rng, 120.0, 4.5, 1.4), 0.0, 1.0)
+    put1(x, pipe(mtof(26), rng, 7.0, 1.0), 0.0, 1.0)
+    put1(x, thump(2.4, 70.0, 26.0, 0.4, 1.2, attack=0.002), 0.0, 1.2)
+    n = sec(9.0)
+    for i, m in enumerate((38, 45, 50)):
+        put1(x, bowed(mtof(m), 9.0, rng, 0.3) * d.env_pts(n, [(0, 0.0), (0.8, 1.0), (9.0, 0.0)]) ** 1.3, 0.1, 0.2, pan=(-0.4, 0.0, 0.4)[i])
+    sc = scrape(sec(4.0), rng, 2200.0, 180.0)
+    put1(x, sc * d.env_pts(sec(4.0), [(0, 1.0), (4.0, 0.0)]), 0.0, 0.18)
+    return d.reverb_stereo(x, ir("cave_st"), wet=0.45, dry=1.0)
+
 
 def build_stingers() -> None:
     rng = Rng(0x5710)
@@ -374,15 +502,18 @@ def build_music() -> None:
              ("mus_tension", lambda r: stem_tension(r), -26.0), ("mus_tension_b", lambda r: stem_tension(r, True), -26.0),
              ("mus_combat", lambda r: stem_combat(r), -21.0), ("mus_combat_b", lambda r: stem_combat(r, True), -21.0),
              ("mus_chase", lambda r: stem_chase(r), -22.0), ("mus_chase_b", lambda r: stem_chase(r, True), -22.0),
-             ("mus_stalker_far", stem_stalker_far, -31.0), ("mus_stalker_near", stem_stalker_near, -25.0))
+             ("mus_stalker_far", stem_stalker_far, -31.0), ("mus_stalker_near", stem_stalker_near, -25.0),
+             ("mus_boss_1", stem_boss_1, -24.0), ("mus_boss_2", stem_boss_2, -23.0), ("mus_boss_3", stem_boss_3, -24.0),
+             ("mus_retreat", stem_retreat, -21.0))
     for key, fn, target in loops:
         asset(key, "music/" + key, loop=True)
         x = fn(_rng(key))
-        assert x.shape == (2, LOOP_N), (key, x.shape)
+        assert x.shape == (2, RETREAT_N if key == "mus_retreat" else LOOP_N), (key, x.shape)
         finalize(key, x, loop=True, lufs=target)
     # kadencje: przedbieg PRE ciszy musi zostać (runtime startuje je z przesunięciem), więc bez narastania na początku;
     # ogon pogłosu w całości (trim przy −55 dBFS przed normalizacją ucinał go słyszalnie)
-    for key, fn, target in (("mus_combat_end", cadence_combat, -19.0), ("mus_chase_end", cadence_chase, -17.0)):
+    for key, fn, target in (("mus_combat_end", cadence_combat, -19.0), ("mus_chase_end", cadence_chase, -17.0),
+                            ("mus_boss_end", cadence_boss, -16.0), ("mus_hit", hit_moment, -15.0)):
         asset(key, "music/" + key)
         finalize(key, fn(_rng(key)), lufs=target, fade_out_ms=600, fade_in_ms=0.0, trim=False)
     for key, fn, target in (("cue_horde", cue_horde, -16.0), ("cue_elite", cue_elite, -17.0)):

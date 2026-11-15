@@ -223,6 +223,24 @@ var _cad_started := false
 var _stem_fast: Array[bool] = []                  # per stem: wycinany pod kadencją (CADENCE_CUT)
 var _duck_db := 0.0
 var _duck_hold := 0.0
+## Sceny (MUSIC_PLAN.md E4): boss (fazy 1–3 dokładają się do siebie) i odwrót — pętle na siatce stemów ponad warstwami,
+## startują razem ze stemami. Wejście na takcie; zmiana fazy i start odwrotu z uderzeniem na beat; śmierć bossa to kadencja
+## na takcie, pod którą warstwy bossa gasną w CADENCE_CUT, a odwrót wchodzi po SCENE_RETREAT_AFTER_BARS taktach ogona.
+const SCENE_KEYS := ["mus_boss_1", "mus_boss_2", "mus_boss_3", "mus_retreat"]
+const SCENE_BLEND := [2.5, 1.5, 1.5, 3.0]        ## s wejścia warstwy sceny (krzywa `_fade_gain`)
+const SCENE_FADE_OUT := 6.0                      ## s wyciszenia, gdy scena kończy się bez zwycięstwa (restart, gracz odszedł)
+const SCENE_RETREAT_AFTER_BARS := 2              ## takty ogona kadencji śmierci bossa przed wejściem odwrotu
+const SCENE_HIT := "mus_hit"
+const SCENE_BOSS_END := "mus_boss_end"
+var _scene_p: Array[AudioStreamPlayer] = []
+var _scene_x: Array[float] = [0.0, 0.0, 0.0, 0.0]          # postęp przejścia 0..1
+var _scene_target: Array[float] = [0.0, 0.0, 0.0, 0.0]
+var _scene_enter_at: Array[float] = [0.0, 0.0, 0.0, 0.0]   # zegar: od kiedy warstwa sceny wchodzi
+var _scene_cut_at: Array[float] = [-1.0, -1.0, -1.0, -1.0] # zegar: od kiedy gaśnie w CADENCE_CUT (pod kadencją); -1 = zwykłe wyciszenie
+var _scene := ""
+var _scene_phase := 0
+var _hit_p: Array[AudioStreamPlayer] = []                  # uderzenia i kadencja sceny (dwa: faza tuż przed śmiercią)
+var _hits: Array = []                                      # w drodze: {key, land (zegar), grid (s)}
 
 # --- miks / środowisko
 var _deaf := 0.0
@@ -291,6 +309,17 @@ func _ready() -> void:
 		mm.volume_db = -80.0
 		add_child(mm)
 		_motif.append(mm)
+	for _k in SCENE_KEYS:
+		var sp := AudioStreamPlayer.new()
+		sp.bus = BUS_MUSIC
+		sp.volume_db = -80.0
+		add_child(sp)
+		_scene_p.append(sp)
+	for _i in 2:
+		var hp := AudioStreamPlayer.new()
+		hp.bus = BUS_MUSIC
+		add_child(hp)
+		_hit_p.append(hp)
 
 	_bind_effects()
 	_verify_manifest()
@@ -367,6 +396,15 @@ func _shutdown() -> void:
 	for n in _motif:
 		n.stop()
 		n.stream = null
+	for n in _scene_p + _hit_p:
+		n.stop()
+		n.stream = null
+	_scene_x = [0.0, 0.0, 0.0, 0.0]
+	_scene_target = [0.0, 0.0, 0.0, 0.0]
+	_scene_cut_at = [-1.0, -1.0, -1.0, -1.0]
+	_scene = ""
+	_scene_phase = 0
+	_hits.clear()
 	if _cad != null:
 		_cad.stop()
 		_cad.stream = null
@@ -1275,6 +1313,11 @@ func _start_players(keys: Array) -> void:
 		_motif[i].volume_db = -80.0
 		if _motif[i].stream != null:
 			_motif[i].play()
+	for i in _scene_p.size():                            # sceny E4 też: odwrót (60 s) to dwie pętle tej samej siatki
+		_scene_p[i].stream = stream(SCENE_KEYS[i]) if Manifest.PATHS.has(SCENE_KEYS[i]) else null
+		_scene_p[i].volume_db = -80.0
+		if _scene_p[i].stream != null:
+			_scene_p[i].play()
 	AudioServer.unlock()
 
 
@@ -1415,7 +1458,8 @@ func _update_palette(delta: float) -> void:
 	_palette_want = palette_for(String(lvl.get("map_id")))
 	if not _music_started or _palette_want == _palette:
 		return
-	if _stem_gain.any(func(g: float) -> bool: return g > 0.0) or _motif_x.any(func(x: float) -> bool: return x > 0.0):
+	if _stem_gain.any(func(g: float) -> bool: return g > 0.0) or _motif_x.any(func(x: float) -> bool: return x > 0.0) \
+			or _scene_x.any(func(x: float) -> bool: return x > 0.0):
 		return
 	var keys := _palette_keys(_palette_want)
 	if keys.is_empty():
@@ -1446,6 +1490,7 @@ func _update_music(delta: float) -> void:
 			_cad_key = ""
 			_cad_land = -1.0
 	_update_cadence(pos)
+	_update_hits(pos)
 	_update_segments(pos)
 	if _duck_hold > 0.0:
 		_duck_hold -= delta
@@ -1474,6 +1519,91 @@ func _update_music(delta: float) -> void:
 			_motif_x[i] = maxf(tgt, _motif_x[i] - delta / MOTIF_FADE_OUT)
 		var mg := _fade_gain(_motif_x[i]) * duck * life
 		_motif[i].volume_db = -80.0 if mg <= 0.0001 else linear_to_db(mg)
+	for i in _scene_p.size():
+		if _scene_target[i] > 0.5:
+			if _clock >= _scene_enter_at[i]:
+				_scene_x[i] = minf(1.0, _scene_x[i] + delta / float(SCENE_BLEND[i]))
+		elif _scene_cut_at[i] < 0.0:
+			_scene_x[i] = maxf(0.0, _scene_x[i] - delta / SCENE_FADE_OUT)
+		elif _clock >= _scene_cut_at[i]:
+			_scene_x[i] = maxf(0.0, _scene_x[i] - delta / CADENCE_CUT)
+		var sg := _fade_gain(_scene_x[i]) * duck * life
+		_scene_p[i].volume_db = -80.0 if sg <= 0.0001 else linear_to_db(sg)
+
+
+## Scena muzyki lokalnego gracza (E4): "" brak, "boss" (faza 1–3), "retreat" (odwrót). `won`: poprzednia scena skończyła
+## się zwycięstwem (boss padł) — kadencja na takcie zamiast wyciszenia. Wołane co klatkę; działa tylko przy zmianie.
+func music_set_scene(scene: String, phase := 0, won := false) -> void:
+	if not _enabled:
+		return
+	if scene != "boss":
+		phase = 0
+	if scene == _scene and phase == _scene_phase:
+		return
+	if scene != "" and not _music_start():
+		return
+	var prev := _scene
+	var prev_phase := _scene_phase
+	_scene = scene
+	_scene_phase = phase
+	if not _music_started:
+		return
+	var pos := _music_pos()
+	var bar := _bar_len()
+	var next_bar := _clock + _grid_wait(pos, bar, 0.0)
+	var want: Array[float] = [0.0, 0.0, 0.0, 0.0]
+	if scene == "boss":
+		want = [1.0, 1.0 if phase >= 2 else 0.0, 1.0 if phase >= 3 else 0.0, 0.0]
+	elif scene == "retreat":
+		want[3] = 1.0
+	var won_boss := won and prev == "boss" and scene != "boss"
+	var land := -1.0
+	if won_boss:
+		land = _schedule_hit(SCENE_BOSS_END, bar)
+	elif (scene == "boss" and phase > prev_phase) or (scene == "retreat" and prev != "retreat"):
+		_schedule_hit(SCENE_HIT, 60.0 / float(Manifest.MUSIC_BPM))
+	for i in _scene_target.size():
+		if want[i] > 0.5 and _scene_target[i] < 0.5:
+			_scene_enter_at[i] = land + SCENE_RETREAT_AFTER_BARS * bar if won_boss else next_bar
+			_scene_cut_at[i] = -1.0
+		elif want[i] < 0.5 and _scene_target[i] > 0.5:
+			_scene_cut_at[i] = land if won_boss else -1.0
+		_scene_target[i] = want[i]
+
+
+## Czas (s) do następnej kratki siatki `grid` od pozycji `pos`, nie bliżej niż `pre` (przedbieg pliku).
+func _grid_wait(pos: float, grid: float, pre: float) -> float:
+	var w := grid - fmod(pos, grid)
+	if w < pre + 0.03:
+		w += grid
+	return w
+
+
+## Jednorazowy dźwięk sceny z przedbiegiem MUSIC_CADENCE_PRE, trafiający w następną kratkę `grid`. Zwraca zegar trafienia.
+func _schedule_hit(key: String, grid: float) -> float:
+	var pre := float(Manifest.MUSIC_CADENCE_PRE)
+	var land := _clock + _grid_wait(_music_pos(), grid, pre)
+	if Manifest.PATHS.has(key):
+		_hits.append({"key": key, "land": land, "grid": grid})
+	return land
+
+
+## Uderzenia sceny w drodze: start z przedbiegiem jak kadencja (`_update_cadence`), pozycja audio dokładniejsza niż zegar klatek.
+func _update_hits(pos: float) -> void:
+	var pre := float(Manifest.MUSIC_CADENCE_PRE)
+	for h in _hits.duplicate():
+		var est: float = float(h["land"]) - _clock
+		if est > pre:
+			continue
+		var grid: float = h["grid"]
+		var to_g := grid - fmod(pos, grid)
+		var lead := to_g if absf(to_g - est) < 0.2 else maxf(est, 0.0)
+		var p: AudioStreamPlayer = _hit_p[0] if not _hit_p[0].playing or (_hit_p[1].playing and _hit_p[0].get_playback_position() > _hit_p[1].get_playback_position()) else _hit_p[1]
+		p.stream = stream(String(h["key"]))
+		p.volume_db = _health_db
+		if p.stream != null:
+			p.play(clampf(pre - lead, 0.0, pre))
+		_hits.erase(h)
 
 
 ## Motyw Stalkera (E1): docelowa głośność pętli dalekiej i bliskiej, 0..1 na krzywej `_fade_gain` (0,75 ≈ −10 dB).

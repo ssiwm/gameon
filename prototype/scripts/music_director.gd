@@ -21,7 +21,10 @@ const W_AWARE_ELITE := 34.0
 const W_CONTACT := 8.0          ## wróg, który sprawdza ślad albo szuka
 const W_CONTACT_ELITE := 12.0
 const BOSS_RANGE := 900.0
-const W_BOSS := 70.0            ## obudzony boss w zasięgu: zawsze najwyższa warstwa (osobna muzyka bossa to E4)
+const W_BOSS := 70.0            ## obudzony boss w zasięgu (poza sceną bossa; w scenie E4 boss gra własnymi warstwami)
+const BOSS_KEEP := 1400.0       ## px: scena bossa trzyma się, dopóki gracz nie odejdzie dalej (histereza wobec BOSS_RANGE)
+const WON_HOLD := 3.0           ## s: po śmierci bossa odwrót trwa, zanim dojdzie faza misji EXTRACT (synchronizacja co 0,2 s)
+const SCENE_LAYERS := {"boss": Vector2i(1, 2), "retreat": Vector2i(1, 3)}   ## warstwy pod sceną: [od, do] (puls zawsze, pościg nie pod bossem)
 const STALKER_RANGE := 900.0
 const W_STALKER_FAR := 14.0     ## Stalker na łowach gdziekolwiek na mapie
 const W_STALKER_NEAR := 40.0    ## … i tuż obok
@@ -78,6 +81,10 @@ var _wave: Array[float] = []    ## zegary nowych „zauważył” (horda)
 var _clock := 0.0
 var _elite_cd := 0.0
 var _horde_cd := 0.0
+var scene := ""                 ## scena E4: "" / "boss" / "retreat" (AudioDirector.music_set_scene)
+var boss_phase := 0             ## faza bossa w scenie "boss" (1–3), poza nią 0
+var scene_won := false          ## w tej klatce poprzednia scena skończyła się zwycięstwem (boss padł)
+var _won_t := 0.0
 
 
 func _init(seed_value := -1) -> void:
@@ -99,12 +106,63 @@ func update(delta: float, me: Node2D, in_session: bool) -> int:
 	_last_hp = hp
 	_hit_k = maxf(0.0, _hit_k - delta / HIT_DECAY)
 	var threats := gather(me.get_tree())
-	raw_threat = score(me.global_position, threats, NoiseMgr.level, NoiseMgr.stalker_awake, _hit_k)
+	_drive_scene(delta, me)
+	var scored := threats
+	if scene == "boss":
+		scored = threats.filter(func(th: Dictionary) -> bool: return String(th["what"]) != "boss")
+	raw_threat = score(me.global_position, scored, NoiseMgr.level, NoiseMgr.stalker_awake, _hit_k)
 	step(delta, raw_threat)
+	layer = scene_layer(layer, scene)
 	health = 2 if me.get("dead") == true else (1 if hp == 1 else 0)
 	motif(me.global_position, threats, NoiseMgr.stalker_awake)
 	cues(delta, me.global_position, threats)
 	return layer
+
+
+## Scena E4 z drzewa sceny: najbliższy obudzony boss, martwy boss, odwrót z misji.
+func _drive_scene(delta: float, me: Node2D) -> void:
+	var bd := INF
+	var ph := 0
+	var dead := false
+	for e in me.get_tree().get_nodes_in_group("enemies"):
+		if not (e is BossBase) or not is_instance_valid(e):
+			continue
+		if e.state == BossBase.State.DEAD:
+			dead = true
+		elif e.state == BossBase.State.AWAKE:
+			var d: float = me.global_position.distance_to(e.global_position)
+			if d < bd:
+				bd = d
+				ph = int(e.phase)
+	var mis := me.get_tree().get_first_node_in_group("mission")
+	var retreat: bool = mis != null and mis.has_method("music_retreat") and mis.music_retreat()
+	scene_step(delta, bd, ph, dead, retreat)
+
+
+## Wybór sceny z wejść klatki (osobno od drzewa, żeby test mógł podać je wprost): boss w zasięgu (wejście BOSS_RANGE,
+## wyjście BOSS_KEEP) → "boss"; boss, przy którym graliśmy, padł → "retreat" ze zwycięstwem; ekstrakcja → "retreat".
+func scene_step(delta: float, boss_d: float, phase: int, boss_dead: bool, retreat: bool) -> void:
+	scene_won = false
+	_won_t = maxf(0.0, _won_t - delta)
+	var want := ""
+	if boss_d <= (BOSS_KEEP if scene == "boss" else BOSS_RANGE):
+		want = "boss"
+	elif scene == "boss" and boss_dead:
+		want = "retreat"
+		scene_won = true
+		_won_t = WON_HOLD
+	elif retreat or _won_t > 0.0:
+		want = "retreat"
+	scene = want
+	boss_phase = clampi(phase, 1, 3) if want == "boss" else 0
+
+
+## Warstwa pod sceną: boss gra na pulsie i co najwyżej walce (pościg zderzałby się z fazą 3), odwrót nigdy bez pulsu.
+static func scene_layer(l: int, sc: String) -> int:
+	if not SCENE_LAYERS.has(sc):
+		return l
+	var r: Vector2i = SCENE_LAYERS[sc]
+	return clampi(l, r.x, r.y)
 
 
 ## Motyw Stalkera: tylko gdy poluje (D3 — uczciwie). Daleko cichy motyw daleki, bliżej przenika w bliski.
@@ -200,6 +258,10 @@ func reset() -> void:
 	_chase_rest = 0.0
 	_breath_in = 0.0
 	_breath_left = 0.0
+	scene = ""
+	boss_phase = 0
+	scene_won = false
+	_won_t = 0.0
 
 
 ## Oddech: w długiej ciszy na chwilę wchodzi sam dron (warstwa 0); każde zagrożenie go przerywa i liczy ciszę od nowa.
