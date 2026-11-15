@@ -29,7 +29,14 @@ const WEATHER_FX_REDUCED := 1
 const WEATHER_FX_OFF := 2
 const SHAKE_MULT := [1.0, 0.5, 0.0]
 ## Okno i obraz (bez restartu): rozmiar okna w trybie okienkowym, synchronizacja pionowa, limit klatek, jakość efektów.
-const RES_LIST := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440)]
+## Rozmiary okna do wyboru (indeksy zapisane w settings.cfg — nowe tylko na końcu). Menu pokazuje tylko te, które z ramką mieszczą się
+## w obszarze roboczym ekranu (bez paska zadań); zapisany za duży (inny monitor) zmniejsza się do pasującego (`fit_window`).
+const RES_LIST := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3200, 1800), Vector2i(3840, 2160)]
+## Okno przy pierwszym starcie (gracz nie wybrał rozmiaru): 16:9 na taką część obszaru roboczego ekranu. Do 1.7.570 zawsze 1280 × 720 z
+## project.godot — w 4K znaczek na środku ekranu, a na laptopie 1366 × 768 dół okna pod paskiem zadań.
+const WINDOW_AUTO_FILL := 0.8
+## Ramka okna (pasek tytułu, krawędzie), gdy system jej nie poda: [szerokość, wysokość] całości i [lewo, góra] przesunięcia obszaru gry.
+const WINDOW_DECO_FALLBACK := [Vector2i(16, 46), Vector2i(8, 38)]
 const VSYNC_NAMES := ["ON", "OFF", "ADAPTIVE"]
 const VSYNC_MODES := [DisplayServer.VSYNC_ENABLED, DisplayServer.VSYNC_DISABLED, DisplayServer.VSYNC_ADAPTIVE]
 const FPS_LIST := [0, 30, 60, 120, 144, 240]                       ## 0 = bez limitu
@@ -204,11 +211,30 @@ func save_bindings() -> void:
 	_save()
 	bindings_changed.emit()
 
+## Następny rozmiar okna z RES_LIST, który mieści się na bieżącym ekranie (większy od obecnego okna, po największym znów najmniejszy).
 func cycle_res() -> void:
-	res_idx = (res_idx + 1) % RES_LIST.size()
+	var cur := window_size()
+	var sizes := RES_LIST.duplicate()
+	if DisplayServer.get_name() != "headless":
+		var deco := _window_deco()
+		sizes = fitting_sizes(_usable_rect().size, deco[0])
+	var next: Vector2i = sizes[0]
+	for s in sizes:
+		if (s as Vector2i).y > cur.y:
+			next = s
+			break
+	res_idx = maxi(RES_LIST.find(next), 0)           # ekran mniejszy niż 1280 × 720 z ramką: 0, a `fit_window` zmniejsza
 	_res_dirty = true
-	_apply_window()
+	_apply_window(true)
 	_commit()
+
+## Rozmiar okna w trybie okienkowym, jaki pokazuje menu: wybrany przez gracza (dopasowany do ekranu) albo bieżący (pierwszy start).
+func window_size() -> Vector2i:
+	if DisplayServer.get_name() == "headless":
+		return RES_LIST[res_idx]
+	if _res_dirty:
+		return fit_window(RES_LIST[res_idx], _usable_rect().size, _window_deco()[0])
+	return DisplayServer.window_get_size()
 
 func cycle_vsync() -> void:
 	vsync_idx = (vsync_idx + 1) % VSYNC_NAMES.size()
@@ -348,7 +374,7 @@ func _apply_all() -> void:
 	TranslationServer.set_locale(loc)
 	for kind in VOLUME_BUSES:
 		_apply_volume(kind)
-	_apply_window()
+	_apply_window(true)
 
 func _apply_volume(kind: String) -> void:
 	var v: float = volume[kind]
@@ -359,17 +385,85 @@ func _apply_volume(kind: String) -> void:
 		AudioServer.set_bus_mute(i, v <= 0.001)
 		AudioServer.set_bus_volume_db(i, float(_base_db.get(b, 0.0)) + linear_to_db(maxf(v, 0.001)))
 
-func _apply_window() -> void:
+## `place` — ustaw rozmiar i położenie okna (start gry, zmiana rozmiaru w menu). Po wyjściu z pełnego ekranu ([F11], menu) okno
+## ustawiamy od nowa tak samo — wybrany rozmiar albo okno pierwszego startu, zawsze w całości na ekranie.
+func _apply_window(place := false) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	var was_full := DisplayServer.window_get_mode() in [DisplayServer.WINDOW_MODE_FULLSCREEN, DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN]
+	var cli := _window_from_cli()
+	if place and not was_full and not cli:
+		_place_window()
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
-	if not fullscreen and _res_dirty:
-		var sz: Vector2i = RES_LIST[res_idx]
-		DisplayServer.window_set_size(sz)
-		var screen := DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen())
-		DisplayServer.window_set_position(screen.position + (screen.size - sz) / 2)
+	if not fullscreen and was_full and not cli:
+		_place_window()                     # po wyjściu z pełnego ekranu system oddawał przypadkowy prostokąt (pomiar: 1920 × 1080 zamiast okna ze startu)
 	DisplayServer.window_set_vsync_mode(VSYNC_MODES[vsync_idx])
 	Engine.max_fps = FPS_LIST[fps_idx]
+
+## Rozmiar i położenie okna na ekranie, na którym leży: wybrany rozmiar (dopasowany) albo `auto_window_size`, wyśrodkowane w obszarze
+## roboczym tak, żeby pasek tytułu i dół okna nie wychodziły poza ekran ani pod pasek zadań.
+func _place_window() -> void:
+	var usable := _usable_rect()
+	var deco := _window_deco()
+	var sz := fit_window(RES_LIST[res_idx], usable.size, deco[0]) if _res_dirty else auto_window_size(usable.size, deco[0])
+	DisplayServer.window_set_size(sz)
+	DisplayServer.window_set_position(window_pos(sz, usable, deco[0], deco[1]))
+
+func _usable_rect() -> Rect2i:
+	return DisplayServer.screen_get_usable_rect(DisplayServer.window_get_current_screen())
+
+## [rozmiar ramki (całość − obszar gry), przesunięcie obszaru gry względem lewego górnego rogu ramki].
+func _window_deco() -> Array:
+	var full := DisplayServer.window_get_size_with_decorations() - DisplayServer.window_get_size()
+	var tl := DisplayServer.window_get_position() - DisplayServer.window_get_position_with_decorations()
+	if full.x <= 0 or full.y <= 0 or tl.y <= 0 or DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_WINDOWED:
+		return WINDOW_DECO_FALLBACK
+	return [full, tl]
+
+## Rozmiar okna narzucony z zewnątrz: `--resolution`, nagrywanie (Movie Maker), skrypt `-s` / `--script` i narzędzia deweloperskie
+## zrzutów i pomiarów (`--shot*`, `--perf*`) — tam zostaje okno z wiersza poleceń / project.godot, jak dotąd.
+func _window_from_cli() -> bool:
+	if Engine.get_write_movie_path() != "":
+		return true
+	for a in OS.get_cmdline_args():
+		if a == "--resolution" or a == "-s" or a == "--script":
+			return true
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--shot") or a.begins_with("--perf"):
+			return true
+	return false
+
+## Okno pierwszego startu: największe 16:9 (wielokrotność 16 × 9 px), które z ramką zajmuje do WINDOW_AUTO_FILL obszaru roboczego.
+## Z ramką Windows 11: 4K (3840 × 2100 bez paska) → 2912 × 1638, 1920 × 1032 → 1392 × 783, 1366 × 728 → 960 × 540. Nie mniej niż 640 × 360.
+static func auto_window_size(usable: Vector2i, deco: Vector2i) -> Vector2i:
+	var room := Vector2(usable - deco) * WINDOW_AUTO_FILL
+	var k := maxi(40, mini(floori(room.x / 16.0), floori(room.y / 9.0)))
+	return Vector2i(16 * k, 9 * k)
+
+## Rozmiar z listy, zmniejszony z zachowaniem 16:9, gdy z ramką nie mieści się w obszarze roboczym ekranu.
+static func fit_window(sz: Vector2i, usable: Vector2i, deco: Vector2i) -> Vector2i:
+	var room := usable - deco
+	if sz.x <= room.x and sz.y <= room.y:
+		return sz
+	var k := maxi(40, mini(floori(room.x / 16.0), floori(room.y / 9.0)))
+	return Vector2i(16 * k, 9 * k)
+
+## Rozmiary z RES_LIST, które z ramką mieszczą się w obszarze roboczym; gdy żaden, jeden dopasowany (`fit_window` najmniejszego).
+static func fitting_sizes(usable: Vector2i, deco: Vector2i) -> Array:
+	var out := []
+	for s in RES_LIST:
+		if (s as Vector2i).x + deco.x <= usable.x and (s as Vector2i).y + deco.y <= usable.y:
+			out.append(s)
+	if out.is_empty():
+		out.append(fit_window(RES_LIST[0], usable, deco))
+	return out
+
+## Położenie obszaru gry: ramka wyśrodkowana w obszarze roboczym, ale nigdy ponad jego górną ani lewą krawędzią (pasek tytułu na ekranie).
+static func window_pos(sz: Vector2i, usable: Rect2i, deco: Vector2i, deco_tl: Vector2i) -> Vector2i:
+	var outer := sz + deco
+	var pos := usable.position + (usable.size - outer) / 2
+	pos = Vector2i(maxi(pos.x, usable.position.x), maxi(pos.y, usable.position.y))
+	return pos + deco_tl
 
 func _commit() -> void:
 	_save()
