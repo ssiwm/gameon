@@ -376,6 +376,26 @@ func _apply_all() -> void:
 	for kind in VOLUME_BUSES:
 		_apply_volume(kind)
 	_apply_window(true)
+	_redraw_boot_splash()
+
+## Ekran uruchamiania silnik rysuje raz, w oknie z project.godot, zanim `_apply_window` przełączy pełny ekran albo powiększy okno;
+## do pierwszej klatki gry nic go nie odświeża, więc na pełnym ekranie zajmował tylko róg (4K: lewa górna ćwiartka). Po zmianie
+## okna rysujemy go jeszcze raz w nowym rozmiarze, z tymi samymi ustawieniami co silnik (`application/boot_splash/*`).
+func _redraw_boot_splash() -> void:
+	if DisplayServer.get_name() == "headless" or Engine.get_frames_drawn() > 0:
+		return
+	if not ProjectSettings.get_setting("application/boot_splash/show_image", true):
+		return
+	var path := String(ProjectSettings.get_setting("application/boot_splash/image", ""))
+	if path == "" or not ResourceLoader.exists(path):
+		return
+	var tex := load(path) as Texture2D
+	var img := tex.get_image() if tex else null
+	if img == null or img.is_empty():
+		return
+	RenderingServer.set_boot_image_with_stretch(img, ProjectSettings.get_setting("application/boot_splash/bg_color", Color.BLACK),
+			int(ProjectSettings.get_setting("application/boot_splash/stretch_mode", 1)),
+			bool(ProjectSettings.get_setting("application/boot_splash/use_filter", true)))
 
 func _apply_volume(kind: String) -> void:
 	var v: float = volume[kind]
