@@ -22,6 +22,15 @@ const TALUS_SHADE := Vector2(0.38, 0.62)  ## jasność urobku (× odcień materi
 const TALUS_ROCKS := {"gravel": 30, "dirt": 22, "rock": 26, "vein": 26}      ## bryłek na powierzchni osypiska
 const TALUS_ROCK_S := {"gravel": Vector2(0.14, 0.32), "dirt": Vector2(0.2, 0.42), "rock": Vector2(0.28, 0.62), "vein": Vector2(0.28, 0.62)}   ## skala bryły z `fracture_rock` (ok. 0,4 m)
 
+const TALUS_STRAY := [Vector2(0.25, -0.55), Vector2(0.55, 0.45)]   ## (m za brzegiem osypiska, z): dwie większe bryły na podłodze korytarza
+
+## Kilof znaku (E3): czubek obucha wbity w czoło, trzonek w dół i od ściany — jak zostawiony po ostatnim zamachu. Liczone z modelu
+## (`pick_parts`), więc ten sam układ przy innym modelu kilofa.
+const PICK_TIP_H := 1.12                  ## m: czubek obucha nad podłogą (głowica na wysokości piersi, w snopie latarki)
+const PICK_Z := 0.72                      ## m: przed płaszczyzną gry — postać przy czole go nie zasłania
+const PICK_EMBED := 0.08                  ## m: czubek w czole (od powierzchni garbu w tym punkcie)
+const PICK_TILT := 0.6                    ## rad od pionu: trzonek w dół i od ściany
+
 const FRAME_W := 0.2                      ## m: przekrój stojaka i stropnicy (jak stemple strefy, view3d SUPPORT_W)
 const FRAME_POST_Z := 0.35                ## m: oś stojaka przed tylną ścianą (od −DEPTH_BACK)
 const FRAME_CAP_Z := 0.6                  ## m: stropnica do z = +0,6 — przód obudowy jest w przekroju, jak kapa stempli wykopu
@@ -98,6 +107,13 @@ static func talus(z: Node2D, px: float, front: float, back: float, bulge: Callab
 		var p := Vector3(wall + out * (c.x + u * c.y), floor_m + maxf(_profile(u, c.z), 0.0) + sc * 0.12, zz)
 		rocks.append({"t": Transform3D(Basis.from_euler(Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU)).scaled(Vector3.ONE * sc), p),
 			"v": rng.randi() % 3, "c": Color(tint.r * 0.5, tint.g * 0.5, tint.b * 0.5), "w": Color(w.x, w.y, 0.0, 0.0)})
+	for k in TALUS_STRAY.size():                                # bryły, które stoczyły się za brzeg osypiska (E3: zamiast odłamków `rock_b`/`rock_c`)
+		var q: Vector2 = TALUS_STRAY[k]
+		var c: Vector3 = cols[clampi(roundi((q.y - zb) / (ze - zb) * float(nzs)), 0, nzs)]
+		var sc := sz.y * rng.randf_range(1.1, 1.4)
+		var p := Vector3(wall + out * (c.x + c.y + q.x), floor_m + sc * 0.12, q.y)
+		rocks.append({"t": Transform3D(Basis.from_euler(Vector3(rng.randf() * 0.6, rng.randf() * TAU, rng.randf() * 0.6)).scaled(Vector3.ONE * sc), p),
+			"v": rng.randi() % 3, "c": Color(tint.r * 0.5, tint.g * 0.5, tint.b * 0.5), "w": Color(w.x, w.y, 0.0, 0.0), "stray": true})
 	return {"mesh": st.commit(), "rocks": rocks, "mat": key, "h": h0}
 
 ## Wysokość osypiska przy czole na głębokości `zz` (bez szumu): ścieżka przy płaszczyźnie gry, niżej przed nią, zero przy przodzie mapy.
@@ -145,3 +161,44 @@ static func frame(z: Node2D, px: float, back: float, bulge: Callable, lined: Cal
 		{"size": Vector3(FRAME_W * 1.3, FRAME_W, FRAME_CAP_Z - z0), "pos": Vector3(cx, ceil_m - FRAME_W * 0.5, (FRAME_CAP_Z + z0) * 0.5), "rot": Vector3.ZERO},
 		{"size": Vector3(0.22, 0.1, 0.16), "pos": Vector3(x, floor_m + h - 0.05, pz + 0.17), "rot": Vector3(PI, 0.0, 0.0), "wedge": true},
 	]
+
+## Czubek obucha i koniec trzonka kilofa w układzie modelu (m, przed skalą): trzonek wzdłuż +x (głowica na końcu +x), obuch w poprzek
+## (±y). Z AABB siatek: głowica — siatka z „head” w nazwie, czubek na jej górnym końcu; koniec trzonka — najmniejsze x całego modelu.
+## {} bez siatki głowicy.
+static func pick_parts(model: Node3D) -> Dictionary:
+	var head := AABB()
+	var all := AABB()
+	var has_head := false
+	var first := true
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var bb := _rel_xf(model, m) * m.get_aabb()
+		all = bb if first else all.merge(bb)
+		first = false
+		if String(m.name).to_lower().contains("head"):
+			head = bb if not has_head else head.merge(bb)
+			has_head = true
+	if not has_head:
+		return {}
+	return {"tip": Vector3(head.position.x, head.end.y, head.get_center().z), "end": Vector3(all.position.x, head.get_center().y, head.get_center().z),
+		"head": head}
+
+static func _rel_xf(root: Node3D, n: Node3D) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var cur: Node = n
+	while cur != null and cur != root:
+		if cur is Node3D:
+			xf = (cur as Node3D).transform * xf
+		cur = cur.get_parent()
+	return xf
+
+## Przekształcenie kilofa znaku (świat): obrót w płaszczyźnie kadru — obuch (+y modelu) w czoło, lekko w dół, trzonek PICK_TILT od pionu
+## w stronę korytarza; czubek PICK_EMBED w garbie czoła na wysokości PICK_TIP_H. `parts` z `pick_parts`, `k` — skala modelu.
+static func pick_xf(z: Node2D, px: float, bulge: Callable, parts: Dictionary, k: float) -> Transform3D:
+	var e: Dictionary = z.entrance()
+	var out := float(-int(e["dir"]))
+	var b := Basis(Vector3.BACK, PI * 0.5 + PICK_TILT).scaled(Vector3.ONE * k)    # +x modelu: w górę i do ściany; +y: w ścianę i w dół
+	if out < 0.0:
+		b = Basis(Vector3.UP, PI) * b                            # korytarz z lewej: odbicie
+	var tip := Vector3(float(e["wall_x"]) * px + out * (float(bulge.call(PICK_TIP_H, PICK_Z)) - PICK_EMBED), -float(e["floor_y"]) * px + PICK_TIP_H, PICK_Z)
+	return Transform3D(b, tip - b * (parts["tip"] as Vector3))
