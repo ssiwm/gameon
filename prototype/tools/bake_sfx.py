@@ -424,7 +424,163 @@ def build_enemies() -> None:
             x[a0:a0 + m] += a * c[: max(0, min(m, n - a0))]
         thud = d.filt(d.colored(n, r, 1.0), "bp", 160.0, .9) * d.env_pts(n, [(0, 0), (.003, 1), (.04, 0), (n / SR, 0)])
         finalize("moth_crack_%d" % (i + 1), d.mix([(x, 1.0), (thud, .35)], n), lufs=-22.0, fade_out_ms=40)
-    bake_hybrid.enemies()                                   # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
+
+    _build_sleep()
+    bake_hybrid.enemies()                                  # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
+
+
+def _snore(n: int, r: Rng, f_flut: float, vowels, *, voiced: float = .5, breath_f: float = 700.0,
+           sharp: float = 3.0, jitter: float = .08) -> np.ndarray:
+    """Chrapnięcie: trzepot podniebienia (f_flut 18–60 Hz) siekający strumień powietrza — szum pasmowy modulowany
+    ostrymi impulsami + trochę dźwięcznego burczenia na tej samej częstotliwości, przez formanty gardła."""
+    wob = _norm_std(d.lp(d.white(n, r), 4.0))
+    fl = f_flut * (1.0 + jitter * wob)
+    flap = (0.5 + 0.5 * np.sin(TAU * np.cumsum(fl) / SR)) ** sharp
+    air = d.filt(d.colored(n, r, .6), "bp", breath_f, .6) * flap
+    out = np.zeros(n)
+    for v, g in vowels:
+        out += vowel(air, v, bw=8.0) * g
+    if voiced:
+        out += _voice(n, fl, r, vowels, jitter=.06, shimmer=.5, breath=.6) * voiced
+    return out
+
+
+def _puff(n: int, r: Rng, f: float, q: float = .7, slope: float = .7) -> np.ndarray:
+    """Wydech nosem/ustami: miękki szum pasmowy (bez obwiedni — nadaje ją wołający)."""
+    return d.filt(d.colored(n, r, slope), "bp", f, q)
+
+
+def _whisper(n: int, r: Rng, vw: str) -> np.ndarray:
+    """Szept: bezdźwięczna samogłoska (szum przez formanty)."""
+    return vowel(d.hp(d.colored(n, r, .3), 180.0), vw, bw=5.0)
+
+
+def _build_sleep() -> None:
+    """Odgłosy snu (IDLE_PLAN.md I3, C1): ciche, rzadkie, każdy gatunek inaczej — chrapanie Wołka, chrapanie z mlaskaniem
+    Rzeźnika, skomlenie i węszenie śniącego Trzoska, świszczący oddech Ślepca (Podsłuchacz: ta sama rodzina wyżej),
+    szeptana modlitwa Kapłana. Wszystkie ~−22 LUFS — w grze dodatkowo ściszane z odległością (małe koło)."""
+
+    # --- Wołek: głębokie chrapnięcie na wdechu (trzepot ~30 Hz) i wydech przez wargi; wariant 3 — parsknięcie przez sen
+    for i in range(3):
+        r = Rng(0xF400 + i * 2953)
+        n = ms(2700 + 200 * i)
+        x = np.zeros(n)
+        tin = 1.05 + .12 * i
+        m = ms(tin * 1000)
+        sn = _snore(m, r, 30.0 + 3 * i, (("o", 1.0), ("gutt", .9)), voiced=.55, breath_f=520.0)
+        _put(x, sn * d.env_pts(m, [(0, 0), (.25, .35), (tin * .75, 1.0), (tin - .05, .9), (tin, 0)]), .05)
+        k = ms(900)
+        ex = _puff(k, r, 420.0 + 40 * i, .8) * d.env_pts(k, [(0, 0), (.05, 1), (.3, .5), (.9, 0)])
+        lip = _snore(k, r, 18.0, (("u", 1.0),), voiced=0.0, breath_f=300.0, sharp=2.0) * d.env_pts(k, [(0, 0), (.06, .7), (.35, .2), (.9, 0)])
+        _put(x, d.lp(d.mix([(ex, 1.0), (lip, .6)], k), 1400.0), tin + .18, .55)   # wydech ciszej i ciemniej niż chrapnięcie
+        if i == 2:
+            s = ms(260)
+            _put(x, d.filt(d.colored(s, r, .5), "bp", 700.0, 1.1) * d.env_perc(s, .006, .07), tin + 1.25, .9)
+        x = d.lp(x, 4200.0)
+        finalize("wolek_sleep_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15, keep_len=True), lufs=-22.0, fade_out_ms=120)
+
+    # --- Rzeźnik: niskie chrapnięcie, potem mlaskanie przez sen (mokre klaśnięcia warg) i przełknięcie
+    for i in range(3):
+        r = Rng(0xF500 + i * 3491)
+        n = ms(3000 + 150 * i)
+        x = np.zeros(n)
+        tin = .9 + .1 * i
+        m = ms(tin * 1000)
+        sn = _snore(m, r, 40.0 + 4 * i, (("gutt", 1.0), ("a", .5)), voiced=.7, breath_f=650.0, sharp=2.5)
+        _put(x, sn * d.env_pts(m, [(0, 0), (.2, .4), (tin * .7, 1.0), (tin, 0)]), .05)
+        k = ms(700)
+        _put(x, d.lp(_puff(k, r, 520.0, .7), 1500.0) * d.env_pts(k, [(0, 0), (.04, .8), (.25, .3), (.7, 0)]), tin + .12, .6)
+        t = tin + .75
+        for _c in range(3 + i):
+            s = ms(70)
+            smack = d.filt(d.colored(s, r, .4), "bp", vary(r, 1300.0, .2), 1.4) * d.env_perc(s, .0008, .012)
+            pop = d.osc("sine", d.glide(vary(r, 380.0, .15), vary(r, 700.0, .15), s), s) * d.env_perc(s, .002, .015)
+            _put(x, smack + .5 * pop, t, r.uniform(.6, 1.0))
+            t += r.uniform(.16, .26)
+        gulp = thump(.22, 240.0, 120.0, .04, .05)
+        gulp = gulp + .4 * d.lp(burst(len(gulp), r, 900, 200, .03, color=.5), 1500.0)
+        _put(x, gulp, t + .15, .9)
+        finalize("rzeznik_sleep_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15, keep_len=True), lufs=-22.0, fade_out_ms=120)
+
+    # --- Trzosek: śni — ciche skomlenia przez nos (wysokie „u", zamknięta paszcza) i węszenie; wariant 3 — stłumione „buf"
+    for i in range(3):
+        r = Rng(0xF600 + i * 2377)
+        n = ms(2200 + 200 * i)
+        x = np.zeros(n)
+        t = .05
+        for _w in range(2 + (i % 2)):
+            m = ms(r.uniform(150.0, 240.0))
+            T = m / SR
+            f0 = d.env_pts(m, [(0, vary(r, 520.0, .1)), (T * .4, vary(r, 640.0, .1)), (T, vary(r, 470.0, .1))])
+            v = _voice(m, f0, r, (("u", 1.0), ("i", .3)), jitter=.03, shimmer=.3, breath=.5, bw=6.0)
+            _put(x, d.lp(v, 2200.0) * d.env_pts(m, [(0, 0), (T * .2, 1), (T * .7, .7), (T, 0)]), t, r.uniform(.6, 1.0))
+            t += T + r.uniform(.12, .3)
+        t += .25
+        for _s in range(3 + i):
+            s = ms(55)
+            sniff = d.filt(d.colored(s, r, .2), "bp", vary(r, 2600.0, .15), 1.2) * d.env_pts(s, [(0, 0), (.02, 1), (.055, 0)])
+            _put(x, sniff, t, .8)
+            t += r.uniform(.09, .13)
+        if i == 2:
+            m = ms(160)
+            b = _voice(m, d.env_pts(m, [(0, 200), (.16, 150)]), r, (("o", 1.0), ("u", .6)), jitter=.05, shimmer=.4, breath=.4)
+            _put(x, d.lp(b, 900.0) * d.env_perc(m, .008, .05), t + .2, 1.0)
+        else:
+            k = ms(500)
+            _put(x, _puff(k, r, 900.0, .8) * d.env_pts(k, [(0, 0), (.03, .8), (.15, .3), (.5, 0)]), t + .1, .45)
+        finalize("trzosek_sleep_%d" % (i + 1), d.reverb(x, ir("close"), wet=.12, keep_len=True), lufs=-22.0, fade_out_ms=100)
+
+    # --- Ślepiec: świszczący oddech (gwizd w ciasnej krtani na wdechu, rzężenie na wydechu) i rzadkie, leniwe kliknięcia
+    for i in range(3):
+        r = Rng(0xF700 + i * 4073)
+        n = ms(2800 + 150 * i)
+        x = np.zeros(n)
+        t = .05
+        for _b in range(2):
+            tin = .7 + .1 * r.uniform()
+            m = ms(tin * 1000)
+            air = d.filt(d.colored(m, r, .3), "bp", 2200.0, .9)
+            whistle = d.osc("sine", d.env_pts(m, [(0, vary(r, 1650.0, .08)), (tin, vary(r, 1950.0, .08))]), m)
+            whistle = whistle * (1.0 + .09 * _norm_std(d.lp(d.white(m, r), 12.0)))
+            inh = d.mix([(air, 1.0), (whistle, .45)], m) * d.env_pts(m, [(0, 0), (tin * .6, 1), (tin, 0)])
+            _put(x, inh, t)
+            t += tin + .05
+            k = ms(800)
+            rattle = _voice(k, vary(r, 95.0, .1), r, (("e", 1.0), ("i", .4)), jitter=.15, shimmer=.7, breath=.95,
+                            rough_hz=22.0, rough=.8, bw=6.0)
+            _put(x, d.lp(rattle, 3000.0) * d.env_pts(k, [(0, 0), (.06, .8), (.4, .35), (.8, 0)]), t, .7)
+            t += .8 + r.uniform(.05, .2)
+        cl = np.zeros(n)
+        for _c in range(2 + (i % 2)):
+            c = tick(r, vary(r, 2000.0, .1), 3.0, 14, .003) + .5 * tick(r, vary(r, 900.0, .1), 2.0, 14, .004)
+            _put(cl, c, r.uniform(.3, n / SR - .2), r.uniform(.35, .6))
+        finalize("slepiec_sleep_%d" % (i + 1), d.reverb(d.mix([(x, 1.0), (cl, .6)], n), ir("close"), wet=.15, keep_len=True),
+                 lufs=-22.0, fade_out_ms=120)
+
+    # --- Kapłan: szeptana modlitwa przez sen — rytmiczne bezdźwięczne sylaby (spółgłoska szumiąca + samogłoska), wdech między wersami
+    vows = ("a", "o", "e", "u", "i")
+    for i in range(3):
+        r = Rng(0xF800 + i * 3889)
+        n = ms(3200 + 200 * i)
+        x = np.zeros(n)
+        t = .05
+        for _p in range(2):
+            for syl in range(4 + int(r.uniform(0.0, 2.99))):
+                cs = ms(r.uniform(45.0, 80.0))
+                if r.chance(.7):
+                    hiss = d.filt(d.white(cs, r), "bp", r.choice((3200.0, 4800.0, 6200.0)), 1.2) * d.env_pts(cs, [(0, 0), (.015, 1), (cs / SR, .3)])
+                    _put(x, hiss, t, r.uniform(.25, .5))
+                    t += cs / SR * .8
+                m = ms(r.uniform(90.0, 170.0))
+                T = m / SR
+                v = _whisper(m, r, r.choice(vows)) * d.env_pts(m, [(0, 0), (.015, 1), (T * .6, .8), (T, 0)])
+                _put(x, v, t, r.uniform(.7, 1.0) * (1.0 - .08 * syl))
+                t += T + r.uniform(.02, .07)
+            k = ms(550)
+            _put(x, _puff(k, r, 1800.0, .6, .4) * d.env_pts(k, [(0, 0), (.35, .6), (.5, 0)]), t + .15, .25)
+            t += .85
+        x = d.hp(x, 250.0)
+        finalize("kaplan_sleep_%d" % (i + 1), d.reverb(x, ir("room"), wet=.18, keep_len=True), lufs=-22.0, fade_out_ms=150)
 
 
 # ============================================================ ŚWIAT

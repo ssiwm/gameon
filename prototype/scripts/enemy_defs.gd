@@ -32,6 +32,7 @@ extends RefCounted
 ##   alert   s reakcji „zauważył cię" (F3.1b): wróg staje, odwraca się i rozżarza oczy, zanim ruszy do ataku; 0 / brak = bez reakcji
 ##   voice   zdarzenie → [rodzina, liczba wariantów, głośność dB, wysokość]; „attack" gra przy zapowiedzi ciosu, „alert" przy reakcji „zauważył", „death" przy śmierci;
 ##           rodzaj bez wpisu milczy (Ćma). Skoczek mówi głosem Trzoska (niżej), zdemaskowany Mimik głosem Ślepca (wyżej).
+##           „sleep" = odgłos snu (IDLE_PLAN.md I3): co kilka s, tylko z bliska (enemy.gd SLEEP_SOUND_R); Mimik (przebranie), Skoczek i Żerca śpią cicho.
 
 const DEFS := {
 	"trzosek": {
@@ -39,7 +40,7 @@ const DEFS := {
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,
 		"behavior": "pack", "death_fx": {"shake": 1.8, "hitstop": 0.05, "gibs": 6}, "fears": true, "phototaxis": true, "fire_shy": true, "claw_barricade": 4.0,
 		"color": Color(0.62, 0.2, 0.22), "size": Vector2(10, 14), "knock": 70.0, "knock_mult": 1.0, "head": 0.0,
-		"xp": 2, "scrap": 2, "ammo": 0.22, "battery": 0.04, "alert": 0.4, "voice": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "alert": ["trzosek_attack", 3, -12.0, 1.35], "death": ["trzosek_death", 2, -4.0, 1.0]},
+		"xp": 2, "scrap": 2, "ammo": 0.22, "battery": 0.04, "alert": 0.4, "voice": {"attack": ["trzosek_attack", 3, -6.0, 1.0], "alert": ["trzosek_attack", 3, -12.0, 1.35], "death": ["trzosek_death", 2, -4.0, 1.0], "sleep": ["trzosek_sleep", 3, -6.0, 1.0]},
 	},
 	# Ćma (1.7.5, rój od 1.7.442): światłolubna — wisi w gnieździe pod sufitem (`swarm` ćm na znacznik), budzi ją widoczne światło i leci na nie.
 	# Nie gryzie: obsiada latarkę (krótszy, ciemniejszy snop, bateria, trzepot = hałas). Flara i ogień spalają cały rój — enemy_moth.gd.
@@ -81,7 +82,7 @@ const DEFS := {
 		"color": Color(0.8, 0.78, 0.76), "size": Vector2(12, 17), "hurt_h": 27.0, "knock": 40.0, "knock_mult": 0.6, "head": 0.28,
 		"xp": 6, "scrap": 5, "supply": 0.1, "battery": 0.2, "ammo": 0.3, "hear_error": 36.0, "sweep": 70.0, "search": 6.0,
 		"lunge": {"noise": 1.0, "range": 300.0, "wind": 0.3, "mult": 2.4, "time": 1.4, "cd": 6.0},
-		"voice": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "alert": ["slepiec_attack", 2, -9.0, 1.25], "death": ["slepiec_death", 2, -3.0, 1.0]},
+		"voice": {"attack": ["slepiec_attack", 2, -4.0, 1.0], "alert": ["slepiec_attack", 2, -9.0, 1.25], "death": ["slepiec_death", 2, -3.0, 1.0], "sleep": ["slepiec_sleep", 3, -4.0, 1.0]},
 	},
 	# Podsłuchacz (GDD §7.1): stoi nieruchomo i nasłuchuje; zobaczy albo usłyszy — krzyczy i ściąga hordę.
 	"podsluchacz": {
@@ -93,7 +94,7 @@ const DEFS := {
 		# przywołania; pole ochronne: `time` s od krzyku, `reduce` ułamek obrażeń pochłonięty (0,9 = 90%).
 		"scream": {"radius": 420.0, "repeat": 0.6, "max": 3, "calm": 12.0, "blind": 1.3, "wave": 900.0},
 		"shield": {"time": 1.4, "reduce": 0.9},
-		"xp": 4, "scrap": 4, "supply": 0.15, "battery": 0.1, "ammo": 0.15, "voice": {"death": ["slepiec_death", 2, -4.0, 1.35]},
+		"xp": 4, "scrap": 4, "supply": 0.15, "battery": 0.1, "ammo": 0.15, "voice": {"death": ["slepiec_death", 2, -4.0, 1.35], "sleep": ["slepiec_sleep", 3, -6.0, 1.25]},
 	},
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
@@ -103,7 +104,7 @@ const DEFS := {
 		# [EASY, NORMAL, HARD], `windup` s zapowiedzi (× `enemy_windup`), `range` px poziomo, `noise` hałas rzutu
 		"boulder": {"dmg": 0.5, "cd": [8.0, 5.0, 3.2], "windup": 0.6, "range": 220.0, "noise": 2.0},
 		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "hurt_h": 32.0, "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
-		"xp": 12, "scrap": 6, "supply": 0.35, "battery": 0.12, "ammo": 0.6, "health": 0.75, "hear_error": 96.0, "voice": {"attack": ["wolek_attack", 2, -3.0, 1.0], "death": ["wolek_death", 2, -2.0, 1.0]},
+		"xp": 12, "scrap": 6, "supply": 0.35, "battery": 0.12, "ammo": 0.6, "health": 0.75, "hear_error": 96.0, "voice": {"attack": ["wolek_attack", 2, -3.0, 1.0], "death": ["wolek_death", 2, -2.0, 1.0], "sleep": ["wolek_sleep", 3, -3.0, 1.0]},
 	},
 	# Kapłan (GDD §7.2, F4b, ELITE_PLACEMENT_PLAN.md K2): dowódca watahy. Idzie ku graczowi i stoi, leczy Trzoski, z bliska krzyczy falą ogłuszającą, a gdy krzyk jest w przerwie, bije.
 	# `priest`: radius px fali, trigger px (gracz bliżej niż to → zapowiedź), stun s, tele s zapowiedzi, scream_cd s przerwy krzyku, heal_r px zasięgu leczenia, heal_pct maks. HP na tik,
@@ -117,7 +118,7 @@ const DEFS := {
 			# count Trzosków na wezwanie, late od wezwania numer late_from + 1, retry s, gdy nie ma miejsca albo celu, noise hałas
 			"summon": {"first": 6.0, "every": 14.0, "channel": 1.2, "break": 60.0, "break_cd": 6.0, "cap": 4, "count": 2, "late": 3, "late_from": 2, "retry": 3.0, "noise": 6.0}},
 		"color": Color(0.55, 0.5, 0.42), "size": Vector2(12, 32), "hurt_h": 44.0, "knock": 20.0, "knock_mult": 0.05, "head": 0.22,
-		"xp": 40, "scrap": 15, "supply": 0.5, "battery": 0.3, "ammo": 0.5, "health": 1.0, "hear_error": 64.0, "voice": {"attack": ["slepiec_attack", 2, -3.0, 0.8], "scream": ["kaplan_scream", 2, -3.0, 1.0], "death": ["slepiec_death", 2, -2.0, 0.8]},
+		"xp": 40, "scrap": 15, "supply": 0.5, "battery": 0.3, "ammo": 0.5, "health": 1.0, "hear_error": 64.0, "voice": {"attack": ["slepiec_attack", 2, -3.0, 0.8], "scream": ["kaplan_scream", 2, -3.0, 1.0], "death": ["slepiec_death", 2, -2.0, 0.8], "sleep": ["kaplan_sleep", 3, -4.0, 1.0]},
 	},
 	# Rzeźnik (GDD §7.2, F4c): miniboss — ten sam kod co Wołek (zachowanie bruiser) z innymi danymi: cięższa szarża (`charge`: min/max px, windup, time, mult, cd, crash_stun, damage)
 	# przebija zamurowania i deski (`breaks_barricades`; kratka go zatrzymuje), nie rzuca (`throws: false`), nie chwieje się od trafień i ogłuszeń (`stun_resist`), ledwo odrzucany.
@@ -127,7 +128,7 @@ const DEFS := {
 		"behavior": "bruiser", "elite": true, "armor": 4.0, "stun_resist": true, "throws": false, "breaks_barricades": true, "claw_barricade": 30.0, "climbs_out": true, "sheet": "wolek",
 		"charge": {"min": 100.0, "max": 320.0, "windup": 1.0, "time": 1.4, "mult": 3.2, "cd": 9.0, "crash_stun": 1.6, "damage": 2},
 		"color": Color(0.5, 0.35, 0.33), "size": Vector2(26, 36), "hurt_h": 44.0, "knock": 8.0, "knock_mult": 0.05, "head": 0.2,
-		"xp": 40, "scrap": 25, "supply": 0.6, "battery": 0.3, "ammo": 0.7, "health": 1.0, "hear_error": 96.0, "voice": {"attack": ["rzeznik_roar", 2, -2.0, 1.0], "death": ["wolek_death", 2, -1.0, 0.75]},
+		"xp": 40, "scrap": 25, "supply": 0.6, "battery": 0.3, "ammo": 0.7, "health": 1.0, "hear_error": 96.0, "voice": {"attack": ["rzeznik_roar", 2, -2.0, 1.0], "death": ["wolek_death", 2, -1.0, 0.75], "sleep": ["rzeznik_sleep", 3, -3.0, 0.92]},
 	},
 	# Żerca (GDD §7.2, F4d): elita-porywacz, ZAMASKOWANY do porwania (niewidoczny i nietrafialny). Wyczuwa krew — leżących graczy (nie ludzi na nogach) w `devour.sense` px po trasie; skrada się, **porywa** (ujawnia się) i ciąga ze spowolnieniem
 	# (`carry_speed`) do swojego domu. Po `devour.time` s od porwania „zjada": gracz wraca na start misji z wyposażeniem początkowym (nie ginie na stałe, GDD §4).

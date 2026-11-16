@@ -403,6 +403,11 @@ var _asleep_far := false
 var _lod_dt := 0.0
 var _present_dt := 0.0
 var _lod_slot := randi() % ASLEEP_LOD_EVERY
+const SLEEP_SOUND_R := 240.0             ## px (~20 m): odgłos snu (IDLE_PLAN.md C1) słychać tylko z bliska — ściszany do zera na tej granicy
+const SLEEP_SOUND_GAP := Vector2(4.5, 10.0)   ## s między odgłosami snu jednego wroga (losowo, z ziarnem z nazwy — sąsiedzi się rozjeżdżają)
+var _sleep_snd_t := -1.0                 ## s do następnego odgłosu snu (<0: rozlosować przy zaśnięciu)
+var _sleep_rng: RandomNumberGenerator
+static var stat_sleep_sounds := 0       ## licznik zagranych odgłosów snu (enemy_test)
 
 func _physics_process(delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
@@ -1573,6 +1578,37 @@ func _voice(event: String) -> void:
 	if not v.is_empty():
 		Audio.play_variant_at(String(v[0]), int(v[1]), global_position, Audio.BUS_WORLD, float(v[2]), float(v[3]))
 
+## Odgłos snu (IDLE_PLAN.md I3): chrapanie, mlaskanie, skomlenie, świst, szept — po kilka sekund, przestrzennie, tylko w małym promieniu
+## od słuchacza (latarka budzi, więc w ciemności to główny sposób, żeby namierzyć śpiącego). Lokalnie u każdego (bez sieci i bez hałasu
+## w NoiseMgr — śpiący nie budzi sam siebie ani sąsiadów). Rodzaj bez „sleep" w `enemy_defs.gd: voice` śpi cicho.
+func _sleep_sound(delta: float) -> void:
+	if active or not alive or not visible:
+		_sleep_snd_t = -1.0
+		return
+	var v: Array = EnemyDefs.voice(kind, "sleep")
+	if v.is_empty():
+		return
+	if _sleep_rng == null:
+		_sleep_rng = RandomNumberGenerator.new()
+		_sleep_rng.seed = hash(String(name)) ^ 0x51ee9
+	if _sleep_snd_t < 0.0:
+		_sleep_snd_t = _sleep_rng.randf_range(1.0, SLEEP_SOUND_GAP.y)      # pierwszy odgłos rozrzucony, żeby wataha nie chrapała chórem
+	_sleep_snd_t -= delta
+	if _sleep_snd_t > 0.0:
+		return
+	_sleep_snd_t = _sleep_rng.randf_range(SLEEP_SOUND_GAP.x, SLEEP_SOUND_GAP.y)
+	var fade := sleep_fade_db(global_position.distance_to(Audio.listener_pos()))
+	if is_inf(fade):
+		return
+	stat_sleep_sounds += 1
+	Audio.play_variant_at(String(v[0]), int(v[1]), global_position, Audio.BUS_WORLD, float(v[2]) + fade, float(v[3]))
+
+## Dodatkowe ściszenie odgłosu snu z odległości [dB]: 0 tuż przy wrogu, opada do zera na SLEEP_SOUND_R, dalej -INF (nie grać).
+static func sleep_fade_db(dist: float) -> float:
+	if dist >= SLEEP_SOUND_R:
+		return -INF
+	return linear_to_db(maxf(pow(1.0 - dist / SLEEP_SOUND_R, 1.5), 0.001))
+
 func _process(delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	_present_dt += delta
@@ -1583,6 +1619,7 @@ func _process(delta: float) -> void:
 
 func _present_tick(delta: float) -> void:
 	_beh.present(delta)
+	_sleep_sound(delta)
 	if winding != _voiced_winding:
 		_voiced_winding = winding
 		if winding and alive and _ring <= 0.0:                  # krzyk demaskacji / alarmu (_scream_fx) zastępuje zapowiedź
