@@ -78,6 +78,8 @@ CAPTIONS = {
     "podsluchacz_scream": ["[Alarm scream]", 3], "leech_growl": ["[Wet growl]", 3], "leech_shriek": ["[Screech]", 3],
     "zyla_growl": ["[Deep throbbing rumble]", 3], "zyla_roar": ["[Roar]", 3],
     "kaplan_scream": ["[Wailing scream]", 3], "rzeznik_roar": ["[Heavy roar]", 3], "zerca_grab": ["[Rasping screech]", 3], "zerca_warn": ["[Something breathes nearby]", 1], "moth_flutter": ["[Fluttering wings]", 1], "moth_dust": ["[Coughing]", 2], "moth_crack": ["[Wings crackle]", 0],
+    "wolek_sleep": ["[Snoring]", 0], "rzeznik_sleep": ["[Snoring, smacking lips]", 0], "trzosek_sleep": ["[Whimpering in sleep]", 0],
+    "slepiec_sleep": ["[Wheezing breath]", 0], "kaplan_sleep": ["[Whispering]", 0],
     "amb_creak": ["[Creaking]", 1], "amb_thud": ["[Distant thud]", 1], "amb_gust": ["[Wind gust]", 0],
     "step_": ["[Footsteps]", 0], "player_hurt": ["[Cry of pain]", 2], "player_down": ["[Teammate down]", 3],
     "revive": ["[Revived]", 2], "glass_break": ["[Glass breaks]", 2], "alarm_bell": ["[Alarm bell]", 2],

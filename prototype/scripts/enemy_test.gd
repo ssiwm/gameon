@@ -86,7 +86,44 @@ func run(m: Node2D) -> void:
 	await _test_ledge_fall()
 	await _test_reed_cover()
 	await _test_moth_swarm()
+	await _test_sleep_sound()
 	_finish()
+
+# ---------------------------------------------------------------- odgłos snu (IDLE_PLAN.md I3)
+
+## Śpiący gra odgłos snu tylko z bliska słuchacza (ściszany do zera na SLEEP_SOUND_R), obudzony i Mimik (przebranie) milczą,
+## a dwaj sąsiedzi z tej samej watahy nie startują w tej samej chwili (ziarno z nazwy).
+func _test_sleep_sound() -> void:
+	check("odgłos snu: pełna głośność przy wrogu, cisza od SLEEP_SOUND_R",
+			is_zero_approx(Enemy.sleep_fade_db(0.0)) and Enemy.sleep_fade_db(Enemy.SLEEP_SOUND_R * 0.5) < -6.0
+			and is_inf(Enemy.sleep_fade_db(Enemy.SLEEP_SOUND_R)), "połowa %.1f dB" % Enemy.sleep_fade_db(Enemy.SLEEP_SOUND_R * 0.5))
+	var ear := Audio.listener_pos()
+	var near := _spawn("trzosek", ear + Vector2(0.0, -4000.0))
+	var far := _spawn("trzosek", ear + Vector2(Enemy.SLEEP_SOUND_R + 40.0, -4000.0))
+	var mim := _spawn("mimik", ear + Vector2(30.0, -4000.0))
+	await get_tree().physics_frame
+	near.global_position = ear + Vector2(Enemy.SLEEP_SOUND_R * 0.5, 0.0)         # tik odgłosu bez fizyki: tylko odległość od słuchacza
+	mim.global_position = ear + Vector2(-Enemy.SLEEP_SOUND_R * 0.5, 0.0)
+	far.global_position = ear + Vector2(Enemy.SLEEP_SOUND_R + 40.0, 0.0)
+	var n0 := Enemy.stat_sleep_sounds
+	near._sleep_sound(0.0)
+	far._sleep_sound(0.0)
+	var first: Array = [near._sleep_snd_t, far._sleep_snd_t]
+	var first_differs: bool = not is_equal_approx(float(first[0]), float(first[1]))
+	near._sleep_sound(30.0)
+	var n_near := Enemy.stat_sleep_sounds - n0
+	far._sleep_sound(30.0)
+	mim._sleep_sound(30.0)
+	mim._sleep_sound(30.0)
+	var n_rest := Enemy.stat_sleep_sounds - n0 - n_near
+	near.active = true
+	near._sleep_sound(30.0)
+	var n_awake := Enemy.stat_sleep_sounds - n0 - n_near - n_rest
+	check("odgłos snu: śpiący blisko gra, daleki, obudzony i Mimik milczą; sąsiedzi z rozjechanym pierwszym odgłosem",
+			n_near == 1 and n_rest == 0 and n_awake == 0 and first_differs,
+			"blisko %d, daleko+Mimik %d, obudzony %d, pierwsze %.2f / %.2f s" % [n_near, n_rest, n_awake, float(first[0]), float(first[1])])
+	for e in [near, far, mim]:
+		e.queue_free()
 
 # ---------------------------------------------------------------- rój ćm (od 1.7.442)
 
@@ -1740,7 +1777,7 @@ func _test_defs() -> void:
 			problems.append("%s bez wpisu SPEC (model 3D)" % k)
 		if not GOLDEN.has(k):
 			problems.append("%s: brak wzorca w teście" % k)
-		for ev in ["attack", "alert", "death", "scream", "warn"]:
+		for ev in ["attack", "alert", "death", "scream", "warn", "sleep"]:
 			var v: Array = Defs.voice(k, ev)
 			if v.is_empty():
 				continue

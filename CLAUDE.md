@@ -37,7 +37,7 @@ godot --headless --path prototype -- --host --bottest --autoquit=90      # bot z
 godot --headless --path prototype -- --host --mission=z1_b1 --leechtest --autoquit=120   # boss B1: obrażenia, zasadzka, QTE, odpoczynek od brzegu, znacznik plucia, fazy, poziomy trudności, stan bossa w dzienniku, śmierć → ekstrakcja → sukces (~40 s), ma wypisać PASS (0 błędów)
 godot --headless --path prototype -- --host --nobot --mission=z1_m2 --nobottest --autoquit=60   # bez AI towarzysza: brak bota, drezyna solo, kroki na jadącej drezynie, brak bicia serca przy Uwadze, upadek → wykrwawienie, drugi → wipe (~20 s), ma wypisać PASS
 godot --headless --path prototype -- --host --nobot --mission=z1_hub --nobottest --autoquit=30  # bez AI towarzysza w kryjówce: przełącznik hosta dodaje i usuwa bota, ma wypisać PASS
-godot --headless --path prototype -- --host --enemytest --autoquit=150    # wrogowie i hałas (walidacja, zasięgi, zachowania rodzajów, elity, ~50 s lokalnie, ~2 min w CI), ma wypisać PASS
+godot --headless --path prototype -- --host --enemytest --autoquit=150    # wrogowie i hałas (walidacja, zasięgi, zachowania rodzajów, elity, odgłos snu, ~50 s lokalnie, ~2 min w CI), ma wypisać PASS
 godot --headless --path prototype -s tools/test_sound_grid.gd   # droga dźwięku po mapie, ma wypisać PASS
 godot --headless --path prototype -s tools/test_audio_loops.gd  # pętle dźwięku na całej długości, ma wypisać PASS
 godot --headless --path prototype -s tools/test_aim_points.gd   # wylot pocisku: niezależny od animacji i zgodny z lufą modelu, ma wypisać PASS

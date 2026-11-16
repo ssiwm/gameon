@@ -115,6 +115,8 @@ const VOICE := {
 	# głosy gatunków: krzyk alarmu i bossowie jak Stalker; zwykli wrogowie niżej, z odstępem — wataha nie robi ściany dźwięku
 	"podsluchacz_scream": [88, 2, 0], "kaplan_scream": [88, 2, 0], "zerca_grab": [88, 2, 0], "rzeznik_roar": [70, 2, 0], "zerca_warn": [44, 1, 2500], "zyla_": [86, 2, 0], "leech_": [86, 2, 0],
 	"wolek_": [50, 2, 100], "slepiec_": [46, 2, 100], "trzosek_death": [44, 3, 60], "trzosek_attack": [42, 3, 80],
+	# odgłosy snu (IDLE_PLAN.md I3): tło, pierwsze do kradzieży; najwyżej 2 z rodziny i odstęp, żeby śpiąca wataha nie chrapała chórem
+	"wolek_sleep": [22, 2, 700], "rzeznik_sleep": [22, 2, 700], "trzosek_sleep": [22, 2, 700], "slepiec_sleep": [22, 2, 700], "kaplan_sleep": [22, 2, 700],
 }
 const DEFAULT_VOICE := [40, 6, 0]
 

@@ -315,6 +315,18 @@
   "sfx/enemies/kaplan_scream_2",
   0
  ],
+ "kaplan_sleep_1": [
+  "sfx/enemies/kaplan_sleep_1",
+  0
+ ],
+ "kaplan_sleep_2": [
+  "sfx/enemies/kaplan_sleep_2",
+  0
+ ],
+ "kaplan_sleep_3": [
+  "sfx/enemies/kaplan_sleep_3",
+  0
+ ],
  "killmark": [
   "sfx/weapons/killmark",
   0
@@ -771,6 +783,18 @@
   "sfx/enemies/rzeznik_roar_2",
   0
  ],
+ "rzeznik_sleep_1": [
+  "sfx/enemies/rzeznik_sleep_1",
+  0
+ ],
+ "rzeznik_sleep_2": [
+  "sfx/enemies/rzeznik_sleep_2",
+  0
+ ],
+ "rzeznik_sleep_3": [
+  "sfx/enemies/rzeznik_sleep_3",
+  0
+ ],
  "scrap_pickup": [
   "sfx/weapons/scrap_pickup",
   0
@@ -801,6 +825,18 @@
  ],
  "slepiec_death_2": [
   "sfx/enemies/slepiec_death_2",
+  0
+ ],
+ "slepiec_sleep_1": [
+  "sfx/enemies/slepiec_sleep_1",
+  0
+ ],
+ "slepiec_sleep_2": [
+  "sfx/enemies/slepiec_sleep_2",
+  0
+ ],
+ "slepiec_sleep_3": [
+  "sfx/enemies/slepiec_sleep_3",
   0
  ],
  "sokol6_far_1": [
@@ -1067,6 +1103,18 @@
   "sfx/enemies/trzosek_death_2",
   0
  ],
+ "trzosek_sleep_1": [
+  "sfx/enemies/trzosek_sleep_1",
+  0
+ ],
+ "trzosek_sleep_2": [
+  "sfx/enemies/trzosek_sleep_2",
+  0
+ ],
+ "trzosek_sleep_3": [
+  "sfx/enemies/trzosek_sleep_3",
+  0
+ ],
  "ui_click": [
   "sfx/ui/ui_click",
   0
@@ -1157,6 +1205,18 @@
  ],
  "wolek_death_2": [
   "sfx/enemies/wolek_death_2",
+  0
+ ],
+ "wolek_sleep_1": [
+  "sfx/enemies/wolek_sleep_1",
+  0
+ ],
+ "wolek_sleep_2": [
+  "sfx/enemies/wolek_sleep_2",
+  0
+ ],
+ "wolek_sleep_3": [
+  "sfx/enemies/wolek_sleep_3",
   0
  ],
  "wood_break_1": [
