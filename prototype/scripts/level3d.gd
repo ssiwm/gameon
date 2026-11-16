@@ -187,7 +187,10 @@ static func make_pbr(name: String, per_m: float, fallback: Color, rough := 0.95,
 ## Mokry świat (WEATHER_PLAN.md W6): przebieg nakładany na materiały bryły (`make_pbr`, na końcu łańcucha `next_pass`) — ciemniejsze, gładkie
 ## wierzchy pod gołym niebem i kałuże w płaskich miejscach, w których odbija się latarka, flara i lampy (bez własnego światła, GDD §8.3).
 ## Tylko wierzchy pod niebem: normalna w górę i wysokość ≥ wierzch pierwszej bryły w kolumnie (`weather_roof`, `view3d._sync_weather`) —
-## pod dachem, w budynku i pod ziemią sucho. Ściany boczne i sucha pogoda zwijają trójkąt w wierzchołku (bez rasteryzacji).
+## pod dachem, w budynku i pod ziemią sucho. Sucha pogoda zwija całą siatkę w punkt (bez rasteryzacji). W deszczu wierzchołek bez normalnej
+## w górę cofa się o 3 cm w głąb bryły (lico boczne ląduje za własną ścianą i odrzuca je test głębi). Dawniej taki wierzchołek szedł do
+## (0, 0, 0) siatki, ale przy gładkich normalnych (faza krawędzi `building3d._box_mesh`: dwa wierzchołki „w górę”, dwa „w bok”) trójkąt fazy
+## rozciągał się od dachu do rogu mapy — ciemny ukośny pas przez niebo (1.2, dach hali stacji).
 ## `weather_wet` 0..1: narastanie od początku deszczu i schnięcie w przejaśnieniu z zegara pogody (u wszystkich graczy to samo).
 const WET_SHADER := """
 shader_type spatial;
@@ -204,9 +207,12 @@ float vn(vec2 p) {
 }
 void vertex() {
 	v_w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	v_up = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
-	if (weather_wet < 0.01 || v_up < 0.5) {
-		VERTEX = vec3(0.0);
+	vec3 wn = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
+	v_up = normalize(wn).y;
+	if (weather_wet < 0.01) {
+		VERTEX = vec3(0.0);                  // cała siatka naraz: trójkąty zdegenerowane, nic się nie rasteryzuje
+	} else if (v_up < 0.5) {
+		VERTEX -= NORMAL * (0.03 / max(length(wn), 1e-4));     // 3 cm w świecie w głąb bryły, nie do początku układu
 	}
 }
 void fragment() {
