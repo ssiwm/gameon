@@ -34,6 +34,7 @@ const SPEC := {
 	# emisja jak `eye_glow` + ciepłe światło w zapowiedzi). `flare`: ciepła obwódka ciała w ostatniej ćwiartce sekundy zapowiedzi.
 	# `death_floor`: upadek opiera się na najniższym punkcie skóry (przewrót wokół stóp wbijał głowę i rogi w podłogę).
 	"wolek": {"fit": ["height", 32.0], "frame_h": 44.0, "cycle": 0.62, "prof": {"lean": 1.0, "lean_walk": 7.0}, "body_motion": true, "gait": "heavy", "clips": true, "clip_amp": 0.6, "stun": true,
+		"sleep_pose": "knuckle",
 		"idle": {"breath": 3.2, "tics": ["heave", "look"], "rate": [4.0, 9.0]},
 		"eyes": true, "eye_off": [0.33, 0.118, 0.073], "eye_r": 0.028, "eye_lamp": true, "flare": 0.7,
 		"death": {"dir": -1.0, "lean": 12.0, "tilt": 70.0, "dur": 1.2}, "death_floor": true},
@@ -43,9 +44,11 @@ const SPEC := {
 	# `death_blade`: tasak (powierzchnia 1 siatki) wisi z dłoni ostrzem w dół i podpierał zwłoki na sztorc — w przewrocie
 	# dłoń kładzie go płasko na ziemi w kierunku `dir` (układ wroga: +x przód, +z strona kamery).
 	"rzeznik": {"fit": ["height", 44.0], "frame_h": 58.0, "cycle": 0.5, "prof": {"windup": "cleave", "lean": 2.0, "lean_walk": 5.0}, "body_motion": true, "walk_clip": "human", "eye_glow": 0.0, "attack_kind": "cleave", "clips": true, "clip_amp": 0.6, "stun": true,
+		"sleep_pose": "crouch",
 		"idle": {"breath": 3.0, "tics": ["heave", "look", "twitch"], "rate": [4.0, 9.0]},
 		"death": {"dir": -1.0, "lean": 0.0, "tilt": 82.0, "dur": 1.2, "hands": [0.2, 1.0, 0.9], "feet": [-0.10, -0.25], "shift": 0.10, "straighten": 1.0}, "death_floor": true, "death_blade": {"surface": 1, "dir": [1.0, -0.5, 0.5]}},
 	"slepiec": {"fit": ["height", 27.0], "frame_h": 32.0, "cycle": 1.0, "prof": {"hy": 0.50, "hz": 0.35, "windup": "claw"}, "clips": true, "attack_kind": "claw", "walk_clip": "zombie",
+		"sleep_pose": "crouch",
 		"idle": {"breath": 2.2, "tics": ["jerk", "shudder", "twitch", "look"], "rate": [2.5, 7.0]},
 		"death": {"dir": 1.0, "lean": -8.0, "dur": 0.95, "tilt": 86.0}, "death_floor": true},
 	"podsluchacz": {"fit": ["height", 34.0], "frame_h": 40.0, "cycle": 1.0,
@@ -57,6 +60,7 @@ const SPEC := {
 	# Oczy (`eye_lamp`) i obwódka (`flare`): w ciemności sama sylwetka z zapowiedzią ginie, więc gest musi być widoczny także bez latarki (K4).
 	"kaplan": {"fit": ["height", 44.0], "frame_h": 52.0, "cycle": 0.75, "eyes": true, "eye_off": [0.145, 0.0, 0.035], "eye_r": 0.012, "eye_lamp": true, "flare": 0.6,
 		"prof": {"lean": 4.0, "lean_walk": 6.0, "hy": 0.42, "hz": 0.55, "sleep_lean": 14.0, "windup": "point"}, "clips": true, "attack_kind": "scream", "walk_clip": "human",
+		"sleep_pose": "kneel",
 		"idle": {"breath": 2.8, "tics": ["nod", "look"], "rate": [4.0, 10.0]},
 		"death": {"dir": 1.0, "lean": -4.0, "dur": 1.0, "tilt": 88.0}, "death_floor": true},
 	"stalker": {"fit": ["height", 54.0], "frame_h": 60.0, "cycle": 1.1,
@@ -1441,6 +1445,7 @@ static var _no_sit := "--nosit" in OS.get_cmdline_user_args()
 var _run_rate := 1.0                         ## prędkość / prędkość rodzaju (z `pose`): chód albo galop
 var _gallop_w := 0.0
 var _hit_side := 0                           ## naprzemiennie hit_l / hit_r
+var _qlow := 0.0                             ## 0..1: waga drzemki w siadzie (łeb nisko)
 
 func _qhas(clip: String) -> bool:
 	return _ap != null and _ap.has_animation(clip)
@@ -1552,6 +1557,21 @@ func _pose_quad(anim: String, delta: float) -> void:
 					_sk.set_bone_pose_position(bi, keep_p[bi])
 			var k := _qs * _qs * (3.0 - 2.0 * _qs)
 			_mix_quad(_qsamp["sit"], k)
+			# śpiący drzemie z łbem opuszczonym ku łapom (IDLE_PLAN.md I2); co trzeci siedzi z łbem w górze i węszy (tik „look”)
+			var doze := anim == "sleep" and _life != null and _life.pick >= 1.0 / 3.0
+			_qlow = move_toward(_qlow, 1.0 if doze else 0.0, delta * (1.5 if doze else 7.0))
+			if _qlow > 0.001:
+				if not _qsamp.has("sit_low"):
+					var keep_r2 := []
+					var keep_p2 := []
+					for bi in _sk.get_bone_count():
+						keep_r2.append(_sk.get_bone_pose_rotation(bi))
+						keep_p2.append(_sk.get_bone_pose_position(bi))
+					_qsamp["sit_low"] = _build_sit(_qsamp["idle"], true)
+					for bi in keep_r2.size():
+						_sk.set_bone_pose_rotation(bi, keep_r2[bi])
+						_sk.set_bone_pose_position(bi, keep_p2[bi])
+				_mix_quad(_qsamp["sit_low"], k * _qlow * _qlow * (3.0 - 2.0 * _qlow))
 	if not s_air.is_empty():
 		_mix_quad(s_air, _air_w)                  # lot: klip skoku (albo faza „wyciągnięta” chodu) po bazowej pozie idle / bieg
 	if attack_clip:
@@ -1676,7 +1696,8 @@ func _quad_support() -> void:
 ##  - tylne nogi złożone: kolano w przód przy brzuchu, staw skokowy na ziemi pod zadem, śródstopie płasko w przód,
 ##  - szyja i głowa odgięte z powrotem (pysk poziomo, czujnie), ogon położony na ziemi za psem.
 const SIT_ANGLE := 56.0
-func _build_sit(idle: Array) -> Array:
+## `low`: drzemka — szyja i łeb opuszczone ku łapom, przód niżej (przednie łapy bardziej ugięte); sylwetka niższa niż czuwającego.
+func _build_sit(idle: Array, low := false) -> Array:
 	var ri: Array = idle[0]
 	var pi_: Array = idle[1]
 	for bi in ri.size():
@@ -1706,6 +1727,11 @@ func _build_sit(idle: Array) -> Array:
 		var hb := _sk.find_bone(String(spec[0]))
 		if hb >= 0:
 			_rot_world(hb, Vector3.RIGHT, deg_to_rad(SIT_ANGLE) * float(spec[1]))
+	if low:
+		for spec in [["tripo__Spine_4", -26.0], ["tripo__Head_0", -24.0]]:
+			var hb2 := _sk.find_bone(String(spec[0]))
+			if hb2 >= 0:
+				_rot_world(hb2, Vector3.RIGHT, deg_to_rad(float(spec[1])))
 	# ogon: po ziemi do tyłu
 	var tb := _sk.find_bone("bone_31")
 	if tb >= 0:
@@ -1717,7 +1743,7 @@ func _build_sit(idle: Array) -> Array:
 		var e := _sk.find_bone(pre + "_Limb_2")
 		var f := _sk.find_bone(pre + "_Limb_3")
 		var sh := _gp(a).origin
-		var wrist := Vector3(sh.x * 1.05, ground + 0.17, sh.z - 0.09)
+		var wrist := Vector3(sh.x * 1.05, ground + (0.12 if low else 0.17), sh.z - (0.04 if low else 0.09))
 		_two_bone(a, m, e, float(lens[pre][0]), float(lens[pre][1]), wrist, sh + Vector3(0.0, -0.2, 0.6))
 		_point_bone(e, f, _gp(e).origin + Vector3(0.0, -0.12, -0.035))
 	# tylne nogi: złożone pod zadem
@@ -1867,7 +1893,7 @@ func _biped_params(anim: String) -> Dictionary:
 	var sl: float = prof.get("sleep_lean", 27.0)
 	var stride: float = prof.get("stride", 0.22)
 	var p := {"lean": l0, "bob": 0.0, "drop": 0.0, "hk": 0.8,
-		"pelvis_yaw": 0.0, "chest_yaw": 0.0, "shift": 0.0, "sway": 0.0, "roll": 0.0, "wristR": 0.0, "wristL": 0.0,
+		"pelvis_yaw": 0.0, "chest_yaw": 0.0, "shift": 0.0, "sway": 0.0, "roll": 0.0, "wristR": 0.0, "wristL": 0.0, "kpole": Vector3(1.0, 0.1, 0.0), "toe": 0.0,
 		"fR": Vector3.ZERO, "fL": Vector3.ZERO,
 		"hR": Vector3(_x0 + 0.05, hz, hy), "hL": Vector3(_x0 + 0.05, hz, -hy)}
 	match anim:
@@ -1970,6 +1996,8 @@ func _biped_params(anim: String) -> Dictionary:
 			p["fL"] = Vector3(-0.05, 0, 0)
 			p["hR"] = Vector3(_x0 + 0.26, 0.40, 0.50)
 			p["hL"] = Vector3(_x0 + 0.26, 0.40, -0.50)
+			if String(_spec.get("sleep_pose", "stand")) != "stand":
+				_sleep_pose(p, String(_spec["sleep_pose"]), ph)
 	if bool(_spec.get("body_motion", false)) and anim in ["idle", "walk", "run"]:
 		# Postawa wynika z anatomii źródła; stała wysokość dłoni 0.42 m
 		# ciągnęła długie ramiona do podłoża i pogłębiała garb Wołka.
@@ -1989,10 +2017,72 @@ func _biped_params(anim: String) -> Dictionary:
 		_idle_shift(p)
 	return p
 
+## Poza snu według rodzaju (IDLE_PLAN.md I2, warstwa B; SPEC `sleep_pose`): śpiący jest niski — kuca albo klęczy — więc sylwetką
+## różni się od czuwającego, a mieści się w hitboxie stojącego (D1: serwer nic nie zmienia). Ciało zostaje zwrócone tam, gdzie `_facing`.
+## Miary z pozy spoczynkowej modelu (długości nóg, wysokość bioder), więc te same proporcje pasują do każdego rodzaju.
+##   crouch — przysiad, przedramiona na kolanach, dłonie zwisają przed kolanami, kiwa się (Ślepiec, Rzeźnik);
+##   knuckle — przysiad z pięściami na ziemi przed sobą (Wołek);
+##   kneel — klęczy na obu kolanach, dłonie złożone przed piersią, głowa pochylona (Kapłan).
+## Mimik nie ma pozy snu: zamaskowany stoi jak żywy kolega (GDD §7.1, enemy_mimic.gd zamienia mu sen na czuwanie) — gracze nie siadają,
+## więc siedzący „kolega” od razu by się zdradził.
+func _sleep_pose(p: Dictionary, style: String, ph: float) -> void:
+	var hips_rest := _sk.get_bone_global_rest(_b["Hips"]).origin
+	var r_hip := _sk.get_bone_global_rest(_b["RightUpLeg"]).origin
+	var r_foot := _sk.get_bone_global_rest(_b["RightFoot"]).origin
+	var l_foot := _sk.get_bone_global_rest(_b["LeftFoot"]).origin
+	var l1: float = _leg_len["Right"][0]
+	var l2: float = _leg_len["Right"][1]
+	var floor_y := _sleep_floor()
+	var hy := float((_spec.get("prof", {}) as Dictionary).get("hy", 0.62))
+	var rock := sin(_lt() * TAU / 3.6)                   # powolne kiwanie (inny okres niż oddech)
+	var hip_h := 0.0                                     # docelowa wysokość stawu biodrowego nad podłogą
+	var back := 0.0                                      # o tyle (ułamek uda) cała poza cofa się, żeby leżała na środku hitboxa
+	match style:
+		"crouch", "knuckle":
+			hip_h = l2 * (1.0 if style == "crouch" else 0.9)
+			p["lean"] = (48.0 if style == "crouch" else 52.0) + 2.5 * rock + 0.8 * sin(ph)
+			p["hk"] = 0.05
+			p["fR"] = Vector3(r_hip.x + 0.12 * l1 - r_foot.x, 0.0, 0.05 * l1)
+			p["fL"] = Vector3(r_hip.x + 0.04 * l1 - l_foot.x, 0.0, -0.05 * l1)
+			if style == "crouch":
+				p["hR"] = Vector3(r_hip.x + 0.85 * l1, floor_y + 0.72 * l2, 0.16 * l1)
+				p["hL"] = Vector3(r_hip.x + 0.80 * l1, floor_y + 0.67 * l2, -0.16 * l1)
+				back = 0.6
+			else:
+				# nadgarstek nad pięścią: pięść (dłoń zwisa z nadgarstka) opiera się o ziemię
+				p["hR"] = Vector3(r_hip.x + 1.05 * l1, floor_y + 1.1 * l2, maxf(hy, 0.3 * l1))
+				p["hL"] = Vector3(r_hip.x + 0.95 * l1, floor_y + 1.1 * l2, -maxf(hy, 0.3 * l1))
+				back = 0.8
+		"kneel":
+			# klęczy na obu kolanach (uda pionowo, golenie płasko do tyłu): zwarta sylwetka mieści się w wąskim hitboxie Kapłana
+			hip_h = l1 * 0.97 + 0.13 * l2
+			p["lean"] = 10.0 + 0.8 * sin(ph)
+			p["hk"] = -0.6
+			p["kpole"] = Vector3(1.0, -0.3, 0.0)
+			p["fR"] = Vector3(r_hip.x - 0.92 * l2 - r_foot.x, 0.10 * l2, 0.04 * l1)
+			p["fL"] = Vector3(r_hip.x - 0.92 * l2 - l_foot.x, 0.10 * l2, -0.04 * l1)
+			p["toe"] = deg_to_rad(60.0)
+			var chest := floor_y + hip_h + 0.42 * (hips_rest.y - floor_y)
+			p["hR"] = Vector3(r_hip.x + 0.30 * l1, chest, 0.05 * l1)
+			p["hL"] = Vector3(r_hip.x + 0.28 * l1, chest - 0.02 * l1, -0.05 * l1)
+			back = -0.1
+	var dx := Vector3(-back * l1, 0.0, 0.0)
+	p["shift"] = float(p["shift"]) + dx.x
+	for key in ["fR", "fL", "hR", "hL"]:
+		p[key] = (p[key] as Vector3) + dx
+	p["drop"] = r_hip.y - floor_y - hip_h
+	p["bob"] = 0.004 * sin(ph)
+
+## Podłoga pod wrogiem w przestrzeni szkieletu (węzeł wroga stoi na podłodze); poza snu liczy od niej wysokość bioder i dłoni.
+func _sleep_floor() -> float:
+	return (_sk.global_transform.affine_inverse() * global_position).y
+
 ## Przenoszenie ciężaru w spoczynku (IDLE_PLAN.md A3): biodra nad nogą podporową, druga noga odciążona (lekko z przodu, kolano ugięte —
 ## biodro po tej stronie opada), barki przechylają się ku podporze. `IdleLife.shift`: + = ciężar na prawej nodze.
 func _idle_shift(p: Dictionary) -> void:
 	var s: float = _life.shift
+	if _w.get("sleep", 0.0) > 0.5 and String(_spec.get("sleep_pose", "stand")) != "stand":
+		s *= 0.25                                     # kucający / klęczący / siedzący tylko lekko przenosi ciężar
 	var a := absf(s)
 	p["sway"] = float(p["sway"]) + 0.035 * s
 	p["drop"] = float(p["drop"]) + 0.012 * a
@@ -2332,7 +2422,7 @@ func _apply_biped(p: Dictionary) -> void:
 		var target := rest.origin + off
 		target.y += _ground_y(side) - rest.origin.y
 		var fb := rest.basis
-		var pole := Vector3(1.0, 0.1, 0.0)
+		var pole: Vector3 = p.get("kpole", Vector3(1.0, 0.1, 0.0))
 		if _cwalk > 0.0:                                          # stopa i kolano z klipu (odchylenie od spoczynku niesie już wagę klipu)
 			var cf: Transform3D = _cfoot[side]
 			target += cf.origin - rest.origin

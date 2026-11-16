@@ -2834,7 +2834,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 						get_tree().create_timer(0.8).timeout.connect(func() -> void:
 							if is_instance_valid(en):
 								en.hp = en._max_hp * frac)
-					if sp[0] != "ShotT2" or live:
+					if "--shotsleep" in OS.get_cmdline_user_args():      # --shotsleep: wszyscy śpią (pozy snu, IDLE_PLAN.md I2; z --shotlive, inaczej wiszą w powietrzu w pozie lotu); flara i latarka budzą — trzymamy sen co klatkę
+						get_tree().process_frame.connect(func() -> void:
+							if is_instance_valid(en):
+								en.set("active", false))
+					elif sp[0] != "ShotT2" or live:
 						en.call("wake")
 					if "--shotidle" in OS.get_cmdline_user_args():          # --shotidle: wszyscy obudzeni i stoją w miejscu (poza oczekiwania; Trzosek siedzi)
 						en.set("active", true)

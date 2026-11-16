@@ -33,6 +33,7 @@ var tic := ""                        ## bieżący tik ("" = brak)
 var tic_k := 0.0                     ## 0..1 obwiednia tiku × spokój
 var tic_sign := 1.0                  ## kierunek tiku (głowa w lewo / prawo, w dół / w górę)
 var calm := 1.0                      ## 0..1: wygładzony „spokój” (tiki tylko u spokojnego)
+var pick := 0.0                      ## 0..1: stały wybór wariantu pozy egzemplarza (osobny skrót ziarna — nie rusza losowania zegara)
 
 var _rng := RandomNumberGenerator.new()
 var _tics: Array = []
@@ -48,6 +49,9 @@ var _env := 0.0
 
 func _init(seed_value: int, profile: Dictionary = {}) -> void:
 	seed = seed_value
+	var pr := RandomNumberGenerator.new()
+	pr.seed = hash(seed_value) ^ 0x1d1e9a5e
+	pick = pr.randf()
 	_rng.seed = hash(seed_value) ^ 0x5eed1d1e
 	var prof := DEFAULT.duplicate()
 	prof.merge(profile, true)

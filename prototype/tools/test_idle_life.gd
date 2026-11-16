@@ -1,12 +1,15 @@
 extends SceneTree
-## Warstwa spoczynku wrogów (IDLE_PLAN.md I1, idle_life.gd): to samo ziarno daje ten sam przebieg, różne ziarna rozjeżdżają fazę i okres
+## Warstwa spoczynku wrogów (IDLE_PLAN.md I1–I2, idle_life.gd): to samo ziarno daje ten sam przebieg, różne ziarna rozjeżdżają fazę i okres
 ## oddechu, oddech nie zależy od liczby klatek, ciężar zmienia nogę w zadanym rytmie, tiki mają odstępy z profilu i gasną u niespokojnego.
 ## Na modelach dwunożnych: przez 30 s snu i czuwania dłonie zostają poniżej barków (tik nie wygląda jak zapowiedź ciosu), a pozy różnych
-## egzemplarzy się różnią.
+## egzemplarzy się różnią. Pozy snu według rodzaju (I2, SPEC `sleep_pose`): śpiący jest niski (najwyżej 2/3 wysokości strefy trafień),
+## kości mieszczą się w szerokości hitboxa z symulacji (D1), a skóra nie wchodzi w podłogę (kolana, pięści, pośladki).
 ##   godot --headless --path prototype -s tools/test_idle_life.gd
 const IdleLife := preload("res://scripts/idle_life.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const KINDS := ["slepiec", "podsluchacz", "stalker", "wolek", "kaplan", "rzeznik", "mimik"]
+const PX := 1.8 / 22.0
+var EnemyDefs: GDScript                      ## enemy_defs.gd używa autoloadów: ładowany po pierwszej klatce
 
 var _fails := 0
 var _frames := 0
@@ -136,6 +139,7 @@ func _test_tics() -> void:
 func _process(_delta: float) -> bool:
 	_frames += 1
 	if _frames < 3:
+		EnemyDefs = load("res://scripts/enemy_defs.gd")
 		return false
 	if _frames <= 3 + 30 * 60:
 		for m in _models:
@@ -150,6 +154,9 @@ func _process(_delta: float) -> bool:
 			if _frames % 30 == 0:
 				(m[4] as Array).append(sk.get_bone_global_pose(b["Head"]).basis.get_euler())
 		return false
+	for m in _models:
+		if String(m[2]) == "sleep" and int(m[1].get("life_seed")) == 11:
+			_check_sleep(m[1], String(m[0]))
 	var heads := {}
 	for m in _models:
 		_ok(float(m[3]) < 0.0, "%s %s (ziarno %s): dłoń poniżej barku (max %.3f m)" % [m[0], m[2], m[1].get("life_seed"), float(m[3])])
@@ -169,3 +176,71 @@ func _process(_delta: float) -> bool:
 	print("[IDLE-LIFE] %s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	quit(0 if _fails == 0 else 1)
 	return true
+
+## Poza snu po 30 s: wysokość, szerokość względem hitboxa z symulacji i najniższy punkt skóry nad podłogą.
+func _check_sleep(e: Node3D, k: String) -> void:
+	var d: Dictionary = EnemyDefs.DEFS.get(k, {})
+	if not d.has("size"):
+		return                                        # Stalker: osobny skrypt i hitbox (stalker.gd), śpi na stojąco
+	var w := float((d["size"] as Vector2).x) * PX
+	var h := maxf(float(d.get("hurt_h", 0.0)), float((d["size"] as Vector2).y)) * PX
+	var sk: Skeleton3D = e.get("_sk")
+	var inv := e.global_transform.affine_inverse() * sk.global_transform
+	var lo := INF
+	var hi := -INF
+	var top := -INF
+	for i in sk.get_bone_count():
+		var p := inv * sk.get_bone_global_pose(i).origin
+		lo = minf(lo, p.x)
+		hi = maxf(hi, p.x)
+		top = maxf(top, p.y)
+	var lowv: Array = _skin_low(e)
+	var low := float(lowv[0])
+	var styled := String((e.get("SPEC")[k] as Dictionary).get("sleep_pose", "stand")) != "stand"
+	print("[IDLE-LIFE] %s śpi: kości x %.2f…%.2f (hitbox ±%.2f), góra %.2f / %.2f m, skóra najniżej %.3f m (%s)" % [k, lo, hi, w / 2.0, top, h, low, lowv[1]])
+	_ok(lo >= -w / 2.0 - 0.12 and hi <= w / 2.0 + 0.12, "%s śpi: kości x %.2f…%.2f poza hitboxem ±%.2f m" % [k, lo, hi, w / 2.0])
+	_ok(low > -0.04, "%s śpi: skóra %.3f m pod podłogą" % [k, low])
+	if styled:
+		_ok(top <= h * 0.67, "%s śpi: sylwetka niska (góra %.2f m ≤ 2/3 z %.2f m)" % [k, top, h])
+
+## Najniższy punkt skóry nad podłogą (co 5. wierzchołek; skinning liczony jak w audit_enemy_assets.gd).
+func _skin_low(e: Node3D) -> Array:
+	var sk: Skeleton3D = e.get("_sk")
+	var low := INF
+	var at := ""
+	for node in e.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null or mi.skin == null or not mi.visible:
+			continue
+		var xf := sk.global_transform.affine_inverse() * mi.global_transform
+		for surface in mi.mesh.get_surface_count():
+			var arrays := mi.mesh.surface_get_arrays(surface)
+			if arrays[Mesh.ARRAY_BONES] == null:
+				continue
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+			var per := bones.size() / verts.size()
+			for v in range(0, verts.size(), 5):
+				var pt := Vector3.ZERO
+				var main := ""
+				var main_w := 0.0
+				for slot in per:
+					var wt := weights[v * per + slot]
+					if wt <= 0.0:
+						continue
+					var bi := bones[v * per + slot]
+					var bone := mi.skin.get_bind_bone(bi)
+					if bone < 0:
+						bone = sk.find_bone(mi.skin.get_bind_name(bi))
+					if bone < 0:
+						continue
+					pt += sk.get_bone_global_pose(bone) * mi.skin.get_bind_pose(bi) * (xf * verts[v]) * wt
+					if wt > main_w:
+						main_w = wt
+						main = sk.get_bone_name(bone)
+				var y := (sk.global_transform * pt).y - e.global_position.y
+				if y < low:
+					low = y
+					at = "%s/%s" % [mi.name, main]
+	return [low if is_finite(low) else 0.0, at]
