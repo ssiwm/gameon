@@ -9190,8 +9190,9 @@ func _drip_step(e: Dictionary, delta: float) -> void:
 		e["v"] = 0.0
 
 ## Znak strefy wydobycia przy jej wejściu (dig_zone.gd `entrance`, po pytaniu z 2026-11-06 „czy sygnalizujemy możliwość kopania”):
-## kilof wbity w skałę na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień), kupka
-## urobku pod ścianą i dwa odłamki na ziemi — w świetle latarki widać, że ktoś tu kopał.
+## kilof wbity obuchem w czoło na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień;
+## położenie z modelu — dig_entrance3d.gd `pick_xf`, DIG_ENTRANCE_PLAN.md E3), osypisko urobku z bryłami w materiale strefy (E2) i odrzwia
+## na końcu obudowy — w świetle latarki widać, że ktoś tu kopał. Wejście od góry (bez czoła): kilof wbity w grunt i dwa odłamki.
 ## Bez własnego światła: strefy celowo leżą w ciemności, metal kilofa łapie snop jak każda bryła.
 func _build_dig_sign(z: Node2D, zf: float) -> void:
 	var e: Dictionary = z.entrance()
@@ -9210,15 +9211,17 @@ func _build_dig_sign(z: Node2D, zf: float) -> void:
 	var pick_ps := load(DIG_SIGN_PICK) as PackedScene if ResourceLoader.exists(DIG_SIGN_PICK) else null
 	if pick_ps != null:
 		var pick := pick_ps.instantiate() as Node3D
-		if dir != 0:
-			# ostrze w modelu leży na końcu +x: obrót w płaszczyźnie kadru unosi głowicę, odbicie (yaw π) kieruje ją w lewo
+		var pp: Dictionary = DigEntrance3D.pick_parts(pick)
+		if dir != 0 and not pp.is_empty():
+			pick.transform = DigEntrance3D.pick_xf(z, PX, bulge, pp, DIG_SIGN_PICK_K)   # obuch wbity w czoło, trzonek w dół i od ściany (E3)
+		elif dir != 0:
 			pick.transform = Transform3D(Basis(Vector3.UP, PI if dir < 0 else 0.0) * Basis(Vector3.BACK, 0.45).scaled(Vector3.ONE * DIG_SIGN_PICK_K),
-				at + Vector3(-float(dir) * (0.55 + float(bulge.call(1.0, 0.75))), 1.0, 0.75))   # przy przedniej krawędzi skały, w snopie latarki
+				at + Vector3(-float(dir) * (0.55 + float(bulge.call(1.0, 0.75))), 1.0, 0.75))   # model bez siatki głowicy: oparty przy czole
 		else:
 			pick.transform = Transform3D(Basis(Vector3.BACK, -1.15).scaled(Vector3.ONE * DIG_SIGN_PICK_K), at + Vector3(0.0, 0.42, -0.35))   # skała pod stopami: wbity w grunt
 		root.add_child(pick)
 	_build_dig_entrance(root, z, zf, bulge)
-	var parts := [["rock_b", 0.25, 1.1, 0.25, 1.3], ["rock_c", 0.18, 0.8, -0.2, 2.4]]   # kupkę urobku pod ścianą zastąpiło osypisko (E2)
+	var parts: Array = [] if dir != 0 else [["rock_b", 0.25, 1.1, 0.25, 1.3], ["rock_c", 0.18, 0.8, -0.2, 2.4]]   # przy czole: osypisko i bryły w materiale strefy (E2, E3)
 	for q in parts:
 		var ps := _item_scene(String(q[0]))
 		if ps == null:

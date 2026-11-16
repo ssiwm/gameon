@@ -92,6 +92,15 @@ Szkic:
 
 ### E3 — znak: kilof wbity, okruchy na podłodze
 
+**Zrobione w 1.7.591** (`feat/dig-e3-pick`). Kilof: `dig_entrance3d.gd pick_parts` bierze z modelu czubek obucha (górny koniec AABB
+siatki `*head*`) i koniec trzonka, `pick_xf` obraca go w płaszczyźnie kadru — obuch (+y modelu) w czoło i lekko w dół, trzonek
+`PICK_TILT` 0,6 rad od pionu w stronę korytarza — i stawia czubek `PICK_EMBED` 8 cm w garbie czoła (`face_bulge`) na 1,12 m, z = 0,72.
+Inaczej niż w szkicu: obuch, nie ostrze wzdłuż trzonka — w modelu ostrze jest w poprzek trzonka, więc wbity kilof wisi trzonkiem w dół.
+Odłamki `rock_b`/`rock_c` zniknęły z wejścia z boku (osobne modele w obcym materiale); zamiast nich dwie większe bryły urobku za stopą
+osypiska (`TALUS_STRAY`), w materiale strefy. Wejście od góry (bez czoła) bez zmian.
+
+Szkic:
+
 - Położenie kilofa liczone z AABB modelu (`gun_kilof.glb` × `DIG_SIGN_PICK_K`): ostrze 6–10 cm w czole (po E1 — w nierównej
   powierzchni, więc odległość od `wall_x` + przesunięcie `_jag` w tym punkcie), głowica na wysokości 1,0–1,2 m, trzonek w dół
   i od ściany, z = 0,6–0,8 m (w snopie, przed graczem).

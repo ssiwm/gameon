@@ -170,6 +170,14 @@ func _talus(z: Node2D, px: float, front: float, back: float, wall: float, floor_
 		if p.y < floor_m - 0.01 or p.x < wall or p.z > front - 0.05:
 			rk_bad += 1
 	_check("bryłki osypiska na podłodze, przed czołem, nie przy przodzie", (t["rocks"] as Array).size() > 10 and rk_bad == 0)
+	var stray := 0
+	for r: Dictionary in t["rocks"]:
+		if r.get("stray", false):
+			var p: Vector3 = (r["t"] as Transform3D).origin
+			if p.x - wall > 0.5 and absf(p.y - floor_m) < 0.15:   # za stopą osypiska (w tym plastrze), na podłodze
+				stray += 1
+	_check("dwie bryły na podłodze za osypiskiem (> 0,5 m od czoła)", stray == 2)
+	_pick(z, px, wall, floor_m, bulge)
 	_check("bez obudowy korytarza nie ma odrzwi", (DE.frame(z, px, back, bulge, func(_c: int, _r: int) -> bool: return false) as Array).is_empty())
 	var fr: Array = DE.frame(z, px, back, bulge, func(_c: int, _r: int) -> bool: return true)
 	_check("przy obudowie odrzwia: stojak, stropnica, klin", fr.size() == 3)
@@ -189,3 +197,38 @@ func _talus(z: Node2D, px: float, front: float, back: float, wall: float, floor_
 	_check("stojak przy czole, nie w garbie", pp.x - ps.x * 0.5 > wall + reach_post and pp.x - ps.x * 0.5 < wall + reach_post + 0.1)
 	_check("stropnica pod stropem korytarza", absf(cp.y + cs2.y * 0.5 - ceil_m) < 0.01)
 	_check("stropnica od tylnej ściany do przodu obudowy, przed płaszczyzną gry", cp.z - cs2.z * 0.5 < back + 0.2 and cp.z + cs2.z * 0.5 > 0.3)
+
+func _pick(z: Node2D, px: float, wall: float, floor_m: float, bulge: Callable) -> void:
+	var DE: GDScript = load("res://scripts/dig_entrance3d.gd")
+	var V3: GDScript = load("res://scripts/view3d.gd")
+	var ps := load(V3.DIG_SIGN_PICK) as PackedScene
+	_check("model kilofa znaku się wczytuje", ps != null)
+	if ps == null:
+		return
+	var model := ps.instantiate() as Node3D
+	var parts: Dictionary = DE.pick_parts(model)
+	_check("kilof: siatka głowicy, czubek obucha i koniec trzonka", not parts.is_empty())
+	if parts.is_empty():
+		model.free()
+		return
+	var xf: Transform3D = DE.pick_xf(z, px, bulge, parts, float(V3.DIG_SIGN_PICK_K))
+	var tip := xf * (parts["tip"] as Vector3)
+	var head: AABB = parts["head"]
+	var back_tip := xf * Vector3(head.position.x, head.position.y, head.get_center().z)
+	var axis := xf * Vector3((parts["tip"] as Vector3).x, head.get_center().y, head.get_center().z)
+	var end := xf * (parts["end"] as Vector3)
+	var tip_h := tip.y - floor_m
+	var embed := wall + float(bulge.call(tip_h, tip.z)) - tip.x
+	var inside := 0
+	for k in 18:
+		var p := axis.lerp(end, 0.15 + 0.85 * float(k) / 17.0)
+		if p.x - wall <= float(bulge.call(p.y - floor_m, p.z)) + 0.02:
+			inside += 1
+	print("[DIG-FACE] kilof: czubek %.2f m nad podłogą, z %.2f, w czole %.3f m; koniec trzonka %.2f m nad podłogą, %.2f m od czoła; drugi koniec obucha %.2f m od czoła"
+		% [tip_h, tip.z, embed, end.y - floor_m, end.x - wall, back_tip.x - wall])
+	_check("czubek obucha wbity 6–10 cm w garb czoła", embed > 0.06 and embed < 0.1)
+	_check("czubek na wysokości piersi (1,0–1,2 m), przed płaszczyzną gry (z 0,6–0,8)", tip_h > 1.0 and tip_h < 1.2 and tip.z > 0.6 and tip.z < 0.8)
+	_check("trzonek w dół i od ściany, nad podłogą", end.y < axis.y - 0.3 and end.x - wall > 0.3 and end.y - floor_m > 0.15)
+	_check("trzonek poza czołem", inside == 0)
+	_check("drugi koniec obucha poza czołem", back_tip.x - wall > float(bulge.call(back_tip.y - floor_m, back_tip.z)) + 0.05)
+	model.free()
