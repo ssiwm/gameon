@@ -19,6 +19,7 @@ const DamageMask := preload("res://scripts/damage_mask.gd")
 const Lights := preload("res://scripts/lights.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
 const DigGround := preload("res://scripts/dig_ground.gd")
+const DigEntrance3D := preload("res://scripts/dig_entrance3d.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const GaitSpeed := preload("res://scripts/gait_speed.gd")
@@ -9216,7 +9217,8 @@ func _build_dig_sign(z: Node2D, zf: float) -> void:
 		else:
 			pick.transform = Transform3D(Basis(Vector3.BACK, -1.15).scaled(Vector3.ONE * DIG_SIGN_PICK_K), at + Vector3(0.0, 0.42, -0.35))   # skała pod stopami: wbity w grunt
 		root.add_child(pick)
-	var parts := [["rubble", 0.35, 0.6, -0.95, 0.2], ["rock_b", 0.25, 1.1, 0.25, 1.3], ["rock_c", 0.18, 0.8, -0.2, 2.4]]
+	_build_dig_entrance(root, z, zf, bulge)
+	var parts := [["rock_b", 0.25, 1.1, 0.25, 1.3], ["rock_c", 0.18, 0.8, -0.2, 2.4]]   # kupkę urobku pod ścianą zastąpiło osypisko (E2)
 	for q in parts:
 		var ps := _item_scene(String(q[0]))
 		if ps == null:
@@ -9227,6 +9229,64 @@ func _build_dig_sign(z: Node2D, zf: float) -> void:
 		root.add_child(n)
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).layers = LAYER_WORLD
+
+## Osypisko i odrzwia przy wejściu strefy (DIG_ENTRANCE_PLAN.md E2, dig_entrance3d.gd): stożek urobku u stopy czoła w materiale strefy
+## (siatka jak ściany wykopu, bryłki jak urobek z kopania) i — gdzie korytarz ma obudowę (1.2) — rama stojaka ze stropnicą na jej końcu.
+## Tylko obraz, bez kolizji; dzieci znaku strefy (`DigSign`).
+func _build_dig_entrance(root: Node3D, z: Node2D, zf: float, bulge: Callable) -> void:
+	var t: Dictionary = DigEntrance3D.talus(z, PX, zf, -Level3D.DEPTH_BACK, bulge)
+	if not t.is_empty():
+		var mi := MeshInstance3D.new()
+		mi.name = "DigTalus"
+		mi.mesh = t["mesh"]
+		mi.material_override = _dig_mat
+		root.add_child(mi)
+		var rocks := _fracture_meshes("rubble")
+		if not rocks.is_empty():
+			var by_v: Array = [[], [], []]
+			for piece in t["rocks"]:
+				(by_v[int(piece["v"])] as Array).append(piece)
+			for k in 3:
+				var list: Array = by_v[k]
+				if list.is_empty():
+					continue
+				var mm := MultiMesh.new()
+				mm.transform_format = MultiMesh.TRANSFORM_3D
+				mm.use_colors = true
+				mm.use_custom_data = true
+				mm.mesh = rocks[k % rocks.size()]
+				mm.instance_count = list.size()
+				for i in list.size():
+					mm.set_instance_transform(i, list[i]["t"])
+					mm.set_instance_color(i, list[i]["c"])
+					mm.set_instance_custom_data(i, list[i]["w"])
+				var mmi := MultiMeshInstance3D.new()
+				mmi.name = "DigTalusRocks%d" % k
+				mmi.multimesh = mm
+				mmi.material_override = _dig_spoil_mat
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				mmi.layers = LAYER_WORLD
+				root.add_child(mmi)
+	var beams := DigEntrance3D.frame(z, PX, -Level3D.DEPTH_BACK, bulge, func(c: int, r: int) -> bool: return Level3D.back_wall_at(_rows, c, r))
+	if beams.is_empty():
+		return
+	var wood := _prop_mat("plank", 0.9, Color(0.62, 0.5, 0.36))     # to samo drewno co stemple wykopu (`_sync_dig_props`)
+	for bi in beams.size():
+		var b: Dictionary = beams[bi]
+		var bm := MeshInstance3D.new()
+		bm.name = "DigFrame%d" % bi
+		if b.get("wedge", false):
+			var pm := PrismMesh.new()
+			pm.size = b["size"]
+			bm.mesh = pm
+		else:
+			var box := BoxMesh.new()
+			box.size = b["size"]
+			bm.mesh = box
+		bm.material_override = wood
+		bm.position = b["pos"]
+		bm.rotation = b["rot"]
+		root.add_child(bm)
 
 ## Znajdźka odkopana do połowy (kopanie P2b; do 1.7.561 gwiazdka z trzech świecących kwadratów): model przedmiotu tego rodzaju
 ## (pickup.gd `_hd_name`: złom, skrzynka amunicji, zaopatrzenie, bateria; część — zestaw do czyszczenia) wystaje ze ściany wykopu

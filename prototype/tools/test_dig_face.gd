@@ -3,7 +3,9 @@ extends SceneTree
 ## z prawej korytarz (powietrze mapy), wokół skała. Ściana strefy od strony korytarza nie jest płaską płytą: garby tylko w stronę
 ## powietrza (nic nie cofa się za brzeg — bez szczeliny na tło), przód i płaszczyzna gry na brzegu (styk z przodem mapy, postać przy
 ## ścianie), bez ruchu w pionie, materiał strefy (żwir) zamiast gruntu mapy, `face_bulge` zgodny z siatką. Ściany od strony skały mapy
-## się nie zmieniają. Uruchom: godot --headless --path prototype -s tools/test_dig_face.gd — ma wypisać [DIG-FACE] PASS.
+## się nie zmieniają. E2 (`dig_entrance3d.gd`): osypisko u stopy czoła (na podłodze, wierzch przy czole, przydeptana ścieżka przy płaszczyźnie
+## gry, niżej przed nią, zero przy przodzie, normalne w górę, bryłki poza czołem) i odrzwia (tylko przy obudowie; stojak na podłodze przy
+## czole, nie w garbie; stropnica pod stropem korytarza). Uruchom: godot --headless --path prototype -s tools/test_dig_face.gd — ma wypisać [DIG-FACE] PASS.
 
 var DigZone: GDScript                  ## load w _run: dig_zone.gd potrzebuje autoloadów (Scrap)
 const Level3D := preload("res://scripts/level3d.gd")
@@ -101,5 +103,89 @@ func _run() -> void:
 	_check("face_bulge: 0 przy płaszczyźnie gry, garb w głębi (%.2f m)" % fb_max, fb_plane == 0.0 and fb_max > 0.05)
 	var per := ms / maxf(float(arrs.size()), 1.0)
 	_check("siatka fragmentu < 4 ms jak w --digtest (%.2f ms na %d fragm.)" % [per, arrs.size()], per < 4.0)
+	_talus(z, px, front, back, wall, y_bot)
 	print("[DIG-FACE] %s" % ("PASS" if _fails == 0 else "FAIL (%d)" % _fails))
 	z.queue_free()
+
+func _talus(z: Node2D, px: float, front: float, back: float, wall: float, floor_m: float) -> void:
+	var DE: GDScript = load("res://scripts/dig_entrance3d.gd")
+	var e: Dictionary = z.entrance()
+	_check("wejście z boku (korytarz z prawej, dir −1)", not e.is_empty() and int(e["dir"]) == -1)
+	var bulge := func(y_up: float, zz: float) -> float:
+		return float(z.face_bulge(Vector2(float(e["wall_x"]), float(e["floor_y"]) - y_up / px), zz, px, front, back))
+	var t: Dictionary = DE.talus(z, px, front, back, bulge)
+	_check("osypisko zbudowane, materiał strefy (żwir)", not t.is_empty() and String(t.get("mat", "")) == "gravel")
+	if t.is_empty():
+		return
+	var a: Array = (t["mesh"] as ArrayMesh).surface_get_arrays(0)
+	var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var ns: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+	var cs: PackedColorArray = a[Mesh.ARRAY_COLOR]
+	var uv2: PackedVector2Array = a[Mesh.ARRAY_TEX_UV2]
+	var below := 0
+	var path_h := 0.0
+	var back_h := 0.0
+	var front_h := 0.0
+	var reach := 0.0
+	var down := 0
+	var gap := 0
+	var mat_bad := 0
+	var foot := {}
+	for k in vs.size():
+		var v := vs[k]
+		var hy := v.y - floor_m
+		if hy < -DE.TALUS_SINK - 0.001:
+			below += 1
+		if absf(v.z) < 0.3:
+			path_h = maxf(path_h, hy)
+		elif v.z < -0.85:
+			back_h = maxf(back_h, hy)
+		if v.z > front - 0.05:
+			front_h = maxf(front_h, hy)
+		reach = maxf(reach, v.x - wall)
+		if ns[k].y < 0.2:
+			down += 1
+		if cs[k].a < 0.99 or uv2[k].x < 0.99:
+			mat_bad += 1
+		var zk := roundi(v.z * 100.0)
+		if not foot.has(zk) or v.x < (foot[zk] as Vector3).x:
+			foot[zk] = v                                              # wierzchołek przy czole w tym plastrze
+	for v: Vector3 in foot.values():
+		var hy := v.y - floor_m
+		if hy > 0.02 and v.x - wall > minf(float(bulge.call(0.05, v.z)), float(bulge.call(hy, v.z))) + 0.001:
+			gap += 1                                                  # wierzch osypiska przed czołem — szczelina między nimi
+	print("[DIG-FACE] osypisko: %d wierzchołków, ścieżka %.2f m, z tyłu %.2f m, przy przodzie %.3f m, zasięg %.2f m, bryłek %d"
+		% [vs.size(), path_h, back_h, front_h, reach, (t["rocks"] as Array).size()])
+	_check("osypisko na podłodze (nic pod nią poza brzegiem)", below == 0)
+	_check("osypisko przy czole bez szczeliny (wierzch w garbie)", gap == 0)
+	_check("ścieżka przy płaszczyźnie gry przydeptana (< 0,1 m)", path_h < 0.1)
+	_check("osypisko z tyłu ma wysokość stożka żwiru (> 0,35 m)", back_h > 0.35)
+	_check("przy przodzie mapy schodzi do zera", front_h < 0.03)
+	_check("zasięg od czoła 0,4–1,3 m", reach > 0.4 and reach < 1.3)
+	_check("normalne osypiska w górę", down == 0)
+	_check("osypisko w materiale strefy (alfa 1, żwir)", mat_bad == 0)
+	var rk_bad := 0
+	for r: Dictionary in t["rocks"]:
+		var p: Vector3 = (r["t"] as Transform3D).origin
+		if p.y < floor_m - 0.01 or p.x < wall or p.z > front - 0.05:
+			rk_bad += 1
+	_check("bryłki osypiska na podłodze, przed czołem, nie przy przodzie", (t["rocks"] as Array).size() > 10 and rk_bad == 0)
+	_check("bez obudowy korytarza nie ma odrzwi", (DE.frame(z, px, back, bulge, func(_c: int, _r: int) -> bool: return false) as Array).is_empty())
+	var fr: Array = DE.frame(z, px, back, bulge, func(_c: int, _r: int) -> bool: return true)
+	_check("przy obudowie odrzwia: stojak, stropnica, klin", fr.size() == 3)
+	if fr.size() < 3:
+		return
+	var post: Dictionary = fr[0]
+	var cap: Dictionary = fr[1]
+	var ps: Vector3 = post["size"]
+	var pp: Vector3 = post["pos"]
+	var reach_post := 0.0
+	for k in 11:
+		reach_post = maxf(reach_post, float(bulge.call(ps.y * float(k) / 10.0, pp.z)))
+	var ceil_m := -float(R0 * 16) * px
+	var cs2: Vector3 = cap["size"]
+	var cp: Vector3 = cap["pos"]
+	_check("stojak na podłodze", absf(pp.y - ps.y * 0.5 - floor_m) < 0.01)
+	_check("stojak przy czole, nie w garbie", pp.x - ps.x * 0.5 > wall + reach_post and pp.x - ps.x * 0.5 < wall + reach_post + 0.1)
+	_check("stropnica pod stropem korytarza", absf(cp.y + cs2.y * 0.5 - ceil_m) < 0.01)
+	_check("stropnica od tylnej ściany do przodu obudowy, przed płaszczyzną gry", cp.z - cs2.z * 0.5 < back + 0.2 and cp.z + cs2.z * 0.5 > 0.3)
