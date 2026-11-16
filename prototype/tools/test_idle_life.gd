@@ -14,6 +14,8 @@ var EnemyDefs: GDScript                      ## enemy_defs.gd używa autoloadów
 var _fails := 0
 var _frames := 0
 var _models: Array = []                      ## [rodzaj, Enemy3D, animacja, max (dłoń − bark) w m, ślad pozy głowy]
+var _heed: Array = []                        ## [rodzaj, nasłuchujący, kontrolny] — I4: ten sam sen, jeden „prawie usłyszał” hałas zza pleców
+const HEED_KINDS := ["wolek", "kaplan", "slepiec", "rzeznik", "trzosek", "mimik"]
 
 func _ok(cond: bool, msg: String) -> void:
 	if not cond:
@@ -37,6 +39,18 @@ func _initialize() -> void:
 					e.free()
 					continue
 				_models.append([k, e, anim, -INF, []])
+	for k in HEED_KINDS:
+		var pair := [k]
+		for i in 2:
+			var e: Node3D = Enemy3D.new()
+			root.add_child(e)
+			e.set("life_seed", 11)
+			if not e.setup(k):
+				_ok(false, "setup %s" % k)
+			if i == 0:
+				e.set("heed", Vector3(-150.0, -20.0, 1.0))      # za plecami (patrzy w prawo), trochę wyżej
+			pair.append(e)
+		_heed.append(pair)
 
 func _trace(seed_value: int, dt: float, secs: float) -> Array:
 	var l := IdleLife.new(seed_value, {"tics": ["jerk", "look"], "rate": [2.0, 5.0]})
@@ -142,6 +156,10 @@ func _process(_delta: float) -> bool:
 		EnemyDefs = load("res://scripts/enemy_defs.gd")
 		return false
 	if _frames <= 3 + 30 * 60:
+		if _frames <= 3 + 120:
+			for h in _heed:
+				for i in [1, 2]:
+					(h[i] as Node3D).call("pose", 1.0 / 60.0, "sleep", false, Color.WHITE)
 		for m in _models:
 			var e: Node3D = m[1]
 			e.call("pose", 1.0 / 60.0, String(m[2]), false, Color.WHITE)
@@ -157,6 +175,8 @@ func _process(_delta: float) -> bool:
 	for m in _models:
 		if String(m[2]) == "sleep" and int(m[1].get("life_seed")) == 11:
 			_check_sleep(m[1], String(m[0]))
+	for h in _heed:
+		_check_heed(String(h[0]), h[1], h[2])
 	var heads := {}
 	for m in _models:
 		_ok(float(m[3]) < 0.0, "%s %s (ziarno %s): dłoń poniżej barku (max %.3f m)" % [m[0], m[2], m[1].get("life_seed"), float(m[3])])
@@ -202,6 +222,32 @@ func _check_sleep(e: Node3D, k: String) -> void:
 	_ok(low > -0.04, "%s śpi: skóra %.3f m pod podłogą" % [k, low])
 	if styled:
 		_ok(top <= h * 0.67, "%s śpi: sylwetka niska (góra %.2f m ≤ 2/3 z %.2f m)" % [k, top, h])
+
+## Nasłuch (IDLE_PLAN.md A5, I4): po 2 s snu z hałasem zza pleców głowa jest obrócona o ≥ 30° względem kontrolnego egzemplarza (to samo
+## ziarno), twarzą ku kamerze (+Z), a biodra/korzeń stoją jak u kontrolnego (ciało się nie obraca). Mimik (przebranie) — bez zmian.
+func _check_heed(k: String, a: Node3D, b: Node3D) -> void:
+	var sk_a: Skeleton3D = a.get("_sk")
+	var sk_b: Skeleton3D = b.get("_sk")
+	var bones: Array = a.get("_heed_bones")
+	var bd: Dictionary = a.get("_b")
+	var head: int = int(bones[1]) if bones.size() == 2 else int(bd.get("Head", -1))
+	var hips: int = int(bd.get("Hips", 0))
+	if head < 0:
+		_ok(false, "%s: nasłuch bez kości głowy" % k)
+		return
+	var ha := sk_a.get_bone_global_pose(head).basis.orthonormalized()
+	var hb := sk_b.get_bone_global_pose(head).basis.orthonormalized()
+	var ang := rad_to_deg(ha.get_rotation_quaternion().angle_to(hb.get_rotation_quaternion()))
+	var r := ha * hb.inverse()
+	var fwd := (sk_a.global_transform.basis * (r * (sk_a.global_transform.basis.inverse() * Vector3.RIGHT))).normalized()
+	var hip := rad_to_deg(sk_a.get_bone_global_pose(hips).basis.orthonormalized().get_rotation_quaternion().angle_to(
+			sk_b.get_bone_global_pose(hips).basis.orthonormalized().get_rotation_quaternion()))
+	print("[IDLE-LIFE] %s nasłuch: głowa %.1f° od kontrolnego, przód głowy z = %.2f, biodra %.2f°" % [k, ang, fwd.z, hip])
+	if k == "mimik":
+		_ok(ang < 0.5, "mimik: nasłuch zdradza przebranie (głowa %.1f°)" % ang)
+		return
+	_ok(ang >= 30.0 and fwd.z > 0.3, "%s: hałas zza pleców obraca głowę o ≥ 30° ku kamerze (%.1f°, z %.2f)" % [k, ang, fwd.z])
+	_ok(hip < 0.5, "%s: nasłuch obraca ciało (biodra %.2f°)" % [k, hip])
 
 ## Najniższy punkt skóry nad podłogą (co 5. wierzchołek; skinning liczony jak w audit_enemy_assets.gd).
 func _skin_low(e: Node3D) -> Array:

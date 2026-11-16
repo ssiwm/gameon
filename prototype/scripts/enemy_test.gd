@@ -87,7 +87,49 @@ func run(m: Node2D) -> void:
 	await _test_reed_cover()
 	await _test_moth_swarm()
 	await _test_sleep_sound()
+	await _test_heed()
 	_finish()
+
+# ---------------------------------------------------------------- nasłuch (IDLE_PLAN.md A5, I4)
+
+## Hałas poniżej progu (bieg 0,25) blisko śpiącego: nasłuch w stronę źródła (`view_info["heed"]`), bez przebudzenia, śladu i obrotu ciała;
+## ten sam hałas dalej niż zasięg nasłuchu — nic; głośny w zasięgu słyszenia — budzi jak dotąd (nasłuch go nie zastępuje). Po HEED_HOLD głowa wraca.
+func _test_heed() -> void:
+	var base := Vector2(FAR_X + 16000.0, -6500.0)
+	var e := _spawn("trzosek", base)
+	e.set_physics_process(false)
+	var face0: float = e._facing
+	var hear: float = float(e._def["hear"]) * Difficulty.m("enemy_hear")
+	var n0 := Enemy.stat_heeds
+	NoiseMgr.last_noise_pos = base + Vector2(-0.3 * hear, -10.0)
+	NoiseMgr.last_noise_amount = NoiseMgr.N_RUN_PER_SEC * 0.5
+	NoiseMgr.noise_serial += 1
+	e._check_wake()
+	var h: Vector3 = e.view_info()["heed"]
+	check("nasłuch: cichy bieg obok śpiącego obraca mu głowę w stronę źródła, nie budzi, nie daje śladu ani obrotu ciała",
+			not e.active and not e._has_lead and e._facing == face0 and h.z > 0.5 and h.x < 0.0 and Enemy.stat_heeds == n0 + 1,
+			"aktywny=%s ślad=%s facing %.0f→%.0f heed %s" % [e.active, e._has_lead, face0, e._facing, h])
+	e._present_tick(Enemy.HEED_HOLD + 0.1)
+	check("nasłuch: po HEED_HOLD głowa wraca", (e.view_info()["heed"] as Vector3).z < 0.5)
+	NoiseMgr.last_noise_pos = base + Vector2(Enemy.HEED_MULT * hear, 0.0)
+	NoiseMgr.noise_serial += 1
+	e._check_wake()
+	check("nasłuch: cichy hałas dalej niż zasięg nasłuchu — nic", (e.view_info()["heed"] as Vector3).z < 0.5 and Enemy.stat_heeds == n0 + 1 and not e.active)
+	NoiseMgr.last_noise_pos = base + Vector2(0.4 * hear, 0.0)        # bez drogi dźwięku (pusty obszar testu): stłumiony ×SOUND_MUFFLE — za zasięgiem przebudzenia
+	NoiseMgr.last_noise_amount = 3.0
+	NoiseMgr.noise_serial += 1
+	e._check_wake()
+	h = e.view_info()["heed"]
+	check("nasłuch: głośny, ale stłumiony hałas (za zasięgiem przebudzenia, w zasięgu nasłuchu) obraca głowę, nie budzi",
+			not e.active and h.z > 0.5 and h.x > 0.0, "aktywny=%s heed %s" % [e.active, h])
+	NoiseMgr.last_noise_pos = base + Vector2(16.0, 0.0)
+	NoiseMgr.noise_serial += 1
+	e._check_wake()
+	check("nasłuch: głośny hałas w zasięgu słyszenia budzi jak dotąd", e.active)
+	e._present_tick(0.016)
+	check("nasłuch: obudzony nie nasłuchuje", (e.view_info()["heed"] as Vector3).z < 0.5)
+	e.queue_free()
+	await get_tree().physics_frame
 
 # ---------------------------------------------------------------- odgłos snu (IDLE_PLAN.md I3)
 

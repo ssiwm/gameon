@@ -408,6 +408,13 @@ const SLEEP_SOUND_GAP := Vector2(4.5, 10.0)   ## s między odgłosami snu jedneg
 var _sleep_snd_t := -1.0                 ## s do następnego odgłosu snu (<0: rozlosować przy zaśnięciu)
 var _sleep_rng: RandomNumberGenerator
 static var stat_sleep_sounds := 0       ## licznik zagranych odgłosów snu (enemy_test)
+const HEED_MULT := 1.6                   ## IDLE_PLAN.md A5: śpiący obraca głowę za hałasem za słabym albo za dalekim, żeby obudzić — do tylu × zasięgu słyszenia
+const HEED_HOLD := 2.0                   ## s patrzenia w stronę hałasu (potem głowa wraca)
+const HEED_RPC_GAP_MS := 350             ## serwer: najczęstsze powiadomienie klientów o tym samym wrogu (bieg gracza to hałas co 0,5 s)
+var _heed_pos := Vector2.ZERO            ## ostatni „prawie usłyszany" hałas (świat, px)
+var _heed_t := 0.0                       ## s do końca patrzenia w jego stronę (widok: `view_info["heed"]`)
+var _heed_sent_ms := -100000
+static var stat_heeds := 0               ## licznik nasłuchów (enemy_test)
 
 func _physics_process(delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
@@ -1155,6 +1162,33 @@ func _apply_gravity(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, MAX_FALL)
 
+## Nasłuch (IDLE_PLAN.md A5, I4): hałas za słaby albo za daleki, żeby obudzić, obraca śpiącemu głowę w stronę źródła — sygnał
+## „prawie mnie usłyszał". Sam widok: nie budzi, nie daje śladu (`_lead_at`) i nie zmienia stanu. Zasięg do HEED_MULT × słyszenia rodzaju,
+## dla hałasu poniżej progu (bieg 0,25) proporcjonalnie mniejszy. `heard` = odległość drogą dźwięku, gdy już policzona (−1: w linii prostej).
+func _maybe_heed(pos: Vector2, amount: float, heard: float) -> void:
+	if amount <= 0.0:
+		return
+	var lim := float(_def.get("hear", 0.0)) * Difficulty.m("enemy_hear") * HEED_MULT 			* clampf(amount / float(_def.get("min_noise", MIN_WAKE_NOISE)), 0.3, 1.0)
+	var dist := heard if heard >= 0.0 else global_position.distance_to(pos)
+	if lim <= 0.0 or dist > lim:
+		return
+	stat_heeds += 1
+	if not NoiseMgr.has_network():
+		_heed_fx(pos)
+		return
+	var now := Time.get_ticks_msec()
+	if now - _heed_sent_ms < HEED_RPC_GAP_MS:
+		_heed_pos = pos                          # serwer patrzy od razu; klienci dostaną przy następnym powiadomieniu
+		_heed_t = HEED_HOLD
+		return
+	_heed_sent_ms = now
+	_heed_fx.rpc(pos)
+
+@rpc("authority", "call_local", "unreliable")
+func _heed_fx(pos: Vector2) -> void:
+	_heed_pos = pos
+	_heed_t = HEED_HOLD
+
 ## Budzi się od NOWEGO głośnego zdarzenia w promieniu słyszenia
 ## albo gdy gracz stoi za blisko.
 func _check_wake() -> void:
@@ -1168,6 +1202,7 @@ func _check_wake() -> void:
 				_lead_at(_heard_pos(NoiseMgr.last_noise_pos, heard, reach, NoiseMgr.last_noise_amount))     # idzie w okolice źródła hałasu (z błędem), nie wprost do gracza
 				wake()
 				return
+			_maybe_heed(NoiseMgr.last_noise_pos, NoiseMgr.last_noise_amount, heard if reach > 0.0 else -1.0)
 	for p in get_tree().get_nodes_in_group("players"):
 		var pp := p as Node2D
 		if pp == null or pp.dead:
@@ -1570,6 +1605,7 @@ func view_info() -> Dictionary:
 	d["attack_seq"] = visual_attack_seq
 	d["attack_action"] = visual_attack_action
 	d["grounded"] = is_on_floor() if NoiseMgr.is_server() else _view_grounded
+	d["heed"] = Vector3(_heed_pos.x - global_position.x, _heed_pos.y - global_position.y, 1.0 if _heed_t > 0.0 else 0.0)
 	return d
 
 ## Głos gatunku dla zdarzenia (`enemy_defs.gd`: voice); gatunek bez wpisu milczy.
@@ -1620,6 +1656,7 @@ func _process(delta: float) -> void:
 func _present_tick(delta: float) -> void:
 	_beh.present(delta)
 	_sleep_sound(delta)
+	_heed_t = 0.0 if active or not alive else maxf(0.0, _heed_t - delta)
 	if winding != _voiced_winding:
 		_voiced_winding = winding
 		if winding and alive and _ring <= 0.0:                  # krzyk demaskacji / alarmu (_scream_fx) zastępuje zapowiedź

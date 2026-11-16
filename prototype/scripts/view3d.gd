@@ -1445,6 +1445,7 @@ func _sync_enemies(delta: float) -> void:
 						ground[side] = {"height": height, "normal": Vector3(normal.x, -normal.y, 0.0)}
 		e.set("ground_profile", ground)
 		e.set("lit", float(info.get("lit", 0.0)))                        # Ćma w snopie latarki świeci (enemy_moth.gd: view_extra)
+		e.set("heed", info.get("heed", Vector3.ZERO))                     # śpiący „prawie usłyszał” hałas: głowa w stronę źródła (IDLE_PLAN.md A5)
 		e.call("pose", enemy_dt, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)), vx_now, float(st["gd"]))      # faza kroku z przebytej drogi, także u obserwatora sieciowego
 
 ## Sfera (środek, promień w m) choć częściowo w bryle widzenia (`Camera3D.get_frustum`: normalne płaszczyzn na zewnątrz).

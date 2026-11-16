@@ -73,7 +73,7 @@ const SPEC := {
 	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0, "death_dur": 1.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
-	"mimik": {"model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
+	"mimik": {"no_heed": true, "model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
 		"idle": {"tics": ["look", "twitch"], "rate": [3.0, 7.0]},
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
@@ -274,6 +274,12 @@ var _last_position := Vector3.ZERO
 var _last_flip := false
 var ground_profile: Dictionary = {}
 var lit := 0.0                             ## 0..1: model w snopie latarki (enemy_moth.gd `view_extra` → view3d.gd); Ćma świeci wtedy własnym kolorem
+var heed := Vector3.ZERO                   ## z view3d (enemy.gd `view_info["heed"]`): (dx, dy) px do „prawie usłyszanego" hałasu, z = 1 póki śpiący nasłuchuje
+const HEED_YAW := 70.0                     ## ° obrotu głowy za hałasem zza pleców (IDLE_PLAN.md A5) — przez stronę kamery, żeby było widać twarz
+const HEED_PITCH := 35.0                   ## ° najwyżej w górę / w dół
+var _heed_w := 0.0
+var _heed_rel := Vector2.ZERO
+var _heed_bones := []                      ## [szyja, głowa] (−1 = brak); liczone raz
 var _wing_ph := 0.0                        ## faza machania skrzydeł Ćmy [cykle]
 var _motion_name := ""
 var _motion_pending := ""
@@ -1016,6 +1022,7 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		_life_count += 1
 		_life = IdleLife.new(life_seed if life_seed >= 0 else (hash(kind) ^ (_life_count * 7919)) & 0x7fffffff, _spec.get("idle", {}))
 	_life.step(delta, anim == "sleep", not _dead and not alert and anim != "windup" and _clip == "" and _sp == 0 and not _airborne)
+	_heed_step(delta, anim == "sleep" or anim == "idle")
 	if flip != _last_flip or anim != _prev_anim or global_position.distance_to(_last_position) > 0.8:
 		_foot_locks.clear()
 	_last_flip = flip
@@ -1639,6 +1646,8 @@ func _pose_quad(anim: String, delta: float) -> void:
 	if not _dead:
 		_sink_y = 0.0
 	_tilt.position = Vector3(shift, lift + _sink_y, 0.0)
+	if not _dead and _clip == "":
+		_apply_heed(_heed_w * _qs * (1.0 - _air_w))
 	if not _dead and not _airborne:
 		_quad_support()
 	else:
@@ -2132,6 +2141,49 @@ func _idle_post(w: float) -> void:
 		"nod":                                        # głowa opada w drzemce, potem się podrywa
 			_rot_world(head, Vector3.BACK, deg_to_rad(-14.0) * tk)
 
+## Nasłuch (IDLE_PLAN.md A5, I4): waga obrotu głowy rośnie w ~0,35 s, gdy wróg w spoczynku „prawie usłyszał" hałas, i opada w ~0,8 s.
+## Bez Mimika (przebranie: SPEC `no_heed`), pełzaczy (śpią pod sufitem) i modeli deformowanych (bez głowy).
+func _heed_step(delta: float, rest: bool) -> void:
+	if heed.z > 0.5:
+		_heed_rel = Vector2(heed.x, heed.y)
+	var want: bool = heed.z > 0.5 and rest and not _dead and not _spec.get("no_heed", false) and not _spec.has("deform") 			and not _spec.get("crawler", false)
+	_heed_w = move_toward(_heed_w, 1.0 if want else 0.0, delta / (0.35 if want else 0.8))
+
+## Obrót szyi i głowy ku hałasowi (po pozie, z wagą `w`). Kierunek liczony w świecie: przodem do źródła, jeśli jest przed wrogiem;
+## zza pleców do HEED_YAW przez stronę kamery (twarz widać, ciało stoi); w pionie do HEED_PITCH. Obrót w przestrzeni szkieletu,
+## więc działa przy odbiciu lustrem (scale.x = −1) i w trakcie obrotu ciała.
+func _apply_heed(w: float) -> void:
+	if w < 0.001 or _heed_rel.length() < 1.0:
+		return
+	if _heed_bones.is_empty():
+		var quad := bool(_spec.get("quad", false))
+		_heed_bones = [_sk.find_bone("tripo__Spine_4") if quad else int(_b.get("Neck", -1)),
+				_sk.find_bone("tripo__Head_0") if quad else int(_b.get("Head", -1))]
+	if int(_heed_bones[1]) < 0:
+		return
+	var f := global_transform.basis * Vector3.RIGHT
+	f.y = 0.0
+	if f.length() < 0.01:
+		return
+	f = f.normalized()
+	var n := Vector3(_heed_rel.x, -_heed_rel.y, 0.0).normalized()
+	var front := n.x * signf(f.x) if absf(f.x) > 0.05 else 0.0
+	var yaw := deg_to_rad(HEED_YAW) * smoothstep(0.3, -0.7, front)
+	var pitch := clampf(atan2(n.y, maxf(absf(n.x), 0.05)), -deg_to_rad(HEED_PITCH), deg_to_rad(HEED_PITCH))
+	var horiz := (f * cos(yaw) + Vector3.BACK * sin(yaw)).normalized()
+	var want := horiz * cos(pitch) + Vector3.UP * sin(pitch)
+	var inv := _sk.global_transform.basis.inverse()
+	var f_sk := (inv * f).normalized()
+	var d_sk := (inv * want).normalized()
+	var axis := f_sk.cross(d_sk)
+	if axis.length() < 0.0001:
+		return
+	axis = axis.normalized()
+	var ang := f_sk.angle_to(d_sk) * w
+	if int(_heed_bones[0]) >= 0:
+		_rot_world(int(_heed_bones[0]), axis, ang * 0.35)
+	_rot_world(int(_heed_bones[1]), axis, ang * 0.65)
+
 ## Zegar spoczynku egzemplarza (oddech czworonoga i pełzacza): bez wspólnej fazy przy wczytaniu mapy.
 func _lt() -> float:
 	return _life.t if _life != null else _t
@@ -2364,6 +2416,7 @@ func _pose_biped(anim: String, delta: float) -> void:
 	if not _dead:
 		var rest_w := (float(_w["idle"]) + float(_w["sleep"])) / maxf(sum, 0.0001)
 		_idle_post(rest_w * (1.0 - w_att) * (1.0 - _air_w) * (1.0 - _motion_weight) * (0.0 if _clip == "hit" else 1.0))
+		_apply_heed(_heed_w * rest_w * (1.0 - w_att) * (1.0 - _air_w) * (1.0 - _motion_weight) * (0.0 if _clip == "hit" else 1.0))
 	if _dead:
 		_lay_blade(smoothstep(0.3, 0.85, clampf(_dead_t / _death_dur(), 0.0, 1.0)))
 		# Przewrót wokół stóp wbijał dwunożnych głową, rogami i barkami w podłogę: ciało (SPEC `death_floor`) opiera się na najniższym
