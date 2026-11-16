@@ -3,6 +3,14 @@
 Status: **plan z 2026-11-15 (main 1.7.583, c233cc54).** Decyzje D1–D4 (§6) przyjęte 2026-11-15 — wszystkie warianty zalecane.
 **I0 + I1 w 1.7.584** (`scripts/idle_life.gd`, SPEC `idle` w `enemy3d.gd`, test `tools/test_idle_life.gd`): przed zmianą dwa Ślepce w filmie
 oddychały z korelacją 0,98, po zmianie −0,34; koszt pozy ok. +0,01 ms na śpiącego wroga w kadrze. A5 (głowa za hałasem) to etap I4.
+**I2 w 1.7.585** (`enemy3d.gd: _sleep_pose`, SPEC `sleep_pose`, drzemka Trzoska w `_build_sit(low)`, stykówka `tools/shot_sleep3d.gd`):
+Ślepiec i Rzeźnik kucają, Wołek zwija się na pięściach, Kapłan klęczy na obu kolanach, dwa na trzy Trzoski drzemią z łbem przy łapach;
+śpiący sięga najwyżej 0,4–0,6 wysokości strefy trafień, kości mieszczą się w szerokości hitboxa, wstaje w ok. 0,25 s.
+Odstępstwa od §5 B: pozy z kodu (IK z miar szkieletu), nie klipy UAL — klipy ludzkie nie pasują do proporcji potworów (§8), a poza z kodu
+trzyma hitbox i podłogę; Podsłuchacz i Stalker stoją jak dotąd (twarz do ściany kłóci się z `_facing`, §4.2); Mimik stoi, bo zamaskowany
+udaje żywego kolegę (GDD §7.1, `enemy_mimic.gd` zamienia mu sen na czuwanie — siedzący „gracz” by się zdradził); Rzeźnik bez rąbania
+(ręce nad barkami = zapowiedź ciosu, §4.3; rąbanie przy zwłokach to scenka C3 w I5). Wariant przy ścianie nie wszedł — zostaje na I5 razem
+ze scenkami (potrzebuje danych mapy w widoku).
 Warstwy A i B zmieniają tylko obraz i dźwięk, więc nie czekają na playtest (GDD §16.0a). Warstwa C (przechadzki) zmienia symulację,
 więc wchodzi dopiero po playteście.
 

@@ -227,7 +227,7 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_gait_speed.gd 2>&1 | tee gait_speed.log
           grep -a "^PASS" gait_speed.log
-      - name: Wrogowie w spoczynku — oddech, ciężar, tiki (test_idle_life.gd)
+      - name: Wrogowie w spoczynku — oddech, ciężar, tiki, pozy snu (test_idle_life.gd)
         run: |
           godot --headless --path prototype -s tools/test_idle_life.gd 2>&1 | tee idle_life.log
           grep -a "\[IDLE-LIFE\] PASS (0" idle_life.log
