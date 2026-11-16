@@ -71,6 +71,19 @@ Szkic:
 
 ### E2 — przejście obudowy w zasyp (`view3d.gd`, znak strefy)
 
+**Zrobione w 1.7.590** (`feat/dig-e2-talus`, na E1). Geometria w `scripts/dig_entrance3d.gd` (statycznie, ze strefy i mapy — test bez sceny):
+- Osypisko to siatka stoku w materiale strefy (`_dig_mat`, alfa 1) plus bryłki `fracture_rock` w MultiMesh (`_dig_spoil_mat`), nie
+  sam `dig_spoil`: urobek z kopania żyje tylko w prostokącie strefy (`_settle_spoil` zabrałby bryłki z korytarza), a same bryłki nie
+  dawały stoku. Wysokość wg materiału (`TALUS_H`: żwir 0,5 m, ziemia 0,34, skała 0,26), stok 36°, ścieżka przy z = 0 przydeptana
+  (12 %), przed płaszczyzną gry × 0,55, przy przodzie zero. Wierzch zaczyna się w czole (najgłębszy garb na wysokości osypiska).
+- Odrzwia tylko przy obudowie (`Level3D.back_wall_at` kafla korytarza przy czole): stojak przy tylnej ścianie, stropnica pod stropem
+  korytarza do z = +0,6, klin. **Bez przedniego stojaka** — przód obudowy jest w przekroju, a słup przy z ≈ 1 stałby przed postacią
+  przy czole (ta sama zasada co stemple wykopu). Na 1.1 i 1.3 bez ramy.
+- Kupka `rubble` znaku zastąpiona osypiskiem; zostały dwa odłamki `rock_b`/`rock_c` (E3).
+- Zrzuty: na 1.2 rama domyka cegłę, stożek żwiru u stopy; na 1.1 i 1.3 osypisko niskie, kilka brył (ciemne poza snopem).
+
+Szkic:
+
 - U stopy czoła **osypisko** z urobku (ten sam `dig_spoil` MultiMesh co po kopaniu, tylko klient, kosmetyka): żwir — stożek ok. 0,5 m
   w stoku naturalnym, ziemia i skała — mniejsza kupka okruchów. Bez kolizji (symulacja 2D bez zmian).
 - Tam, gdzie korytarz ma obudowę (`Level3D.back_wall_at` — 1.2), **odrzwia na końcu obudowy**: dwa stemple i belka z modelu stempla
