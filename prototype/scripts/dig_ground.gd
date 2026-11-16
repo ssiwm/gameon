@@ -86,7 +86,40 @@ void fragment() {
 }
 """
 
+## Brud gruntu mapy (`Level3D.make_pbr(..., "organic")` — przebieg StandardMaterial3D z triplanarem świata) dla stref: ta sama tekstura,
+## skala i rzut co w Godocie (`triplanar_texture`, oś y odwrócona), więc przód strefy łączy się z przodem mapy bez szwu, ale alfa maleje
+## z udziałem materiału strefy (COLOR.a): świeże czoło i ściany wykopu bez starego nalotu. Do 1.7.588 strefa brała przebieg mapy —
+## na czole w snopie latarki półprzezroczysty nalot (alfa 0,5) przykrywał kolor i cień grud i robił z niego równą, oliwkową płytę.
+const GRIME_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_back;
+
+uniform sampler2D grime : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec4 tint : source_color = vec4(1.0);
+uniform float scale = 0.07;
+
+varying vec3 tpos;
+varying vec3 tw;
+
+void vertex() {
+	vec3 n = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	tw = abs(n);
+	tw /= dot(tw, vec3(1.0));
+	tpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz * scale * vec3(1.0, -1.0, 1.0);
+}
+
+void fragment() {
+	vec4 c = texture(grime, tpos.xy) * tw.z + texture(grime, tpos.xz) * tw.y + texture(grime, tpos.zy * vec2(-1.0, 1.0)) * tw.x;
+	c *= tint;
+	ALBEDO = c.rgb;
+	ROUGHNESS = 0.95;
+	METALLIC = 0.0;
+	ALPHA = c.a * (1.0 - COLOR.a);
+}
+"""
+
 static var _shader: Shader
+static var _grime_shader: Shader
 
 ## Materiał ścian (spoil = false) albo urobku (true); null — brak tekstur (`--noworldpbr`, stary zestaw), wtedy zostaje StandardMaterial3D.
 static func material(spoil: bool) -> Material:
@@ -111,6 +144,18 @@ static func material(spoil: bool) -> Material:
 	m.set_shader_parameter("spoil", spoil)
 	if not spoil:                                               # brud jak na gruncie mapy (ta sama warstwa, ten sam szew)
 		var base := Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")
-		if base.next_pass != null:
+		var g := base.next_pass as StandardMaterial3D
+		if g != null and g.albedo_texture != null:
+			if _grime_shader == null:
+				_grime_shader = Shader.new()
+				_grime_shader.code = GRIME_SHADER
+			var gm := ShaderMaterial.new()
+			gm.shader = _grime_shader
+			gm.set_shader_parameter("grime", g.albedo_texture)
+			gm.set_shader_parameter("tint", g.albedo_color)
+			gm.set_shader_parameter("scale", g.uv1_scale.x)
+			gm.next_pass = g.next_pass                         # mokry przebieg mapy (W6) dalej w łańcuchu
+			m.next_pass = gm
+		elif base.next_pass != null:
 			m.next_pass = base.next_pass
 	return m
