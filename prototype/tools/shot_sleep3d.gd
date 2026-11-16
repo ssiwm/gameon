@@ -5,6 +5,7 @@ extends SceneTree
 ##   godot --path prototype --script tools/shot_sleep3d.gd -- --out=C:/tmp/sleep.png [--kinds=slepiec,wolek] [--t=4.0] [--px=300] [--seeds=11,14]
 ## --seeds: ziarna egzemplarzy śpiących (po kolumnie na ziarno; wariant pozy z `IdleLife.pick`, np. drzemiący i węszący Trzosek).
 ## --wake=0.1,0.25: dodatkowe kolumny — wróg śpi przez --t, potem budzi się (czuwanie) na tyle sekund: wstawanie mieści się w ~0,25 s.
+## --heed=-150,-20: śpiący „prawie usłyszał” hałas w tym miejscu względem siebie (px, IDLE_PLAN.md A5) — głowa w stronę źródła.
 ## Okno (render), override.cfg z custom_user_dir jak przy innych zrzutach.
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
@@ -18,6 +19,7 @@ var _frames := 0
 var _live: Array = []                        ## [wróg, animacja, rodzaj]
 var _seeds: Array = [11]
 var _wake: Array = []
+var _heed := Vector3.ZERO
 var _vp: SubViewport
 var _labels: Array = []
 
@@ -29,6 +31,9 @@ func _initialize() -> void:
 		elif a.begins_with("--px="): _px = int(a.substr(5))
 		elif a.begins_with("--seeds="): _seeds = Array(a.substr(8).split(",")).map(func(x): return int(x))
 		elif a.begins_with("--wake="): _wake = Array(a.substr(7).split(",")).map(func(x): return float(x))
+		elif a.begins_with("--heed="):
+			var hv := a.substr(7).split(",")
+			_heed = Vector3(float(hv[0]), float(hv[1]), 1.0)
 	var cols := 1 + _seeds.size() + _wake.size()  # czuwa, śpi (po ziarnie), budzi się (po czasie)
 	_vp = SubViewport.new()
 	_vp.size = Vector2i(_px * cols, _px * _kinds.size())
@@ -67,12 +72,14 @@ func _initialize() -> void:
 				push_error("setup: %s" % k)
 				continue
 			e.position = Vector3((c - (cols - 1) * 0.5) * CELL, -CELL * r, 0.0)
+			if asleep and _heed.z > 0.0:
+				e.set("heed", _heed)
 			_live.append([e, "sleep" if asleep else "idle", k, float(_wake[c - 1 - _seeds.size()]) if waking else -1.0])
 			_box(k, e.position)
 			var l := Label.new()
 			l.position = Vector2(_px * c + 6, _px * (r + 1) - 40)
 			l.add_theme_font_size_override("font_size", 13)
-			l.text = "%s — %s" % [k, ("śpi (ziarno %d)" % int(_seeds[c - 1])) if asleep else (("budzi się +%.2f s" % float(_wake[c - 1 - _seeds.size()])) if waking else "czuwa")]
+			l.text = "%s — %s" % [k, ("śpi (ziarno %d)%s" % [int(_seeds[c - 1]), " — nasłuch" if _heed.z > 0.0 else ""]) if asleep else (("budzi się +%.2f s" % float(_wake[c - 1 - _seeds.size()])) if waking else "czuwa")]
 			_vp.add_child(l)
 			_labels.append([l, e, asleep])
 

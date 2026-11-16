@@ -12,6 +12,7 @@ udaje żywego kolegę (GDD §7.1, `enemy_mimic.gd` zamienia mu sen na czuwanie �
 (ręce nad barkami = zapowiedź ciosu, §4.3; rąbanie przy zwłokach to scenka C3 w I5). Wariant przy ścianie nie wszedł — zostaje na I5 razem
 ze scenkami (potrzebuje danych mapy w widoku).
 **I3 w 1.7.586** (`bake_sfx.py: _build_sleep`, `enemy.gd: _sleep_sound`, `voice.sleep` w `enemy_defs.gd`): synteza (D3 c) — chrapanie Wołka i Rzeźnika (z mlaskaniem), skomlenie i węszenie Trzoska, świst i rzężenie Ślepca (Podsłuchacz wyżej), szept Kapłana; co 4,5–10 s, do 240 px (≈ 20 m). Odsłuch A/B z nagraniami z `audio_licensed/` przed ewentualną podmianą. Mimik, Skoczek, Żerca i Ćma śpią cicho.
+**I4 w 1.7.587** (`enemy.gd: _maybe_heed`, `enemy3d.gd: _apply_heed`): hałas poniżej progu albo za daleki (do 1,6 × słyszenia) obraca śpiącemu szyję i głowę na 2 s — zza pleców do 70° przez stronę kamery, przed nim tylko w górę/w dół; ciało, stan i ślad bez zmian. Odstępstwo od D4 (wszyscy): Mimik nie nasłuchuje (przebranie), pełzacze (Skoczek, Żerca) śpią pod sufitem — bez nasłuchu; Stalker ma osobny skrypt.
 Warstwy A i B zmieniają tylko obraz i dźwięk, więc nie czekają na playtest (GDD §16.0a). Warstwa C (przechadzki) zmienia symulację,
 więc wchodzi dopiero po playteście.
 
