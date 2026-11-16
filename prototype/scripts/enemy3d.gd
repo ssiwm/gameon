@@ -258,7 +258,8 @@ var _arm_len := {}
 var _x0 := 0.0                             ## oś ciała (m, układ modelu)
 var _scale := 1.0
 var _t := 0.0
-var life_seed := -1                         ## ziarno warstwy spoczynku (view3d: z nazwy węzła wroga); −1 = z id tego węzła
+var life_seed := -1                         ## ziarno warstwy spoczynku (view3d: z nazwy węzła wroga); −1 = rodzaj + numer egzemplarza
+static var _life_count := 0                  ## licznik egzemplarzy bez ziarna (deterministyczne ziarno w narzędziach i testach)
 var _life: IdleLife                          ## oddech, ciężar i tiki w spoczynku (IDLE_PLAN.md warstwa A)
 var _face := 1.0                             ## −1..1: zwrot w trakcie obrotu (SPEC „turn": Mimik), jak Char3D._face
 var _cam_c := 1.0                            ## −1..1: strona kamery względem modelu (znak zwrotu tułowia ku kamerze)
@@ -1007,7 +1008,9 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	_ground_cache.clear()
 	_t += delta
 	if _life == null:
-		_life = IdleLife.new(life_seed if life_seed >= 0 else get_instance_id(), _spec.get("idle", {}))
+		# bez ziarna z view3d (narzędzia, testy): rodzaj + kolejny numer egzemplarza — różne fazy, ale ten sam wynik w każdym przebiegu
+		_life_count += 1
+		_life = IdleLife.new(life_seed if life_seed >= 0 else (hash(kind) ^ (_life_count * 7919)) & 0x7fffffff, _spec.get("idle", {}))
 	_life.step(delta, anim == "sleep", not _dead and not alert and anim != "windup" and _clip == "" and _sp == 0 and not _airborne)
 	if flip != _last_flip or anim != _prev_anim or global_position.distance_to(_last_position) > 0.8:
 		_foot_locks.clear()
@@ -1774,7 +1777,9 @@ func _pose_crawler(anim: String) -> void:
 		_rot_world(hips, Vector3.BACK, deg_to_rad(-22.0))
 		for side in ["Right", "Left"]:
 			_rot_world(_b[side + "Arm"], Vector3.BACK, deg_to_rad(35.0))
-	else:
+	elif _clip == "":
+		# oddech tylko w spoczynku: w klipie ataku i trafienia łapy nie mają podparcia z IK, a opadanie bioder z fazy oddechu
+		# (od 1.7.584 losowej dla egzemplarza) wbijało Żercę po ciosie do 3,5 cm w podłogę (audit_enemy_assets.gd, recovery)
 		hd = Vector3(0.0, 0.012 * sin(ph), 0.0)
 	if _dead:
 		var dd := _death_dur()
