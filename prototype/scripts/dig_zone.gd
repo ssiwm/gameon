@@ -65,6 +65,15 @@ const JAG_RIM := 0.15                  ## m: obrys wykopu na przodzie (narożnik
 const JAG_FRONT := 0.08                ## m: przesunięcie tuż za przodem (pierwszy plaster — krawędź wykopu wygląda na wyłupaną)
 const JAG_DEEP := 0.26                 ## m: największe wybrzuszenie w połowie głębokości
 const JAG_FREQ := 1.6                  ## 1/m: częstotliwość szumu (garby co ok. 0,6 m)
+## Czoło strefy (ściana pierścienia od strony powietrza mapy, np. koniec korytarza na 1.2; DIG_ENTRANCE_PLAN.md E1): do 1.7.588 płaska
+## płyta na całą głębokość z teksturą gruntu mapy — w snopie latarki jak deska. Teraz garby tylko w stronę powietrza (nigdy szczelina na
+## tło za strefą), gęstsze plastry w głąb i materiał strefy; przy płaszczyźnie gry płasko (postać przy ścianie nie wchodzi w bryłę).
+const RING_U := [0.0, 0.05, 0.13, 0.21, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]   ## plastry czoła od przodu (0) do tyłu (1)
+const RING_JAG := 0.4                  ## m: największy garb czoła w stronę powietrza
+const RING_PLANE := [0.25, 0.75]       ## m: |z| — do pierwszej wartości płasko (płaszczyzna gry), od drugiej pełny garb
+const RING_FREQ_K := 1.0               ## częstotliwość szumu czoła względem JAG_FREQ (grudy co ok. 0,6 m)
+const RING_SHADE := 0.2                ## jasność koloru wierzchołków w najgłębszym zagłębieniu czoła (na garbie 1)
+const RING_DIM := 0.45                 ## całe czoło ciemniejsze: latarka pada na nie prawie prostopadle, a ściany korytarza łapią ją pod kątem
 const N_DIG := 1.5                    ## hałas ciosu kilofem w grunt (jak w ścianę, breakable.gd); materiał mnoży (dig_materials.gd `noise`)
 const BLADE_NOISE := 0.5              ## broń biała w ziemi: wolniej, ale ciszej
 const BLAST_DIG := 0.5                ## promień wyrwy po wybuchu = połowa promienia fali
@@ -1865,7 +1874,7 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 			cen /= float(poly.size())
 			# kontur na samym brzegu: wielokąt bez pola — środek skały leży po stronie strefy
 			cen = cen.lerp(_corner_px(nx / 2 + 1, ny / 2 + 1), 0.01)
-			_walls(verts, norms, cols, segs, cen, gp, px, front, back, Mats.tint(cm), Mats.tint(cm).darkened(0.65))
+			_walls(verts, norms, cols, segs, cen, gp, px, front, back, Mats.tint(cm), Mats.tint(cm).darkened(0.65), RING_U)
 	var mesh := ArrayMesh.new()
 	if verts.is_empty():
 		return mesh
@@ -1882,7 +1891,7 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 
 ## Ściany konturu (odcinki `segs` komórki) od przodu do tyłu strefy, w plastrach JAG_U; normalna od środka skały `cen` na zewnątrz
 ## (w płaszczyźnie xy — po przesunięciu wierzchołków `_jag_mesh` liczy ją od nowa z trójkąta, z tym samym zwrotem).
-func _walls(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, segs: PackedVector2Array, cen: Vector2, gp: Vector2, px: float, front: float, back: float, tint: Color, deep: Color) -> void:
+func _walls(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, segs: PackedVector2Array, cen: Vector2, gp: Vector2, px: float, front: float, back: float, tint: Color, deep: Color, us: Array = JAG_U) -> void:
 	for k in range(0, segs.size(), 2):
 		var e := segs[k + 1] - segs[k]
 		var n2 := Vector2(-e.y, e.x).normalized()
@@ -1895,9 +1904,9 @@ func _walls(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedCo
 			var t := a2
 			a2 = b2
 			b2 = t
-		for sl in JAG_U.size() - 1:
-			var u0: float = JAG_U[sl]
-			var u1: float = JAG_U[sl + 1]
+		for sl in us.size() - 1:
+			var u0: float = us[sl]
+			var u1: float = us[sl + 1]
 			var z0 := lerpf(front, back, u0)
 			var z1 := lerpf(front, back, u1)
 			var c0 := tint.lerp(deep, u0)
@@ -1927,6 +1936,10 @@ func _jag(v: Vector3, gp: Vector2, px: float, front: float, back: float) -> Vect
 		var fy := fposmod(l.y, CELL)
 		if minf(fx, CELL - fx) < 0.05 and minf(fy, CELL - fy) < 0.05 and not _rim_corner(roundi(l.x / CELL) + 1, roundi(l.y / CELL) + 1):
 			return v                                           # narożnik w głębi skały: styk z pasami pełnych komórek
+	else:
+		var so := _ring_out(g)
+		if so != 0.0:
+			return _ring_jag(v, so, front, back)
 	var edge := minf(minf(l.x, nx * CELL - l.x), minf(l.y, ny * CELL - l.y)) / CELL
 	var fade := clampf(edge - 0.5, 0.0, 1.0)
 	if fade <= 0.0:
@@ -1951,9 +1964,54 @@ func _jag(v: Vector3, gp: Vector2, px: float, front: float, back: float) -> Vect
 		d.y = 0.0                                              # podłoga: stopy stoją na tym, co widać
 	return v + d
 
+## Kierunek (±1 w osi x) od czoła strefy do powietrza mapy dla punktu `g` (px świata) na pionowej ścianie przy brzegu strefy: z jednej
+## strony powietrze, z drugiej skała strefy. 0 — to nie czoło (przód, strop, podłoga, wykop w głębi, skała mapy w pierścieniu).
+func _ring_out(g: Vector2) -> float:
+	var l := g - global_position
+	if minf(minf(l.x, nx * CELL - l.x), minf(l.y, ny * CELL - l.y)) / CELL > 0.75:
+		return 0.0
+	for s: float in [-1.0, 1.0]:
+		if not solid_at_px(g + Vector2(s * 3.0, 0.0)) and solid_at_px(g - Vector2(s * 3.0, 0.0)):
+			return s
+	return 0.0
+
+## Wierzchołek czoła (E1): garb tylko w stronę powietrza (`so`), zero na przodzie i z tyłu bryły (styk z przodem mapy i tylną ścianą)
+## i przy płaszczyźnie gry (RING_PLANE); bez ruchu w pionie (styk z podłogą i stropem korytarza), lekko w głąb.
+func _ring_jag(v: Vector3, so: float, front: float, back: float) -> Vector3:
+	if _jag_noise == null:
+		_jag_noise = FastNoiseLite.new()
+		_jag_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		_jag_noise.frequency = JAG_FREQ
+		_jag_noise.fractal_octaves = 2
+	var u := clampf((front - v.z) / maxf(front - back, 0.01), 0.0, 1.0)
+	var dz := _jag_noise.get_noise_3d(v.x - 17.9, v.y + 44.2, v.z - 9.4) * 0.08 * sin(u * PI)
+	return v + Vector3(so * _ring_bulge(v, front, back), 0.0, dz)
+
+## Garb czoła (m, w stronę powietrza) w punkcie `v` (m świata) — kształt `_ring_jag`, też dla rekwizytów przy czole (`face_bulge`).
+func _ring_bulge(v: Vector3, front: float, back: float) -> float:
+	var u := clampf((front - v.z) / maxf(front - back, 0.01), 0.0, 1.0)
+	return RING_JAG * sin(u * PI) * smoothstep(float(RING_PLANE[0]), float(RING_PLANE[1]), absf(v.z)) * _ring_lump(v)
+
+## Ile czoło strefy wystaje w stronę powietrza (m) w punkcie świata `at` (px) na głębokości `z` (m) — znak strefy (view3d `_build_dig_sign`)
+## stawia kilof i okruchy przy wybrzuszonym czole, nie w jego środku. `front` / `back` jak w `chunk_mesh`.
+func face_bulge(at: Vector2, z: float, px: float, front: float, back: float) -> float:
+	return _ring_bulge(Vector3(at.x * px, -at.y * px, z), front, back)
+
+## Wysokość garbu czoła 0..1 w punkcie `v` (m świata, przed przesunięciem) — ten sam szum daje kształt (`_ring_jag`) i cień w zagłębieniach
+## (`_mat_weights`): latarka pada na czoło prawie prostopadle, więc same normalne nie rozbijają jasnej płaszczyzny.
+func _ring_lump(v: Vector3) -> float:
+	if _jag_noise == null:
+		_jag_noise = FastNoiseLite.new()
+		_jag_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		_jag_noise.frequency = JAG_FREQ
+		_jag_noise.fractal_octaves = 2
+	var q := v * RING_FREQ_K
+	return clampf(0.55 + 0.9 * _jag_noise.get_noise_3d(q.x, q.y, q.z), 0.0, 1.0)
+
 ## Wagi materiału wierzchołków dla shadera stref (dig_ground.gd): UV2 = (żwir, skała; reszta — ziemia, żyła liczy się jako skała), alfa koloru =
 ## udział materiału strefy względem gruntu mapy: 1 tylko na powierzchni wykopanej (w danych mapy było tu pełno skały), 0 na przodzie i na
-## pierwotnej powierzchni strefy — nietknięta strefa wygląda jak zwykła mapa, materiał widać w wykopie. Z położenia przed `_jag`.
+## pierwotnej powierzchni strefy — nietknięta strefa wygląda jak zwykła mapa, materiał widać w wykopie; wyjątek: czoło przy powietrzu mapy
+## (`_ring_out`, E1) od razu w materiale strefy. Z położenia przed `_jag`.
 func _mat_weights(verts: PackedVector3Array, cols: PackedColorArray, gp: Vector2, px: float, front: float) -> PackedVector2Array:
 	var uv2 := PackedVector2Array()
 	uv2.resize(verts.size())
@@ -1962,17 +2020,22 @@ func _mat_weights(verts: PackedVector3Array, cols: PackedColorArray, gp: Vector2
 		var v := verts[k]
 		if not memo.has(v):
 			if v.z >= front - 0.001:                           # przód: zawsze grunt mapy (wagi bez znaczenia)
-				memo[v] = Vector3.ZERO
+				memo[v] = Vector4(0.0, 0.0, 0.0, 1.0)
 			else:
 				var g := Vector2(v.x, -v.y) / px
 				var f := _dug_at(g)
 				var key := material_at_px(g) if f > 0.0 else ""
-				memo[v] = Vector3(1.0 if key == "gravel" else 0.0, 1.0 if key == "rock" or key == "vein" else 0.0, f)
-		var w: Vector3 = memo[v]
+				var so := _ring_out(g) if f <= 0.0 else 0.0
+				var shade := 1.0
+				if so != 0.0:                                  # czoło strefy przy powietrzu mapy (E1): od razu materiał strefy, nie grunt mapy
+					f = 1.0
+					key = material_at_px(g - Vector2(so * CELL, 0.0))
+					shade = RING_DIM * lerpf(RING_SHADE, 1.0, _ring_lump(v))   # zagłębienia ciemniejsze — jak cień między grudami
+				memo[v] = Vector4(1.0 if key == "gravel" else 0.0, 1.0 if key == "rock" or key == "vein" else 0.0, f, shade)
+		var w: Vector4 = memo[v]
 		uv2[k] = Vector2(w.x, w.y)
 		var c := cols[k]
-		c.a = w.z
-		cols[k] = c
+		cols[k] = Color(c.r * w.w, c.g * w.w, c.b * w.w, w.z)
 	return uv2
 
 ## 1 — punkt świata leży w miejscu, które w danych mapy było pełną skałą (najbliższy narożnik i jego sąsiedzi), czyli na powierzchni wykopanej;

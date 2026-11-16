@@ -8723,7 +8723,7 @@ func _sync_dig_zones() -> void:
 			var mis: Array = []
 			for ci in int(z.chunk_count()):
 				var mi := MeshInstance3D.new()
-				mi.name = "DigChunk"
+				mi.name = "DigChunk%d" % ci          # czytelna nazwa każdego fragmentu (bez niej Godot nadaje drugiemu i dalszym @MeshInstance3D@…)
 				mi.material_override = _dig_mat
 				mi.layers = LAYER_WORLD
 				_geo.add_child(mi)
@@ -8738,12 +8738,12 @@ func _sync_dig_zones() -> void:
 			back.layers = LAYER_WORLD
 			back.position = Level3D.px_to_m(rc.get_center()) + Vector3(0.0, 0.0, -Level3D.DEPTH_BACK + 0.15)
 			_geo.add_child(back)
-			_build_dig_sign(z)
+			# strefa przy przekroju (koniec sali podziemi 1.3) sięga przodu przekroju — w jednym planie z podłogą i stropem
+			var zf := Level3D.zone_front_z(int(rc.position.x / 16.0), int(rc.position.y / 16.0), int(rc.end.x / 16.0) - 1, int(rc.end.y / 16.0) - 1)
+			_build_dig_sign(z, zf)
 			var ver := PackedInt32Array()
 			ver.resize(mis.size())
 			ver.fill(-1)
-			# strefa przy przekroju (koniec sali podziemi 1.3) sięga przodu przekroju — w jednym planie z podłogą i stropem
-			var zf := Level3D.zone_front_z(int(rc.position.x / 16.0), int(rc.position.y / 16.0), int(rc.end.x / 16.0) - 1, int(rc.end.y / 16.0) - 1)
 			st = {"zone": z, "mis": mis, "ver": ver, "zf": zf}
 			_dig3d[id] = st
 		var vers: PackedInt32Array = st["ver"]
@@ -9192,7 +9192,7 @@ func _drip_step(e: Dictionary, delta: float) -> void:
 ## kilof wbity w skałę na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień), kupka
 ## urobku pod ścianą i dwa odłamki na ziemi — w świetle latarki widać, że ktoś tu kopał.
 ## Bez własnego światła: strefy celowo leżą w ciemności, metal kilofa łapie snop jak każda bryła.
-func _build_dig_sign(z: Node2D) -> void:
+func _build_dig_sign(z: Node2D, zf: float) -> void:
 	var e: Dictionary = z.entrance()
 	if e.is_empty():
 		return
@@ -9202,13 +9202,17 @@ func _build_dig_sign(z: Node2D) -> void:
 	_geo.add_child(root)
 	var at := Level3D.px_to_m(Vector2(float(e["wall_x"]), float(e["floor_y"])))
 	var out := float(-dir) if dir != 0 else 1.0                 # od skały w stronę wejścia
+	var bulge := func(y_up: float, zz: float) -> float:        # garb czoła strefy (DIG_ENTRANCE_PLAN.md E1) w tym miejscu: rekwizyt przy czole, nie w nim
+		if dir == 0:
+			return 0.0
+		return float(z.face_bulge(Vector2(float(e["wall_x"]), float(e["floor_y"]) - y_up / PX), zz, PX, zf, -Level3D.DEPTH_BACK))
 	var pick_ps := load(DIG_SIGN_PICK) as PackedScene if ResourceLoader.exists(DIG_SIGN_PICK) else null
 	if pick_ps != null:
 		var pick := pick_ps.instantiate() as Node3D
 		if dir != 0:
 			# ostrze w modelu leży na końcu +x: obrót w płaszczyźnie kadru unosi głowicę, odbicie (yaw π) kieruje ją w lewo
 			pick.transform = Transform3D(Basis(Vector3.UP, PI if dir < 0 else 0.0) * Basis(Vector3.BACK, 0.45).scaled(Vector3.ONE * DIG_SIGN_PICK_K),
-				at + Vector3(-float(dir) * 0.55, 1.0, 0.75))         # przy przedniej krawędzi skały, w snopie latarki
+				at + Vector3(-float(dir) * (0.55 + float(bulge.call(1.0, 0.75))), 1.0, 0.75))   # przy przedniej krawędzi skały, w snopie latarki
 		else:
 			pick.transform = Transform3D(Basis(Vector3.BACK, -1.15).scaled(Vector3.ONE * DIG_SIGN_PICK_K), at + Vector3(0.0, 0.42, -0.35))   # skała pod stopami: wbity w grunt
 		root.add_child(pick)
@@ -9219,7 +9223,7 @@ func _build_dig_sign(z: Node2D) -> void:
 			continue
 		var n := ps.instantiate() as Node3D
 		var k := PX * float(q[1])
-		n.transform = Transform3D(Basis(Vector3.UP, float(q[4])).scaled(Vector3(k, k, k)), at + Vector3(out * float(q[2]), 0.0, float(q[3])))
+		n.transform = Transform3D(Basis(Vector3.UP, float(q[4])).scaled(Vector3(k, k, k)), at + Vector3(out * (float(q[2]) + float(bulge.call(0.0, float(q[3])))), 0.0, float(q[3])))
 		root.add_child(n)
 	for mi in root.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).layers = LAYER_WORLD

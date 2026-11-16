@@ -191,6 +191,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_front.gd 2>&1 | tee front.log
           grep -a "^PASS" front.log
+      - name: Czoło strefy wydobycia (test_dig_face.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_dig_face.gd 2>&1 | tee dig_face.log
+          grep -a "\[DIG-FACE\] PASS" dig_face.log
       - name: Kamera przekroju kryjówki (test_hub_camera.gd)
         run: |
           godot --headless --path prototype -s tools/test_hub_camera.gd 2>&1 | tee hub_camera.log

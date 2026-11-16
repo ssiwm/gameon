@@ -2375,6 +2375,21 @@ func _dev_range3d() -> void:
 				p.weapons.sim_press = true)                          # broń półautomatyczna strzela z naciśnięcia, nie z trzymania
 			get_tree().create_timer(1.0 + hold).timeout.connect(func() -> void: p.weapons.sim_fire = false)
 
+## Dev (`--shothide=Prefiks,...`): 1,5 s przed zrzutem ukrywa węzły 3D o nazwach zaczynających się od prefiksów (widoczność i warstwy —
+## część widoku co klatkę przywraca `visible`, warstwy 0 trzymają) i wypisuje `[SHOT] ukryte:` z liczbą trafień — szukanie, czyja bryła
+## jest w kadrze (np. `DigChunk,DigSign`).
+func _shot_hide(prefixes: PackedStringArray, delay: float) -> void:
+	get_tree().create_timer(maxf(0.5, delay - 1.5)).timeout.connect(func() -> void:
+		var hid := {}
+		for n in get_tree().root.find_children("*", "Node3D", true, false):
+			for pre in prefixes:
+				if String(n.name).begins_with(pre):
+					(n as Node3D).visible = false
+					if n is VisualInstance3D:
+						(n as VisualInstance3D).layers = 0
+					hid[pre] = int(hid.get(pre, 0)) + 1
+		print("[SHOT] ukryte: ", hid))
+
 func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, flicker := false, demo := false, workshop := false, result := false, boss := false, codex := false) -> void:
 	Profile.persist = false              # zrzuty dev nie zapisują profilu gracza (XP z podglądu karty wyniku itp.)
 	if "--bestiaryfresh" in OS.get_cmdline_user_args():
@@ -3126,6 +3141,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 							fw._beh.scream())         # jak w grze: gest krzyku (visual_attack), pole, fala alarmu
 	if flicker:
 		Lights.flicker_until_ms = Time.get_ticks_msec() + int(delay * 1000.0) + 3000      # podgląd efektu migotania świateł (dread.gd)
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shothide="):
+			_shot_hide(sa.substr("--shothide=".length()).split(","), delay)
 	await get_tree().create_timer(delay).timeout
 	var seq_n := 0
 	var seq_dt := 0.1
