@@ -455,6 +455,24 @@ def _whisper(n: int, r: Rng, vw: str) -> np.ndarray:
     return vowel(d.hp(d.colored(n, r, .3), 180.0), vw, bw=5.0)
 
 
+def _chew(r: Rng) -> np.ndarray:
+    """Jedno mlaśnięcie przez sen (Rzeźnik), bez tonu: stłumione domknięcie szczęki (szum < 300 Hz), trzask śliny (rzadkie mikrokliki
+    3–6 kHz, mokra faktura) i ostre klaśnięcie rozchylanych warg na końcu."""
+    n = ms(150)
+    jaw = d.lp(d.colored(n, r, 1.0), 280.0) * d.env_pts(n, [(0, 0), (.006, 1), (.04, .2), (.15, 0)])
+    crackle = np.zeros(n)
+    t = .01
+    while t < .09:
+        c = d.hp(d.white(ms(1.5), r), 3000.0) * d.env_perc(ms(1.5), .00005, .0004)
+        _put(crackle, c, t, r.uniform(.3, 1.0))
+        t += r.uniform(.002, .009)
+    crackle = d.lp(crackle, 6500.0) * d.env_pts(n, [(0, .4), (.03, 1), (.09, .3), (.15, 0)])
+    lips = d.filt(d.white(ms(12), r), "bp", vary(r, 2300.0, .15), .8) * d.env_perc(ms(12), .0001, .0018)
+    out = jaw * .8 + crackle * .9
+    _put(out, lips, r.uniform(.085, .105), 1.4)
+    return out
+
+
 def _build_sleep() -> None:
     """Odgłosy snu (IDLE_PLAN.md I3, C1): ciche, rzadkie, każdy gatunek inaczej — chrapanie Wołka, chrapanie z mlaskaniem
     Rzeźnika, skomlenie i węszenie śniącego Trzoska, świszczący oddech Ślepca (Podsłuchacz: ta sama rodzina wyżej),
@@ -482,7 +500,7 @@ def _build_sleep() -> None:
     # --- Rzeźnik: niskie chrapnięcie, potem mlaskanie przez sen (mokre klaśnięcia warg) i przełknięcie
     for i in range(3):
         r = Rng(0xF500 + i * 3491)
-        n = ms(3000 + 150 * i)
+        n = ms(4600)                                      # zapas na żucie i przełknięcie; ciszę na końcu przycina finalize
         x = np.zeros(n)
         tin = .9 + .1 * i
         m = ms(tin * 1000)
@@ -491,15 +509,16 @@ def _build_sleep() -> None:
         k = ms(700)
         _put(x, d.lp(_puff(k, r, 520.0, .7), 1500.0) * d.env_pts(k, [(0, 0), (.04, .8), (.25, .3), (.7, 0)]), tin + .12, .6)
         t = tin + .75
-        for _c in range(3 + i):
-            s = ms(70)
-            smack = d.filt(d.colored(s, r, .4), "bp", vary(r, 1300.0, .2), 1.4) * d.env_perc(s, .0008, .012)
-            pop = d.osc("sine", d.glide(vary(r, 380.0, .15), vary(r, 700.0, .15), s), s) * d.env_perc(s, .002, .015)
-            _put(x, smack + .5 * pop, t, r.uniform(.6, 1.0))
-            t += r.uniform(.16, .26)
-        gulp = thump(.22, 240.0, 120.0, .04, .05)
-        gulp = gulp + .4 * d.lp(burst(len(gulp), r, 900, 200, .03, color=.5), 1500.0)
-        _put(x, gulp, t + .15, .9)
+        for _c in range(3 + i):                           # żucie przez sen: bez tonu (sinus o zmiennej wysokości = bąbel / kropla)
+            _put(x, _chew(r), t, r.uniform(.7, 1.0))
+            t += r.uniform(.24, .34)
+        g = ms(160)                                       # przełknięcie: stłumione „glk" krtani — klik + tąpnięcie szumu, bez glissanda
+        glk = tick(r, vary(r, 650.0, .1), 2.5, 12, .004) * .5
+        glk = np.concatenate([glk, np.zeros(g - len(glk))])
+        glk = glk + d.lp(d.colored(g, r, 1.2), 320.0) * d.env_pts(g, [(0, 0), (.004, 1), (.05, .35), (.16, 0)]) * 1.6
+        _put(x, glk, t + .12, .9)
+        k = ms(450)
+        _put(x, d.lp(_puff(k, r, 600.0, .8), 1400.0) * d.env_pts(k, [(0, 0), (.05, .6), (.2, .2), (.45, 0)]), t + .35, .35)
         finalize("rzeznik_sleep_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15, keep_len=True), lufs=-22.0, fade_out_ms=120)
 
     # --- Trzosek: śni — ciche skomlenia przez nos (wysokie „u", zamknięta paszcza) i węszenie; wariant 3 — stłumione „buf"
