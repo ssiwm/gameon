@@ -1318,6 +1318,7 @@ func _sync_enemies(delta: float) -> void:
 				continue                                  # model w następnej klatce (sprite 2D już przezroczysty)
 			budget -= 1
 			var e := Enemy3D.new()
+			e.life_seed = hash(String(n.name)) & 0x7fffffff          # oddech i tiki w spoczynku (IDLE_PLAN.md A1): ziarno z nazwy wroga, nie wspólna faza
 			if not e.setup(k, k == "stalker"):
 				e.free()
 				_enemies[id] = [n, null]                  # bez modelu nic nie widać (wszystkie rodzaje mają modele)
