@@ -109,6 +109,14 @@ Szkic:
 
 ### E4 — pierwszy plan nie zasłania wejść (`front3d` / `level3d`)
 
+**Zrobione w 1.7.592** (`feat/dig-e4-front`). `Front3D.dig_blocks` (kolumna powietrza przy czole ± `DIG_PAD` 2, wiersz wejścia) idzie
+do `layout` jako dodatkowe FRONT_SKIP wpisów, których pas obejmuje wiersz wejścia; view3d bierze wejścia z `level.dig_zones()`.
+Najpierw próbowałem przesuwać element (`_free_x`, jak przy kałużach przekroju) — na 1.3 rura stanęła wtedy tuż za blokiem, w korytarzu,
+i zasłaniała podchodzącą postać; dlatego element znika. Kroki w `tools/test_front.gd`: przed regułą 1 element przed wejściem (1.3),
+po — 0 na wszystkich mapach ze strefami.
+
+Szkic:
+
 - Reguła rozstawienia `FRONT`: żaden element pierwszego planu w kolumnach wejścia strefy ±2 (z `entrance()`), jak dziś
   `FRONT_SKIP`. Na 1.3 rura przesunie się w bok.
 - Test w `tools/test_front.gd`: „pierwszy plan nie stoi przed wejściem strefy wydobycia” dla wszystkich map z `DIG_ZONES`.

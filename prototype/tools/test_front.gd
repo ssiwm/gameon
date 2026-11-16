@@ -58,6 +58,7 @@ func _process(_dt: float) -> bool:
 		_check_map(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []))
 		_check_shell(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []), consts.get("DIG_ZONES", []))
 		_check_sky_edges(f.get_basename(), consts.get("MAP", []))
+		_check_dig_entrances(f.get_basename(), consts.get("MAP", []), front, consts.get("FRONT_SKIP", []), consts.get("DIG_ZONES", []))
 	_check(total > 0, "żadna mapa nie ma pierwszego planu (pilot na z1_m2)")
 	_check_skip()
 	_check_layers()
@@ -877,3 +878,48 @@ func _check_fade() -> void:
 	for key: String in ["g1", "g2", "lamp"]:
 		var m := Front3D.materials()[key] as ShaderMaterial
 		_check(m.get_shader_parameter("albedo_tex") != null and m.get_shader_parameter("normal_tex") != null, "materiał %s bez tekstur" % key)
+
+
+## Wejścia stref wydobycia (DIG_ENTRANCE_PLAN.md E4): żaden element pierwszego planu w pasie wejścia nie stoi w kolumnie powietrza przy
+## czole ± `Front3D.DIG_PAD` (przed czołem, kilofem i kopiącym). Wejście jak w grze: strefa z `DIG_ZONES` na mapie, w której jej kafle
+## są powietrzem (level.gd `_carve_dig_zones`), a skała strefy — kafle stałe danych mapy.
+func _check_dig_entrances(map_id: String, rows: Array, front: Array, skip: Array, digs: Array) -> void:
+	if digs.is_empty() or rows.is_empty():
+		return
+	var DZ: GDScript = load("res://scripts/dig_zone.gd")
+	var ents: Array = []
+	for d in digs:
+		var dz: Node2D = DZ.new()
+		root.add_child(dz)
+		var inside := func(c: int, r: int) -> bool: return c >= int(d[0]) and c <= int(d[2]) and r >= int(d[1]) and r <= int(d[3])
+		var ch := func(c: int, r: int) -> String:
+			if r < 0 or r >= rows.size() or c < 0 or c >= (rows[r] as String).length():
+				return "#"
+			return (rows[r] as String).substr(c, 1)
+		var solid := func(c: int, r: int) -> bool: return not inside.call(c, r) and Level3D.is_solid_ch(String(ch.call(c, r)))
+		var zone_solid := func(c: int, r: int) -> bool: return Level3D.is_solid_ch(String(ch.call(c, r)))
+		dz.setup(d, solid, zone_solid)
+		var e: Dictionary = dz.entrance()
+		_check(not e.is_empty(), "%s strefa %s: bez wejścia" % [map_id, d])
+		ents.append(e)
+		dz.free()
+	var blocks: Array = Front3D.dig_blocks(ents)
+	var bl := Front3D.blocked_x(front, rows)
+	var items := Front3D.layout(front, skip, false, bl, blocks)
+	var before := 0
+	for it: Dictionary in Front3D.layout(front, skip, false, bl):
+		before += _in_dig(it, blocks)
+	var bad := 0
+	for it: Dictionary in items:
+		bad += _in_dig(it, blocks)
+	print("[FRONT] %s: wejść stref %d, elementów przed wejściem bez reguły %d, z regułą %d" % [map_id, ents.size(), before, bad])
+	_check(bad == 0, "%s: element pierwszego planu przed wejściem strefy wydobycia" % map_id)
+
+func _in_dig(it: Dictionary, blocks: Array) -> int:
+	var clip: Vector4 = it["clip"]
+	var x: float = it["x"]
+	for b: Vector3i in blocks:
+		var ry := -(float(b.z) + 0.5) * Level3D.T                # środek wiersza wejścia (m, y w górę)
+		if x >= float(b.x) * Level3D.T - Front3D.MARGIN and x <= float(b.y + 1) * Level3D.T + Front3D.MARGIN and ry <= clip.w and ry >= clip.z:
+			return 1
+	return 0
