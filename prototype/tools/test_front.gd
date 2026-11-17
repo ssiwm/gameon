@@ -202,12 +202,28 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		# hala stacji 1.2 to budynek 3D (szkielet z cegłą): bramy na parterze i okna piętra po obu stronach, bez fasad wejść z kafli
 		_check(Level3D.shell_facades.is_empty(), "1.2: fasada z kafli przy budynku 3D (%s)" % [Level3D.shell_facades])
 		_check_building(rows, "1.2 hala stacji", 66, 100, 18, 26, ["-1:gate", "1:gate", "-1:window", "1:window"])
+		# pompownia: bramy parteru po obu stronach, strop piętra (wiersz 22) jako płyta 0,25 m z żebrami zamiast pudeł kafli 1,31 m, z otworem
+		# do wskoczenia na piętro (kol. 217–222) bez płyty
+		_check_building(rows, "1.2 pompownia", 216, 246, 16, 26, ["-1:gate", "1:gate"])
+		_check(Level3D.bld_cells.has(Vector2i(230, 22)) and not Level3D.bld_cells.has(Vector2i(219, 22)), "1.2 pompownia: kafle stropu piętra z pudłem albo otwór zamurowany")
+		for bb: Dictionary in Level3D.buildings:
+			if int(bb["c0"]) == 216:
+				var fl := 0
+				for xf: Transform3D in Building3D.parts(bb, rows)["slab"]:
+					var a2 := _box_aabb(xf)
+					if is_equal_approx(a2.end.y, -22.0 * Level3D.T) and absf(a2.size.y - Building3D.SLAB) < 0.001:
+						fl += 1
+						_check(a2.position.x >= 223.0 * Level3D.T - 0.001, "1.2 pompownia: płyta stropu nad otworem (x %.2f)" % a2.position.x)
+				_check(fl == 1, "1.2 pompownia: %d płyt stropu piętra" % fl)
 	if map_id == "z1_m3":
 		_check(not Level3D.shell_walls.has(Vector2i(37, 29)), "1.3: ściana wejścia zasłania kratkę piwniczki")
 		_check(Level3D.shell_facades.is_empty(), "1.3: fasada z kafli przy budynku 3D (%s)" % [Level3D.shell_facades])
 		# posterunek: drzwi po obu stronach; Skład: bramy na parterze i okna piętra po obu stronach
 		_check_building(rows, "1.3 posterunek", 18, 36, 21, 26, ["-1:door", "1:door"])
 		_check_building(rows, "1.3 Skład", 112, 142, 18, 26, ["-1:gate", "1:gate", "-1:window", "1:window"])
+		# hala Żyły: blacha `M` na stalowym szkielecie, brama z korzeni w zachodniej ścianie, wschodnia ściana na skraju mapy
+		_check_building(rows, "1.3 hala Żyły", 164, 190, 11, 26, ["-1:gate"])
+		_check_shed(rows, "1.3 hala Żyły", 164, 190, 11, 26)
 	if map_id == "z1_hub":
 		_check_vault(rows)
 		_check_hub_furniture(rows)
@@ -522,7 +538,7 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 	var ks: Array = [Vector2i(c0, r0), Vector2i(cm, r0)]
 	for r in range(r0 + 1, r1):                              # mur ścian szczytowych (bez otworów i okien)
 		for c in [c0, c1]:
-			if Level3D._ch(rows, c, r) in Level3D.WALL_CH:
+			if Level3D._ch(rows, c, r) in Level3D.BLD_CH:
 				ks.append(Vector2i(c, r))
 	_check(ks.size() > 3, "%s: ściany szczytowe bez muru w mapie" % name)
 	for k: Vector2i in ks:
@@ -572,6 +588,38 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 			for xb: Transform3D in p[pr[1]]:
 				var i := _box_aabb(xa).intersection(_box_aabb(xb))
 				_check(i.size.x <= 0.003 or i.size.y <= 0.003 or i.size.z <= 0.003, "%s: '%s' przenika '%s' (%s)" % [name, pr[0], pr[1], i])
+
+## Hala z blachy (`building3d.gd` "shed", hala Żyły 1.3; przegląd budynków 2026-11-17: w 3D otwarta na las, dach z bloków z czopami,
+## słupy jako nogi wieży z krzyżami): ściana tylna na całej wysokości mimo wnętrza bez tła `b`, kafle `M` dachu i ścian bez bloków
+## (`crate_blocks`), słupy `w` w hali bez roli wieży, bez attyki nad dachem.
+func _check_shed(rows: Array, name: String, c0: int, c1: int, r0: int, r1: int) -> void:
+	var b: Dictionary = {}
+	for x: Dictionary in Level3D.buildings:
+		if int(x["c0"]) == c0 and int(x["r0"]) == r0:
+			b = x
+	if b.is_empty():
+		return                                                   # brak budynku zgłasza `_check_building`
+	_check(String(b["kind"]) == "shed" and bool(b.get("closed", false)), "%s: nie hala z blachy zamknięta ścianą tylną (%s)" % [name, b])
+	var T := Level3D.T
+	var p := Building3D.parts(b, rows)
+	var area := 0.0
+	for xf: Transform3D in p["back"]:
+		var sz := xf.basis.get_scale()
+		area += sz.x * sz.y
+	var want := (float(c1 + 1 - c0) * T - 2.0 * Building3D.WALL) * (-float(r0) * T - Building3D.SLAB + float(r1) * T)
+	_check(area >= want * 0.99, "%s: ściana tylna nie na całej wysokości (%.1f z %.1f m²)" % [name, area, want])
+	for xf: Transform3D in p["slab"]:
+		_check(_box_aabb(xf).end.y <= -float(r0) * T + 0.001, "%s: attyka nad dachem z blachy" % name)
+	for g: Dictionary in Level3D.crate_blocks(rows):
+		for c in range(int(g["c0"]), int(g["c1"]) + 1):
+			for r in range(int(g["r0"]), int(g["r1"]) + 1):
+				_check(not Level3D.bld_cells.has(Vector2i(c, r)), "%s: blok z czopami na kaflu budynku (%d, %d)" % [name, c, r])
+	var posts := 0
+	for run: Dictionary in Level3D.post_runs(rows):
+		if int(run["c"]) > c0 and int(run["c"]) < c1 and int(run["r0"]) > r0 and int(run["r1"]) <= r1:
+			posts += 1
+			_check(Level3D.frame_role(rows, run) == "", "%s: słup w kolumnie %d jako %s" % [name, int(run["c"]), Level3D.frame_role(rows, run)])
+	_check(posts >= 2, "%s: %d słupów w hali" % [name, posts])
 
 ## Pudło 1×1×1 przekształcone przez `xf` (osiowe) jako AABB.
 func _box_aabb(xf: Transform3D) -> AABB:
@@ -821,7 +869,11 @@ func _check_roof() -> void:
 			if not (yw is Vector2):
 				continue
 			n += 1
-			_check(Level3D.roof_purlins(rows, int(floorf(mi.position.x / Level3D.T)), int(e["r0"])).is_empty(), "%s: dach z blachy nad budynkiem 3D" % mi.name)
+			var cx := int(floorf(mi.position.x / Level3D.T))
+			for o: Dictionary in front:                         # budynek elementu (hala stacji albo pompownia)
+				if cx >= int(o["c0"]) and cx <= int(o["c1"]):
+					e = o
+			_check(Level3D.roof_purlins(rows, cx, int(e["r0"])).is_empty(), "%s: dach z blachy nad budynkiem 3D" % mi.name)
 			var yc := -float(int(e["r0"])) * Level3D.T - float((load("res://scripts/building3d.gd") as Script).get_script_constant_map()["SLAB"])
 			_check(absf((yw as Vector2).y - yc) < 0.001, "%s: góra %.3f m zamiast spodu stropu %.3f" % [mi.name, (yw as Vector2).y, yc])
 	_check(n > 0, "hala stacji: brak elementów pierwszego planu z przekrojem")
