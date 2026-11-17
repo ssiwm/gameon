@@ -82,6 +82,10 @@ func run(m: Node2D) -> void:
 	blade = Weapons.index_of("maczeta")
 	NoiseMgr.noise_added.connect(_on_noise)
 	var dig0: int = (level._dig_cells as Dictionary).size()
+	if "--digonly=slope" in OS.get_cmdline_user_args():      # szybki przebieg samego zejścia po zboczu (strojenie animacji)
+		await _slope()
+		_finish()
+		return
 	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48)" % dig0, dig0 == 176 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
@@ -96,6 +100,7 @@ func run(m: Node2D) -> void:
 	await _pools()
 	await _signals()
 	await _collapse()
+	await _slope()
 	_timings()
 	_finish()
 
@@ -105,14 +110,35 @@ func _on_noise(amount: float, pos: Vector2, tag: String) -> void:
 
 ## Zrzut okna do `--digshots=KATALOG` (w oknie; headless nic nie robi).
 func _shot(name: String, each := Callable(), wait := 0.6) -> void:
+	if _shot_dir() == "":
+		return
+	await _frames(wait, each)
+	_grab(name)
+
+func _shot_dir() -> String:
 	var dir := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--digshots="):
 			dir = a.substr("--digshots=".length())
-	if dir == "" or DisplayServer.get_name() == "headless":
+	return "" if DisplayServer.get_name() == "headless" else dir
+
+## Zapis ostatniej klatki okna od razu (bez czekania); `--digcrop=N`: kadr N × N px wokół postaci (ocena animacji nóg).
+func _grab(name: String) -> void:
+	var dir := _shot_dir()
+	if dir == "":
 		return
-	await _frames(wait, each)
 	var img := get_viewport().get_texture().get_image()
+	var crop := 0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--digcrop="):
+			crop = int(a.substr("--digcrop=".length()))
+	var v3: Node = Vfx.view3d
+	if crop > 0 and v3 != null and is_instance_valid(v3):
+		var sp: Vector2 = v3.screen_point(Level3D.px_to_m(player.global_position) + Vector3(0.0, 0.9, 0.0))
+		if is_finite(sp.x):
+			sp *= Vector2(img.get_size()) / get_viewport().get_visible_rect().size
+			var r := Rect2i(Vector2i(sp) - Vector2i(crop, crop) / 2, Vector2i(crop, crop)).intersection(Rect2i(Vector2i.ZERO, img.get_size()))
+			img = img.get_region(r)
 	img.save_png(dir.path_join(name + ".png"))
 	info("zrzut %s" % dir.path_join(name + ".png"))
 
@@ -371,6 +397,96 @@ func _tunnel() -> void:
 		[hits, r.x, r.y, r.y / maxf(hits, 1), r.z])
 	check("schody po skosie schodzą (≥ 2 px w dół na cios — stopień 8 px na 3 kęsy) i idą naprzód", r.y / maxf(hits, 1) >= 2.0 and r.x > 20.0)
 	info("skała w strefie: %.0f%% (operacji kopania: %d)" % [zone.solid_fraction() * 100.0, zone.digs])
+
+# ---------------------------------------------------------------- 3a. zejście po wykopanym zboczu (animacja)
+
+## Schody po skosie wykopane z wierzchu, potem marsz w dół i w górę po nich: stan animacji postaci 3D (player.gd `_char_anim`) co klatkę,
+## skoki wysokości stóp i profil gruntu pod stopami.
+const SLOPE_X0 := 40.0                    ## px: początek schodów w DigZone1
+const SLOPE_STEPS := 5
+var _sl_trace: Array = []                 ## wyniki z lambdy `_slope` (pola obiektu — lambda kopiuje zmienne lokalne)
+var _sl_air := 0
+var _sl_raw := 0
+var _sl_prev := ""
+var _sl_y := 0.0
+var _sl_dy := 0.0
+var _sl_n := 0
+
+func _slope() -> void:
+	zone.reset_to(PackedByteArray())                          # strefa jak na starcie (wcześniejsze punkty rozkopały wierzch)
+	_release_all()
+	# schody jak po kopaniu po skosie: stopień DIAG_DROP (8 px) co 12 px, pięć stopni od x = 40, dalej równe dno
+	for k in SLOPE_STEPS:
+		var x0 := SLOPE_X0 + 12.0 * k
+		var x1 := SLOPE_X0 + 12.0 * SLOPE_STEPS + 40.0
+		var y1 := TOP + 8.0 * (k + 1)
+		for _rep in 3:
+			zone.apply_dig(Vector2((x0 + x1) * 0.5, (TOP - 4.0 + y1) * 0.5), Vector2((x1 - x0) * 0.5, (y1 - TOP + 4.0) * 0.5), 0.0, DigMats.Tool.PICK)
+	await _frames(0.2)
+	var x_end := SLOPE_X0 + 12.0 * SLOPE_STEPS + 30.0
+	var space := player.get_world_2d().direct_space_state
+	var prof := []
+	var x := 2.5 * 16.0
+	while x <= x_end + 8.0:
+		var q := PhysicsRayQueryParameters2D.create(Vector2(x, TOP - 20.0), Vector2(x, TOP + 80.0), 1)
+		var h := space.intersect_ray(q)
+		prof.append("%.0f:%s" % [x, "—" if h.is_empty() else "%.1f" % (h["position"].y - TOP)])
+		x += 2.0
+	info("  grunt zbocza (x:dy od wierzchu): %s" % " ".join(prof))
+	var seq := "--digseq" in OS.get_cmdline_user_args()      # w oknie: kadr co 2 klatki fizyki w marszu w dół (z --fixed-fps 60)
+	_sl_n = 0
+	for pass_i in 2:
+		var down := pass_i == 0
+		_place_player(Vector2(2.0 * 16.0, TOP - 2.0) if down else Vector2(x_end, player.global_position.y))
+		await _frames(0.3)
+		_sl_trace = []
+		_sl_air = 0
+		_sl_raw = 0
+		_sl_prev = ""
+		_sl_y = player.global_position.y
+		_sl_dy = 0.0
+		Input.action_press("move_right" if down else "move_left")
+		await _frames(2.0, func(_t: float, _dt: float) -> void:
+			if not down and player.is_on_floor() and player.is_on_wall():
+				Input.action_press("jump")
+			elif not down:
+				Input.action_release("jump")
+			var a := String(player._char_anim()[0])
+			if a == "fall" or a == "jump":
+				_sl_air += 1
+			if not player.is_on_floor():
+				_sl_raw += 1
+			var gap: float = player._ground_below(0.0, 0.0, 30.0)
+			var tag := "%s%s" % [a, "" if player.is_on_floor() else "*"]
+			if tag != _sl_prev:
+				_sl_trace.append("%s@%.0f,%.1f(środek %.1f)" % [tag, player.global_position.x, player.global_position.y - TOP, -gap])
+				_sl_prev = tag
+			if down and seq:
+				_sl_n += 1
+				if _sl_n % 2 == 0:
+					_grab("seq_%03d" % (_sl_n / 2))
+			_sl_dy = maxf(_sl_dy, absf(player.global_position.y - _sl_y))
+			_sl_y = player.global_position.y)
+		_release_all()
+		info("  %s: %d klatek animacji lotu (ciało 2D w powietrzu: %d), największy skok y na klatkę %.1f px; %s" %
+			["w dół" if down else "w górę", _sl_air, _sl_raw, _sl_dy, " ".join(_sl_trace)])
+		if down:
+			check("zejście po schodach wykopu: ciało 2D spada z każdego stopnia (%d klatek), a animacja to krok, nie lot (%d klatek lotu)" % [_sl_raw, _sl_air],
+				_sl_raw >= 4 * SLOPE_STEPS and _sl_air == 0 and player.global_position.y - TOP > 8.0 * SLOPE_STEPS - 1.0)
+	# w oknie (--digshots): postój w kilku miejscach zbocza i klatki marszu w dół — stopy na gruncie
+	var fl0: bool = player.flashlight
+	player.flashlight = true
+	for k in 4:                                               # na krawędzi stopnia: prostokąt ciała opiera się rogiem, środek nad niższym stopniem
+		var aim := Vector2.RIGHT if k < 2 else Vector2.LEFT
+		_place_player(Vector2(SLOPE_X0 + 12.0 * (1 + k % 2) + (3.0 if k < 2 else -3.0 + 12.0), TOP - 30.0))
+		await _shot("slope_stand_%d" % k, func(_t: float, _dt: float) -> void: player.aim_dir = aim, 0.8)
+	_place_player(Vector2(2.0 * 16.0, TOP - 2.0))
+	await _frames(0.3)
+	Input.action_press("move_right")
+	for k in 8:
+		await _shot("slope_walk_%d" % k, Callable(), 0.1)
+	_release_all()
+	player.flashlight = fl0
 
 # ---------------------------------------------------------------- 4. nawigacja i dźwięk
 
