@@ -7,6 +7,7 @@ extends RefCounted
 ## włącznie; podłoga wnęki = spód wiersza r1), "d" (m w głąb za ścianą tła; brak = domyślna rodzaju), "lit" (światło z listy rodzaju, "" — bez światła)}.
 
 const Level3D := preload("res://scripts/level3d.gd")
+const Building3D := preload("res://scripts/building3d.gd")
 const T := Level3D.T
 
 const LAYER_NICHE := 128                    ## warstwa wizualna brył wnęk (oprócz warstwy świata): tylko ją oświetlają światła wnęk
@@ -147,6 +148,7 @@ static func build(parent: Node3D, rows: Array, entries: Array, quality := 2) -> 
 		return
 	for i in entries.size():
 		var d := entries[i] as Dictionary
+		_wall_mat = _building_wall(d)
 		var root := Node3D.new()
 		root.name = "Niche%d" % i
 		parent.add_child(root)
@@ -168,6 +170,7 @@ static func build(parent: Node3D, rows: Array, entries: Array, quality := 2) -> 
 				_build_vent(root, d, g, rng, quality)
 			_:
 				_build_doorway(root, d, g, rng, quality)
+		_wall_mat = null
 		_merge_boxes(root)
 		for n in root.find_children("*", "GeometryInstance3D", true, false):
 			(n as VisualInstance3D).layers = 1 | LAYER_NICHE     # warstwa świata (kamera świata) + wnęki (światła wnęk)
@@ -218,9 +221,20 @@ static func _geom(d: Dictionary) -> Dictionary:
 	return {"x0": x0, "x1": x1, "y_top": y_top, "y_floor": -float(int(d["r1"]) + 1) * T, "depth": depth, "z_back": WALL_Z - depth,
 			"ix0": x0 + JAMB, "ix1": x1 - JAMB, "iy1": y_top - LINTEL, "front": WALL_Z + 0.3}
 
+## Materiał muru wnęki w budynku 3D (`Level3D.buildings`): ściana tylna typu budynku — w żelbetowym posterunku 1.3 beton zamiast cegły
+## (przegląd budynków 2026-11-17: ceglane ościeża i boki wnęk w betonowej ścianie); poza budynkiem null (cegła). Ustawia `build` na czas wnęki.
+static var _wall_mat: Material = null
+
+static func _building_wall(d: Dictionary) -> Material:
+	for b: Dictionary in Level3D.buildings:
+		if int(d["c0"]) >= int(b["c0"]) and int(d["c1"]) <= int(b["c1"]) and int(d["r0"]) > int(b["r0"]) and int(d["r1"]) < int(b["r1"]):
+			var spec: Dictionary = Building3D.KINDS.get(String(b["kind"]), Building3D.KINDS["bunker"])
+			return Building3D._tinted(spec.get("back", spec["wall"]))     # z przyciemnieniem jak ściana tylna budynku, w rzucie świata
+	return null
+
 static func _mats() -> Dictionary:
 	return {
-		"wall": Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"),
+		"wall": _wall_mat if _wall_mat != null else Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"),
 		"conc": Level3D.make_pbr("concrete", 0.33, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone"),
 		"metal": Level3D.make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"),
 		"rock": Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic"),

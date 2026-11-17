@@ -84,7 +84,22 @@ static func build(parent: Node3D, rows: Array) -> int:
 		node.name = "Building3D_%d_%d" % [int(b["c0"]), int(b["r0"])]
 		parent.add_child(node)
 		n += build_one(node, b, rows)
+		mark_col_spans(b, rows)
 	return n
+
+## Słupy budynku `b` przy ścianie tylnej (wysokie skrzynki "col" wewnątrz obrysu, bez pilastrów na licu zewnętrznym i słupów przekroju)
+## → `Level3D.bld_col_spans` [x0, x1 (m), r0, r1 (wiersze tła, r1 wyłącznie)]: dekal, w którego środek wchodzi słup, nie jest rysowany.
+static func mark_col_spans(b: Dictionary, rows: Array) -> void:
+	var T := Level3D.T
+	var xa := float(int(b["c0"]) + 1) * T
+	var xb := float(int(b["c1"])) * T
+	for xf: Transform3D in (parts(b, rows)["col"] as Array):
+		var sz := xf.basis.get_scale()
+		var x0 := xf.origin.x - sz.x * 0.5
+		var x1 := xf.origin.x + sz.x * 0.5
+		if sz.y < T or x1 <= xa or x0 >= xb or xf.origin.z > 0.0:
+			continue
+		Level3D.bld_col_spans.append(Vector4(x0, x1, float(int(b["r0"]) + 1), float(int(b["r1"]))))
 
 ## Skrzynki budynku `b` jako {materiał: [Transform3D pudła 1×1×1]} — osobno od budowy węzłów, żeby test sprawdził wymiary bez renderu.
 static func parts(b: Dictionary, rows: Array) -> Dictionary:
