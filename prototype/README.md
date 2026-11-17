@@ -41,9 +41,13 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
 
 ## Menu główne, ustawienia, podpowiedzi (demo)
 
-- **Ekran startowy „FIELD TERMINAL”** (od 1.7.447, `main_menu.gd`, `MAIN_MENU_PLAN.md`): tło to key art z klatki gry (`menu_stage.gd`:
-  `art/menu/backdrop.jpg` z `tools/menu_backdrop.py`, źródło `art_src/menu/` w LFS; powolny najazd kamery, dwie mgły, iskry i migotanie
-  ogniska, „Reduce effects” = stały obraz; to samo tło ma lobby). Trzy karty: **KAMPANIA** (następna misja, pasek 4 misji, jedyny wypełniony
+- **Ekran startowy „FIELD TERMINAL”** (od 1.7.447, `main_menu.gd`, `MAIN_MENU_PLAN.md`): tło to żywa scena 3D (od 1.7.599,
+  `menu_forest.gd` w osobnym świecie, wyświetla ją `menu_stage.gd`): nocny las z mgłą płynącą z wiatrem, wąska mokra ścieżka do radiostacji
+  z oświetlonym oknem i masztem z pulsującymi światłami w prześwicie przecinki, księżyc za stacją (promienie w mgle), powolny najazd kamery;
+  „Reduce effects” = stały kadr. Do zbudowania sceny oraz w trybie zgodności (OpenGL) i headless stoi jej statyczna klatka
+  (`art/menu/backdrop.jpg`: `tools/menu_forest_shot.gd` → `art_src/menu/forest_radio.png` w LFS → `tools/menu_backdrop.py`), potem
+  przenikanie w 1,2 s; `--menu2d` wymusza statyczny kadr. Scena renderuje się tylko, gdy widać menu albo lobby (to samo tło, jedna kopia),
+  w skali 0,6 / 0,75 / 0,85 ekranu wg jakości (LOW bez cieni księżyca); ok. 7 ms GPU na RTX 3080 przy MEDIUM w 1080p. Trzy karty: **KAMPANIA** (następna misja, pasek 4 misji, jedyny wypełniony
   przycisk OPEN LOBBY → lobby jako host), **NOCNY DYŻUR** (lobby w trybie Nocnego Dyżuru), **OPERATORZY**; pod nimi szuflada ze szczegółami
   wskazanej karty (kampania: następna misja, postęp, trudność, skład; Nocny Dyżur: misje, modyfikatory, najlepszy bieg, nagroda;
   operatorzy: aktywny, strój, oddział, ostatnia misja). Po prawej karta operatora (z fokusem: XP i złom, [Enter] → OPERATORZY) i ŁĄCZNOŚĆ

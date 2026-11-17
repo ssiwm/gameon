@@ -1,47 +1,31 @@
-"""Tło ekranu startowego (MAIN_MENU_PLAN.md P0): key art z klatki gry + kafelek mgły dla `menu_stage.gd`.
+"""Tło zastępcze ekranu startowego + kafelek mgły dla `menu_stage.gd`.
 
-Źródło: `art_src/menu/keyart_z1_m1_c125.png` (LFS) — zrzut widoku 3D 3840×2160, zaakceptowany 31.10.2026:
-  godot --path prototype -- --host --port=8931 --mission=z1_m1 --nohud --look=0 --shotweather=clear --shotzoom=1.6 --shotat=125 --shot=PLIK
-(poza postaci zmienia się między przebiegami — nowy zrzut trzeba obejrzeć przed podmianą źródła).
+Ekrany startowe pokazują żywą scenę 3D (`scripts/menu_forest.gd`: nocny las z mgłą, ścieżka do radiostacji). Tło zastępcze to
+pierwsza klatka tej sceny — stoi, zanim scena się zbuduje (przenikanie musi być niewidoczne, więc bez gradacji), i na stałe
+w trybie zgodności (OpenGL bez mgły wolumetrycznej) oraz headless.
+
+Źródło: `art_src/menu/forest_radio.png` (LFS), render 2560×1440 ze stojącym czasem (`START_T` sceny):
+  godot --path prototype --script tools/menu_forest_shot.gd -- --out=<repo>/art_src/menu/forest_radio.png --size=2560x1440 --wait=90
+(okno — wcześniej `override.cfg` z katalogiem QA). Po każdej zmianie kadru, świateł albo mgły w `menu_forest.gd` wyrenderuj źródło
+od nowa i uruchom ten skrypt. Poprzedni key art z misji 1.1 (`keyart_z1_m1_c125.png`) zostaje w `art_src/menu/` na materiały prasowe.
 
 Wynik (nie edytować ręcznie):
-  art/menu/backdrop.jpg — kadr 2560×1440 z gradacją w palecie gry: ekspozycja, zimne cienie i ciepłe światła, poświata ogniska,
-                          przyciemniona lewa strona pod listę menu, winieta, ziarno;
-  art/menu/fog.png      — biały kafelek 1024×256 z alfą (miękki pas mgły), powtarzalny w poziomie.
-Pozycję ogniska w kadrze (`FIRE_UV`) zna `menu_stage.gd` — przy zmianie kadru popraw ją tam.
+  art/menu/backdrop.jpg — kadr 2560×1440 (źródło bez zmian, JPEG);
+  art/menu/fog.png      — biały kafelek 1024×256 z alfą (miękki pas mgły), powtarzalny w poziomie; dryfuje nad tłem zastępczym.
 
 Użycie (z prototype/): python tools/menu_backdrop.py  → potem godot --headless --path . --import
 """
 import os
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
-SRC = os.path.join(ROOT, "..", "art_src", "menu", "keyart_z1_m1_c125.png")
+SRC = os.path.join(ROOT, "..", "art_src", "menu", "forest_radio.png")
 OUT = os.path.join(ROOT, "art", "menu")
 W, H = 2560, 1440
-CROP = (256, 619)                 # lewy górny róg kadru w źródle 4K: żołnierz na ~65% szerokości, stopy na ~82% wysokości
 SEED = 87
-
-
-def grade(src: Image.Image) -> Image.Image:
-    a = np.asarray(src.convert("RGB").crop((CROP[0], CROP[1], CROP[0] + W, CROP[1] + H))).astype(np.float32) / 255
-    a = np.clip(a * 2.1, 0, 1) ** 0.85                                   # ekspozycja: nocny kadr gry jest ~2× za ciemny na tło
-    lum = a.mean(axis=2, keepdims=True)
-    cool = np.array([0.80, 0.90, 1.12], np.float32)
-    warm = np.array([1.12, 0.98, 0.82], np.float32)
-    t = np.clip((lum - 0.15) / 0.5, 0, 1)
-    a = a * (cool * (1 - t) + warm * t)                                  # zimne cienie, ciepłe światła
-    soft = Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(28))
-    a = a + 0.45 * np.clip(np.asarray(soft).astype(np.float32) / 255 - 0.55, 0, 1)   # poświata ogniska
-    x = np.linspace(0, 1, W, dtype=np.float32)[None, :, None]
-    y = np.linspace(-1, 1, H, dtype=np.float32)[:, None, None]
-    a *= 0.42 + 0.58 * np.clip((x - 0.08) / 0.42, 0, 1)                  # lewa strona pod tytuł i listę menu
-    a *= 1 - 0.38 * y ** 2                                               # winieta
-    a += np.random.default_rng(SEED).normal(0, 0.012, (H, W, 1)).astype(np.float32)   # ziarno
-    return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
 
 def fog_tile(w: int = 1024, h: int = 256) -> Image.Image:
@@ -63,7 +47,10 @@ def fog_tile(w: int = 1024, h: int = 256) -> Image.Image:
 
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
-    grade(Image.open(SRC)).save(os.path.join(OUT, "backdrop.jpg"), quality=90, optimize=True)
+    src = Image.open(SRC).convert("RGB")
+    if src.size != (W, H):
+        src = src.resize((W, H), Image.LANCZOS)
+    src.save(os.path.join(OUT, "backdrop.jpg"), quality=92, optimize=True)
     fog_tile().save(os.path.join(OUT, "fog.png"), optimize=True)
     print("menu_backdrop:", os.path.join(OUT, "backdrop.jpg"), os.path.join(OUT, "fog.png"))
 
