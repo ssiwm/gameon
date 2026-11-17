@@ -446,11 +446,19 @@ func _process(_dt: float) -> bool:
 			var dt := 1.0 / float(fps)
 			for rate in [0.0, 0.25, 1.0, 1.5]:
 				e.set("_phase", 0.0)
+				var expected: float = TAU / float(Enemy.SPEC[kind].get("cycle", 1.0)) * rate
+				# czworonóg z klipami (Trzosek): chód ustalony przed pomiarem (bez przejścia QUAD_GAIT_FADE), krok zależy od chodu i prędkości
+				if Enemy.SPEC[kind].get("quad", false) and e.call("_qhas", "gallop"):
+					var speed: float = reference * float(rate)
+					var gallop: bool = speed >= Enemy.QUAD_GAIT_PX[0]
+					e.set("_gallop_on", gallop)
+					e.set("_gallop_w", 1.0 if gallop else 0.0)
+					var stride: float = reference * float(Enemy.SPEC[kind].cycle) * clampf(sqrt(rate), Enemy.QUAD_STRIDE_MIN, 1.0) if gallop else Enemy.QUAD_WALK_STRIDE
+					expected = TAU * speed / stride
 				for f in fps:
 					e.position.x += reference * rate * Enemy.PX * dt
 					e.pose(dt, "walk", false, Color.WHITE, 0.0, 1, true, 0.0, 0, false, reference * rate)
 					if f % 10 == 0: geometry(e, kind)
-				var expected: float = TAU / float(Enemy.SPEC[kind].get("cycle", 1.0)) * rate
 				check("%s %d fps rate=%s" % [kind, fps, rate], absf(float(e.get("_phase")) - expected) < 0.0001)
 		var sk: Skeleton3D = e.get("_sk")
 		var bones: Dictionary = e.get("_b")
