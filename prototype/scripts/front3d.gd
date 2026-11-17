@@ -625,7 +625,26 @@ static func over_ground(a: Vector4, a_open: bool, b: Vector4, b_open: bool) -> b
 	return a_open != b_open and ((a_open and b.w <= a.z + 0.01) or (b_open and a.w <= b.z + 0.01))
 
 
-static func layout(front: Array, skip: Array, low := false, blocked: Array = []) -> Array:
+## Wejścia stref wydobycia (DIG_ENTRANCE_PLAN.md E4): element pierwszego planu przed wejściem zasłaniał czoło, kilof i kopiącego (1.3:
+## rura dokładnie przed wejściem). Kolumna powietrza przy czole ± DIG_PAD kolumn (+ MARGIN, jak FRONT_SKIP), w pasie wpisu, w którym
+## leży wiersz wejścia — element tam nie staje (jak w FRONT_SKIP). Nie przesuwa się dalej (`_free_x`): przesunięty o blok stał tuż obok,
+## w korytarzu, którym gracz podchodzi do czoła (zrzut 1.3, 2026-11-16) — zasłaniał postać zamiast czoła.
+const DIG_PAD := 2                         ## kolumn z każdej strony kolumny wejścia
+
+## [Vector3i(c0, c1, wiersz powietrza wejścia)] (kafle) z `entrance()` stref (dig_zone.gd: wall_x, floor_y w px, dir).
+static func dig_blocks(entrances: Array) -> Array:
+	var out := []
+	for e: Dictionary in entrances:
+		if e.is_empty():
+			continue
+		var dir := int(e["dir"])
+		var c := int(float(e["wall_x"]) / 16.0)
+		if dir > 0:
+			c -= 1                                                  # korytarz z lewej strony strefy
+		out.append(Vector3i(c - DIG_PAD, c + DIG_PAD, int(float(e["floor_y"]) / 16.0) - 1))
+	return out
+
+static func layout(front: Array, skip: Array, low := false, blocked: Array = [], digs: Array = []) -> Array:
 	var out := []
 	for e: Dictionary in front:
 		var st: Dictionary = SETS.get(String(e.get("set", "")), {})
@@ -639,6 +658,9 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [])
 		# i ±SMALL_MIN dla małych, mały — ±SMALL_MIN dla dużych (najwyżej jeden duży element w kadrze także między wpisami)
 		var blk_big := blocked.duplicate()
 		var blk_small := blocked.duplicate()
+		for d: Vector3i in digs:                               # wejście strefy wydobycia w pasie tego wpisu (E4): jak FRONT_SKIP
+			if d.z >= int(e["r0"]) and d.z <= int(e["r1"]):
+				sk = sk + [[d.x, d.y]]
 		var e_open := bool(st.get("open", false))
 		for o: Dictionary in out:
 			var oc: Vector4 = o["clip"]
@@ -1199,7 +1221,7 @@ static func _put_plant(sts: Dictionary, used: Dictionary, name: String, at: Vect
 
 
 ## Buduje elementy pod `parent` (węzeł „Front”). Zwraca liczbę elementów.
-static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Array = []) -> int:
+static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Array = [], digs: Array = []) -> int:
 	_root = null
 	_ground = []
 	_feet = []
@@ -1220,7 +1242,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 	_root.name = "Front"
 	parent.add_child(_root)
 	var mats := materials()
-	var items := layout(front, skip, low, blocked_x(front, rows))
+	var items := layout(front, skip, low, blocked_x(front, rows), digs)
 	for it: Dictionary in items:                          # kępy lasu stoją na podłożu bliżej kamery niż pnie
 		if bool((SETS[it["set"]] as Dictionary).get("open", false)) and String(it["kind"]) in ["ferns", "grass"]:
 			var zr := RandomNumberGenerator.new()

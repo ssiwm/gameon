@@ -1129,7 +1129,11 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 		["oil_spills", func() -> void: _build_oil_spills(root, rows)],
 		["fog_volumes", func() -> void: Level3D.build_fog_volumes(root, rows, 0.02 if hub else 0.035)],
 		["front", func() -> void:
-			Front3D.build(root, front, front_skip, Settings.quality_idx == 0, rows)
+			var ents: Array = []                           # wejścia stref wydobycia: pierwszy plan ich nie zasłania (DIG_ENTRANCE_PLAN.md E4)
+			if _level.has_method("dig_zones"):
+				for dz in _level.dig_zones():
+					ents.append(dz.entrance())
+			Front3D.build(root, front, front_skip, Settings.quality_idx == 0, rows, Front3D.dig_blocks(ents))
 			Front3D.build_walls(root)                      # ściany przekroju do SHELL_Z (F3; poza ustawieniem „Foreground”)
 			Front3D.apply_settings(Settings.front_idx, Settings.quality_idx == 0)],
 	]
