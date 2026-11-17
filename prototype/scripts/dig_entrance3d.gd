@@ -34,6 +34,8 @@ const PICK_TILT := 0.6                    ## rad od pionu: trzonek w dół i od 
 const FRAME_W := 0.2                      ## m: przekrój stojaka i stropnicy (jak stemple strefy, view3d SUPPORT_W)
 const FRAME_POST_Z := 0.35                ## m: oś stojaka przed tylną ścianą (od −DEPTH_BACK)
 const FRAME_CAP_Z := 0.6                  ## m: stropnica do z = +0,6 — przód obudowy jest w przekroju, jak kapa stempli wykopu
+const FRAME_MAX_H := 4.6                  ## m: najwyższy korytarz z ramą — w sali (1.1: 6,5 m, 1.3: 11,8 m z pomostami) stojak na całą wysokość
+                                          ## wyglądał jak słup, a nie koniec obudowy (wyszło w teście map, DIG_ENTRANCE_PLAN.md E5)
 const FRAME_GAP := 0.03                   ## m: stojak przy czole, nie w nim (najdalszy garb na jego wysokości)
 
 ## Kolumna korytarza przy wejściu strefy i wiersz podłogi (kafle mapy) — {} bez wejścia z boku.
@@ -128,8 +130,8 @@ static func _profile(u: float, h: float) -> float:
 	return h * pow(1.0 - u, 1.5)
 
 ## Odrzwia na końcu obudowy korytarza: [{"size", "pos", "rot"}] belek (m, świat) — stojak przy tylnej ścianie, stropnica pod stropem
-## korytarza w głąb do przodu obudowy i klin. Tylko gdy kafel korytarza przy czole ma ścianę tła (`lined`: Level3D.back_wall_at — 1.2);
-## na 1.1 i 1.3 nie ma obudowy, którą rama by kończyła. Przedniego stojaka nie ma (przód obudowy jest w przekroju) — stałby między
+## korytarza w głąb do przodu obudowy i klin. Tylko gdy kafel korytarza przy czole ma ścianę tła (`lined`: Level3D.back_wall_at)
+## i korytarz jest niski (≤ FRAME_MAX_H — sztolnia, nie sala): z map gry tylko 1.2. Przedniego stojaka nie ma (przód obudowy jest w przekroju) — stałby między
 ## kamerą a postacią przy czole.
 static func frame(z: Node2D, px: float, back: float, bulge: Callable, lined: Callable) -> Array:
 	var e: Dictionary = z.entrance()
@@ -145,6 +147,8 @@ static func frame(z: Node2D, px: float, back: float, bulge: Callable, lined: Cal
 	var out := float(-int(e["dir"]))
 	var floor_m := -float(e["floor_y"]) * px
 	var ceil_m := -float(r) * TILE * px
+	if ceil_m - floor_m > FRAME_MAX_H:
+		return []
 	var h := ceil_m - floor_m - FRAME_W
 	var pz := back + FRAME_POST_Z
 	var reach := 0.0

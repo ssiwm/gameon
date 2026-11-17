@@ -123,6 +123,16 @@ Szkic:
 
 ### E5 — testy i zrzuty
 
+**Zrobione w 1.7.593** (`feat/dig-e5-tests`) — **plan zamknięty**. Testy etapów E1–E3 są w `tools/test_dig_face.gd` (strefa
+syntetyczna), E4 w `tools/test_front.gd`; E5 dokłada przebieg po strefach `DIG_ZONES` map gry (kafle strefy jako powietrze mapy jak
+`level.gd _carve_dig_zones`, przód z `Level3D.zone_front_z`). Wyłapał błąd E2: korytarze 1.1 i 1.3 też mają ścianę tła (`b`), więc
+odrzwia stawały w salach (stojak 6,5 m na 1.1, 11,8 m w hali 1.3 z pomostami) — teraz tylko do `FRAME_MAX_H` 4,6 m (sztolnia 1.2).
+Na 1.3 czoło sięga do przodu przekroju (z = 5,6) — garby liczone po obu stronach płaszczyzny gry. Czas siatki z rozgrzewką.
+Zrzuty: `tools/shot_dig_entrances.sh` (zamiast lokalnego skryptu z analizy). Koszt siatki fragmentu po E1: 1,2–1,6 ms w teście,
+1,3–4,2 ms w `--digtest` (ten sam rozrzut na main przed E1).
+
+Szkic:
+
 - `--digtest` (t_dig) i nowy krok w `test_front.gd`: ściana pierścienia nie jest płaska (rozrzut położenia wierzchołków w głąb
   > 5 cm), plaster przy przodzie dokładnie na z = front (szczelność), żaden wierzchołek pierścienia nie cofa się za brzeg strefy,
   ostrze kilofa znaku za `wall_x` w skale, okruchy na podłodze (±2 cm).

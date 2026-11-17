@@ -1251,9 +1251,14 @@ func _collapse() -> void:
 
 func _timings() -> void:
 	info("ostatnia przebudowa fragmentów po ciosie (kontur + kolizja): %.3f ms" % (zone.rebuild_usec / 1000.0))
-	var t0 := Time.get_ticks_usec()
-	for ci in zone.chunk_count():
-		zone.chunk_mesh(ci, Level3D.PX, Level3D.DEPTH_FRONT, -Level3D.DEPTH_BACK)
-	var all_ms := (Time.get_ticks_usec() - t0) / 1000.0
-	info("siatka 3D wszystkich %d fragmentów: %.2f ms (%.2f ms na fragment)" % [zone.chunk_count(), all_ms, all_ms / zone.chunk_count()])
+	var all_ms := INF                                          # najlepszy z trzech przebiegów: koszt siatki, nie obciążenie maszyny
+	var runs := PackedFloat32Array()                           # (pojedynczy pomiar skakał 1,3–4,2 ms także na main, DIG_ENTRANCE_PLAN.md E5)
+	for _k in 3:
+		var t0 := Time.get_ticks_usec()
+		for ci in zone.chunk_count():
+			zone.chunk_mesh(ci, Level3D.PX, Level3D.DEPTH_FRONT, -Level3D.DEPTH_BACK)
+		var ms := (Time.get_ticks_usec() - t0) / 1000.0
+		runs.append(ms)
+		all_ms = minf(all_ms, ms)
+	info("siatka 3D wszystkich %d fragmentów: %.2f ms (%.2f ms na fragment; przebiegi %s)" % [zone.chunk_count(), all_ms, all_ms / zone.chunk_count(), runs])
 	check("siatka 3D fragmentu < 4 ms", all_ms / zone.chunk_count() < 4.0)

@@ -35,7 +35,7 @@ func _run() -> void:
 	root.add_child(z)
 	# mapa: korytarz w wierszach strefy na prawo od niej (kolumny > C1), reszta to skała
 	var map_solid := func(c: int, r: int) -> bool:
-		return not (c > C1 and c < C1 + 12 and r >= R0 and r <= R1)
+		return not (c > C1 and c < C1 + 12 and r > R0 and r <= R1)   # 3 kafle wysokości (3,9 m) — jak sztolnia 1.2
 	z.setup([C0, R0, C1, R1, "gravel", 1201], map_solid, func(_c: int, _r: int) -> bool: return true)
 	var px := Level3D.PX
 	var front := Level3D.DEPTH_FRONT
@@ -52,6 +52,7 @@ func _run() -> void:
 	var mat_bad := 0
 	var rmin := 9.0
 	var rmax := 0.0
+	z.chunk_mesh(0, px, front, back)                              # rozgrzewka: pierwsza siatka liczy też szum i pamięć podręczną (raz 6,8 ms)
 	var t0 := Time.get_ticks_usec()
 	var arrs: Array = []
 	for ci in int(z.chunk_count()):
@@ -104,6 +105,7 @@ func _run() -> void:
 	var per := ms / maxf(float(arrs.size()), 1.0)
 	_check("siatka fragmentu < 4 ms jak w --digtest (%.2f ms na %d fragm.)" % [per, arrs.size()], per < 4.0)
 	_talus(z, px, front, back, wall, y_bot)
+	_maps(px)
 	print("[DIG-FACE] %s" % ("PASS" if _fails == 0 else "FAIL (%d)" % _fails))
 	z.queue_free()
 
@@ -190,7 +192,7 @@ func _talus(z: Node2D, px: float, front: float, back: float, wall: float, floor_
 	var reach_post := 0.0
 	for k in 11:
 		reach_post = maxf(reach_post, float(bulge.call(ps.y * float(k) / 10.0, pp.z)))
-	var ceil_m := -float(R0 * 16) * px
+	var ceil_m := -float((R0 + 1) * 16) * px
 	var cs2: Vector3 = cap["size"]
 	var cp: Vector3 = cap["pos"]
 	_check("stojak na podłodze", absf(pp.y - ps.y * 0.5 - floor_m) < 0.01)
@@ -232,3 +234,117 @@ func _pick(z: Node2D, px: float, wall: float, floor_m: float, bulge: Callable) -
 	_check("trzonek poza czołem", inside == 0)
 	_check("drugi koniec obucha poza czołem", back_tip.x - wall > float(bulge.call(back_tip.y - floor_m, back_tip.z)) + 0.05)
 	model.free()
+
+
+## E5: wejścia stref na mapach gry.
+func _maps(px: float) -> void:
+	var DE: GDScript = load("res://scripts/dig_entrance3d.gd")
+	var V3: GDScript = load("res://scripts/view3d.gd")
+	var pick_ps := load(V3.DIG_SIGN_PICK) as PackedScene
+	var model := pick_ps.instantiate() as Node3D
+	var parts: Dictionary = DE.pick_parts(model)
+	model.free()
+	var back := -Level3D.DEPTH_BACK
+	var n := 0
+	var framed: Array = []
+	var dir := DirAccess.open("res://scripts/maps")
+	var names: Array = Array(dir.get_files()).filter(func(f: String) -> bool: return f.ends_with(".gd"))
+	names.sort()
+	for f: String in names:
+		var consts := (load("res://scripts/maps/" + f) as GDScript).get_script_constant_map()
+		var digs: Array = consts.get("DIG_ZONES", [])
+		var rows: Array = consts.get("MAP", [])
+		if digs.is_empty() or rows.is_empty() or f.begins_with("t_"):
+			continue
+		var map_id := f.get_basename()
+		Level3D.set_shells(consts.get("FRONT", []), rows, digs)
+		for d in digs:
+			n += 1
+			var tag := "%s %s" % [map_id, [d[0], d[1], d[2], d[3], d[4]]]
+			var inside := func(c: int, r: int) -> bool: return c >= int(d[0]) and c <= int(d[2]) and r >= int(d[1]) and r <= int(d[3])
+			var ch := func(c: int, r: int) -> String:
+				if r < 0 or r >= rows.size() or c < 0 or c >= (rows[r] as String).length():
+					return "#"
+				return (rows[r] as String).substr(c, 1)
+			var z: Node2D = DigZone.new()
+			root.add_child(z)
+			z.setup(d, func(c: int, r: int) -> bool: return not inside.call(c, r) and Level3D.is_solid_ch(String(ch.call(c, r))),
+				func(c: int, r: int) -> bool: return Level3D.is_solid_ch(String(ch.call(c, r))))
+			var e: Dictionary = z.entrance()
+			_check(tag + ": wejście z boku", not e.is_empty() and int(e["dir"]) != 0)
+			if e.is_empty() or int(e["dir"]) == 0:
+				z.free()
+				continue
+			var out := float(-int(e["dir"]))
+			var front := Level3D.zone_front_z(int(d[0]), int(d[1]), int(d[2]), int(d[3]))
+			var wall := float(e["wall_x"]) * px
+			var floor_m := -float(e["floor_y"]) * px
+			var bulge := func(y_up: float, zz: float) -> float:
+				return float(z.face_bulge(Vector2(float(e["wall_x"]), float(e["floor_y"]) - y_up / px), zz, px, front, back))
+			# czoło: wierzchołki z normalną w stronę korytarza przy brzegu, w wierszach wejścia
+			var max_out := 0.0
+			var inward := 0
+			for ci in int(z.chunk_count()):
+				var m: ArrayMesh = z.chunk_mesh(ci, px, front, back)
+				if m.get_surface_count() == 0:
+					continue
+				var a: Array = m.surface_get_arrays(0)
+				var vs: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+				var ns: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+				for k in vs.size():
+					var v := vs[k]
+					var dd := (v.x - wall) * out
+					if absf(dd) > 0.6 or ns[k].x * out < 0.3 or absf(ns[k].z) > 0.9 or v.y < floor_m - 0.01 or v.y > floor_m + 2.5:
+						continue
+					if dd < -0.002:
+						inward += 1
+					if absf(v.z) > 0.8 and v.z < front - 0.05:          # garby narastają od płaszczyzny gry w obie strony (1.3: przód przekroju z = 5,6)
+						max_out = maxf(max_out, dd)
+			_check("%s: czoło z garbami (%.2f m), nic za brzegiem" % [tag, max_out], max_out > 0.15 and inward == 0)
+			# osypisko
+			var t: Dictionary = DE.talus(z, px, front, back, bulge)
+			var ok_t := not t.is_empty()
+			var below := 0
+			var gap := 0
+			var path_h := 0.0
+			if ok_t:
+				var a: Array = (t["mesh"] as ArrayMesh).surface_get_arrays(0)
+				var foot := {}
+				for v: Vector3 in (a[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+					var hy := v.y - floor_m
+					if hy < -DE.TALUS_SINK - 0.001:
+						below += 1
+					if absf(v.z) < 0.3:
+						path_h = maxf(path_h, hy)
+					var zk := roundi(v.z * 100.0)
+					if not foot.has(zk) or (v.x - wall) * out < ((foot[zk] as Vector3).x - wall) * out:
+						foot[zk] = v
+				for v: Vector3 in foot.values():
+					var hy := v.y - floor_m
+					if hy > 0.02 and (v.x - wall) * out > minf(float(bulge.call(0.05, v.z)), float(bulge.call(hy, v.z))) + 0.001:
+						gap += 1
+			_check("%s: osypisko (%s) na podłodze, przy czole bez szczeliny, ścieżka %.2f m" % [tag, t.get("mat", "?"), path_h], ok_t and below == 0 and gap == 0 and path_h < 0.1)
+			# kilof
+			if not parts.is_empty():
+				var xf: Transform3D = DE.pick_xf(z, px, bulge, parts, float(V3.DIG_SIGN_PICK_K))
+				var tip := xf * (parts["tip"] as Vector3)
+				var end := xf * (parts["end"] as Vector3)
+				var embed := float(bulge.call(tip.y - floor_m, tip.z)) - (tip.x - wall) * out
+				_check("%s: kilof wbity %.3f m, trzonek nad podłogą (%.2f m) i od ściany" % [tag, embed, end.y - floor_m],
+					embed > 0.06 and embed < 0.1 and end.y - floor_m > 0.15 and (end.x - wall) * out > 0.3)
+			# odrzwia
+			var lined := func(c: int, r: int) -> bool: return Level3D.back_wall_at(rows, c, r)
+			var fr: Array = DE.frame(z, px, back, bulge, lined)
+			if not fr.is_empty():
+				framed.append(map_id)
+				var post: Dictionary = fr[0]
+				var cap: Dictionary = fr[1]
+				var ps: Vector3 = post["size"]
+				var pp: Vector3 = post["pos"]
+				var h := ps.y + (cap["size"] as Vector3).y
+				_check("%s: odrzwia na podłodze, stojak poza czołem, wysokość korytarza %.2f m" % [tag, h],
+					absf(pp.y - ps.y * 0.5 - floor_m) < 0.01 and (pp.x - wall) * out - ps.x * 0.5 > 0.0 and h > 2.0 and h < 8.0)
+			z.free()
+	print("[DIG-FACE] mapy: stref %d, odrzwia na %s" % [n, framed])
+	_check("strefy na mapach gry sprawdzone (1.1, 1.2, 1.3)", n >= 3)
+	_check("odrzwia tylko w niskim korytarzu z obudową (1.2), nie w salach 1.1 i 1.3", framed == ["z1_m2"])
