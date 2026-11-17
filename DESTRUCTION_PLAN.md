@@ -622,7 +622,7 @@ nie leżą na trasie do celu).
 - Stan z gęstości (`_find_state`): odkopana, gdy ≥ 5 z 3 × 3 narożników wokół niej to powietrze; do połowy, gdy powietrze jest w promieniu
   3 narożników (12 px); inaczej zakopana. Liczy każdy peer po każdej operacji kopania (tylko znajdźki w okolicy wyrwy) i po resecie.
 - Wypadanie: serwer w `apply_dig`, gdy znajdźka przechodzi w „odkopaną” — `level.spawn_item`; zawartość dobiera się dopiero wtedy
-  (amunicja: `Arsenal.pick_drop_weapon` jak z wrogów, połowa przydziału; część: `Scrap.pick_find`; bez potrzeby — złom 1–3; Nocny Dyżur tylko
+  (amunicja: `Arsenal.pick_drop_weapon` jak z wrogów, połowa przydziału; część: `Scrap.pick_find`; bez potrzeby — złom 1–3, od 1.7.601 pakunek 12–20 (`DIG_LOOT_PLAN.md` K1); Nocny Dyżur tylko
   amunicja albo nic). Wybuch odrzuca przedmiot 10 px od środka. Wipe i punkt kontrolny bossa przeliczają stan bez wypadania (przedmioty
   sprząta `clear_pickups`), więc znajdźka zasypana razem z wykopem znów leży w ziemi. Pul na stałe jeszcze nie ma — część 3.
 - Szukanie: skaner „Sowa” (`scanner_view.gd`) rysuje zakopane i odkopane do połowy znajdźki w zasięgu jako romb, który miga, gdy mija go

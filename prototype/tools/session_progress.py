@@ -11,6 +11,10 @@ barykady (ile przybitych, ile sekund wytrzymały, kto je rozbił), zawały i czy
 od 1.7.503 także `dig_find` — znajdźki wykopane w strefach wydobycia (D5): ile, czym, co wypadło; od 1.7.504 `dig_fall` —
 spadające wyspy w strefach (ile, jak duże); od 1.7.505 drobnica z wykopanych pul (`dig_find` z rodzajem „small”).
 
+Sekcja „Kopanie” (DIG_LOOT_PLAN.md K0, od 1.7.601): blok `mission_end.dig` (strefa → ciosy, sekundy w strefie, metal, wybuchy, ruda,
+znajdźki, czas pierwszego ciosu i pierwszej znajdźki, wejście i liczba osób) — ile prób w ogóle wchodzi do strefy i kopie, ile to trwa
+i co daje. Cele z planu: kopanie w ≥ 40% prób, złom z rudy i pakunków na minutę w strefie ≥ złom na minutę misji.
+
 Sekcja „Kryjówka — ruch” (plan układu kryjówki E0, od 1.7.531): `hub_enter`, `hub_pos` (próbka co 1 s) i `hub_station` (otwarty panel) —
 długość pobytów, udział czasu na wierszach podłogi (poziomach), najdłuższe postoje (kafel × wiersz) i otwierane stanowiska.
 
@@ -37,6 +41,7 @@ from collections import Counter, defaultdict
 CAMPAIGN = ["z1_m1", "z1_m2", "z1_m3", "z1_b1"]          # level.gd CAMPAIGN
 WRECK_EVENTS = ("break", "crate", "lamp", "window", "barricade", "support", "cave", "dig_find", "dig_fall")   # DESTRUCTION_PLAN.md, dziennik sesji
 WAKE_WINDOW_S = 20.0                                       # pobudka Stalkera / elity tyle sekund po zniszczeniu liczy się jako „ściągnięta”
+DIG_SINCE = (1, 7, 601)                                    # blok `mission_end.dig` (DIG_LOOT_PLAN.md K0)
 DESTRUCTION_SINCE = (1, 7, 485)                            # pierwsze rekwizyty do rozbicia (D1) — starsze próby nie wchodzą do sekcji niszczenia
 
 
@@ -229,6 +234,7 @@ def report(sessions):
     for s in sessions:
         hints.update(s.get("hints", []))
     rep["hints"] = dict(hints.most_common())
+    rep["digging"] = digging([a for a in attempts if build_version(a["start"].get("build", "")) >= DIG_SINCE])
     rep["destruction"] = destruction([a for a in attempts if build_version(a["start"].get("build", "")) >= DESTRUCTION_SINCE])
     rep["warnings"] = warnings(rep)
     return rep
@@ -264,6 +270,48 @@ def hub_moves(visits):
             "rows_share": {r: round(n / total, 2) for r, n in sorted(rows_s.items())} if total else {},
             "spots_top": [["%d×%d" % k, n] for k, n in spots.most_common(8)],
             "stations": dict(stations.most_common())}
+
+
+def digging(attempts):
+    """Kopanie (DIG_LOOT_PLAN.md K0): `mission_end.dig` wg mapy — wejście, kopanie, czas, ciosy, ruda i znajdźki."""
+    by_map = defaultdict(list)
+    for a in attempts:
+        by_map[a["start"].get("map", "?")].append(a)
+    out = {}
+    for m, rows in sorted(by_map.items()):
+        if m not in CAMPAIGN and m != "t_dig":
+            continue
+        entered, dug, hits, secs, first_find, ore, finds = 0, 0, [], [], [], 0, 0
+        for a in rows:
+            zones = (a["end"].get("dig") or {}).values()
+            if any("enter" in z for z in zones):
+                entered += 1
+            h = sum(int(z.get("hits", 0)) + int(z.get("blasts", 0)) for z in zones)
+            if h:
+                dug += 1
+                hits.append(h)
+                secs.append(sum(float(z.get("s", 0.0)) for z in zones))
+            for z in zones:
+                ore += int(z.get("ore", 0))
+                finds += int(z.get("finds", 0))
+                if "first_find" in z and "first_hit" in z:
+                    first_find.append(round(float(z["first_find"]) - float(z["first_hit"]), 1))
+        out[m] = {"attempts": len(rows), "entered_rate": round(entered / len(rows), 2), "dug_rate": round(dug / len(rows), 2),
+                  "hits_median": med(hits), "seconds_median": med(secs), "ore": ore, "finds": finds,
+                  "first_find_after_first_hit_median": med(first_find)}
+    return out
+
+
+def print_digging(d):
+    print("\n== Kopanie (DIG_LOOT_PLAN.md K0, od %s)" % ".".join(str(x) for x in DIG_SINCE))
+    if not d:
+        print("   brak prób z blokiem `mission_end.dig`")
+        return
+    for m, r in d.items():
+        print("   %-6s prób %d, weszło do strefy %s, kopało %s;  ciosy (mediana) %s, s w strefie %s, ruda %d złomu, znajdźki %d, pierwsza znajdźka po %s s od pierwszego ciosu" % (
+            m, r["attempts"], r["entered_rate"], r["dug_rate"], r["hits_median"], r["seconds_median"], r["ore"], r["finds"], r["first_find_after_first_hit_median"]))
+        if r["attempts"] >= 10 and r["dug_rate"] < 0.4:
+            print("   ! %s: kopie mniej niż 40%% prób — cel K1/K2 niespełniony" % m)
 
 
 def destruction(attempts):
@@ -447,6 +495,7 @@ def print_report(rep):
     print("== Przedmioty: %s (prób z danymi: %d)" % (rep["items"]["total"], rep["items"]["attempts_with_data"]))
     print("== Podpowiedzi pokazane: %s" % rep["hints"])
     print_destruction(rep["destruction"])
+    print_digging(rep["digging"])
     print("\n== Sygnały (PROGRESSION_PLAN.md §4)")
     for line in rep["warnings"] or ["brak"]:
         print("   - " + line)
