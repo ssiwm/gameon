@@ -2,7 +2,7 @@ extends RefCounted
 ## Budynki 3D z mapy (wariant C: posterunek i Skład 1.3, hala stacji 1.2, kryjówka; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą, „vault” — bunkier w skale). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
 ## w prawdziwych wymiarach zamiast pudeł kafli 1,31 m: płaski stropodach żelbetowy 0,25 m na górze kafla dachu z żebrami i podciągami
 ## do dolnej krawędzi kafla (Skoczek dalej wisi „pod sufitem”), attyka, ściany szczytowe 0,4 m z pilastrami, cokołem, okapem i oknami
-## w głębi, drzwi w ościeżnicach w pasie gry, słupy co 4–6 m (albo w kolumnach z klucza "bays" wpisu) przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
+## w głębi, drzwi w ościeżnicach w pasie gry (skrzydła otwarte na lico zewnętrzne, brama — skrzydło przesuwne na szynie), słupy co 4–6 m (albo w kolumnach z klucza "bays" wpisu) przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
 ## ściana tylna. Wszystko, co przecina płaszczyzna przekroju z = SHELL_Z, ma tam jednolity materiał przekroju (`cut`).
 ## Tylko widok: kolizja, zniszczenia i pierwszy plan zostają na kaflach mapy. Budowane w warstwie świata, w jednym węźle na budynek.
 const Level3D := preload("res://scripts/level3d.gd")
@@ -22,6 +22,10 @@ const PLINTH := [0.55, 0.06, 0.3]          ## m: cokół — wysokość nad pod�
 const PILASTER := [0.5, 0.12]              ## m: pilaster na licu zewnętrznym — szerokość, wysunięcie
 const DOOR_HW := {"door": 0.95, "gate": 1.4, "window": 0.95, "hole": 0.95}   ## m: połowa szerokości otworu w pasie gry (w osi z)
 const JAMB := 0.1                          ## m: ościeżnica stalowa
+const LEAF_X := 0.07                       ## m: skrzydło drzwi i bramy od lica zewnętrznego (przed cokołem wysuniętym o PLINTH[1])
+const LEAF_T := 0.05                       ## m: grubość skrzydła
+const PIL_GAP := 0.06                      ## m: odstęp pilastra od otwartego skrzydła
+const RAIL_X := [0.13, 0.21]               ## m: szyna bramy przesuwnej od lica (przed pilastrem wysuniętym o PILASTER[1])
 const WIN := [1.0, 2.35, 1.5]              ## m: okno w głębi ściany szczytowej — parapet nad podłogą, nadproże, szerokość
 const CUT := 0.012                         ## m: grubość nakładki przekroju przed płaszczyzną SHELL_Z
 
@@ -208,9 +212,39 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 			holes.append(h)
 			if String(o["kind"]) in ["door", "gate"]:
 				doors.append(h)
+		# lico zewnętrzne: skrzydła drzwi i bramy, pilastry (przy narożniku tylnym i za skrzydłami) — przedziały z bez nakładania
+		# (do 1.7.593 skrzydło wchodziło w pilaster i cokół, a skrzydło bramy hali wystawało 0,5 m za ścianę tylną; przegląd budynków 2026-11-17)
+		var taken: Array = []                                 # [z0, z1] zajęte na licu zewnętrznym
+		for h: Array in doors:
+			for lf: Array in _leaves(h):
+				taken.append([float(lf[0]), float(lf[1])])
+		var pil: Array = []
+		if not buried:
+			var want: Array = [zb + PILASTER[0] * 0.5]
+			for h: Array in doors:
+				var lo := float(h[0]) - JAMB - 0.35            # bez skrzydła z tej strony: pilaster tuż przy ościeżnicy
+				var hi := float(h[1]) + JAMB + 0.35
+				for lf: Array in _leaves(h):
+					if float(lf[1]) <= float(h[0]):
+						lo = minf(lo, float(lf[0]) - PIL_GAP - PILASTER[0] * 0.5)
+					else:
+						hi = maxf(hi, float(lf[1]) + PIL_GAP + PILASTER[0] * 0.5)
+				want.append_array([lo, hi])
+			for z: float in want:
+				var a := z - PILASTER[0] * 0.5
+				var b2 := z + PILASTER[0] * 0.5
+				if a < zb - 0.001 or b2 > zc - COL + 0.001 or _hits(taken, a - 0.02, b2 + 0.02):
+					continue
+				pil.append(z)
+				taken.append([a, b2])
+		# okno w odcinku ściany przed pasem gry: w wolnym miejscu za skrzydłami i pilastrami
 		var front0: float = ROOF_GAP[1] + 0.2
+		taken.sort_custom(func(p: Array, q: Array) -> bool: return float(p[0]) < float(q[0]))
+		for t: Array in taken:
+			if float(t[1]) > front0 - 0.15 and float(t[0]) < zc - COL:
+				front0 = maxf(front0, float(t[1]) + 0.15)
 		var wlen := zc - COL - front0
-		if wlen >= WIN[2] + 0.8 and not buried:                            # okno w odcinku ściany przed pasem gry
+		if wlen >= WIN[2] + 0.8 and not buried:
 			var wz := front0 + wlen * 0.5
 			holes.append([wz - WIN[2] * 0.5, wz + WIN[2] * 0.5, yf + WIN[0], yf + WIN[1], "deco"])
 		_wall_x(box, "wall", minf(xo, xi), maxf(xo, xi), zb, zc, yf, ys, holes)
@@ -219,19 +253,37 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		if buried:
 			continue                                         # w skale: lico zewnętrzne niewidoczne, bez cokołu i pilastrów
 		var xout := func(d: float) -> float: return xo + float(side) * d     # x w odległości d na zewnątrz lica
-		# cokół (bez progów drzwi), pilastry przy narożniku tylnym i obok drzwi
+		# cokół (bez progów drzwi; skrzydła stoją przed nim), pilastry
 		var pz: Array = [zb]
 		for h: Array in doors:
 			pz.append_array([float(h[0]), float(h[1])])
 		pz.append(zc)
 		for i in range(0, pz.size(), 2):
 			box.call("plinth", Vector3(xo, yf - PLINTH[2], float(pz[i])), Vector3(xout.call(PLINTH[1]), yf + PLINTH[0], float(pz[i + 1])))
-		var pil: Array = [zb + PILASTER[0] * 0.5]
-		for h: Array in doors:
-			pil.append_array([float(h[0]) - JAMB - 0.35, float(h[1]) + JAMB + 0.35])
 		for z: float in pil:
 			box.call("col", Vector3(xo, yf + PLINTH[0], z - PILASTER[0] * 0.5), Vector3(xout.call(PILASTER[1]), ys, z + PILASTER[0] * 0.5))
 	return out
+
+## Czy przedział [a, b] zachodzi na któryś z `ivs` ([z0, z1]).
+static func _hits(ivs: Array, a: float, b: float) -> bool:
+	for iv: Array in ivs:
+		if b > float(iv[0]) and a < float(iv[1]):
+			return true
+	return false
+
+## Skrzydła otworu h ([z0, z1, y0, y1, rodzaj]) na licu zewnętrznym jako [z0, z1]: drzwi — dwa skrzydła otwarte płasko na lico po obu
+## stronach ościeżnicy; brama — jedno skrzydło przesuwne odsunięte w stronę przekroju (na tył nie ma miejsca: skrzydło 1,4 m wystawało
+## za ścianę tylną).
+static func _leaves(h: Array) -> Array:
+	var z0: float = h[0]
+	var z1: float = h[1]
+	match String(h[4]):
+		"door":
+			var w := (z1 - z0) * 0.5
+			return [[z0 - JAMB - 0.02 - w, z0 - JAMB - 0.02], [z1 + JAMB + 0.02, z1 + JAMB + 0.02 + w]]
+		"gate":
+			return [[z1 + JAMB + 0.02, z1 + JAMB + 0.02 + (z1 - z0) + 2.0 * JAMB]]
+	return []
 
 ## Ściana w płaszczyźnie y-z (x od xa do xb) z prostokątnymi otworami [z0, z1, y0, y1, …]: pasy między kolejnymi krawędziami otworów w z,
 ## w każdym pasie mur pod, między i nad otworami.
@@ -274,12 +326,15 @@ static func _frame(box: Callable, side: int, xo: float, xi: float, h: Array) -> 
 	var s := float(side)
 	match kind:
 		"door", "gate":
-			var hgt := minf(y1 - y0 - 0.05, 2.2 if kind == "door" else 3.4)
-			var w := (z1 - z0) * 0.5
-			for zz in [[z1 + JAMB + 0.02, z1 + JAMB + 0.02 + w], [z0 - JAMB - 0.02 - w, z0 - JAMB - 0.02]]:   # dwa skrzydła na licu zewnętrznym
-				box.call("leaf", Vector3(xo + s * 0.02, y0, float(zz[0])), Vector3(xo + s * 0.07, y0 + hgt, float(zz[1])))
-				for yy in [0.5, hgt - 0.5]:                      # przetłoczenia skrzydła
-					box.call("leaf", Vector3(xo + s * 0.07, y0 + yy - 0.03, float(zz[0]) + 0.1), Vector3(xo + s * 0.09, y0 + yy + 0.03, float(zz[1]) - 0.1))
+			# skrzydła (`_leaves`) przed cokołem (LEAF_X od lica); brama przesuwna na całą wysokość otworu, z szyną nad nim
+			var hgt := minf(y1 - y0 - 0.05, 2.2) if kind == "door" else y1 - y0 - 0.05
+			var xl := LEAF_X + LEAF_T
+			for zz: Array in _leaves(h):
+				box.call("leaf", Vector3(xo + s * LEAF_X, y0, float(zz[0])), Vector3(xo + s * xl, y0 + hgt, float(zz[1])))
+				for yy in ([0.5, hgt - 0.5] if kind == "door" else [0.5, hgt * 0.5, hgt - 0.5]):   # przetłoczenia skrzydła
+					box.call("leaf", Vector3(xo + s * xl, y0 + yy - 0.03, float(zz[0]) + 0.1), Vector3(xo + s * (xl + 0.02), y0 + yy + 0.03, float(zz[1]) - 0.1))
+				if kind == "gate":                               # szyna od ościeżnicy do końca skrzydła, nad otworem (poza pilastrem)
+					box.call("steel", Vector3(xo + s * RAIL_X[0], y1 - 0.02, z0 - JAMB), Vector3(xo + s * RAIL_X[1], y1 + 0.1, float(zz[1]) + 0.05))
 		"deco", "window":
 			var xm := (xo + xi) * 0.5
 			var ym := (y0 + y1) * 0.5

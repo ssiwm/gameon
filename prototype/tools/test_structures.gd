@@ -11,7 +11,9 @@ extends SceneTree
 ## (7) wieże (`frame_role`): maszt to zawsze para sąsiednich kolumn od góry mapy, noga strażnicy nie jest jednocześnie pniem drzewa, a dach i podłoga wieży (`tower_slabs`) to same skrzynie `M` (dach z niebem nad sobą),
 ## (8) pomosty bez słupa, ściany i bryły obok (`deck_supports`): każda noga ma oparcie — grunt lub pomost niżej, albo strop nad pomostem,
 ## (9) żebra długich hal (`interior_ribs`): stoją w kolumnach samego tła `b` (z sąsiadami) między stropem a podłogą `C`,
-## (10) skrzynie `M` poza wieżą (`crate_blocks`) to pełne prostokąty `M` i żadna nie leży w dachu ani podłodze wieży.
+## (10) skrzynie `M` poza wieżą (`crate_blocks`) to pełne prostokąty `M` i żadna nie leży w dachu ani podłodze wieży,
+## (11) ściana tła za kładką i znacznikiem (`_wall_behind`) pod gołym niebem tylko nad szybem (tło `b` tuż pod kaflem) — nie przez okno `|`
+##      budynku (mur wisiał w powietrzu pod rusztowaniem przy oknie, przegląd budynków 2026-11-17).
 ## godot --headless --path prototype -s tools/test_structures.gd      → ma wypisać PASS
 var Level3D: GDScript
 var _frames := 0
@@ -99,6 +101,7 @@ func _check_map(id: String, rows: Array, radius: float) -> void:
 	_check_decks(id, rows)
 	_check_crates(id, rows)
 	_check_ribs(id, rows)
+	_check_wall_behind(id, rows)
 
 func _check_roofs(id: String, rows: Array) -> void:
 	var roofs: Array = Level3D.roof_runs(rows)
@@ -165,3 +168,15 @@ func _check_ribs(id: String, rows: Array) -> void:
 				_check(Level3D._ch(rows, cc, q) == "b", "%s kol. %d rząd %d: żebro przy znaczniku „%s”" % [id, cc, q, Level3D._ch(rows, cc, q)])
 	print("ok    %s: %d żeber hal" % [id, ribs.size()])
 
+func _check_wall_behind(id: String, rows: Array) -> void:
+	for r in rows.size():
+		for c in (rows[r] as String).length():
+			if not Level3D._wall_behind(rows, c, r) or Level3D._ch(rows, c, r + 1) == "b":
+				continue
+			var sky := true
+			for k in range(r - 1, -1, -1):
+				var n: String = Level3D._ch(rows, c, k)
+				if n == "b" or Level3D.is_solid_ch(n):
+					sky = false
+					break
+			_check(not sky, "%s kol. %d rząd %d: ściana tła pod gołym niebem za „%s”" % [id, c, r, Level3D._ch(rows, c, r)])
