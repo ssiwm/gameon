@@ -230,6 +230,11 @@ static func _building_wall(d: Dictionary) -> Material:
 		if int(d["c0"]) >= int(b["c0"]) and int(d["c1"]) <= int(b["c1"]) and int(d["r0"]) > int(b["r0"]) and int(d["r1"]) < int(b["r1"]):
 			var spec: Dictionary = Building3D.KINDS.get(String(b["kind"]), Building3D.KINDS["bunker"])
 			return Building3D._tinted(spec.get("back", spec["wall"]))     # z przyciemnieniem jak ściana tylna budynku, w rzucie świata
+	for c in range(int(d["c0"]), int(d["c1"]) + 1):              # ściana tła w materiale budynku poza obrysem (`Level3D.bld_walls`, piwniczka 1.3)
+		for r in range(int(d["r0"]), int(d["r1"]) + 1):
+			if Level3D.bld_walls.has(Vector2i(c, r)):
+				var spec2: Dictionary = Building3D.KINDS.get(String(Level3D.bld_walls[Vector2i(c, r)]), Building3D.KINDS["bunker"])
+				return Building3D._tinted(spec2.get("back", spec2["wall"]))
 	return null
 
 static func _mats() -> Dictionary:

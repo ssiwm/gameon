@@ -224,6 +224,20 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		# hala Żyły: blacha `M` na stalowym szkielecie, brama z korzeni w zachodniej ścianie, wschodnia ściana na skraju mapy
 		_check_building(rows, "1.3 hala Żyły", 164, 190, 11, 26, ["-1:gate"])
 		_check_shed(rows, "1.3 hala Żyły", 164, 190, 11, 26)
+		# piwniczka pod posterunkiem (wpis z "wall"): ściana tylna, podłoga i ściana zachodnia z betonu jak posterunek, nie cegła i ziemia z trawą
+		var cel := 0
+		for c in range(32, 37):
+			for r in range(27, 30):
+				if Level3D.back_wall_at(rows, c, r):
+					cel += 1
+					_check(String(Level3D.bld_walls.get(Vector2i(c, r), "")) == "bunker", "1.3 piwniczka (%d, %d): ściana tylna nie w materiale posterunku" % [c, r])
+			_check(Level3D._ch(rows, c, 30) == "C", "1.3 piwniczka kol. %d: podłoga nie z betonu „C”" % c)
+		_check(cel >= 10, "1.3 piwniczka: %d kafli ściany tylnej" % cel)
+		for r in range(27, 30):
+			_check(Level3D._ch(rows, 31, r) == "C", "1.3 piwniczka rząd %d: ściana zachodnia nie z betonu „C”" % r)
+		_check(Niches3D._building_wall({"c0": 33, "c1": 34, "r0": 27, "r1": 28}) != null, "1.3 piwniczka: wnęka bez materiału posterunku")
+		for k: Vector2i in Level3D.bld_walls:
+			_check(k.x >= 32 and k.x <= 37 and k.y > 26 and k.y < 30, "1.3: ściana w materiale budynku poza piwniczką (%s)" % k)
 	if map_id == "z1_hub":
 		_check_vault(rows)
 		_check_hub_furniture(rows)

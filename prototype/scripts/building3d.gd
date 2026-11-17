@@ -85,6 +85,16 @@ static func build(parent: Node3D, rows: Array) -> int:
 		parent.add_child(node)
 		n += build_one(node, b, rows)
 		mark_col_spans(b, rows)
+	var walls := {}                                              # ściany tła w materiale budynku poza obrysem (`Level3D.bld_walls`, piwniczka 1.3)
+	for k: Vector2i in Level3D.bld_walls:
+		var kind := String(Level3D.bld_walls[k])
+		if not walls.has(kind):
+			walls[kind] = []
+		(walls[kind] as Array).append(Transform3D(Basis.from_scale(Vector3(Level3D.T, Level3D.T, 0.3)), Level3D.cell_pos(k.x, k.y) + Vector3(0.0, 0.0, -Level3D.DEPTH_BACK + 0.15)))
+	for kind: String in walls:
+		var spec: Dictionary = KINDS.get(kind, KINDS["bunker"])
+		Level3D._multimesh(parent, BoxMesh.new(), walls[kind], _tinted(spec.get("back", spec["wall"])), false)
+		n += (walls[kind] as Array).size()
 	return n
 
 ## Słupy budynku `b` przy ścianie tylnej (wysokie skrzynki "col" wewnątrz obrysu, bez pilastrów na licu zewnętrznym i słupów przekroju)

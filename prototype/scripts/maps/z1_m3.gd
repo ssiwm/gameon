@@ -55,7 +55,7 @@ const NICHES := [
 ## razem z szybami — pod otworem szybu element nie staje): jeden wpis na cały poziom wysunąłby strop sal nad skałą tuneli jak balkon.
 const FRONT := [
 	{"set": "station", "c0": 18, "c1": 36, "r0": 21, "r1": 26, "shell": true, "build": "bunker"},     # posterunek (budynek 3D, `building3d.gd`)
-	{"set": "station", "c0": 32, "c1": 37, "r0": 26, "r1": 30, "shell": true},     # piwniczka pod posterunkiem (kratka do szybu)
+	{"set": "station", "c0": 32, "c1": 37, "r0": 26, "r1": 30, "shell": true, "wall": "bunker"},     # piwniczka pod posterunkiem (kratka do szybu); ściana tylna, podłoga i ściana zachodnia z betonu jak posterunek
 	{"set": "station", "c0": 112, "c1": 142, "r0": 18, "r1": 26, "shell": true, "build": "hall"},   # Skład (antresola, niecka oleju; budynek 3D: szkielet z cegłą)
 	{"set": "tunnel", "c0": 0, "c1": 30, "r0": 30, "r1": 40, "shell": true},       # zachodnia sala podziemi (gniazda) ze ścianą do kopania
 	{"set": "tunnel", "c0": 31, "c1": 62, "r0": 35, "r1": 40, "shell": true},      # niski tunel z pierwszym szybem
@@ -120,10 +120,10 @@ const MAP := [
 	"##................bbbbbbbbbbbbbbbbbb........=========...===========...===========......................----......====bbbbbbbbbbbbbbbbbbbbb====......----.......w.....---.....w.......w.....---##",
 	"##.ESg.S..........bbbbkkobTbTbTbbNbb.u......a.....L...M..ok.W.a....u..X...M.......TaT...u..............k....kko..bYbbbTbbTbbubbabbbkbWbbbbbbPb....o...k........wgay..........w...BN..w........##",
 	"##############mmm#CCCCCCCCCCCCCCCCCCCCbbbbbbCCCCCCCCCCOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCOOOOOOOCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"################################bbbbbCbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"################################bbbbbb======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======CC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"################################bybub+bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
-	"######################################====bb################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
+	"###############################CbbbbbCbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"###############################Cbbbbbb======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~C======CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC======CC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"###############################Cbybub+bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
+	"###############################CCCCCCC====bb################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bb====################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbb====CCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbb====CCCCCCCCCCCCCbbbbbbbbbbbbbbbbCCC##",
 	"######bbbbZbbbbbbbbgbbbbbbZbbbb#######bbbbbb################CCCbbbZbZbbbbbbbNbbbbbbbbbbbZbbCCCCbbbbbbCCCCCCCCbbbZbbbbbbbbbbbbbNbbbbbbbbbbbbbZbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbHbbCCC##",

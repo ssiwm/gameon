@@ -1108,7 +1108,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, (T - TRENCH_D) / T, bed_d / full)), p + Vector3(0.0, -TRENCH_D * 0.5, TRENCH_Z0 + bed_d * 0.5)))
 					continue
 				groups[ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))
-			if back_wall_at(rows, c, r) and not bld_back.has(Vector2i(c, r)):
+			if back_wall_at(rows, c, r) and not bld_back.has(Vector2i(c, r)) and not bld_walls.has(Vector2i(c, r)):
 				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
 				pass
@@ -1906,6 +1906,9 @@ static var bld_back := {}
 ## Słupy budynków 3D przy ścianie tylnej: [x0, x1 (m), r0, r1 (wiersze, r1 wyłącznie)] (wypełnia `Building3D.build`). Dekal tła, w którego
 ## środkową część wchodzi słup, nie jest rysowany — grafiti za słupem było ucięte (PATROL 7, przegląd budynków 2026-11-17).
 static var bld_col_spans: Array[Vector4] = []
+## Ściana tła w materiale budynku 3D poza jego obrysem: wpis FRONT z przekrojem i kluczem "wall" (typ budynku) — piwniczka pod posterunkiem 1.3
+## miała mur z cegły pod betonowym budynkiem (przegląd budynków 2026-11-17). Kafel → typ; ścianę buduje `Building3D.build`, nie `build_level`.
+static var bld_walls := {}
 const DECAL_COL_MARGIN := 0.2              ## część szerokości dekalu z każdej strony, w którą słup może wejść (brzegi grafik są zwykle puste)
 const ENTRY_KEEP := "+%:q"                 ## niszczalne przegrody: kolumna z nimi nie dostaje pełnej ściany wejścia
 
@@ -1919,6 +1922,7 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	bld_cells = {}
 	bld_back = {}
 	bld_col_spans = []
+	bld_walls = {}
 	if "--noshell" in OS.get_cmdline_user_args():
 		return                                                  # dev: bez przekroju (porównanie A/B)
 	var bands: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
@@ -1927,6 +1931,11 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 		for e: Dictionary in bands:
 			if e.has("build"):
 				_plan_building(e, rows)
+			elif e.has("wall"):
+				for c in range(int(e["c0"]), int(e["c1"]) + 1):
+					for r in range(int(e["r0"]) + 1, int(e["r1"])):
+						if back_wall_at(rows, c, r):
+							bld_walls[Vector2i(c, r)] = String(e["wall"])
 	# fundament schodzi w dół najwyżej do pasa gry innego wpisu (piętra kryjówki: pod podłogą środkowego piętra są ściany dolnego)
 	var in_band := func(c: int, r: int) -> bool:
 		for b: Dictionary in bands:
