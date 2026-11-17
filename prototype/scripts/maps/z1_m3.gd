@@ -68,7 +68,10 @@ const FRONT := [
 	{"set": "forest", "c0": 2, "c1": 17, "r0": 0, "r1": 26},
 	{"set": "forest", "c0": 38, "c1": 111, "r0": 0, "r1": 26},
 	{"set": "forest", "c0": 143, "c1": 163, "r0": 0, "r1": 26},
-	{"set": "station", "c0": 164, "c1": 189, "r0": 11, "r1": 26, "shell": true},   # hala Żyły (VEIN_PLAN.md §6.1): przekrój, bez lasu przed areną
+	# hala Żyły (VEIN_PLAN.md §6.1): przekrój, bez lasu przed areną; budynek 3D z blachy na stalowym szkielecie (`building3d.gd` "shed"),
+	# ściana wschodnia na skraju mapy (kol. 190), ściana tylna na całej wysokości (wnętrze bez tła `b`), słupy przy ścianie tylnej w osiach
+	# słupów `w` hali, bez słupów w płaszczyźnie przekroju (arena bossa — nic nie zasłania kadru)
+	{"set": "station", "c0": 164, "c1": 190, "r0": 11, "r1": 26, "shell": true, "build": "shed", "bays": [173.5, 181.5], "cut_cols": false, "closed": true},
 ]
 const FRONT_SKIP := []
 

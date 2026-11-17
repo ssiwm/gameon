@@ -1,5 +1,5 @@
 extends RefCounted
-## Budynki 3D z mapy (wariant C: posterunek i Skład 1.3, hala stacji 1.2, kryjówka; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą, „vault” — bunkier w skale). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
+## Budynki 3D z mapy (wariant C: posterunek, Skład i hala Żyły 1.3, hala stacji i pompownia 1.2, kryjówka; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą, „vault” — bunkier w skale, „shed” — hala z blachy; stropy pięter z klucza "floors"). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
 ## w prawdziwych wymiarach zamiast pudeł kafli 1,31 m: płaski stropodach żelbetowy 0,25 m na górze kafla dachu z żebrami i podciągami
 ## do dolnej krawędzi kafla (Skoczek dalej wisi „pod sufitem”), attyka, ściany szczytowe 0,4 m z pilastrami, cokołem, okapem i oknami
 ## w głębi, drzwi w ościeżnicach w pasie gry (skrzydła otwarte na lico zewnętrzne, brama — skrzydło przesuwne na szynie), słupy co 4–6 m (albo w kolumnach z klucza "bays" wpisu) przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
@@ -49,6 +49,12 @@ const KINDS := {
 			"slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"], "back": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.85, "stone"],
 			"cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""], "plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"],
 			"buried": true},
+	# hala z blachy (hala Żyły 1.3, dawny tartak): stalowy szkielet (słupy, podciągi, płatwie zamiast żeber), ściany i dach z rdzawej blachy
+	# falistej (ta sama co dachy szop), bez attyki; cokół i przekrój jak w innych budynkach. Klucz części (np. "beam") nadpisuje rolę.
+	"shed": {"wall": ["roof", 0.25, Color(0.30, 0.22, 0.20), 0.55, ""], "col": ["metal", 0.4, Color(0.28, 0.30, 0.34), 0.75, "rust"],
+			"slab": ["roof", 0.25, Color(0.30, 0.22, 0.20), 0.5, ""], "beam": ["metal", 0.4, Color(0.28, 0.30, 0.34), 0.7, "rust"],
+			"back": ["roof", 0.25, Color(0.30, 0.22, 0.20), 0.5, ""], "cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""],
+			"plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"], "parapet": false},
 }
 ## Klucz części → rola materiału (rola „col” bez wpisu w typie bierze materiał ścian); części z siatką fazowaną i UV na element (`_box_mesh`) — w `SOLO` każda bryła z własnym przesunięciem tekstury
 ## (słup, belka, pilaster czytają się jako osobne elementy), reszta w UV świata (kawałki muru wokół otworów łączą się bez szwu).
@@ -95,8 +101,10 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	var zc := Level3D.SHELL_Z
 	var r0 := int(b["r0"])
 	var r1 := int(b["r1"])
-	var buried := bool((KINDS.get(String(b["kind"]), KINDS["bunker"]) as Dictionary).get("buried", false))
-	var solid := func(c: int, r: int) -> bool: return Level3D._ch(rows, c, r) in Level3D.WALL_CH
+	var spec: Dictionary = KINDS.get(String(b["kind"]), KINDS["bunker"])
+	var buried := bool(spec.get("buried", false))
+	var parapet := not buried and bool(spec.get("parapet", true))
+	var solid := func(c: int, r: int) -> bool: return Level3D._ch(rows, c, r) in Level3D.BLD_CH
 	var gaps: Array = []                                    # otwory w stropie (szyby, pomosty w wierszu dachu): [x0, x1]
 	for c in range(c0, c1 + 1):
 		if not solid.call(c, r0):
@@ -135,17 +143,19 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	for sx in ([] if buried else [-1.0, 1.0]):
 		var xe := x0 - EAVE if sx < 0.0 else x1 + EAVE
 		box.call("slab", Vector3(xe, yr - FASCIA, zb - EAVE), Vector3(xe - sx * 0.12, ys, zc))
-		for seg in [[zb - EAVE, ROOF_GAP[0]], [ROOF_GAP[1], zc]]:
+		for seg in ([[zb - EAVE, ROOF_GAP[0]], [ROOF_GAP[1], zc]] if parapet else []):
 			box.call("slab", Vector3(xe, yr, float(seg[0])), Vector3(xe - sx * PARAPET[1], yr + PARAPET[0], float(seg[1])))
-	if not buried:
+	if parapet:
 		box.call("slab", Vector3(x0 - EAVE, yr - FASCIA, zb - EAVE), Vector3(x1 + EAVE, yr + PARAPET[0], zb - EAVE + PARAPET[1]))
 		box.call("slab", Vector3(x0 - EAVE, yr, zc - PARAPET[1]), Vector3(x1 + EAVE, yr + PARAPET[0], zc))
+	elif not buried:                                         # bez attyki: samo czoło okapu z tyłu
+		box.call("slab", Vector3(x0 - EAVE, yr - FASCIA, zb - EAVE), Vector3(x1 + EAVE, ys, zb - EAVE + 0.12))
 	# słupy i podciągi: linie na granicach kafli co ok. BAY
 	var ncols := c1 - c0 + 1
 	var nbay := maxi(1, roundi((x1 - x0) / BAY))
 	var lines: Array = []
-	for bc in b.get("bays", []):                             # wpis z kluczem "bays": słupy na granicach pomieszczeń (lewa krawędź kolumny mapy)
-		lines.append(float(int(bc)) * T)
+	for bc in b.get("bays", []):                             # wpis z kluczem "bays": słupy na granicach pomieszczeń (lewa krawędź kolumny mapy; x.5 — oś kolumny)
+		lines.append(float(bc) * T)
 	if b.has("bays"):
 		nbay = 0
 	for i in range(1, nbay):
@@ -173,6 +183,32 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	# podciąg wzdłuż ściany tylnej; w płaszczyźnie przekroju bez podciągu — pas 1,3 m nad salą zasłaniał strop z żebrami
 	for sp: Array in spans.call(x0 + WALL, x1 - WALL):
 		box.call("beam", Vector3(float(sp[0]), yc, zin), Vector3(float(sp[1]), ys, zin + 0.35))
+	# stropy pośrednie (klucz "floors" wpisu: wiersze stropów piętra, pompownia 1.2): jak stropodach — płyta SLAB na górze kafla, podciągi
+	# w liniach słupów, żebra co kafel i podciąg przy ścianie tylnej do spodu kafla (kolizja kafla bez zmian), belka przy krawędzi otworu
+	# w stropie (wejście na piętro); płyta tylko nad litymi kaflami wiersza (do 1.7.594 strop był pełnym pudłem kafla 1,31 m)
+	for fr: int in b.get("floors", []):
+		var yt := -float(fr) * T
+		var ysl := yt - SLAB
+		var yb := -float(fr + 1) * T
+		for sp: Array in _floor_spans(b, rows, fr):
+			var xa := maxf(float(sp[0]), x0 + WALL)
+			var xb2 := minf(float(sp[1]), x1 - WALL)
+			box.call("slab", Vector3(xa, ysl, zin), Vector3(xb2, yt, zc))
+			box.call("beam", Vector3(xa, yb, zin), Vector3(xb2, ysl, zin + 0.35))
+			for xe: float in [xa, xb2]:
+				if xe > x0 + WALL + 0.001 and xe < x1 - WALL - 0.001:   # krawędź otworu: belka obrzeża
+					var d := 0.3 if xe == xa else -0.3
+					box.call("beam", Vector3(minf(xe, xe + d), yb, zin + 0.35), Vector3(maxf(xe, xe + d), ysl, zc))
+			for x: float in lines:
+				if x - GIRDER * 0.5 > xa and x + GIRDER * 0.5 < xb2:
+					box.call("beam", Vector3(x - GIRDER * 0.5, yb, zin + COL), Vector3(x + GIRDER * 0.5, ysl, zc))
+			for k in range(ceili((xa + 0.5) / T), floori((xb2 - 0.5) / T) + 1):
+				var x := float(k) * T
+				var near := false
+				for lx: float in lines:
+					near = near or absf(lx - x) < 0.5
+				if not near:
+					box.call("beam", Vector3(x - RIB * 0.5, yb, zin + 0.35), Vector3(x + RIB * 0.5, ysl, zc))
 	# żebra stropu co kafel (poza liniami podciągów)
 	for k in range(1, ncols):
 		var x := x0 + float(k) * T
@@ -184,10 +220,11 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	# ściana tylna: w wierszach pasa ciągi kafli ze ścianą tła (`Level3D.back_wall_at` — bez otworów wnęk), nad nimi pełny pas pod płytę
 	var xl := x0 + WALL
 	var xr := x1 - WALL
+	var closed := bool(b.get("closed", false))               # hala zamknięta: ściana tylna wszędzie (wnętrze w mapie bez tła `b`)
 	for r in range(int(b["r0"]) + 1, int(b["r1"])):
 		var y_hi := ys if r == int(b["r0"]) + 1 else -float(r) * T
 		var at := func(cc: int) -> bool:                     # tło albo kafel ściany szczytowej (za nim lico ściany tylnej dochodzi do ściany 0,4 m)
-			return Level3D.back_wall_at(rows, cc, r) or Level3D.bld_cells.has(Vector2i(cc, r))
+			return closed or Level3D.back_wall_at(rows, cc, r) or Level3D.bld_cells.has(Vector2i(cc, r))
 		var k := c0
 		while k <= c1:
 			if not at.call(k):
@@ -247,6 +284,17 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		if wlen >= WIN[2] + 0.8 and not buried:
 			var wz := front0 + wlen * 0.5
 			holes.append([wz - WIN[2] * 0.5, wz + WIN[2] * 0.5, yf + WIN[0], yf + WIN[1], "deco"])
+		# okna pięter (nad stropami pośrednimi): ten sam odcinek przed pasem gry, omijają tylko pilastry (skrzydła są na parterze)
+		for fr: int in ([] if buried else b.get("floors", [])):
+			var f0: float = ROOF_GAP[1] + 0.2
+			for z: float in pil:
+				if z + PILASTER[0] * 0.5 > f0 - 0.15 and z - PILASTER[0] * 0.5 < zc - COL:
+					f0 = maxf(f0, z + PILASTER[0] * 0.5 + 0.15)
+			var fl := zc - COL - f0
+			var yw := -float(fr) * T
+			if fl >= WIN[2] + 0.8 and yw + WIN[1] < ys - 0.3:
+				var wz := f0 + fl * 0.5
+				holes.append([wz - WIN[2] * 0.5, wz + WIN[2] * 0.5, yw + WIN[0], yw + WIN[1], "deco"])
 		_wall_x(box, "wall", minf(xo, xi), maxf(xo, xi), zb, zc, yf, ys, holes)
 		for h: Array in holes:
 			_frame(box, side, xo, xi, h)
@@ -262,6 +310,25 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 			box.call("plinth", Vector3(xo, yf - PLINTH[2], float(pz[i])), Vector3(xout.call(PLINTH[1]), yf + PLINTH[0], float(pz[i + 1])))
 		for z: float in pil:
 			box.call("col", Vector3(xo, yf + PLINTH[0], z - PILASTER[0] * 0.5), Vector3(xout.call(PILASTER[1]), ys, z + PILASTER[0] * 0.5))
+	return out
+
+## Odcinki [x0, x1] litych kafli (`Level3D.BLD_CH`) stropu pośredniego w wierszu `fr` między ścianami szczytowymi budynku `b`;
+## lity kafel przy ścianie szczytowej — odcinek od lica zewnętrznego (przycina go grubość ściany).
+static func _floor_spans(b: Dictionary, rows: Array, fr: int) -> Array:
+	var T := Level3D.T
+	var out: Array = []
+	for c in range(int(b["c0"]) + 1, int(b["c1"])):
+		if not Level3D._ch(rows, c, fr) in Level3D.BLD_CH:
+			continue
+		if not out.is_empty() and is_equal_approx(float(out[-1][1]), float(c) * T):
+			out[-1][1] = float(c + 1) * T
+		else:
+			out.append([float(c) * T, float(c + 1) * T])
+	if not out.is_empty():
+		if is_equal_approx(float(out[0][0]), float(int(b["c0"]) + 1) * T):
+			out[0][0] = float(int(b["c0"])) * T
+		if is_equal_approx(float(out[-1][1]), float(int(b["c1"])) * T):
+			out[-1][1] = float(int(b["c1"]) + 1) * T
 	return out
 
 ## Czy przedział [a, b] zachodzi na któryś z `ivs` ([z0, z1]).
@@ -356,7 +423,7 @@ static func build_one(parent: Node3D, b: Dictionary, rows: Array) -> int:
 		"cut": _tinted(cs),   # przekrój: rzut świata — płaszczyzna cięcia jak jeden blok betonu
 	}
 	for k: String in ROLE:
-		mats[k] = _uv_mat(spec.get(ROLE[k], spec["wall"]))
+		mats[k] = _uv_mat(spec.get(k, spec.get(ROLE[k], spec["wall"])))
 	var unit := BoxMesh.new()
 	unit.size = Vector3.ONE
 	var p := parts(b, rows)

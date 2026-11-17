@@ -362,7 +362,7 @@ static func is_post_cell(rows: Array, c: int, r: int) -> bool:
 
 ## Rola ciągu słupa w konstrukcji, którą rysuje `Backdrop3D.build_frames` zamiast modelu słupa:
 ##  - "mast": maszt — dwie sąsiednie kolumny `w` od samej góry mapy (maszt z generatorem w 1.2) → kratownica stalowa z lampami przeszkodowymi;
-##  - "tower": noga wieży — nad ciągiem leży blacha/skrzynia `M` (podłoga albo dach strażnicy w 1.1) → drewniane nogi z przodu i z tyłu ze stężeniami;
+##  - "tower": noga wieży — nad ciągiem leży blacha/skrzynia `M` (podłoga albo dach strażnicy w 1.1), poza budynkiem 3D → drewniane nogi z przodu i z tyłu ze stężeniami;
 ##  - "" — zwykły słup (`build_level`).
 static func frame_role(rows: Array, run: Dictionary) -> String:
 	var c: int = run["c"]
@@ -370,8 +370,8 @@ static func frame_role(rows: Array, run: Dictionary) -> String:
 	var r1: int = run["r1"]
 	if r0 == 0 and r1 - r0 >= 12 and (_ch(rows, c - 1, 1) == "w" or _ch(rows, c + 1, 1) == "w"):
 		return "mast"
-	if _ch(rows, c, r0 - 1) == "M":
-		return "tower"
+	if _ch(rows, c, r0 - 1) == "M" and not bld_back.has(Vector2i(c, r0)):
+		return "tower"                                      # w budynku 3D (hala Żyły) blacha nad słupem to dach hali, nie strażnica
 	return ""
 
 ## Czy nad górą słupa (kafel `r0`) jest otwarte powietrze (`.`) — słup stoi na zewnątrz; we wnętrzu (tło `b`, strop, tunel drezyny) to stempel.
@@ -828,7 +828,7 @@ static func _build_wall_feet(parent: Node3D, rows: Array, mat: Material) -> void
 ## `tools/mblock_bake.py`. Głębokość jak szerokość, najwyżej CRATE_DEPTH (w modułach bloku, pół kafla).
 const CRATE_DEPTH := 2.4
 static func crate_blocks(rows: Array) -> Array:
-	var skip := {}
+	var skip := bld_cells.duplicate()                           # dach i ściany budynku 3D z blachy (`building3d.gd`)
 	for s in tower_slabs(rows):
 		for k in range(int(s["c0"]), int(s["c1"]) + 1):
 			skip[Vector2i(k, int(s["r"]))] = true
@@ -1842,6 +1842,8 @@ static var shell_entry_cells := {}
 ## Elementy fasady na bokach wysuniętej ściany wejścia: {c, out (−1 lewy koniec budynku, +1 prawy), kind ("door"/"gate"/"window"), rt, rb (wiersze)}.
 static var shell_facades: Array = []
 const WALL_CH := "#C"
+## Ściany i dach budynku 3D (`_plan_building`): także blacha `M` (hala Żyły 1.3 — dach i zachodnia ściana z blachy).
+const BLD_CH := "#CM"
 ## Budynki 3D (pilot wariantu C na posterunku 1.3, `building3d.gd`): wpisy FRONT z przekrojem i kluczem "build" (typ budynku, np. "bunker").
 ## Bryłę budynku buduje generator w prawdziwych wymiarach (strop 0,25 m z żebrami, ściany 0,4 m, słupy, attyka, przekrój na SHELL_Z);
 ## kafle dachu i ścian szczytowych (`bld_cells`) nie dostają pudła kafla, płyty przekroju ani ściany wejścia, a tło wnętrza (`bld_back`) —
@@ -1949,7 +1951,7 @@ static func _plan_building(e: Dictionary, rows: Array) -> void:
 	var r1 := int(e["r1"])
 	var open: Array = []
 	for c in range(c0, c1 + 1):
-		if _ch(rows, c, r0) in WALL_CH:
+		if _ch(rows, c, r0) in BLD_CH:
 			bld_cells[Vector2i(c, r0)] = true
 		for r in range(r0 + 1, r1):
 			bld_back[Vector2i(c, r)] = true
@@ -1958,13 +1960,13 @@ static func _plan_building(e: Dictionary, rows: Array) -> void:
 		var r := r0 + 1
 		while r < r1:
 			var ch := _ch(rows, c, r)
-			if ch in WALL_CH:
+			if ch in BLD_CH:
 				bld_cells[Vector2i(c, r)] = true
 				r += 1
 				continue
 			var win := ch == "|"
 			var rt := r
-			while r < r1 and not (_ch(rows, c, r) in WALL_CH) and (_ch(rows, c, r) == "|") == win:
+			while r < r1 and not (_ch(rows, c, r) in BLD_CH) and (_ch(rows, c, r) == "|") == win:
 				r += 1
 			var kind := "window" if win else ("door" if r - rt <= 2 else "gate")
 			if not win and r < r1:
@@ -1975,6 +1977,14 @@ static func _plan_building(e: Dictionary, rows: Array) -> void:
 		bld["bays"] = (e["bays"] as Array).duplicate()          # słupy tylko na osiach pomieszczeń (kolumny mapy), zamiast co BAY
 	if e.has("cut_cols"):
 		bld["cut_cols"] = bool(e["cut_cols"])                    # false: bez słupa w płaszczyźnie przekroju (kryjówka, HUB_LAYOUT_PLAN.md E4)
+	if e.has("closed"):
+		bld["closed"] = bool(e["closed"])                        # true: ściana tylna na całej wysokości, choć wnętrze w mapie bez tła `b` (hala Żyły)
+	if e.has("floors"):                                          # stropy pośrednie (pompownia 1.2): kafle stropu bez pudła — płytę z żebrami daje `building3d.gd`
+		bld["floors"] = (e["floors"] as Array).duplicate()
+		for fr: int in e["floors"]:
+			for c in range(c0 + 1, c1):
+				if _ch(rows, c, fr) in BLD_CH:
+					bld_cells[Vector2i(c, fr)] = true
 	buildings.append(bld)
 
 ## Otwory kolumny wejścia → `shell_facades`: ciąg wierszy bez muru nad podłogą pasa to drzwi (do 2 kafli) albo brama (wyżej),

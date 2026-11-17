@@ -65,10 +65,12 @@ const NICHES := [
 ## w hali stacji i w tunelu drezyny; pas wpisu od stropu (r0) do podłogi (r1), elementy przycięte do niego w rzucie na płaszczyznę gry.
 const FRONT := [
 	{"set": "station", "c0": 66, "c1": 100, "r0": 18, "r1": 26, "shell": true, "build": "hall"},     # hala stacji (budynek 3D: szkielet z cegłą)
+	{"set": "station", "c0": 216, "c1": 246, "r0": 16, "r1": 26, "shell": true, "build": "hall", "floors": [22]},   # pompownia (budynek 3D: szkielet z cegłą, strop piętra z otworem)
 	{"set": "tunnel", "c0": 8, "c1": 282, "r0": 44, "r1": 51, "shell": true},      # tunel drezyny
 	{"set": "forest", "c0": 2, "c1": 62, "r0": 0, "r1": 26, "skip": [[38, 43], [59, 62]]},   # las od startu do hali stacji (F3, pilot lasu); bez drzew nad włazami przepustu i studni (pień widać w przekroju)
-	# las za halą stacji do masztu; bez pni przed szopą na bagnie i pompownią (wnętrza bez przekroju), podłoże ciągłe (dołki przed szybami)
-	{"set": "forest", "c0": 101, "c1": 285, "r0": 0, "r1": 26, "skip": [[112, 132], [216, 246]]},
+	# las za halą stacji do masztu; bez pni przed szopą na bagnie (wnętrze bez przekroju) i pompownią (przekrój budynku), podłoże ciągłe (dołki przed szybami)
+	{"set": "forest", "c0": 101, "c1": 215, "r0": 0, "r1": 26, "skip": [[112, 132]]},
+	{"set": "forest", "c0": 247, "c1": 285, "r0": 0, "r1": 26},
 ]
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od
