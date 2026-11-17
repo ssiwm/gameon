@@ -12,7 +12,8 @@ extends SceneTree
 ## (8) pomosty bez słupa, ściany i bryły obok (`deck_supports`): każda noga ma oparcie — grunt lub pomost niżej, albo strop nad pomostem,
 ## (9) żebra długich hal (`interior_ribs`): stoją w kolumnach samego tła `b` (z sąsiadami) między stropem a podłogą `C`,
 ## (10) skrzynie `M` poza wieżą (`crate_blocks`) to pełne prostokąty `M` i żadna nie leży w dachu ani podłodze wieży,
-## (11) ściana tła za kładką i znacznikiem (`_wall_behind`) pod gołym niebem tylko nad szybem (tło `b` tuż pod kaflem) — nie przez okno `|`
+## (11) ściana tła za kładką i znacznikiem (`_wall_behind`) pod gołym niebem tylko nad szybem (tło `b` tuż pod kaflem albo właz z desek
+##      równo z gruntem — `is_ground_hatch`, w 1.1 trzy) — nie przez okno `|`
 ##      budynku (mur wisiał w powietrzu pod rusztowaniem przy oknie, przegląd budynków 2026-11-17).
 ## godot --headless --path prototype -s tools/test_structures.gd      → ma wypisać PASS
 var Level3D: GDScript
@@ -169,10 +170,14 @@ func _check_ribs(id: String, rows: Array) -> void:
 	print("ok    %s: %d żeber hal" % [id, ribs.size()])
 
 func _check_wall_behind(id: String, rows: Array) -> void:
+	var hatches := 0
 	for r in rows.size():
 		for c in (rows[r] as String).length():
-			if not Level3D._wall_behind(rows, c, r) or Level3D._ch(rows, c, r + 1) == "b":
-				continue
+			if Level3D.is_ground_hatch(rows, c, r) and not Level3D.is_ground_hatch(rows, c - 1, r):
+				hatches += 1
+				_check(Level3D._wall_behind(rows, c, r), "%s kol. %d rząd %d: właz bez ściany szybu za deskami" % [id, c, r])
+			if not Level3D._wall_behind(rows, c, r) or Level3D._ch(rows, c, r + 1) == "b" or Level3D.is_ground_hatch(rows, c, r):
+				continue                                    # właz równo z gruntem: ściana szybu kończy się na wierzchu gruntu
 			var sky := true
 			for k in range(r - 1, -1, -1):
 				var n: String = Level3D._ch(rows, c, k)
@@ -180,3 +185,5 @@ func _check_wall_behind(id: String, rows: Array) -> void:
 					sky = false
 					break
 			_check(not sky, "%s kol. %d rząd %d: ściana tła pod gołym niebem za „%s”" % [id, c, r, Level3D._ch(rows, c, r)])
+	if id == "z1_m1":
+		_check(hatches == 3, "z1_m1: %d włazów równo z gruntem (oczekiwane 3: kol. 40, 111, 193)" % hatches)

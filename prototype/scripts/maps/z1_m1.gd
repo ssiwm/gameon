@@ -46,7 +46,7 @@ const POWER_CRATES := [[231, 22, Weapons.GNIEW4, 8]]
 ## Sejfy (FUN_PLAN.md P2.2): [kolumna, rząd, złom] — wyważanie trzymanym [E] jest głośne; przy strażnicy, pod ćmami.
 const STRONGBOXES := [[206, 22, 40]]
 ## Akcenty dekoracji 3D [stopy, indeks z view3d.DECO_MODELS]: porzucony obóz patrolu — skrzynia, pniak, wygasłe ognisko przy Trzoskach, powalony pień; w obozie (M1a) ognisko w niecce, pień przed zboczem, skrzynia na płaskowyżu.
-const ACCENTS := [[Vector2(392, 368), 12], [Vector2(536, 368), 9], [Vector2(936, 368), 8], [Vector2(2312, 368), 10], [Vector2(424, 368), 21], [Vector2(968, 368), 21], [Vector2(1800, 368), 8], [Vector2(1304, 368), 10], [Vector2(2040, 288), 12]]
+const ACCENTS := [[Vector2(392, 368), 12], [Vector2(536, 368), 9], [Vector2(936, 368), 8], [Vector2(2312, 368), 10], [Vector2(424, 368), 21], [Vector2(968, 368), 21], [Vector2(1872, 368), 8], [Vector2(1304, 368), 10], [Vector2(2040, 288), 12]]
 ## Szósty nieśmiertelnik leży na wschodnim końcu dolnej galerii (za dwoma Trzoskami, obok skrzynki i skrytki) — powód, żeby zejść szybem serwisowym.
 ## Finał (mission._start_finale): po ostatnim nieśmiertelniku rampa do sali zawala się (obszary [c0, r0, c1, r1]); drogą na zewnątrz jest szyb
 ## wentylacyjny na zachodnim końcu sali (wspinaczka po podestach, Ćmy i Skoczki pod sufitem sali; na górze właz z desek równo z gruntem —

@@ -588,6 +588,27 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 			for xb: Transform3D in p[pr[1]]:
 				var i := _box_aabb(xa).intersection(_box_aabb(xb))
 				_check(i.size.x <= 0.003 or i.size.y <= 0.003 or i.size.z <= 0.003, "%s: '%s' przenika '%s' (%s)" % [name, pr[0], pr[1], i])
+	# słupy przy ścianie tylnej zasłaniają tło: za nimi bez dekali (napis ucięty słupem, przegląd budynków 2026-11-17), wnęka w murze
+	# budynku z materiałem jego ściany, nie z cegły (betonowy posterunek 1.3)
+	# (dekal tylko wtedy, gdy słup wchodzi w jego środek — przy znaczeniu całych kafli znikały prawie wszystkie napisy w halach)
+	Level3D.bld_col_spans.clear()
+	Building3D.mark_col_spans(b, rows)
+	var tall := 0
+	var free := 0
+	var rm := (r0 + r1) / 2
+	for xf: Transform3D in p["col"]:
+		var sz := xf.basis.get_scale()
+		if sz.y < T or xf.origin.x <= float(c0 + 1) * T or xf.origin.x >= float(c1) * T or xf.origin.z > 0.0:
+			continue
+		tall += 1
+		var k := Vector2i(roundi(xf.origin.x / T) - 1, rm)     # dekal na dwa kafle, którego środek wypada na słupie
+		_check(Level3D._decal_hidden(k, 2, 1, "b"), "%s: dekal tła za słupem w %s" % [name, k])
+	for c in range(c0 + 1, c1):
+		free += int(not Level3D._decal_hidden(Vector2i(c, rm), 1, 1, "b"))
+	_check(tall == 0 or Level3D.bld_col_spans.size() == tall, "%s: słupy przy ścianie tylnej poza bld_col_spans (%d z %d)" % [name, Level3D.bld_col_spans.size(), tall])
+	_check(free * 2 >= c1 - c0 - 1, "%s: za słupami zablokowana większość tła dla dekali (wolnych %d z %d kafli)" % [name, free, c1 - c0 - 1])
+	var wm: Variant = Niches3D._building_wall({"c0": cm, "c1": cm + 1, "r0": r0 + 1, "r1": r1 - 1})
+	_check(wm != null, "%s: wnęka w budynku bez materiału ściany budynku" % name)
 
 ## Hala z blachy (`building3d.gd` "shed", hala Żyły 1.3; przegląd budynków 2026-11-17: w 3D otwarta na las, dach z bloków z czopami,
 ## słupy jako nogi wieży z krzyżami): ściana tylna na całej wysokości mimo wnętrza bez tła `b`, kafle `M` dachu i ścian bez bloków

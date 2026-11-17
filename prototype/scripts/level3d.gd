@@ -340,7 +340,24 @@ static func _wall_behind(rows: Array, c: int, r: int) -> bool:
 				break
 			k += dir
 			steps += 1
-	return false
+	return is_ground_hatch(rows, c, r)
+
+## Właz z desek równo z gruntem (1.1: kol. 40–43, 111–114, 193–197): ciąg kładki z gruntem po obu stronach i szybem pod spodem.
+## Za nim stoi ściana tła (`_wall_behind`) — bez niej między dnem lasu a ścianą szybu zostawała szczelina na wysokość kafla, przez którą
+## widać było jasne niebo (biały prostokąt za deskami, przegląd budynków 2026-11-17). Wierzch ściany wypada równo z gruntem.
+static func is_ground_hatch(rows: Array, c: int, r: int) -> bool:
+	if not is_platform_ch(_ch(rows, c, r)):
+		return false
+	var below := _ch(rows, c, r + 1)
+	if below == "." or below == "" or is_solid_ch(below):
+		return false
+	for dir in [-1, 1]:
+		var k: int = c + dir
+		while is_platform_ch(_ch(rows, k, r)):
+			k += dir
+		if not is_solid_ch(_ch(rows, k, r)):
+			return false
+	return true
 
 ## Znacznik mapy (wróg, przedmiot, start…): komórka bez własnej geometrii — nie bryła, kładka, tło ani powietrze.
 static func _is_marker(ch: String) -> bool:
@@ -1180,6 +1197,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	# kładki z modeli: poziome ciągi kafli dzielone na równe odcinki (deski: 1 kafel, krata: ok. 3 kafle), co drugi obrócony o 180° dla odmiany;
 	# góra pokładu na wysokości góry dawnej płyty (kolizja bez zmian). Bez modelu — płyty z teksturą.
 	var decks := {"-": [], "=": []}
+	var rails: Array = []                                       # balustrady antresol w budynkach 3D
 	for r in nrows:
 		var c := 0
 		while c < cols:
@@ -1191,6 +1209,8 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 			while c1 < cols and _ch(rows, c1, r) == ch:
 				c1 += 1
 			var per := 1.0 if ch == "-" else 3.0
+			if ch == "=" and bld_back.has(Vector2i(c, r)) and not _in_shell_band(c, r):
+				_mezzanine_rail(rails, float(c) * T, float(c1) * T, -float(r) * T + 0.01, deck_half(ch))
 			var n := maxi(1, int(round(float(c1 - c) / per)))
 			var seg := float(c1 - c) * T / float(n)
 			var hgt: float = DECK_H[ch] * T
@@ -1204,11 +1224,23 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					while zz > per * T * 0.5 - 0.01:
 						(decks[ch] as Array).append(Transform3D(b, Vector3(x, -float(r) * T + 0.01 - hgt, zz)))
 						zz -= per * T
+				elif ch == "=" and bld_back.has(Vector2i(int(x / T), r)):
+					# antresola w budynku 3D (Skład 1.3, hala stacji 1.2): krata w głąb do ściany tylnej (ostatni odcinek chowa się w murze);
+					# sam pomost w pasie gry widziany od dołu na krawędź czytał się jak rura wzdłuż ściany (przegląd budynków 2026-11-17)
+					var dz := 2.0 * deck_half(ch)
+					var zz := -dz
+					while zz + dz * 0.5 > -DEPTH_BACK + 0.3 + 0.01:
+						(decks[ch] as Array).append(Transform3D(b, Vector3(x, -float(r) * T + 0.01 - hgt, zz)))
+						zz -= dz
 			c = c1
 	if not _multimodel(parent, "walkway_plank", decks["-"]):
 		_multimesh(parent, plb, planks, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"))
 	if not _multimodel(parent, "walkway_grate", decks["="]):
 		_multimesh(parent, plb, grates, make_pbr("grate", 0.5, Color(0.28, 0.30, 0.34), 0.5, 1.0, 0.7, true))
+	if not rails.is_empty():
+		var rb := BoxMesh.new()
+		rb.size = Vector3.ONE
+		_multimesh(parent, rb, rails, make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"))
 	_build_deck_supports(parent, rows, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"),
 			make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"))
 	return marks
@@ -1679,9 +1711,10 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 			var sx := T * float(wt) * (-1.0 if (bool(d[4]) and rng.randf() < 0.5) else 1.0)
 			var rot := rng.randf_range(-0.05, 0.05) if bool(d[4]) else 0.0
 			var bas := Basis(Vector3.BACK, rot) * Basis.from_scale(Vector3(sx, T * float(ht), 1.0))
-			if not inst.has(name):
-				inst[name] = []
-			inst[name].append(Transform3D(bas, ctr))
+			if not _decal_hidden(k, wt, ht, kind):             # ukryty: miejsce, losowanie i licznik powtórzeń jak dla widocznego
+				if not inst.has(name):
+					inst[name] = []
+				inst[name].append(Transform3D(bas, ctr))
 			if name.begins_with("g_"):
 				if not placed.has(name):
 					placed[name] = []
@@ -1736,9 +1769,28 @@ static func _decal_fits(k: Vector2i, wt: int, ht: int, kind: String, surf: Dicti
 			var p := Vector2i(k.x + dx, k.y + dy)
 			if used.has(p) or not surf.has(p) or String(surf[p]) != kind:
 				return false
-			if kind == "b" and (niche_cells.has(p) or decal_skip.has(p)):         # decal_skip: tabliczki i meble kryjówki
+			if kind == "b" and (niche_cells.has(p) or decal_skip.has(p)):   # decal_skip: tabliczki i meble kryjówki
 				return false                                    # w otworze wnęki nie ma ściany, na której wisiałby dekal
 	return true
+
+## Czy dekal, który już zajął miejsce (`_decal_fits`), ma zostać bez obrazu: część na kaflu budynku 3D bez pudła (strop, ściana szczytowa —
+## wisiałby w powietrzu, pompownia 1.2) albo na tle, gdy słup budynku (`bld_col_spans`) wchodzi w jego środek (napis ucięty słupem, przegląd
+## budynków 2026-11-17).
+## Osobno od `_decal_fits`, żeby losowanie szło jak dawniej: odrzucenie zmieniałoby zużycie RNG i przetasowało dekale w całej mapie.
+static func _decal_hidden(k: Vector2i, wt: int, ht: int, kind: String) -> bool:
+	if kind == "b":
+		var m := DECAL_COL_MARGIN * float(wt) * T
+		var dx0 := float(k.x) * T + m
+		var dx1 := float(k.x + wt) * T - m
+		for s: Vector4 in bld_col_spans:
+			if s.x < dx1 and s.y > dx0 and float(k.y) < s.w and float(k.y + ht) > s.z:
+				return true
+		return false
+	for dy in ht:
+		for dx in wt:
+			if bld_cells.has(Vector2i(k.x + dx, k.y + dy)):
+				return true
+	return false
 
 ## Czy komórka (c, r) cieczy / błota jest pod powierzchnią ciągu, który rysuje `build_liquids` (nad kolumną aż do pierwszej innej komórki nie ma bryły).
 static func _liquid_surface_col(rows: Array, c: int, r: int, ch: String) -> bool:
@@ -1851,6 +1903,10 @@ const BLD_CH := "#CM"
 static var buildings: Array = []
 static var bld_cells := {}
 static var bld_back := {}
+## Słupy budynków 3D przy ścianie tylnej: [x0, x1 (m), r0, r1 (wiersze, r1 wyłącznie)] (wypełnia `Building3D.build`). Dekal tła, w którego
+## środkową część wchodzi słup, nie jest rysowany — grafiti za słupem było ucięte (PATROL 7, przegląd budynków 2026-11-17).
+static var bld_col_spans: Array[Vector4] = []
+const DECAL_COL_MARGIN := 0.2              ## część szerokości dekalu z każdej strony, w którą słup może wejść (brzegi grafik są zwykle puste)
 const ENTRY_KEEP := "+%:q"                 ## niszczalne przegrody: kolumna z nimi nie dostaje pełnej ściany wejścia
 
 static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
@@ -1862,6 +1918,7 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	buildings = []
 	bld_cells = {}
 	bld_back = {}
+	bld_col_spans = []
 	if "--noshell" in OS.get_cmdline_user_args():
 		return                                                  # dev: bez przekroju (porównanie A/B)
 	var bands: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
@@ -2040,6 +2097,21 @@ static var rail_trench := {}
 ## aż do `SHELL_Z` — pełna płyta przed korytem zasłoniłaby szyny i koła drezyny (z każdej kamery, gdy zaczyna się bliżej niż ok. 4,5 m).
 static func in_trench(c: int, r: int) -> bool:
 	return not rail_trench.is_empty() and r == int(rail_trench["row"]) and c >= int(rail_trench["c0"]) and c <= int(rail_trench["c1"])
+
+## Balustrada antresoli z kraty w budynku 3D (Skład 1.3, hala stacji 1.2) na przedniej krawędzi pokładu [x0, x1] (góra pokładu `y`,
+## pół głębokości `dh`): słupki co ok. 1,3 m, poręcz na 1 m i przeciąg w połowie, krawężnik. Antresola leży w kadrze na wysokości oka
+## i pomost widziany na krawędź czytał się jak rura wzdłuż ściany (przegląd budynków 2026-11-17); balustrada mówi „galeria”.
+const RAIL_H := 1.0
+const RAIL_T := 0.045
+static func _mezzanine_rail(out: Array, x0: float, x1: float, y: float, dh: float) -> void:
+	var z := dh - 0.05
+	var n := maxi(1, roundi((x1 - x0) / T))
+	for i in n + 1:
+		var x := clampf(x0 + (x1 - x0) * float(i) / float(n), x0 + RAIL_T, x1 - RAIL_T)
+		out.append(_span_box(Vector3(x - RAIL_T * 0.5, y, z - RAIL_T * 0.5), Vector3(x + RAIL_T * 0.5, y + RAIL_H, z + RAIL_T * 0.5)))
+	for yy in [RAIL_H, RAIL_H * 0.5]:
+		out.append(_span_box(Vector3(x0, y + yy - RAIL_T, z - RAIL_T * 0.5), Vector3(x1, y + yy, z + RAIL_T * 0.5)))
+	out.append(_span_box(Vector3(x0, y, z - 0.01), Vector3(x1, y + 0.1, z + 0.01)))      # krawężnik
 
 ## Czy kafel leży w płycie stropu albo podłogi wpisu z przekrojem (`shell_bands`) — krata pionu w płycie między pokładami; podesty w pasie
 ## gry zostają w płaszczyźnie gry.
