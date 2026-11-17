@@ -376,6 +376,13 @@ func _refresh_look_sprites() -> void:
 
 ## Animacja z (replikowanego) stanu — działa też dla zdalnych graczy i bota.
 func _update_sprite() -> void:
+	if is_on_floor() if not _is_remote else absf(velocity.y) < 5.0:
+		_c3_air_t = 0.0
+		_c3_jumped = false
+	else:
+		_c3_air_t += get_process_delta_time()
+		if velocity.y < -1.0:
+			_c3_jumped = true
 	if c3d != null:
 		_update_char3d()
 		return
@@ -430,11 +437,21 @@ var _c3_hp := -1                       ## ostatnie zdrowie widziane przez animac
 var _c3_was_air := false
 var _c3_air_vy := 0.0                  ## największa prędkość spadania w ostatnim locie (siła lądowania)
 var _c3_climbed := false               ## podciągnięcie już odegrane w tym locie
+## Zejście ze stopnia (zbocze wykopane w strefie wydobycia, schody po skosie co 8 px): ciało 2D spada z krawędzi ok. 0,1 s, ale animacja
+## traktuje to jak krok w dół, nie skok — bez pozy lotu i bez amortyzacji lądowania; model schodzi płynnie (char3d.gd `terrain`).
+const STEP_DOWN_PX := 12.0             ## px: najwyższy stopień liczony jako krok w dół (stopień wykopu to 8 px)
+const STEP_AIR_MAX := 0.25             ## s: dłuższy lot to już spadanie
+const FOOT_PROBE_UP := 11.0            ## px: sonda gruntu pod stopą zaczyna się tyle nad stopami ciała (stopień w górę)
+const FOOT_PROBE_DOWN := 12.0          ## px: … i sięga tyle pod nie (stopień w dół)
+var _c3_air_t := 0.0                   ## s w powietrzu (od zejścia z ziemi)
+var _c3_jumped := false                ## w tym locie ciało szło w górę (skok, odrzut) — to nie zejście ze stopnia
+var _c3_probe := Callable()
+static var _no_terrain := "--noterrain" in OS.get_cmdline_user_args()   ## porównania przed/po: stopy na płaskiej podłodze, zejście jak spadanie
 
 ## Stan animacji postaci 3D z (replikowanego) stanu gracza: [anim, prędkość pozioma do kroku (px/s, ze znakiem)]; ustawia też `_facing`.
 ## Osobno od `_update_char3d`, żeby test headless (bez modelu) sprawdzał ten sam wybór — także u zdalnego gracza i bota.
 func _char_anim() -> Array:
-	var grounded := is_on_floor() if not _is_remote else absf(velocity.y) < 5.0
+	var grounded := (is_on_floor() if not _is_remote else absf(velocity.y) < 5.0) or _stepping_down()
 	# pchanie: `velocity` po zderzeniu ze skrzynią jest zerowa, więc krok liczymy z tempa skrzyni (prop.gd PUSH_SPEED), a napór bez ruchu stoi
 	var pd := float(signi(push_state)) if not dead and grounded else 0.0
 	var vx := velocity.x
@@ -464,9 +481,37 @@ func _char_anim() -> Array:
 		anim = "run"                                       # także pchanie plecami (celuje w drugą stronę): chód tyłem w tempie skrzyni
 	return [anim, vx]
 
+## Ciało 2D zeszło z krawędzi stopnia (krótko w powietrzu, bez skoku) i grunt jest tuż pod nim — dla animacji to krok w dół.
+func _stepping_down() -> bool:
+	if _no_terrain or dead or grabbed or velocity.y < 0.0:
+		return false
+	var gap := INF
+	for dx in [-4.0, 0.0, 4.0]:                               # prostokąt ciała ma 10 px szerokości
+		var g := _ground_below(dx, 1.0, STEP_DOWN_PX)
+		if not is_nan(g):
+			gap = minf(gap, -g)
+	if gap <= 1.5:
+		return true                                           # stoi na gruncie: u zdalnego gracza zejście po skosie ma vy > 5, a to nie lot
+	return gap <= STEP_DOWN_PX and not _c3_jumped and _c3_air_t <= STEP_AIR_MAX
+
+## Wysokość gruntu pod punktem `dx` px w bok od stóp ciała, w px w górę względem stóp (− = niżej); NAN — brak gruntu w zasięgu
+## [−down, +up]. Promień z góry w dół po warstwach, na których postać stoi (świat, kładki, skrzynie).
+func _ground_below(dx: float, up: float, down: float) -> float:
+	var space := get_world_2d().direct_space_state
+	var o := global_position + Vector2(dx, -up)
+	var q := PhysicsRayQueryParameters2D.create(o, global_position + Vector2(dx, down), collision_mask & ~2, [get_rid()])
+	var h := space.intersect_ray(q)
+	if h.is_empty():
+		return NAN
+	return global_position.y - (h["position"] as Vector2).y
+
+## Sonda gruntu dla stóp modelu 3D (char3d.gd `terrain`): px w bok → px w górę względem stóp ciała albo NAN.
+func _foot_probe(dx: float) -> float:
+	return _ground_below(dx, FOOT_PROBE_UP, FOOT_PROBE_DOWN)
+
 ## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
 func _update_char3d() -> void:
-	var grounded := is_on_floor() if not _is_remote else absf(velocity.y) < 5.0
+	var grounded := (is_on_floor() if not _is_remote else absf(velocity.y) < 5.0) or _stepping_down()
 	var st := _char_anim()
 	var anim := String(st[0])
 	var vx := float(st[1])
@@ -506,6 +551,9 @@ func _update_char3d() -> void:
 		if c3d.throw_t >= 1.0:
 			c3d.throw_t = -1.0
 	c3d.scale = squash
+	if not _c3_probe.is_valid():
+		_c3_probe = _foot_probe
+	c3d.terrain(global_position.y, _c3_probe if grounded and not dead and not _no_terrain else Callable())
 	c3d.update(get_process_delta_time(), anim, _facing, aim_dir, absf(vx), true, _tint_color())
 
 ## Ręce zajęte bronią (strzał, przeładowanie, cios, rzut): pchanie oburącz ustępuje wtedy zwykłej pozie z bronią — krok zostaje.

@@ -362,6 +362,26 @@ var _clip_knee := {}                         ## strona → kierunek kolana w kli
 var _clip_bounce := 0.0                      ## m: poprawka pionu bioder zdejmująca część kołysania klipu (CharClips.bounce_fix)
 var _clip_ws := {}                           ## stan → waga klipu w tej klatce (wejście dla CharClips.drive)
 var _clip_foot := {}                         ## strona → Transform3D stopy z klipu (przestrzeń szkieletu), zanim ruszą ją nakładki
+## Teren pod stopami (zbocza i schody wykopane w strefach wydobycia, krawędzie): ciało 2D to prostokąt stojący na najwyższym punkcie
+## pod sobą, więc na skosie albo stopniu jedna stopa wisiała w powietrzu. Sonda z player.gd (`terrain`) mierzy grunt pod piętą i czubkiem
+## każdej stopy; stopa staje na nim (z nachyleniem), a biodra schodzą tyle, żeby niższa stopa sięgnęła. Grunt i biodra wygładzone
+## w układzie świata — zejście ciała 2D o stopień (8 px w 0,1 s) nie przestawia ich skokiem.
+const TERRAIN_DOWN := 0.70                   ## m: najniżej stawiana stopa względem stóp ciała (stopień wykopu 8 px = 0,65 m)
+const TERRAIN_UP := 0.55                     ## m: najwyżej (stopa na wyższym stopniu za plecami)
+const HIP_TERRAIN_MAX := 0.45                ## m: biodra obniżone najwyżej o tyle — dalej niższa stopa sięga wyprostowaną nogą
+const FOOT_HEEL := -0.07                     ## m: pięta względem kostki wzdłuż stopy (sonda gruntu)
+const FOOT_TOE := 0.17                       ## m: czubek stopy
+const FOOT_TILT_MAX := 24.0                  ## °: najmocniejsze nachylenie stopy do skosu gruntu
+const FOOT_GROUND_RATE := 24.0               ## 1/s: wygładzenie gruntu pod stopą (krawędź stopnia pod stopą w locie)
+const HIP_TERRAIN_RATE := 10.0               ## 1/s: wygładzenie obniżenia bioder (zejście ze stopnia trwa ok. 0,2 s zamiast 0,1 s spadku)
+var _probe := Callable()                     ## (dx px w świecie) → px w górę względem stóp ciała albo NAN; pusta = płaska podłoga (w powietrzu)
+var _body_y := NAN                           ## px: y stóp ciała 2D w świecie (układ świata dla wygładzania)
+var _terrain_w := 0.0                        ## 0..1 udział dopasowania do terenu (zanika w powietrzu, przy upadku i chwycie)
+var _foot_abs := {}                          ## strona → px: wygładzony y gruntu pod stopą (świat)
+var _hip_abs := NAN                          ## px: wygładzony y, na który schodzą biodra (świat; = stopy ciała przy równym gruncie)
+var _foot_g := {"Left": 0.0, "Right": 0.0}   ## strona → m: grunt pod stopą względem stóp ciała (+ w górę) w tej klatce
+var _foot_tilt := {"Left": 0.0, "Right": 0.0}   ## strona → rad: nachylenie stopy do gruntu (+ czubek w górę)
+var hip_terrain := 0.0                       ## m: obniżenie bioder do terenu w tej klatce (≤ 0; test)
 
 ## Wyniki ostatniej klatki, w pikselach świata względem stóp (z uwzględnieniem odbicia) — dla efektów.
 var muzzle_px := Vector2.ZERO
@@ -1692,8 +1712,67 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	for n in ["Spine", "Spine1", "Spine2"]:
 		_rot_world(_b[n], Vector3.BACK, (_spine_pitch(theta) + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * aim_k)
 	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * aim_k + deg_to_rad(head_hit))
+	_terrain_pose(delta)
 	_ground_hips()
 	_pose_legs(e)
+
+## Wejście z player.gd co klatkę przed update(): y stóp ciała 2D (px, świat) i sonda gruntu (pusta = w powietrzu, upadek).
+func terrain(body_y_px: float, probe: Callable) -> void:
+	_body_y = body_y_px
+	_probe = probe
+
+## Kostka stopy w osi x szkieletu (+x = przód) — ta sama mieszanka co cel stopy w `_pose_legs`, przed IK.
+func _foot_x(side: String) -> float:
+	var rest_x := _sk.get_bone_global_rest(_b[side + "Foot"]).origin.x
+	var x := _origin_x + ((_leg_mix(side)[0]) as Vector3).x
+	if _clip_w > 0.0:
+		x += ((_clip_foot[side] as Transform3D).origin.x - rest_x) + _clip_w * (rest_x - _origin_x)
+	if _stand_w > 0.001:
+		x = lerpf(x, (_stand_foot[side] as Transform3D).origin.x, _stand_w)
+	return x
+
+## Grunt pod piętą i czubkiem każdej stopy (sonda player.gd), wygładzony w układzie świata; biodra w dół, żeby niższa stopa sięgnęła.
+func _terrain_pose(delta: float) -> void:
+	var sum := 0.0
+	for v in _aw.values():
+		sum += float(v)
+	var air := (float(_aw.get("jump", 0.0)) + float(_aw.get("fall", 0.0))) / maxf(sum, 0.0001)
+	var on := _probe.is_valid() and not is_nan(_body_y) and _down < 0.01 and _grab_w < 0.01 and climb_t < 0.0
+	_terrain_w = move_toward(_terrain_w, (1.0 - air) if on else 0.0, delta / 0.12)
+	if not on or _terrain_w <= 0.001:
+		_foot_abs.clear()
+		_hip_abs = _body_y
+		for side in ["Left", "Right"]:
+			_foot_g[side] = 0.0
+			_foot_tilt[side] = 0.0
+		hip_terrain = 0.0
+		return
+	var kf := 1.0 - exp(-FOOT_GROUND_RATE * delta)
+	var lowest := 0.0
+	for side in ["Left", "Right"]:
+		var x := _foot_x(side)
+		var z := _sk.get_bone_global_rest(_b[side + "Foot"]).origin.z
+		var heel := float(_probe.call(_to_px(Vector3(x + FOOT_HEEL, 0.0, z)).x))
+		var toe := float(_probe.call(_to_px(Vector3(x + FOOT_TOE, 0.0, z)).x))
+		var g := 0.0                                           # brak gruntu w zasięgu sondy (krawędź głębokiego dołu): stopa jak dotąd, na wysokości ciała
+		if not is_nan(heel) or not is_nan(toe):
+			g = maxf(heel if not is_nan(heel) else -INF, toe if not is_nan(toe) else -INF)   # stopa opiera się na wyższym punkcie
+		var target_abs := _body_y - g
+		_foot_abs[side] = target_abs if not _foot_abs.has(side) else lerpf(float(_foot_abs[side]), target_abs, kf)
+		var gm := clampf((_body_y - float(_foot_abs[side])) / WP_PER_M, -TERRAIN_DOWN, TERRAIN_UP)
+		_foot_g[side] = gm
+		var tilt := 0.0
+		if not is_nan(heel) and not is_nan(toe):
+			# czubek stopy patrzy w stronę `_to_px` dodatniego x szkieletu — nachylenie liczone wzdłuż stopy w jej własnym kierunku
+			var run := absf(_to_px(Vector3(FOOT_TOE - FOOT_HEEL, 0.0, 0.0)).x) / WP_PER_M
+			if run > 0.05:
+				tilt = clampf(atan2((toe - heel) / WP_PER_M, run), -deg_to_rad(FOOT_TILT_MAX), deg_to_rad(FOOT_TILT_MAX))
+		_foot_tilt[side] = lerpf(float(_foot_tilt[side]), tilt, kf)
+		lowest = minf(lowest, gm)
+	var want_abs := _body_y - maxf(lowest, -HIP_TERRAIN_MAX) * WP_PER_M
+	_hip_abs = want_abs if is_nan(_hip_abs) else lerpf(_hip_abs, want_abs, 1.0 - exp(-HIP_TERRAIN_RATE * delta))
+	hip_terrain = clampf((_body_y - _hip_abs) / WP_PER_M, -HIP_TERRAIN_MAX, TERRAIN_UP) * _terrain_w
+	_move_global(_b["Hips"], Vector3.UP * hip_terrain)
 
 ## Ciało amortyzuje na kolanach, zamiast podciągać stopę, gdy animacja przekroczy długość nogi.
 func _ground_hips() -> void:
@@ -1708,7 +1787,7 @@ func _ground_hips() -> void:
 		var start := _gp(_b[side + "UpLeg"]).origin
 		var target := (_clip_foot[side] as Transform3D).origin if _clip_w > 0.0 else Vector3(_origin_x, _ankle_y, _sk.get_bone_global_rest(_b[side + "Foot"]).origin.z)
 		target = target.lerp((_stand_foot[side] as Transform3D).origin, _stand_w)
-		target.y = lerpf(target.y, _ankle_y, planted)
+		target.y = lerpf(target.y, _ankle_y, planted) + float(_foot_g[side]) * _terrain_w
 		var la: float = _leg_len[side][0]
 		var lb: float = _leg_len[side][1]
 		# 18° przy postoju zostawia zapas amortyzacji, bez przeprostu jednej nogi.
@@ -1762,22 +1841,30 @@ func _leg_state(a: String, side: String) -> Array:
 			off = Vector3(0.13 * sin(ph) + (0.06 if sgn > 0 else -0.06), 0.07 * maxf(0.0, cos(ph)), 0.0)
 	return [off * own, tilt * own]
 
+## Offset kostki i odchylenie stopy z mieszanki póz bazowych (wagi `_aw`), przed nakładkami chwytu, wspinaczki i ciosu.
+func _leg_mix(side: String) -> Array:
+	var sum := 0.0
+	for n in AW_STATES:
+		sum += float(_aw.get(n, 0.0))
+	var off := Vector3.ZERO
+	var tilt := 0.0
+	for n in AW_STATES:
+		var w := float(_aw.get(n, 0.0)) / maxf(sum, 0.0001)
+		if w < 0.002:
+			continue
+		var ls := _leg_state(n, side)
+		off += w * (ls[0] as Vector3)
+		tilt += w * float(ls[1])
+	return [off * (1.0 - _clip_down), tilt * (1.0 - _clip_down)]
+
 func _pose_legs(e: float) -> void:
 	var sum := 0.0
 	for n in AW_STATES:
 		sum += float(_aw.get(n, 0.0))
 	for side in ["Left", "Right"]:
-		var off := Vector3.ZERO
-		var tilt := 0.0
-		for n in AW_STATES:
-			var w := float(_aw.get(n, 0.0)) / maxf(sum, 0.0001)
-			if w < 0.002:
-				continue
-			var ls := _leg_state(n, side)
-			off += w * (ls[0] as Vector3)
-			tilt += w * float(ls[1])
-		off *= 1.0 - _clip_down
-		tilt *= 1.0 - _clip_down
+		var mix := _leg_mix(side)
+		var off: Vector3 = mix[0]
+		var tilt: float = mix[1]
 		if _grab_w > 0.001:                                       # chwycony: nogi nad ziemią, kopią naprzemiennie
 			var kp := _time * 9.0 + (0.0 if side == "Right" else PI)
 			off.y += (0.12 + 0.22 * maxf(0.0, sin(kp))) * _grab_w
@@ -1815,6 +1902,9 @@ func _pose_legs(e: float) -> void:
 			rest_gb = rest_gb.orthonormalized().slerp(support.basis, _stand_w)
 			var outward := -1.0 if side == "Left" else 1.0
 			pole = pole.lerp(Basis(Vector3.UP, -outward * deg_to_rad(6.0)) * Vector3.RIGHT, _stand_w)
+		if _terrain_w > 0.001:                                    # stopa na gruncie pod sobą (zbocze, stopień) z nachyleniem do skosu
+			target.y += float(_foot_g[side]) * _terrain_w
+			tilt += float(_foot_tilt[side]) * _terrain_w
 		if e > 0.001:
 			# upadek: stopy zostają na ziemi, dopóki biodra opadają (kolana się uginają), potem nogi podążają sztywno za ciałem
 			var rigid := _gp(foot).origin
