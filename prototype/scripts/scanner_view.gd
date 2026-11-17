@@ -62,12 +62,13 @@ func enemies() -> Array[Dictionary]:
 		out.append({"node": n, "hot": hot, "scouted": scouted, "size": sz})
 	return out
 
-## Zakopane znajdźki w zasięgu (dig_zone.gd, D5): [{pos [px], small (drobnica z puli — mniejszy, bledszy romb)}].
+## Zakopane znajdźki w zasięgu (dig_zone.gd, D5): [{pos [px], small (drobnica z puli — mniejszy, bledszy romb), depth (K2: metry skały
+## do najbliższego wykopu albo powietrza, −1 — daleko; romb cennej jest ciepły, a obok napis „2 m”)}].
 func finds() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if not active():
 		return out
 	for z in get_tree().get_nodes_in_group("dig_zones"):
 		for f in z.buried_finds(center(), range_px()):
-			out.append({"pos": f["pos"], "small": String(f["kind"]) == "small"})
+			out.append({"pos": f["pos"], "small": String(f["kind"]) == "small", "depth": float(z.find_depth_m(f))})
 	return out
