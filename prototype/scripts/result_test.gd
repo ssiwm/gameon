@@ -233,8 +233,7 @@ func _log_rows() -> Array:
 	var out: Array = []
 	if SessionLog.path == "" or not FileAccess.file_exists(SessionLog.path):
 		return out
-	for line in FileAccess.get_file_as_string(SessionLog.path).split("
-", false):
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("\n", false):
 		var v: Variant = JSON.parse_string(line)
 		if v is Dictionary:
 			out.append(v)

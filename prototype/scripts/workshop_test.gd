@@ -1074,8 +1074,7 @@ func _service_card() -> void:
 		int(adv.get("level", -9)) == 2 and String(adv.get("id", "")) == "springs" and String(ops[ui._opt]["id"]) == "springs" and top != null and top.text == String(adv["text"]))
 	var tile = ui._tiles[ui._sel]
 	check("kafel M-83: ikonka sprężyn zapalona, lufy nie", tile.marks != null and tile.marks.visible and tile.marks.springs == 1 and tile.marks.barrel == 0)
-	check("lista do zrobienia pod kaflami wymienia M-83: %s" % ui._svc_todo.text.replace("
-", " / "),
+	check("lista do zrobienia pod kaflami wymienia M-83: %s" % ui._svc_todo.text.replace("\n", " / "),
 		ui._svc_todo.visible and ui._svc_todo.text.contains("M-83 — " + tr("replace springs")))
 	check("przycisk wymiany sprężyn podaje skutek: %s" % ui._action.text, not ui._action.disabled and ui._action.text.contains("→ 100%"))
 	ui._pick_opt(ops.find({"slot": "service", "id": "barrel"}))

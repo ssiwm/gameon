@@ -86,7 +86,20 @@ const FIND_NEAR := 3                  ## narożniki (12 px): powietrze tak blisk
 const FIND_OUT := 5                   ## z 3 × 3 narożników wokół znajdźki tyle powietrzem = odkopana, wypada
 const FIND_CLINK := 6.0               ## px: zakopana znajdźka tak blisko wyrwy ciosu = cios dzwoni w metal
 const FIND_BLAST_PUSH := 10.0         ## px: wybuch odrzuca odkopaną znajdźkę od środka
-const FIND_SCRAP := Vector2i(1, 3)    ## złom ze znajdźki (min, max)
+## Złom ze znajdźki „scrap” — zakopany pakunek (DIG_LOOT_PLAN.md K1). Do 1.7.600: 1–3, mniej niż skrzynia przy drodze; w 74 próbach
+## od 1.7.505 kopanie dało łącznie ok. 8 złomu przy medianie łupu misji 1.1 189 i sejfie 40 — kopanie przegrywało z każdą inną czynnością.
+const FIND_SCRAP := Vector2i(12, 20)
+## Główna znajdźka (K1): pierwsze miejsce z ziarna w każdej strefie i każdym odnowieniu puli — część broni z puli znalezisk
+## (Scrap.pick_find), a gdy wszystkie są — próbka. Na strefach z 2 miejscami (1.2, 1.3) to jedna pewna rzecz zamiast losu z wag.
+const FIND_MAIN := "main"
+## Geoda (K1): jedno miejsce w żyle strefy (tylko strefy, w których jest żyła — dziś 1.1). Odkopana daje próbkę do łupu misji (pracownia).
+## W puli jak każda cenna znajdźka, więc nie da się jej farmić; otwieranie w pracowni jako osobny moment to K4.
+const FIND_GEODE := "geode"
+## Ruda z żyły (K1, „żyła płaci”): serwer liczy narożniki żyły, które cios zamienił w powietrze; co ORE_CORNERS — 1 złom do łupu misji.
+## Krok tunelu w żyle (9 ciosów) wybiera ok. 50 narożników żyły, więc ok. 2 złomu na krok; cała żyła strefy 1.1 to ok. 20–30 złomu.
+## Bez puli: żyła wraca z danymi mapy w każdej misji, ale tempo (ok. 10 złomu na minutę ciągłego kopania w hałasie) jest niższe niż
+## złom na minutę zwykłej gry na 1.1 (ok. 46), więc kopanie rudy nie jest farmą.
+const ORE_CORNERS := 24
 enum Find { BURIED, NEAR, OUT }
 # osypywanie i wyspy (serwer); liczby do strojenia po playteście
 const SIM_DT := 0.05                  ## s: krok symulacji (20 Hz)
@@ -128,6 +141,8 @@ var _solid_at: Callable               ## kafle mapy poza strefą (z setup) — n
 ## z ziarna), "state" (Find)}; kolejność z ziarna — indeks = id znajdźki (też w puli).
 var finds: Array[Dictionary] = []
 var finds_out := 0                    ## serwer: ile znajdziek wypadło od wczytania / resetu (test, dziennik)
+var ore_total := 0                    ## serwer: złom z rudy żyły od wczytania / resetu (test, dziennik)
+var _ore_acc := 0                     ## serwer: narożniki żyły wykopane, jeszcze niezamienione na złom (reszta z dzielenia przez ORE_CORNERS)
 var _m0 := PackedByteArray()          ## materiał z danych mapy (reset; materiał osypiska się przesuwa)
 var _in_isl := PackedByteArray()      ## 1 = narożnik spadającej wyspy (osypywanie go nie rusza)
 var _islands: Array[Dictionary] = []  ## spadające wyspy: {"cells": PackedInt32Array, "v": narożników na krok, "drop": narożników łącznie}
@@ -880,6 +895,10 @@ func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, 
 	var key := Mats.key_of(mat)
 	NoiseMgr.add_noise(N_DIG * float(Mats.MATS[key]["noise"]) * (BLADE_NOISE if tool == Mats.Tool.BLADE else 1.0), at, "dig")
 	var metal := find_near_rect(r.grow(FIND_CLINK)) >= 0          # przed cięciem: znajdźka, która tym ciosem wypadnie, też dzwoni
+	SessionLog.note_dig(String(name), "hits")                  # K0: ciosy w strefę (pomiar po DIG_LOOT_PLAN.md)
+	SessionLog.note_dig_first(String(name), "first_hit")
+	if metal:
+		SessionLog.note_dig(String(name), "clink")
 	_send(r.get_center(), r.size * 0.5, 0.0, tool)
 	var top := Vector2(clampf(at.x - signf(dir.x) * 3.0, r.position.x + 2.0, r.end.x - 2.0), r.position.y + 2.0)   # urobek z górnej krawędzi wyrwy, przy czole
 	if NoiseMgr.has_network():
@@ -1049,6 +1068,7 @@ func blast_dig(pos: Vector2, radius: float) -> bool:
 	if not rect_px().grow(rr + SOFT).has_point(pos):
 		return false
 	_send(pos, Vector2.ZERO, rr, Mats.Tool.BLAST)
+	SessionLog.note_dig(String(name), "blasts")
 	if NoiseMgr.is_server() and not props.is_empty():
 		_validate_props(Vector3(pos.x, pos.y, rr + SOFT))
 	return true
@@ -1078,6 +1098,8 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 	var j0 := maxi(1, floori((lp.y - ext.y) / CELL) + 1)
 	var j1 := mini(_h - 2, ceili((lp.y + ext.y) / CELL) + 1)
 	var touched := {}
+	var vein := Mats.code("vein")
+	var ore := 0                                                # narożniki żyły, które ten cios zamienił w powietrze (K1, tylko serwer płaci)
 	for j in range(j0, j1 + 1):
 		for i in range(i0, i1 + 1):
 			var k := j * _w + i
@@ -1098,8 +1120,12 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 			var nd := maxi(mini(int(_d[k]), target), int(_d[k]) - power)
 			if nd == int(_d[k]):
 				continue
+			if _m[k] == vein and int(_d[k]) >= ISO and nd < ISO:
+				ore += 1
 			_d[k] = nd
 			_touch(touched, i, j)
+	if ore > 0 and NoiseMgr.is_server():
+		_add_ore(ore)
 	var t0 := Time.get_ticks_usec()
 	for ci in touched:
 		_rebuild(int(ci))
@@ -1111,6 +1137,31 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 			_wake(i0 - 1, i1 + 1)
 			_check_islands = true
 			_check_spans = true
+
+## Serwer (K1, „żyła płaci”): `n` narożników żyły wykopanych jednym ciosem; co ORE_CORNERS — 1 złom do łupu misji (wipe go zabiera
+## razem z łupem). Nocny Dyżur bez złomu, jak wszędzie. Każdy peer dostaje toast z sumą rudy tej strefy w tej próbie.
+func _add_ore(n: int) -> void:
+	if not Scrap.enabled():
+		return
+	_ore_acc += n
+	var s := _ore_acc / ORE_CORNERS
+	if s <= 0:
+		return
+	_ore_acc -= s * ORE_CORNERS
+	ore_total += s
+	Scrap.add_loot(s)
+	SessionLog.note_dig(String(name), "ore", s)
+	if NoiseMgr.has_network():
+		_ore_rpc.rpc(map_key, ore_total)
+	else:
+		_ore_rpc(map_key, ore_total)
+
+@rpc("authority", "call_local", "reliable")
+func _ore_rpc(key: String, total: int) -> void:
+	if key != map_key:
+		return
+	Msg.post("dig.ore.%s" % name, Msg.Ch.TOAST, tr("Vein ore: +%d scrap") % total,
+		{"sub": tr("Ore from the vein goes to the mission loot"), "style": Msg.Style.SUCCESS, "ttl": 2.5, "prio": 30})
 
 ## Narożnik (i, j) należy do czterech komórek — ich fragmenty do przebudowy.
 func _touch(touched: Dictionary, i: int, j: int) -> void:
@@ -1230,6 +1281,8 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 		finds[k]["state"] = Find.OUT if k < 8 and (out_mask >> k) & 1 == 1 else _find_state(finds[k])
 	if s.is_empty():
 		finds_out = 0
+		ore_total = 0
+		_ore_acc = 0
 	_update_tiles(Rect2i(0, 0, tiles.x, tiles.y))
 	_unstick_players()
 
@@ -1287,6 +1340,7 @@ func _physics_process(delta: float) -> void:
 	_prop_knock(delta)
 	if not NoiseMgr.is_server():
 		return
+	_log_presence(delta)
 	_pour_t = maxf(0.0, _pour_t - delta)
 	_tick_prop_work(delta)
 	_tick_warns(delta)
@@ -1300,6 +1354,24 @@ func _physics_process(delta: float) -> void:
 	while _sim_t >= SIM_DT:
 		_sim_t -= SIM_DT
 		_step()
+
+## Serwer, K0 (DIG_LOOT_PLAN.md): ile sekund ludzie spędzają w strefie i przy jej czole (prostokąt + PRESENCE_PAD) i kiedy kto pierwszy
+## raz do niej wszedł (`dig_enter`). Do 1.7.600 dziennik znał tylko ciosy (`mission_end.noise.dig`), a czas przy strefie trzeba było
+## odtwarzać z próbek `pos` i współrzędnych z danych mapy.
+const PRESENCE_PAD := 24.0
+func _log_presence(delta: float) -> void:
+	if not SessionLog.recording():
+		return
+	var r := rect_px().grow(PRESENCE_PAD)
+	var any := false
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or bool(p.get("dead")) or not r.has_point((p as Node2D).global_position):
+			continue
+		any = true
+		if SessionLog.note_dig_first(String(name), "enter_P%d" % int(p.display_id)):
+			SessionLog.event("dig_enter", {"zone": String(name), "who": "P%d" % int(p.display_id), "pos": SessionLog.xy((p as Node2D).global_position)})
+	if any:
+		SessionLog.note_dig(String(name), "s", delta)
 
 ## Serwer: jeden krok — wykrycie nowych wysp, ruch wysp, osypywanie luźnego materiału; zmiany idą do wszystkich jedną deltą.
 func _step() -> void:
@@ -1592,7 +1664,35 @@ func _plan_finds(solid_at: Callable) -> void:
 			if roll < 0:
 				kind = String(e[0])
 				break
+		if taken.size() == 1:
+			kind = FIND_MAIN                                         # K1: pierwsze miejsce z ziarna to zawsze główna znajdźka
 		finds.append({"i": i, "j": j, "pos": global_position + _corner_px(i, j), "kind": kind, "kind0": kind, "state": Find.BURIED})
+	_plan_geode(rng, cands, taken)
+
+## K1: jedna geoda w żyle — narożnik żyły (z danych mapy) we wnętrzu kafla z głębi skały, z odstępem od pozostałych znajdziek.
+## Strefy bez żyły w głębi skały nie dostają geody. Maska wyjętych znajdziek w stanie strefy ma 8 bitów, więc geoda jest dopiero po FIND_MAX.
+func _plan_geode(rng: RandomNumberGenerator, cands: Array[Vector2i], taken: Array[Vector2i]) -> void:
+	var vein := Mats.code("vein")
+	for t in cands:
+		if taken.has(t) or finds.size() >= 8:
+			continue
+		var ok := true
+		for q in taken:
+			if maxi(absi(q.x - t.x), absi(q.y - t.y)) < FIND_SPACING:
+				ok = false
+				break
+		if not ok:
+			continue
+		var spots: Array[Vector2i] = []
+		for j in range(t.y * PER_TILE + 2, t.y * PER_TILE + PER_TILE + 1):
+			for i in range(t.x * PER_TILE + 2, t.x * PER_TILE + PER_TILE + 1):
+				if _m0[j * _w + i] == vein:
+					spots.append(Vector2i(i, j))
+		if spots.is_empty():
+			continue
+		var s := spots[rng.randi_range(0, spots.size() - 1)]
+		finds.append({"i": s.x, "j": s.y, "pos": global_position + _corner_px(s.x, s.y), "kind": FIND_GEODE, "kind0": FIND_GEODE, "state": Find.BURIED})
+		return
 
 ## Każdy peer: pula strefy (Scrap) — nowe ziarno po odnowieniu (nowe miejsca, stan z gęstości bez wypadania) i drobnica w miejscach
 ## już wykopanych. Amunicja nie jest cenna, więc nie znika z puli.
@@ -1654,8 +1754,12 @@ func _spawn_find(k: int, from: Vector2, tool: int) -> void:
 	if kind != "ammo" and kind != "small" and not NightShift.active:
 		Scrap.dig_take(pool_key, k)                              # cenna: znika z puli po ekstrakcji
 	var lvl := get_parent()
-	if not item.is_empty() and lvl != null and lvl.has_method("spawn_item"):
+	if not item.is_empty() and String(item[0]) == "sample":
+		Scrap.add_samples(int(item[2]))                          # próbka nie leży na ziemi: od razu do łupu misji (toast „Próbka pobrana”)
+	elif not item.is_empty() and lvl != null and lvl.has_method("spawn_item"):
 		lvl.spawn_item(String(item[0]), int(item[1]), at, int(item[2]))
+	SessionLog.note_dig(String(name), "finds")
+	SessionLog.note_dig_first(String(name), "first_find")
 	SessionLog.event("dig_find", {"zone": String(name), "find": k, "kind": kind, "item": String(item[0]) if not item.is_empty() else "",
 		"by": "fall" if tool < 0 else ["pick", "blade", "blast"][clampi(tool, 0, 2)], "pos": SessionLog.xy(at), "noise": roundi(NoiseMgr.level)})
 
@@ -1676,10 +1780,15 @@ func _resolve_find(kind: String) -> Array:
 		return ["supply", Throwables.ORDER.find(Throwables.drop_kind()), -1]
 	elif kind == "battery":
 		return ["battery", 0, -1]
-	elif kind == "part":
+	elif kind == "part" or kind == FIND_MAIN:
 		var pid: String = Scrap.pick_find()
 		if pid != "":
 			return ["part", Scrap.part_index(pid), -1]
+		if kind == FIND_MAIN and Scrap.enabled():
+			return ["sample", 0, 1]                              # wszystkie części już są: próbka (pracownia)
+	elif kind == FIND_GEODE:
+		if Scrap.enabled():
+			return ["sample", 0, 1]
 	return ["scrap", 0, randi_range(FIND_SCRAP.x, FIND_SCRAP.y)] if Scrap.enabled() else []
 
 ## Indeks zakopanej (nie odkopanej) znajdźki w prostokącie px świata albo -1 — dźwięk ciosu w metal.

@@ -98,6 +98,7 @@ static var _dmg_by := {}               ## id gracza → {klucz broni → obraże
 static var _scrap_drop := 0            ## złom wyrzucony przez wrogów i bossa w tej próbie (podniesiony czy nie)
 static var _battery := {}              ## baterie w tej próbie: dropped / picked / empty (mission_end.battery)
 static var _items := {}                ## rodzaj przedmiotu → użycia w tej próbie (mission_end.items)
+static var _dig := {}                  ## strefa wydobycia → {hits, clink, blasts, s, ore, finds, first_hit, first_find, enter_P<n>} w tej próbie (mission_end.dig, DIG_LOOT_PLAN.md K0)
 static var _kills_by := {}             ## id gracza → {rodzaj wroga → zabójstwa} (tylko zabójstwa dające XP: ludzie)
 static var _xp_by := {}                ## id gracza → XP za zabójstwa w tej próbie
 static var _build := ""
@@ -187,6 +188,7 @@ static func mission_start(data: Dictionary) -> void:
 	_scrap_drop = 0
 	_battery = {"dropped": 0, "picked": 0, "empty": 0}
 	_items = {}
+	_dig = {}
 	_kills_by = {}
 	_xp_by = {}
 	row.merge(data)
@@ -221,6 +223,9 @@ static func mission_end(data: Dictionary) -> void:
 	row["scrap"] = scrap
 	row["battery"] = _battery.duplicate()
 	row["items"] = _items.duplicate()
+	var dig := dig_summary()
+	if not dig.is_empty():
+		row["dig"] = dig
 	_write("mission_end", row)
 	_in_mission = false
 
@@ -300,6 +305,47 @@ static func note(ev: String, data := {}) -> void:
 	var row := {"clock": Time.get_datetime_string_from_system()}
 	row.merge(data)
 	_write(ev, row)
+
+## Strefa wydobycia (K0): dolicza `amount` do pola `field` strefy `zone` w tej próbie (ciosy, sekundy w strefie, ruda…).
+static func note_dig(zone: String, field: String, amount := 1.0) -> void:
+	if not recording():
+		return
+	var z: Dictionary = _dig.get(zone, {})
+	z[field] = float(z.get(field, 0.0)) + amount
+	_dig[zone] = z
+
+## Strefa wydobycia (K0): zapisuje czas od startu próby w polu `field`, jeśli jeszcze go nie ma. True — to był pierwszy raz.
+static func note_dig_first(zone: String, field: String) -> bool:
+	if not recording():
+		return false
+	var z: Dictionary = _dig.get(zone, {})
+	if z.has(field):
+		return false
+	z[field] = snappedf(float(Time.get_ticks_msec() - _t0) / 1000.0, 0.1)
+	_dig[zone] = z
+	return true
+
+## Podsumowanie stref do `mission_end.dig`: liczniki jako liczby całkowite, sekundy do 0,1 s, wejścia graczy (`enter_P<n>`) jako
+## najwcześniejsze `enter` i liczba osób `people`.
+static func dig_summary() -> Dictionary:
+	var out := {}
+	for zone in _dig:
+		var z: Dictionary = _dig[zone]
+		var row := {}
+		var people := 0
+		for f in z:
+			var key := String(f)
+			if key.begins_with("enter_"):
+				people += 1
+				row["enter"] = minf(float(row.get("enter", INF)), float(z[f]))
+			elif key == "s" or key.begins_with("first_"):
+				row[key] = snappedf(float(z[f]), 0.1)
+			else:
+				row[key] = roundi(float(z[f]))
+		if people > 0:
+			row["people"] = people
+		out[zone] = row
+	return out
 
 ## Złom `n`, który wypadł z wroga albo bossa (enemy.gd, boss_base.gd; serwer).
 static func note_scrap_drop(n: int) -> void:
@@ -416,3 +462,4 @@ static func reset_for_test() -> void:
 	_noise = {}
 	_weapons = {}
 	_dmg_by = {}
+	_dig = {}

@@ -1717,3 +1717,5 @@
 "Weapon wear is on: the MAINTENANCE table ({interact}) cleans your guns and swaps worn barrels and springs. Dirty guns jam","Zużycie broni jest włączone: stół KONSERWACJI ({interact}) czyści broń i wymienia zużyte lufy i sprężyny. Brudna broń się zacina"
 "The LATHE downstairs is running ({interact}): it machines parts from schematics and sharpens blades","TOKARKA w piwnicy działa ({interact}): toczy części ze schematów i ostrzy broń białą"
 "AMMO PRESS","PRASA AMUNICJI"
+"Vein ore: +%d scrap","Ruda z żyły: +%d złomu"
+"Ore from the vein goes to the mission loot","Ruda z żyły trafia do łupu misji"

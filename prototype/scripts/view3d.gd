@@ -9300,7 +9300,8 @@ func _build_dig_entrance(root: Node3D, z: Node2D, zf: float, bulge: Callable) ->
 ## w stronę powietrza, przechylony z ziarna znajdźki. Bez własnego światła i emisji: w ciemności go nie widać, w snopie latarki metal
 ## i farba łapią światło jak każda bryła — ta sama podpowiedź co dawny błysk, tylko widać, co tam leży. Model wczytuje się w tle
 ## (`_item_ready`), znika, gdy znajdźka wypadnie (przedmiot ma już swój model) albo wróci w ziemię (wipe, osypisko).
-const DIG_FIND_MODEL := {"scrap": "scrap_pile", "small": "scrap_pile", "ammo": "ammo", "supply": "supply", "battery": "battery", "part": "cleankit"}
+const DIG_FIND_MODEL := {"scrap": "scrap_pile", "small": "scrap_pile", "ammo": "ammo", "supply": "supply", "battery": "battery", "part": "cleankit",
+	"main": "cache", "geode": "rock_c"}     ## main — główna znajdźka (skrzynka), geode — bryła z żyły (DIG_LOOT_PLAN.md K1)
 const DIG_FIND_M := 0.36                  ## m: najdłuższy bok modelu znajdźki w ścianie
 const DIG_FIND_OUT := 0.95                ## środek modelu między znajdźką (0) a ścianą wykopu (1): na ścianie — połowa wystaje do wykopu
 const DIG_FIND_Z := 0.15                  ## m: głębokość modelu (płaszczyzna gry, wnętrze wykopu widać na całą głębokość)

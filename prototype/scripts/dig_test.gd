@@ -98,6 +98,7 @@ func run(m: Node2D) -> void:
 	await _finds()
 	await _gravel()
 	await _pools()
+	await _loot_k1()
 	await _signals()
 	await _collapse()
 	await _slope()
@@ -751,7 +752,7 @@ func _finds() -> void:
 		desc += "%s (%.0f, %.0f)  " % [f["kind"], (f["pos"] as Vector2).x, (f["pos"] as Vector2).y]
 	info("znajdźki DigZone1: %d — %s; DigZone2: %d" % [fz.size(), desc, fr.size()])
 	var all_buried := (fz + fr).all(func(f: Dictionary) -> bool: return int(f["state"]) == DigZone.Find.BURIED)
-	check("znajdźki z danych mapy: ziemia 80 kafli → 5, skała 48 → 3, po wipe wszystkie zakopane", fz.size() == 5 and fr.size() == 3 and all_buried)
+	check("znajdźki z danych mapy: ziemia 80 kafli → 5, skała 48 → 3 + geoda w żyle, po wipe wszystkie zakopane", fz.size() == 5 and fr.size() == 4 and all_buried)
 	# rozmieszczenie: w głębi skały — nie w wierzchnim rzędzie, bez powietrza w sąsiednich kaflach, odstęp ≥ 3 kafli
 	var placed := true
 	for z: Node2D in [zone, rock]:
@@ -783,6 +784,8 @@ func _finds() -> void:
 	var cx: float = zone.rect_px().get_center().x
 	var f: Dictionary = {}
 	for c: Dictionary in zone.finds:
+		if String(c["kind"]) in [DigZone.FIND_MAIN, DigZone.FIND_GEODE]:
+			continue                                 # główna i geoda dają część albo próbkę bez przedmiotu — K1 sprawdza je osobno (_loot_k1)
 		var cp: Vector2 = c["pos"]
 		var csx: float = cp.x + (16.0 if cp.x < cx else -16.0)
 		var clear := true
@@ -874,7 +877,7 @@ func _finds() -> void:
 		var ip: Vector2 = item.global_position
 		check("przedmiot ze znajdźki spada na dno wykopu (nie w skale, nie w powietrzu)", not zone.solid_at_px(ip + Vector2(0, -2)) and zone.solid_at_px(ip + Vector2(0, 3)))
 	# wybuch w skale: odkopuje znajdźkę i odrzuca przedmiot od środka
-	var g: Dictionary = rock.finds[0]
+	var g: Dictionary = rock.finds[1]                  # [0] to główna znajdźka (część albo próbka bez przedmiotu), ostatnia — geoda
 	var gp: Vector2 = g["pos"]
 	var bc := gp + Vector2(12.0, -6.0)
 	var items1 := _items().size()
@@ -887,11 +890,14 @@ func _finds() -> void:
 	# Nocny Dyżur: tylko amunicja (albo nic); poza nim złom nigdy nie jest pusty
 	var ns0: bool = NightShift.active
 	NightShift.active = true
-	var night: Array = [zone._resolve_find("scrap"), zone._resolve_find("battery"), zone._resolve_find("part")]
+	var night: Array = [zone._resolve_find("scrap"), zone._resolve_find("battery"), zone._resolve_find("part"),
+		zone._resolve_find(DigZone.FIND_MAIN), zone._resolve_find(DigZone.FIND_GEODE)]
 	NightShift.active = ns0
 	check("Nocny Dyżur: znajdźka daje tylko amunicję albo nic", night.all(func(r: Array) -> bool: return r.is_empty() or String(r[0]) == "ammo"))
-	check("znajdźki poza Nocnym Dyżurem: złom 1–3, bateria, zaopatrzenie", zone._resolve_find("scrap")[0] == "scrap" and zone._resolve_find("battery")[0] == "battery"
-		and zone._resolve_find("supply")[0] == "supply" and int(zone._resolve_find("scrap")[2]) >= 1)
+	var pack: Array = zone._resolve_find("scrap")
+	check("znajdźki poza Nocnym Dyżurem: pakunek złomu %d–%d (jest %d), bateria, zaopatrzenie" % [DigZone.FIND_SCRAP.x, DigZone.FIND_SCRAP.y, int(pack[2])],
+		pack[0] == "scrap" and zone._resolve_find("battery")[0] == "battery" and zone._resolve_find("supply")[0] == "supply"
+		and int(pack[2]) >= DigZone.FIND_SCRAP.x and int(pack[2]) <= DigZone.FIND_SCRAP.y and DigZone.FIND_SCRAP.x >= 12)
 	# dziennik sesji
 	var rows: Array = []
 	if SessionLog.path != "" and FileAccess.file_exists(SessionLog.path):
@@ -1172,6 +1178,128 @@ func _pools() -> void:
 	level.reset_breakables()
 	await _frames(0.1)
 
+
+# ---------------------------------------------------------------- 11b. wartość nagrody i pomiar (DIG_LOOT_PLAN.md K0 + K1)
+
+## Narożniki żyły, które są jeszcze skałą (gęstość ≥ ISO) — ruda do wykopania.
+func _vein_solid(z: Node2D) -> int:
+	var vein := DigMats.code("vein")
+	var n := 0
+	for k in (z._d as PackedByteArray).size():
+		if z._fixed[k] == 0 and z._m[k] == vein and z._d[k] >= DigZone.ISO:
+			n += 1
+	return n
+
+func _loot_k1() -> void:
+	Scrap.dig_pools.clear()
+	Scrap.dig_since.clear()
+	Scrap.reset_loot()
+	level.reset_breakables()
+	level.clear_pickups()
+	await _frames(0.1)
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "dig_k1"})
+	# główna znajdźka: pierwsze miejsce z ziarna w każdej strefie; geoda tylko w strefie z żyłą, na narożniku żyły z danych mapy
+	var mains := true
+	for z: Node2D in [zone, rock]:
+		var n_main := 0
+		for f in z.finds:
+			n_main += 1 if String(f["kind0"]) == DigZone.FIND_MAIN else 0
+		mains = mains and n_main == 1 and String(z.finds[0]["kind0"]) == DigZone.FIND_MAIN
+	var geo := -1
+	for i in rock.finds.size():
+		if String(rock.finds[i]["kind0"]) == DigZone.FIND_GEODE:
+			geo = i
+	var dirt_geo: bool = zone.finds.any(func(f: Dictionary) -> bool: return String(f["kind0"]) == DigZone.FIND_GEODE)
+	var on_vein: bool = geo >= 0 and rock._m0[int(rock.finds[geo]["j"]) * rock._w + int(rock.finds[geo]["i"])] == DigMats.code("vein")
+	check("K1: jedna główna znajdźka na strefę (pierwsza z ziarna); geoda tylko w strefie z żyłą (DigZone2: %d), na narożniku żyły" % geo,
+		mains and geo >= 0 and on_vein and not dirt_geo)
+	var rm: Array = zone._resolve_find(DigZone.FIND_MAIN)
+	var rg: Array = zone._resolve_find(DigZone.FIND_GEODE)
+	info("główna znajdźka daje %s, geoda %s" % [str(rm), str(rg)])
+	check("K1: główna znajdźka daje część broni albo próbkę (gdy części nie ma), geoda — próbkę",
+		(rm[0] == "part" or rm[0] == "sample") and rg == ["sample", 0, 1])
+	# geoda odkopana: próbka w łupie misji, bez przedmiotu na ziemi; w łupie puli jak każda cenna znajdźka
+	var smp0: int = Scrap.samples_loot
+	var items0 := _items().size()
+	var gp: Vector2 = rock.finds[geo]["pos"]
+	rock.blast_dig(gp, 40.0)                          # koło 20 px wokół geody (jak wybuch granatu tuż przy niej)
+	await _frames(0.05)
+	check("K1: odkopana geoda → +1 próbka do łupu misji, nic na ziemi, czeka w łupie puli (próbki %d → %d)" % [smp0, Scrap.samples_loot],
+		Scrap.samples_loot == smp0 + 1 and _items().size() == items0 and (Scrap.dig_loot.get(rock.pool_key, []) as Array).has(geo))
+	# ruda: narożniki żyły zamienione w powietrze → co ORE_CORNERS 1 złom do łupu misji, toast z sumą
+	var vein0 := _vein_solid(rock)
+	var acc0: int = rock._ore_acc
+	var ore0: int = rock.ore_total
+	var loot0: int = Scrap.loot
+	var rr: Rect2 = rock.rect_px()
+	rock._send(rr.get_center(), rr.size * 0.5 - Vector2(4.0, 4.0), 0.0, DigMats.Tool.BLAST)    # cała strefa naraz (wybuch bierze każdy materiał)
+	await _frames(0.05)
+	var mined := vein0 - _vein_solid(rock)
+	var want := (acc0 + mined) / DigZone.ORE_CORNERS
+	info("ruda: wykopano %d narożników żyły (w strefie było %d) → %d złomu (ORE_CORNERS %d)" % [mined, vein0, rock.ore_total - ore0, DigZone.ORE_CORNERS])
+	check("K1: żyła płaci — złom z rudy = wykopane narożniki żyły / ORE_CORNERS, w łupie misji, toast z sumą (%d)" % (rock.ore_total - ore0),
+		mined > 0 and rock.ore_total - ore0 == want and want > 0 and Scrap.loot - loot0 == want and Msg._live.has("dig.ore.%s" % rock.name))
+	# Nocny Dyżur: bez rudy
+	level.reset_breakables()
+	await _frames(0.1)
+	var ns0: bool = NightShift.active
+	NightShift.active = true
+	var night0: int = rock.ore_total
+	rock._send(rr.get_center(), rr.size * 0.5 - Vector2(4.0, 4.0), 0.0, DigMats.Tool.BLAST)
+	await _frames(0.05)
+	NightShift.active = ns0
+	check("K1: Nocny Dyżur — żyła bez rudy", rock.ore_total == night0)
+	# K0: gracz w strefie → `dig_enter` i sekundy; ciosy, metal, znajdźki i ruda w `mission_end.dig`
+	level.reset_breakables()
+	await _frames(0.1)
+	var pp0: Vector2 = player.global_position
+	_place_player(Vector2(zone.rect_px().get_center().x, TOP - 2.0))
+	await _frames(0.5)
+	var space := zone.get_world_2d().direct_space_state
+	var bites := 0
+	for _i in 3:
+		if not zone.melee_dig(space, Vector2(zone.rect_px().get_center().x, TOP - 9.0), Vector2.DOWN, 24.0, DigMats.Tool.PICK).is_empty():
+			bites += 1
+		await _frames(0.05)
+	_place_player(pp0)
+	SessionLog.mission_end({"result": "test"})
+	var enter := 0
+	var end: Dictionary = {}
+	if SessionLog.path != "" and FileAccess.file_exists(SessionLog.path):
+		for line in FileAccess.get_file_as_string(SessionLog.path).split("\n", false):
+			var v: Variant = JSON.parse_string(line)
+			if not v is Dictionary:
+				continue
+			if (v as Dictionary).get("ev") == "mission_start":
+				enter = 0
+			elif (v as Dictionary).get("ev") == "dig_enter":
+				enter += 1
+			elif (v as Dictionary).get("ev") == "mission_end":
+				end = v
+	var dig: Dictionary = end.get("dig", {})
+	var z1: Dictionary = dig.get(String(zone.name), {})
+	var z2: Dictionary = dig.get(String(rock.name), {})
+	info("mission_end.dig: %s; dig_enter: %d" % [JSON.stringify(dig), enter])
+	check("K0: dziennik — `dig_enter` raz na gracza i strefę, w `mission_end.dig` sekundy w strefie, ciosy, pierwszy cios, osoby",
+		enter == 1 and float(z1.get("s", 0.0)) >= 0.3 and bites >= 1 and int(z1.get("hits", 0)) == bites and z1.has("first_hit") and int(z1.get("people", 0)) == 1 and z1.has("enter"))
+	check("K0: dziennik — strefa z żyłą: znajdźki, ruda i wybuchy", int(z2.get("finds", 0)) >= 1 and int(z2.get("ore", 0)) >= 1 and int(z2.get("blasts", 0)) >= 1
+		and z2.has("first_find"))
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	var d := DirAccess.open(LOG_DIR)
+	if d != null:
+		for fn in d.get_files():
+			d.remove(fn)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(LOG_DIR))
+	Scrap.reset_loot()
+	Scrap.dig_pools.clear()
+	Scrap.dig_since.clear()
+	Scrap._push()
+	level.reset_breakables()
+	level.clear_pickups()
+	await _frames(0.1)
 
 # ---------------------------------------------------------------- 12. sygnał strefy (pytanie z 2026-11-06)
 
