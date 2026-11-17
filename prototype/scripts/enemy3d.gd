@@ -1088,7 +1088,16 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		if _sp == 2 and bool(_spec.get("body_motion", false)): cycle = 1.0
 		# faza kroku z drogi w tej klatce (view3d: `GaitSpeed`), a nie z prędkości × dt: łapy idą dokładnie z ruchem przy każdym FPS;
 		# prędkość z okna (`horizontal_speed`) wybiera tylko stęp / galop i postój
-		_phase += (step_px / maxf(reference, 1.0) if is_finite(step_px) else delta * rate) * TAU / cycle
+		var speed_px := rate * maxf(reference, 1.0)
+		var cycle_px := maxf(reference, 1.0) * cycle
+		if _spec.get("quad", false) and _qhas("gallop"):
+			if speed_px > QUAD_GAIT_PX[1]:
+				_gallop_on = true
+			elif speed_px < QUAD_GAIT_PX[0]:
+				_gallop_on = false
+			var gallop_px := cycle_px * clampf(sqrt(speed_px / maxf(reference, 1.0)), QUAD_STRIDE_MIN, 1.0)
+			cycle_px = lerpf(QUAD_WALK_STRIDE, gallop_px, _gallop_w)      # stęp ma krótszy krok niż galop
+		_phase += (step_px if is_finite(step_px) else delta * speed_px) * TAU / cycle_px
 		if is_finite(horizontal_speed) and absf(horizontal_speed) < 0.5:
 			anim = "idle"
 	_advance_motion(delta, anim)
@@ -1445,12 +1454,25 @@ func _leech_pose(anim: String, i: int, n: int) -> Array:
 ## (gallop, walk, idle, attack, death, hit_l / hit_r, jump, land, idle_low). Model bez nich (stary GLB z jednym chodem Tripo) idzie
 ## dawną ścieżką: chód z pliku + nakładki pochylenia z kodu.
 const QUAD_ATTACK_CONTACT := 9.0 / 32.0      ## ułamek klipu „attack”: pysk najdalej z przodu (kłapnięcie) — zgrany z kontaktem ciosu w grze
-const QUAD_GALLOP := [0.45, 0.8]             ## prędkość / prędkość rodzaju: poniżej chód, powyżej galop (wataha krążąca czeka stępem)
+## Wybór chodu: px/s prędkości bezwzględnej — galop powyżej [1], z powrotem stęp poniżej [0] (histereza). Nie ułamek prędkości rodzaju:
+## Trzosek spowolniony błotem (×0,58), wodą (×0,72) albo rozpychaniem watahy biegnie dalej galopem, tylko wolniej; stępem idzie
+## wataha krążąca w oczekiwaniu (enemy_pack.gd `_hover`: do 0,3 × prędkość ≈ 26 px/s) i wilk ruszający / stający.
+const QUAD_GAIT_PX := [18.0, 26.0]
+## s: przejście stęp ↔ galop. Klipy mają inną kolejność stawiania łap (żadne przesunięcie fazy ich nie zgrywa), więc mieszanka w tej
+## samej fazie to chód, którego wilk nie ma — przy 30–50% galopu przednia łapa zmienia kierunek 6–8 razy na cykl zamiast 2
+## („przebieranie” w błocie, zgłoszone 2026-11-17). Dawne mieszanie w całym pasie 0,45–0,8 prędkości rodzaju trzymało wilka w nim na stałe.
+const QUAD_GAIT_FADE := 0.15
+## px drogi na cykl klipu stępu (prędkość łapy w podporze w klipie: 7–12 px na pętlę, przy szybszym stępie krok się wydłuża)
+const QUAD_WALK_STRIDE := 16.0
+## Krok galopu: prędkość rodzaju × `cycle` (48 px) przy pełnej prędkości, krótszy przy wolniejszym — u zwierząt długość kroku rośnie
+## wolniej niż prędkość (tu √ prędkości, najmniej QUAD_STRIDE_MIN). Bez tego galop w błocie szedł w zwolnionym tempie (0,57 × klipu).
+const QUAD_STRIDE_MIN := 0.6
 const QUAD_JUMP := [0.6, 0.8]                ## ułamki klipu „jump”: wznoszenie (łapy podkulone) → opadanie (wyciągnięty do lądowania)
 const QUAD_HIT_W := 0.85                     ## waga klipu trafienia: reakcja z miejsca, nogi biegu zostają po części widoczne
 static var _no_sit := "--nosit" in OS.get_cmdline_user_args()
-var _run_rate := 1.0                         ## prędkość / prędkość rodzaju (z `pose`): chód albo galop
-var _gallop_w := 0.0
+var _run_rate := 1.0                         ## prędkość / prędkość rodzaju (z `pose`)
+var _gallop_on := false                      ## wybrany chód czworonoga z klipami (histereza QUAD_GAIT_PX)
+var _gallop_w := 0.0                         ## 0..1: waga galopu, dąży do `_gallop_on` w QUAD_GAIT_FADE
 var _hit_side := 0                           ## naprzemiennie hit_l / hit_r
 var _qlow := 0.0                             ## 0..1: waga drzemki w siadzie (łeb nisko)
 
@@ -1498,7 +1520,7 @@ func _pose_quad(anim: String, delta: float) -> void:
 	var idle_t := float(_spec.get("idle_t", 0.0)) * len
 	var running := anim == "run" or anim == "walk"
 	_qw = move_toward(_qw, 1.0 if running else 0.0, delta * BLEND_RATE * 0.5)
-	_gallop_w = move_toward(_gallop_w, smoothstep(QUAD_GALLOP[0], QUAD_GALLOP[1], _run_rate) if running else _gallop_w, delta * 4.0)
+	_gallop_w = move_toward(_gallop_w, (1.0 if _gallop_on else 0.0) if running else _gallop_w, delta / QUAD_GAIT_FADE)
 	var sy := 1.0
 	if anim == "sleep":                           # zwinięty: spłaszczony, powoli oddycha
 		sy = (0.60 if _no_sit else 1.0) + 0.012 * sin(_lt() * 1.7)      # siedzi (siad niżej), oddycha wolniej niż obudzony
