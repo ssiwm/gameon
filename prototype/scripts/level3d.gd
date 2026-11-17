@@ -321,7 +321,8 @@ const TRENCH_D := 5.35 * PX                ## m: góra pokładu drezyny wypada r
 const TRENCH_Z0 := 0.22                    ## m: krawędź peronu (tuż przed płaszczyzną gry)
 ## Czy za komórką ze znacznikiem, kładką albo słupem ma stać ściana tła: znaki mapy inne niż `b` zajmują komórkę ściany (wróg, przedmiot, kładka,
 ## słup w hali), a w 3D zostawiały w murze prostokątne dziury. Ściana jest, gdy w wierszu — idąc przez takie same komórki — po lewej albo po prawej
-## trafiamy na `b`, albo `b` jest bezpośrednio nad lub pod komórką.
+## trafiamy na `b`, albo `b` jest bezpośrednio nad lub pod komórką. Okno `|` to granica budynku: rusztowanie na zewnątrz przy oknie nie „widzi”
+## przez nie wnętrza (inaczej pod kładką wisiał w powietrzu mur z cegły, przegląd budynków 2026-11-17).
 static func _wall_behind(rows: Array, c: int, r: int) -> bool:
 	var ch := _ch(rows, c, r)
 	if ch == "." or ch == "b" or ch == "" or is_solid_ch(ch):
@@ -335,7 +336,7 @@ static func _wall_behind(rows: Array, c: int, r: int) -> bool:
 			var n := _ch(rows, k, r)
 			if n == "b":
 				return true
-			if n == "." or n == "" or is_solid_ch(n):
+			if n == "." or n == "" or n == "|" or is_solid_ch(n):
 				break
 			k += dir
 			steps += 1

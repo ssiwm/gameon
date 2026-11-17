@@ -560,6 +560,23 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 		walls += int(absf(sz.x - Building3D.WALL) < 0.001 and sz.y > 1.0)
 	_check(walls >= 4, "%s: za mało odcinków ścian szczytowych 0,4 m (%d)" % [name, walls])
 	_check(not (p["cut"] as Array).is_empty(), "%s: brak przekroju budynku" % name)
+	# skrzydła drzwi i bram: w obrysie budynku (z od lica ściany tylnej do przekroju), bez przenikania pilastrów, cokołu, ościeżnic, muru i okien;
+	# pilastry i słupy nie wchodzą w okna (przegląd budynków 2026-11-17: skrzydło w pilastrze, brama hali 0,5 m za ścianą tylną)
+	var leaves: Array = p["leaf"]
+	_check(not leaves.is_empty() or want.is_empty(), "%s: brak skrzydeł drzwi" % name)
+	for xf: Transform3D in leaves:
+		var a := _box_aabb(xf)
+		_check(a.position.z >= -Level3D.DEPTH_BACK - 0.001 and a.end.z <= zc - Building3D.COL + 0.001, "%s: skrzydło poza obrysem budynku (z %.2f–%.2f)" % [name, a.position.z, a.end.z])
+	for pr: Array in [["leaf", "col"], ["leaf", "plinth"], ["leaf", "steel"], ["leaf", "wall"], ["leaf", "glass"], ["col", "glass"], ["col", "steel"]]:
+		for xa: Transform3D in p[pr[0]]:
+			for xb: Transform3D in p[pr[1]]:
+				var i := _box_aabb(xa).intersection(_box_aabb(xb))
+				_check(i.size.x <= 0.003 or i.size.y <= 0.003 or i.size.z <= 0.003, "%s: '%s' przenika '%s' (%s)" % [name, pr[0], pr[1], i])
+
+## Pudło 1×1×1 przekształcone przez `xf` (osiowe) jako AABB.
+func _box_aabb(xf: Transform3D) -> AABB:
+	var s := xf.basis.get_scale()
+	return AABB(xf.origin - s * 0.5, s)
 
 ## Kryjówka: trzy kondygnacje bunkra w skale (`"vault"`, `buried`) jedna nad drugą. Bez ścian przekroju i fasad z kafli; płyta stropu tylko nad
 ## murem wiersza dachu (otwory szybów `=` wolne), nic poza ścianami szczytowymi (okap, cokół, pilastry weszłyby w skałę), słupy poza otworami
