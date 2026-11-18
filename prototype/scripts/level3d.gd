@@ -1061,9 +1061,10 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var box := BoxMesh.new()
 	box.size = Vector3(T, T, DEPTH_FRONT + DEPTH_BACK)
-	var groups := {"#": [], "C": [], "M": [], "m": [], "O": [], "~": []}
-	var caps := {"#": [], "C": [], "M": [], "m": [], "O": [], "~": []}
+	var groups := {"#": [], "C": [], "M": [], "m": [], "O": [], "~": [], "R": []}
+	var caps := {"#": [], "C": [], "M": [], "m": [], "O": [], "~": [], "R": []}
 	var walls: Array = []
+	var rock_walls: Array = []                                  # ściana tła we wnęce płyty nawisu (`rock_rects`): skała, nie cegła
 	var planks: Array = []
 	var grates: Array = []
 	var marks := {"F": [], "E": [], "l": [], "k": []}
@@ -1096,7 +1097,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				# podłoga pod nią jest odsłonięta — bez wierzchu wzdłuż ściany biegł czarny pas (kryjówka, uwaga z gry 2026-11-10)
 				var hidden := func(cc: int, rr: int) -> bool: return is_solid_ch(_ch(rows, cc, rr)) and not crate_cells.has(Vector2i(cc, rr)) and not bld_cells.has(Vector2i(cc, rr))
 				if hidden.call(c - 1, r) and hidden.call(c + 1, r) and hidden.call(c, r - 1) and hidden.call(c, r + 1):
-					caps[ch].append(Vector2i(c, r))
+					caps["R" if ch == "#" and in_rock_rect(c, r) else ch].append(Vector2i(c, r))
 					continue
 				var p := cell_pos(c, r)
 				if (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, c, r, ch) and not "--noliquids" in OS.get_cmdline_user_args():
@@ -1108,9 +1109,9 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, back_d / full)), p + Vector3(0.0, 0.0, TRENCH_Z0 - back_d * 0.5)))
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, (T - TRENCH_D) / T, bed_d / full)), p + Vector3(0.0, -TRENCH_D * 0.5, TRENCH_Z0 + bed_d * 0.5)))
 					continue
-				groups[ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))
+				groups["R" if ch == "#" and in_rock_rect(c, r) else ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))   # R: płyta nawisu (`cave3d.gd`)
 			if back_wall_at(rows, c, r) and not bld_back.has(Vector2i(c, r)) and not bld_walls.has(Vector2i(c, r)):
-				walls.append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
+				(rock_walls if in_rock_rect(c, r) else walls).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
 				pass
 			elif is_platform_ch(ch):
@@ -1130,6 +1131,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var wet := make_pbr("terrain", 0.30, Color(0.12, 0.10, 0.08), 1.0, 1.0, 1.0, false, "organic")
 	for k in ["O", "~", "m"]:
 		mats[k] = wet                                           # kafle poniżej powierzchni cieczy: mokry grunt (nad nimi leży bryła)
+	mats["R"] = rock_material()
 	for k in groups:
 		_multimesh(parent, box, groups[k], mats[k])
 		_build_caps(parent, caps[k], mats[k])
@@ -1138,6 +1140,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	var wbox := BoxMesh.new()
 	wbox.size = Vector3(T, T, 0.3)
 	_multimesh(parent, wbox, walls, make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone"), false)
+	_multimesh(parent, wbox, rock_walls, rock_material(), false)
 	var pc := CylinderMesh.new()
 	pc.top_radius = 0.5                                     # równy promień: słup z kafli ma gładki zarys, a nie „stos kubków”
 	pc.bottom_radius = 0.5
@@ -1781,6 +1784,8 @@ static func _decal_fits(k: Vector2i, wt: int, ht: int, kind: String, surf: Dicti
 ## budynków 2026-11-17).
 ## Osobno od `_decal_fits`, żeby losowanie szło jak dawniej: odrzucenie zmieniałoby zużycie RNG i przetasowało dekale w całej mapie.
 static func _decal_hidden(k: Vector2i, wt: int, ht: int, kind: String) -> bool:
+	if kind == "b" and in_rock_rect(k.x, k.y):
+		return true                                             # wnęka w płycie nawisu (`cave3d.gd`): skała, bez grafiti
 	if kind == "b":
 		var m := DECAL_COL_MARGIN * float(wt) * T
 		var dx0 := float(k.x) * T + m
@@ -1867,6 +1872,22 @@ static func set_streams(list: Array) -> void:
 static var niche_cells := {}
 static var decal_skip := {}                ## kafle ściany tła bez dekali (view3d.gd `_decal_skip`: tabliczki i NO_DECALS kryjówki); ustawiane przed `build_decals`
 static var niche_holes: Array = []
+## Płyty skały nawisów (`cave3d.gd`, CAVES z danych mapy): [c0, r0, c1, r1] — kafle `#` w tych prostokątach w materiale skały wychodni.
+static var rock_rects: Array = []
+
+## Materiał skały nawisów: kafle płyty (`rock_rects`) i wychodnia za nią (`cave3d.gd`) — ten sam, przekrój i bryła stykają się bez szwu.
+## Skała jak strefy wydobycia, bez warstwy brudu (plamy jak kamuflaż na wielkich ścianach).
+static var _rock_mat: StandardMaterial3D
+static func rock_material() -> StandardMaterial3D:
+	if _rock_mat == null:
+		_rock_mat = make_pbr("dig_rock", 0.4, Color(0.27, 0.27, 0.28), 0.92, 1.0, 1.0, false, "")
+	return _rock_mat
+
+static func in_rock_rect(c: int, r: int) -> bool:
+	for q in rock_rects:
+		if c >= int(q[0]) and c <= int(q[2]) and r >= int(q[1]) and r <= int(q[3]):
+			return true
+	return false
 
 static func set_niches(cells: Dictionary, holes: Array) -> void:
 	niche_cells = cells

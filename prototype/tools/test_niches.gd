@@ -5,10 +5,12 @@ extends SceneTree
 ##     a od MEDIUM ma je każda wnęka z „lit” i żadna bez (wszystkie rodzaje z `Niches3D.KINDS`),
 ## (3) bryła wnęki jest na warstwie świata i wnęk (oświetlają ją światła mapy i wnęki),
 ## (4) płyty ściany tła: w otworze ich nie ma, poza nim są te same co bez wnęki,
-## (5) las: żadne drzewo nie stoi w korytarzu wnęki (z zapasem `TREE_MARGIN`).
+## (5) las: żadne drzewo nie stoi w korytarzu wnęki (z zapasem `TREE_MARGIN`),
+## (6) jaskinie (`scripts/cave3d.gd`, stała `CAVES`): bryła w warstwie świata z cieniem, nie wychodzi przed tło gry, obrys lasu obejmuje wychodnię, prostokąty skały w mapie.
 ## godot --headless --path prototype -s tools/test_niches.gd      → ma wypisać PASS
 const Level3D := preload("res://scripts/level3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
+const Cave3D := preload("res://scripts/cave3d.gd")
 var _frames := 0
 var _fail := 0
 
@@ -28,14 +30,17 @@ func _process(_dt: float) -> bool:
 			names.append(f)
 	names.sort()
 	var total := 0
+	var caves := 0
 	for f in names:
 		var consts := (load("res://scripts/maps/" + f) as GDScript).get_script_constant_map()
+		caves += _check_caves(f.get_basename(), consts.get("MAP", []), consts.get("CAVES", []))
 		var entries: Array = consts.get("NICHES", [])
 		if entries.is_empty():
 			continue
 		total += entries.size()
 		_check_map(f.get_basename(), consts.get("MAP", []), entries, consts.get("DIG_ZONES", []))
 	_check(total > 0, "żadna mapa nie ma wnęki (pilot na z1_m2)")
+	_check(caves > 0, "żadna mapa nie ma jaskini (pilot na z1_m1)")
 	_check_wall_kinds()
 	Level3D.set_niches({}, [])
 	print("wnęk: %d" % total)
@@ -147,3 +152,36 @@ func _check_map(id: String, rows: Array, entries: Array, dig: Array) -> void:
 	Level3D.forest_probe = false
 	Level3D.set_niches({}, [])
 	print("%s: wnęk %d, kafli otworów %d, płyt ściany %d → %d, drzew w korytarzu bez filtra %d (las %d)" % [id, entries.size(), cells.size(), plain.size(), cut, before, all_before])
+
+## Jaskinia: bryła z `Cave3D.build` w warstwie świata, rzuca cień, cała za tłem gry (z ≤ −DEPTH_BACK), w poziomie w obrysie lasu,
+## dół zboczy przy gruncie wpisu; prostokąt skały leży na mapie i jest w nim lity kafel.
+func _check_caves(id: String, rows: Array, caves: Array) -> int:
+	if caves.is_empty():
+		return 0
+	var root := Node3D.new()
+	_check(Cave3D.build(root, caves) == caves.size(), "%s: zbudowano inną liczbę jaskiń niż w CAVES" % id)
+	var holes := Cave3D.forest_holes(caves)
+	var rects := Cave3D.rock_rects(caves)
+	for i in caves.size():
+		var mi := root.get_node_or_null("Cave%d" % i) as MeshInstance3D
+		_check(mi != null and mi.mesh != null and mi.mesh.get_surface_count() > 0, "%s: jaskinia %d bez bryły" % [id, i])
+		if mi == null or mi.mesh == null:
+			continue
+		_check(mi.layers == 1, "%s: jaskinia %d na warstwach %d (ma być sam świat)" % [id, i, mi.layers])
+		_check(mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: jaskinia %d nie rzuca cienia" % [id, i])
+		var bb := mi.mesh.get_aabb()
+		_check(bb.end.z <= -Level3D.DEPTH_BACK + 0.001, "%s: jaskinia %d wychodzi przed tło gry (z = %.2f)" % [id, i, bb.end.z])
+		var h: Array = holes[i]
+		_check(bb.position.x >= float(h[0]) and bb.end.x <= float(h[1]), "%s: jaskinia %d poza obrysem lasu w x (%.1f–%.1f)" % [id, i, bb.position.x, bb.end.x])
+		var yg := -float((caves[i] as Dictionary)["floor"]) * Level3D.T
+		_check(bb.position.y <= yg and bb.position.y >= yg - Cave3D.SINK - Cave3D.AMP - 0.5, "%s: dół jaskini %d na y = %.2f, grunt %.2f" % [id, i, bb.position.y, yg])
+		var r: Array = rects[i]
+		var solid := 0
+		for row in range(int(r[1]), int(r[3]) + 1):
+			_check(row < rows.size() and int(r[2]) < String(rows[row]).length(), "%s: prostokąt skały %d poza mapą" % [id, i])
+			if row < rows.size():
+				for c in range(int(r[0]), mini(int(r[2]) + 1, String(rows[row]).length())):
+					solid += 1 if String(rows[row])[c] == "#" else 0
+		_check(solid > 0, "%s: w prostokącie skały %d nie ma litego kafla" % [id, i])
+	root.free()
+	return caves.size()

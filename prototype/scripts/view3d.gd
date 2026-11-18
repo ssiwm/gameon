@@ -38,6 +38,7 @@ const Weather := preload("res://scripts/weather.gd")
 const WeatherClock := preload("res://scripts/weather_clock.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
+const Cave3D := preload("res://scripts/cave3d.gd")
 const Front3D := preload("res://scripts/front3d.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const RangeDoor := preload("res://scripts/range3d/range_door.gd")
@@ -1107,16 +1108,19 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 	if "--noniches" in OS.get_cmdline_user_args():
 		niches = []                                         # dev: mapa bez wnęk (porównanie A/B, `DEPTH_PLAN.md`)
 	var front: Array = _level.get("front") if _level != null and _level.get("front") != null else []
+	var caves: Array = _level.get("caves") if _level != null and _level.get("caves") != null else []
 	var front_skip: Array = _level.get("front_skip") if _level != null and _level.get("front_skip") != null else []
 	if "--nofront" in OS.get_cmdline_user_args():
 		front = []                                          # dev: mapa bez pierwszego planu (porównanie A/B, `FOREGROUND_PLAN.md`)
 	var steps := [
 		["level", func() -> void:
-			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches))
+			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches) + Cave3D.forest_holes(caves))
+			Level3D.rock_rects = Cave3D.rock_rects(caves)
 			Level3D.set_shells(front, rows)
 			Level3D.build_level(root, rows, trench)
 			Building3D.build(root, rows)],
 		["niches", func() -> void: Niches3D.build(root, rows, niches, Settings.quality_idx)],
+		["caves", func() -> void: Cave3D.build(root, caves)],
 		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
 		["liquids", func() -> void:
 			Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
