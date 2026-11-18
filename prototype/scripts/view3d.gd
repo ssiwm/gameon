@@ -230,6 +230,7 @@ var _screamfx := {}                      ## id gracza → kula fali krzyku (puls
 var _sonar: MeshInstance3D               ## fala skanera „Sowa” lokalnego gracza (pulse3d.gd)
 var _scan_marks: MeshInstance3D          ## romby znajdziek i pudła wrogów bez modelu na skanerze
 var _scan_mk := Pulse3D.Marks.new()
+var _scan_labels: Array = []             ## napisy głębokości cennych znajdziek na skanerze (K2), pula Label3D
 var _xray := {}                          ## id wroga 2D → [model 3D, siatki z nakładką prześwietlenia, materiał] (skaner)
 var _xray_mat: Array[ShaderMaterial] = []   ## [spokojny, zagrożenie]
 var _motes: CPUParticles3D               ## pył w powietrzu wokół kamery
@@ -7170,7 +7171,8 @@ const SCREAM_T := 0.6                    ## czas fali [s] = `player.gd: _scream_
 const SCREAM_UP_PX := 18.0               ## źródło krzyku nad stopami [px] (usta)
 const SCAN_HOT := Color(1.0, 0.35, 0.3)  ## wróg-zagrożenie na skanerze
 const SCAN_CALM := Color(0.95, 0.9, 0.55)    ## reszta (gniazda, uśpieni)
-const SCAN_FIND := Color(0.45, 0.95, 1.0)    ## zakopana znajdźka (metal w ziemi)
+const SCAN_FIND := Color(0.45, 0.95, 1.0)    ## zakopana drobnica (metal w ziemi)
+const SCAN_FIND_RARE := Color(1.0, 0.72, 0.3)  ## zakopana cenna znajdźka (K2: ciepły romb i głębokość)
 
 ## Krzyk gracza (`player.gd: _scream_fx`, widzą go wszyscy): kula od ust — czoło fali przesuwa się po ścianach i podłodze, brzeg kuli
 ## w powietrzu lekko załamuje obraz. Szybki start i wyhamowanie (dźwięk traci energię), całość gaśnie w 0,6 s.
@@ -7212,6 +7214,8 @@ func _sync_scanner() -> void:
 		if _sonar != null:
 			_sonar.visible = false
 		_scan_mk.flush(_scan_marks.mesh as ImmediateMesh)
+		for l in _scan_labels:
+			(l as Label3D).visible = false
 		_xray_apply(want)
 		return
 	if _sonar == null:
@@ -7242,14 +7246,47 @@ func _sync_scanner() -> void:
 		var ping := _scan_ping(foot + Vector3(0.0, sz.y * PX * 0.5, 0.0), c, front)
 		Pulse3D.add_box(_scan_mk, foot, Vector3(sz.x * PX, sz.y * PX, 0.5),
 			Color(col, (0.12 + 0.25 * ping) * fade), Color(col, (0.55 + 0.4 * ping) * fade))
+	var nl := 0
 	for f in sv.call("finds"):
 		var small: bool = f["small"]
 		var fp := Level3D.px_to_m(f["pos"])
 		var ping := _scan_ping(fp, c, front)
 		var a := (0.55 + 0.45 * ping) * fade * (0.5 if small else 1.0)
-		Pulse3D.add_octa(_scan_mk, fp, (2.5 if small else 4.0) * PX * 1.6, spin + fp.x, Color(SCAN_FIND, a * 0.3), Color(SCAN_FIND, a))
+		var col := SCAN_FIND if small else SCAN_FIND_RARE              # K2: cenna — ciepły romb, drobnica — blady
+		Pulse3D.add_octa(_scan_mk, fp, (2.5 if small else 4.0) * PX * 1.6, spin + fp.x, Color(col, a * 0.3), Color(col, a))
+		var depth := float(f.get("depth", -1.0))
+		if depth > 0.0 and not small:
+			_scan_depth_label(nl, fp, depth, Color(col, (0.7 + 0.3 * ping) * fade))
+			nl += 1
+	for i in range(nl, _scan_labels.size()):
+		(_scan_labels[i] as Label3D).visible = false
 	_scan_mk.flush(_scan_marks.mesh as ImmediateMesh)
 	_xray_apply(want)
+
+## K2: napis głębokości „2 m” przy rombie cennej znajdźki (`i` — kolejny z puli `_scan_labels`). Bez cieniowania, przez ściany jak romb.
+func _scan_depth_label(i: int, at: Vector3, depth: float, col: Color) -> void:
+	while _scan_labels.size() <= i:
+		var l := Label3D.new()
+		l.font_size = 40
+		l.pixel_size = 0.006
+		l.shaded = false
+		l.no_depth_test = true
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		l.outline_size = 6
+		l.outline_modulate = Color(0.0, 0.0, 0.0, 0.8)
+		l.layers = LAYER_WORLD
+		l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var font := UiTheme.heading_font()
+		if font != null:
+			l.font = font
+		_world.add_child(l)
+		_scan_labels.append(l)
+	var lb := _scan_labels[i] as Label3D
+	lb.visible = true
+	lb.text = UiTheme.num_text("%s m" % String.num(depth, 1).trim_suffix(".0"))
+	lb.position = at + Vector3(0.0, 4.0 * PX * 1.6 + 0.18, 0.0)
+	lb.modulate = col
+	lb.outline_modulate = Color(0.0, 0.0, 0.0, 0.8 * col.a)
 
 ## Jasność błysku, gdy czoło fali mija punkt (0..1).
 static func _scan_ping(p: Vector3, c: Vector3, front: float) -> float:
@@ -9305,6 +9342,15 @@ const DIG_FIND_MODEL := {"scrap": "scrap_pile", "small": "scrap_pile", "ammo": "
 const DIG_FIND_M := 0.36                  ## m: najdłuższy bok modelu znajdźki w ścianie
 const DIG_FIND_OUT := 0.95                ## środek modelu między znajdźką (0) a ścianą wykopu (1): na ścianie — połowa wystaje do wykopu
 const DIG_FIND_Z := 0.15                  ## m: głębokość modelu (płaszczyzna gry, wnętrze wykopu widać na całą głębokość)
+const DIG_TRACE_IN := 0.3               ## px: ślad (K2) — środek modelu tyle od pustego narożnika w głąb skały (kontur leży przy nim), wystaje róg
+const DIG_TRACE_SCALE := 1.0             ## ślad: model w pełnej skali (przy 0,8 ginął w ścianie, zrzut 2026-11-17)
+const DIG_CHIP_COLOR := Color(0.78, 0.7, 0.56)   ## świeżo odłupana skała (ślad, szczelina)
+## Okruchy wokół śladu: [rozmiar m, pozycja m, obrót] (x — w stronę powietrza, y — wzdłuż czoła, z — w głąb sceny).
+const DIG_TRACE_CHIPS := [[Vector3(0.08, 0.09, 0.1), Vector3(0.03, 0.24, 0.05), Vector3(0.4, 0.3, 0.2)],
+	[Vector3(0.07, 0.08, 0.08), Vector3(0.03, -0.23, 0.12), Vector3(-0.3, 0.2, 0.5)],
+	[Vector3(0.06, 0.07, 0.07), Vector3(0.04, 0.12, 0.34), Vector3(0.2, -0.4, 0.1)],
+	[Vector3(0.07, 0.06, 0.09), Vector3(0.03, -0.1, -0.2), Vector3(0.1, 0.5, -0.3)],
+	[Vector3(0.05, 0.06, 0.06), Vector3(0.05, 0.2, -0.16), Vector3(-0.5, 0.1, 0.3)]]
 
 func _sync_dig_glints(st: Dictionary, z: Node2D) -> void:
 	var finds: Array = z.finds
@@ -9319,9 +9365,14 @@ func _sync_dig_glints(st: Dictionary, z: Node2D) -> void:
 		var e: Array = gl[k]
 		var show := false
 		var face := Vector2.INF
+		var trace := false
 		if int(f["state"]) == DigZone.Find.NEAR:
 			face = z.find_face(f)
 			show = face != Vector2.INF
+		elif int(f["state"]) == DigZone.Find.BURIED:              # K2: ślad — róg znajdźki wystaje ze ściany wykopu do 2 kafli od niej
+			face = z.find_trace(f)
+			show = face != Vector2.INF
+			trace = show
 		var nm := String(DIG_FIND_MODEL.get(String(f["kind"]), "scrap_pile"))
 		if show and (e[0] == null or String(e[1]) != nm) and _item_ready(nm):
 			if e[0] != null and is_instance_valid(e[0]):
@@ -9334,7 +9385,94 @@ func _sync_dig_glints(st: Dictionary, z: Node2D) -> void:
 		(m as Node3D).visible = show
 		if show:
 			var at: Vector2 = (f["pos"] as Vector2).lerp(face, DIG_FIND_OUT)
+			if trace:                                                # środek tuż za ścianą: widać tylko wystający róg
+				at = face + ((f["pos"] as Vector2) - face).normalized() * DIG_TRACE_IN
 			(m as Node3D).position = Level3D.px_to_m(at) + Vector3(0.0, 0.0, DIG_FIND_Z)
+			(m as Node3D).scale = Vector3.ONE * (DIG_TRACE_SCALE if trace else 1.0)
+		# ślad: wokół rogu jasne, świeżo odłupane okruchy (jak przy szczelinie) — w snopie latarki widać, że w ścianie coś siedzi
+		if e.size() < 3:
+			e.append(null)
+		if trace and (e[2] == null or not is_instance_valid(e[2])):
+			e[2] = _make_dig_chips(DIG_TRACE_CHIPS, k)
+		if e[2] != null and is_instance_valid(e[2]):
+			var ch := e[2] as Node3D
+			ch.visible = trace
+			if trace:
+				var out := (face - (f["pos"] as Vector2)).normalized()
+				ch.position = Level3D.px_to_m(face) + Vector3(0.0, 0.0, DIG_FIND_Z)
+				ch.rotation = Vector3(0.0, 0.0, atan2(-out.y, out.x))
+	_sync_dig_crack(st, z)
+
+## Jasne okruchy świeżo odłupanej skały na ścianie wykopu (ślad znajdźki, szczelina): `parts` — [rozmiar, pozycja, obrót] w układzie
+## x — w stronę powietrza, y — wzdłuż czoła, z — w głąb sceny; `k` przechyla zestaw z ziarna. Bez emisji, bez cienia.
+func _make_dig_chips(parts: Array, k: int) -> Node3D:
+	var root := Node3D.new()
+	root.name = "DigChips"
+	var pale := StandardMaterial3D.new()
+	pale.albedo_color = DIG_CHIP_COLOR
+	pale.roughness = 0.8
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5113 + k * 17
+	for pt in parts:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = (pt[0] as Vector3) * rng.randf_range(0.8, 1.2)
+		mi.mesh = bm
+		mi.position = pt[1]
+		mi.rotation = (pt[2] as Vector3) + Vector3(rng.randf_range(-0.3, 0.3), rng.randf_range(-0.3, 0.3), rng.randf_range(-0.3, 0.3))
+		mi.material_override = pale
+		mi.layers = LAYER_WORLD
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+	_geo.add_child(root)
+	return root
+
+## K2: szczelina na czole wykopu (dig_zone.gd `crack_px`) — ciemna szpara z jasnymi, świeżo odłupanymi okruchami po bokach, wbita w ścianę
+## w stronę powietrza. Bez emisji: w ciemności jej nie widać, w snopie latarki jasne okruchy łapią światło (kopanie bez latarki jest wolniejsze).
+func _sync_dig_crack(st: Dictionary, z: Node2D) -> void:
+	var cp: Vector2 = z.crack_px()
+	var node = st.get("crack")
+	if cp == Vector2.INF:
+		if node != null and is_instance_valid(node):
+			(node as Node3D).visible = false
+		return
+	if node == null or not is_instance_valid(node):
+		node = _make_dig_crack()
+		st["crack"] = node
+	var out: Vector2 = z.crack_out()
+	var n3 := node as Node3D
+	n3.visible = true
+	n3.position = Level3D.px_to_m(cp + out * 2.5) + Vector3(0.0, 0.0, DIG_FIND_Z)
+	n3.rotation = Vector3(0.0, 0.0, atan2(-out.y, out.x) if out != Vector2.ZERO else 0.0)
+
+func _make_dig_crack() -> Node3D:
+	var root := Node3D.new()
+	root.name = "DigCrack"
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.05, 0.04, 0.035)
+	dark.roughness = 1.0
+	var pale := StandardMaterial3D.new()
+	pale.albedo_color = DIG_CHIP_COLOR
+	pale.roughness = 0.8
+	# lokalnie: x — w stronę powietrza, y — wzdłuż czoła, z — w głąb sceny
+	var parts := [[Vector3(0.12, 0.42, 0.7), Vector3(0.0, 0.0, 0.1), Vector3(0.0, 0.0, 0.25), dark],
+		[Vector3(0.12, 0.2, 0.5), Vector3(0.0, 0.2, 0.05), Vector3(0.0, 0.0, -0.6), dark],
+		[Vector3(0.09, 0.09, 0.12), Vector3(0.07, 0.17, 0.32), Vector3(0.4, 0.3, 0.2), pale],
+		[Vector3(0.08, 0.1, 0.09), Vector3(0.07, -0.19, 0.2), Vector3(-0.3, 0.2, 0.5), pale],
+		[Vector3(0.07, 0.07, 0.08), Vector3(0.07, 0.05, 0.4), Vector3(0.2, -0.4, 0.1), pale]]
+	for pt in parts:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = pt[0]
+		mi.mesh = bm
+		mi.position = pt[1]
+		mi.rotation = pt[2]
+		mi.material_override = pt[3]
+		mi.layers = LAYER_WORLD
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+	_geo.add_child(root)
+	return root
 
 ## Model znajdźki `nm` przeskalowany do DIG_FIND_M (najdłuższy bok) i przechylony z ziarna `k`; środek bryły w początku węzła.
 func _dig_find_model(nm: String, k: int) -> Node3D:

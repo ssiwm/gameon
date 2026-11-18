@@ -78,6 +78,8 @@ func run(m: Node2D) -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		e.queue_free()
 	Director.set_process(false)
+	zone.cracks_on = false                     # szczeliny (K2) zmieniają kęs — liczby ciosów na materiał liczone bez nich; sekcja K2 je włącza
+	rock.cracks_on = false
 	pick = Weapons.index_of("kilof")
 	blade = Weapons.index_of("maczeta")
 	NoiseMgr.noise_added.connect(_on_noise)
@@ -99,6 +101,7 @@ func run(m: Node2D) -> void:
 	await _gravel()
 	await _pools()
 	await _loot_k1()
+	await _signals_k2()
 	await _signals()
 	await _collapse()
 	await _slope()
@@ -1299,6 +1302,181 @@ func _loot_k1() -> void:
 	Scrap._push()
 	level.reset_breakables()
 	level.clear_pickups()
+	await _frames(0.1)
+
+# ---------------------------------------------------------------- K2. sygnały „tu coś jest” (DIG_LOOT_PLAN.md K2)
+
+func _signals_k2() -> void:
+	level.reset_breakables()
+	level.clear_pickups()
+	await _frames(0.1)
+	var space := zone.get_world_2d().direct_space_state
+	# dzwonienie z odległości: siatka punktów w strefie — 1 tuż przy znajdźce, potem coraz ciszej do RING_FAR, dalej cisza
+	var buried: Array[Vector2] = []
+	for ff in zone.finds:
+		if int(ff["state"]) != DigZone.Find.OUT:
+			buried.append(ff["pos"])
+	var samples: Array = []
+	var zr: Rect2 = zone.rect_px()
+	var y := zr.position.y
+	while y <= zr.end.y:
+		var x := zr.position.x
+		while x <= zr.end.x:
+			var p := Vector2(x, y)
+			var dmin := INF
+			for b in buried:
+				dmin = minf(dmin, p.distance_to(b))
+			samples.append([dmin, float(zone.ring_at(Rect2(p, Vector2.ZERO)))])
+			x += 4.0
+		y += 4.0
+	samples.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	var ring_ok := not buried.is_empty()
+	var mids := 0
+	var prev := 2.0
+	for sm in samples:
+		var dd: float = sm[0]
+		var rg: float = sm[1]
+		if dd <= DigZone.FIND_CLINK:
+			ring_ok = ring_ok and is_equal_approx(rg, 1.0)
+		elif dd > DigZone.RING_FAR:
+			ring_ok = ring_ok and rg == 0.0
+		else:
+			ring_ok = ring_ok and rg >= DigZone.RING_MIN - 0.001 and rg < 1.0
+			mids += 1
+		ring_ok = ring_ok and rg <= prev + 0.001                  # dalej — nigdy głośniej
+		prev = rg
+	check("K2: dzwonienie — 1 przy znajdźce, ciszej z odległością, RING_MIN na brzegu, cisza dalej niż %d px (%d punktów w zasięgu)" % [int(DigZone.RING_FAR), mids],
+		ring_ok and mids > 0)
+	# szczelina: po ciosie w wierzch na czole wykopu, blisko ciosu
+	zone.cracks_on = true
+	var col: float = zr.get_center().x
+	var o := Vector2(col, TOP - 9.0)
+	var n0 := _noise.size()
+	var d1: Dictionary = zone.melee_dig(space, o, Vector2.DOWN, 24.0, DigMats.Tool.PICK)
+	await _frames(0.05)
+	var cp0: Vector2 = zone.crack_px()
+	var amount1: float = float(_noise[-1][0]) if _noise.size() > n0 else -1.0
+	check("K2: dzwonienie w efekcie ciosu u każdego peera (ring %.2f, metal tylko przy znajdźce)" % float(d1.get("ring", -1.0)),
+		not d1.is_empty() and is_equal_approx(float(zone.fx_last.get("ring", -1.0)), float(d1["ring"])) and bool(d1["metal"]) == (float(d1["ring"]) >= 1.0))
+	check("K2: po ciosie na czole wykopu jest szczelina, najwyżej CRACK_NEAR od ciosu (%s)" % str(cp0),
+		not d1.is_empty() and not bool(d1["crack"]) and cp0 != Vector2.INF and cp0.distance_to(d1["at"]) <= DigZone.CRACK_NEAR + 0.1 and zone.crack_out() != Vector2.ZERO)
+	# cios w szczelinę: szczelina w kęsie przy celowniku (ta sama droga co melee_dig), podwójny kęs, cichszy o połowę, następna obok
+	var pv: Array = zone.bite_preview(space, o, Vector2.DOWN, 24.0, DigMats.Tool.PICK)
+	var target := Vector2i(-1, -1)
+	if not pv.is_empty():
+		var aim: Vector2 = pv[1]
+		var rb: Rect2 = pv[2]
+		var bd := INF
+		for j in zone._h:
+			for i in zone._w:
+				var cpx: Vector2 = zone.global_position + zone._corner_px(i, j)
+				if zone._crack_ok(i, j) and rb.grow(DigZone.CELL).has_point(cpx) and cpx.distance_to(aim) < bd:
+					bd = cpx.distance_to(aim)
+					target = Vector2i(i, j)
+		if target.x >= 0:
+			zone._set_crack(target)
+	var hit0: int = zone.cracks_hit
+	n0 = _noise.size()
+	var d2: Dictionary = zone.melee_dig(space, o, Vector2.DOWN, 24.0, DigMats.Tool.PICK)
+	await _frames(0.05)
+	var amount2: float = float(_noise[-1][0]) if _noise.size() > n0 else -1.0
+	var bite_n: Rect2 = pv[2] if not pv.is_empty() else Rect2()
+	var bite_c: Rect2 = d2.get("bite", Rect2())
+	# hałas względem zwykłego ciosu (mnożniki gracza i poziomu trudności te same): materiał × CRACK_NOISE
+	var want_noise := amount1 / float(DigMats.MATS[String(d1.get("mat", "dirt"))]["noise"]) * float(DigMats.MATS[String(d2.get("mat", "dirt"))]["noise"]) * DigZone.CRACK_NOISE
+	info("szczelina: kęs zwykły %s, w szczelinę %s; hałas %.2f (zwykły cios %.2f, oczekiwany %.2f)" % [str(bite_n.size), str(bite_c.size), amount2, amount1, want_noise])
+	check("K2: cios w szczelinę — podwójny kęs, hałas o połowę, efekt i licznik",
+		target.x >= 0 and bool(d2.get("crack", false)) and bite_c.get_area() >= bite_n.get_area() * 1.9 and is_equal_approx(amount2, want_noise)
+		and bool(zone.fx_last.get("crack", false)) and zone.cracks_hit == hit0 + 1)
+	var cp1: Vector2 = zone.crack_px()
+	check("K2: po ciosie w szczelinę następna pojawia się obok", cp1 != Vector2.INF and cp1 != zone.global_position + zone._corner_px(target.x, target.y)
+		and cp1.distance_to(d2.get("at", Vector2.INF)) <= DigZone.CRACK_NEAR + 0.1)
+	# dołączający dostaje szczelinę ze stanem strefy; wipe ją zabiera
+	var keep: Vector2i = zone.crack
+	zone._state_rpc(zone.map_key, zone.state())
+	zone._crack_rpc(zone.map_key, keep)
+	check("K2: szczelina w stanie dla dołączającego (stan strefy + szczelina)", zone.crack == keep and zone.crack_px() != Vector2.INF)
+	level.reset_breakables()
+	await _frames(0.1)
+	check("K2: wipe zasypuje szczelinę", zone.crack == Vector2i(-1, -1) and zone.crack_px() == Vector2.INF)
+	zone.cracks_on = false
+	# ślad na ścianie i głębokość na skanerze: wykop 2 kafle od zakopanej znajdźki — znajdźka zostaje w ziemi, ale w ścianie widać jej róg
+	var f: Dictionary = {}
+	var hole := Vector2.INF
+	for ff in zone.finds:
+		if int(ff["state"]) != DigZone.Find.BURIED or not f.is_empty():
+			continue
+		for v: Vector2 in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
+			var c: Vector2 = (ff["pos"] as Vector2) + v * 24.0
+			var clear := zr.grow(-8.0).has_point(c)
+			for b in buried:
+				clear = clear and (b == ff["pos"] or b.distance_to(c) > 40.0)
+			if clear:
+				f = ff
+				hole = c
+				break
+	var trace0: Vector2 = Vector2.INF if f.is_empty() else zone.find_trace(f)
+	if not f.is_empty():
+		zone._send(hole, Vector2.ZERO, 5.0, DigMats.Tool.BLAST)
+		await _frames(0.05)
+	var trc: Vector2 = Vector2.INF if f.is_empty() else zone.find_trace(f)
+	var depth: float = -1.0 if f.is_empty() else float(zone.find_depth_m(f))
+	var fpos: Vector2 = f.get("pos", Vector2.ZERO)
+	info("ślad: znajdźka %s przy %s, wykop %s, ślad %s (%.0f px), głębokość %.1f m" % [String(f.get("kind", "—")), str(fpos), str(hole), str(trc),
+		fpos.distance_to(trc) if trc != Vector2.INF else -1.0, depth])
+	check("K2: ślad na ścianie — zakopana znajdźka do 2 kafli od wykopu ma ślad, dalej nie; nadal w ziemi",
+		not f.is_empty() and trace0 == Vector2.INF and trc != Vector2.INF and fpos.distance_to(trc) <= DigZone.TRACE_CORNERS * DigZone.CELL + 0.1
+		and int(f["state"]) == DigZone.Find.BURIED)
+	check("K2: skaner — głębokość cennej znajdźki w metrach do wykopu (0,5 m kroku)", depth > 0.0
+		and absf(depth - fpos.distance_to(trc) * DigZone.M_PER_PX) <= 0.26)
+	var sv: Node = player._scan_view
+	if sv == null:
+		sv = (load("res://scripts/scanner_view.gd") as GDScript).new()
+		sv.player = player
+		player.add_child(sv)
+		player._scan_view = sv
+	var scan0: float = player.scan_left
+	var pp0: Vector2 = player.global_position
+	_place_player(Vector2(fpos.x, TOP - 2.0))
+	player.scan_left = 4.0
+	var seen: Dictionary = {}
+	for e in sv.finds():
+		if (e["pos"] as Vector2) == fpos:
+			seen = e
+	check("K2: skaner pokazuje znajdźkę z klasą i głębokością (%s)" % str(seen), not seen.is_empty() and seen.has("small") and is_equal_approx(float(seen.get("depth", -9.0)), depth))
+	if DisplayServer.get_name() != "headless":                   # zrzuty: skaner z rombem i głębokością; z dna szybu obok znajdźki latarka w ścianę
+		player.flashlight = true                                 # ze śladem i szczeliną
+		var ma0: bool = player.mouse_aim
+		player.mouse_aim = false
+		var aim_tr := func(_t: float, _dt: float) -> void: player.aim_dir = (trc - player.global_position - Vector2(0, -9)).normalized()
+		await _shot("k2_scanner", aim_tr)
+		var side := 1.0 if zr.get_center().x >= fpos.x else -1.0     # szyb po stronie, gdzie strefa ma więcej miejsca
+		var sx := clampf(fpos.x + 28.0 * side, zr.position.x + 12.0, zr.end.x - 12.0)
+		var bottom := fpos.y + 10.0
+		zone._send(Vector2(sx, (TOP - 4.0 + bottom) * 0.5), Vector2(12.0, (bottom - TOP + 4.0) * 0.5), 0.0, DigMats.Tool.BLAST)
+		await _frames(0.05)
+		zone.cracks_on = true
+		var wall := Vector2(sx - 12.0 * side, bottom - 26.0)           # szczelina na ścianie szybu od strony znajdźki, nad śladem
+		var wc := Vector2i(-1, -1)
+		var wd := INF
+		for j in zone._h:
+			for i in zone._w:
+				var cpx: Vector2 = zone.global_position + zone._corner_px(i, j)
+				if zone._crack_ok(i, j) and cpx.distance_to(wall) < wd:
+					wd = cpx.distance_to(wall)
+					wc = Vector2i(i, j)
+		zone._set_crack(wc)
+		player.scan_left = 0.0                                    # bez rombów skanera na ścianie
+		_place_player(Vector2(sx, bottom))
+		var face: Vector2 = zone.find_trace(f)
+		var aim_f := func(_t: float, _dt: float) -> void: player.aim_dir = (face - player.global_position - Vector2(0, -9)).normalized()
+		info("zrzut k2_face: szyb x %.0f, ślad %s, szczelina %s" % [sx, str(face), str(zone.crack_px())])
+		await _shot("k2_face", aim_f, 1.0)
+		zone.cracks_on = false
+		player.mouse_aim = ma0
+	player.scan_left = scan0
+	_place_player(pp0)
+	level.reset_breakables()
 	await _frames(0.1)
 
 # ---------------------------------------------------------------- 12. sygnał strefy (pytanie z 2026-11-06)

@@ -20,6 +20,8 @@ extends Node2D
 ## przy powietrzu mapy. Stan znajdźki wynika z gęstości wokół niej (`_find_state`): zakopana → odkopana do połowy (powietrze blisko: błysk
 ## w latarce, widok 3D) → odkopana (wypada jako przedmiot: rozstrzyga serwer w `apply_dig`, zawartość dobiera dopiero wtedy). Cios tuż
 ## przy zakopanej znajdźce dzwoni w metal (`melee_dig` → "metal"), skaner „Sowa” pokazuje zakopane w zasięgu (`buried_finds`).
+## Sygnały K2 (DIG_LOOT_PLAN.md): dzwonienie z odległości do RING_FAR (`ring_at`), szczelina na czole wykopu (`crack`, podwójny kęs
+## i pół hałasu), ślad zakopanej znajdźki w ścianie wykopu (`find_trace`), głębokość na skanerze (`find_depth_m`).
 ##
 ## Osypywanie i wyspy (D5, po części 2): serwer co SIM_DT liczy krok — luźny materiał (żwir, dig_materials.gd `loose`) bez podparcia spada
 ## i zsuwa się po skosie do kąta 45° (reguła piasku, tylko w aktywnych kolumnach), a bryła odcięta od skały mapy (wyspa — zalewanie od
@@ -85,6 +87,18 @@ const FIND_KINDS := [["scrap", 40], ["ammo", 20], ["supply", 15], ["battery", 15
 const FIND_NEAR := 3                  ## narożniki (12 px): powietrze tak blisko = odkopana do połowy (błysk w latarce)
 const FIND_OUT := 5                   ## z 3 × 3 narożników wokół znajdźki tyle powietrzem = odkopana, wypada
 const FIND_CLINK := 6.0               ## px: zakopana znajdźka tak blisko wyrwy ciosu = cios dzwoni w metal
+## Sygnały „tu coś jest” (DIG_LOOT_PLAN.md K2). Dzwonienie z odległości: zakopana znajdźka do RING_FAR od kęsa — cios dzwoni cicho i nisko,
+## coraz głośniej i wyżej bliżej niej (Valheim, Udjat); tuż przy niej (FIND_CLINK) — pełny metal z iskrami jak dotąd.
+const RING_FAR := 48.0                ## px (3 kafle ≈ 4 m)
+const RING_MIN := 0.15                ## siła dzwonienia na brzegu zasięgu (1 — tuż przy znajdźce)
+## Szczelina (Rust): jeden pęknięty narożnik na odsłoniętym czole wykopu, blisko ostatniego ciosu. Widać ją tylko w świetle (view3d.gd,
+## bez emisji). Cios celowany w nią bierze podwójny kęs i jest cichszy o połowę; następna pojawia się obok.
+const CRACK_AIM := 7.0                ## px: punkt celowania tak blisko szczeliny = cios w szczelinę
+const CRACK_NEAR := 30.0              ## px: nowa szczelina najwyżej tak daleko od miejsca ciosu
+const CRACK_NOISE := 0.5              ## hałas ciosu w szczelinę × to
+## Ślad na ścianie: zakopana znajdźka najwyżej tyle narożników od powietrza (2 kafle) — w ścianie wykopu wystaje jej róg (view3d.gd).
+const TRACE_CORNERS := 8
+const M_PER_PX := 1.8 / 22.0          ## m na px (jak level3d.gd PX) — głębokość na skanerze
 const FIND_BLAST_PUSH := 10.0         ## px: wybuch odrzuca odkopaną znajdźkę od środka
 ## Złom ze znajdźki „scrap” — zakopany pakunek (DIG_LOOT_PLAN.md K1). Do 1.7.600: 1–3, mniej niż skrzynia przy drodze; w 74 próbach
 ## od 1.7.505 kopanie dało łącznie ok. 8 złomu przy medianie łupu misji 1.1 189 i sejfie 40 — kopanie przegrywało z każdą inną czynnością.
@@ -143,6 +157,10 @@ var finds: Array[Dictionary] = []
 var finds_out := 0                    ## serwer: ile znajdziek wypadło od wczytania / resetu (test, dziennik)
 var ore_total := 0                    ## serwer: złom z rudy żyły od wczytania / resetu (test, dziennik)
 var _ore_acc := 0                     ## serwer: narożniki żyły wykopane, jeszcze niezamienione na złom (reszta z dzielenia przez ORE_CORNERS)
+var crack := Vector2i(-1, -1)         ## szczelina (narożnik) u każdego peera; (-1, -1) — brak (serwer wybiera, `_crack_rpc`)
+var crack_ver := 0                    ## u każdego peera: zmiana szczeliny (widok 3D przestawia model)
+var cracks_on := true                 ## serwer: szczeliny włączone (testy liczby ciosów na materiał je wyłączają)
+var cracks_hit := 0                   ## serwer: ciosów w szczelinę od wczytania / resetu (test)
 var _m0 := PackedByteArray()          ## materiał z danych mapy (reset; materiał osypiska się przesuwa)
 var _in_isl := PackedByteArray()      ## 1 = narożnik spadającej wyspy (osypywanie go nie rusza)
 var _islands: Array[Dictionary] = []  ## spadające wyspy: {"cells": PackedInt32Array, "v": narożników na krok, "drop": narożników łącznie}
@@ -880,32 +898,176 @@ func solid_in_data(c: int, r: int) -> bool:
 ## drga). Wycina tylko kęs wyrwy (`bite_rect`). Zwraca {"at": punkt na pył i dźwięk, "mat": materiał, "metal": cios przy zakopanej znajdźce,
 ## "bite": wycięty prostokąt} albo pusty słownik.
 func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, reach: float, tool: int, by := -1) -> Dictionary:
+	var pv := bite_preview(space, origin, dir, reach, tool)
+	if pv.is_empty():
+		return {}
+	var full: Rect2 = pv[0]
+	var aim: Vector2 = pv[1]
+	var r: Rect2 = pv[2]
+	var mat := _rock_in(r, tool)
+	if mat < 0:
+		return {}
+	var on_crack := cracks_on and _crack_hit(r, aim)              # K2: cios w szczelinę — podwójny kęs, ciszej
+	if on_crack:
+		r = _double_bite(r, full, dir)
+		cracks_hit += 1
+		SessionLog.note_dig(String(name), "cracks")
+	var at := aim if r.grow(CELL).has_point(aim) else _rock_center(r)   # pył i dźwięk z kęsa, nie z innego pasa
+	var key := Mats.key_of(mat)
+	NoiseMgr.add_noise(N_DIG * float(Mats.MATS[key]["noise"]) * (BLADE_NOISE if tool == Mats.Tool.BLADE else 1.0)
+		* (CRACK_NOISE if on_crack else 1.0), at, "dig")
+	var metal := find_near_rect(r.grow(FIND_CLINK)) >= 0          # przed cięciem: znajdźka, która tym ciosem wypadnie, też dzwoni
+	var ring := 1.0 if metal else ring_at(r)                     # K2: dzwonienie z odległości (0 — cisza)
+	SessionLog.note_dig(String(name), "hits")                  # K0: ciosy w strefę (pomiar po DIG_LOOT_PLAN.md)
+	SessionLog.note_dig_first(String(name), "first_hit")
+	if ring > 0.0:
+		SessionLog.note_dig(String(name), "clink")
+	_send(r.get_center(), r.size * 0.5, 0.0, tool)
+	if cracks_on and NoiseMgr.is_server():
+		_next_crack(at, dir)
+	var top := Vector2(clampf(at.x - signf(dir.x) * 3.0, r.position.x + 2.0, r.end.x - 2.0), r.position.y + 2.0)   # urobek z górnej krawędzi wyrwy, przy czole
+	if NoiseMgr.has_network():
+		_hit_rpc.rpc(map_key, at, -dir, mat, tool, ring, top, by, on_crack)
+	else:
+		_hit_rpc(map_key, at, -dir, mat, tool, ring, top, by, on_crack)
+	return {"at": at, "mat": key, "metal": metal, "ring": ring, "crack": on_crack, "bite": r}
+
+## [wyrwa, punkt celowania, kęs] ciosu z `origin` w kierunku `dir` albo pusta tablica (w wyrwie nie ma skały dla `tool`) — bez zmian w strefie.
+func bite_preview(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, reach: float, tool: int) -> Array:
 	var full := cut_rect(origin, dir)
 	if _rock_in(full, tool) < 0:
-		return {}
+		return []
 	var aim := _face_point(full, origin, dir, reach)
 	var hit := space.intersect_ray(PhysicsRayQueryParameters2D.create(origin, origin + dir * reach, LAYER_WORLD))
 	if not hit.is_empty() and hit["collider"] is Node and (hit["collider"] as Node).get_parent() == self:
 		aim = hit["position"]
-	var r := bite_rect(full, dir, aim, tool)
-	var mat := _rock_in(r, tool)
-	if mat < 0:
-		return {}
-	var at := aim if r.grow(CELL).has_point(aim) else _rock_center(r)   # pył i dźwięk z kęsa, nie z innego pasa
-	var key := Mats.key_of(mat)
-	NoiseMgr.add_noise(N_DIG * float(Mats.MATS[key]["noise"]) * (BLADE_NOISE if tool == Mats.Tool.BLADE else 1.0), at, "dig")
-	var metal := find_near_rect(r.grow(FIND_CLINK)) >= 0          # przed cięciem: znajdźka, która tym ciosem wypadnie, też dzwoni
-	SessionLog.note_dig(String(name), "hits")                  # K0: ciosy w strefę (pomiar po DIG_LOOT_PLAN.md)
-	SessionLog.note_dig_first(String(name), "first_hit")
-	if metal:
-		SessionLog.note_dig(String(name), "clink")
-	_send(r.get_center(), r.size * 0.5, 0.0, tool)
-	var top := Vector2(clampf(at.x - signf(dir.x) * 3.0, r.position.x + 2.0, r.end.x - 2.0), r.position.y + 2.0)   # urobek z górnej krawędzi wyrwy, przy czole
-	if NoiseMgr.has_network():
-		_hit_rpc.rpc(map_key, at, -dir, mat, tool, metal, top, by)
+	return [full, aim, bite_rect(full, dir, aim, tool)]
+
+## K2: siła dzwonienia ciosu z kęsem `r` — 0, gdy żadna zakopana znajdźka nie leży bliżej niż RING_FAR od kęsa; od RING_MIN na brzegu
+## do 1 tuż przy niej (próg FIND_CLINK — pełny metal).
+func ring_at(r: Rect2) -> float:
+	var best := INF
+	for f in finds:
+		if int(f["state"]) == Find.OUT:
+			continue
+		var p: Vector2 = f["pos"]
+		var dx := maxf(maxf(r.position.x - p.x, p.x - r.end.x), 0.0)
+		var dy := maxf(maxf(r.position.y - p.y, p.y - r.end.y), 0.0)
+		best = minf(best, Vector2(dx, dy).length())
+	if best <= FIND_CLINK:
+		return 1.0
+	if best > RING_FAR:
+		return 0.0
+	return lerpf(0.75, RING_MIN, (best - FIND_CLINK) / (RING_FAR - FIND_CLINK))
+
+## K2: czy cios z kęsem `r` i punktem celowania `aim` trafia w szczelinę (szczelina w kęsie i blisko celownika).
+func _crack_hit(r: Rect2, aim: Vector2) -> bool:
+	var cp := crack_px()
+	if cp == Vector2.INF:
+		return false
+	return r.grow(CELL).has_point(cp) and cp.distance_to(aim) <= CRACK_AIM + CELL
+
+## K2: kęs w szczelinę — dwa razy grubszy w poprzek pasa (w bok: wyższy pas, w pionie: cały szyb), w granicach wyrwy `full`.
+func _double_bite(r: Rect2, full: Rect2, dir: Vector2) -> Rect2:
+	var g := r                                                    # przy brzegu wyrwy przesunięty do środka, nie przycięty
+	if absf(dir.x) < 0.38:
+		g.size.x = minf(r.size.x * 2.0, full.size.x)
+		g.position.x = clampf(r.get_center().x - g.size.x * 0.5, full.position.x, full.end.x - g.size.x)
 	else:
-		_hit_rpc(map_key, at, -dir, mat, tool, metal, top, by)
-	return {"at": at, "mat": key, "metal": metal, "bite": r}
+		g.size.y = minf(r.size.y * 2.0, full.size.y)
+		g.position.y = clampf(r.get_center().y - g.size.y * 0.5, full.position.y, full.end.y - g.size.y)
+	return g
+
+## Szczelina w px świata (Vector2.INF — brak albo już nie na czole: wykopana, zasypana osypiskiem).
+func crack_px() -> Vector2:
+	return Vector2.INF if crack.x < 0 or not _crack_ok(crack.x, crack.y) else global_position + _corner_px(crack.x, crack.y)
+
+## Kierunek od szczeliny w stronę powietrza (średnia sąsiadów-powietrza); zero — brak szczeliny.
+func crack_out() -> Vector2:
+	if crack.x < 0:
+		return Vector2.ZERO
+	var s := Vector2.ZERO
+	for o: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var k := (crack.y + o.y) * _w + crack.x + o.x
+		if _d[k] < ISO:
+			s += Vector2(o)
+	return s.normalized()
+
+## Narożnik nadaje się na szczelinę: skała (nie pierścień), kopalna kilofem, z powietrzem obok (czoło wykopu).
+func _crack_ok(i: int, j: int) -> bool:
+	if i < 1 or j < 1 or i > _w - 2 or j > _h - 2:
+		return false
+	var k := j * _w + i
+	if _fixed[k] == 1 or _d[k] < ISO or Mats.power(_m[k], Mats.Tool.PICK) <= 0:
+		return false
+	return _d[k - 1] < ISO or _d[k + 1] < ISO or _d[k - _w] < ISO or _d[k + _w] < ISO
+
+## Serwer, po ciosie w `at` w kierunku `dir`: zostawia szczelinę, jeśli nadal jest na czole i blisko, w innym razie wybiera nową —
+## narożnik czoła w CRACK_NEAR od ciosu, z przewagą tych przed bijącym (dalej w stronę ciosu), z odrobiną losu (nie zawsze to samo miejsce).
+func _next_crack(at: Vector2, dir: Vector2) -> void:
+	if crack_px() != Vector2.INF and crack_px().distance_to(at) <= CRACK_NEAR:
+		return
+	var lp := at - global_position
+	var rr := ceili(CRACK_NEAR / CELL)
+	var ci := roundi(lp.x / CELL) + 1
+	var cj := roundi(lp.y / CELL) + 1
+	var best := Vector2i(-1, -1)
+	var bs := -INF
+	for j in range(cj - rr, cj + rr + 1):
+		for i in range(ci - rr, ci + rr + 1):
+			if not _crack_ok(i, j):
+				continue
+			var off := global_position + _corner_px(i, j) - at
+			var dist := off.length()
+			if dist > CRACK_NEAR or dist < CELL * 1.5:                # nie tuż w miejscu ciosu (ten narożnik zaraz zniknie)
+				continue
+			var s := off.normalized().dot(dir) * 2.0 - dist / CRACK_NEAR + randf() * 0.8
+			if s > bs:
+				bs = s
+				best = Vector2i(i, j)
+	_set_crack(best)
+
+func _set_crack(c: Vector2i) -> void:
+	if c == crack:
+		return
+	if NoiseMgr.has_network():
+		_crack_rpc.rpc(map_key, c)
+	else:
+		_crack_rpc(map_key, c)
+
+@rpc("authority", "call_local", "reliable")
+func _crack_rpc(key: String, c: Vector2i) -> void:
+	if key != map_key:
+		return
+	crack = c
+	crack_ver += 1
+
+## K2, ślad na ścianie: najbliższy pusty narożnik w TRACE_CORNERS od zakopanej znajdźki `f` (tam wystaje jej róg) albo Vector2.INF.
+func find_trace(f: Dictionary) -> Vector2:
+	if int(f["state"]) != Find.BURIED:
+		return Vector2.INF
+	return _nearest_air(int(f["i"]), int(f["j"]), TRACE_CORNERS, false)
+
+## K2, skaner: ile metrów skały dzieli zakopaną znajdźkę `f` od najbliższego powietrza — wykopu albo powietrza mapy wokół strefy (zaokrąglone
+## do 0,5 m, najmniej 0,5; −1 — dalej niż 16 narożników).
+func find_depth_m(f: Dictionary) -> float:
+	var a := _nearest_air(int(f["i"]), int(f["j"]), 16, true)
+	if a == Vector2.INF:
+		return -1.0
+	return snappedf(maxf((f["pos"] as Vector2).distance_to(a) * M_PER_PX, 0.5), 0.5)
+
+## Najbliższy narożnik powietrza w promieniu `rad` narożników od (fi, fj); `ring` — także pierścień strefy (powietrze mapy), inaczej tylko wykop.
+func _nearest_air(fi: int, fj: int, rad: int, ring: bool) -> Vector2:
+	var best := Vector2.INF
+	var bd := INF
+	for j in range(maxi(0, fj - rad), mini(_h, fj + rad + 1)):
+		for i in range(maxi(0, fi - rad), mini(_w, fi + rad + 1)):
+			if _d[j * _w + i] < ISO and (ring or _fixed[j * _w + i] == 0):
+				var dd := float(Vector2(i - fi, j - fj).length_squared())
+				if dd < bd and dd <= float(rad * rad):
+					bd = dd
+					best = global_position + _corner_px(i, j)
+	return best
 
 ## Kęs ciosu w wyrwie `full` (cut_rect, kierunek `dir`): część z kopalną dla `tool` skałą najbliższa punktowi `aim` (czoło na linii ciosu) —
 ## w bok i po skosie pas BITE_SIDE (bliżej celownika w pionie; remis — niższy, bo dno tunelu da się szybciej przejść), w pionie połowa
@@ -952,14 +1114,16 @@ func _rock_center(r: Rect2) -> Vector2:
 ## Arsenal.broadcast_hit z `Mat.WORLD` (Vfx.hit tego nie zna — cisza, nic) albo `Mat.DUST` (pyłek Ćmy). Teraz trzy warstwy, bo to one mówią,
 ## że coś odpadło: uderzenie (dźwięk + okruchy i grudki od ściany, w skale czasem iskra stali o kamień), obłoczek pyłu, który wisi w świetle
 ## latarki, i drobny urobek sypiący się ze stropu wyrwy (`top`). Broń biała w ziemi — mniej i ciszej. Zakopana znajdźka: dodatkowo metal
-## (iskry i brzęk) — podpowiedź bez skanera. Kamera drga tylko u bijącego (`by`); kilof w skale dostaje krótki hitstop (Feel: bez niego
+## (iskry i brzęk) — podpowiedź bez skanera; dalej (K2, `ring` < 1) sam dźwięk metalu, cichszy i niższy z odległością. Cios w szczelinę
+## (`cracked`) — głuchy trzask odpadającej płyty i więcej grudek. Kamera drga tylko u bijącego (`by`); kilof w skale dostaje krótki hitstop (Feel: bez niego
 ## na hoście z klientami). Cząsteczki są cieniowane (poza iskrami): nocą widać je tylko w snopie latarki albo przy lampie, jak prawdziwy kurz.
 @rpc("authority", "call_local", "unreliable")
-func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, metal: bool, top: Vector2, by: int) -> void:
+func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, ring: float, top: Vector2, by: int, cracked := false) -> void:
 	if key != map_key:
 		return
+	var metal := ring >= 1.0
 	fx_hits += 1
-	fx_last = {"mat": Mats.key_of(mat), "tool": tool, "metal": metal, "by": by}
+	fx_last = {"mat": Mats.key_of(mat), "tool": tool, "metal": metal, "ring": ring, "crack": cracked, "by": by}
 	var lvl := get_parent()
 	if lvl == null or not lvl.is_inside_tree():
 		return
@@ -985,6 +1149,12 @@ func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, metal
 	if pick and randf() < float(m["sparks"]):
 		Vfx.burst(lvl, at, Color(1.0, 0.82, 0.45), randi_range(2, 4), 60.0, 170.0, out, 45.0, 380.0, 0.16, Vector2(0.5, 0.9), true)
 	Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - (3.0 if not pick else 0.0), float(snd[2]) * (1.12 if not pick else 1.0))
+	if cracked:
+		Vfx.chips(lvl, at, out, chip, maxi(3, roundi(float(m["clods"]) * k)), "chip", 70.0, Vector2(1.2, 2.4))
+		Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - 2.0, float(snd[2]) * 0.7)
+	if ring > 0.0 and not metal:
+		# K2: dzwonienie z odległości — sam brzęk, bez iskier; z daleka cicho i nisko, bliżej głośniej i wyżej
+		Audio.play_variant_at("impact_hard", 3, at, Audio.BUS_WORLD, lerpf(-26.0, -14.0, ring), lerpf(0.8, 1.2, ring))
 	if metal:
 		# drobne i szybkie iskry, nie Vfx.sparks (kula w blachę): tamte przy postaci wyglądały jak świecące kulki (zrzut 2026-11-14)
 		Vfx.burst(lvl, at, Color(1.0, 0.86, 0.5), 5, 80.0, 210.0, out, 50.0, 420.0, 0.14, Vector2(0.35, 0.6), true)
@@ -1233,6 +1403,8 @@ func send_state_to(peer_id: int) -> void:
 		_state_rpc.rpc_id(peer_id, map_key, s)
 	if not warns.is_empty():
 		_warn_rpc.rpc_id(peer_id, map_key, warns)
+	if crack.x >= 0:
+		_crack_rpc.rpc_id(peer_id, map_key, crack)
 
 ## Serwer: strefa wraca do stanu `s` (`state()`; pusty — dane mapy) u wszystkich peerów. Wipe i nowa misja — pusty, punkt kontrolny bossa —
 ## stan z przebudzenia (level.gd `reset_breakables`).
@@ -1264,6 +1436,9 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 	if pr != props:
 		props = pr
 		props_ver += 1
+	if crack.x >= 0:                                             # szczelina znika (wykop zasypany); serwer wybierze nową przy ciosie
+		crack = Vector2i(-1, -1)
+		crack_ver += 1
 	warns.clear()
 	prop_progress = 0.0
 	_prop_workers.clear()
@@ -1283,6 +1458,7 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 		finds_out = 0
 		ore_total = 0
 		_ore_acc = 0
+		cracks_hit = 0
 	_update_tiles(Rect2i(0, 0, tiles.x, tiles.y))
 	_unstick_players()
 
