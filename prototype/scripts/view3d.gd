@@ -2504,7 +2504,8 @@ func _sync_world_notes() -> void:
 
 # ---------------------------------------------------------------- rekwizyty kryjówki (hub_prop.gd)
 
-const HUB_WINDOW_SHADER := "shader_type spatial;\nrender_mode unshaded;\nuniform int kind = 0;\nuniform float flash = 0.0;\nuniform vec3 sky_top : source_color = vec3(0.02, 0.04, 0.09);\nuniform vec3 sky_bot : source_color = vec3(0.07, 0.10, 0.16);\nvoid fragment() {\n	vec2 uv = UV;\n	vec3 col = mix(sky_top, sky_bot, uv.y);\n	if (kind == 0) {\n		float d = distance(uv, vec2(0.74, 0.3));\n		col += vec3(0.85, 0.9, 1.0) * smoothstep(0.09, 0.07, d);\n		vec2 g = floor(uv * vec2(40.0, 24.0));\n		float h = fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453);\n		col += vec3(0.6) * step(0.985, h) * (0.5 + 0.5 * sin(TIME * 2.0 + h * 20.0));\n	} else if (kind == 1 || kind == 2) {\n		vec2 p = vec2(uv.x * 28.0 + uv.y * 3.0, uv.y * 3.0 - TIME * (kind == 2 ? 2.6 : 2.0));\n		float cell = floor(p.x);\n		float h = fract(sin(cell * 91.3) * 437.5);\n		float y = fract(p.y + h * 5.0);\n		float streak = smoothstep(0.0, 0.05, y) * smoothstep(0.35, 0.1, y) * step(0.45, h);\n		streak *= smoothstep(0.12, 0.02, abs(fract(p.x) - 0.5));\n		col += vec3(0.55, 0.7, 0.9) * streak * 0.5;\n	} else {\n		col = mix(col, vec3(0.31, 0.33, 0.34), 0.7);\n		col += 0.04 * sin(uv.x * 6.0 + TIME * 0.3) * sin(uv.y * 4.0 - TIME * 0.2);\n	}\n	col += vec3(0.8, 0.85, 1.0) * flash;\n	ALBEDO = col;\n}\n"
+const HubWindow := preload("res://scripts/hub_window.gd")    ## okno radiostacji z pogodą za szybą
+const HubWindowFx := preload("res://scripts/weather_fx.gd")  ## dev_flash (--shotflash) także dla okna radiostacji
 const HUB_PROP_MODELS := {"generator": 1.0, "compressor": 1.0, "barrel": 1.0, "crate": 1.0, "mil_crate": 1.0, "scrap_pile": 1.0}   ## modele z art/items3d/ i ich skala względem piksela świata
 const HUB_PROP_Z := -1.1                  ## głębia rekwizytów maszynowni (przy ścianie, za płaszczyzną gry)
 var _hub_props3d := {}                    ## id węzła hub_prop.gd → {root, kind, ...}
@@ -2544,20 +2545,8 @@ func _sync_hub_props() -> void:
 					(reels[1] as Node3D).rotation.y = -t * 1.8
 					(d["vu"] as StandardMaterial3D).emission_energy_multiplier = 1.0 + 0.5 * absf(sin(t * 7.3) * sin(t * 2.9 + 0.4))
 			"window":
-				var fc: String = Weather.forecast
-				var kind_i := 0 if fc == "clear" else (1 if fc == "rain" else (2 if fc == "storm" else 3))
-				var sm := d["mat"] as ShaderMaterial
-				var fl := 0.0
-				if fc == "storm":
-					fl = pow(maxf(0.0, sin(t * 0.9) * sin(t * 2.3 + 0.7)), 6.0)
-				sm.set_shader_parameter("kind", kind_i)
-				sm.set_shader_parameter("flash", fl * 0.9)
-				var sky_cols := {"clear": [Color(0.02, 0.04, 0.09), Color(0.07, 0.10, 0.16)], "rain": [Color(0.05, 0.06, 0.08), Color(0.10, 0.12, 0.15)],
-					"storm": [Color(0.03, 0.03, 0.05), Color(0.08, 0.09, 0.12)], "fog": [Color(0.15, 0.17, 0.18), Color(0.25, 0.27, 0.28)]}
-				var sc: Array = sky_cols.get(fc, sky_cols["clear"])
-				sm.set_shader_parameter("sky_top", sc[0])
-				sm.set_shader_parameter("sky_bot", sc[1])
-				(d["light"] as OmniLight3D).light_energy = 0.35 + 3.0 * fl
+				d["tw"] = float(d.get("tw", 0.0)) + get_process_delta_time()             # czas gry (nagrania Movie Maker: błyski w tempie obrazu)
+				HubWindow.sync(d["mat"] as ShaderMaterial, d["light"] as OmniLight3D, Weather.forecast, float(d["tw"]), Settings.weather_fx_idx, HubWindowFx.dev_flash)
 
 ## Wyposażenie stanowisk warsztatu (grupa „station_props”, np. lathe_bench.gd): węzeł niesie `station_props` — listę
 ## [model z art/items3d/, przesunięcie x w pikselach świata, głębia z w m] — a widok stawia modele w skali 1 jednostka = 1 piksel świata,
@@ -2674,37 +2663,9 @@ func _build_hub_prop(n: Node2D) -> Dictionary:
 		d["mat"] = red
 		d["light"] = lt
 	elif kind == "window":
-		var w := (float(args[0]) if not args.is_empty() else 3.0) * Level3D.T
-		var h := 2.0
-		var y0 := 1.5
-		var frame := _hp_mat(Color(0.14, 0.12, 0.10), 0.3, 0.8)
-		_ld_box(root, Vector3(w + 0.3, h + 0.3, 0.12), Vector3(0.0, y0 + h * 0.5, -1.9), frame)
-		var qm := QuadMesh.new()
-		qm.size = Vector2(w, h)
-		var gm := ShaderMaterial.new()
-		var sh := Shader.new()
-		sh.code = HUB_WINDOW_SHADER
-		gm.shader = sh
-		var gmi := MeshInstance3D.new()
-		gmi.mesh = qm
-		gmi.material_override = gm
-		gmi.layers = LAYER_WORLD
-		gmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		gmi.position = Vector3(0.0, y0 + h * 0.5, -1.83)
-		root.add_child(gmi)
-		for k in [-1, 0, 1]:
-			if k == 0:
-				_ld_box(root, Vector3(0.08, h, 0.06), Vector3(0.0, y0 + h * 0.5, -1.79), frame)     # słupek okna
-		var wl := OmniLight3D.new()                              # zimne światło z okna (błyski burzy rozświetlają pokój)
-		wl.light_color = Color(0.55, 0.7, 1.0)
-		wl.omni_range = 6.0
-		wl.light_energy = 0.35
-		wl.light_volumetric_fog_energy = 1.0
-		wl.layers = LAYER_WORLD | LAYER_ACTORS
-		wl.position = Vector3(0.0, y0 + h * 0.5, -1.2)
-		root.add_child(wl)
-		d["mat"] = gm
-		d["light"] = wl
+		var wparts := HubWindow.build(root, (float(args[0]) if not args.is_empty() else 3.0) * Level3D.T, _ld_box, _hp_mat, LAYER_WORLD, LAYER_WORLD | LAYER_ACTORS)
+		d["mat"] = wparts[0]
+		d["light"] = wparts[1]
 	elif HubProp.FURNITURE.has(kind):
 		_build_furniture(root, kind, args, d)
 	elif kind == "hatch":
