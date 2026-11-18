@@ -2328,5 +2328,15 @@ static func build_walls(parent: Node3D) -> int:
 		mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 		mi.set_instance_shader_parameter("occ", occs[gk])
 		parent.add_child(mi)
+		# cień ścian (uwaga z gry 2026-11-19: latarka w wykopie 1.3 oświetlała przez skałę bok ściany końca sali i jaśniała nad tunelem):
+		# ta sama bryła tylko do map cieni, w warstwie świata — przezroczysty shader pierwszego planu z odrzucaniem względem kamery
+		# nie nadaje się do przebiegu cieni (tam „kamerą” jest światło)
+		var sh := MultiMeshInstance3D.new()
+		sh.name = "ShellWallsShadow"
+		sh.multimesh = mm
+		sh.layers = 1
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		sh.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+		parent.add_child(sh)
 		n_boxes += xfs.size()
 	return n_boxes

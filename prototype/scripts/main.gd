@@ -2654,7 +2654,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				get_tree().create_timer(1.0).timeout.connect(func() -> void:
 					for z in get_tree().get_nodes_in_group("dig_zones"):
 						for k in 4:
-							z.apply_dig(r.get_center(), r.size * 0.5, 2.0, DigMats.Tool.BLAST))
+							z.apply_dig(r.get_center(), r.size * 0.5, 2.0, DigMats.Tool.BLAST)
+					var dp: Node2D = _players.get_node_or_null("1")      # gracz 1 w wykopie (--shotat w kolumnie prostokąta): na dnie, w tej kolumnie
+					if dp != null and dp.global_position.x >= r.position.x and dp.global_position.x < r.end.x:
+						dp.global_position = Vector2(dp.global_position.x, r.end.y - 2.0)
+						dp.velocity = Vector2.ZERO)
 	if "--shotscan" in OS.get_cmdline_user_args():
 		var scp: Node2D = _players.get_node_or_null("1")     # --shotscan: skaner Sowa włączony (użyj z --shotat=KOLUMNA przy wrogach)
 		if scp != null:

@@ -8927,13 +8927,39 @@ func _sync_dig_zones() -> void:
 			back.layers = LAYER_WORLD
 			back.position = Level3D.px_to_m(rc.get_center()) + Vector3(0.0, 0.0, -Level3D.DEPTH_BACK + 0.15)
 			_geo.add_child(back)
-			# strefa przy przekroju (koniec sali podziemi 1.3) sięga przodu przekroju — w jednym planie z podłogą i stropem
-			var zf := Level3D.zone_front_z(int(rc.position.x / 16.0), int(rc.position.y / 16.0), int(rc.end.x / 16.0) - 1, int(rc.end.y / 16.0) - 1)
+			# strefa przy przekroju (koniec sali podziemi 1.3) sięga przodu przekroju — w jednym planie z podłogą i stropem. Do 1.7.616 cała
+			# bryła stała w warstwie świata aż do SHELL_Z: nieodkopana skała 4,5 m przed graczem zasłaniała tunel czarnym prostokątem (latarka
+			# świeci zza jej czoła), a ściany przekroju obok wygaszały się przy postaci (uwaga z gry 2026-11-19). Teraz w świecie jak każda
+			# strefa (do DEPTH_FRONT), a przedłużenie do przekroju to ta sama siatka w warstwie ścian przekroju (`Front3D.wall_material`:
+			# tekstura skały przekroju, wygaszanie na sylwetkach) z osobną bryłą cienia
+			var c0 := int(rc.position.x / 16.0)
+			var r0 := int(rc.position.y / 16.0)
+			var zs := Level3D.zone_front_z(c0, r0, int(rc.end.x / 16.0) - 1, int(rc.end.y / 16.0) - 1)
+			var zf := Level3D.DEPTH_FRONT
+			var shell: Array = []
+			if zs > zf:
+				var occ := Level3D.zone_shell_occ(c0, r0, int(rc.end.x / 16.0) - 1, int(rc.end.y / 16.0) - 1)
+				for ci in mis.size():
+					var smi := MeshInstance3D.new()
+					smi.name = "DigShell%d" % ci
+					smi.material_override = Front3D.wall_material("#")
+					smi.layers = Front3D.LAYER_WALL
+					smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+					smi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+					smi.set_instance_shader_parameter("occ", occ)
+					_geo.add_child(smi)
+					var ssh := MeshInstance3D.new()
+					ssh.name = "DigShellShadow%d" % ci
+					ssh.layers = LAYER_WORLD
+					ssh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+					ssh.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+					_geo.add_child(ssh)
+					shell.append([smi, ssh])
 			_build_dig_sign(z, zf)
 			var ver := PackedInt32Array()
 			ver.resize(mis.size())
 			ver.fill(-1)
-			st = {"zone": z, "mis": mis, "ver": ver, "zf": zf}
+			st = {"zone": z, "mis": mis, "ver": ver, "zf": zf, "shell": shell, "zs": zs}
 			_dig3d[id] = st
 		var vers: PackedInt32Array = st["ver"]
 		if st.has("spoil") and vers != z.chunk_ver:
@@ -8945,6 +8971,11 @@ func _sync_dig_zones() -> void:
 				budget -= 1
 				vers[ci] = int(z.chunk_ver[ci])
 				((st["mis"] as Array)[ci] as MeshInstance3D).mesh = z.chunk_mesh(ci, Level3D.PX, float(st.get("zf", Level3D.DEPTH_FRONT)), -Level3D.DEPTH_BACK)
+				var sh: Array = st.get("shell", [])
+				if ci < sh.size():
+					var sm: ArrayMesh = z.chunk_mesh(ci, Level3D.PX, float(st["zs"]), float(st["zf"]))
+					((sh[ci] as Array)[0] as MeshInstance3D).mesh = sm
+					((sh[ci] as Array)[1] as MeshInstance3D).mesh = sm
 		st["ver"] = vers
 		_sync_dig_glints(st, z)
 		_sync_dig_props(st, z)
@@ -9897,6 +9928,10 @@ func _scan_lights() -> void:
 				l3a = OmniLight3D.new()
 				l3a.light_color = li.color
 				l3a.light_cull_mask = LAYER_ACTORS | Front3D.LAYER_FRONT | Front3D.LAYER_WALL | Front3D.LAYER_TREE   # lampy oświetlają też pierwszy plan (front3d.gd)
+				if is_pickup:
+					# poświata znajdźki bez ścian przekroju: światło bez cienia oświetlało przez skałę bok ściany końca sali nad wykopem 1.3
+					# (uwaga z gry 2026-11-19, niebieska plama nad tunelem); ściany z ciemnym `ambient_k` i tak nie potrzebują tej plamki
+					l3a.light_cull_mask &= ~Front3D.LAYER_WALL
 				l3a.shadow_enabled = false
 				l3a.light_volumetric_fog_energy = 0.0
 				l3a.layers = LAYER_WORLD | LAYER_ACTORS
