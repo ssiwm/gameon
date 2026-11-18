@@ -14,6 +14,7 @@ const WIPE_DELAY := 3.0
 
 const Sprites := preload("res://scripts/sprites.gd")
 const Combat := preload("res://scripts/combat.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 const Codex := preload("res://scripts/codex.gd")
 const Hints := preload("res://scripts/hints.gd")
 const Look := preload("res://scripts/look.gd")
@@ -1236,6 +1237,8 @@ func _handle_cmdline() -> void:
 			shot_delay = float(a.substr("--shotdelay=".length()))
 		elif a.begins_with("--shotat="):
 			shot_col = int(a.substr("--shotat=".length()))
+		elif a.begins_with("--shottapes="):
+			_dev_tapes(a.substr("--shottapes=".length()))
 		elif a == "--ridetest":
 			ridetest = true
 		elif a == "--ridehost":
@@ -1408,6 +1411,15 @@ func _handle_cmdline() -> void:
 	if autoquit >= 0.0:
 		await get_tree().create_timer(autoquit).timeout
 		Audio.quit_game()
+
+## Dev `--shottapes=all|none|ID,ID…` (K4, zestawy taśm): archiwum taśm profilu tylko w pamięci (bez zapisu) — zrzuty pamiątek w kwaterach.
+func _dev_tapes(spec: String) -> void:
+	var t := {}
+	for id in (Tapes.ORDER if spec == "all" else (Array() if spec == "none" else Array(spec.split(",", false)))):
+		if Tapes.has(String(id)):
+			t[String(id)] = true
+	Profile.tapes = t
+	print("[SHOT] taśmy: %s" % ", ".join(PackedStringArray(t.keys())))
 
 ## Test weryfikujący, czy da się wygrać ciszą: podnosimy hałas do progu
 ## przebudzenia stalkera, potem NIE strzelamy i czekamy, aż zasnie (GDD §18).

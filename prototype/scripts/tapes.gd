@@ -61,3 +61,38 @@ static func where(id: String) -> String:
 	if t.is_empty():
 		return ""
 	return "%s — %s" % [String(MAP_CODE.get(t["map"], "?")), TranslationServer.translate(String(SRC_TEXT.get(t["src"], "")))]
+
+# ---------------------------------------------------------------- zestawy (K4): komplet taśm mapy → pamiątka w kwaterach kryjówki
+
+## Mapy z taśmami w kolejności archiwum; pamiątka mapy wisi na ścianie kwater (z1_hub.gd HUB_PROPS „memento”, view3d.gd `_build_memento`),
+## a komplet wszystkich sześciu stawia na stole kwater magnetofon szpulowy („recorder”). Czysto kosmetyczne i lokalne: liczy się archiwum
+## profilu gracza (Profile.tapes), więc każdy w co-opie widzi w kryjówce własne pamiątki.
+const SET_MAPS := ["z1_m1", "z1_m2", "z1_m3"]
+## Nazwa pamiątki mapy (komunikat o komplecie, statystyka „Set” w archiwum).
+const MEMENTO := {"z1_m1": "The patrol photo", "z1_m2": "The station map", "z1_m3": "The Store floor plan"}
+
+## Taśmy mapy w kolejności ORDER.
+static func set_of(map_id: String) -> Array:
+	var out: Array = []
+	for id in ORDER:
+		if String(TAPES[id]["map"]) == map_id:
+			out.append(String(id))
+	return out
+
+## Ile taśm mapy jest w archiwum `owned` (Profile.tapes: id → true).
+static func set_count(map_id: String, owned: Dictionary) -> int:
+	var n := 0
+	for id in set_of(map_id):
+		if owned.has(id):
+			n += 1
+	return n
+
+static func set_complete(map_id: String, owned: Dictionary) -> bool:
+	var s := set_of(map_id)
+	return not s.is_empty() and set_count(map_id, owned) == s.size()
+
+static func all_complete(owned: Dictionary) -> bool:
+	for id in ORDER:
+		if not owned.has(id):
+			return false
+	return true

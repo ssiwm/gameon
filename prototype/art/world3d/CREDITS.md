@@ -49,3 +49,5 @@ Obecna tekstura kontra trzej kandydaci po tym samym gradingu, potem zrzuty w grz
 | plank, post, grate | bez porównania | to tylko zapas, gdy brak modelu kładki lub słupa |
 
 Modele: las ze skanów z samą decymacją (`fir_tree_01` 7,8 mln trójkątów — od 1.7.545 użyty po zamianie igieł na karty, patrz wyżej; `fir_sapling` i `pine_sapling_small` po uproszczeniu do 9 tys. to wiotkie szkielety) i lampy (modele Poly Haven nie mają emisji, a lampy map są spięte z `lamp.gd`, `_sync_lamps` i `_scan_lights`) odrzucone — zostają świerki z kart i lampa z Tripo.
+
+Pamiątki kwater (`memento_patrol.png`, `memento_station.png`, `memento_sklad.png`, od 1.7.609): rysowane proceduralnie przez `prototype/tools/gen_mementos.py` (PIL), bez cudzych zdjęć.

@@ -169,8 +169,16 @@ static func tape_view(e: Dictionary) -> Dictionary:
 		v["text"] = "A lost tape. Find it on a mission to learn what it holds."
 		return v
 	v["tag"] = "%s  ·  %s" % [_t(String(t["who"])), _t(String(t["date"]))]
-	v["stats"] = [["Found", Tapes.where(id)]]
+	v["stats"] = [["Found", Tapes.where(id)], ["Set", set_text(String(t["map"]))]]
 	return v
+
+## Statystyka „Set” zebranej taśmy (K4): „1 / 2” albo „Complete — see quarters” (przetłumaczone).
+static func set_text(map_id: String) -> String:
+	var n := Tapes.set_count(map_id, Profile.tapes)
+	var all := Tapes.set_of(map_id).size()
+	if n >= all:
+		return _t("Complete — see quarters")
+	return "%d / %d" % [n, all]
 
 ## Licznik zabójstw ma sens dla wrogów z enemy_defs.gd (Stalker jest nieśmiertelny, gniazd i bossów nie liczy server_award_kill).
 static func _counts_kills(id: String) -> bool:
