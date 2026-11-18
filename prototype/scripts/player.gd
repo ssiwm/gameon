@@ -79,6 +79,8 @@ const BOT_FIRE_HALF := 3.0      ## px: połowa szerokości toru przy końcu prom
 const BOT_FIRE_CONE := 1.5      ## °: rozchylenie skrajnych promieni (rozrzut M-83 bota 0,8° + zapas)
 const BOT_EVADE_RANGE := 46.0   ## wróg bliżej niż tyle: bot rozważa unik
 const BOT_CHOP_R := 80.0        ## px: z tej odległości od przegrody, którą rąbie dowódca, bot podchodzi rąbać razem z nim
+const BOT_GUARD_GAP := 18.0     ## px: bot pilnujący kopiącego (K3) stoi tyle za nim, po stronie z dala od czoła wykopu
+const BOT_GUARD_R := 40.0       ## px: dowódca najwyżej tyle od miejsca ostatniego ciosu w strefę, za której ścianą drapie
 const BOT_CAR_LAG := 150.0      ## drezyna (handcar.gd): bot dalej od niej niż tyle px, gdy już jedzie, goni ją...
 const BOT_CAR_LAG_T := 1.5      ## ... i po tylu sekundach bez dogonienia ląduje na pokładzie (bot chodzi wolniej niż drezyna)
 const BOT_KITE_RANGE := 30.0    ## ... i cofa się, gdy jest bliżej niż to (strzela w biegu, M-83 nie ma minimalnego zasięgu)
@@ -1935,6 +1937,13 @@ func _bot_brain(delta: float) -> void:
 			aim_dir = Vector2(side, 0.0)
 			if weapons.state != WeaponController.State.MELEE and weapons.cd <= 0.0:
 				weapons.try_melee()
+	# K3: za ścianą strefy wydobycia drapie — bot staje za kopiącym dowódcą i celuje w czoło wykopu (stamtąd wyjdą wrogowie)
+	var guard := dig_guard_side(leader) if chop == null and not reviving and not on_deck and spit_x == INF and is_on_floor() \
+		and _nearest_enemy(BOT_EVADE_RANGE) == null else 0.0
+	if guard != 0.0:
+		var gx: float = leader.global_position.x - guard * BOT_GUARD_GAP - global_position.x
+		velocity.x = signf(gx) * SPEED * 0.6 if absf(gx) > 4.0 else 0.0
+		aim_dir = Vector2(guard, 0.0)
 	_bot_check_stuck(delta, done or reviving)
 	# odrzut (np. od pocisku kolegi) działa też na bota
 	_kick = move_toward(_kick, 0.0, KICK_DECAY * delta)
@@ -1963,6 +1972,18 @@ func _bot_brain(delta: float) -> void:
 		if weapons.cd <= 0.0 and _aim_ok(d) and _bot_may_fire(d) and los == Los.CLEAR and stun_t <= 0.0:
 			# Boty symulowane są tylko na serwerze; serwer gra też ich dźwięk i efekty.
 			weapons.bot_fire(aim_dir)
+
+## K3: strona czoła wykopu (±1), którego bot pilnuje: dowódca kopie w strefie, za której ścianą drapie (etap 1–2; dig_zone.gd `wake_stage`),
+## najwyżej BOT_GUARD_R od ostatniego ciosu, a bot jest na jego poziomie. Inaczej 0. Stan budzenia zna tylko serwer — tam też myśli bot.
+func dig_guard_side(leader: Node2D) -> float:
+	if leader == null or leader.dead or absf(global_position.y - leader.global_position.y) > 24.0:
+		return 0.0
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		var st := int(z.get("wake_stage"))
+		var at: Vector2 = z.get("wake_at")
+		if (st == 1 or st == 2) and at != Vector2.INF and leader.global_position.distance_to(at) < BOT_GUARD_R:
+			return float(z.get("wake_side"))
+	return 0.0
 
 ## Przegroda, którą dowódca właśnie rąbie (cios wręcz przy niej, na jego poziomie), jeśli bot ją weźmie — kilofem, który ma każdy (B1),
 ## albo bronią białą (`breakable.gd: breaks`) — i stoi po tej samej stronie, nie dalej niż BOT_CHOP_R. Inaczej null. Czym bić, wybiera

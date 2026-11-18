@@ -80,6 +80,8 @@ func run(m: Node2D) -> void:
 	Director.set_process(false)
 	zone.cracks_on = false                     # szczeliny (K2) zmieniają kęs — liczby ciosów na materiał liczone bez nich; sekcja K2 je włącza
 	rock.cracks_on = false
+	zone.wakes_on = false                      # budzenie wrogów (K3) też — sekcja K3 je włącza
+	rock.wakes_on = false
 	pick = Weapons.index_of("kilof")
 	blade = Weapons.index_of("maczeta")
 	NoiseMgr.noise_added.connect(_on_noise)
@@ -102,6 +104,7 @@ func run(m: Node2D) -> void:
 	await _pools()
 	await _loot_k1()
 	await _signals_k2()
+	await _wake_k3()
 	await _signals()
 	await _collapse()
 	await _slope()
@@ -1475,6 +1478,117 @@ func _signals_k2() -> void:
 		zone.cracks_on = false
 		player.mouse_aim = ma0
 	player.scan_left = scan0
+	_place_player(pp0)
+	level.reset_breakables()
+	await _frames(0.1)
+
+# ---------------------------------------------------------------- 11b. K3: kopanie budzi wrogów
+
+## DIG_LOOT_PLAN.md K3 „coś drapie”: licznik ciosów (prawdziwy cios liczy), zapowiedzi na progach, spadek w ciszy i ponowna zapowiedź,
+## bot pilnuje strony czoła, wyjście z kieszeni za czołem (wrogowie w powietrzu, na łowach), raz na strefę, dziennik, rodzaje wg mapy, wipe.
+func _wake_k3() -> void:
+	level.reset_breakables()
+	level.clear_pickups()
+	await _frames(0.1)
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "dig_k3"})
+	var space := zone.get_world_2d().direct_space_state
+	var zr: Rect2 = zone.rect_px()
+	var pp0: Vector2 = player.global_position
+	zone.wakes_on = true
+	check("K3: progi %d / %d / %d, na 1.3 Ślepiec, gdzie indziej para Trzosków" % [DigZone.WAKE_SCRATCH, DigZone.WAKE_NEAR, DigZone.WAKE_EMERGE],
+		DigZone.wake_stage_for(DigZone.WAKE_SCRATCH - 1) == 0 and DigZone.wake_stage_for(DigZone.WAKE_SCRATCH) == 1
+		and DigZone.wake_stage_for(DigZone.WAKE_NEAR) == 2 and DigZone.wake_stage_for(DigZone.WAKE_EMERGE) == 3
+		and DigZone.wake_kinds("z1_m3") == ["slepiec"] and DigZone.wake_kinds("z1_m1") == ["trzosek", "trzosek"])
+	# prawdziwy cios liczy się do budzenia; wyłączone (testy liczby ciosów) — nie
+	var d0: Dictionary = zone.melee_dig(space, Vector2(zr.position.x + 24.0, TOP - 9.0), Vector2.DOWN, 24.0, DigMats.Tool.PICK)
+	var h1: float = zone.wake_hits
+	zone.wakes_on = false
+	zone.melee_dig(space, Vector2(zr.position.x + 24.0, TOP + 3.0), Vector2.DOWN, 24.0, DigMats.Tool.PICK)
+	var h2: float = zone.wake_hits
+	zone.wakes_on = true
+	check("K3: cios w strefę liczy się do budzenia (%.0f), przy wakes_on = false nie (%.0f)" % [h1, h2], not d0.is_empty() and h1 == 1.0 and h2 == 1.0)
+	# komora z czołem po prawej: kieszeń tuż za nim, na wysokości stóp
+	var cx: float = zr.get_center().x - 16.0
+	zone.apply_dig(Vector2(cx, TOP + 22.0), Vector2(18.0, 14.0), 0.0, DigMats.Tool.BLAST)
+	var feet := Vector2(cx, TOP + 36.0)
+	var spot: Array = zone.wake_spot(feet, Vector2.RIGHT)
+	var sp: Vector2 = spot[0]
+	check("K3: kieszeń za czołem po stronie ciosu, w skale, dno na wysokości stóp (%s, za czołem %s, strona %.0f)" % [str(sp.round()), str(spot[1]), float(spot[2])],
+		bool(spot[1]) and float(spot[2]) == 1.0 and sp.x > cx + 18.0 and zone.solid_at_px(sp) and absf(sp.y + DigZone.WAKE_POCKET.y - feet.y) < 0.5)
+	var spot_l: Array = zone.wake_spot(feet, Vector2.LEFT)
+	check("K3: cios w lewo — kieszeń po lewej (%s)" % str((spot_l[0] as Vector2).round()), float(spot_l[2]) == -1.0 and (spot_l[0] as Vector2).x < cx - 18.0)
+	# zapowiedzi: drapanie na WAKE_SCRATCH, cisza wcześniej
+	var fx0: int = zone.wake_fx
+	while zone.wake_hits < float(DigZone.WAKE_SCRATCH - 1):
+		zone._wake_hit(feet, Vector2.RIGHT)
+	var quiet_ok: bool = zone.wake_stage == 0 and zone.wake_fx == fx0
+	zone._wake_hit(feet, Vector2.RIGHT)
+	await _frames(0.05)
+	check("K3: przed progiem cisza, na %d. ciosie drapanie u każdego peera (etap %d, efektów %d)" % [DigZone.WAKE_SCRATCH, zone.wake_stage, zone.wake_fx - fx0],
+		quiet_ok and zone.wake_stage == 1 and zone.wake_fx == fx0 + 1 and zone.wake_fx_last == 1)
+	player.global_position = feet
+	check("K3: kopiący blisko strefy dostaje napis „coś drapie”", Msg.has("dig.wake.%s" % zone.name))
+	var guard1: float = player.dig_guard_side(player)
+	# cisza: licznik spada, zapowiedź gaśnie WAKE_DROP ciosów pod progiem, następna seria zapowiada od nowa
+	zone.wake_quiet = DigZone.WAKE_CALM + 0.1
+	zone._tick_wake(DigZone.WAKE_DECAY * float(DigZone.WAKE_DROP + 1))
+	var calm_stage: int = zone.wake_stage
+	var calm_hits: float = zone.wake_hits
+	var guard0: float = player.dig_guard_side(player)
+	fx0 = zone.wake_fx
+	while zone.wake_stage == 0:
+		zone._wake_hit(feet, Vector2.RIGHT)
+	check("K3: w ciszy licznik spada (%.1f), zapowiedź gaśnie, kolejna seria drapie znów (efektów %d)" % [calm_hits, zone.wake_fx - fx0],
+		calm_stage == 0 and calm_hits < float(DigZone.WAKE_SCRATCH - DigZone.WAKE_DROP) and zone.wake_stage == 1 and zone.wake_fx == fx0 + 1)
+	check("K3: bot pilnuje strony czoła, gdy dowódca kopie przy drapaniu (%.0f), bez drapania nie (%.0f)" % [guard1, guard0], guard1 == 1.0 and guard0 == 0.0)
+	while zone.wake_stage < 2:
+		zone._wake_hit(feet, Vector2.RIGHT)
+	await _frames(0.05)
+	check("K3: na %d. ciosie bliżej (etap 2, efekt %d)" % [DigZone.WAKE_NEAR, zone.wake_fx_last], zone.wake_stage == 2 and zone.wake_fx_last == 2 and int(zone.wake_hits) == DigZone.WAKE_NEAR)
+	# wyjście: kopiący poza strefą (wrogowie idą na miejsce ostatniego ciosu, nie na gracza)
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	var solid0: int = _solid_count(zone)
+	while zone.wake_stage < 3:
+		zone._wake_hit(feet, Vector2.RIGHT)
+	await _frames(0.1)
+	var names: Array = zone.wake_spawned.duplicate()
+	var ok_out := names.size() == 2
+	var where := []
+	for n in names:
+		var e := level.get_node_or_null(String(n)) as Node2D
+		ok_out = ok_out and e != null and String(e.kind) == "trzosek" and bool(e.alive) and bool(e.active) and e.is_in_group("roamers")
+		if e != null:
+			where.append(e.global_position.round())
+			ok_out = ok_out and zr.grow(2.0).has_point(e.global_position) and not zone.solid_at_px(e.global_position + Vector2(0, -7))
+	check("K3: na %d. ciosie z kieszeni za czołem wychodzi para Trzosków — w powietrzu, na łowach (%s)" % [DigZone.WAKE_EMERGE, str(where)],
+		ok_out and _solid_count(zone) < solid0 and not zone.solid_at_px(sp) and zone.wake_fx_last == 3)
+	await _shot("k3_emerge", Callable(), 0.4)
+	await _frames(0.4)
+	var stuck := false
+	for n in names:
+		var e := level.get_node_or_null(String(n)) as Node2D
+		stuck = stuck or (e != null and zone.solid_at_px(e.global_position + Vector2(0, -7)))
+	check("K3: po 0,5 s nikt nie utknął w skale", not stuck)
+	var fx3: int = zone.wake_fx
+	for _i in 5:
+		zone._wake_hit(feet, Vector2.RIGHT)
+	zone.wake_quiet = 999.0
+	zone._tick_wake(10.0)
+	check("K3: raz na strefę — dalsze ciosy i cisza nic nie zmieniają", zone.wake_stage == 3 and zone.wake_spawned == names and zone.wake_fx == fx3)
+	var row: Dictionary = SessionLog.dig_summary().get(String(zone.name), {})
+	check("K3: dziennik — `woke` w mission_end.dig (%s)" % str(row.get("woke", "-")), int(row.get("woke", 0)) == 1)
+	for n in names:
+		var e := level.get_node_or_null(String(n))
+		if e != null:
+			e.queue_free()
+	SessionLog.mission_end({"result": "test"})
+	zone.reset_to(PackedByteArray())
+	await _frames(0.1)
+	check("K3: wipe — strefa znów może obudzić", zone.wake_stage == 0 and zone.wake_hits == 0.0 and zone.wake_spawned.is_empty())
+	zone.wakes_on = false
+	player.hp = player.MAX_HP
 	_place_player(pp0)
 	level.reset_breakables()
 	await _frames(0.1)
