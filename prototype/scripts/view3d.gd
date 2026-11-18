@@ -16,6 +16,7 @@ extends Node2D
 const Level3D := preload("res://scripts/level3d.gd")
 const Building3D := preload("res://scripts/building3d.gd")
 const DamageMask := preload("res://scripts/damage_mask.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 const Lights := preload("res://scripts/lights.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
 const DigGround := preload("res://scripts/dig_ground.gd")
@@ -2531,6 +2532,16 @@ func _sync_hub_props() -> void:
 				(d["light"] as OmniLight3D).light_energy = 0.5 + 1.6 * k
 			"stove":
 				(d["light"] as OmniLight3D).light_energy = 1.3 * HubProp.stove_light(t)
+			"memento":
+				(d["root"] as Node3D).visible = Tapes.set_complete(String(d["map"]), Profile.tapes)   # zestaw taśm K4: archiwum lokalnego gracza
+			"recorder":
+				var on := Tapes.all_complete(Profile.tapes)
+				(d["root"] as Node3D).visible = on
+				if on:
+					var reels: Array = d["reels"]
+					(reels[0] as Node3D).rotation.y = -t * 1.3                   # pełniejsza szpula oddaje taśmę wolniej
+					(reels[1] as Node3D).rotation.y = -t * 1.8
+					(d["vu"] as StandardMaterial3D).emission_energy_multiplier = 1.0 + 0.5 * absf(sin(t * 7.3) * sin(t * 2.9 + 0.4))
 			"window":
 				var fc: String = Weather.forecast
 				var kind_i := 0 if fc == "clear" else (1 if fc == "rain" else (2 if fc == "storm" else 3))
@@ -2699,7 +2710,136 @@ func _build_hub_prop(n: Node2D) -> Dictionary:
 		_build_hatch(root, d)
 	elif kind == "cables":
 		_build_cables(root, n, args)
+	elif kind == "memento":
+		_build_memento(root, args, d)
+	elif kind == "recorder":
+		_build_recorder(root, args, d)
 	return d
+
+# ---------------------------------------------------------------- pamiątki zestawów taśm w kwaterach (DIG_LOOT_PLAN.md K4)
+
+## Obrazki pamiątek (tools/gen_mementos.py) i sposób powieszenia: „frame” — odbitka w drewnianej ramce na sznurku i gwoździu,
+## „tape” — kartka przyklejona taśmą, „pins” — kalka na czterech pinezkach.
+const MEMENTO_ART := {
+	"z1_m1": ["res://art/world3d/memento_patrol.png", "frame"],
+	"z1_m2": ["res://art/world3d/memento_station.png", "tape"],
+	"z1_m3": ["res://art/world3d/memento_sklad.png", "pins"],
+}
+const MEMENTO_W := 0.5                    ## szerokość obrazka [m] (4:3)
+const MEMENTO_WALL := -1.93               ## głębia ściany kwater pod pamiątką [m]
+
+## Pamiątka mapy na ścianie kwater: parametry [mapa, przesunięcie x w px, wysokość środka w m]. Widoczna tylko przy komplecie taśm mapy
+## w archiwum lokalnego gracza (`_sync_hub_props`); budowana od razu, więc komplet zebrany na misji czeka w kryjówce bez przebudowy.
+func _build_memento(root: Node3D, args: Array, d: Dictionary) -> void:
+	var map_id := String(args[0]) if not args.is_empty() else ""
+	root.position.x += (float(args[1]) if args.size() > 1 else 0.0) * PX
+	var y := float(args[2]) if args.size() > 2 else 2.45
+	d["map"] = map_id
+	root.visible = false
+	var art: Array = MEMENTO_ART.get(map_id, ["", "frame"])
+	var w := MEMENTO_W
+	var h := w * 0.75
+	var hang := Node3D.new()                                  # lekko krzywo, jak powieszone ręką
+	hang.position = Vector3(0.0, y, MEMENTO_WALL)
+	hang.rotation.z = [-0.035, 0.02, -0.015][Tapes.SET_MAPS.find(map_id) % 3] if Tapes.SET_MAPS.has(map_id) else 0.0
+	root.add_child(hang)
+	var pm := StandardMaterial3D.new()
+	var tex: Texture2D = load(String(art[0])) if String(art[0]) != "" and ResourceLoader.exists(String(art[0])) else null
+	pm.albedo_texture = tex
+	pm.roughness = 0.55 if art[1] == "frame" else 0.9
+	pm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	var qm := QuadMesh.new()
+	qm.size = Vector2(w, h)
+	var pic := MeshInstance3D.new()
+	pic.mesh = qm
+	pic.material_override = pm
+	pic.layers = LAYER_WORLD
+	pic.position = Vector3(0.0, 0.0, 0.035 if art[1] == "frame" else 0.012)
+	hang.add_child(pic)
+	match String(art[1]):
+		"frame":
+			var wood := _hp_mat(Color(0.20, 0.12, 0.07), 0.0, 0.6)
+			var b := 0.035
+			_ld_box(hang, Vector3(w + 2.0 * b, h + 2.0 * b, 0.012), Vector3(0.0, 0.0, 0.012), wood)              # plecy ramki
+			for sy in [-1.0, 1.0]:
+				_ld_box(hang, Vector3(w + 2.0 * b, b, 0.045), Vector3(0.0, sy * (h + b) * 0.5, 0.03), wood)
+				_ld_box(hang, Vector3(b, h, 0.045), Vector3(sy * (w + b) * 0.5, 0.0, 0.03), wood)
+			var cord := _hp_mat(Color(0.35, 0.3, 0.22), 0.0, 0.9)                                                 # sznurek do gwoździa
+			var top := h * 0.5 + b
+			for sx in [-1.0, 1.0]:
+				var dx := w * 0.2
+				var seg := _ld_box(hang, Vector3(0.006, 0.0, 0.006), Vector3(sx * dx * 0.5, top + 0.06, 0.008), cord)
+				var ln := Vector2(dx, 0.12).length()
+				(seg.mesh as BoxMesh).size = Vector3(0.006, ln, 0.006)
+				seg.rotation.z = atan2(dx, 0.12) * sx
+			_ld_cyl(hang, 0.008, 0.012, Vector3(0.0, top + 0.12, 0.006), _hp_mat(Color(0.25, 0.25, 0.25), 0.8, 0.4))
+		"tape":
+			var tm := _hp_mat(Color(0.78, 0.74, 0.58), 0.0, 0.5)
+			for sx in [-1.0, 1.0]:
+				var tp := _ld_box(hang, Vector3(0.09, 0.03, 0.002), Vector3(sx * (w * 0.5 - 0.02), h * 0.5 - 0.005, 0.014), tm)
+				tp.rotation.z = -0.6 * sx
+		"pins":
+			var red := _hp_mat(Color(0.75, 0.08, 0.06), 0.1, 0.4)
+			for sx in [-1.0, 1.0]:
+				for sy in [-1.0, 1.0]:
+					var pin := MeshInstance3D.new()
+					var sm := SphereMesh.new()
+					sm.radius = 0.012
+					sm.height = 0.024
+					pin.mesh = sm
+					pin.material_override = red
+					pin.layers = LAYER_WORLD
+					pin.position = Vector3(sx * (w * 0.5 - 0.025), sy * (h * 0.5 - 0.025), 0.022)
+					hang.add_child(pin)
+
+## Magnetofon szpulowy na stole kwater za komplet wszystkich taśm: parametry [przesunięcie x w px, wysokość blatu w m, głębia z w m].
+## Szpule kręcą się powoli, wskaźnik wysterowania drga (`_sync_hub_props`); bez dźwięku — taśmy słucha się w archiwum.
+func _build_recorder(root: Node3D, args: Array, d: Dictionary) -> void:
+	root.position.x += (float(args[0]) if not args.is_empty() else 0.0) * PX
+	var y := float(args[1]) if args.size() > 1 else 0.78
+	var z := float(args[2]) if args.size() > 2 else -0.95
+	root.visible = false
+	var rec := Node3D.new()
+	rec.position = Vector3(0.0, y, z)
+	rec.rotation.y = -0.12
+	root.add_child(rec)
+	var case_m := _hp_mat(Color(0.26, 0.29, 0.24), 0.25, 0.5)
+	var deck := _hp_mat(Color(0.55, 0.56, 0.54), 0.7, 0.35)
+	_ld_box(rec, Vector3(0.42, 0.12, 0.30), Vector3(0.0, 0.06, 0.0), case_m)
+	_ld_box(rec, Vector3(0.40, 0.006, 0.28), Vector3(0.0, 0.123, 0.0), deck)                       # płyta z szpulami
+	var spool := _hp_mat(Color(0.10, 0.07, 0.05), 0.1, 0.5)
+	var flange := _hp_mat(Color(0.32, 0.33, 0.35), 0.6, 0.4)
+	var reels: Array = []
+	for sx in [-1.0, 1.0]:
+		var reel := Node3D.new()
+		reel.position = Vector3(sx * 0.1, 0.126, -0.03)
+		rec.add_child(reel)
+		_ld_cyl(reel, 0.062 if sx < 0.0 else 0.045, 0.012, Vector3(0.0, 0.008, 0.0), spool)        # nawinięta taśma (lewa pełniejsza)
+		_ld_cyl(reel, 0.078, 0.003, Vector3(0.0, 0.016, 0.0), flange)
+		_ld_cyl(reel, 0.016, 0.022, Vector3(0.0, 0.012, 0.0), deck)
+		for k in 3:                                                                               # szprychy: widać obrót
+			var sp := _ld_box(reel, Vector3(0.11, 0.004, 0.012), Vector3(0.0, 0.019, 0.0), _hp_mat(Color(0.12, 0.12, 0.13), 0.5, 0.5))
+			sp.rotation.y = float(k) * PI / 3.0
+		reels.append(reel)
+	_ld_box(rec, Vector3(0.18, 0.004, 0.003), Vector3(0.0, 0.134, 0.035), spool)                   # taśma między szpulami przez głowicę
+	_ld_box(rec, Vector3(0.05, 0.022, 0.025), Vector3(0.0, 0.137, 0.05), deck)                     # głowica
+	var vu := StandardMaterial3D.new()                                                            # wskaźnik wysterowania (bursztyn)
+	vu.albedo_color = Color(0.3, 0.2, 0.05)
+	vu.emission_enabled = true
+	vu.emission = Color(1.0, 0.62, 0.18)
+	vu.emission_energy_multiplier = 1.2
+	_ld_box(rec, Vector3(0.08, 0.04, 0.004), Vector3(0.1, 0.06, 0.151), vu)
+	var lamp := StandardMaterial3D.new()
+	lamp.albedo_color = Color(0.4, 0.05, 0.03)
+	lamp.emission_enabled = true
+	lamp.emission = Color(1.0, 0.1, 0.06)
+	lamp.emission_energy_multiplier = 2.0
+	_ld_box(rec, Vector3(0.012, 0.012, 0.004), Vector3(0.02, 0.07, 0.151), lamp)                   # lampka nagrywania / odtwarzania
+	for k in 3:
+		var kn := _ld_cyl(rec, 0.013, 0.014, Vector3(-0.15 + float(k) * 0.045, 0.055, 0.155), deck)
+		kn.rotation.x = PI * 0.5
+	d["reels"] = reels
+	d["vu"] = vu
 
 # ---------------------------------------------------------------- meble, właz i kable kryjówki (HUB_LAYOUT_PLAN.md E5)
 

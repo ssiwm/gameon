@@ -44,6 +44,10 @@ const HUB_PROPS := [
 	# kwatery: piecyk przy ścianie, skrytka (H), dwie prycze piętrowe (cztery miejsca, tyle co graczy), stół ze stołkami pod tablicą wyników (v)
 	["stove", 1, 14, [-1, -1.3]], ["bunk", 3, 14, [4, -1.3]], ["bunk", 5, 14, [-3, -1.3]],
 	["table", 7, 14, [0, -0.95]], ["stool", 6, 14, [-2, -0.7]], ["stool", 8, 14, [2, -0.7]],
+	# zestawy taśm (DIG_LOOT_PLAN.md K4): pamiątki map nad pryczami [mapa, przesunięcie px, wysokość m] i magnetofon na stole kwater
+	# [przesunięcie px, blat m, głębia m] — widoczne tylko przy komplecie taśm w archiwum lokalnego gracza (view3d.gd `_sync_hub_props`)
+	["memento", 3, 14, ["z1_m1", -2, 2.45]], ["memento", 4, 14, ["z1_m2", 0, 2.38]], ["memento", 5, 14, ["z1_m3", 2, 2.45]],
+	["recorder", 7, 14, [2, 0.78, -0.82]],
 	["shelf_b", 1, 9, [-3, -1.5]],                           # śluza: regał na sprzęt przy wejściu
 	["chair", 43, 9, [10, -0.95, true]],                     # krzesło przy radiostacji
 	# pion: zamknięty właz w stropie (zapowiedź poziomu wyżej) i kanał kablowy od niego do radiostacji (antena)

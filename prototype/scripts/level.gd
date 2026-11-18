@@ -2400,6 +2400,18 @@ func _tape_rpc(idx: int) -> void:
 	var fresh: bool = Profile.add_tape(id)
 	Msg.post("level.tape.%s" % id, Msg.Ch.TOAST, tr("Tape: %s") % tr(String(Tapes.data(id)["title"])),
 		{"sub": tr("New in the Archive (pause menu)") if fresh else tr("Already in your Archive"), "style": Msg.Style.LORE, "ttl": 4.0, "prio": 50})
+	if fresh:
+		_tape_set_msg(id)
+
+## Nowa taśma domknęła zestaw (K4): komplet mapy — pamiątka na ścianie kwater, wszystkie sześć — magnetofon na stole kwater.
+func _tape_set_msg(id: String) -> void:
+	var map_id := String(Tapes.data(id).get("map", ""))
+	if Tapes.all_complete(Profile.tapes):
+		Msg.post("level.tape.all", Msg.Ch.TOAST, tr("All tapes found"),
+			{"sub": tr("A reel-to-reel recorder waits on the quarters table"), "style": Msg.Style.LORE, "ttl": 5.0, "prio": 52})
+	elif Tapes.set_complete(map_id, Profile.tapes):
+		Msg.post("level.tape.set.%s" % map_id, Msg.Ch.TOAST, tr("Tape set complete: %s") % String(Tapes.MAP_CODE.get(map_id, "?")),
+			{"sub": tr("%s now hangs in the quarters") % tr(String(Tapes.MEMENTO.get(map_id, ""))), "style": Msg.Style.LORE, "ttl": 5.0, "prio": 51})
 
 ## Serwer: przedmiot podniesiony — znika u wszystkich. `quiet` — bez dźwięku podniesienia (np. stary magazynek sprzątany z mapy).
 func take_item(n: String, quiet := false) -> void:

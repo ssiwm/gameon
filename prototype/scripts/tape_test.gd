@@ -58,6 +58,7 @@ func run(m: Node2D) -> void:
 	await _stash()
 	await _archive()
 	_save_load()
+	await _sets()
 	await _shots()
 	_finish()
 
@@ -385,6 +386,57 @@ func _save_load() -> void:
 	Profile.load_from(path)
 	check("zapis profilu: taśmy wracają po odczycie (%s)" % str(Profile.tapes.keys()), Profile.has_tape("m1_dig") and Profile.has_tape("m1_box") and Profile.tapes.size() == 2)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+# ---------------------------------------------------------------- 5b. zestawy taśm (K4): pamiątki w kwaterach
+
+func _sets() -> void:
+	var ok_sets := true
+	for map_id in Tapes.SET_MAPS:
+		var st := Tapes.set_of(String(map_id))
+		ok_sets = ok_sets and st.size() == 2 and Tapes.MEMENTO.has(map_id) and String(Tapes.data(String(st[0]))["map"]) == String(map_id)
+	check("zestawy: 3 mapy po 2 taśmy, każda z nazwą pamiątki", ok_sets and Tapes.SET_MAPS.size() * 2 == Tapes.ORDER.size())
+	var hub: Array = (load("res://scripts/maps/z1_hub.gd") as GDScript).get_script_constant_map().get("HUB_PROPS", [])
+	var art: Dictionary = (load("res://scripts/view3d.gd") as GDScript).get_script_constant_map().get("MEMENTO_ART", {})
+	var maps_on_wall := {}
+	var recorders := 0
+	for hp in hub:
+		if String(hp[0]) == "memento":
+			maps_on_wall[String(hp[3][0])] = int(hp[2])
+		elif String(hp[0]) == "recorder":
+			recorders += 1
+	var ok_hub := recorders == 1 and maps_on_wall.size() == 3
+	for map_id in Tapes.SET_MAPS:
+		ok_hub = ok_hub and maps_on_wall.get(map_id, -1) == 14 and art.has(map_id) and ResourceLoader.exists(String(art[map_id][0]))
+	check("kwatery: pamiątka każdej mapy na ścianie (wiersz 14, obrazek z gen_mementos.py) i jeden magnetofon", ok_hub)
+	# po _archive w archiwum są obie taśmy 1.1
+	var owned := {"m1_dig": true}
+	check("zestaw niepełny: 1 / 2, bez kompletu", Tapes.set_count("z1_m1", owned) == 1 and not Tapes.set_complete("z1_m1", owned))
+	check("zestaw 1.1 pełny w archiwum gracza, 1.2 i całość nie", Tapes.set_complete("z1_m1", Profile.tapes)
+		and not Tapes.set_complete("z1_m2", Profile.tapes) and not Tapes.all_complete(Profile.tapes))
+	var ar := Codex.archive()
+	var got := Codex.tape_view(ar[Tapes.index_of("m1_box")])
+	check("archiwum: statystyka zestawu „komplet” przy pełnym (%s)" % String(got["stats"][1][1]), got["stats"].size() == 2
+		and String(got["stats"][1][1]) == TranslationServer.translate("Complete — see quarters"))
+	# komunikaty: druga taśma 1.2 domyka zestaw, ostatnia — wszystkie
+	level._tape_rpc(Tapes.index_of("m2_dig"))
+	check("pierwsza taśma 1.2: bez komunikatu o komplecie, w archiwum „1 / 2”", not Msg.has("level.tape.set.z1_m2")
+		and String(Codex.tape_view(ar[Tapes.index_of("m2_dig")])["stats"][1][1]) == "1 / 2")
+	level._tape_rpc(Tapes.index_of("m2_box"))
+	check("druga taśma 1.2: komunikat o komplecie i pamiątce", Msg.has("level.tape.set.z1_m2") and not Msg.has("level.tape.all"))
+	level._tape_rpc(Tapes.index_of("m3_dig"))
+	level._tape_rpc(Tapes.index_of("m3_stash"))
+	check("ostatnia taśma: komunikat o wszystkich (magnetofon), komplet", Msg.has("level.tape.all") and Tapes.all_complete(Profile.tapes))
+	var n := Msg.has("level.tape.all")
+	level._tape_rpc(Tapes.index_of("m3_stash"))                 # znana taśma: bez nowych komunikatów zestawu
+	check("znana taśma nie ogłasza zestawu drugi raz", n and Profile.tapes.size() == 6)
+	var pl := TranslationServer.get_translation_object("pl")
+	var ok_pl := pl != null
+	for k in ["Set", "Complete — see quarters", "All tapes found", "A reel-to-reel recorder waits on the quarters table",
+			"Tape set complete: %s", "%s now hangs in the quarters"] + Tapes.MEMENTO.values():
+		ok_pl = ok_pl and String(pl.get_message(String(k))) != ""
+	check("zestawy: tłumaczenia PL", ok_pl)
+	for id in ["m2_dig", "m2_box", "m3_dig", "m3_stash"]:
+		Profile.tapes.erase(id)
 
 # ---------------------------------------------------------------- 6. zrzuty (okno)
 
