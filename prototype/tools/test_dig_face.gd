@@ -346,5 +346,6 @@ func _maps(px: float) -> void:
 					absf(pp.y - ps.y * 0.5 - floor_m) < 0.01 and (pp.x - wall) * out - ps.x * 0.5 > 0.0 and h > 2.0 and h < 8.0)
 			z.free()
 	print("[DIG-FACE] mapy: stref %d, odrzwia na %s" % [n, framed])
-	_check("strefy na mapach gry sprawdzone (1.1, 1.2, 1.3)", n >= 3)
-	_check("odrzwia tylko w niskim korytarzu z obudową (1.2), nie w salach 1.1 i 1.3", framed == ["z1_m2"])
+	_check("strefy na mapach gry sprawdzone (po dwie na 1.1, 1.2, 1.3 — DIG_LOOT_PLAN.md K5)", n >= 6)
+	_check("odrzwia tylko w niskich korytarzach z obudową (1.1: bunkier na końcu dolnej galerii, 1.2: obie strefy), nie w salach 1.1 i 1.3",
+		framed == ["z1_m1", "z1_m2", "z1_m2"])

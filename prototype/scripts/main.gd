@@ -4697,6 +4697,12 @@ func _map_test() -> void:
 			else:
 				print("[MAPTEST] %s: %s wejście x %.0f, grunt y %.0f, skała %s" % [id, z.name, float(ent["wall_x"]), float(ent["floor_y"]),
 					["pod stopami", "w prawo", "w lewo"][0 if int(ent["dir"]) == 0 else (1 if int(ent["dir"]) > 0 else 2)]])
+		if id in ["z1_m1", "z1_m2", "z1_m3"]:                    # K5: dwie strefy na mapę kampanii — krótka (1 znajdźka, bez budzenia) i głęboka
+			var zs: Array = level.dig_zones()
+			var short_n := zs.filter(func(z: Node) -> bool: return not bool(z.wakes_on) and (z.finds as Array).size() == 1).size()
+			var deep_n := zs.filter(func(z: Node) -> bool: return bool(z.wakes_on)).size()
+			if zs.size() != 2 or short_n != 1 or deep_n != 1:
+				dig_bad.append("K5: %d stref (krótkich %d, głębokich %d) — powinny być 2: krótka z 1 znajdźką bez budzenia i głęboka" % [zs.size(), short_n, deep_n])
 		for msg in dig_bad:
 			print("[MAPTEST] %s: BŁĄD strefy wydobycia: %s" % [id, msg])
 		fails += dig_bad.size()

@@ -67,6 +67,8 @@ const ROW_H := 68.0              ## dolny rząd: karty drużyny i ekwipunku (jed
 const TOP_H := 55.0              ## górny rząd: hałas, cel i RUN mają wspólną wysokość (dolne krawędzie się pokrywają)
 ## Kolory slotów = kolory kurtek sprite'ów graczy (bake_sprites.PLAYER_VARIANTS).
 const SLOT_COLORS := [Color(0.91, 0.62, 0.22), Color(0.25, 0.72, 0.85), Color(0.86, 0.28, 0.36), Color(0.45, 0.80, 0.30)]
+const DIG_SEEN_R := 220.0          ## px: tak blisko wejścia strefy wydobycia (i bez ściany na linii wzroku) lokalny gracz „zauważa” jej znak (K5)
+const DIG_MARK_COL := Color(0.72, 0.56, 0.36)   ## znacznik strefy wydobycia na rzucie mapy (kolor urobku)
 const BOT_COLOR := Color(0.58, 0.60, 0.66)
 
 ## Horizontal bar with optional threshold ticks.
@@ -481,6 +483,7 @@ var _obj_text: Label
 var _obj_hint: Label
 var _boss_row: VBoxContainer
 var _minimap: MiniMap                ## rzut mapy w górnym środku (zastąpił pasek kierunku)
+var _dig_seen := {}                  ## K5: strefy wydobycia, których znak lokalny gracz już widział („id poziomu/nazwa” → true)
 var _toast_box: VBoxContainer        ## opis celu (podpis, tekst, podpowiedź): pokazuje się na zmianę celu, potem gaśnie
 var _toast_t := 0.0
 var _toast_sig := ""
@@ -1809,7 +1812,35 @@ func _drive_strip(m: Node) -> void:
 		var slot := ((int(pl.display_id) - 1) % 4) + 1
 		var col: Color = UiTheme.DANGER if pl.dead else (Color("8d8a7c") if pl.is_bot else SLOT_COLORS[slot - 1])
 		mk.append({"pos": (pl as Node2D).global_position, "kind": "down" if pl.dead else "mate", "label": String(pl.label()).substr(0, 8), "col": col})      # rzut mapy: krótko
+	_dig_marks(mk)
 	_minimap.markers = mk
+
+## K5 (DIG_LOOT_PLAN.md): wejścia stref wydobycia na rzucie mapy — od chwili, gdy lokalny gracz zobaczył znak strefy (kilof przy wejściu:
+## najwyżej DIG_SEEN_R px i bez ściany na linii wzroku), póki w strefie leży zakopana znajdźka.
+func _dig_marks(mk: Array) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null or not lvl.has_method("dig_zones"):
+		return
+	var space: PhysicsDirectSpaceState2D = _player.get_world_2d().direct_space_state
+	for z in lvl.dig_zones():
+		var at: Vector2 = z.sign_point()
+		if at == Vector2.INF:
+			continue
+		var key := "%d/%s" % [lvl.get_instance_id(), z.name]
+		if not _dig_seen.has(key):
+			var eye: Vector2 = _player.global_position + Vector2(0.0, -12.0)
+			if eye.distance_to(at) > DIG_SEEN_R:
+				continue
+			if not space.intersect_ray(PhysicsRayQueryParameters2D.create(eye, at, 1)).is_empty():
+				continue
+			_dig_seen[key] = true
+		if int(z.buried_left()) > 0:
+			mk.append({"pos": at, "kind": "dig", "label": tr("DIG"), "col": DIG_MARK_COL})
+
+## K5: czy lokalny gracz zauważył już znak strefy `z` (test).
+func dig_seen(z: Node) -> bool:
+	var lvl := get_tree().get_first_node_in_group("level")
+	return lvl != null and _dig_seen.has("%d/%s" % [lvl.get_instance_id(), z.name])
 
 ## Karta informacyjna: tytuł, podpis, siatka wierszy i opis. `cols` = liczba kolumn siatki (2 = etykieta + wartość).
 ## `paper`: karta przy obiekcie świata — papier z tekstem tuszem i ogonkiem wskazującym obiekt (zamiast ciemnego panelu HUD).

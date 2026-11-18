@@ -33,7 +33,7 @@ void fragment() {
 """
 
 var player_pos := Vector2.ZERO     ## pozycja gracza w świecie [px]
-var markers: Array = []            ## [{pos: Vector2 świata, kind: "obj" | "exit" | "mate" | "down", label: String, col: Color}]
+var markers: Array = []            ## [{pos: Vector2 świata, kind: "obj" | "exit" | "mate" | "down" | "dig", label: String, col: Color}]
 
 var _lvl = null                    ## level.gd (bez typu: pola prywatne siatki czytamy dynamicznie)
 var _sig := ""                     ## identyfikator wczytanej mapy (instancja poziomu + id mapy)
@@ -261,9 +261,11 @@ func _draw_marks() -> void:
 			col.a = 0.55 + 0.45 * (0.5 + 0.5 * sin(_t * 6.0))
 		if edge:
 			col.a *= 0.6
-		var r := 4.5 if kind == "obj" else 3.5
+		var r := 4.5 if kind == "obj" else (3.0 if kind == "dig" else 3.5)
 		var dia := PackedVector2Array([s + Vector2(0, -r), s + Vector2(r, 0), s + Vector2(0, r), s + Vector2(-r, 0)])
-		if kind == "exit":
+		if kind == "dig":                                  # strefa wydobycia (K5): kwadrat w kolorze urobku, nie romb celu
+			_mark_layer.draw_rect(Rect2(s - Vector2(r, r), Vector2(r, r) * 2.0), col)
+		elif kind == "exit":
 			_mark_layer.draw_polyline(PackedVector2Array([dia[0], dia[1], dia[2], dia[3], dia[0]]), col, 1.2, true)
 		else:
 			_mark_layer.draw_colored_polygon(dia, col)
