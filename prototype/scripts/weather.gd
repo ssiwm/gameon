@@ -32,6 +32,8 @@ static var dev_seed := -1
 
 ## Losuje pogodę wg wag. `rng` opcjonalny (testy).
 static func roll(rng: RandomNumberGenerator = null) -> String:
+	if rng == null and KINDS.has(dev_id):
+		return dev_id                                # dev: --shotweather=ID ustawia też prognozę w kryjówce (zrzuty okna radiostacji)
 	var total := 0
 	for id in KINDS:
 		total += int(KINDS[id]["weight"])
