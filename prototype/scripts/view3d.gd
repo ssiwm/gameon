@@ -1941,12 +1941,13 @@ func _burst_material(cfg: Dictionary) -> StandardMaterial3D:
 
 ## Indeks dekoracji → [model albo lista wariantów (wybór z pozycji), skala]. 0–7 jak w `bake_sprites.PROPS` (kamienie i kości losuje
 ## `level.gd: _place_deco`), 8+ tylko z akcentów map (`ACCENTS`). Kamienie i dekoracje 8+ to skany Poly Haven w naturalnej skali.
+## 17 (zestaw rur `pipes` przy ścianie tła) usunięty 2026-11-18: panel rur stojący na podłodze bez podłączenia nie miał sensu (uwaga z gry).
 const DECO_MODELS := {3: [["rock", "rock_b", "rock_c", "rock", "stump"], 1.0], 4: ["bones", 0.7], 6: ["fence", 0.34], 7: ["logs", 1.0],   ## płot: model ma 6,5 m wysokości — w skali 0,34 ok. 2,2 m
 	8: ["fire_pit", 1.0], 9: ["stump", 1.0], 10: ["trunk_big", 1.0], 11: ["barrel_stove", 1.0], 12: ["mil_crate", 1.0], 13: ["tyre", 1.0],
-	14: ["barrier", 1.0], 15: ["shelf_n", 1.0], 16: ["shelf_b", 1.0], 17: ["pipes", 1.0], 18: ["compressor", 1.0], 19: ["cart", 1.0], 20: ["barrel_n", 1.0], 21: ["jerrycan", 1.0], 22: ["gas_mask", 1.0]}
+	14: ["barrier", 1.0], 15: ["shelf_n", 1.0], 16: ["shelf_b", 1.0], 18: ["compressor", 1.0], 19: ["cart", 1.0], 20: ["barrel_n", 1.0], 21: ["jerrycan", 1.0], 22: ["gas_mask", 1.0]}
 ## Głębokość (z, m) dekoracji stojących w stałym miejscu za płaszczyzną gry; pozostałe leżą losowo w głębi bryły gruntu.
 const DECO_Z := {6: -0.9, 7: -0.9, 8: -0.8, 9: -1.3, 10: -1.9, 11: -0.95, 12: -1.0, 13: -0.85, 14: -0.9,
-	15: -1.4, 16: -1.4, 17: -1.85, 18: -1.3, 19: -1.2, 20: -1.2, 21: -1.1, 22: -1.95}   ## 15–20: wnętrza Składu i Pompowni; rury przy samej ścianie tła (przód ściany ok. −2,1 m)
+	15: -1.4, 16: -1.4, 18: -1.3, 19: -1.2, 20: -1.2, 21: -1.1, 22: -1.95}   ## 15–20: wnętrza Składu i Pompowni
 
 ## Dekoracje z listy poziomu (`level.gd: _deco_list` — te same miejsca co w 2D) jako modele 3D w `MultiMesh`: kamienie i kości rozrzucone w głąb
 ## bryły gruntu, płoty, kłody i akcenty map tuż za płaszczyzną gry. Trzciny (5) mają własne bryły przy cieczach (`Level3D.build_liquid_props`).
