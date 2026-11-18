@@ -1241,7 +1241,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	if not rails.is_empty():
 		var rb := BoxMesh.new()
 		rb.size = Vector3.ONE
-		var rmi := _multimesh(parent, rb, rails, make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"))
+		var rmi := _multimesh(parent, rb, rails, rail_material())
 		rmi.name = "MezzanineRails"
 		rmi.layers = RAIL_LAYER
 	_build_deck_supports(parent, rows, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"),
@@ -2120,6 +2120,117 @@ const RAIL_T := 0.045
 ## stopnie w pionie kryjówki). Oświetlają ją lampy i latarka, kontra postaci nie (`view3d.gd`, maski świateł); wrogów rysuje obraz świata,
 ## więc poręcz przykrywa też ich — tak jak powinna, bo stoją w tej samej płaszczyźnie co gracz.
 const RAIL_LAYER := 512
+## Bryły świata przed balustradą (słupy przekroju, ściany szczytowe budynków 3D, płyty przekroju): balustradę rysuje kamera graczy nad obrazem
+## świata, więc bez tego poręcz wypadała przed słupem stojącym 5 m bliżej kamery (uwaga z gry 2026-11-18, hala stacji 1.2). Shader balustrady
+## odrzuca piksel, gdy odcinek od niego do kamery przecina któryś prostopadłościan (`set_rail_occluders`, najwyżej RAIL_OCC_MAX).
+const RAIL_OCC_MAX := 64
+const RAIL_OCC_REACH := 25.0              ## m: bryły dalej od balustrady (x, y) pomijane
+const RAIL_SHADER := """
+shader_type spatial;
+
+uniform sampler2D alb : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D orm : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform bool use_tex = true;
+uniform vec3 base_col : source_color = vec3(0.28, 0.30, 0.34);
+uniform float per_m = 0.4;
+uniform float metal_k = 0.7;
+uniform vec4 occ_lo[64];
+uniform vec4 occ_hi[64];
+uniform int occ_n = 0;
+
+varying vec3 wpos;
+varying vec3 wnrm;
+
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+}
+
+// odcinek wpos → kamera (t w (0, 1)) przecina prostopadłościan [lo, hi]
+bool blocked(vec3 o, vec3 d, vec3 lo, vec3 hi) {
+	vec3 sd = vec3(d.x >= 0.0 ? 1.0 : -1.0, d.y >= 0.0 ? 1.0 : -1.0, d.z >= 0.0 ? 1.0 : -1.0);
+	vec3 inv = 1.0 / (sd * max(abs(d), vec3(1e-6)));
+	vec3 t1 = (lo - o) * inv;
+	vec3 t2 = (hi - o) * inv;
+	vec3 tn = min(t1, t2);
+	vec3 tf = max(t1, t2);
+	float t0 = max(max(tn.x, tn.y), tn.z);
+	float t9 = min(min(tf.x, tf.y), tf.z);
+	return t9 >= t0 && t0 > 0.0 && t0 < 1.0;
+}
+
+void fragment() {
+	vec3 d = CAMERA_POSITION_WORLD - wpos;
+	for (int i = 0; i < occ_n; i++) {
+		if (blocked(wpos, d, occ_lo[i].xyz, occ_hi[i].xyz)) {
+			discard;
+		}
+	}
+	vec3 n = normalize(wnrm);
+	vec3 bw = pow(abs(n), vec3(4.0));
+	bw /= (bw.x + bw.y + bw.z);
+	vec3 c = base_col;
+	vec2 ar = vec2(1.0, 0.6);
+	float mt = 0.0;
+	if (use_tex) {
+		vec2 ux = wpos.zy * per_m;
+		vec2 uy = wpos.xz * per_m;
+		vec2 uz = wpos.xy * per_m;
+		c = texture(alb, ux).rgb * bw.x + texture(alb, uy).rgb * bw.y + texture(alb, uz).rgb * bw.z;
+		vec3 o = texture(orm, ux).rgb * bw.x + texture(orm, uy).rgb * bw.y + texture(orm, uz).rgb * bw.z;
+		ar = o.rg;
+		mt = o.b * metal_k;
+	}
+	ALBEDO = c;
+	AO = ar.x;
+	ROUGHNESS = ar.y;
+	METALLIC = mt;
+}
+"""
+static var _rail_shader: Shader
+
+## Materiał balustrady antresoli: metal jak `make_pbr("metal", 0.40, …, 0.7)` (rzut trójpłaszczyznowy w metrach świata) i odrzucanie pikseli
+## zasłoniętych bryłami świata (`RAIL_SHADER`).
+static func rail_material() -> ShaderMaterial:
+	if _rail_shader == null:
+		_rail_shader = Shader.new()
+		_rail_shader.code = RAIL_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = _rail_shader
+	var ap := PBR_DIR + "metal_albedo.png"
+	var tex := ResourceLoader.exists(ap) and not "--noworldpbr" in OS.get_cmdline_user_args()
+	m.set_shader_parameter("use_tex", tex)
+	if tex:
+		m.set_shader_parameter("alb", load(ap))
+		if ResourceLoader.exists(PBR_DIR + "metal_orm.png"):
+			m.set_shader_parameter("orm", load(PBR_DIR + "metal_orm.png"))
+	return m
+
+## Prostopadłościany (AABB), które zasłaniają balustradę `MezzanineRails` pod `parent` — wołane po budowie brył budynków (`Building3D.build`).
+## Bez balustrady nic nie robi. Zwraca liczbę przekazanych brył (test).
+static func set_rail_occluders(parent: Node3D, boxes: Array) -> int:
+	var mi := parent.get_node_or_null("MezzanineRails") as MultiMeshInstance3D
+	if mi == null or not (mi.material_override is ShaderMaterial):
+		return 0
+	var lo := PackedVector4Array()
+	var hi := PackedVector4Array()
+	var near := mi.get_aabb().grow(RAIL_OCC_REACH)          # kamera stoi przy graczu: dalsze bryły nie wejdą między poręcz a kamerę
+	for b: AABB in boxes:
+		if b.position.x > near.end.x or b.end.x < near.position.x or b.position.y > near.end.y or b.end.y < near.position.y:
+			continue
+		if lo.size() >= RAIL_OCC_MAX:
+			push_warning("Level3D: więcej niż %d brył przed balustradą — reszta pominięta" % RAIL_OCC_MAX)
+			break
+		lo.append(Vector4(b.position.x, b.position.y, b.position.z, 0.0))
+		hi.append(Vector4(b.end.x, b.end.y, b.end.z, 0.0))
+	var n := lo.size()
+	lo.resize(RAIL_OCC_MAX)
+	hi.resize(RAIL_OCC_MAX)
+	var m := mi.material_override as ShaderMaterial
+	m.set_shader_parameter("occ_lo", lo)
+	m.set_shader_parameter("occ_hi", hi)
+	m.set_shader_parameter("occ_n", n)
+	return n
 static func _mezzanine_rail(out: Array, x0: float, x1: float, y: float, dh: float) -> void:
 	var z := dh - 0.05
 	var n := maxi(1, roundi((x1 - x0) / T))

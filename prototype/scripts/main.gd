@@ -2646,6 +2646,15 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					for k in 6:
 						if rb != null and is_instance_valid(rb) and not rb.is_queued_for_deletion():
 							Combat.apply(rb, Combat.make_info(Weapons.KILOF, 55.0, (rb as Node2D).global_position + Vector2(0, -20), Vector2.RIGHT, 1, "melee")))
+	for a in OS.get_cmdline_user_args():                   # --shotdig=c0,r0,c1,r1: po 1 s wykop w strefach wydobycia (kafle włącznie) — zrzut tunelu bez kopania
+		if a.begins_with("--shotdig="):
+			var q := a.substr("--shotdig=".length()).split(",")
+			if q.size() == 4:
+				var r := Rect2(Vector2(float(q[0]), float(q[1])) * 16.0, Vector2(float(q[2]) - float(q[0]) + 1.0, float(q[3]) - float(q[1]) + 1.0) * 16.0)
+				get_tree().create_timer(1.0).timeout.connect(func() -> void:
+					for z in get_tree().get_nodes_in_group("dig_zones"):
+						for k in 4:
+							z.apply_dig(r.get_center(), r.size * 0.5, 2.0, DigMats.Tool.BLAST))
 	if "--shotscan" in OS.get_cmdline_user_args():
 		var scp: Node2D = _players.get_node_or_null("1")     # --shotscan: skaner Sowa włączony (użyj z --shotat=KOLUMNA przy wrogach)
 		if scp != null:

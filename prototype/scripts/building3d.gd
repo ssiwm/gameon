@@ -29,6 +29,7 @@ const RAIL_X := [0.13, 0.21]               ## m: szyna bramy przesuwnej od lica 
 const WIN := [1.0, 2.35, 1.5]              ## m: okno w głębi ściany szczytowej — parapet nad podłogą, nadproże, szerokość
 const CUT := 0.012                         ## m: grubość nakładki przekroju przed płaszczyzną SHELL_Z
 
+const RAIL_OCC_Z := 0.8                  ## m: bryła zasłania balustradę antresoli tylko, gdy sięga przed nią (poręcz na z ≈ 0,6)
 const CHAMFER := 0.025                     ## m: faza krawędzi brył betonowych (mniejsza przy cienkich elementach)
 
 ## Materiały typu budynku: [klucz tekstury (`world_pbr_import.py`: Poly Haven po gradingu gry), powtórzeń na metr, kolor zastępczy, przyciemnienie,
@@ -95,7 +96,28 @@ static func build(parent: Node3D, rows: Array) -> int:
 		var spec: Dictionary = KINDS.get(kind, KINDS["bunker"])
 		Level3D._multimesh(parent, BoxMesh.new(), walls[kind], _tinted(spec.get("back", spec["wall"])), false)
 		n += (walls[kind] as Array).size()
+	Level3D.set_rail_occluders(parent, rail_occluders(rows))
 	return n
+
+## Bryły świata, które mogą stać między balustradą antresoli a kamerą (`Level3D.set_rail_occluders`): słupy i ściany budynków sięgające przed
+## płaszczyznę balustrady (słupy przekroju, pilastry, ściany szczytowe) i płyty stropu i podłogi wpisów z przekrojem (`Level3D.shell_bands`).
+## Balustradę rysuje kamera graczy nad obrazem świata — bez testu tych brył poręcz wypadała przed słupem przekroju.
+static func rail_occluders(rows: Array) -> Array:
+	var T := Level3D.T
+	var out: Array = []
+	for b: Dictionary in Level3D.buildings:
+		var p := parts(b, rows)
+		for k in ["col", "wall"]:
+			for xf: Transform3D in (p[k] as Array):
+				var sz := xf.basis.get_scale()
+				var bx := AABB(xf.origin - sz * 0.5, sz)
+				if bx.end.z > RAIL_OCC_Z:
+					out.append(bx)
+	for e: Dictionary in Level3D.shell_bands:
+		for r: int in [int(e["r0"]), int(e["r1"])]:
+			out.append(AABB(Vector3(float(int(e["c0"])) * T, -float(r + 1) * T, Level3D.DEPTH_FRONT),
+					Vector3(float(int(e["c1"]) - int(e["c0"]) + 1) * T, T, Level3D.SHELL_Z - Level3D.DEPTH_FRONT)))
+	return out
 
 ## Słupy budynku `b` przy ścianie tylnej (wysokie skrzynki "col" wewnątrz obrysu, bez pilastrów na licu zewnętrznym i słupów przekroju)
 ## → `Level3D.bld_col_spans` [x0, x1 (m), r0, r1 (wiersze tła, r1 wyłącznie)]: dekal, w którego środek wchodzi słup, nie jest rysowany.
