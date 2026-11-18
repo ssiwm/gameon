@@ -297,9 +297,9 @@ static func _multimodel(parent: Node3D, name: String, xforms: Array, shadows := 
 	_multimesh(parent, mm[0], out, null, shadows)
 	return true
 
-static func _multimesh(parent: Node3D, mesh: Mesh, xforms: Array, mat: Material, shadows := true) -> void:
+static func _multimesh(parent: Node3D, mesh: Mesh, xforms: Array, mat: Material, shadows := true) -> MultiMeshInstance3D:
 	if xforms.is_empty():
-		return
+		return null
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh
@@ -312,6 +312,7 @@ static func _multimesh(parent: Node3D, mesh: Mesh, xforms: Array, mat: Material,
 		mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
+	return mi
 
 ## Bryły, trawa, ściany tła, pnie i kładki z mapy (`rows`: tablica Stringów). Zwraca słownik pozycji znaczników do świateł / rekwizytów:
 ## {"F": [Vector3…], "E": […], "l": […], "k": […]} (środek kafla, y = podłoga komórki).
@@ -1240,7 +1241,9 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 	if not rails.is_empty():
 		var rb := BoxMesh.new()
 		rb.size = Vector3.ONE
-		_multimesh(parent, rb, rails, make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"))
+		var rmi := _multimesh(parent, rb, rails, make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"))
+		rmi.name = "MezzanineRails"
+		rmi.layers = RAIL_LAYER
 	_build_deck_supports(parent, rows, make_pbr("plank", 0.8, Color(0.34, 0.24, 0.14), 0.9, 1.0, 1.0, false, "organic"),
 			make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"))
 	return marks
@@ -2112,6 +2115,11 @@ static func in_trench(c: int, r: int) -> bool:
 ## i pomost widziany na krawędź czytał się jak rura wzdłuż ściany (przegląd budynków 2026-11-17); balustrada mówi „galeria”.
 const RAIL_H := 1.0
 const RAIL_T := 0.045
+## Warstwa balustrady: `Front3D.LAYER_WALL` (512) — rysuje ją kamera graczy z testem głębi, więc gracz na pomoście (z ≈ 0) jest za poręczą.
+## W obrazie świata postacie leżą nad całą geometrią i barierka na przedniej krawędzi pokładu wypadała za graczem (uwaga z gry 2026-11-18,
+## stopnie w pionie kryjówki). Oświetlają ją lampy i latarka, kontra postaci nie (`view3d.gd`, maski świateł); wrogów rysuje obraz świata,
+## więc poręcz przykrywa też ich — tak jak powinna, bo stoją w tej samej płaszczyźnie co gracz.
+const RAIL_LAYER := 512
 static func _mezzanine_rail(out: Array, x0: float, x1: float, y: float, dh: float) -> void:
 	var z := dh - 0.05
 	var n := maxi(1, roundi((x1 - x0) / T))

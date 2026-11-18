@@ -294,6 +294,8 @@ func _check_layers() -> void:
 		_check(Front3D.LAYER_WALL & int(other) == 0, "LAYER_WALL nachodzi na warstwę %d" % other)
 	for other in [LAYER_WORLD, LAYER_ACTORS, Level3D.LAYER_FOREST, Level3D.LAYER_FAR, Niches3D.LAYER_NICHE, lf, Front3D.LAYER_WALL]:
 		_check(Front3D.LAYER_TREE & int(other) == 0, "LAYER_TREE nachodzi na warstwę %d" % other)
+	# balustrada antresoli (stopnie pionu kryjówki, Skład 1.3, hala 1.2) w obrazie graczy z testem głębi: gracz na pomoście jest za poręczą
+	_check(Level3D.RAIL_LAYER == Front3D.LAYER_WALL, "balustrada antresoli nie na LAYER_WALL — w obrazie świata wypada za graczem")
 	var root := Node3D.new()
 	get_root().add_child(root)
 	var front := [{"set": "station", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}, {"set": "tunnel", "c0": 0, "c1": 120, "r0": 30, "r1": 37}]
