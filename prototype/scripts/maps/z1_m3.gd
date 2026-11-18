@@ -32,7 +32,7 @@ const BACKDROP := [{"kind": "power", "c0": -20, "c1": 215, "z": -82.0}, {"kind":
 ## Strefy wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505; DIG_LOOT_PLAN.md K5 od 1.7.604): głęboka — ziemia za wyłomem we
 ## wschodniej ścianie ślepej sali podziemi pod tartakiem (ze skrytką, z dala od trasy); krótka — dół zachodniej ściany pierwszej
 ## podziemnej sali przy starcie (jedna znajdźka, bez budzenia wrogów; bez lampy, bo ćma pod stropem leciałaby do niej).
-const DIG_ZONES := [[187, 31, 190, 39, "dirt", 1301], [2, 36, 5, 39, "dirt", 1302, 0.0, {"wake": false}]]
+const DIG_ZONES := [[187, 31, 190, 39, "dirt", 1301, 0.2, {"tape": "m3_dig"}], [2, 36, 5, 39, "dirt", 1302, 0.0, {"wake": false}]]
 ## Wnęki w tylnej ścianie wnętrz (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
 ## Posterunek: zaplecze z żarówką. Skład: magazyn za kratą na parterze (antresola to kładka `=`, nie podłoga — tam wnęk nie ma).
 ## Podziemia (niski tunel między salami): sztolnia, regał u dołu środkowego szybu i korytarz techniczny,

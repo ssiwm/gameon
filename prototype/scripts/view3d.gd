@@ -8302,7 +8302,7 @@ const ITEM3D_DIR := "res://art/items3d/"
 const ITEM_SCALE := {
 	"table": 0.78, "chair": 0.73, "stool": 0.76, "cot": 0.76, "workshop": 0.9, "locker": 0.73, "shelf": 0.8, "radio_set": 0.5, "lamp": 0.5,
 	"frag": 0.37, "smoke": 0.5, "phos": 0.35, "flare": 0.6, "mine": 0.6, "ammo": 0.7, "medkit": 0.6, "charge": 0.65, "defib": 0.6,
-	"scanner": 0.45, "tag": 0.6, "padlock": 0.4, "battery": 0.28, "charger": 1.0,
+	"scanner": 0.45, "tag": 0.6, "padlock": 0.4, "battery": 0.28, "tape": 0.4, "charger": 1.0,
 }
 const ITEM_BACK := ["shelf", "table", "chair", "locker", "cot", "stool", "board", "results_board", "workshop", "tools_wall", "rack"]
 ## Głębia (z, m) przedmiotów stojących między płaszczyzną gry a meblami: sejf (skrzynia patrolu) stoi tuż za graczem, poza ślizgowym
@@ -9338,7 +9338,7 @@ func _build_dig_entrance(root: Node3D, z: Node2D, zf: float, bulge: Callable) ->
 ## i farba łapią światło jak każda bryła — ta sama podpowiedź co dawny błysk, tylko widać, co tam leży. Model wczytuje się w tle
 ## (`_item_ready`), znika, gdy znajdźka wypadnie (przedmiot ma już swój model) albo wróci w ziemię (wipe, osypisko).
 const DIG_FIND_MODEL := {"scrap": "scrap_pile", "small": "scrap_pile", "ammo": "ammo", "supply": "supply", "battery": "battery", "part": "cleankit",
-	"main": "cache", "geode": "rock_c"}     ## main — główna znajdźka (skrzynka), geode — bryła z żyły (DIG_LOOT_PLAN.md K1)
+	"main": "cache", "geode": "rock_c", "tape": "tape"}     ## main — główna znajdźka (skrzynka), geode — bryła z żyły (DIG_LOOT_PLAN.md K1), tape — kaseta (K4)
 const DIG_FIND_M := 0.36                  ## m: najdłuższy bok modelu znajdźki w ścianie
 const DIG_FIND_OUT := 0.95                ## środek modelu między znajdźką (0) a ścianą wykopu (1): na ścianie — połowa wystaje do wykopu
 const DIG_FIND_Z := 0.15                  ## m: głębokość modelu (płaszczyzna gry, wnętrze wykopu widać na całą głębokość)

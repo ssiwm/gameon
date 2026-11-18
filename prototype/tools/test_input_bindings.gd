@@ -175,7 +175,7 @@ func run() -> void:
 	A.pad_mode = false
 	accepted("pause", A.DEV_KEY, key_event(KEY_K))
 	pm.open()
-	pm._show_tab(5)
+	pm._show_tab(6)
 	check("otwarte menu blokuje strzał", root.get_node("Settings").blocked and InputMap.action_get_events("fire").is_empty())
 	var capture_button := Button.new()
 	pm.add_child(capture_button)

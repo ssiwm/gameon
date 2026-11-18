@@ -629,6 +629,26 @@ def m_battery(P):
     box((1.6, -0.15, 8.9), (1.0, 0.7, 0.14), P["brass"], 0.04)
 
 
+def m_tape(P):
+    """Kaseta magnetofonowa (DIG_LOOT_PLAN.md K4, tapes.gd): czarna obudowa 10,2 × 6,4 cm postawiona na dłuższym boku, czołem do kamery,
+    kremowa naklejka z czerwonym paskiem i odręcznymi liniami, okienko z dwiema szpulami, trapezowy występ u dołu, cztery wkręty."""
+    box((0, 0, 3.2), (10.2, 1.2, 6.4), P["black"], 0.18)                     # obudowa
+    box((0, -0.6, 4.15), (8.6, 0.08, 3.5), P["paper"], 0.04)                 # naklejka
+    box((0, -0.65, 5.45), (8.6, 0.06, 0.45), P["red"], 0.02)                 # pasek na naklejce
+    stencil("MK-60", (-2.6, -0.7, 5.45), 0.42, P["white"], depth=0.015)
+    for k, w in enumerate((5.6, 4.2)):                                       # odręczny podpis długopisem
+        box((-0.6 + 0.4 * k, -0.66, 4.95 - 0.5 * k), (w, 0.04, 0.09), P["ink"], 0.01)
+    box((0, -0.68, 3.55), (4.0, 0.08, 1.25), P["ink"], 0.05)                 # okienko
+    for x in (-1.55, 1.55):
+        cyl((x, -0.72, 3.55), 0.5, 0.08, P["white"], axis="Y", seg=20)       # szpule w okienku
+        cyl((x, -0.76, 3.55), 0.22, 0.06, P["black"], axis="Y", seg=12)
+    box((0, -0.6, 0.85), (6.2, 0.14, 1.3), P["slate"], 0.08)                 # trapezowy występ (prowadnice taśmy)
+    for x in (-2.0, 0.0, 2.0):
+        box((x, -0.68, 0.7), (0.6, 0.06, 0.55), P["black"], 0.03)            # otwory na rolki
+    for x, z in ((-4.6, 0.5), (4.6, 0.5), (-4.6, 5.9), (4.6, 5.9)):
+        cyl((x, -0.62, z), 0.2, 0.06, P["steel"], axis="Y", seg=10)           # wkręty
+
+
 def m_charger(P):
     """Ładowarka akumulatorków / prostownik z lat 80. (BATTERY_PLAN.md B3): oliwkowa skrzynka z miernikiem, pokrętłami, lampkami,
     rączką i dwoma kablami z krokodylkami; ok. 0,75 × 0,55 m (jednostka = piksel świata, 0,082 m)."""
@@ -1103,7 +1123,7 @@ MODELS = {
     "frag": (m_frag, 32), "phos": (m_phos, 32), "smoke": (m_smoke, 32), "mine": (m_mine, 32), "charge": (m_charge, 32),
     "medkit": (m_medkit, 32), "defib": (m_defib, 32), "scanner": (m_scanner, 32),
     "flare": (m_flare, 32), "flare_stuck": (lambda P: m_flare(P, True), 32), "flare_box": (m_flare_box, 32), "stake": (m_stake, 48),
-    "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32), "battery": (m_battery, 32), "charger": (m_charger, 32),
+    "supply": (m_supply, 32), "ammo": (m_ammo, 32), "cache": (m_cache, 32), "stash": (m_stash, 32), "tag": (m_tag, 32), "battery": (m_battery, 32), "tape": (m_tape, 32), "charger": (m_charger, 32),
     "bones": (m_bones, 32), "reeds": (m_reeds, 32), "board": (m_board, 16), "results_board": (m_results_board, 12), "range_target": (m_range_target, 24), "range_sign": (m_range_sign, 24), "handcar": (m_handcar, 12), "handcar_wheel": (m_handcar_wheel, 64), "handcar_lever": (m_handcar_lever, 24), "generator": (m_generator, 28), "generator": (m_generator, 40), "crate": (m_crate, 24), "barrel": (m_barrel, 24), "rack": (m_rack, 16), "tools_wall": (m_tools_wall, 20), "lamp": (m_lamp, 24),
     "table": (m_table, 24), "chair": (m_chair, 32), "stool": (m_stool, 32), "shelf": (m_shelf, 20), "locker": (m_locker, 24), "cot": (m_cot, 24),
     "strongbox": (m_strongbox, 32), "strongbox_open": (lambda P: m_strongbox(P, True), 32),

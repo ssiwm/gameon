@@ -27,11 +27,11 @@ func run() -> void:
 	var panel: Control = load("res://scripts/pause_menu.gd").new()
 	root.add_child(panel)
 	panel.open()
-	panel._show_tab(5)
+	panel._show_tab(6)
 	for frame in 12:
 		await process_frame
 	await RenderingServer.frame_post_draw
-	check("profil i przyciski widoczne", panel._rebind_msg.get_global_rect().end.y < panel._pages[5].get_global_rect().end.y)
+	check("profil i przyciski widoczne", panel._rebind_msg.get_global_rect().end.y < panel._pages[6].get_global_rect().end.y)
 	var list: VBoxContainer = panel._rebind_list
 	check("wszystkie akcje w menu", list.get_child_count() == A.rebindable().size() + 1)
 	var row: HBoxContainer = list.get_child(1)

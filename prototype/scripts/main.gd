@@ -36,6 +36,7 @@ const DESTRUCTION_TEST := preload("res://scripts/destruction_test.gd")
 const FOG_SHADOW_TEST := preload("res://scripts/fog_shadow_test.gd")
 const FX_TEST := preload("res://scripts/fx_test.gd")
 const DIG_TEST := preload("res://scripts/dig_test.gd")
+const TAPE_TEST := preload("res://scripts/tape_test.gd")
 const DigMats := preload("res://scripts/dig_materials.gd")
 const RESULT_TEST := preload("res://scripts/result_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
@@ -1039,6 +1040,7 @@ func _handle_cmdline() -> void:
 	var fogshadowtest := false
 	var fxtest := false
 	var digtest := false
+	var tapetest := false
 	var resulttest := false
 	var rangetest := false
 	var range3d := false
@@ -1180,6 +1182,8 @@ func _handle_cmdline() -> void:
 			fxtest = true
 		elif a == "--digtest":
 			digtest = true
+		elif a == "--tapetest":
+			tapetest = true
 		elif a == "--resulttest":
 			resulttest = true
 		elif a == "--rangetest":
@@ -1373,6 +1377,11 @@ func _handle_cmdline() -> void:
 		dgt.name = "DigTest"
 		add_child(dgt)
 		dgt.run(self)
+	if tapetest:
+		var tpt := TAPE_TEST.new()
+		tpt.name = "TapeTest"
+		add_child(tpt)
+		tpt.run(self)
 	if enemytest:
 		var et := ENEMY_TEST.new()
 		et.name = "EnemyTest"
@@ -2406,11 +2415,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				ci = clampi(int(a.substr("--codexentry=".length())), 0, bp._entries.size() - 1)       # dev: wpis bestiariusza do zrzutu
 		bp.select(ci)
 	if _has_arg_prefix("--shotpause"):
-		var spm: Node = $UI.get_node("PauseMenu")           # --shotpause[=N]: menu pauzy na karcie N (0 SETTINGS … 5 CONTROLS; z --lang=pl — przegląd tłumaczeń)
+		var spm: Node = $UI.get_node("PauseMenu")           # --shotpause[=N]: menu pauzy na karcie N (0 SETTINGS … 5 ARCHIVE, 6 CONTROLS; z --lang=pl — przegląd tłumaczeń)
 		spm.open()
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--shotpause="):
-				spm._show_tab(clampi(int(a.substr("--shotpause=".length())), 0, 5))
+				spm._show_tab(clampi(int(a.substr("--shotpause=".length())), 0, spm.TABS.size() - 1))
 	if "--shotperkcard" in OS.get_cmdline_user_args():
 		Profile.reset_for_test()                      # --shotperkcard: karta PERKS w menu pauzy (L4, Smith w slocie 1)
 		Profile.add_xp(800, "demo")
@@ -4722,6 +4731,15 @@ func _map_test() -> void:
 				print("[MAPTEST] %s: %s komora %s, ćm %d (w komorze, śpią: %s), główna znajdźka %s" % [id, z.name, str(cr), moths.size(), in_ch, str(f0["pos"])])
 				if moths.size() != z.CHAMBER_MOTHS or not in_ch or not f_ok or z.chamber_breached():
 					dig_bad.append("K5b: komora %s — ćm %d (śpią w komorze: %s), główna znajdźka w dnie i odkopana do połowy: %s, otwarta na starcie: %s" % [z.name, moths.size(), in_ch, f_ok, z.chamber_breached()])
+			var tape_zones := zs.filter(func(z: Node) -> bool: return String(z.tape) != "")    # K4: taśma zakopana w głębokiej strefie
+			for z in tape_zones:
+				var tf: Array = (z.finds as Array).filter(func(f: Dictionary) -> bool: return String(f["kind0"]) == "tape")
+				print("[MAPTEST] %s: %s taśma %s %s" % [id, z.name, z.tape, str(tf[0]["pos"]) if tf.size() == 1 else "BRAK"])
+				if tf.size() != 1 or int(tf[0]["state"]) != 0 or not bool(z.wakes_on):
+					dig_bad.append("K4: taśma %s w %s — znajdziek „tape” %d, zakopana: %s, strefa głęboka: %s" % [z.tape, z.name, tf.size(),
+						tf.size() == 1 and int(tf[0]["state"]) == 0, z.wakes_on])
+			if tape_zones.size() != 1:
+				dig_bad.append("K4: stref z taśmą %d — powinna być 1 (głęboka)" % tape_zones.size())
 			if id == "z1_m1" and not zs.any(func(z: Node) -> bool: return (z.chamber_px() as Rect2).size != Vector2.ZERO):
 				dig_bad.append("K5b: głęboka strefa 1.1 bez komory")
 			if zs.size() != 2 or short_n != 1 or deep_n != 1:

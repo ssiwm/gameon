@@ -149,14 +149,25 @@ func _view(i: int) -> Dictionary:
 		return Codex.weapon_entry(int(e["weapon_id"]))          # świeże statystyki / poziomy ulepszeń
 	if e.has("perk_id"):
 		return Codex.perk_entry(String(e["perk_id"]))           # świeży status perku (poziom, założone sloty)
+	if e.has("tape"):
+		return Codex.tape_view(e)                                # archiwum: zakryta albo zebrana taśma
 	return Codex.beast_view(e)
+
+## Klucz znacznika „nowe” wpisu (Profile.is_new): spotkany wróg albo zebrana taśma; "" — wpis bez znacznika.
+func _new_key(i: int) -> String:
+	var e: Dictionary = _entries[i]
+	if String(e.get("beast", "")) != "":
+		return "beast:" + String(e["beast"])
+	if String(e.get("tape", "")) != "":
+		return "tape:" + String(e["tape"])
+	return ""
 
 func _refresh_list() -> void:
 	for i in _buttons.size():
-		var e := Codex.beast_view(_entries[i])
-		var id := String(_entries[i].get("beast", ""))
+		var e := Codex.tape_view(_entries[i]) if _entries[i].has("tape") else Codex.beast_view(_entries[i])
+		var nk := _new_key(i)
 		# nowy wpis — kropka do pierwszego obejrzenia; tr() przed sklejeniem, inaczej przycisk nie znajduje klucza i zostaje po angielsku
-		_buttons[i].text = tr(String(e["title"])) + ("  •" if id != "" and Profile.is_new("beast:" + id) else "")
+		_buttons[i].text = tr(String(e["title"])) + ("  •" if nk != "" and Profile.is_new(nk) else "")
 		(_thumbs[i] as Portrait).show_spec(e["portrait"], e["accent"])
 
 func select(i: int) -> void:
@@ -166,9 +177,9 @@ func select(i: int) -> void:
 	for j in _buttons.size():
 		_buttons[j].set_pressed_no_signal(j == i)
 	var e := _view(i)
-	var beast := String(_entries[i].get("beast", ""))
-	if beast != "" and Profile.is_new("beast:" + beast):
-		Profile.mark_seen("beast:" + beast)
+	var nk := _new_key(i)
+	if nk != "" and Profile.is_new(nk):
+		Profile.mark_seen(nk)
 		_buttons[i].text = String(e["title"])
 	_portrait.show_spec(e["portrait"], e["accent"])
 	_title.text = e["title"]
@@ -178,7 +189,8 @@ func select(i: int) -> void:
 		c.queue_free()
 	for st in e["stats"]:
 		_stats.add_child(UiTheme.label(st[0], 8, UiTheme.MUTED))
-		_stats.add_child(UiTheme.label(UiTheme.num_text(tr(String(st[1]))), 8, UiTheme.TEXT))
+		var val := tr(String(st[1]))
+		_stats.add_child(UiTheme.label(val if bool(e.get("plain_stats", false)) else UiTheme.num_text(val), 8, UiTheme.TEXT))   # archiwum: „1.1” to numer misji, nie ułamek
 	_fill_bars(e)
 	_text.text = Actions.fmt(tr(e["text"]))                  # klawisze w opisach to znaczniki {akcja} — po przypisaniu gracza
 	_tip.text = tr("TIP  ") + Actions.fmt(tr(e["tip"])) if String(e["tip"]) != "" else ""

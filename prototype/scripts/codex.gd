@@ -15,6 +15,7 @@ const WeaponDef := preload("res://scripts/weapon_def.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 
 const PX_PER_M := 16.0               ## lights.gd: 1 m projektowy = 16 px (w świecie 3D ok. 1,31 m)
 const PORTRAITS := "res://art/portraits/"
@@ -136,6 +137,39 @@ static func beast_view(e: Dictionary) -> Dictionary:
 		var stats: Array = (e["stats"] as Array).duplicate()
 		stats.append(["Your kills", "%d" % Profile.beast_kills(id)])
 		v["stats"] = stats
+	return v
+
+# ---------------------------------------------------------------- archiwum (taśmy, DIG_LOOT_PLAN.md K4)
+
+const TAPE_ACCENT := Color(0.95, 0.62, 0.86)
+const TAPE_PORTRAIT := "res://art/items/tape.png"
+
+## Karta ARCHIWUM: taśmy z tapes.gd w kolejności map, pogrupowane po misji; zakryte, dopóki gracz ich nie podniesie (tape_view).
+static func archive() -> Array:
+	var out: Array = []
+	for id in Tapes.ORDER:
+		var t: Dictionary = Tapes.TAPES[id]
+		out.append({"title": t["title"], "tag": "", "accent": TAPE_ACCENT, "portrait": {"type": "image", "path": TAPE_PORTRAIT}, "tape": String(id),
+			"group": String(Tapes.MAP_GROUP.get(t["map"], "")), "stats": [], "text": t["text"], "tip": "", "plain_stats": true})
+	return out
+
+## Wpis archiwum taki, jak go widzi gracz: niezebrana taśma — sylwetka, „???” i miejsce, gdzie szukać; zebrana — kto, kiedy i zapis.
+static func tape_view(e: Dictionary) -> Dictionary:
+	var id := String(e.get("tape", ""))
+	var t := Tapes.data(id)
+	var v := e.duplicate()
+	if not Profile.has_tape(id):
+		var p: Dictionary = (e["portrait"] as Dictionary).duplicate()
+		p["unknown"] = true
+		v["title"] = "???"
+		v["tag"] = "Not found yet"
+		v["accent"] = Color(0.45, 0.45, 0.42)
+		v["portrait"] = p
+		v["stats"] = [["Where", Tapes.where(id)]]
+		v["text"] = "A lost tape. Find it on a mission to learn what it holds."
+		return v
+	v["tag"] = "%s  ·  %s" % [_t(String(t["who"])), _t(String(t["date"]))]
+	v["stats"] = [["Found", Tapes.where(id)]]
 	return v
 
 ## Licznik zabójstw ma sens dla wrogów z enemy_defs.gd (Stalker jest nieśmiertelny, gniazd i bossów nie liczy server_award_kill).

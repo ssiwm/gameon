@@ -20,7 +20,11 @@ signal leave_requested               ## „LEAVE SESSION": main.gd kończy sesj�
 const QUIT_CONFIRM_S := 3.0
 const REF_SCALE := 0.5               ## viewport 640×360 → 1280×720 jednostek makiety
 const CARD_SIZE := Vector2(1060, 648)          ## szerokość z zapasem na dłuższe teksty (polskie segmenty i opisy); test: --uifittest
-const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "CONTROLS"]
+const TABS := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "ARCHIVE", "CONTROLS"]
+## Ikona zakładki w nawigacji (ui_widgets.gd NavItem.kind) — ARCHIWUM (K4, taśmy) ma kasetę, klawiatura zostaje przy CONTROLS.
+const TAB_ICONS := [0, 1, 2, 3, 4, 6, 5]
+const TAB_ARCHIVE := 5
+const TAB_CONTROLS := 6
 const CODEX_K := 1.6                 ## strony kodeksu i sterowania powstały dla skali 0,8 (1 jednostka = 1,6 px makiety)
 
 var _pages: Array[Control] = []
@@ -174,7 +178,7 @@ func _build_nav() -> Control:
 	m.add_child(nav)
 	for i in TABS.size():
 		var it := W.NavItem.new()
-		it.kind = i
+		it.kind = TAB_ICONS[i]
 		it.label = tr(TABS[i])
 		it.pressed.connect(func() -> void:
 			_show_tab(i)
@@ -192,14 +196,16 @@ func _build_pages(holder: Control) -> void:
 	var arsenal := CodexPage.new()
 	var gear := CodexPage.new()
 	var perks := CodexPage.new()
+	var archive := CodexPage.new()
 	bestiary.setup(Codex.bestiary())
 	arsenal.setup(Codex.arsenal())
 	gear.setup(Codex.gear())
 	perks.setup(Codex.perks())
+	archive.setup(Codex.archive())
 	var controls := VBoxContainer.new()
 	_build_controls(controls)
 	_pages = [settings_scroll, _wrap_scaled(bestiary, holder), _wrap_scaled(arsenal, holder), _wrap_scaled(gear, holder),
-		_wrap_scaled(perks, holder), _wrap_scaled(controls, holder)]
+		_wrap_scaled(perks, holder), _wrap_scaled(archive, holder), _wrap_scaled(controls, holder)]
 	for p in _pages:
 		p.set_anchors_preset(Control.PRESET_FULL_RECT)
 		p.visible = false

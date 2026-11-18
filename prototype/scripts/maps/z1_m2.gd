@@ -75,7 +75,7 @@ const FRONT := [
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od
 ## podziemnej hali — wchodzi się tylko przez rozbite przejście, z boku drogi do generatorów.
-const DIG_ZONES := [[133, 36, 142, 39, "gravel", 1201], [165, 27, 169, 29, "dirt", 1202, 0.0, {"wake": false}]]
+const DIG_ZONES := [[133, 36, 142, 39, "gravel", 1201, 0.25, {"tape": "m2_dig"}], [165, 27, 169, 29, "dirt", 1202, 0.0, {"wake": false}]]
 
 const MAP := [
 	"##........................................................................................................................................................................................................................................................................ww..................##",

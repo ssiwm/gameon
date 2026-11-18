@@ -56,6 +56,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 const Combat := preload("res://scripts/combat.gd")
 const BREAKABLE := preload("res://scripts/breakable.gd")
 const DIG_ZONE := preload("res://scripts/dig_zone.gd")
@@ -2377,6 +2378,29 @@ func _spawn_item_rpc(n: String, kind: String, arg: int, rounds: int, pos: Vector
 	h.position = pos
 	add_child(h)
 
+var tapes_fx := 0                       ## u każdego peera: ogłoszonych znalezisk taśm (test)
+
+## Serwer: człowiek `who` podniósł taśmę nr `idx` (tapes.gd, K4) — każdy peer dopisuje ją do archiwum swojego profilu (cała drużyna
+## dostaje wpis) i widzi komunikat. Przedmiot znika osobno (take_item).
+func tape_found(idx: int, who: Node2D, pos: Vector2) -> void:
+	if not NoiseMgr.is_server() or Tapes.id_at(idx) == "":
+		return
+	SessionLog.event("tape", {"id": Tapes.id_at(idx), "who": "P%d" % int(who.display_id) if who != null else "", "pos": SessionLog.xy(pos)})
+	if NoiseMgr.has_network():
+		_tape_rpc.rpc(idx)
+	else:
+		_tape_rpc(idx)
+
+@rpc("authority", "call_local", "reliable")
+func _tape_rpc(idx: int) -> void:
+	var id := Tapes.id_at(idx)
+	if id == "":
+		return
+	tapes_fx += 1
+	var fresh: bool = Profile.add_tape(id)
+	Msg.post("level.tape.%s" % id, Msg.Ch.TOAST, tr("Tape: %s") % tr(String(Tapes.data(id)["title"])),
+		{"sub": tr("New in the Archive (pause menu)") if fresh else tr("Already in your Archive"), "style": Msg.Style.LORE, "ttl": 4.0, "prio": 50})
+
 ## Serwer: przedmiot podniesiony — znika u wszystkich. `quiet` — bez dźwięku podniesienia (np. stary magazynek sprzątany z mapy).
 func take_item(n: String, quiet := false) -> void:
 	if NoiseMgr.has_network():
@@ -2388,6 +2412,7 @@ func take_item(n: String, quiet := false) -> void:
 const PICKUP_SOUND := {
 	"ammo": "ammo_pickup", "cache": "ammo_pickup", "weapon": "weapon_pickup", "health": "medkit_pickup",
 	"scrap": "scrap_pickup", "stash": "scrap_pickup", "tag": "tag_pickup", "mag": "ammo_pickup", "part": "weapon_pickup", "power": "weapon_pickup",
+	"tape": "tag_pickup",
 }
 
 @rpc("authority", "call_local", "reliable")
