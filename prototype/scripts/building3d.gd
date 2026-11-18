@@ -1,5 +1,5 @@
 extends RefCounted
-## Budynki 3D z mapy (wariant C: posterunek, Skład i hala Żyły 1.3, hala stacji i pompownia 1.2, kryjówka; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą, „vault” — bunkier w skale, „shed” — hala z blachy; stropy pięter z klucza "floors"). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
+## Budynki 3D z mapy (wariant C: posterunek, Skład i hala Żyły 1.3, hala stacji i pompownia 1.2, kryjówka, hala Pijawki B1; typ w `KINDS`: „bunker” — cały żelbet, „hall” — szkielet z cegłą, „vault” — bunkier w skale, „shed” — hala z blachy; stropy pięter z klucza "floors"). Wpis FRONT z przekrojem i kluczem "build" (`Level3D.buildings`) dostaje bryłę
 ## w prawdziwych wymiarach zamiast pudeł kafli 1,31 m: płaski stropodach żelbetowy 0,25 m na górze kafla dachu z żebrami i podciągami
 ## do dolnej krawędzi kafla (Skoczek dalej wisi „pod sufitem”), attyka, ściany szczytowe 0,4 m z pilastrami, cokołem, okapem i oknami
 ## w głębi, drzwi w ościeżnicach w pasie gry (skrzydła otwarte na lico zewnętrzne, brama — skrzydło przesuwne na szynie), słupy co 4–6 m (albo w kolumnach z klucza "bays" wpisu) przy ścianie tylnej i w płaszczyźnie przekroju (nie w pasie gry), żelbetowa
@@ -42,7 +42,7 @@ const KINDS := {
 	"hall": {"wall": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, "stone"], "col": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"],
 			"slab": ["bld_slab", 0.25, Color(0.30, 0.31, 0.33), 0.9, "stone"], "back": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.85, "stone"],
 			"cut": ["bld_cut", 1.0 / 2.4, Color(0.36, 0.35, 0.335), 0.9, ""], "plinth": ["bld_plinth", 1.0 / 2.16, Color(0.17, 0.17, 0.18), 0.9, "organic"]},
-	# bunkier w skale (kryjówka): materiały jak „hall” (żelbetowy szkielet, ciepła cegła ścian — tu jest bezpiecznie), ale zakopany (`buried`):
+	# bunkier w skale (kryjówka, zalana hala B1): materiały jak „hall” (żelbetowy szkielet, ciepła cegła ścian — tu jest bezpiecznie), ale zakopany (`buried`):
 	# bez okapu, attyki, cokołu, pilastrów i okien; strop z otworami szybów (kafle wiersza dachu poza murem), słupy z dala od otworów w stropie
 	# i w podłodze; kondygnacje to osobne wpisy jeden nad drugim (strop dolnej jest podłogą górnej)
 	"vault": {"wall": ["wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, "stone"], "col": ["bld_wall", 0.5, Color(0.30, 0.31, 0.33), 0.9, "stone"],

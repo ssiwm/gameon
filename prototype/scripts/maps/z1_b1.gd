@@ -20,7 +20,7 @@ const BRIEF := "Something lives in the flooded hall. Light shows its shadow unde
 const ENEMY_HP := 1.0
 const UNDERGROUND_ROW := 99
 const WEAPONS := []
-const ACCENTS := [[Vector2(72, 496), 17], [Vector2(136, 496), 15], [Vector2(200, 496), 20], [Vector2(264, 496), 12], [Vector2(344, 496), 18], [Vector2(392, 496), 20], [Vector2(1816, 496), 20], [Vector2(1864, 496), 17], [Vector2(1928, 496), 19], [Vector2(1992, 496), 15], [Vector2(2056, 496), 20], [Vector2(2104, 496), 12], [Vector2(2152, 496), 17], [Vector2(2024, 496), 21], [Vector2(296, 485), 22]]
+const ACCENTS := [[Vector2(136, 496), 15], [Vector2(200, 496), 20], [Vector2(264, 496), 12], [Vector2(344, 496), 18], [Vector2(392, 496), 20], [Vector2(1816, 496), 20], [Vector2(1928, 496), 19], [Vector2(1992, 496), 15], [Vector2(2056, 496), 20], [Vector2(2104, 496), 12], [Vector2(2024, 496), 21], [Vector2(296, 485), 22]]
 const POOL := [28, 110]                    ## kolumny basenu (od, do włącznie): zakres ruchu Pijawki
 ## Wnęki w tylnej ścianie hali (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
 ## Tylko na suchych brzegach (pod otworem musi być lita podłoga) i poza zasięgiem fali przypływu (basen ± `SURGE_PAD`):
@@ -33,6 +33,16 @@ const NICHES := [
 	{"kind": "doorway", "c0": 10, "c1": 12, "r0": 28, "r1": 30, "lit": "bulb"},
 	{"kind": "grate", "c0": 116, "c1": 118, "r0": 28, "r1": 30, "lit": "bulb"},
 	{"kind": "shelf", "c0": 132, "c1": 134, "r0": 29, "r1": 30, "lit": ""},
+]
+
+## Pierwszy plan z przekrojem (`front3d.gd`) i bryła hali (`building3d.gd`, typ „vault” — bunkier w skale jak kryjówka): strop 0,25 m z żebrami,
+## ściany szczytowe z cegły w kolumnach 1 i 138, słupy przy ścianie tylnej w osiach `bays` (co ok. 11 kafli, poza wnękami i oknami dyspozytorni;
+## w basenie też — słupy stoją w wodzie), bez słupów w płaszczyźnie przekroju (arena bossa — nic nie zasłania kadru). Do 1.7.612 hala
+## nie miała wpisu: ściany i strop to były pudła skały 1,31 m, a z przodu otwarta skała bez przekroju (sprawdzenie budynków 2026-11-18).
+## Podłoga brzegów (wiersz 31) z betonu `C` jak płyta przekroju — ze skałą `#` przed żwirem podłogi leżał pas betonu przekroju.
+const FRONT := [
+	{"set": "station", "c0": 1, "c1": 138, "r0": 11, "r1": 31, "shell": true, "build": "vault",
+			"bays": [14, 25, 36, 47, 58, 70, 83, 94, 105, 115, 126], "cut_cols": false},
 ]
 
 const MAP := [
@@ -67,7 +77,7 @@ const MAP := [
 	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbbbbbbbbbbbbbbbbbbbb-----bbbbbbbbbbbbbbbbbbb-------bbbbbbbbbbbbbbbbbbbbb-------bbbbbbbbbbbbbbbbbbb-----------bbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbSbbSbbbbfbbbabQbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfbabbbEbbbbbbbbbbb##",
-	"############################~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#############################",
+	"#CCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~CCCCCCCCCCCCCCCCCCCCCCCCCCCC#",
 	"############################################################################################################################################",
 	"############################################################################################################################################",
 	"############################################################################################################################################",

@@ -72,6 +72,7 @@ func run(m: Node2D) -> void:
 	await _test_priest_summon()
 	await _test_butcher()
 	await _test_butcher_pit()
+	await _test_butcher_grates()
 	await _test_elite_placement()
 	await _test_elite_log()
 	await _test_devourer()
@@ -1528,6 +1529,108 @@ func _test_butcher_pit() -> void:
 	for n in [u, w]:
 		n.queue_free()
 	await get_tree().physics_frame
+
+## Rzeźnik na kratach szybu przy pompowni 1.2 (playtest 2026-11-18: stał na skraju kraty, a gracz był poziom niżej). Kawałek 1.2 (kol. 190–214,
+## rz. 25–40: grunt przy szybie, zygzak krat `=`, długa krata piwnicy i dno) stoi w powietrzu nad mapą 1.3 z własną nawigacją podmienioną na czas
+## testu. Przyczyny: zejście z krawędzi (FALL) szerokim ciałem — w pierwszych pikselach spadku celował w środek kolumny i kładka łapała go z powrotem;
+## zeskok przez kratę (DROP) przy ścianie szybu — nie mógł stanąć bliżej niż 5 px od środka kafla; krata piwnicy za przerwą 2 kafli niżej — tylko skokiem.
+func _test_butcher_grates() -> void:
+	var m2: Array = load("res://scripts/maps/z1_m2.gd").MAP
+	const C0 := 190
+	const R0 := 25
+	const W := 25
+	const H := 16
+	const OC := 60                                              # kolumna 1.3, od której stoi wycinek (wiersze 0–15 to tam samo powietrze)
+	var cell := func(c: int, r: int) -> String:
+		if c < OC or c >= OC + W or r < 0 or r >= H:
+			return "."
+		return (m2[R0 + r] as String)[C0 + c - OC]
+	var solid := func(c: int, r: int) -> bool:
+		return "#CM~misO".contains(cell.call(c, r))
+	var plat := func(c: int, r: int) -> bool:
+		return "=-".contains(cell.call(c, r))
+	var nav := Nav.new()
+	nav.build(OC + W + 2, H + 1, solid, plat)
+	var geo := StaticBody2D.new()
+	geo.collision_layer = 1
+	geo.collision_mask = 0
+	var grates := StaticBody2D.new()
+	grates.collision_layer = level.LAYER_PLATFORM
+	grates.collision_mask = 0
+	for r in H:
+		for c in range(OC, OC + W):
+			if solid.call(c, r) or plat.call(c, r):
+				var cs := CollisionShape2D.new()
+				var rect := RectangleShape2D.new()
+				var is_plat: bool = plat.call(c, r)
+				rect.size = Vector2(16.0, 4.0 if is_plat else 16.0)
+				cs.shape = rect
+				cs.position = Vector2(c * 16.0 + 8.0, r * 16.0 + (2.0 if is_plat else 8.0))
+				cs.one_way_collision = is_plat
+				(grates if is_plat else geo).add_child(cs)
+	level.add_child(geo)
+	level.add_child(grates)
+	var nav_before = level.nav
+	level.nav = nav
+	var spot := func(c: int, r: int) -> Vector2:                  # stopy na kafelku 1.2 (kolumna, wiersz) w wycinku
+		return Vector2((c - C0 + OC) * 16.0 + 8.0, (r - R0 + 1) * 16.0)
+	var orig := player.global_position
+	player.set_physics_process(false)
+	await get_tree().physics_frame
+	var u := _spawn("rzeznik", Vector2(FAR_X + 31500.0, -15000.0))
+	u.set_physics_process(false)
+	await get_tree().physics_frame
+	var speed: float = float(EnemyDefs.DEFS["rzeznik"]["speed"]) * Difficulty.m("enemy_speed")
+	check("Rzeźnik/kraty: z kraty w szybie na długą kratę piwnicy (przerwa 2 kafli, 2 kafle niżej) zejdzie z rozbiegu",
+		u.walk_off_ok(nav, spot.call(207, 33), spot.call(204, 35), speed))
+	check("Rzeźnik/kraty: tej samej przerwy nie przejdzie wąski wróg bez skoku (Podsłuchacz, 12 px) — spadłby w szczelinę",
+		not _kind_walk_off("podsluchacz", nav, spot.call(207, 33), spot.call(204, 35)))
+	check("Rzeźnik/kraty: zejście z rozbiegu nie zaczyna się w połowie kładki (obok jest dalsza podłoga)",
+		not u.walk_off_ok(nav, spot.call(208, 33), spot.call(204, 35), speed))
+	check("Rzeźnik/kraty: z kraty w szybie dojdzie pieszo na kratę piwnicy (walk_ok, bez wyskoku)", u._beh.walk_ok(nav, spot.call(207, 33), spot.call(198, 35)))
+	u.queue_free()
+	await get_tree().physics_frame
+	# pościg na żywo: [rodzaj, start 1.2, gracz 1.2, opis]
+	for case in [
+		["rzeznik", [213, 25], [200, 39], "Rzeźnik/kraty: z gruntu przy szybie zygzakiem krat na dno piwnicy (zejścia z krawędzi i zeskoki przez kratę)"],
+		["rzeznik", [208, 29], [200, 39], "Rzeźnik/kraty: z kraty przy ścianie szybu zeskakuje przez kratę na dno"],
+		["rzeznik", [208, 33], [198, 35], "Rzeźnik/kraty: z kraty w szybie na długą kratę piwnicy poziom niżej"],
+		["wolek", [213, 25], [200, 39], "Wołek/kraty: ta sama droga na dno piwnicy"],
+		["trzosek", [213, 25], [200, 39], "Trzosek/kraty: ta sama droga na dno piwnicy (skacze)"],
+	]:
+		var to: Vector2 = spot.call(case[2][0], case[2][1])
+		player.global_position = to
+		var e := _spawn(String(case[0]), spot.call(case[1][0], case[1][1]))
+		await get_tree().physics_frame
+		e.wake()
+		var t := 0.0
+		var reached := func() -> bool:
+			return absf(e.global_position.y - to.y) < 4.0 and absf(e.global_position.x - to.x) < 32.0       # na poziomie gracza, w zasięgu ataku
+		while t < 12.0 and not reached.call():
+			await get_tree().physics_frame
+			t += get_physics_process_delta_time()
+			player._invuln = 99.0
+			if e._target == null and fmod(t, 1.0) < get_physics_process_delta_time():
+				e._lead_at(to)                                     # gracz „strzela”: świeży ślad, gdy wróg go nie widzi
+		var d := e.global_position.distance_to(to)
+		check("%s (w 12 s)" % case[3], reached.call(), "%.1f s, %.0f px od gracza, stoi na (%d, %d) 1.2" % [t, d, int(e.global_position.x / 16.0) - OC + C0, int((e.global_position.y - 1.0) / 16.0) + R0])
+		e.queue_free()
+		await get_tree().physics_frame
+	level.nav = nav_before
+	player._invuln = 0.0
+	player.global_position = orig
+	player.set_physics_process(true)
+	geo.queue_free()
+	grates.queue_free()
+	await get_tree().physics_frame
+
+## `walk_off_ok` dla rodzaju bez żywego wroga w scenie (dane z `enemy_defs.gd`, prędkość pościgu).
+func _kind_walk_off(kind: String, nav, a: Vector2, b: Vector2) -> bool:
+	var e := _spawn(kind, Vector2(FAR_X + 31700.0, -15000.0))
+	e.set_physics_process(false)
+	var ok: bool = e.walk_off_ok(nav, a, b, float(EnemyDefs.DEFS[kind]["speed"]) * Difficulty.m("enemy_speed"))
+	e.queue_free()
+	return ok
 
 ## Znaczniki elit w kampanii (ELITE_PLACEMENT_PLAN.md E1–E2): miejsca, leczenie Kapłana, zapas amunicji na Rzeźnika, beczki, cicha droga przez obóz i jaskinię.
 func _test_elite_placement() -> void:
