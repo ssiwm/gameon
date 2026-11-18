@@ -9505,6 +9505,8 @@ func _dig_find_model(nm: String, k: int) -> Node3D:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 8711 + k * 31
 	root.rotation = Vector3(rng.randf_range(-0.5, 0.5), rng.randf_range(-PI, PI), rng.randf_range(-0.6, 0.6))
+	if nm == "tape":                                              # K4b: kaseta płaska — etykietą do kamery (bokiem była kreską, zrzut 2026-11-18)
+		root.rotation = Vector3(rng.randf_range(-0.25, 0.25), rng.randf_range(-0.3, 0.3), rng.randf_range(-0.5, 0.5))
 	_geo.add_child(root)
 	return root
 

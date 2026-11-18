@@ -2249,6 +2249,13 @@ func _dig_prop_zone() -> Node:
 			return z
 	return null
 
+## K4b: strefa wydobycia, przy której odsłoniętej taśmie stoi lokalny gracz (dig_zone.gd `local_tape`), albo null.
+func _dig_tape_zone() -> Node:
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if String(z.local_tape) != "" or bool(z._tape_holding):
+			return z
+	return null
+
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
 func _near_strongbox() -> Node:
 	for sb in get_tree().get_nodes_in_group("strongboxes"):
@@ -2345,7 +2352,14 @@ func _prompt_candidates() -> Array:
 				_:
 					var cost := (tr("boards: %d") % int(lvl.plank_stock)) if int(lvl.plank_stock) > 0 else (tr("%d scrap") % int(lvl.NAIL_SCRAP))
 					add.call(Actions.fmt(tr("Hold [{interact}]  Board up  %d/%d  (loud · %s)")) % [have, total, cost], -1.0, UiTheme.ACCENT)
-	var dz := _dig_prop_zone()
+	var tz := _dig_tape_zone()
+	if tz != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+		# K4b: taśma odsłonięta w ścianie — dłońmi, bo kilof ją zniszczy (stempel czeka, aż taśma wyjdzie)
+		if bool(tz._tape_holding) and float(tz.tape_progress) > 0.0:
+			add.call(tr("Easing the tape out of the rock…"), float(tz.tape_progress), UiTheme.OK)
+		else:
+			add.call(Actions.fmt(tr("Hold [{interact}]  Take the tape out by hand  (a pick would destroy it)")), -1.0, UiTheme.ACCENT)
+	var dz := _dig_prop_zone() if tz == null else null
 	if dz != null and _player != null and _player.weapons.nearby_weapon_item() == null:
 		# zawał stropu i stemple (kopanie P2d): ostrzeżenie nad głową, stempel za deskę z zapasu drużyny albo złom
 		var lvl_z := get_tree().get_first_node_in_group("level")
