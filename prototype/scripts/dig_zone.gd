@@ -37,6 +37,7 @@ const SessionLog := preload("res://scripts/session_log.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Tapes := preload("res://scripts/tapes.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const TILE := 16.0
 const CELL := 4.0                     ## px komórki
@@ -132,6 +133,13 @@ const FIND_GEODE := "geode"
 ## Taśma (K4, tapes.gd): opcja strefy {"tape": id} — jedna dodatkowa znajdźka w najdalszym od wejścia miejscu głębi skały. Cenna jak
 ## każda (pula), wypada jako przedmiot „tape”, który podnosi człowiek.
 const FIND_TAPE := "tape"
+## K4b — ostrożne wydobycie taśmy: kilof nie zdejmuje rdzenia (3 × 3 narożniki wokół kasety). Cios w zakopaną taśmę tylko ją odsłania
+## do połowy; cios człowieka kilofem w rdzeń odsłoniętej ją niszczy, wybuch niszczy zawsze (zniszczona schodzi z puli jak wykopana i wraca
+## z nowym ziarnem po odnowieniu). Maczeta w ziemi zdejmuje rdzeń i taśma wypada cała; w skale zostają dłonie: [E] trzymane TAPE_TIME s
+## przy odsłoniętej kasecie — taśma od razu trafia do archiwum. Kilof bota rdzenia nie rusza i taśmy nie niszczy.
+const TAPE_TIME := 1.5                 ## s trzymania [E] przy odsłoniętej taśmie
+const TAPE_REACH := 26.0               ## px od piersi gracza (stopy − 10) do taśmy
+const TOOL_HANDS := -2                 ## „narzędzie” wyjęcia dłońmi (dziennik `dig_find`, `_spawn_find`)
 ## Ruda z żyły (K1, „żyła płaci”): serwer liczy narożniki żyły, które cios zamienił w powietrze; co ORE_CORNERS — 1 złom do łupu misji.
 ## Krok tunelu w żyle (9 ciosów) wybiera ok. 50 narożników żyły, więc ok. 2 złomu na krok; cała żyła strefy 1.1 to ok. 20–30 złomu.
 ## Bez puli: żyła wraca z danymi mapy w każdej misji, ale tempo (ok. 10 złomu na minutę ciągłego kopania w hałasie) jest niższe niż
@@ -194,6 +202,15 @@ var wake_spawned: Array = []          ## serwer: nazwy wrogów z wyjścia (test)
 var wake_fx := 0                      ## u każdego peera: zapowiedzi i wyjść (test)
 var wake_fx_last := -1                ## u każdego peera: etap ostatniej zapowiedzi (test)
 var tape := ""                        ## K4: id taśmy zakopanej w strefie (tapes.gd) albo ""
+var tapes_broken := 0                 ## u każdego peera: taśm zniszczonych kilofem albo wybuchem (test)
+var tape_progress := 0.0              ## postęp wyjmowania taśmy dłońmi (serwer → klienci; HUD)
+var local_tape := ""                  ## lokalny człowiek: "ok" — stoi przy odsłoniętej taśmie (HUD, [E])
+var _tape_holding := false
+var _tape_workers := {}               ## serwer: peer id (tekst) → true — kto trzyma [E] przy taśmie
+var _tape_sync_t := 0.0
+var _tape_sent := -1.0
+var _bot_pick := false                ## serwer, na czas `_send`: cios kilofa bota (nie niszczy taśmy)
+var _pocket_blast := false            ## serwer, na czas `_send`: kieszeń K3, z której wychodzą wrogowie (nie niszczy taśmy)
 var chamber := Rect2i()               ## K5b: komora w kaflach strefy (pusta — strefa bez komory)
 var chamber_woke := false             ## serwer: komora otwarta i rój obudzony (do wipe'u raz)
 var chamber_fx := 0                   ## u każdego peera: napisów / dźwięków otwarcia komory (test)
@@ -832,7 +849,7 @@ func _update_local_prop(delta: float) -> void:
 				var why := prop_reason(feet)
 				local_prop = why if why in ["ok", "nomat"] else ""
 	var want := false
-	if me != null and local_prop == "ok" and Input.is_action_pressed("interact"):
+	if me != null and local_prop == "ok" and local_tape == "" and Input.is_action_pressed("interact"):
 		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
 	if want == _prop_holding:
 		return
@@ -909,6 +926,127 @@ func _prop_knock(delta: float) -> void:
 		var at: Vector2 = me.global_position if me != null and _prop_holding else rect_px().get_center()
 		Audio.play_variant_at("hammer_nail", 3, at + Vector2(0, -20), Audio.BUS_WORLD, -2.0, 0.85)
 
+# ---------------------------------------------------------------- taśma (K4b): ostrożne wydobycie dłońmi, zniszczenie kilofem i wybuchem
+
+## Indeks taśmy jeszcze w ścianie (zakopanej albo odsłoniętej) albo -1 — strefa bez taśmy, taśma wyjęta albo zniszczona, miejsce
+## wykopane w puli (drobnica).
+func tape_find() -> int:
+	if tape == "":
+		return -1
+	for k in finds.size():
+		if String(finds[k]["kind"]) == FIND_TAPE and int(finds[k]["state"]) != Find.OUT:
+			return k
+	return -1
+
+## Czy gracz ze stopami w `feet` sięga dłońmi taśmy w `at`.
+static func tape_reach(feet: Vector2, at: Vector2) -> bool:
+	return (feet + Vector2(0, -10)).distance_to(at) <= TAPE_REACH
+
+## Każdy peer, co klatkę: czy mój gracz stoi przy odsłoniętej taśmie (HUD) i czy trzyma [E].
+func _update_local_tape() -> void:
+	var me := _local_human()
+	local_tape = ""
+	var k := tape_find()
+	if me != null and not me.dead and k >= 0 and int(finds[k]["state"]) == Find.NEAR and tape_reach(me.global_position, finds[k]["pos"]):
+		local_tape = "ok"
+	var want := false
+	if local_tape == "ok" and Input.is_action_pressed("interact"):
+		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
+	if want == _tape_holding:
+		return
+	_tape_holding = want
+	if NoiseMgr.is_server():
+		_set_tape_worker(NoiseMgr.local_id(), want)
+	else:
+		_tape_work_rpc.rpc_id(1, want)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _tape_work_rpc(on: bool) -> void:
+	if multiplayer.is_server():
+		_set_tape_worker(multiplayer.get_remote_sender_id(), on)
+
+func _set_tape_worker(peer_id: int, on: bool) -> void:
+	if on:
+		_tape_workers[str(peer_id)] = true
+	else:
+		_tape_workers.erase(str(peer_id))
+
+## Test: serwer traktuje gracza `peer_id` jak trzymającego [E] przy taśmie.
+func force_tape_worker(peer_id: int, on: bool) -> void:
+	if NoiseMgr.is_server():
+		_set_tape_worker(peer_id, on)
+
+## Serwer: wyjmowanie taśmy — gracz (człowiek) żyje i sięga odsłoniętej taśmy; puszczenie przerywa (postęp przepada). Cicho: bez hałasu.
+func _tick_tape_work(delta: float) -> void:
+	var k := tape_find()
+	var who: Node2D = null
+	for key in _tape_workers.keys():
+		var pl: Node2D = null
+		for p in get_tree().get_nodes_in_group("players"):
+			if not p.is_bot and String(p.name) == String(key) and not p.dead and not p.is_queued_for_deletion():
+				pl = p
+		if pl == null or k < 0 or int(finds[k]["state"]) != Find.NEAR or not tape_reach(pl.global_position, finds[k]["pos"]):
+			_tape_workers.erase(key)
+		elif who == null:
+			who = pl
+	if who != null:
+		tape_progress = minf(1.0, tape_progress + delta / TAPE_TIME)
+		if tape_progress >= 1.0:
+			tape_progress = 0.0
+			_tape_workers.clear()
+			_take_tape(k, who)
+	elif tape_progress > 0.0:
+		tape_progress = 0.0
+	_tape_sync_t -= delta
+	if not is_equal_approx(tape_progress, _tape_sent) and (_tape_sync_t <= 0.0 or tape_progress == 0.0):
+		_tape_sync_t = 0.1
+		_tape_sent = tape_progress
+		if NoiseMgr.has_network():
+			_tape_sync.rpc(tape_progress)
+
+@rpc("authority", "call_remote", "unreliable_ordered")
+func _tape_sync(p: float) -> void:
+	tape_progress = p
+
+## Serwer: taśma wyjęta dłońmi przez `who` — od razu do archiwum (level.gd `tape_found`, jak podniesiona), w ścianie zostaje gniazdo po kasecie.
+func _take_tape(k: int, who: Node2D) -> void:
+	var at: Vector2 = finds[k]["pos"]
+	finds[k]["state"] = Find.OUT
+	_spawn_find(k, who.global_position, TOOL_HANDS, who)
+	_gone(k, 0)
+	_send(at, Vector2(3.0, 3.0), 2.0, Mats.Tool.BLAST)
+
+## Serwer: taśma `k` zniszczona narzędziem `tool` (kilof, wybuch) — z puli jak wykopana (wraca z nowym ziarnem), dziennik, napis u wszystkich.
+func _break_tape(k: int, tool: int) -> void:
+	finds[k]["state"] = Find.OUT
+	if not NightShift.active:
+		Scrap.dig_take(pool_key, k)
+	SessionLog.event("dig_tape_broken", {"zone": String(name), "tape": tape, "by": "blast" if tool == Mats.Tool.BLAST else "pick",
+		"pos": SessionLog.xy(finds[k]["pos"])})
+	_gone(k, 2 if tool == Mats.Tool.BLAST else 1)
+
+func _gone(k: int, how: int) -> void:
+	if NoiseMgr.has_network():
+		_tape_gone_rpc.rpc(map_key, k, how)
+	else:
+		_tape_gone_rpc(map_key, k, how)
+
+## Każdy peer: taśma `k` wyszła ze ściany — `how` 0: wyjęta dłońmi, 1: zmiażdżona kilofem, 2: rozerwana wybuchem (napis, trzask).
+@rpc("authority", "call_local", "reliable")
+func _tape_gone_rpc(key: String, k: int, how: int) -> void:
+	if key != map_key or k < 0 or k >= finds.size():
+		return
+	finds[k]["state"] = Find.OUT
+	tape_progress = 0.0
+	if how == 0:
+		return
+	tapes_broken += 1
+	var at: Vector2 = finds[k]["pos"]
+	Audio.play_variant_at("moth_crack", 3, at, Audio.BUS_WORLD, 2.0, 0.7)
+	var sub := tr("The blast shredded the cassette") if how == 2 else tr("The pick crushed the cassette")
+	Msg.post("dig.tape_broken.%s" % name, Msg.Ch.TOAST, tr("Tape destroyed"),
+		{"sub": sub + "  ·  " + Actions.fmt(tr("next time take it out by hand: hold [{interact}]")), "style": Msg.Style.DANGER, "ttl": 5.0, "prio": 40})
+
 ## Czy kafel strefy (tx, ty — względem strefy) jest już wolny: żaden z 3 × 3 narożników we wnętrzu kafla nie jest skałą.
 ## Kafel z niedokończonym wykopem zostaje bryłą — bot i wrogowie nie wchodzą w niedokończone tunele.
 func _tile_clear(tx: int, ty: int) -> bool:
@@ -965,7 +1103,13 @@ func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, 
 	SessionLog.note_dig_first(String(name), "first_hit")
 	if ring > 0.0:
 		SessionLog.note_dig(String(name), "clink")
+	_bot_pick = false                                            # K4b: kilof bota nie niszczy taśmy
+	if by >= 0:
+		for p in get_tree().get_nodes_in_group("players"):
+			if int(p.player_id) == by:
+				_bot_pick = bool(p.is_bot)
 	_send(r.get_center(), r.size * 0.5, 0.0, tool)
+	_bot_pick = false
 	if wakes_on and NoiseMgr.is_server():
 		_wake_hit(origin + Vector2(0.0, 9.0), dir)
 	if cracks_on and NoiseMgr.is_server():
@@ -1106,7 +1250,9 @@ func _wake_hit(feet: Vector2, dir: Vector2) -> void:
 	var src: Vector2 = spot[0]
 	wake_side = float(spot[2])                                  # bot pilnuje strony kieszeni (cios w pionie też ją ma)
 	if stage == 3:
-		_send(src, WAKE_POCKET, 3.0, Mats.Tool.BLAST)          # kieszeń za czołem: ściana pęka, z niej wychodzą
+		_pocket_blast = true
+		_send(src, WAKE_POCKET, 3.0, Mats.Tool.BLAST)          # kieszeń za czołem: ściana pęka, z niej wychodzą (taśma wypada cała)
+		_pocket_blast = false
 		var kinds := wake_kinds(map_key)
 		var h: float = spot[2]
 		wake_spawned = Director.spawn_at(kinds, Vector2(src.x - h * 5.0, src.y + WAKE_POCKET.y - 1.0), feet, h * 10.0)
@@ -1431,6 +1577,10 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 	var touched := {}
 	var vein := Mats.code("vein")
 	var ore := 0                                                # narożniki żyły, które ten cios zamienił w powietrze (K1, tylko serwer płaci)
+	var tk := tape_find()                                       # K4b: rdzeń taśmy w ścianie (3 × 3 narożniki)
+	var tcore := Rect2i(int(finds[tk]["i"]) - 1, int(finds[tk]["j"]) - 1, 3, 3) if tk >= 0 else Rect2i()
+	var tstate := int(finds[tk]["state"]) if tk >= 0 else -1
+	var core_hit := false
 	for j in range(j0, j1 + 1):
 		for i in range(i0, i1 + 1):
 			var k := j * _w + i
@@ -1451,12 +1601,20 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 			var nd := maxi(mini(int(_d[k]), target), int(_d[k]) - power)
 			if nd == int(_d[k]):
 				continue
+			if tk >= 0 and tcore.has_point(Vector2i(i, j)):
+				core_hit = core_hit or target < ISO                     # rdzeń w kształcie wyrwy (samo pasmo brzegu obok go nie rusza)
+				if tool == Mats.Tool.PICK:
+					continue                                        # kilof nie zdejmuje rdzenia taśmy (zostaje kaseta w ścianie)
 			if _m[k] == vein and int(_d[k]) >= ISO and nd < ISO:
 				ore += 1
 			_d[k] = nd
 			_touch(touched, i, j)
 	if ore > 0 and NoiseMgr.is_server():
 		_add_ore(ore)
+	if core_hit and NoiseMgr.is_server():
+		# K4b: kilof człowieka w rdzeń odsłoniętej taśmy albo wybuch (nie kieszeń K3) — taśma zniszczona, zanim `_update_finds` ją wyrzuci
+		if (tool == Mats.Tool.PICK and tstate == Find.NEAR and not _bot_pick) or (tool == Mats.Tool.BLAST and not _pocket_blast):
+			_break_tape(tk, tool)
 	var t0 := Time.get_ticks_usec()
 	for ci in touched:
 		_rebuild(int(ci))
@@ -1607,10 +1765,14 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 	warns.clear()
 	prop_progress = 0.0
 	_prop_workers.clear()
+	tape_progress = 0.0
+	_tape_workers.clear()
 	_check_spans = NoiseMgr.is_server() and not s.is_empty()
 	var d := dm.slice(0, _w * _h)
 	var m := dm.slice(_w * _h, _w * _h * 2)
 	if d == _d and m == _m:
+		for k in finds.size():                                   # K4b: taśma wyjęta dłońmi po punkcie kontrolnym nie zmienia gęstości wokół siebie
+			finds[k]["state"] = Find.OUT if k < 8 and (out_mask >> k) & 1 == 1 else _find_state(finds[k])
 		return
 	_d = d
 	_m = m
@@ -1678,6 +1840,7 @@ func is_settled() -> bool:
 
 func _physics_process(delta: float) -> void:
 	_pour_fx_t = maxf(0.0, _pour_fx_t - delta)
+	_update_local_tape()
 	_update_local_prop(delta)
 	_warn_fx(delta)
 	_prop_knock(delta)
@@ -1686,6 +1849,7 @@ func _physics_process(delta: float) -> void:
 	_log_presence(delta)
 	_pour_t = maxf(0.0, _pour_t - delta)
 	_tick_prop_work(delta)
+	_tick_tape_work(delta)
 	_tick_warns(delta)
 	_tick_wake(delta)
 	if _check_spans and is_settled():
@@ -2124,7 +2288,7 @@ func _update_finds(rc: Rect2i, from: Vector2, tool: int) -> void:
 ## Serwer: odkopana znajdźka wypada jako przedmiot (level.gd `spawn_item`). Zawartość dobiera się teraz: amunicja do broni, której drużynie
 ## brakuje (jak z wrogów), część broni z puli znalezisk (Scrap.pick_find), a gdy nie ma czego — złom. Nocny Dyżur: tylko amunicja.
 ## Wybuch odrzuca przedmiot od środka. Cenna znajdźka idzie do łupu puli (Scrap.dig_take), miejsce wykopane w puli daje drobnicę.
-func _spawn_find(k: int, from: Vector2, tool: int) -> void:
+func _spawn_find(k: int, from: Vector2, tool: int, who: Node2D = null) -> void:
 	var f: Dictionary = finds[k]
 	var kind := String(f["kind"])
 	var item := _resolve_find(kind)
@@ -2137,12 +2301,14 @@ func _spawn_find(k: int, from: Vector2, tool: int) -> void:
 	var lvl := get_parent()
 	if not item.is_empty() and String(item[0]) == "sample":
 		Scrap.add_samples(int(item[2]))                          # próbka nie leży na ziemi: od razu do łupu misji (toast „Próbka pobrana”)
+	elif not item.is_empty() and String(item[0]) == "tape" and tool == TOOL_HANDS and lvl != null and lvl.has_method("tape_found"):
+		lvl.tape_found(int(item[1]), who, at)                     # K4b: wyjęta dłońmi — od razu do archiwum, nie leży na ziemi
 	elif not item.is_empty() and lvl != null and lvl.has_method("spawn_item"):
 		lvl.spawn_item(String(item[0]), int(item[1]), at, int(item[2]))
 	SessionLog.note_dig(String(name), "finds")
 	SessionLog.note_dig_first(String(name), "first_find")
 	SessionLog.event("dig_find", {"zone": String(name), "find": k, "kind": kind, "item": String(item[0]) if not item.is_empty() else "",
-		"by": "fall" if tool < 0 else ["pick", "blade", "blast"][clampi(tool, 0, 2)], "pos": SessionLog.xy(at), "noise": roundi(NoiseMgr.level)})
+		"by": "hands" if tool == TOOL_HANDS else "fall" if tool < 0 else ["pick", "blade", "blast"][clampi(tool, 0, 2)], "pos": SessionLog.xy(at), "noise": roundi(NoiseMgr.level)})
 
 ## [rodzaj pickup.gd, arg, rounds] albo pusta tablica (nic — Nocny Dyżur bez potrzebnej amunicji).
 func _resolve_find(kind: String) -> Array:

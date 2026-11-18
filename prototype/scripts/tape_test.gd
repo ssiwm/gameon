@@ -10,6 +10,7 @@ const Tapes := preload("res://scripts/tapes.gd")
 const Codex := preload("res://scripts/codex.gd")
 const CodexPage := preload("res://scripts/codex_page.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
+const Mats := preload("res://scripts/dig_materials.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const LOG_DIR := "user://test_tape_sessions"
 
@@ -52,6 +53,7 @@ func run(m: Node2D) -> void:
 	_data()
 	await _dig()
 	await _pickup()
+	await _careful()
 	await _strongbox()
 	await _stash()
 	await _archive()
@@ -189,6 +191,136 @@ func _pickup() -> void:
 	check("druga ta sama taśma: podniesiona, bez duplikatu w archiwum", _tape_items().is_empty() and level.tapes_fx - fx0 == 2 and Profile.tapes.size() == 1)
 	_place_player(home)
 
+# ---------------------------------------------------------------- 3b. ostrożne wydobycie (K4b)
+
+## Strefa z taśmą i indeks taśmy (kind0) albo [null, -1].
+func _tape_zone() -> Array:
+	for q in level.dig_zones():
+		if String(q.tape) != "":
+			for k in (q.finds as Array).size():
+				if String(q.finds[k]["kind0"]) == DigZone.FIND_TAPE:
+					return [q, k]
+	return [null, -1]
+
+## Czy wszystkie 3 × 3 narożniki rdzenia taśmy są skałą.
+func _core_rock(z: Node2D, f: Dictionary) -> bool:
+	for j in range(int(f["j"]) - 1, int(f["j"]) + 2):
+		for i in range(int(f["i"]) - 1, int(f["i"]) + 2):
+			if int(z._d[j * int(z._w) + i]) < DigZone.ISO:
+				return false
+	return true
+
+## Kilka ciosów kilofem w ten sam kęs (skała bierze kilka) — bez melee_dig, jak serwer po rozstrzygnięciu ciosu.
+func _picks(z: Node2D, at: Vector2, half: Vector2, n: int) -> void:
+	for _i in n:
+		z._send(at, half, 0.0, Mats.Tool.PICK)
+
+func _careful() -> void:
+	var zk := _tape_zone()
+	var z: Node2D = zk[0]
+	var k: int = zk[1]
+	check("K4b: strefa z taśmą", z != null and k >= 0)
+	if z == null or k < 0:
+		return
+	var key := String(z.pool_key)
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+	var f: Dictionary = z.finds[k]
+	var p: Vector2 = f["pos"]
+	# kilof bota prosto w zakopaną taśmę: rdzeń zostaje, taśma odsłonięta do połowy
+	z._bot_pick = true
+	_picks(z, p, Vector2(8.0, 8.0), 8)
+	z._bot_pick = false
+	check("K4b: kilof w zakopaną taśmę tylko ją odsłania (stan %d, rdzeń skałą)" % int(f["state"]),
+		int(f["state"]) == DigZone.Find.NEAR and _core_rock(z, f) and int(z.tapes_broken) == 0 and z.tape_find() == k)
+	check("K4b: kilof bota w odsłoniętą taśmę jej nie niszczy", int(z.tapes_broken) == 0 and int(f["state"]) == DigZone.Find.NEAR)
+	# kilof człowieka w odsłoniętą: zniszczona, bez przedmiotu, z puli, dziennik
+	var n0 := _tape_items().size()
+	var fx0: int = level.tapes_fx
+	_picks(z, p, Vector2(8.0, 8.0), 1)
+	await _frames(0.3)
+	var ev := _log_events("dig_tape_broken")
+	check("K4b: kilof człowieka w odsłoniętą taśmę ją niszczy (zniszczonych %d, stan %d)" % [int(z.tapes_broken), int(f["state"])],
+		int(z.tapes_broken) == 1 and int(f["state"]) == DigZone.Find.OUT and z.tape_find() == -1)
+	check("K4b: zniszczona nie wypada i nie trafia do archiwum", _tape_items().size() == n0 and level.tapes_fx == fx0)
+	check("K4b: zniszczona schodzi z puli jak wykopana (wraca z nowym ziarnem)", not Scrap.enabled() or (Scrap.dig_loot.get(key, []) as Array).has(k))
+	check("K4b: dziennik `dig_tape_broken` (%d) z taśmą i kilofem" % ev.size(), ev.size() == 1 and String(ev[0].get("tape", "")) == "m1_dig"
+		and String(ev[0].get("by", "")) == "pick")
+	# wybuch niszczy zakopaną; kieszeń K3 nie
+	Scrap.dig_loot.erase(key)
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+	z._send(p, Vector2.ZERO, 10.0, Mats.Tool.BLAST)
+	await _frames(0.2)
+	check("K4b: wybuch niszczy zakopaną taśmę (zniszczonych %d)" % int(z.tapes_broken), int(z.tapes_broken) == 2 and _tape_items().size() == n0)
+	Scrap.dig_loot.erase(key)
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+	z._pocket_blast = true
+	z._send(p, Vector2.ZERO, 10.0, Mats.Tool.BLAST)
+	z._pocket_blast = false
+	await _frames(0.3)
+	check("K4b: kieszeń, z której wychodzą wrogowie, nie niszczy taśmy — wypada cała", int(z.tapes_broken) == 2 and _tape_items().size() == n0 + 1)
+	for it in _tape_items():
+		level.take_item(String(it.name), true)
+	# dłonie: komora obok taśmy (rdzeń nietknięty), gracz w zasięgu, [E] 1,5 s
+	Scrap.dig_loot.erase(key)
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+	z._send(p + Vector2(28.0, 2.0), Vector2(17.0, 12.0), 0.0, Mats.Tool.BLAST)
+	await _frames(0.1)
+	check("K4b: komora obok odsłania taśmę bez szkody (stan %d)" % int(f["state"]), int(f["state"]) == DigZone.Find.NEAR and _core_rock(z, f)
+		and int(z.tapes_broken) == 2)
+	var home := player.global_position
+	_place_player(p + Vector2(20.0, 13.0))
+	await _frames(0.3)
+	check("K4b: gracz przy odsłoniętej taśmie — podpowiedź [E] (%s, %.0f px)" % [String(z.local_tape), (player.global_position + Vector2(0, -10)).distance_to(p)],
+		String(z.local_tape) == "ok")
+	z.force_tape_worker(1, true)
+	await _frames(0.6)
+	var mid: float = z.tape_progress
+	z.force_tape_worker(1, false)
+	await _frames(0.1)
+	check("K4b: puszczenie [E] przerywa (postęp %.2f → %.2f), taśma w ścianie" % [mid, float(z.tape_progress)], mid > 0.2 and mid < 0.8
+		and float(z.tape_progress) == 0.0 and int(f["state"]) == DigZone.Find.NEAR)
+	var fx1: int = level.tapes_fx
+	var ev0 := _log_events("tape").size()
+	z.force_tape_worker(1, true)
+	await _frames(DigZone.TAPE_TIME + 0.3)
+	z.force_tape_worker(1, false)
+	var finds_ev := _log_events("dig_find").filter(func(r: Dictionary) -> bool: return String(r.get("by", "")) == "hands")
+	check("K4b: [E] %.1f s wyjmuje taśmę dłońmi: od razu do archiwum, nic na ziemi (komunikat %d, dziennik `tape` +%d, `dig_find` dłońmi %d)"
+		% [DigZone.TAPE_TIME, level.tapes_fx - fx1, _log_events("tape").size() - ev0, finds_ev.size()],
+		int(f["state"]) == DigZone.Find.OUT and level.tapes_fx - fx1 == 1 and _tape_items().size() == n0 and Profile.has_tape("m1_dig")
+		and _log_events("tape").size() - ev0 == 1 and finds_ev.size() == 1 and int(z.tapes_broken) == 2)
+	check("K4b: w ścianie gniazdo po kasecie", not _core_rock(z, f))
+	var s: PackedByteArray = z.state()
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+	var buried := int(f["state"]) == DigZone.Find.BURIED
+	z.reset_to(s)
+	await _frames(0.1)
+	check("K4b: wyjęta taśma w stanie strefy (dołączający, punkt kontrolny), wipe ją zakopuje", buried and int(f["state"]) == DigZone.Find.OUT)
+	# za daleko: serwer nie liczy pracy
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+	z._send(p + Vector2(28.0, 2.0), Vector2(17.0, 12.0), 0.0, Mats.Tool.BLAST)
+	_place_player(home)
+	await _frames(0.2)
+	z.force_tape_worker(1, true)
+	await _frames(0.4)
+	z.force_tape_worker(1, false)
+	check("K4b: z daleka nie da się wyjmować (postęp %.2f, podpowiedź „%s”)" % [float(z.tape_progress), String(z.local_tape)],
+		float(z.tape_progress) == 0.0 and int(f["state"]) == DigZone.Find.NEAR and String(z.local_tape) == "")
+	var tr_pl := TranslationServer.get_translation_object("pl")
+	var keys := ["Tape destroyed", "The pick crushed the cassette", "The blast shredded the cassette", "next time take it out by hand: hold [{interact}]",
+		"Easing the tape out of the rock…", "Hold [{interact}]  Take the tape out by hand  (a pick would destroy it)"]
+	var miss: Array = keys.filter(func(t: String) -> bool: return tr_pl == null or String(tr_pl.get_message(t)) == "")
+	check("K4b: tłumaczenia PL%s" % ("" if miss.is_empty() else " — brak: " + str(miss)), miss.is_empty())
+	Scrap.dig_loot.erase(key)
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+
 # ---------------------------------------------------------------- 4. sejf i skrytka
 
 func _strongbox() -> void:
@@ -268,6 +400,49 @@ func _grab(name: String) -> void:
 	get_viewport().get_texture().get_image().save_png(dir.path_join(name + ".png"))
 	info("zrzut %s" % dir.path_join(name + ".png"))
 
+## Klatki z latarką skierowaną w `dir` (mysz wyłączona).
+func _frames_aim(seconds: float, dir: Vector2) -> void:
+	var t := 0.0
+	var dt := 1.0 / float(Engine.physics_ticks_per_second)
+	while t < seconds and is_inside_tree():
+		player.aim_dir = dir
+		await get_tree().physics_frame
+		t += dt
+
+## K4b: taśma odsłonięta w ścianie z podpowiedzią [E], wyjmowanie (pasek postępu), zniszczona kilofem (napis).
+func _shots_k4b() -> void:
+	var zk := _tape_zone()
+	var z: Node2D = zk[0]
+	var k: int = zk[1]
+	if z == null:
+		return
+	var p: Vector2 = z.finds[k]["pos"]
+	var ma0: bool = player.mouse_aim
+	player.mouse_aim = false
+	player.flashlight = true
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+	z._send(p + Vector2(28.0, 2.0), Vector2(17.0, 12.0), 0.0, Mats.Tool.BLAST)
+	z._bot_pick = true                                             # czoło dokopane kilofem do rdzenia: kaseta wystaje ze ściany
+	_picks(z, p + Vector2(7.0, 1.0), Vector2(6.0, 9.0), 6)
+	z._bot_pick = false
+	_place_player(p + Vector2(20.0, 13.0))
+	await _frames_aim(1.2, Vector2.LEFT)
+	_grab("k4b_tape_wall")
+	Input.action_press("interact")
+	await _frames_aim(0.8, Vector2.LEFT)
+	_grab("k4b_tape_hands")
+	Input.action_release("interact")
+	await _frames_aim(0.3, Vector2.LEFT)
+	_picks(z, p, Vector2(8.0, 8.0), 1)
+	await _frames_aim(0.6, Vector2.LEFT)
+	_grab("k4b_tape_broken")
+	player.mouse_aim = ma0
+	player.flashlight = false
+	Scrap.dig_loot.erase(String(z.pool_key))
+	z.reset_to(PackedByteArray())
+	await _frames(0.2)
+
 func _shots() -> void:
 	if _shot_dir() == "":
 		return
@@ -280,6 +455,7 @@ func _shots() -> void:
 	_grab("k4_tape_ground")
 	for it in _tape_items():
 		level.take_item(String(it.name), true)
+	await _shots_k4b()
 	var pm: Control = main.get_node("UI/PauseMenu")
 	pm.open()
 	await _frames(0.3)
