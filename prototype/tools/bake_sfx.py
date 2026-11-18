@@ -1112,4 +1112,24 @@ def build_ui() -> None:
     chord = d.sweep(chord, "lp", d.env_pts(n, [(0, 300), (.35, 1800), (1.3, 700)]), 1.0)
     x = chord * d.env_pts(n, [(0, 0), (.08, 1), (.7, .7), (1.3, 0)])
     finalize("ui_levelup", d.reverb(x, ir("room"), wet=.25), lufs=-16.0, fade_out_ms=200)
-    bake_hybrid.ui()                                        # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
+
+    # Znajdźki (DIG_LOOT_PLAN.md K6, pickup.gd `rarity`): krótki akcent, gdy w trakcie gry wypada rzadka albo fabularna rzecz.
+    # Rzadka: miękkie stuknięcie i jasny, cichy brzęk mosiądzu (jak łuska o blachę) — nie dzwonek ani fanfara.
+    rl = Rng(0x10A7)
+    n = ms(900)
+    glint = ring(rl, [1568.0, 2352.0, 3140.0], [.55, .38, .22], amps=[1.0, .55, .3], dur=.9)
+    x = d.mix([(thump(.06, 210, 120, .01, .02), .35), (tick(rl, 2600, 1.8, 8, .002), .6), (glint, .8, .004),
+               (ring(rl, [1975.0, 2960.0], [.35, .2], amps=[1.0, .4], dur=.6), .45, .085)], n)
+    finalize("loot_rare", d.reverb(d.lp(x, 7000.0), ir("room"), wet=.18), lufs=-21.0, fade_out_ms=120)
+    # Fabularna (taśma, nieśmiertelnik): rozruch magnetofonu — stuk klawisza, ciepły ton z „wow” taśmy i syk, który gaśnie.
+    rt = Rng(0x10A8)
+    n = ms(1100)
+    t = np.arange(n) / SR
+    wow = 1.0 + .012 * np.sin(TAU * 1.3 * t) * d.env_pts(n, [(0, 1), (1.1, .3)])
+    tone = (d.osc("sine", 196.0 * wow, n) + .45 * d.osc("sine", 293.66 * wow, n) + .2 * d.osc("tri", 392.0 * wow, n))
+    tone *= d.env_pts(n, [(0, 0), (.12, 0), (.35, 1), (.75, .6), (1.1, 0)])
+    hiss = d.filt(d.colored(n, rt, .3), "bp", 3200.0, .7) * d.env_pts(n, [(0, 0), (.1, .5), (.5, .3), (1.1, 0)])
+    key = d.mix([(thump(.08, 160, 70, .02, .03), .7), (tick(rt, 1300, 1.5, 12, .003), .8)], ms(120))
+    x = d.mix([(key, .8), (tone / (d.peak(tone) + 1e-9), .55, .08), (hiss / (d.peak(hiss) + 1e-9), .12)], n)
+    finalize("loot_story", d.reverb(d.lp(x, 4200.0), ir("room"), wet=.2), lufs=-22.0, fade_out_ms=150)
+    bake_hybrid.ui()                                       # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)

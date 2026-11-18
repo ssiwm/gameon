@@ -93,6 +93,8 @@ const PATHS := {
 	"leech_growl_2": "res://audio/sfx/enemies/leech_growl_2.wav",
 	"leech_shriek_1": "res://audio/sfx/enemies/leech_shriek_1.wav",
 	"leech_shriek_2": "res://audio/sfx/enemies/leech_shriek_2.wav",
+	"loot_rare": "res://audio/sfx/ui/loot_rare.wav",
+	"loot_story": "res://audio/sfx/ui/loot_story.wav",
 	"lr7_beam_loop": "res://audio/sfx/weapons/lr7_beam_loop.wav",
 	"lr7_start": "res://audio/sfx/weapons/lr7_start.wav",
 	"m83_far_1": "res://audio/sfx/weapons/m83_far_1.wav",

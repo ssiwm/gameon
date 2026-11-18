@@ -359,6 +359,14 @@
   "sfx/enemies/leech_shriek_2",
   0
  ],
+ "loot_rare": [
+  "sfx/ui/loot_rare",
+  0
+ ],
+ "loot_story": [
+  "sfx/ui/loot_story",
+  0
+ ],
  "lr7_beam_loop": [
   "sfx/weapons/lr7_beam_loop",
   1

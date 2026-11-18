@@ -2676,6 +2676,12 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					level.spawn_item("ammo", int(loot[li]), lp.global_position + Vector2(dx, -14.0), 1)
 				else:
 					level.spawn_item("supply", Throwables.ORDER.find(String(loot[li])), lp.global_position + Vector2(dx, -14.0))
+	if "--shotrarity" in OS.get_cmdline_user_args():
+		var rp: Node2D = _players.get_node_or_null("1")       # --shotrarity: znajdźki trzech klas rzadkości (K6) po obu stronach gracza 1:
+		if rp != null:                                        # złom 3 (zwykły), pakunek 15 i część (rzadkie), taśma (fabularna)
+			var rk := [["scrap", 0, 3, -46.0], ["scrap", 0, 15, -22.0], ["part", Scrap.part_index("m83_pbs1"), 0, 24.0], ["tape", 0, 0, 48.0]]
+			for e in rk:
+				level.spawn_item(String(e[0]), int(e[1]), rp.global_position + Vector2(float(e[3]), -14.0), int(e[2]))
 	if "--shothurt" in OS.get_cmdline_user_args():
 		var hp1: Node2D = _players.get_node_or_null("1")       # --shothurt: gracz 1 z 1 HP (podgląd ran na ciele i ostrzeżenia obrazem)
 		if hp1 != null:

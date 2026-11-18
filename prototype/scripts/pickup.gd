@@ -56,6 +56,32 @@ const GLOW := {
 }
 const MAG_EMPTY_LIFE := 30.0      ## s — pusty magazynek (nic do podniesienia) potem znika
 
+## Klasa rzadkości znajdźki (DIG_LOOT_PLAN.md K6): skrzynia daje ok. 1,25 złomu, a sejf 40 — różnicę ma być widać od razu. Zwykła świeci jak
+## dotąd; rzadka (część, skrzynia mocy, skrytka, nowa broń, złom od RARE_SCRAP — pakunek ze strefy wydobycia, łup bossa) mocniej, pulsuje
+## i w widoku 3D co chwilę błyska iskrą (view3d.gd `_sync_loot_glints`); fabularna (taśma, nieśmiertelnik) oddycha wolno własnym kolorem.
+## Rzadka i fabularna, które wypadną w trakcie gry (level.gd `spawn_item`, węzły „Item…”), przy lądowaniu grają krótki akcent
+## (`loot_rare` / `loot_story`); leżące od początku na mapie — nie (dźwięk nie zdradza ukrytej skrytki na starcie).
+enum Rarity { COMMON, RARE, STORY }
+const RARE_SCRAP := 10            ## złom od tylu sztuk to rzadkość (wróg 1–5, skrzynia 1–3; pakunek strefy 12–20, skrytka 20, boss 30)
+const RARITY_RANGE := [1.0, 1.3, 1.0]           ## mnożnik zasięgu poświaty wg klasy
+## Puls poświaty wg klasy: [jasność, amplituda, rad/s]. Zwykła jak dotąd (0,5 ± 0,2), rzadka jaśniej i mocniej, fabularna wolny oddech.
+## Skrzynia mocy (rzadka) zostaje przy własnym, szybszym pulsie.
+const RARITY_PULSE := [[0.5, 0.2, 4.0], [0.95, 0.4, 3.4], [0.6, 0.14, 1.3]]
+const RARITY_SOUND := ["", "loot_rare", "loot_story"]
+
+## Klasa rzadkości rodzaju znajdźki (`rounds`: złom — wartość, broń — naboje; porzucona broń ma 0 i jest zwykła).
+static func rarity_of(k: String, r: int) -> int:
+	match k:
+		"tape", "tag":
+			return Rarity.STORY
+		"part", "power", "stash":
+			return Rarity.RARE
+		"scrap":
+			return Rarity.RARE if r >= RARE_SCRAP else Rarity.COMMON
+		"weapon":
+			return Rarity.RARE if r > 0 else Rarity.COMMON
+	return Rarity.COMMON
+
 ## Zrzut zaopatrzenia leży na ziemi jako sam przedmiot (granat, mina, skaner…), nie w torbie — rodzaj ma być widoczny od razu, a nie
 ## tylko po kolorze tabliczki. Skala sprite'a na rodzaj: modele znajdziek mają w view3d.gd (ITEM_SCALE) skalę ok. 1,5–2× naturalnej,
 ## co dla granatu daje 17 cm — ginie przy postaci; tu dobieramy czytelny rozmiar (granat ok. 30 cm, mina i apteczka ok. 0,5 m).
@@ -65,6 +91,8 @@ var kind := "health"
 var arg := 0                      ## ammo/weapon: id broni
 var rounds := 0                   ## ammo / mag: ile naboi (mag: arg = broń | typ naboju << 8)
 var static_display := false       ## broń na stojaku (kryjówka): stoi w miejscu — bez podskoku przy spawnie i bez bujania
+var rarity := 0                   ## Rarity (K6): ustala _ready z rodzaju i wartości; broń na stojaku zawsze zwykła
+var accents := 0                  ## ile razy zagrał akcent rzadkości (test)
 
 var _vel := Vector2.ZERO
 var _floor_y := 0.0
@@ -95,8 +123,10 @@ func _ready() -> void:
 		material = Lights.unshaded()          # skrzynkę i broń widać w ciemności
 		modulate = Color(0.88, 0.88, 0.88)
 	# poświata — przedmiot widać w ciemności, ale nie oświetla okolicy (pusty magazynek nie świeci — nie ma po co po niego iść)
+	rarity = Rarity.COMMON if static_display else rarity_of(kind, rounds)
 	if not (kind == "mag" and rounds <= 0):
-		_glow = Lights.make_light(Lights.radial(), 0.9 if kind in ["stash", "mag"] else (2.4 if kind == "power" else 1.6), _glow_color(), 0.6, false)      # skrytka i magazynek świecą słabo, skrzynia mocy — mocno
+		var reach := (0.9 if kind in ["stash", "mag"] else (2.4 if kind == "power" else 1.6)) * float(RARITY_RANGE[rarity])     # skrytka i magazynek świecą słabo, skrzynia mocy — mocno
+		_glow = Lights.make_light(Lights.radial(), reach, _glow_color(), 0.6, false)
 		_glow.position = Vector2(0, -8)
 		add_child(_glow)
 	if static_display:
@@ -159,6 +189,7 @@ func _physics_process(delta: float) -> void:
 			if not fh.is_empty():
 				global_position = Vector2(roundf(next.x), fh["position"].y)         # lądowanie na pełnym pikselu
 				_landed = true
+				_rarity_accent()
 				if kind == "mag":
 					Audio.play_variant_at("step_metal", 5, global_position, Audio.BUS_WORLD, -12.0, 1.45)        # stuk magazynka o ziemię
 			else:
@@ -176,7 +207,8 @@ func _physics_process(delta: float) -> void:
 	elif kind != "health":
 		queue_redraw()
 	if _glow != null:
-		_glow.energy = (0.9 + 0.5 * sin(_t * 6.0)) if kind == "power" else (0.5 + 0.2 * sin(_t * 4.0))
+		var pu: Array = RARITY_PULSE[rarity]                   # K6: puls wg klasy rzadkości
+		_glow.energy = (0.9 + 0.5 * sin(_t * 6.0)) if kind == "power" else (float(pu[0]) + float(pu[1]) * sin(_t * float(pu[2])))
 	if _landed and NoiseMgr.is_server():
 		_try_pickup()
 		if kind == "mag" and rounds <= 0 and _t > MAG_EMPTY_LIFE and not is_queued_for_deletion():
@@ -368,6 +400,13 @@ func _try_flares() -> void:
 		if lvl != null:
 			lvl.take_item(String(name))
 		return
+
+## K6: rzadka albo fabularna znajdźka wypadła w trakcie gry (węzeł „Item…” z level.gd `spawn_item`) — krótki akcent przy lądowaniu.
+func _rarity_accent() -> void:
+	if rarity == Rarity.COMMON or not String(name).begins_with("Item"):
+		return
+	accents += 1
+	Audio.play_at(String(RARITY_SOUND[rarity]), global_position + Vector2(0.0, -6.0), Audio.BUS_WORLD, -4.0 if rarity == Rarity.RARE else -6.0)
 
 ## Rodzaj przedmiotu w zrzucie zaopatrzenia (arg = indeks w Throwables.SHOP_ORDER: przedmioty jak dawniej, za nimi amunicja specjalna z elit).
 func _supply_kind() -> String:
