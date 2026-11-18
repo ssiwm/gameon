@@ -47,12 +47,17 @@ const GRATE_LAMP := [0.7, 1.2, Color(0.78, 0.88, 0.84)]    ## za kratą: [ułame
 const MINE_LAMP := [1.6, 1.3, Color(1.0, 0.78, 0.45)]      ## sztolnia: [m przed czołem, energia, kolor] — daleka lampa górnicza
 ## Okno: lampa pokoju za oknem — [ułamek głębokości, energia, kolor] dla „tube” (zimna świetlówka dyspozytorni) i „bulb” (ciepła żarówka).
 ## Lampa stoi w 3/4 głębokości: zasięg (do ściany tła) to wtedy 3 m, a tylna ściana pokoju jest metr od lampy — jasna; w połowie
-## głębokości tylna ściana leżała na samym końcu zasięgu i zostawała czarna.
-const WINDOW_LAMPS := {"tube": [0.75, 1.2, Color(0.74, 0.86, 0.84)], "bulb": [0.75, 0.9, Color(1.0, 0.74, 0.46)]}
+## głębokości tylna ściana leżała na samym końcu zasięgu i zostawała czarna. 2026-11-18: lampa przesunięta w bok okna i z ostrzejszym
+## spadkiem (`WINDOW_ATTEN`) — jasna plama przy lampie i ciemne kąty zamiast równo oświetlonej ceglanej ściany, która czytała się jak obrazek.
+const WINDOW_LAMPS := {"tube": [0.75, 1.9, Color(0.74, 0.86, 0.84)], "bulb": [0.75, 1.5, Color(1.0, 0.74, 0.46)]}
+const WINDOW_ATTEN := 2.2                   ## krzywa spadku światła pokoju (wyżej = szybszy spadek od lampy; reszta wnęk ma 1,4)
+const WINDOW_LAMP_X := 0.32                 ## lampa w tym ułamku szerokości otworu (od lewego ościeża) — plama światła z boku, nie na środku
 const WINDOW_LAMP_Y := 0.55                 ## m: lampa wisi tyle pod górną krawędzią otworu — tuż pod nadprożem, z dołu widać ją w oknie
-const ROOM_DROP := 1.0                      ## m: podłoga pokoju za oknem leży tyle pod parapetem
-const ROOM_RISE := 0.7                      ## m: strop pokoju tyle nad nadprożem (z oka nad kadrem widać głębiej w pokój)
-const ROOM_SIDE := 0.9                      ## m: pokój szerszy od okna o tyle z każdej strony (boki chowają się za murem)
+## Pokój za oknem tylko trochę większy od otworu: podłoga, strop i boki wchodzą w kadr pod kątem i rysują perspektywę głębi
+## (2026-11-18: przy 1 m spadku podłogi, 0,7 m stropu i 0,9 m boków wszystko chowało się za murem i widać było samą tylną ścianę).
+const ROOM_DROP := 0.3                      ## m: podłoga pokoju za oknem leży tyle pod parapetem
+const ROOM_RISE := 0.2                      ## m: strop pokoju tyle nad nadprożem
+const ROOM_SIDE := 0.3                      ## m: pokój szerszy od okna o tyle z każdej strony
 const MULLION := 0.9                        ## m: najdalszy rozstaw szczebli ramy okna
 const VENT_LAMP := [1.0, Color(1.0, 0.80, 0.56)]          ## kratka: [energia, kolor] — lampa na końcu kanału
 const VENT_W := 0.9                         ## m: szerokość kratki (wysokość VENT_H); reszta kafla to mur
@@ -250,10 +255,13 @@ static func _mats() -> Dictionary:
 
 ## Rama otworu w grubości płyty ściany tła: ościeża, nadproże i wykruszony brzeg (kilka cegieł i odprysków nierówno) — wnęka ma ramę,
 ## nie gołe prostokątne cięcie (lekcja z `ATMOSPHERE_PLAN.md` F4).
-static func _frame(root: Node3D, g: Dictionary, rng: RandomNumberGenerator, side_mat: Material, lintel_mat: Material) -> void:
+## `chips` = false (okno): bez odprysków — w oknie rysowały się jako zęby na tle szyby i ramy (przegląd budynków 2026-11-18).
+static func _frame(root: Node3D, g: Dictionary, rng: RandomNumberGenerator, side_mat: Material, lintel_mat: Material, chips := true) -> void:
 	_box(root, "JambL", Vector3(g.x0, g.y_floor, WALL_Z), Vector3(g.ix0, g.y_top, g.front), side_mat)
 	_box(root, "JambR", Vector3(g.ix1, g.y_floor, WALL_Z), Vector3(g.x1, g.y_top, g.front), side_mat)
 	_box(root, "Lintel", Vector3(g.ix0, g.iy1, WALL_Z - 0.05), Vector3(g.ix1, g.y_top, g.front + 0.04), lintel_mat)
+	if not chips:
+		return
 	for side in [0, 1]:
 		var xe: float = g.ix0 if side == 0 else g.ix1
 		var sgn := 1.0 if side == 0 else -1.0
@@ -277,7 +285,7 @@ static func _shell(root: Node3D, g: Dictionary, floor_mat: Material, ceil_mat: M
 
 ## Świecąca bańka (emisja bez cieniowania, widoczna także na LOW) i — od MEDIUM — światło tylko na bryły wnęk, bez cienia i bez mgły,
 ## z zasięgiem kończącym się na ścianie tła.
-static func _lamp(root: Node3D, at: Vector3, energy: float, col: Color, quality: int, radius := 0.06, glow := BULB_GLOW) -> void:
+static func _lamp(root: Node3D, at: Vector3, energy: float, col: Color, quality: int, radius := 0.06, glow := BULB_GLOW, atten := 1.4) -> void:
 	var bulb := SphereMesh.new()
 	bulb.radius = radius
 	bulb.height = radius * 2.0
@@ -298,7 +306,7 @@ static func _lamp(root: Node3D, at: Vector3, energy: float, col: Color, quality:
 	l.light_color = col
 	l.light_energy = energy
 	l.omni_range = minf(BULB_RANGE, (WALL_Z - LIGHT_EDGE) - at.z)
-	l.omni_attenuation = 1.4
+	l.omni_attenuation = atten
 	l.light_cull_mask = LAYER_NICHE
 	l.light_volumetric_fog_energy = 0.0
 	l.light_specular = 0.3
@@ -515,11 +523,12 @@ static func _build_drift(root: Node3D, d: Dictionary, g: Dictionary, rng: Random
 	_box(root, "LampHood", at + Vector3(-0.05, 0.03, -0.05), at + Vector3(0.05, 0.08, 0.05), m.metal)
 	_lamp(root, at, float(MINE_LAMP[1]), MINE_LAMP[2], quality, 0.045, 2.4)
 
-## window (N4): wysokie okno w ramie ze szczeblami i resztkami szyb, za nim pokój szerszy od okna (boki chowają się za murem),
-## z podłogą pod parapetem: szafa sterownicza z lampkami pod tylną ścianą, szafka, rura pod stropem i lampa („tube” albo „bulb”).
+## window (N4): wysokie okno w ramie ze szczeblami i resztkami ciemnych szyb, za nim pokój niewiele większy od otworu (podłoga, strop
+## i boki widać w perspektywie): szafa sterownicza z lampkami pod tylną ścianą, krzesło i pion rury w połowie głębokości (sylwetki
+## na tle jasnej plamy), szafka, rura pod stropem i lampa („tube” albo „bulb”) z boku okna.
 static func _build_window(root: Node3D, d: Dictionary, g: Dictionary, rng: RandomNumberGenerator, quality: int) -> void:
 	var m := _mats()
-	_frame(root, g, rng, m.wall, m.conc)
+	_frame(root, g, rng, m.wall, m.conc, false)
 	_box(root, "Sill", Vector3(g.ix0 - 0.08, g.y_floor - 0.07, WALL_Z - 0.05), Vector3(g.ix1 + 0.08, g.y_floor + 0.06, g.front + 0.07), m.conc)
 	# rama: obwód, szczeble co ≤ MULLION i ślemię na 55% wysokości; szyby tylko w części pól (reszta wybita)
 	var fz: float = WALL_Z + 0.10
@@ -533,10 +542,12 @@ static func _build_window(root: Node3D, d: Dictionary, g: Dictionary, rng: Rando
 	for i in n + 1:
 		var mx: float = g.ix0 + w * float(i) / float(n)
 		_box(root, "Mullion%d" % i, Vector3(mx - 0.025, g.y_floor + 0.06, fz - 0.03), Vector3(mx + 0.025, g.iy1, fz + 0.03), m.metal)
-	var glass := StandardMaterial3D.new()
-	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glass.albedo_color = Color(0.50, 0.56, 0.55, 0.16)
-	glass.roughness = 0.25
+	var glass := StandardMaterial3D.new()                    # ciemne, brudne szkło z połyskiem: odbija lampy i latarkę, a pokój widać przez nie
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA   # przyciemniony (szara mgiełka 16% czytała się jak zasłona)
+	glass.albedo_color = Color(0.10, 0.13, 0.13, 0.42)
+	glass.metallic = 0.3
+	glass.metallic_specular = 0.9
+	glass.roughness = 0.08
 	glass.cull_mode = BaseMaterial3D.CULL_DISABLED
 	for i in n:
 		for j in 2:
@@ -574,6 +585,26 @@ static func _build_window(root: Node3D, d: Dictionary, g: Dictionary, rng: Rando
 		var ly := ry0 + 1.15 + 0.6 * rng.randf()
 		_box(root, "Led%d" % k, Vector3(lx - 0.025, ly - 0.02, g.z_back + 0.55), Vector3(lx + 0.025, ly + 0.02, g.z_back + 0.57), lm)
 	_prop(root, "locker", Vector3(rx0 + 0.55, ry0, g.z_back + 0.4), 1.9, rng.randf_range(-0.05, 0.05))
+	# w połowie głębokości: krzesło przy pulpicie i pion rury od podłogi do stropu — bliższe plany, które przesuwają się względem
+	# tylnej ściany, gdy kamera jedzie (paralaksa), i rysują się sylwetką na tle plamy światła
+	var chx := cx + rng.randf_range(-0.4, 0.4)
+	var chz: float = g.z_back + 1.45
+	_box(root, "ChairSeat", Vector3(chx - 0.22, ry0 + 0.44, chz - 0.22), Vector3(chx + 0.22, ry0 + 0.49, chz + 0.22), m.metal)
+	_box(root, "ChairBack", Vector3(chx - 0.22, ry0 + 0.49, chz + 0.17), Vector3(chx + 0.22, ry0 + 0.95, chz + 0.22), m.metal)
+	for lx in [-0.19, 0.19]:
+		for lz in [-0.19, 0.19]:
+			_box(root, "ChairLeg", Vector3(chx + lx - 0.015, ry0, chz + lz - 0.015), Vector3(chx + lx + 0.015, ry0 + 0.44, chz + lz + 0.015), m.metal)
+	var riser := CylinderMesh.new()
+	riser.top_radius = 0.07
+	riser.bottom_radius = 0.07
+	riser.height = ry1 - ry0
+	riser.radial_segments = 10
+	var rm := MeshInstance3D.new()
+	rm.name = "Riser"
+	rm.mesh = riser
+	rm.material_override = m.metal
+	rm.position = Vector3(g.ix1 - 0.35, (ry0 + ry1) * 0.5, WALL_Z - g.depth * 0.45)
+	root.add_child(rm)
 	var pipe := CylinderMesh.new()                            # rura w poprzek pokoju pod stropem
 	pipe.top_radius = 0.08
 	pipe.bottom_radius = 0.08
@@ -590,15 +621,15 @@ static func _build_window(root: Node3D, d: Dictionary, g: Dictionary, rng: Rando
 	if not WINDOW_LAMPS.has(lit):
 		return
 	var wl: Array = WINDOW_LAMPS[lit]
-	var at := Vector3((g.ix0 + g.ix1) * 0.5 - 0.4, g.y_top - WINDOW_LAMP_Y, WALL_Z - g.depth * float(wl[0]))
+	var at := Vector3(lerpf(g.ix0, g.ix1, WINDOW_LAMP_X), g.y_top - WINDOW_LAMP_Y, WALL_Z - g.depth * float(wl[0]))
 	if lit == "tube":
 		_box(root, "Tube", at + Vector3(-0.5, -0.02, -0.04), at + Vector3(0.5, 0.03, 0.04), m.metal)
 		for sx in [-0.45, 0.45]:
 			_box(root, "TubeChain", at + Vector3(sx - 0.004, 0.03, -0.004), Vector3(at.x + sx + 0.004, ry1, at.z + 0.004), m.metal)
-		_lamp(root, at + Vector3(0.0, -0.05, 0.0), float(wl[1]), wl[2], quality, 0.04)
+		_lamp(root, at + Vector3(0.0, -0.05, 0.0), float(wl[1]), wl[2], quality, 0.04, BULB_GLOW, WINDOW_ATTEN)
 	else:
 		_box(root, "Cord", at + Vector3(-0.006, 0.08, -0.006), Vector3(at.x + 0.006, ry1, at.z + 0.006), m.metal)
-		_lamp(root, at, float(wl[1]), wl[2], quality)
+		_lamp(root, at, float(wl[1]), wl[2], quality, 0.06, BULB_GLOW, WINDOW_ATTEN)
 
 ## vent (N4): kratka w jednym kaflu — mur wokół kratki, rama i ukośne żaluzje, za nimi blaszany kanał w głąb z wentylatorem
 ## i lampą na końcu („lamp”): światło widać w szczelinach żaluzji, łopatki wentylatora rysują się na jego tle.
