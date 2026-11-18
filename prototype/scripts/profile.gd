@@ -12,11 +12,13 @@ const Look := preload("res://scripts/look.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Parts := preload("res://scripts/parts.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 
 signal xp_gained(amount: int, reason: String)
 signal leveled_up(level: int)
 signal changed
 signal discovered(id: String)                 ## nowy wpis bestiariusza (bestiary_watch.gd pokazuje komunikat)
+signal tape_found(id: String)                 ## nowa taśma w archiwum (DIG_LOOT_PLAN.md K4; level.gd `_tape_rpc` pokazuje komunikat)
 
 const SAVE_FILE := "profile.cfg"             ## w folderze aktywnej postaci (Characters.file, PROFILES_PLAN.md E1; do 1.7.425 user://profile.cfg)
 const STEP_BASE := 50                 ## próg poziomu n+1 minus n = STEP_BASE + STEP_PER_LEVEL × n
@@ -59,6 +61,7 @@ var mastery: Dictionary = {}                  ## klucz broni → punkty wprawy (
 var history: Dictionary = {}                  ## klucz broni → {"k": zabójstwa, "e": elity, "b": bossowie} (GUNSMITH_PLAN §7.4, od 1.7.331)
 var seen: Dictionary = {}                     ## znaczniki „nowe” (od 1.7.409): "perk:<id>" / "part:<id>" / "beast:<id>" → gracz już to obejrzał
 var _seen_baseline := true                    ## profil bez listy obejrzanych: pierwsze zapytanie uznaje wszystko, co już jest, za obejrzane
+var tapes: Dictionary = {}                    ## zebrane taśmy (tapes.gd, K4, od 1.7.606): id → true; karta ARCHIWUM w menu pauzy
 var bestiary: Dictionary = {}                 ## id wpisu bestiariusza → zabójstwa tego gracza; wpis jest = gracz spotkał tego wroga (od 1.7.407)
 var map_best: Dictionary = {}                 ## rekord osobisty misji kampanii (raport po akcji, RESULTS_PLAN.md P1): id mapy → {"time": s}
 var last_record: Dictionary = {}              ## ostatni wynik misji wobec rekordu: {map, time, prev, best, new, first} (raport)
@@ -311,6 +314,19 @@ func note_beast_kill(kind: String) -> void:
 	bestiary[kind] = int(bestiary.get(kind, 0)) + 1
 	_cond_dirty = true
 
+## Taśma w archiwum gracza (K4).
+func has_tape(id: String) -> bool:
+	return tapes.has(id)
+
+## Nowa taśma: dopisuje do archiwum (zapis jak bestiariusza) i zwraca true; znana albo nieistniejąca — false.
+func add_tape(id: String) -> bool:
+	if tapes.has(id) or not Tapes.has(id):
+		return false
+	tapes[id] = true
+	_cond_dirty = true
+	tape_found.emit(id)
+	return true
+
 func beast_kills(id: String) -> int:
 	return int(bestiary.get(id, 0))
 
@@ -327,6 +343,8 @@ func is_new(key: String) -> bool:
 			return Scrap.has_part(id)
 		"beast":
 			return bestiary.has(id) and not id in BESTIARY_ALWAYS
+		"tape":
+			return tapes.has(id)
 	return false
 
 func mark_seen(key: String) -> void:
@@ -680,6 +698,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "range_best", range_best)
 	cfg.set_value("profile", "map_best", map_best)
 	cfg.set_value("profile", "bestiary", bestiary)
+	cfg.set_value("profile", "tapes", tapes.keys())
 	if not _seen_baseline:
 		cfg.set_value("profile", "seen", seen.keys())
 	cfg.save(path)
@@ -755,6 +774,10 @@ func load_from(path: String) -> void:
 		# profil sprzed bestiariusza z odkrywaniem (< 1.7.407): gracz z postępem widział już kodeks w całości — zostaje mu cały
 		for id in bestiary_ids():
 			bestiary[String(id)] = 0
+	tapes = {}
+	for k in Array(cfg.get_value("profile", "tapes", [])):
+		if Tapes.has(String(k)):
+			tapes[String(k)] = true
 	seen = {}
 	_seen_baseline = not cfg.has_section_key("profile", "seen")
 	for k in Array(cfg.get_value("profile", "seen", [])):
@@ -798,6 +821,7 @@ func reset_for_test() -> void:
 	result_ms = 0
 	_snap_valid = false
 	bestiary = {}
+	tapes = {}
 	seen = {}
 	_seen_baseline = false
 	_cond_dirty = false

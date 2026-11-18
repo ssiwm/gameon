@@ -36,6 +36,7 @@ const NightShift := preload("res://scripts/night_shift.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Combat := preload("res://scripts/combat.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 
 const TILE := 16.0
 const CELL := 4.0                     ## px komórki
@@ -128,6 +129,9 @@ const FIND_MAIN := "main"
 ## Geoda (K1): jedno miejsce w żyle strefy (tylko strefy, w których jest żyła — dziś 1.1). Odkopana daje próbkę do łupu misji (pracownia).
 ## W puli jak każda cenna znajdźka, więc nie da się jej farmić; otwieranie w pracowni jako osobny moment to K4.
 const FIND_GEODE := "geode"
+## Taśma (K4, tapes.gd): opcja strefy {"tape": id} — jedna dodatkowa znajdźka w najdalszym od wejścia miejscu głębi skały. Cenna jak
+## każda (pula), wypada jako przedmiot „tape”, który podnosi człowiek.
+const FIND_TAPE := "tape"
 ## Ruda z żyły (K1, „żyła płaci”): serwer liczy narożniki żyły, które cios zamienił w powietrze; co ORE_CORNERS — 1 złom do łupu misji.
 ## Krok tunelu w żyle (9 ciosów) wybiera ok. 50 narożników żyły, więc ok. 2 złomu na krok; cała żyła strefy 1.1 to ok. 20–30 złomu.
 ## Bez puli: żyła wraca z danymi mapy w każdej misji, ale tempo (ok. 10 złomu na minutę ciągłego kopania w hałasie) jest niższe niż
@@ -189,6 +193,7 @@ var wake_at := Vector2.INF            ## serwer: stopy ostatniego kopiącego
 var wake_spawned: Array = []          ## serwer: nazwy wrogów z wyjścia (test)
 var wake_fx := 0                      ## u każdego peera: zapowiedzi i wyjść (test)
 var wake_fx_last := -1                ## u każdego peera: etap ostatniej zapowiedzi (test)
+var tape := ""                        ## K4: id taśmy zakopanej w strefie (tapes.gd) albo ""
 var chamber := Rect2i()               ## K5b: komora w kaflach strefy (pusta — strefa bez komory)
 var chamber_woke := false             ## serwer: komora otwarta i rój obudzony (do wipe'u raz)
 var chamber_fx := 0                   ## u każdego peera: napisów / dźwięków otwarcia komory (test)
@@ -224,6 +229,7 @@ func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 	seed_v = int(def[5]) if def.size() > 5 else 0
 	var mix: float = float(def[6]) if def.size() > 6 else float(Mats.MATS[mat_key]["mix"])
 	var opts: Dictionary = def[7] if def.size() > 7 and def[7] is Dictionary else {}
+	tape = String(opts.get("tape", "")) if Tapes.has(String(opts.get("tape", ""))) else ""   # K4: taśma zakopana w głębi
 	wakes_on = bool(opts.get("wake", true))                   # K5: krótka strefa przy trasie uczy kopania — nie budzi wrogów (K3)
 	var ch: Array = opts.get("chamber", [])                   # K5b: komora [c0, r0, c1, r1] w kaflach mapy (w danych mapy powietrze `.`)
 	chamber = Rect2i(int(ch[0]) - c0, int(ch[1]) - r0, int(ch[2]) - int(ch[0]) + 1, int(ch[3]) - int(ch[1]) + 1) if ch.size() == 4 else Rect2i()
@@ -2012,7 +2018,37 @@ func _plan_finds(solid_at: Callable) -> void:
 		if finds.is_empty():
 			kind = FIND_MAIN                                         # K1: pierwsze miejsce z ziarna to zawsze główna znajdźka (w strefie z komorą — dno komory)
 		finds.append({"i": i, "j": j, "pos": global_position + _corner_px(i, j), "kind": kind, "kind0": kind, "state": Find.BURIED})
+	_plan_tape(cands, taken)
 	_plan_geode(rng, cands, taken)
+
+## K4: taśma strefy w kaflu głębi skały najdalej od wejścia (bez losowania — to samo miejsce w każdym ziarnie), z odstępem od
+## pozostałych znajdziek (a gdy go nie ma — w innym kaflu niż one); narożnik w środku kafla.
+func _plan_tape(cands: Array[Vector2i], taken: Array[Vector2i]) -> void:
+	if tape == "" or finds.size() >= 7:
+		return
+	var e := entrance()
+	var ep := Vector2(float(e["wall_x"]) / TILE - c0, float(e["floor_y"]) / TILE - r0 - 1.0) if not e.is_empty() else Vector2(-1.0e6, -1.0e6)
+	var best := Vector2i(-1, -1)
+	var best_d := -1.0
+	for gap in [FIND_SPACING, 1]:                                   # wąska strefa (1.3: 4 kafle) nie ma miejsca z odstępem — wtedy dowolny wolny kafel
+		for t in cands:
+			var ok := true
+			for q in taken:
+				if maxi(absi(q.x - t.x), absi(q.y - t.y)) < gap:
+					ok = false
+					break
+			var d := (Vector2(t) + Vector2(0.5, 0.5)).distance_to(ep)
+			if ok and (d > best_d + 0.01 or (absf(d - best_d) <= 0.01 and (t.y > best.y or (t.y == best.y and t.x < best.x)))):
+				best = t
+				best_d = d
+		if best.x >= 0:
+			break
+	if best.x < 0:
+		return
+	taken.append(best)
+	var i := best.x * PER_TILE + PER_TILE / 2
+	var j := best.y * PER_TILE + PER_TILE / 2
+	finds.append({"i": i, "j": j, "pos": global_position + _corner_px(i, j), "kind": FIND_TAPE, "kind0": FIND_TAPE, "state": Find.BURIED})
 
 ## K1: jedna geoda w żyle — narożnik żyły (z danych mapy) we wnętrzu kafla z głębi skały, z odstępem od pozostałych znajdziek.
 ## Strefy bez żyły w głębi skały nie dostają geody. Maska wyjętych znajdziek w stanie strefy ma 8 bitów, więc geoda jest dopiero po FIND_MAX.
@@ -2134,6 +2170,8 @@ func _resolve_find(kind: String) -> Array:
 	elif kind == FIND_GEODE:
 		if Scrap.enabled():
 			return ["sample", 0, 1]
+	elif kind == FIND_TAPE and tape != "":
+		return ["tape", Tapes.index_of(tape), -1]
 	return ["scrap", 0, randi_range(FIND_SCRAP.x, FIND_SCRAP.y)] if Scrap.enabled() else []
 
 ## Indeks zakopanej (nie odkopanej) znajdźki w prostokącie px świata albo -1 — dźwięk ciosu w metal.

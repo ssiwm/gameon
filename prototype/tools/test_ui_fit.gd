@@ -6,6 +6,7 @@ extends RefCounted
 ##   godot --headless --path prototype -- --uifittest     → ostatni wiersz: PASS / FAIL (flaga w main.gd, bo menu potrzebuje autoloadów)
 
 const PauseMenu := preload("res://scripts/pause_menu.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 const OperatorsScreen := preload("res://scripts/operators_screen.gd")
 const Codex := preload("res://scripts/codex.gd")
 const MainMenu := preload("res://scripts/main_menu.gd")
@@ -17,7 +18,7 @@ const MENU_WORDS := 70                 ## MAIN_MENU_PLAN.md §7: tekst w spoczyn
 const MENU_MIN_PX := 12
 
 const LOCALES := ["en", "pl"]
-const TAB_NAMES := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "CONTROLS"]
+const TAB_NAMES := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "ARCHIVE", "CONTROLS"]
 const SLACK := 0.5                     ## tolerancja zaokrągleń [px]
 
 var _fails := 0
@@ -58,6 +59,8 @@ func run(host: Node) -> int:
 	# układ kodeksu sprawdzamy na pełnych wpisach (najdłuższe teksty) — bestiariusz odsłonięty w całości
 	for id in Profile.bestiary_ids():
 		Profile.bestiary[String(id)] = 0
+	for id in Tapes.ORDER:                      # archiwum (K4): wszystkie taśmy zebrane — pełne zapisy
+		Profile.tapes[String(id)] = true
 	for loc in LOCALES:
 		TranslationServer.set_locale(loc)
 		var pm: Control = PauseMenu.new()
@@ -68,7 +71,7 @@ func run(host: Node) -> int:
 			for _f in 4:
 				await tree.process_frame
 			_check_tab(pm, loc, t)
-			if t == 1 or t == 2:
+			if t == 1 or t == 2 or t == 5:
 				# każdy wpis kodeksu: opisy i statystyki zmieniają szerokość
 				var page: Node = pm.page_of(t)
 				for i in page._entries.size():

@@ -10,6 +10,7 @@ extends Node2D
 const Lights := preload("res://scripts/lights.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 
 ## Stalowa skrzynia sprzętowa zaginionego patrolu (items_proc_bake.py: m_strongbox): zamknięta na kłódkę z łańcuchem; po otwarciu
 ## osobny model z odchylonym wiekiem i pustym wnętrzem. Modele są w naturalnej skali (1 jednostka = 1 piksel świata), stąd skala 1.
@@ -143,6 +144,9 @@ func _open() -> void:
 	var lv := get_tree().get_first_node_in_group("level")
 	if lv != null:
 		lv.spawn_item("battery", 0, global_position + Vector2(10.0, -14.0))        # w sejfie patrolu leży też bateria 4,5 V (BATTERY_PLAN.md B1)
+		var tid := Tapes.for_source(String(lv.map_id), "box")
+		if tid != "":
+			lv.spawn_item("tape", Tapes.index_of(tid), global_position + Vector2(-10.0, -14.0))   # i taśma patrolu (DIG_LOOT_PLAN.md K4)
 	SessionLog.event("strongbox", {"pos": SessionLog.xy(global_position), "value": value, "noise": roundi(NoiseMgr.level), "workers": who.size()})
 	print("[STRONGBOX] %s opened, +%d scrap" % [name, value])
 	if NoiseMgr.has_network():

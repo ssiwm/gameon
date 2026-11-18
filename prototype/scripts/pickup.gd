@@ -17,6 +17,8 @@ extends Node2D
 ##           ją poza slotami (weapon_controller.server_grant_power); w kadrze leży model broni z mocną, pulsującą poświatą
 ##   battery płaska bateria 4,5 V (BATTERY_PLAN.md B1): +player.BATTERY_PICKUP s latarki temu, kto ma jej najmniej (poniżej BATTERY_TAKE_BELOW);
 ##           bot ustępuje człowiekowi, który jej potrzebuje — nic się nie marnuje
+##   tape    taśma (tapes.gd, DIG_LOOT_PLAN.md K4; arg = indeks w Tapes.ORDER): podnosi ją żywy człowiek (bot nie), serwer ogłasza
+##           znalezisko wszystkim (level.gd `tape_found`) — każdy peer dopisuje taśmę do archiwum swojego profilu
 ##   weapon  nie podnosi się samo: gracz naciska E (wymiana broni to decyzja, a nie
 ##           wypadek); serwer sprawdza odległość i przyznaje (level.gd)
 
@@ -28,6 +30,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Cabinet := preload("res://scripts/cabinet.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Tapes := preload("res://scripts/tapes.gd")
 
 const HEAL := 1
 const PICK_R := 12.0
@@ -49,6 +52,7 @@ const GLOW := {
 	"part": Color(0.5, 0.85, 1.0),
 	"power": Color(1.0, 0.42, 0.18),
 	"battery": Color(1.0, 0.92, 0.66),      # ciepła biel żarówki latarki
+	"tape": Color(0.95, 0.55, 0.85),        # fabularna: inny kolor niż złom i części
 }
 const MAG_EMPTY_LIFE := 30.0      ## s — pusty magazynek (nic do podniesienia) potem znika
 
@@ -194,6 +198,7 @@ func _hd_name() -> String:
 		"cache": return "cache"
 		"ammo": return "ammo"
 		"battery": return "battery"
+		"tape": return "tape"
 	return ""
 
 ## Skala sprite'a względem modelu (rozmiar w świecie dobrany tak, by przedmiot był czytelny, ale nie większy od gracza).
@@ -207,6 +212,7 @@ func _hd_scale() -> float:
 		"ammo": return 0.9
 		"scrap": return 0.8 if rounds >= 6 else 0.55
 		"battery": return 1.2                  # ok. 25 cm w świecie: jak granat ze zrzutu, czytelna przy postaci
+		"tape": return 1.3                     # kaseta ok. 10 cm: powiększona jak bateria (model w tej samej skali), by było ją widać przy postaci
 	return 1.0
 
 func _setup_hd() -> void:
@@ -295,6 +301,8 @@ func _try_pickup() -> void:
 			_try_power()
 		"battery":
 			_try_battery()
+		"tape":
+			_try_tape()
 
 ## Skrzynia mocy: pierwszy żywy człowiek, który jej dotknie i nie ma już broni mocy, dostaje ją poza slotami (boty nie biorą).
 func _try_power() -> void:
@@ -399,6 +407,20 @@ func _try_stash() -> void:
 			mis.on_stash_found(pl, global_position)
 		var lvl := _level()
 		if lvl != null:
+			lvl.take_item(String(name))
+			var tid := Tapes.for_source(String(lvl.map_id), "stash", Vector2i(int(global_position.x / 16.0), int(global_position.y / 16.0) - 1))
+			if tid != "":
+				lvl.spawn_item("tape", Tapes.index_of(tid), global_position + Vector2(8.0, -6.0))      # K4: w skrytce leży też taśma
+		return
+
+## Taśmę podnosi żywy człowiek (bot nie — to fabuła gracza); serwer ogłasza ją całej drużynie (level.gd `tape_found`).
+func _try_tape() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.dead or not _near(p):
+			continue
+		var lvl := _level()
+		if lvl != null:
+			lvl.tape_found(arg, p, global_position)
 			lvl.take_item(String(name))
 		return
 

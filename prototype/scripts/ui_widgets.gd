@@ -397,3 +397,8 @@ class NavItem extends Control:
 				for x in [4.5, 7.5, 10.5, 13.0]:
 					draw_line(o + Vector2(x, 8), o + Vector2(x + 1.0, 8), c, w)
 				draw_line(o + Vector2(5, 11), o + Vector2(13, 11), c, w)
+			6:  # kaseta
+				draw_rect(Rect2(o + Vector2(1.5, 4), Vector2(15, 10)), c, false, w)
+				draw_arc(o + Vector2(6, 8.5), 1.6, 0, TAU, 10, c, w)
+				draw_arc(o + Vector2(12, 8.5), 1.6, 0, TAU, 10, c, w)
+				draw_polyline(PackedVector2Array([o + Vector2(4.5, 14), o + Vector2(5.5, 11.5), o + Vector2(12.5, 11.5), o + Vector2(13.5, 14)]), c, w)
