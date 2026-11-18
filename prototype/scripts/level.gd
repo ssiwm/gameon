@@ -1479,6 +1479,12 @@ func _spawn_dig_zones() -> void:
 		var zone_solid := func(c: int, r: int) -> bool: return cells.has(Vector2i(c, r))
 		dz.setup(z, solid, zone_solid)
 		dz.on_tiles = _dig_tiles_changed
+		var spots: Array[Vector2] = dz.chamber_spots()            # K5b: gniazdo ćm pod stropem komory (każdy peer, te same nazwy)
+		for k in spots.size():
+			var mn := "Chamber%dMoth%d" % [i + 1, k + 1]
+			_add_enemy(mn, "cma", spots[k])
+			get_node(mn).set_meta("nest", DIG_ZONE.CHAMBER_NEST + i + 1)
+			get_node(mn).set_meta("chamber", dz.name)
 
 ## Każdy peer: w strefie wydobycia zmienił się stan kafli w `rc` (wykop opróżnił kafel albo reset go zasypał) — kafle wychodzą z `_dig_cells`
 ## albo do niego wracają, potem nawigacja (`rebuild_region`), siatka dźwięku i kafle mapy w okolicy od nowa.

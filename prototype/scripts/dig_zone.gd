@@ -113,6 +113,11 @@ const WAKE_DEFAULT := ["trzosek", "trzosek"]
 const WAKE_POCKET := Vector2(13.0, 10.0)     ## px: połowy boków kieszeni, z której wychodzą (wróg 10 × 14 px)
 const WAKE_FACE := 48.0               ## px: najdalsze czoło wykopu od kopiącego, za którym szukamy kieszeni
 const WAKE_TOAST_R := 220.0           ## px od strefy: tak blisko człowiek dostaje napis zapowiedzi
+## K5b, komora (DIG_LOOT_PLAN.md): pusta kieszeń w głębi strefy z gniazdem ćm pod stropem i główną znajdźką w dnie. Wkopanie się do niej
+## budzi rój (ćmy lecą do światła — latarka, flara), a ostatnia ćma gniazda zostawia złom i baterię (enemy_moth.gd `_nest_cleared`).
+const CHAMBER_MOTHS := 8              ## ćm w gnieździe komory (zwykłe gniazdo `Z` ma 12 — komora jest mała)
+const CHAMBER_NEST := 1000            ## meta „nest” ćm komory: CHAMBER_NEST + numer strefy (gniazda `Z` mapy mają 1, 2, …)
+const CHAMBER_TOAST_R := 260.0        ## px od komory: tak blisko człowiek dostaje napis o gnieździe
 const FIND_BLAST_PUSH := 10.0         ## px: wybuch odrzuca odkopaną znajdźkę od środka
 ## Złom ze znajdźki „scrap” — zakopany pakunek (DIG_LOOT_PLAN.md K1). Do 1.7.600: 1–3, mniej niż skrzynia przy drodze; w 74 próbach
 ## od 1.7.505 kopanie dało łącznie ok. 8 złomu przy medianie łupu misji 1.1 189 i sejfie 40 — kopanie przegrywało z każdą inną czynnością.
@@ -184,6 +189,9 @@ var wake_at := Vector2.INF            ## serwer: stopy ostatniego kopiącego
 var wake_spawned: Array = []          ## serwer: nazwy wrogów z wyjścia (test)
 var wake_fx := 0                      ## u każdego peera: zapowiedzi i wyjść (test)
 var wake_fx_last := -1                ## u każdego peera: etap ostatniej zapowiedzi (test)
+var chamber := Rect2i()               ## K5b: komora w kaflach strefy (pusta — strefa bez komory)
+var chamber_woke := false             ## serwer: komora otwarta i rój obudzony (do wipe'u raz)
+var chamber_fx := 0                   ## u każdego peera: napisów / dźwięków otwarcia komory (test)
 var _m0 := PackedByteArray()          ## materiał z danych mapy (reset; materiał osypiska się przesuwa)
 var _in_isl := PackedByteArray()      ## 1 = narożnik spadającej wyspy (osypywanie go nie rusza)
 var _islands: Array[Dictionary] = []  ## spadające wyspy: {"cells": PackedInt32Array, "v": narożników na krok, "drop": narożników łącznie}
@@ -202,7 +210,7 @@ var _sign_at := Vector2(-1, -1)       ## punkt przed znakiem strefy (`sign_point
 static var _jag_noise: FastNoiseLite
 
 ## Ustawia strefę z wpisu `DIG_ZONES` ([c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?, opcje?], kafle włącznie; opcje: {"wake": false}
-## — kopanie nie budzi wrogów). `solid_at(c, r) -> bool` — czy
+## — kopanie nie budzi wrogów; {"chamber": [c0, r0, c1, r1]} — komora z gniazdem ćm, kafle mapy wewnątrz strefy). `solid_at(c, r) -> bool` — czy
 ## kafel mapy (poza strefą) jest bryłą; `zone_solid(c, r) -> bool` — czy kafel strefy był skałą w danych mapy (przed wycięciem).
 func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 	add_to_group("dig_zones")
@@ -217,6 +225,8 @@ func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 	var mix: float = float(def[6]) if def.size() > 6 else float(Mats.MATS[mat_key]["mix"])
 	var opts: Dictionary = def[7] if def.size() > 7 and def[7] is Dictionary else {}
 	wakes_on = bool(opts.get("wake", true))                   # K5: krótka strefa przy trasie uczy kopania — nie budzi wrogów (K3)
+	var ch: Array = opts.get("chamber", [])                   # K5b: komora [c0, r0, c1, r1] w kaflach mapy (w danych mapy powietrze `.`)
+	chamber = Rect2i(int(ch[0]) - c0, int(ch[1]) - r0, int(ch[2]) - int(ch[0]) + 1, int(ch[3]) - int(ch[1]) + 1) if ch.size() == 4 else Rect2i()
 	nx = tiles.x * PER_TILE
 	ny = tiles.y * PER_TILE
 	_w = nx + 3
@@ -1452,6 +1462,8 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 			_wake(i0 - 1, i1 + 1)
 			_check_islands = true
 			_check_spans = true
+			if chamber.has_area() and not chamber_woke and chamber_breached():
+				_wake_chamber(pos)
 
 ## Serwer (K1, „żyła płaci”): `n` narożników żyły wykopanych jednym ciosem; co ORE_CORNERS — 1 złom do łupu misji (wipe go zabiera
 ## razem z łupem). Nocny Dyżur bez złomu, jak wszędzie. Każdy peer dostaje toast z sumą rudy tej strefy w tej próbie.
@@ -1577,6 +1589,7 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 		islands_fallen = 0
 		collapses = 0
 		_wake_reset()                                            # wipe i nowa misja: strefa znów może obudzić (punkt kontrolny — bez zmian)
+		chamber_woke = false
 	var out_mask := int(dm[n - 1])
 	var pr := _props_from(dm.slice(_w * _h * 2, n - 1))                 # stemple ze stanu (wipe: bez), ostrzeżenia serwer liczy od nowa
 	if pr != props:
@@ -1607,6 +1620,8 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 		cracks_hit = 0
 	_update_tiles(Rect2i(0, 0, tiles.x, tiles.y))
 	_unstick_players()
+	if not s.is_empty() and chamber.has_area():
+		chamber_woke = chamber_breached()                        # punkt kontrolny z otwartą komorą: rój już nie wstanie drugi raz
 
 ## Po zasypaniu wykopu (reset) albo osypisku: gracz tego peera, który stoi w skale, wychodzi w górę na pierwsze wolne miejsce nad sobą
 ## (najdalej na wierzch strefy) — jak `_push_players_out` przy odbudowanej ścianie (level.gd). Ruch postaci należy do właściciela, więc każdy
@@ -1967,6 +1982,13 @@ func _plan_finds(solid_at: Callable) -> void:
 		total += int(e[1])
 	var want := clampi(rock_n / FIND_EVERY, 1, FIND_MAX)               # K5: krótka strefa (mniej niż FIND_EVERY kafli) ma główną znajdźkę
 	var taken: Array[Vector2i] = []
+	if chamber.has_area():                                            # K5b: główna znajdźka w dnie komory, odkopana do połowy (widać ją z komory)
+		var ft := Vector2i(chamber.position.x + (chamber.size.x - 1) / 2, chamber.end.y)
+		taken.append(ft)
+		var ci := ft.x * PER_TILE + (PER_TILE / 2 + 1 if chamber.size.x % 2 == 1 else PER_TILE + 1)   # środek dna komory
+		var cj := ft.y * PER_TILE + 2                                   # narożnik pod dnem: zakopana w dnie, wierzch tuż przy powietrzu
+		finds.append({"i": ci, "j": cj, "pos": global_position + _corner_px(ci, cj), "kind": FIND_MAIN, "kind0": FIND_MAIN, "state": Find.BURIED})
+		finds[0]["state"] = _find_state(finds[0])
 	for t in cands:
 		if taken.size() >= want:
 			break
@@ -1987,8 +2009,8 @@ func _plan_finds(solid_at: Callable) -> void:
 			if roll < 0:
 				kind = String(e[0])
 				break
-		if taken.size() == 1:
-			kind = FIND_MAIN                                         # K1: pierwsze miejsce z ziarna to zawsze główna znajdźka
+		if finds.is_empty():
+			kind = FIND_MAIN                                         # K1: pierwsze miejsce z ziarna to zawsze główna znajdźka (w strefie z komorą — dno komory)
 		finds.append({"i": i, "j": j, "pos": global_position + _corner_px(i, j), "kind": kind, "kind0": kind, "state": Find.BURIED})
 	_plan_geode(rng, cands, taken)
 
@@ -2184,6 +2206,73 @@ func buried_left() -> int:
 		if int(f["state"]) != Find.OUT:
 			n += 1
 	return n
+
+## K5b: komora w pikselach świata (pusta, gdy strefa jej nie ma).
+func chamber_px() -> Rect2:
+	if not chamber.has_area():
+		return Rect2()
+	return Rect2(global_position + Vector2(chamber.position) * TILE, Vector2(chamber.size) * TILE)
+
+## K5b: miejsca ćm gniazda pod stropem komory (świat) — rząd na zmianę wyżej i niżej, z odstępem od ścian.
+func chamber_spots() -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var r := chamber_px()
+	if r.size == Vector2.ZERO:
+		return out
+	var x0 := r.position.x + 6.0
+	var x1 := r.end.x - 6.0
+	for k in CHAMBER_MOTHS:
+		var t := float(k) / float(maxi(1, CHAMBER_MOTHS - 1))
+		out.append(Vector2(lerpf(x0, x1, t), r.position.y + 5.0 + float(k % 2) * 3.0))
+	return out
+
+## K5b: czy wykop dotarł do komory — narożnik na obrysie komory (w danych mapy skała) jest już powietrzem.
+func chamber_breached() -> bool:
+	if not chamber.has_area():
+		return false
+	var i0 := chamber.position.x * PER_TILE + 1
+	var i1 := chamber.end.x * PER_TILE + 1
+	var j0 := chamber.position.y * PER_TILE + 1
+	var j1 := chamber.end.y * PER_TILE + 1
+	for j in range(j0, j1 + 1):
+		for i in range(i0, i1 + 1):
+			if (i == i0 or i == i1 or j == j0 or j == j1) and _d[j * _w + i] < ISO:
+				return true
+	return false
+
+## K5b, serwer: wykop otworzył komorę — ćmy gniazda budzą się (raz do wipe'u), dziennik, napis i trzepot u wszystkich.
+func _wake_chamber(at: Vector2) -> void:
+	chamber_woke = true
+	var n := 0
+	for m in get_tree().get_nodes_in_group("moths"):
+		if m.get_parent() == get_parent() and String(m.get_meta("chamber", "")) == String(name) and bool(m.alive):
+			m.wake()
+			n += 1
+	SessionLog.note_dig(String(name), "chamber")
+	SessionLog.event("dig_chamber", {"zone": String(name), "moths": n, "map": map_key})
+	var c := chamber_px().get_center()
+	if NoiseMgr.has_network():
+		_chamber_rpc.rpc(map_key, c, at)
+	else:
+		_chamber_rpc(map_key, c, at)
+
+@rpc("authority", "call_local", "reliable")
+func _chamber_rpc(key: String, c: Vector2, at: Vector2) -> void:
+	if key != map_key:
+		return
+	chamber_fx += 1
+	var lvl := get_parent()
+	if lvl == null or not lvl.is_inside_tree():
+		return
+	Audio.play_variant_at("moth_flutter", 3, c, Audio.BUS_WORLD, -2.0, 0.85)       # rój zrywa się spod stropu
+	get_tree().create_timer(0.25).timeout.connect(func() -> void: Audio.play_variant_at("moth_flutter", 3, c, Audio.BUS_WORLD, -4.0, 1.0))
+	var chip: Color = Mats.MATS[material_at_px(at)]["chip"] if rect_px().has_point(at) else Color(0.4, 0.35, 0.3)
+	Vfx.chips(lvl, at, Vector2.UP, chip, 8, "chip", 90.0, Vector2(1.0, 2.0))
+	var me := _local_human()
+	if me == null or me.global_position.distance_to(c) > CHAMBER_TOAST_R:
+		return
+	Msg.post("dig.chamber.%s" % name, Msg.Ch.TOAST, tr("A moth nest! The swarm is waking"),
+		{"sub": tr("Moths fly at light: kill the flashlight"), "style": Msg.Style.DANGER, "ttl": 3.5, "prio": 60})
 
 # ---------------------------------------------------------------- marching squares
 

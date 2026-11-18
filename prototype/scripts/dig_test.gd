@@ -76,7 +76,8 @@ func run(m: Node2D) -> void:
 		_finish()
 		return
 	for e in get_tree().get_nodes_in_group("enemies"):
-		e.queue_free()
+		if String(e.get_meta("chamber", "")) == "":         # gniazdo komory (K5b) śpi zamknięte w skale — sprawdza je sekcja K5b
+			e.queue_free()
 	Director.set_process(false)
 	zone.cracks_on = false                     # szczeliny (K2) zmieniają kęs — liczby ciosów na materiał liczone bez nich; sekcja K2 je włącza
 	rock.cracks_on = false
@@ -90,7 +91,7 @@ func run(m: Node2D) -> void:
 		await _slope()
 		_finish()
 		return
-	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48)" % dig0, dig0 == 176 and level._is_solid(5, 12) and level._is_solid(33, 12))
+	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48 + 16 — komora DigZone4 to powietrze)" % dig0, dig0 == 192 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
 	await _tunnel()
@@ -106,6 +107,7 @@ func run(m: Node2D) -> void:
 	await _signals_k2()
 	await _wake_k3()
 	await _minimap_k5()
+	await _chamber_k5b()
 	await _signals()
 	await _collapse()
 	await _slope()
@@ -1281,7 +1283,7 @@ func _loot_k1() -> void:
 				continue
 			if (v as Dictionary).get("ev") == "mission_start":
 				enter = 0
-			elif (v as Dictionary).get("ev") == "dig_enter":
+			elif (v as Dictionary).get("ev") == "dig_enter" and String((v as Dictionary).get("zone", "")) == String(zone.name):   # start gracza stoi przy DigZone4
 				enter += 1
 			elif (v as Dictionary).get("ev") == "mission_end":
 				end = v
@@ -1641,6 +1643,89 @@ func _minimap_k5() -> void:
 	level.reset_breakables()
 	await _frames(0.1)
 
+## Wiersze `ev` dziennika sesji od ostatniego `mission_start` (bieżąca sekcja testu).
+func _log_events(ev: String) -> Array:
+	var rows: Array = []
+	if SessionLog.path == "" or not FileAccess.file_exists(SessionLog.path):
+		return rows
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("\n", false):
+		var v: Variant = JSON.parse_string(line)
+		if v is Dictionary and (v as Dictionary).get("ev") == "mission_start":
+			rows.clear()
+		elif v is Dictionary and (v as Dictionary).get("ev") == ev:
+			rows.append(v)
+	return rows
+
+# ---------------------------------------------------------------- 11d. K5b: komora z gniazdem ćm
+
+## DIG_LOOT_PLAN.md K5b: komora DigZone4 (powietrze `.` w głębi strefy) — ćmy gniazda śpią pod jej stropem, póki jest zamknięta (latarka
+## i hałas kopania ich nie budzą), główna znajdźka w dnie odkopana do połowy; cios kilofem z góry otwiera komorę i budzi cały rój raz,
+## dziennik `dig_chamber`, wipe zamyka komorę i znów może obudzić.
+func _chamber_k5b() -> void:
+	var z: Node2D = null
+	for q in level.dig_zones():
+		if (q.chamber_px() as Rect2).size != Vector2.ZERO:
+			z = q
+	check("K5b: strefa z komorą na t_dig", z != null)
+	if z == null:
+		return
+	level.reset_breakables()
+	z.reset_to(PackedByteArray())
+	await _frames(0.1)
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "dig_k5b"})
+	var cr: Rect2 = z.chamber_px()
+	var pp0: Vector2 = player.global_position
+	var moths := get_tree().get_nodes_in_group("moths").filter(func(m: Node) -> bool: return String(m.get_meta("chamber", "")) == String(z.name))
+	var f0: Dictionary = (z.finds as Array)[0]
+	var hang := moths.all(func(m: Node) -> bool: return cr.has_point((m as Node2D).global_position) and not bool(m.active))
+	var nest_ok := moths.all(func(m: Node) -> bool: return int(m.get_meta("nest", 0)) == DigZone.CHAMBER_NEST + int(String(z.name).trim_prefix("DigZone")))
+	info("K5b: komora %s, ćm %d, główna znajdźka %s (%s, stan %d)" % [str(cr), moths.size(), str(f0["pos"]), f0["kind0"], int(f0["state"])])
+	check("K5b: %d ćm jednego gniazda śpi pod stropem komory" % moths.size(), moths.size() == DigZone.CHAMBER_MOTHS and hang and nest_ok)
+	check("K5b: główna znajdźka w dnie komory, odkopana do połowy", String(f0["kind0"]) == DigZone.FIND_MAIN and int(f0["state"]) == DigZone.Find.NEAR
+		and absf((f0["pos"] as Vector2).x - cr.get_center().x) < 4.0 and (f0["pos"] as Vector2).y > cr.end.y)
+	check("K5b: komora zamknięta na starcie", not z.chamber_breached() and not z.chamber_woke)
+	# kopanie w dół nad komorą z zapaloną latarką: póki strop komory stoi, rój śpi
+	player.flashlight = true
+	_place_player(Vector2(cr.get_center().x, TOP - 2.0))
+	var fx0: int = z.chamber_fx
+	await _shot("k5b_sealed", Callable(), 0.4)                # w oknie: zamknięta komora z gniazdem pod gruntem
+	var asleep_before := true
+	var swings := 0
+	while swings < 10 and not z.chamber_breached():
+		if not bool(z.chamber_breached()) and moths.any(func(m: Node) -> bool: return bool(m.active)):
+			asleep_before = false
+		await _swing(Vector2.DOWN, -1, z)
+		swings += 1
+		await _frames(0.15)
+	await _frames(0.2)
+	var woke := moths.filter(func(m: Node) -> bool: return bool(m.active)).size()
+	await _shot("k5b_open", Callable(), 0.5)                  # w oknie: rój zrywa się z otwartej komory do latarki
+	info("K5b: ciosów do komory %d, obudzonych ćm %d, napisów %d" % [swings, woke, z.chamber_fx - fx0])
+	check("K5b: przed otwarciem komory rój śpi mimo latarki i kopania tuż nad nią", asleep_before)
+	check("K5b: cios kilofem z góry otwiera komorę (%d ciosów) i budzi cały rój (%d / %d)" % [swings, woke, moths.size()],
+		z.chamber_breached() and z.chamber_woke and woke == moths.size() and z.chamber_fx - fx0 == 1)
+	await _swing(Vector2.DOWN, -1, z)
+	await _frames(0.1)
+	check("K5b: dalsze kopanie nie budzi komory drugi raz", z.chamber_fx - fx0 == 1)
+	var ch_row: Dictionary = SessionLog.dig_summary().get(String(z.name), {})
+	SessionLog.mission_end({"result": "test"})
+	var ev := _log_events("dig_chamber")
+	check("K5b: dziennik `dig_chamber` (%d) ze strefą i liczbą ćm" % ev.size(), ev.size() == 1 and String(ev[0].get("zone", "")) == String(z.name)
+		and int(ev[0].get("moths", 0)) == moths.size())
+	check("K5b: `chamber` w mission_end.dig (%s)" % str(ch_row.get("chamber", "-")), int(ch_row.get("chamber", 0)) == 1)
+	player.flashlight = false
+	_place_player(pp0)
+	z.reset_to(PackedByteArray())
+	for m in moths:
+		m.reset_enemy()
+	await _frames(0.2)
+	check("K5b: wipe — komora znów zamknięta, rój śpi, znów może się obudzić", not z.chamber_breached() and not z.chamber_woke
+		and moths.all(func(m: Node) -> bool: return cr.has_point((m as Node2D).global_position) and not bool(m.active)))
+	level.reset_breakables()
+	await _frames(0.1)
+
 # ---------------------------------------------------------------- 12. sygnał strefy (pytanie z 2026-11-06)
 
 func _hud() -> Node:
@@ -1679,7 +1764,7 @@ func _signals() -> void:
 	var side_rock: String = hud._dig_prompt()                 # celuje w bok, ale stoi na skale: w bok nic, w dół skała — podpowiedź nie
 	await _stand(6.5, Vector2.DOWN)
 	var on_dirt: String = hud._dig_prompt()
-	await _stand(24.5, Vector2.DOWN)
+	await _stand(21.5, Vector2.DOWN)                     # hala między DigZone1 a DigZone4
 	var away: String = hud._dig_prompt()
 	info("podpowiedź: na skale „%s”, na ziemi „%s”, celując w bok na skale „%s”, w hali „%s”" % [on_rock, on_dirt, side_rock, away])
 	check("pasek akcji: nad skałą „Kop (kilof · głośno)”, nad ziemią samo „Kop”, w hali bez strefy nic", on_rock == want_pick and in_bar
@@ -1707,7 +1792,7 @@ func _signals() -> void:
 	level.map_id = "z1_m1"
 	tips._collect(player)
 	var on_11 := tips._queued.has("dig_scanner")
-	player.global_position = Vector2(20.0 * 16.0, TOP - 3.0 * 16.0)         # 2 kafle poza zasięgiem porady od obu stref
+	player.global_position = Vector2(18.5 * 16.0, TOP - 3.0 * 16.0)         # w hali poza zasięgiem porady (96 px) od DigZone1 i DigZone4
 	tips._collect(player)
 	var far := tips._queued.has("dig_scanner")
 	level.map_id = mid
