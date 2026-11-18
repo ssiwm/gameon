@@ -60,6 +60,8 @@ const STEP_MAX_RISE := 16.5          ## px: najwyższy stopień (1 kafel)
 const PLATFORM_BIT := 5          ## warstwa kładek w masce (zeskok)
 const FIRE_BIT := 10             ## warstwa „muru ognia” (fire_patch.gd FIRE_LAYER = 512): blokuje wrogów z flagą fire_shy, drużyny nie rusza
 const DROP_TIME := 0.25
+const LEDGE_CLEAR := 6.0          ## px spadku przy zejściu z krawędzi (FALL), do którego szeroki wróg idzie dalej od krawędzi, zanim zacznie celować w środek węzła
+const LAND_OVERLAP := 4.0         ## px: tyle ciała musi zachodzić na kafel celu przy zejściu z rozbiegu (`walk_off_ok`), żeby wylądował, a nie zsunął się w przerwę
 ## Słyszalność po trasie (1.7.4): dźwięk nie przechodzi przez ściany ani piętra — liczy się długość
 ## ścieżki po grafie nawigacji, nie linia prosta. Bez ścieżki (brak węzła) — tłumienie przez mur.
 const SOUND_MUFFLE := 3.0
@@ -1105,12 +1107,20 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 	var prev: Dictionary = _path[_path_i - 1]
 	var sx: float = step.pos.x - global_position.x
 	if not is_on_floor():
+		if int(step.kind) == Nav.Edge.FALL and global_position.y < prev.pos.y + LEDGE_CLEAR:
+			# zejście z krawędzi szerokim ciałem (Rzeźnik, 26 px): środek ciała mija środek kolumny docelowej, zanim ciało zsunie się z rogu kładki.
+			# Sterowanie „do środka węzła” w pierwszych pikselach spadku wciągało go z powrotem na kładkę, która łapała go jako podłoga — stał na skraju
+			# kraty i dreptał w miejscu (playtest 1.2, 2026-11-18). Do zejścia o LEDGE_CLEAR px idzie dalej w stronę krawędzi.
+			velocity.x = _fall_dir(prev, step, sx) * speed
+			return
 		velocity.x = signf(sx) * speed if absf(sx) > 3.0 else 0.0
 		return
 	var px: float = prev.pos.x - global_position.x
 	match int(step.kind):
 		Nav.Edge.JUMP:
-			if absf(px) > 4.0:
+			if not _def["leap"] and walk_off_ok(nav, prev.pos, step.pos, speed):
+				velocity.x = signf(step.pos.x - prev.pos.x) * speed          # zejście z rozbiegu: idzie do krawędzi i spada łukiem na kładkę po drugiej stronie przerwy
+			elif not _at_node_x(px):
 				velocity.x = signf(px) * speed
 			elif _def["leap"]:
 				velocity.y = JUMP_V
@@ -1122,7 +1132,7 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 				_blocked = true
 				velocity.x = 0.0
 		Nav.Edge.DROP:
-			if absf(px) > 4.0:
+			if not _at_node_x(px):
 				velocity.x = signf(px) * speed
 			else:
 				velocity.x = 0.0
@@ -1132,12 +1142,53 @@ func _steer_to(goal: Vector2, speed: float, delta: float) -> void:
 			# czyli dokładnie na krawędzi (playtest: „stoi na krawędzi uskoku i się nie rusza"). Kierunek bierze z samej krawędzi (poprzedni węzeł →
 			# węzeł niżej), nie z własnej pozycji: szeroki wróg (Wołek) stoi jeszcze na rogu kładki, gdy środek ciała minął już kolumnę węzła,
 			# i kierunek „do węzła” zmieniał się wtedy co klatkę — drżał na skraju kładki bez końca (playtest 1.7.308)
-			var fdir := signf(step.pos.x - prev.pos.x)
-			if fdir == 0.0:
-				fdir = signf(sx) if absf(sx) > 0.5 else _facing
-			velocity.x = fdir * speed
+			velocity.x = _fall_dir(prev, step, sx) * speed
 		_:
 			velocity.x = signf(sx) * speed if absf(sx) > 3.0 else 0.0
+
+## Kierunek zejścia z krawędzi (FALL): z samej krawędzi (poprzedni węzeł → węzeł niżej), a przy zejściu pionowym — do węzła albo przodem.
+func _fall_dir(prev: Dictionary, step: Dictionary, sx: float) -> float:
+	var fdir := signf(step.pos.x - prev.pos.x)
+	if fdir == 0.0:
+		fdir = signf(sx) if absf(sx) > 0.5 else _facing
+	return fdir
+
+## Czy wróg stoi nad węzłem, z którego zaczyna skok albo zeskok (`px` = węzeł − środek ciała): do 4 px albo oparty o ścianę po stronie węzła.
+## Szeroki wróg (Rzeźnik, połowa ciała 13 px) przy ścianie szybu nie podejdzie do środka kafla przy murze bliżej niż na 5 px — wcześniej pchał się
+## w ścianę bez końca zamiast zeskoczyć przez kratę (szyb przy pompowni 1.2, 2026-11-18).
+func _at_node_x(px: float) -> bool:
+	if absf(px) <= 4.0:
+		return true
+	return is_on_wall() and signf(px) == -signf(get_wall_normal().x)
+
+## Zejście z rozbiegu: krawędź JUMP w dół przez przerwę (`a` → `b`, do 2 kafli niżej), którą wróg bez skoku pokona, schodząc z krawędzi kładki
+## z prędkością `speed`. Ciało zsuwa się z rogu, gdy środek minie krawędź o pół szerokości, i ląduje, gdy w chwili zejścia o wysokość uskoku
+## zachodzi na kafel celu co najmniej LAND_OVERLAP px — przerwę skraca więc szerokość ciała z obu stron. Rzeźnik (26 px) schodzi tak z kraty
+## w szybie pompowni 1.2 na długą kratę piwnicy (przerwa 2 kafli, 2 kafle niżej); wcześniej stał na krawędzi, bo nie skacze (playtest 2026-11-18).
+## `a` musi być krawędzią (obok w stronę celu nie ma węzła), a nad przerwą i celem — wolne kafle na wysokość ciała.
+func walk_off_ok(nav, a: Vector2, b: Vector2, speed: float) -> bool:
+	var dy := b.y - a.y
+	var dx := b.x - a.x
+	if nav == null or dy <= 0.0 or absf(dx) < float(Nav.TILE) * 1.5 or speed <= 0.0:
+		return false
+	var dir := int(signf(dx))
+	var tile := float(Nav.TILE)
+	var ca := int(floor(a.x / tile))
+	var ra := int(round(a.y / tile)) - 1
+	var cb := int(floor(b.x / tile))
+	var rb := int(round(b.y / tile)) - 1
+	if ca + dir < 0 or ca + dir >= nav.cols or nav.has_point(ra * nav.cols + ca + dir):
+		return false                                   # obok jest dalsza podłoga — to nie krawędź, idzie się dalej
+	var body_tiles := int(ceil(float(_def["size"].y) / tile))
+	var c := ca + dir
+	while c != cb + dir:
+		for r in range(ra - body_tiles + 1, rb + 1):
+			if not nav._free(c, r):
+				return false
+		c += dir
+	var half := float(_def["size"].x) * 0.5
+	var gap := absf(dx) - tile                        # od krawędzi kafla startu do bliższej krawędzi kafla celu
+	return speed * sqrt(2.0 * dy / GRAVITY) >= gap - 2.0 * half + LAND_OVERLAP
 
 ## Czy krawędź JUMP z `a` do `b` to zwykły stopień: do jednego kafla w górę i do jednego kafla w bok (nie skok przez przerwę ani na wyższą półkę).
 static func _is_step(a: Vector2, b: Vector2) -> bool:

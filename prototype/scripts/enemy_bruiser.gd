@@ -182,7 +182,7 @@ func _plan_climb(target: Node2D) -> void:
 	var goal: Vector2 = target.global_position if target != null else (e._last_known if e._has_lead else e._home)
 	var path: Array = nav.find_path(e.global_position, goal, true)
 	for i in range(1, path.size()):
-		if int(path[i].kind) != Nav.Edge.JUMP or e._is_step(path[i - 1].pos, path[i].pos):
+		if int(path[i].kind) != Nav.Edge.JUMP or _walkable_jump(nav, path[i - 1].pos, path[i].pos):
 			continue
 		var from: Vector2 = path[i - 1].pos
 		if absf(from.x - e.global_position.x) <= CLIMB_REACH and absf(from.y - e.global_position.y) <= 20.0:
@@ -191,15 +191,19 @@ func _plan_climb(target: Node2D) -> void:
 			climb_dir = signf(path[i].pos.x - from.x) if absf(path[i].pos.x - from.x) > 1.0 else signf(from.x - e.global_position.x)
 		return
 
-## Czy z `from` do `to` prowadzi trasa bez skoków (zwykłe stopnie się liczą, kładki i spadki też).
+## Czy z `from` do `to` prowadzi trasa bez skoków (zwykłe stopnie się liczą, kładki, spadki i zejścia z rozbiegu przez przerwę w dół też).
 func walk_ok(nav, from: Vector2, to: Vector2) -> bool:
 	var path: Array = nav.find_path(from, to, false)
 	if path.is_empty():
 		return false
 	for i in range(1, path.size()):
-		if int(path[i].kind) == Nav.Edge.JUMP and not e._is_step(path[i - 1].pos, path[i].pos):
+		if int(path[i].kind) == Nav.Edge.JUMP and not _walkable_jump(nav, path[i - 1].pos, path[i].pos):
 			return false
 	return true
+
+## Krawędź JUMP, którą wróg bez skoku przejdzie pieszo: stopień o kafel albo zejście z rozbiegu w dół przez przerwę (`enemy.gd: walk_off_ok`, prędkość pościgu).
+func _walkable_jump(nav, a: Vector2, b: Vector2) -> bool:
+	return e._is_step(a, b) or e.walk_off_ok(nav, a, b, float(e._def["speed"]) * Difficulty.m("enemy_speed"))
 
 ## Czy przed Wołkiem jest wolna droga na rozbieg: bez ściany na całym dystansie szarży i z podłogą pod każdym kaflem (nie rozpędza się w przepaść).
 func _run_clear(dir: float, dist: float) -> bool:
