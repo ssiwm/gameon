@@ -202,6 +202,7 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		# hala stacji 1.2 to budynek 3D (szkielet z cegłą): bramy na parterze i okna piętra po obu stronach, bez fasad wejść z kafli
 		_check(Level3D.shell_facades.is_empty(), "1.2: fasada z kafli przy budynku 3D (%s)" % [Level3D.shell_facades])
 		_check_building(rows, "1.2 hala stacji", 66, 100, 18, 26, ["-1:gate", "1:gate", "-1:window", "1:window"])
+		_check_rail_occluders(rows, "1.2 hala stacji", 66, 21)
 		# pompownia: bramy parteru po obu stronach, strop piętra (wiersz 22) jako płyta 0,25 m z żebrami zamiast pudeł kafli 1,31 m, z otworem
 		# do wskoczenia na piętro (kol. 217–222) bez płyty
 		_check_building(rows, "1.2 pompownia", 216, 246, 16, 26, ["-1:gate", "1:gate"])
@@ -221,6 +222,7 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		# posterunek: drzwi po obu stronach; Skład: bramy na parterze i okna piętra po obu stronach
 		_check_building(rows, "1.3 posterunek", 18, 36, 21, 26, ["-1:door", "1:door"])
 		_check_building(rows, "1.3 Skład", 112, 142, 18, 26, ["-1:gate", "1:gate", "-1:window", "1:window"])
+		_check_rail_occluders(rows, "1.3 Skład", 112, 22)
 		# hala Żyły: blacha `M` na stalowym szkielecie, brama z korzeni w zachodniej ścianie, wschodnia ściana na skraju mapy
 		_check_building(rows, "1.3 hala Żyły", 164, 190, 11, 26, ["-1:gate"])
 		_check_shed(rows, "1.3 hala Żyły", 164, 190, 11, 26)
@@ -559,6 +561,53 @@ func _check_ground(root: Node3D, y_floor: float) -> void:
 ## Budynek 3D (`building3d.gd`, pilot: posterunek 1.3): kafle dachu i ścian szczytowych bez pudła, płyty przekroju i ściany wejścia;
 ## drzwi po obu stronach; płyta 0,25 m na górze kafla dachu, ściany 0,4 m, słupy poza pasem gry, przekrój na SHELL_Z dla każdej
 ## skrzynki dochodzącej do płaszczyzny przekroju, nic przed SHELL_Z.
+## Balustrada antresoli (obraz graczy nad obrazem świata) chowa się za słupami przekroju budynku `c0`: zestaw brył (`Building3D.rail_occluders`)
+## mieści się w RAIL_OCC_MAX przy balustradzie i — jak shader `Level3D.RAIL_SHADER` — odcinek od poręczy (wiersz pokładu `deck_r`) do kamery
+## na wprost słupa przecina bryłę, a obok słupa nie (uwaga z gry 2026-11-18: poręcz przed słupami hali stacji 1.2).
+func _check_rail_occluders(rows: Array, name: String, c0: int, deck_r: int) -> void:
+	var b: Dictionary = {}
+	for x: Dictionary in Level3D.buildings:
+		if int(x["c0"]) == c0:
+			b = x
+	if b.is_empty():
+		return
+	var occ := Building3D.rail_occluders(rows)
+	var y := -float(deck_r) * Level3D.T + Level3D.RAIL_H * 0.5
+	var z := 0.6
+	var cols: Array = []
+	for xf: Transform3D in Building3D.parts(b, rows)["col"]:
+		var a := _box_aabb(xf)
+		if a.end.z >= Level3D.SHELL_Z - 0.01 and a.size.y > Level3D.T:
+			cols.append(a)
+	_check(not cols.is_empty(), "%s: brak słupów w płaszczyźnie przekroju" % name)
+	var near := 0
+	var xs := AABB(Vector3(float(c0) * Level3D.T, y - 1.0, -3.0), Vector3(float(int(b["c1"]) - c0 + 1) * Level3D.T, 2.0, 4.0)).grow(Level3D.RAIL_OCC_REACH)
+	for o: AABB in occ:
+		near += int(xs.intersects(o))
+	_check(near <= Level3D.RAIL_OCC_MAX, "%s: %d brył przy balustradzie > RAIL_OCC_MAX %d" % [name, near, Level3D.RAIL_OCC_MAX])
+	for a: AABB in cols:
+		var cx := a.get_center().x
+		var p := Vector3(cx, y, z)
+		var cam := Vector3(cx, y + 1.0, 20.0)
+		_check(_rail_blocked(p, cam, occ), "%s: poręcz za słupem przekroju x %.2f niezasłonięta" % [name, cx])
+		var p2 := Vector3(cx + 1.0, y, z)
+		_check(not _rail_blocked(p2, Vector3(cx + 1.0, y + 1.0, 20.0), occ), "%s: poręcz obok słupa x %.2f zasłonięta" % [name, cx + 1.0])
+
+func _rail_blocked(p: Vector3, cam: Vector3, occ: Array) -> bool:
+	var d := cam - p
+	for o: AABB in occ:
+		var t0 := -INF
+		var t9 := INF
+		for k in 3:
+			var dk: float = d[k] if absf(d[k]) > 1e-6 else (1e-6 if d[k] >= 0.0 else -1e-6)
+			var ta: float = (o.position[k] - p[k]) / dk
+			var tb: float = (o.end[k] - p[k]) / dk
+			t0 = maxf(t0, minf(ta, tb))
+			t9 = minf(t9, maxf(ta, tb))
+		if t9 >= t0 and t0 > 0.0 and t0 < 1.0:
+			return true
+	return false
+
 func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: int, want: Array) -> void:
 	var b: Dictionary = {}
 	for x: Dictionary in Level3D.buildings:
