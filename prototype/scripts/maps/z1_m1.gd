@@ -75,9 +75,10 @@ const STREAMS := [[18, 26]]
 const BACKDROP := [{"kind": "tower", "col": 64, "lit": true}, {"kind": "mast", "col": 215}]
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505) [c0, r0, c1, r1, materiał, ziarno, udział wtrąceń]: skała z żyłą w zachodniej
 ## ślepej ścianie dolnej galerii kopalni (za przegrodą z desek i złomem) — z boku drogi, w ciemności, z dala od szybu wyjściowego.
+## W jej głębi komora (K5b, kol. 194–196, rz. 41–42, w mapie `.`): gniazdo ćm pod stropem i główna znajdźka w dnie; wkopanie się budzi rój.
 ## Druga, krótka (DIG_LOOT_PLAN.md K5): ziemia za wyłomem we wschodniej ścianie bunkra na końcu dolnej galerii, przy szóstym
 ## nieśmiertelniku, w świetle lampy `I` (kol. 254) — jedna znajdźka, bez budzenia wrogów (`{"wake": false}`); uczy kopania.
-const DIG_ZONES := [[192, 36, 201, 44, "rock", 1101, 0.3], [257, 40, 260, 43, "dirt", 1102, 0.0, {"wake": false}]]
+const DIG_ZONES := [[192, 36, 201, 44, "rock", 1101, 0.3, {"chamber": [194, 41, 196, 42]}], [257, 40, 260, 43, "dirt", 1102, 0.0, {"wake": false}]]
 ## Wnęki w tylnej ścianie kopalni (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
 ## Górna galeria: korytarz techniczny ponad 20 kolumn od gniazd ćm. Dolna galeria: regał bez światła obok lampy misji `I`
 ## (widać go w jej świetle) i boczna sztolnia przed przegrodą z desek, 14 kolumn od gniazda i z dala od strefy wydobycia.
@@ -139,8 +140,8 @@ const MAP := [
 	"##########################################################################################################################################################################################################bbJbbb##bbbbbJbbbbbbbbbZbbbb##bbbbZb##bbbbbIbbbb############",
 	"##########################################################################################################################################################################################################bbbbbbbbbbbbbbbb---bbbbbbbbbbbbbbbbbbbbbbbbbbbbb#CCCCCCC####",
 	"##########################################################################################################################################################################################################bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbIbb#####",
-	"##########################################################################################################################################################################################################bbbbbbbbbbbbbbbbb---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#####",
-	"##########################################################################################################################################################################################################bubbbb%bbbbbbbbbbbbbbbTbbTbbbbbbTbbbbybFbbabbubbbbabybb#####",
+	"##################################################################################################################################################################################################...#####bbbbbbbbbbbbbbbbb---bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#####",
+	"##################################################################################################################################################################################################...#####bubbbb%bbbbbbbbbbbbbbbTbbTbbbbbbTbbbbybFbbabbubbbbabybb#####",
 	"###########################################################################################################################################################################################################################################################CCCCCC#####",
 	"######################################################################################################################################################################################################################################################################",
 	"######################################################################################################################################################################################################################################################################",

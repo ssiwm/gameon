@@ -1,7 +1,7 @@
 # DIG_LOOT_PLAN — kopanie i znajdźki: analiza i propozycja (2026-11-17)
 
 Analiza na main `713cd173` (1.7.600, po #719). Decyzje przyjęte 2026-11-17 (§5).
-**Stan wdrożenia:** K0 + K1 w 1.7.601 (PR #720), K2 w 1.7.602 (PR #721), K3 „coś drapie” w 1.7.603 (PR #722), K5a (druga, krótka strefa na każdej mapie i wejścia na rzucie mapy) w 1.7.604 (gałąź `feat/dig-loot-k5`). Zostają K5b (komora z gniazdem ciem w głębokiej strefie), K4, K6.
+**Stan wdrożenia:** K0 + K1 w 1.7.601 (PR #720), K2 w 1.7.602 (PR #721), K3 „coś drapie” w 1.7.603 (PR #722), K5a (druga, krótka strefa na każdej mapie i wejścia na rzucie mapy) w 1.7.604 (PR #723), K5b (komora z gniazdem ćm w głębokiej strefie 1.1; 1.2 i 1.3 bez komory) w 1.7.605 (gałąź `feat/dig-loot-k5b`). Zostają K4, K6.
 Dane: dzienniki sesji `%APPDATA%/Godot/app_userdata/Dead Air '87 Prototype/sessions`, **74 próby kampanii od 1.7.505**
 (od wejścia stref na mapy, 2026-11-06 → 2026-11-17). To prawie wyłącznie sesje autora (solo, RTX 3080), więc liczby pokazują,
 jak gra autor, a nie nowi gracze.

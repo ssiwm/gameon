@@ -2,7 +2,7 @@ extends RefCounted
 ## Mapa testowa stref wydobycia (DESTRUCTION_PLAN.md D5; nie należy do CAMPAIGN ani SHIFT_POOL): hala 5 rzędów (S, wyjście E, lampy) nad
 ## litym gruntem z trzema strefami — DigZone1: ziemia bez wtrąceń 10 × 8 kafli pod lewą częścią hali (wierzch równo z podłogą, tu są
 ## pomiary ruchu ze spike'u S2), DigZone2: skała z żyłą 8 × 6 kafli pod prawą częścią,
-## DigZone3: czysty żwir 8 × 6 kafli przy prawej ścianie (osypywanie). Używają jej --digtest, --maptest i
+## DigZone3: czysty żwir 8 × 6 kafli przy prawej ścianie (osypywanie). DigZone4: ziemia 4 × 5 kafli na lewo od skały z komorą 2 × 2 (K5b, gniazdo ćm, w mapie `.`). Używają jej --digtest, --maptest i
 ## test_net_session.sh (kopanie w sieci, dołączający, reset).
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -24,6 +24,7 @@ const DIG_ZONES := [
 	[2, 10, 11, 17, "dirt", 7, 0.0],
 	[30, 10, 37, 15, "rock", 11, 0.35],
 	[39, 10, 46, 15, "gravel", 5, 0.0],
+	[25, 10, 28, 14, "dirt", 13, 0.0, {"wake": false, "chamber": [26, 12, 27, 13]}],
 ]
 
 const MAP := [
@@ -39,8 +40,8 @@ const MAP := [
 	"#bbbbbbbbbbbbbbbbbbbEbbSbSbbbbbbbbbbbbbbbbbbbbb#",
 	"################################################",
 	"################################################",
-	"################################################",
-	"################################################",
+	"##########################..####################",
+	"##########################..####################",
 	"################################################",
 	"################################################",
 	"################################################",

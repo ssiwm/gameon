@@ -4664,6 +4664,16 @@ func _map_test_dig_zones(rows: Array) -> Array:
 					var qc: String = (rows[q.y] as String)[q.x]
 					if not (level.KINDS.has(qc) and level.KINDS[qc][2] == 0):
 						lowest = maxi(lowest, r)
+		var opts: Dictionary = z[7] if z.size() > 7 and z[7] is Dictionary else {}
+		var ch: Array = opts.get("chamber", [])                  # K5b: komora — powietrze `.` w głębi strefy, z co najmniej kaflem skały wokół
+		if not ch.is_empty():
+			if ch.size() != 4 or int(ch[0]) <= c0 or int(ch[1]) <= r0 or int(ch[2]) >= c1 or int(ch[3]) >= r1 or int(ch[3]) - int(ch[1]) < 1:
+				bad.append("%s: komora %s nie w głębi strefy (kafel skały z każdej strony) albo niższa niż 2 kafle" % [tag, str(ch)])
+			else:
+				for r in range(int(ch[1]), int(ch[3]) + 1):
+					for c in range(int(ch[0]), int(ch[2]) + 1):
+						if (rows[r] as String)[c] != ".":
+							bad.append("%s: komora — kafel (%d, %d) to „%s”, nie powietrze `.`" % [tag, c, r, (rows[r] as String)[c]])
 		if lowest < 0:
 			bad.append("%s bez wejścia (żaden kafel nie styka się z powietrzem mapy)" % tag)
 		elif r1 - lowest > 3 and c1 - c0 + 1 < 3:
@@ -4701,6 +4711,19 @@ func _map_test() -> void:
 			var zs: Array = level.dig_zones()
 			var short_n := zs.filter(func(z: Node) -> bool: return not bool(z.wakes_on) and (z.finds as Array).size() == 1).size()
 			var deep_n := zs.filter(func(z: Node) -> bool: return bool(z.wakes_on)).size()
+			for z in zs:                                            # K5b: komora 1.1 — gniazdo ćm śpi pod stropem, główna znajdźka w dnie, odkopana do połowy
+				var cr: Rect2 = z.chamber_px()
+				if cr.size == Vector2.ZERO:
+					continue
+				var moths := get_tree().get_nodes_in_group("moths").filter(func(m: Node) -> bool: return String(m.get_meta("chamber", "")) == String(z.name))
+				var in_ch := moths.all(func(m: Node) -> bool: return cr.has_point((m as Node2D).global_position) and not bool(m.active))
+				var f0: Dictionary = (z.finds as Array)[0]
+				var f_ok := String(f0["kind0"]) == "main" and int(f0["state"]) == 1 and absf((f0["pos"] as Vector2).x - cr.get_center().x) < 4.0 					and (f0["pos"] as Vector2).y > cr.end.y and (f0["pos"] as Vector2).y < cr.end.y + 8.0
+				print("[MAPTEST] %s: %s komora %s, ćm %d (w komorze, śpią: %s), główna znajdźka %s" % [id, z.name, str(cr), moths.size(), in_ch, str(f0["pos"])])
+				if moths.size() != z.CHAMBER_MOTHS or not in_ch or not f_ok or z.chamber_breached():
+					dig_bad.append("K5b: komora %s — ćm %d (śpią w komorze: %s), główna znajdźka w dnie i odkopana do połowy: %s, otwarta na starcie: %s" % [z.name, moths.size(), in_ch, f_ok, z.chamber_breached()])
+			if id == "z1_m1" and not zs.any(func(z: Node) -> bool: return (z.chamber_px() as Rect2).size != Vector2.ZERO):
+				dig_bad.append("K5b: głęboka strefa 1.1 bez komory")
 			if zs.size() != 2 or short_n != 1 or deep_n != 1:
 				dig_bad.append("K5: %d stref (krótkich %d, głębokich %d) — powinny być 2: krótka z 1 znajdźką bez budzenia i głęboka" % [zs.size(), short_n, deep_n])
 		for msg in dig_bad:
