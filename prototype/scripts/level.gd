@@ -1229,6 +1229,14 @@ func moth_swarm_nests(marks: Array) -> Array:
 		out.append(pts)
 	return out
 
+## Lampa misji `I` z kafla mapy (`col`, `row`) albo null. Numery MissionLampN idą wg x, więc nowa lampa na mapie je przesuwa — testy
+## i flagi dev wskazują lampę kaflem.
+func mission_lamp_at(col: int, row: int) -> Node2D:
+	for l in get_tree().get_nodes_in_group("mission_lamps"):
+		if int((l as Node2D).position.x / TILE) == col and int((l as Node2D).position.y / TILE) == row:
+			return l
+	return null
+
 func _hang_pos(p: Vector2, body_h: float) -> Vector2:
 	var c := int(p.x / TILE)
 	var r := int(p.y / TILE) - 1

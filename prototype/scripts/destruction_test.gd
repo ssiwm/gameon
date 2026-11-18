@@ -555,9 +555,9 @@ func _debris_ids() -> Dictionary:
 
 func _lamps() -> void:
 	var lamps := get_tree().get_nodes_in_group("mission_lamps")
-	var lamp: Node2D = level.get_node_or_null("MissionLamp2")
+	var lamp: Node2D = level.mission_lamp_at(182, 31)           # legowisko Stalkera (numery lamp idą wg x)
 	check("lampy misji na 1.2: %d (znacznik I), zapalone, klosz w warstwie obiektów" % lamps.size(),
-		lamps.size() == 3 and lamp != null and lamps.all(func(l: Node) -> bool: return l.lit and l._light.enabled)
+		lamps.size() == 4 and lamp != null and lamps.all(func(l: Node) -> bool: return l.lit and l._light.enabled)
 		and lamp.get_node_or_null("Bulb") != null and int(lamp.get_node("Bulb").collision_layer) == 32)
 	if lamp == null:
 		return
