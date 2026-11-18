@@ -37,6 +37,7 @@ const FOG_SHADOW_TEST := preload("res://scripts/fog_shadow_test.gd")
 const FX_TEST := preload("res://scripts/fx_test.gd")
 const DIG_TEST := preload("res://scripts/dig_test.gd")
 const TAPE_TEST := preload("res://scripts/tape_test.gd")
+const GEODE_TEST := preload("res://scripts/geode_test.gd")
 const DigMats := preload("res://scripts/dig_materials.gd")
 const RESULT_TEST := preload("res://scripts/result_test.gd")
 const RANGE_TEST := preload("res://scripts/range3d/range_test.gd")
@@ -1041,6 +1042,7 @@ func _handle_cmdline() -> void:
 	var fxtest := false
 	var digtest := false
 	var tapetest := false
+	var geodetest := false
 	var resulttest := false
 	var rangetest := false
 	var range3d := false
@@ -1184,6 +1186,8 @@ func _handle_cmdline() -> void:
 			digtest = true
 		elif a == "--tapetest":
 			tapetest = true
+		elif a == "--geodetest":
+			geodetest = true
 		elif a == "--resulttest":
 			resulttest = true
 		elif a == "--rangetest":
@@ -1382,6 +1386,11 @@ func _handle_cmdline() -> void:
 		tpt.name = "TapeTest"
 		add_child(tpt)
 		tpt.run(self)
+	if geodetest:
+		var gdt := GEODE_TEST.new()
+		gdt.name = "GeodeTest"
+		add_child(gdt)
+		gdt.run(self)
 	if enemytest:
 		var et := ENEMY_TEST.new()
 		et.name = "EnemyTest"

@@ -127,8 +127,9 @@ const FIND_SCRAP := Vector2i(12, 20)
 ## Główna znajdźka (K1): pierwsze miejsce z ziarna w każdej strefie i każdym odnowieniu puli — część broni z puli znalezisk
 ## (Scrap.pick_find), a gdy wszystkie są — próbka. Na strefach z 2 miejscami (1.2, 1.3) to jedna pewna rzecz zamiast losu z wag.
 const FIND_MAIN := "main"
-## Geoda (K1): jedno miejsce w żyle strefy (tylko strefy, w których jest żyła — dziś 1.1). Odkopana daje próbkę do łupu misji (pracownia).
-## W puli jak każda cenna znajdźka, więc nie da się jej farmić; otwieranie w pracowni jako osobny moment to K4.
+## Geoda (K1): jedno miejsce w żyle strefy (tylko strefy, w których jest żyła — dziś 1.1). Odkopana idzie do łupu misji jako geoda
+## (Scrap.geodes_loot, od 1.7.608; wcześniej od razu próbka), a otwiera się ją w pracowni w kryjówce (K4: próbki, złom albo część).
+## W puli jak każda cenna znajdźka, więc nie da się jej farmić.
 const FIND_GEODE := "geode"
 ## Taśma (K4, tapes.gd): opcja strefy {"tape": id} — jedna dodatkowa znajdźka w najdalszym od wejścia miejscu głębi skały. Cenna jak
 ## każda (pula), wypada jako przedmiot „tape”, który podnosi człowiek.
@@ -2301,6 +2302,8 @@ func _spawn_find(k: int, from: Vector2, tool: int, who: Node2D = null) -> void:
 	var lvl := get_parent()
 	if not item.is_empty() and String(item[0]) == "sample":
 		Scrap.add_samples(int(item[2]))                          # próbka nie leży na ziemi: od razu do łupu misji (toast „Próbka pobrana”)
+	elif not item.is_empty() and String(item[0]) == "geode":
+		Scrap.add_geodes(int(item[2]))                           # geoda też nie leży: do łupu, otwiera się w pracowni w kryjówce (K4)
 	elif not item.is_empty() and String(item[0]) == "tape" and tool == TOOL_HANDS and lvl != null and lvl.has_method("tape_found"):
 		lvl.tape_found(int(item[1]), who, at)                     # K4b: wyjęta dłońmi — od razu do archiwum, nie leży na ziemi
 	elif not item.is_empty() and lvl != null and lvl.has_method("spawn_item"):
@@ -2335,7 +2338,7 @@ func _resolve_find(kind: String) -> Array:
 			return ["sample", 0, 1]                              # wszystkie części już są: próbka (pracownia)
 	elif kind == FIND_GEODE:
 		if Scrap.enabled():
-			return ["sample", 0, 1]
+			return ["geode", 0, 1]
 	elif kind == FIND_TAPE and tape != "":
 		return ["tape", Tapes.index_of(tape), -1]
 	return ["scrap", 0, randi_range(FIND_SCRAP.x, FIND_SCRAP.y)] if Scrap.enabled() else []

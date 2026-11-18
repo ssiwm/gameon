@@ -1227,16 +1227,16 @@ func _loot_k1() -> void:
 	var rm: Array = zone._resolve_find(DigZone.FIND_MAIN)
 	var rg: Array = zone._resolve_find(DigZone.FIND_GEODE)
 	info("główna znajdźka daje %s, geoda %s" % [str(rm), str(rg)])
-	check("K1: główna znajdźka daje część broni albo próbkę (gdy części nie ma), geoda — próbkę",
-		(rm[0] == "part" or rm[0] == "sample") and rg == ["sample", 0, 1])
-	# geoda odkopana: próbka w łupie misji, bez przedmiotu na ziemi; w łupie puli jak każda cenna znajdźka
-	var smp0: int = Scrap.samples_loot
+	check("K1: główna znajdźka daje część broni albo próbkę (gdy części nie ma), geoda — geodę do pracowni (K4)",
+		(rm[0] == "part" or rm[0] == "sample") and rg == ["geode", 0, 1])
+	# geoda odkopana: geoda w łupie misji (otwierana w pracowni, K4), bez przedmiotu na ziemi; w łupie puli jak każda cenna znajdźka
+	var smp0: int = Scrap.geodes_loot
 	var items0 := _items().size()
 	var gp: Vector2 = rock.finds[geo]["pos"]
 	rock.blast_dig(gp, 40.0)                          # koło 20 px wokół geody (jak wybuch granatu tuż przy niej)
 	await _frames(0.05)
-	check("K1: odkopana geoda → +1 próbka do łupu misji, nic na ziemi, czeka w łupie puli (próbki %d → %d)" % [smp0, Scrap.samples_loot],
-		Scrap.samples_loot == smp0 + 1 and _items().size() == items0 and (Scrap.dig_loot.get(rock.pool_key, []) as Array).has(geo))
+	check("K1: odkopana geoda → +1 geoda do łupu misji, nic na ziemi, czeka w łupie puli (geody %d → %d)" % [smp0, Scrap.geodes_loot],
+		Scrap.geodes_loot == smp0 + 1 and _items().size() == items0 and (Scrap.dig_loot.get(rock.pool_key, []) as Array).has(geo))
 	# ruda: narożniki żyły zamienione w powietrze → co ORE_CORNERS 1 złom do łupu misji, toast z sumą
 	var vein0 := _vein_solid(rock)
 	var acc0: int = rock._ore_acc

@@ -59,6 +59,10 @@ jobs:
         run: |
           godot --headless --path prototype -- --host --nobot --mission=z1_m1 --tapetest --autoquit=60 2>&1 | tee tapetest.log
           grep -a "\[TAPE-TEST\] ==== PASS" tapetest.log
+      - name: Geody — łup, bank, rozbijanie w pracowni (--geodetest)
+        run: |
+          godot --headless --path prototype -- --host --nobot --mission=z1_hub --geodetest --autoquit=40 2>&1 | tee geodetest.log
+          grep -a "\[GEODE-TEST\] ==== PASS" geodetest.log
       - name: Raport po akcji — model, sekwencja, pominięcie, spóźnione XP, rekordy, mieszczenie, następna misja (--resulttest)
         run: |
           godot --headless --path prototype -- --host --mission=z1_m1 --resulttest --autoquit=60 2>&1 | tee resulttest.log

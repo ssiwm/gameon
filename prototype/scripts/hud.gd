@@ -2380,7 +2380,9 @@ func _prompt_candidates() -> Array:
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
 	if _near_lathe():
 		add.call(tr("[%s]  Lathe and grinder  ·  %d schematics") % [Actions.key("interact"), Scrap.schematics.size()], -1.0, UiTheme.ACCENT)
-	if _near_lab():
+	if _near_lab() and Scrap.geodes > 0:                                     # geody z żyły (DIG_LOOT_PLAN.md K4): otwiera się je w karcie pracowni
+		add.call(tr("[%s]  Lab  ·  %d geodes to crack open") % [Actions.key("interact"), Scrap.geodes], -1.0, UiTheme.ACCENT)
+	elif _near_lab():
 		if Scrap.has_lab_weapon():
 			add.call(tr("[%s]  Lab  ·  %d samples  ·  research for special weapons") % [Actions.key("interact"), Scrap.samples], -1.0, UiTheme.ACCENT)
 		else:

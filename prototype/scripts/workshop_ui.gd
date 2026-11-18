@@ -674,6 +674,7 @@ func _ready() -> void:
 	Scrap.service_result.connect(_on_service_result)
 	Scrap.order_result.connect(_on_order_result)
 	Scrap.research_result.connect(_on_research_result)
+	Scrap.geode_opened.connect(_on_geode_opened)
 	Scrap.machining_result.connect(_on_machining_result)
 	Profile.changed.connect(_refresh)
 	Arsenal.stock_changed.connect(_refresh)
@@ -1357,6 +1358,8 @@ func _input(event: InputEvent) -> void:
 		_move(step)
 	elif event.is_action_pressed("menu_slot_1") or event.is_action_pressed("menu_slot_2"):
 		_move_opt(-1 if event.is_action_pressed("menu_slot_1") else 1)
+	elif _mode == "lab" and event.is_action_pressed("menu_details"):
+		_v_lab.crack_geode()                                      # geoda z żyły (DIG_LOOT_PLAN.md K4)
 	elif event.is_action_pressed("menu_alt"):
 		_save_preset()
 	elif accept:
@@ -1971,6 +1974,26 @@ func _on_research_result(id: String, ok: bool, reason: String) -> void:
 			_say("No scrap in this mode.", UiTheme.MUTED)
 		_:
 			_say("Cannot do that.", UiTheme.DANGER)
+	_refresh()
+
+## Geoda otwarta (Scrap.geode_opened, u każdego peera): otwierający widzi wynik na karcie, reszta tylko odświeża tablicę.
+func _on_geode_opened(res: Dictionary) -> void:
+	if not _open:
+		return
+	if int(res.get("by", -1)) == NoiseMgr.local_id():
+		match String(res.get("reason", "")):
+			"ok":
+				_say(tr("Geode cracked open") + " — " + Scrap.geode_text(res), UiTheme.OK)
+				_success_fx()
+				(_jars as LabArt.Jars).hear(1.0 if randf() < 0.5 else -1.0)
+			"none":
+				_say(tr("No geodes — dig them out of ore veins."), UiTheme.MUTED)
+			"station":
+				_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+			"repeat":
+				_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+			_:
+				_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
 
 func _on_part_result(id: String, ok: bool, reason: String) -> void:

@@ -625,7 +625,7 @@ func _success() -> void:
 	extract_progress = 1.0
 	print("[MISSION] SUCCESS time=%.1fs downs=%d attempts=%d" % [elapsed, downs, attempts])
 	log_end("success")
-	var finds := {"parts": Scrap.found.keys(), "samples": Scrap.samples_loot + side_samples(), "trophy": false, "batteries": batteries}
+	var finds := {"parts": Scrap.found.keys(), "samples": Scrap.samples_loot + side_samples(), "geodes": Scrap.geodes_loot, "trophy": false, "batteries": batteries}
 	if kind != "hub" and Scrap.enabled():
 		var bonus := scrap_bonus()
 		var lv0 := get_tree().get_first_node_in_group("level")
