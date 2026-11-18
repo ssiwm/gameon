@@ -53,3 +53,7 @@ Lista klawiszy jest na dole ekranu w grze oraz pod klawiszem pomocy. Gra obsług
   7. Czy rozbijałeś coś celowo (skrzynie, lampy, okna, deski, kratki, zamurowania, stemple w tunelach)?
      Czy było to przyjemne i czy hałas był wart tego, co zyskałeś?
   8. Czy zabiłeś deskami jakieś przejście albo zawaliłeś tunel za sobą? Jeśli nie — czy wiedziałeś, że się da?
+  9. Czy kopałeś w strefach wydobycia (znak z kilofem przy ścianie)? Co znalazłeś i czy było warte
+     hałasu, obudzonych stworów i ryzyka zawału? Czy zauważyłeś szczeliny, dzwonienie metalu albo ślady na skanerze?
+ 10. Czy znalazłeś taśmę albo geodę? Czy wiedziałeś, gdzie odsłuchać taśmę (ARCHIWUM w menu pauzy)
+     i gdzie rozbić geodę (PRACOWNIA w kryjówce)? Czy rzadki łup (jaśniejsza poświata, iskra) rzucał się w oczy?
