@@ -9,6 +9,7 @@ extends Node
 const Parts := preload("res://scripts/parts.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
 const Actions := preload("res://scripts/actions.gd")
+const ResultScreen := preload("res://scripts/result_screen.gd")
 
 var main: Node2D
 var level: Node2D
@@ -203,11 +204,22 @@ func _card() -> void:
 
 # ---------------------------------------------------------------- 4. raport po akcji
 
+## Wiersz raportu sprawdzany na modelu (ResultScreen.build_model z kontekstem z result_test.gd), nie na tekście źródła — w paczce
+## eksportu skrypty są skompilowane i tekstu .gd nie ma. Źródło mission.gd czytamy tylko tam, gdzie jest (ze źródeł, CI).
 func _report() -> void:
 	var src := FileAccess.get_file_as_string("res://scripts/mission.gd")
-	check("raport po akcji: geody w znaleziskach misji", src.contains("\"geodes\": Scrap.geodes_loot"))
-	var rs := FileAccess.get_file_as_string("res://scripts/result_screen.gd")
-	check("raport po akcji: wiersz „+N geoda do pracowni”", rs.contains("+%d geode for the lab"))
+	if src.is_empty():
+		info("raport po akcji: źródło mission.gd niedostępne (paczka eksportu) — pomijam sprawdzenie tekstu")
+	else:
+		check("raport po akcji: geody w znaleziskach misji", src.contains("\"geodes\": Scrap.geodes_loot"))
+	var rt: Node = load("res://scripts/result_test.gd").new()
+	var ctx: Dictionary = rt._ctx()
+	rt.free()
+	ctx["scrap_info"]["finds"] = {"parts": [], "samples": 0, "geodes": 2, "trophy": false}
+	var want := TranslationServer.translate("+%d geode for the lab") % 2
+	var rows: Array = ResultScreen.build_model(ctx)["finds"]
+	var hit := rows.any(func(r: Dictionary) -> bool: return String(r.get("text", "")) == want)
+	check("raport po akcji: wiersz „%s” w modelu raportu" % want, hit)
 
 # ---------------------------------------------------------------- 5. zapis
 
