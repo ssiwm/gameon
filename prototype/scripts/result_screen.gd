@@ -496,6 +496,8 @@ static func build_model(ctx: Dictionary) -> Dictionary:
 			finds.append({"text": _tr("NEW PART: %s") % _tr(String(pd.get("name", pid))), "stamp": false, "color": UiTheme.TEXT})
 		if int(fi.get("samples", 0)) > 0:
 			finds.append({"text": _tr("+%d lab sample") % int(fi["samples"]), "stamp": false, "color": UiTheme.TEXT})
+		if int(fi.get("geodes", 0)) > 0:                       # geoda z żyły (DIG_LOOT_PLAN.md K4): otwierana w pracowni
+			finds.append({"text": _tr("+%d geode for the lab") % int(fi["geodes"]), "stamp": false, "color": UiTheme.TEXT})
 		if int(fi.get("batteries", 0)) > 0:
 			finds.append({"text": _tr("4.5 V batteries picked up: %d") % int(fi["batteries"]), "stamp": false, "color": UiTheme.TEXT})
 		if bool(fi.get("trophy", false)):

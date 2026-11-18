@@ -10,6 +10,7 @@ const StationKit := preload("res://scripts/station_kit.gd")
 const NotePaletteRef := preload("res://scripts/note_palette.gd")
 const ServiceArt := preload("res://scripts/station_service_art.gd")
 const LabArt := preload("res://scripts/station_lab_art.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 var ui                                   ## panel stanowisk (workshop_ui.gd): stan, kafle, etykiety
 
@@ -151,6 +152,20 @@ func _dress_lab_lathe(w: int, o: Dictionary) -> void:
 func _fill_lab_board() -> void:
 	ui._lab_board_cap.text = tr("PROJECTS  ·  %d / %d") % [Scrap.research.size(), Scrap.LAB_SLOTS]
 	ui._clear_children(ui._lab_board_rows)
+	if Scrap.geodes > 0:                                   # geody z żyły (DIG_LOOT_PLAN.md K4): otwiera się je tutaj, jedna na raz
+		var gr = HBoxContainer.new()
+		gr.add_theme_constant_override("separation", 8)
+		var gl = UiTheme.label(tr("GEODES  ·  %d") % Scrap.geodes, 9, ui.GOLD)
+		gl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		gr.add_child(gl)
+		var gb = Button.new()
+		gb.name = "CrackGeode"
+		gb.focus_mode = Control.FOCUS_NONE
+		gb.text = Actions.fmt(tr("[{menu_details}]  Crack one open"))
+		gb.add_theme_font_size_override("font_size", 9)
+		gb.pressed.connect(crack_geode)
+		gr.add_child(gb)
+		ui._lab_board_rows.add_child(gr)
 	for i in Scrap.LAB_SLOTS:
 		var row: Label
 		if i < Scrap.research.size():
@@ -197,6 +212,13 @@ func _fill_lab_board() -> void:
 		var nl = UiTheme.label(tr("Buy a special weapon at the workshop bench first — the lab researches only its parts."), 9, UiTheme.MUTED)
 		_wrap(nl)
 		ui._lab_board_rows.add_child(nl)
+
+## Otwarcie jednej geody (serwer losuje; wynik — `Scrap.geode_opened` → workshop_ui `_on_geode_opened`).
+func crack_geode() -> void:
+	if Scrap.geodes <= 0:
+		ui._say(tr("No geodes — dig them out of ore veins."), UiTheme.MUTED)
+		return
+	Scrap.request_open_geode()
 
 func _wrap(l: Label) -> void:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

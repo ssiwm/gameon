@@ -79,6 +79,9 @@ var found: Dictionary = {}            ## id części → true: znalezione w tej 
 var fuses: Dictionary = {}           ## stół pirotechniczny: rodzaj przedmiotu → indeks długości zapalnika (Throwables.FUSES); brak — fabryczny
 var samples := 0                     ## próbki w banku drużyny (zapis u hosta)
 var samples_loot := 0                 ## próbki zebrane w tej misji — do banku po ekstrakcji, wipe je zabiera
+var geodes := 0                       ## geody z żyły w banku drużyny — otwierane w pracowni (DIG_LOOT_PLAN.md K4, zapis u hosta)
+var geodes_loot := 0                  ## geody wykopane w tej misji — do banku po ekstrakcji, wipe je zabiera
+var geode_roll := -1.0                ## testy: wymuszony wynik losowania geody (0..1); < 0 — randf()
 var schematics: Dictionary = {}      ## id części → true: schemat z pracowni, czeka na tokarkę (zapis u hosta)
 var lathe: Array = []                 ## tokarka: wykonywane części (id), gotowe po udanej misji (zapis u hosta)
 var research: Array = []              ## pracownia: badane części (id z parts.gd), gotowe po udanej misji (zapis u hosta)
@@ -112,7 +115,7 @@ func _ready() -> void:
 	load_progress()
 	multiplayer.peer_connected.connect(func(id: int) -> void:
 		if NoiseMgr.is_server():
-			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys(), dig_pools))
+			_sync.rpc_id(id, bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys(), dig_pools, geodes, geodes_loot))
 
 ## Złom nie obowiązuje w Nocnym Dyżurze (osobna seria z własnymi zasadami).
 func enabled() -> bool:
@@ -222,6 +225,8 @@ func bank_loot(bonus: int) -> int:
 	found.clear()
 	samples += samples_loot
 	samples_loot = 0
+	geodes += geodes_loot
+	geodes_loot = 0
 	_reconcile_jobs()
 	var learned: Array = research.duplicate()
 	for id in learned:
@@ -350,10 +355,11 @@ func reset_loot() -> void:
 		return
 	_checkpoint_loot.clear()
 	dig_loot.clear()                                       # cenne znajdźki z tej próby wracają do puli (strefa wraca do danych mapy)
-	if loot != 0 or not found.is_empty() or samples_loot != 0:
+	if loot != 0 or not found.is_empty() or samples_loot != 0 or geodes_loot != 0:
 		loot = 0
 		found.clear()
 		samples_loot = 0
+		geodes_loot = 0
 		_push()
 
 ## Łup w chwili przebudzenia bossa (mission._save_checkpoint, serwer). Wipe w walce z bossem wraca do niego zamiast do zera:
@@ -364,7 +370,7 @@ var _checkpoint_loot := {}
 func save_checkpoint_loot() -> void:
 	if not NoiseMgr.is_server():
 		return
-	_checkpoint_loot = {"loot": loot, "found": found.keys(), "samples": samples_loot, "dig": dig_loot.duplicate(true)}
+	_checkpoint_loot = {"loot": loot, "found": found.keys(), "samples": samples_loot, "geodes": geodes_loot, "dig": dig_loot.duplicate(true)}
 
 ## Wipe w walce z bossem (main._restart_from_checkpoint): łup z samej walki przepada, sprzed niej zostaje. Bez zapisu = reset_loot().
 func restore_checkpoint_loot() -> void:
@@ -378,6 +384,7 @@ func restore_checkpoint_loot() -> void:
 	for id in _checkpoint_loot["found"]:
 		found[String(id)] = true
 	samples_loot = int(_checkpoint_loot["samples"])
+	geodes_loot = int(_checkpoint_loot.get("geodes", 0))
 	dig_loot = (_checkpoint_loot.get("dig", {}) as Dictionary).duplicate(true)    # strefy wracają do stanu z przebudzenia bossa
 	_push()
 
@@ -667,6 +674,108 @@ func _sample_rpc(n: int) -> void:
 	var sub := tr("After extraction: the LAB bench in the safe room researches special-weapon parts with it") if has_lab_weapon() else tr("Research needs a special weapon from the workshop: LR-7, HKM-9 or WRATH-4")
 	Msg.post("sample.%d" % samples_loot, Msg.Ch.TOAST, tr("Sample taken (+%d)") % n,
 		{"sub": sub, "style": Msg.Style.SUCCESS, "ttl": 4.0 if has_lab_weapon() else 6.0, "prio": 60})
+
+# ---------------------------------------------------------------- geody (DIG_LOOT_PLAN.md K4)
+
+## Geoda z żyły (dig_zone.gd FIND_GEODE): bryła z kryształowym wnętrzem, którą otwiera się w pracowni w kryjówce — moment odkrycia po
+## misji zamiast próbki od razu w łupie. Wynik losuje serwer przy otwarciu: GEODE_ODDS — [próg, rodzaj, ile]; „part” to losowa
+## brakująca część broni drużyny (jak znajdźka), a gdy wszystkie już są — GEODE_FALLBACK próbek.
+const GEODE_ODDS := [[0.5, "sample", 1], [0.75, "sample", 2], [0.85, "scrap", 40], [1.0, "part", 1]]
+const GEODE_FALLBACK := 2
+signal geode_opened(result: Dictionary)   ## u każdego peera: {"kind": sample / scrap / part, "n", "id" (część), "by" (peer)}
+
+## Serwer: geoda wykopana w tej misji — do łupu (bank po ekstrakcji, wipe ją zabiera), napis u wszystkich.
+func add_geodes(n: int) -> void:
+	if not NoiseMgr.is_server() or n <= 0 or not enabled():
+		return
+	geodes_loot += n
+	_push()
+	if NoiseMgr.has_network():
+		_geode_found_rpc.rpc(n)
+	else:
+		_geode_found_rpc(n)
+
+@rpc("authority", "call_local", "reliable")
+func _geode_found_rpc(n: int) -> void:
+	Msg.post("geode.%d" % geodes_loot, Msg.Ch.TOAST, tr("Geode taken (+%d)") % n,
+		{"sub": tr("Crack it open at the LAB bench in the safe room"), "style": Msg.Style.SUCCESS, "ttl": 5.0, "prio": 60})
+
+## Otwarcie jednej geody w pracowni (serwer losuje wynik).
+func request_open_geode() -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_open_geode_server(NoiseMgr.local_id())
+	else:
+		_open_geode_rpc.rpc_id(1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _open_geode_rpc() -> void:
+	if NoiseMgr.is_server():
+		_open_geode_server(multiplayer.get_remote_sender_id())
+
+func _open_geode_server(peer_id: int) -> void:
+	var reason := station_reason(peer_id, "lab_bench")
+	if reason == "ok" and not enabled():
+		reason = "off"
+	elif reason == "ok" and geodes <= 0:
+		reason = "none"
+	elif reason == "ok" and not _permit_action(peer_id, "geode"):
+		reason = "repeat"
+	var res := {"kind": "", "n": 0, "id": "", "by": peer_id, "reason": reason}
+	if reason == "ok":
+		geodes -= 1
+		var roll := geode_roll if geode_roll >= 0.0 else randf()
+		var pick: Array = GEODE_ODDS[-1]
+		for o in GEODE_ODDS:
+			if roll < float(o[0]):
+				pick = o
+				break
+		res["kind"] = String(pick[1])
+		res["n"] = int(pick[2])
+		if res["kind"] == "part":
+			var id := pick_find()
+			if id == "":
+				res["kind"] = "sample"                           # wszystkie części już są: próbki
+				res["n"] = GEODE_FALLBACK
+			else:
+				res["id"] = id
+				if is_lab_part(id):
+					schematics[id] = true                        # broń specjalna: jak znalezisko — schemat dla tokarki zamiast badania
+				else:
+					parts[id] = true
+		if res["kind"] == "sample":
+			samples += int(res["n"])
+		elif res["kind"] == "scrap":
+			bank += int(res["n"])
+		save_progress()
+		_push()
+	_log_buy("geode", String(res["id"]), 0, reason, peer_id, {"got": res["kind"], "n": res["n"], "geodes": geodes})
+	if reason != "ok":
+		if not NoiseMgr.has_network() or peer_id == NoiseMgr.local_id():
+			geode_opened.emit(res)
+		else:
+			_geode_rpc.rpc_id(peer_id, res)
+	elif NoiseMgr.has_network():
+		_geode_rpc.rpc(res)
+	else:
+		_geode_rpc(res)
+
+## Każdy peer: wynik otwarcia geody — napis (kto otworzył i co było w środku), sygnał dla karty pracowni.
+@rpc("authority", "call_local", "reliable")
+func _geode_rpc(res: Dictionary) -> void:
+	if String(res.get("reason", "")) == "ok":
+		Msg.post("geode.open.%d" % geodes, Msg.Ch.TOAST, tr("Geode cracked open"), {"sub": geode_text(res), "style": Msg.Style.SUCCESS, "ttl": 6.0, "prio": 70})
+	geode_opened.emit(res)
+
+## Co było w geodzie, po ludzku (napis, karta pracowni).
+func geode_text(res: Dictionary) -> String:
+	match String(res.get("kind", "")):
+		"sample":
+			return tr_n("A crystal core: %d sample", "A crystal core: %d samples", int(res["n"])) % int(res["n"])
+		"scrap":
+			return tr("Ore crystals: +%d scrap") % int(res["n"])
+		"part":
+			return tr("A part fused in the crystal: %s") % tr(String(Parts.get_part(String(res["id"])).get("name", res["id"])))
+	return ""
 
 ## Czy drużyna ma broń specjalną, której części bada pracownia — bez niej próbki czekają (PROGRESSION_PLAN.md P1.3).
 func has_lab_weapon() -> bool:
@@ -973,12 +1082,14 @@ func _part_done(id: String, reason: String) -> void:
 func _push() -> void:
 	changed.emit()
 	if NoiseMgr.has_network() and NoiseMgr.is_server():
-		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys(), dig_pools)
+		_sync.rpc(bank, loot, last_gain, unlocked.keys(), parts.keys(), trophies.keys(), found.keys(), orders, fuses, samples, samples_loot, research, schematics.keys(), lathe, deliveries, cleared.keys(), dig_pools, geodes, geodes_loot)
 
 @rpc("authority", "call_remote", "reliable")
 func _sync(b: int, l: int, g: int, unl: Array, pts: Array, tro: Array, fnd: Array = [], ord: Array = [], fz: Dictionary = {},
-		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = [], rdy: Dictionary = {}, clr: Array = [], dig: Dictionary = {}) -> void:
+		smp: int = 0, smp_l: int = 0, res: Array = [], sch: Array = [], lth: Array = [], rdy: Dictionary = {}, clr: Array = [], dig: Dictionary = {}, geo: int = 0, geo_l: int = 0) -> void:
 	dig_pools = _clean_pools(dig)
+	geodes = geo
+	geodes_loot = geo_l
 	cleared.clear()
 	for m in clr:
 		cleared[String(m)] = true
@@ -1121,6 +1232,8 @@ func load_progress(path := "") -> void:
 	job_paid.clear()
 	samples = 0
 	samples_loot = 0
+	geodes = 0
+	geodes_loot = 0
 	dig_pools.clear()
 	dig_since.clear()
 	dig_loot.clear()
@@ -1136,6 +1249,7 @@ func load_progress(path := "") -> void:
 			if Parts.is_valid(String(id)):
 				lathe.append(String(id))
 		samples = maxi(0, int(cfg.get_value("workshop", "samples", 0)))
+		geodes = maxi(0, int(cfg.get_value("workshop", "geodes", 0)))
 		for id in Array(cfg.get_value("workshop", "research", [])):
 			if Parts.is_valid(String(id)):
 				research.append(String(id))
@@ -1199,6 +1313,7 @@ func save_progress(path := "") -> void:
 	cfg.set_value("workshop", "deliveries", _delivery_snapshot if use_checkpoint else deliveries)
 	cfg.set_value("workshop", "fuses", fuses)
 	cfg.set_value("workshop", "samples", samples)
+	cfg.set_value("workshop", "geodes", geodes)
 	cfg.set_value("workshop", "research", research)
 	cfg.set_value("workshop", "schematics", schematics.keys())
 	cfg.set_value("workshop", "lathe", lathe)

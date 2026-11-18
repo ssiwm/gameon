@@ -36,3 +36,6 @@ keys,?plural,pl,_comment
 "%s: %d part to research · %s","%s: %d parts to research · %s","%s: %d część do zbadania · %s",Pracownia: tablica PROJEKTY
 ,,"%s: %d części do zbadania · %s",
 ,,"%s: %d części do zbadania · %s",
+"A crystal core: %d sample","A crystal core: %d samples","Kryształowe wnętrze: %d próbka",Pracownia: geoda (DIG_LOOT_PLAN.md K4)
+,,"Kryształowe wnętrze: %d próbki",
+,,"Kryształowe wnętrze: %d próbek",
