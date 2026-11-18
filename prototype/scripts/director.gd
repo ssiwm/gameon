@@ -175,17 +175,23 @@ func _spawn_group(humans: Array) -> void:
 	var hot: Variant = NoiseMgr.hot_spot_near(anchor.global_position, HOT_SPOT_R, HOT_SPOT_AGE)
 	var hunt_at: Vector2 = hot if hot != null else anchor.global_position
 	print("[DIRECTOR] wędrowcy %s przy %s ku %s (stres %.2f, od starcia %.0f s)" % [str(kinds), str(pos.round()), str(hunt_at.round()), stress, _since_enc])
+	spawn_at(kinds, pos, hunt_at)
+
+## Serwer: grupa wędrowców `kinds` od `pos` (kolejni `step` px dalej w poziomie), od razu w drodze ku `hunt_at`. Zwraca nazwy węzłów.
+## Wołają: `_spawn_group` (miejsce poza kadrem) i strefa wydobycia (DIG_LOOT_PLAN.md K3: kieszeń za czołem wykopu, dig_zone.gd `_wake_hit`).
+func spawn_at(kinds: Array, pos: Vector2, hunt_at: Vector2, step := 14.0) -> Array:
 	var group: Array = []
 	for i in kinds.size():
 		_serial += 1
 		var n := "Roamer%d" % _serial
 		group.append(n)
-		var at := pos + Vector2(float(i) * 14.0, 0.0)
+		var at := pos + Vector2(float(i) * step, 0.0)
 		if NoiseMgr.has_network():
-			_spawn_roamer.rpc(n, kinds[i], at, hunt_at)
+			_spawn_roamer.rpc(n, String(kinds[i]), at, hunt_at)
 		else:
-			_spawn_roamer(n, kinds[i], at, hunt_at)
+			_spawn_roamer(n, String(kinds[i]), at, hunt_at)
 	_groups.append(group)
+	return group
 
 ## Zestawy wędrowców (F3.7, F3.10): [waga względna, rodzaje] albo [waga, rodzaje, okna]. `okna` (opcjonalne) to słownik `{"time": [od, do], "tension": [od, do], "fade": s}`:
 ## zestaw jest dostępny tylko wtedy, gdy czas od startu (s; × `dread`, więc łatwy eskaluje wolniej) i napięcie mieszczą się w oknach. Waga rośnie liniowo od 0 na początku

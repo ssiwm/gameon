@@ -99,6 +99,20 @@ const CRACK_NOISE := 0.5              ## hałas ciosu w szczelinę × to
 ## Ślad na ścianie: zakopana znajdźka najwyżej tyle narożników od powietrza (2 kafle) — w ścianie wykopu wystaje jej róg (view3d.gd).
 const TRACE_CORNERS := 8
 const M_PER_PX := 1.8 / 22.0          ## m na px (jak level3d.gd PX) — głębokość na skanerze
+## „Coś drapie” (DIG_LOOT_PLAN.md K3): kopanie budzi wrogów. Po WAKE_SCRATCH ciosach w strefę zza ściany słychać drapanie, po WAKE_NEAR
+## bliżej i z warczeniem, po WAKE_EMERGE z kieszeni tuż za czołem wykopu wychodzą wrogowie (raz na strefę do wipe'u). W ciszy licznik
+## spada, więc kto przerwie po zapowiedzi i wróci później, kopie dalej seriami. Liczby do strojenia po playteście.
+const WAKE_SCRATCH := 20
+const WAKE_NEAR := 26
+const WAKE_EMERGE := 30
+const WAKE_CALM := 20.0               ## s bez ciosu, po których licznik zaczyna spadać
+const WAKE_DECAY := 4.0               ## s na jeden cios mniej (po WAKE_CALM)
+const WAKE_DROP := 4                  ## ciosów poniżej progu, przy których zapowiedź gaśnie (następna seria zapowie od nowa)
+const WAKE_KINDS := {"z1_m3": ["slepiec"]}   ## mapa → kto wychodzi (1.3: Ślepiec); reszta — WAKE_DEFAULT
+const WAKE_DEFAULT := ["trzosek", "trzosek"]
+const WAKE_POCKET := Vector2(13.0, 10.0)     ## px: połowy boków kieszeni, z której wychodzą (wróg 10 × 14 px)
+const WAKE_FACE := 48.0               ## px: najdalsze czoło wykopu od kopiącego, za którym szukamy kieszeni
+const WAKE_TOAST_R := 220.0           ## px od strefy: tak blisko człowiek dostaje napis zapowiedzi
 const FIND_BLAST_PUSH := 10.0         ## px: wybuch odrzuca odkopaną znajdźkę od środka
 ## Złom ze znajdźki „scrap” — zakopany pakunek (DIG_LOOT_PLAN.md K1). Do 1.7.600: 1–3, mniej niż skrzynia przy drodze; w 74 próbach
 ## od 1.7.505 kopanie dało łącznie ok. 8 złomu przy medianie łupu misji 1.1 189 i sejfie 40 — kopanie przegrywało z każdą inną czynnością.
@@ -161,6 +175,15 @@ var crack := Vector2i(-1, -1)         ## szczelina (narożnik) u każdego peera;
 var crack_ver := 0                    ## u każdego peera: zmiana szczeliny (widok 3D przestawia model)
 var cracks_on := true                 ## serwer: szczeliny włączone (testy liczby ciosów na materiał je wyłączają)
 var cracks_hit := 0                   ## serwer: ciosów w szczelinę od wczytania / resetu (test)
+var wakes_on := true                  ## serwer: budzenie wrogów włączone (K3; testy liczby ciosów je wyłączają)
+var wake_hits := 0.0                  ## serwer: ciosy liczone do budzenia (w ciszy spadają)
+var wake_stage := 0                   ## serwer: 0 — cisza, 1 — drapanie, 2 — bliżej, 3 — wyszli (do wipe'u strefa nikogo już nie budzi)
+var wake_quiet := 0.0                 ## serwer: s od ostatniego ciosu
+var wake_side := 0.0                  ## serwer: strona czoła ostatniego ciosu w bok (bot pilnuje kopiącego; 0 — cios w pionie)
+var wake_at := Vector2.INF            ## serwer: stopy ostatniego kopiącego
+var wake_spawned: Array = []          ## serwer: nazwy wrogów z wyjścia (test)
+var wake_fx := 0                      ## u każdego peera: zapowiedzi i wyjść (test)
+var wake_fx_last := -1                ## u każdego peera: etap ostatniej zapowiedzi (test)
 var _m0 := PackedByteArray()          ## materiał z danych mapy (reset; materiał osypiska się przesuwa)
 var _in_isl := PackedByteArray()      ## 1 = narożnik spadającej wyspy (osypywanie go nie rusza)
 var _islands: Array[Dictionary] = []  ## spadające wyspy: {"cells": PackedInt32Array, "v": narożników na krok, "drop": narożników łącznie}
@@ -923,6 +946,8 @@ func melee_dig(space: PhysicsDirectSpaceState2D, origin: Vector2, dir: Vector2, 
 	if ring > 0.0:
 		SessionLog.note_dig(String(name), "clink")
 	_send(r.get_center(), r.size * 0.5, 0.0, tool)
+	if wakes_on and NoiseMgr.is_server():
+		_wake_hit(origin + Vector2(0.0, 9.0), dir)
 	if cracks_on and NoiseMgr.is_server():
 		_next_crack(at, dir)
 	var top := Vector2(clampf(at.x - signf(dir.x) * 3.0, r.position.x + 2.0, r.end.x - 2.0), r.position.y + 2.0)   # urobek z górnej krawędzi wyrwy, przy czole
@@ -1041,6 +1066,122 @@ func _crack_rpc(key: String, c: Vector2i) -> void:
 		return
 	crack = c
 	crack_ver += 1
+
+# ---------------------------------------------------------------- „coś drapie” (K3): kopanie budzi wrogów
+
+## Serwer: cios w strefę z `feet` (stopy kopiącego) w kierunku `dir` — licznik budzenia i kolejny etap (zapowiedź albo wyjście).
+func _wake_hit(feet: Vector2, dir: Vector2) -> void:
+	if wake_stage >= 3:
+		return
+	wake_quiet = 0.0
+	wake_hits += 1.0
+	wake_at = feet
+	if absf(dir.x) > 0.1:
+		wake_side = signf(dir.x)
+	var stage := wake_stage_for(wake_hits)
+	if stage <= wake_stage:
+		return
+	wake_stage = stage
+	var spot := wake_spot(feet, dir)
+	var src: Vector2 = spot[0]
+	wake_side = float(spot[2])                                  # bot pilnuje strony kieszeni (cios w pionie też ją ma)
+	if stage == 3:
+		_send(src, WAKE_POCKET, 3.0, Mats.Tool.BLAST)          # kieszeń za czołem: ściana pęka, z niej wychodzą
+		var kinds := wake_kinds(map_key)
+		var h: float = spot[2]
+		wake_spawned = Director.spawn_at(kinds, Vector2(src.x - h * 5.0, src.y + WAKE_POCKET.y - 1.0), feet, h * 10.0)
+		SessionLog.note_dig(String(name), "woke")
+	SessionLog.event("dig_wake", {"zone": String(name), "stage": stage, "hits": int(wake_hits), "map": map_key})
+	var kind := String(wake_kinds(map_key)[0])
+	if NoiseMgr.has_network():
+		_wake_rpc.rpc(map_key, stage, src, kind)
+	else:
+		_wake_rpc(map_key, stage, src, kind)
+
+## Etap budzenia przy `hits` ciosach: 0 — cisza, 1 — drapanie, 2 — bliżej, 3 — wychodzą.
+static func wake_stage_for(hits: float) -> int:
+	if hits >= WAKE_EMERGE:
+		return 3
+	if hits >= WAKE_NEAR:
+		return 2
+	return 1 if hits >= WAKE_SCRATCH else 0
+
+## Kto wychodzi ze strefy na mapie `map`.
+static func wake_kinds(map: String) -> Array:
+	return WAKE_KINDS.get(map, WAKE_DEFAULT)
+
+## Serwer: w ciszy licznik spada; zapowiedź gaśnie WAKE_DROP ciosów poniżej progu (następna seria zapowie od nowa).
+func _tick_wake(delta: float) -> void:
+	if wake_stage >= 3 or wake_hits <= 0.0:
+		return
+	wake_quiet += delta
+	if wake_quiet <= WAKE_CALM:
+		return
+	wake_hits = maxf(0.0, wake_hits - delta / WAKE_DECAY)
+	if wake_stage == 2 and wake_hits < float(WAKE_NEAR - WAKE_DROP):
+		wake_stage = 1
+	if wake_stage == 1 and wake_hits < float(WAKE_SCRATCH - WAKE_DROP):
+		wake_stage = 0
+
+func _wake_reset() -> void:
+	wake_hits = 0.0
+	wake_stage = 0
+	wake_quiet = 0.0
+	wake_side = 0.0
+	wake_at = Vector2.INF
+	wake_spawned = []
+
+## Kieszeń, z której wychodzą wrogowie: tuż za czołem wykopu na wysokości stóp kopiącego, po stronie ciosu w bok (cios w pionie — strona
+## bliżej środka strefy), a gdy tam w WAKE_FACE nie ma skały — po drugiej. Bez czoła w zasięgu (duża komora) — obok kopiącego.
+## Zwraca [środek kieszeni, czy za czołem, strona ±1].
+func wake_spot(feet: Vector2, dir: Vector2) -> Array:
+	var rc := rect_px()
+	var s := signf(dir.x) if absf(dir.x) > 0.1 else (1.0 if feet.x < rc.get_center().x else -1.0)
+	var cy := minf(feet.y, rc.end.y - CELL) - WAKE_POCKET.y
+	var lo := rc.position.x + WAKE_POCKET.x + CELL
+	var hi := rc.end.x - WAKE_POCKET.x - CELL
+	for h: float in [s, -s]:
+		var x := feet.x
+		while absf(x - feet.x) < WAKE_FACE:
+			x += h * CELL
+			if solid_at_px(Vector2(x, feet.y - 8.0)):
+				return [Vector2(clampf(x + h * (WAKE_POCKET.x - 2.0), lo, hi), cy), true, h]
+	return [Vector2(clampf(feet.x + s * 20.0, lo, hi), cy), false, s]
+
+@rpc("authority", "call_local", "reliable")
+func _wake_rpc(key: String, stage: int, at: Vector2, kind: String) -> void:
+	if key != map_key:
+		return
+	wake_fx += 1
+	wake_fx_last = stage
+	var lvl := get_parent()
+	if lvl == null or not lvl.is_inside_tree():
+		return
+	var tree := get_tree()
+	var scrapes := 4 if stage == 1 else 6
+	for k in scrapes:                                            # drapanie zza ściany: stłumione, niskie zgrzyty żwiru w nierównym rytmie
+		var db := (-17.0 if stage == 1 else -10.0) + randf_range(-2.0, 1.0)
+		var pitch := (0.5 if stage == 1 else 0.6) * randf_range(0.92, 1.08)
+		if k == 0:
+			Audio.play_variant_at("dig_gravel", 3, at, Audio.BUS_WORLD, db, pitch)
+		else:
+			tree.create_timer(0.14 * float(k) + randf_range(0.0, 0.08)).timeout.connect(
+				func() -> void: Audio.play_variant_at("dig_gravel", 3, at, Audio.BUS_WORLD, db, pitch))
+	var who := "slepiec" if kind == "slepiec" else "trzosek"
+	if stage == 2:
+		Audio.play_variant_at(who + "_sleep", 3, at, Audio.BUS_WORLD, -8.0, 0.8)
+	elif stage == 3:
+		var chip: Color = Mats.MATS[material_at_px(at)]["chip"] if rect_px().has_point(at) else Color(0.4, 0.35, 0.3)
+		Audio.play_at("collapse", at, Audio.BUS_WORLD, -4.0, 1.35)
+		Audio.play_variant_at(who + "_attack", 2, at, Audio.BUS_WORLD, -2.0, 0.95)
+		Vfx.chips(lvl, at, Vector2.UP, chip, 12, "chip", 120.0, Vector2(1.0, 2.2))
+	var me := _local_human()
+	if me == null or not rect_px().grow(WAKE_TOAST_R).has_point(me.global_position):
+		return
+	var head: Array = [tr("Something is scratching behind the wall"), tr("It's close. It will break through"), tr("It broke through!")]
+	var sub: Array = [tr("Keep digging and it will come out"), tr("Stop digging or get ready"), ""]
+	Msg.post("dig.wake.%s" % name, Msg.Ch.TOAST, head[clampi(stage - 1, 0, 2)],
+		{"sub": sub[clampi(stage - 1, 0, 2)], "style": Msg.Style.WARN if stage < 3 else Msg.Style.DANGER, "ttl": 3.0, "prio": 60})
 
 ## K2, ślad na ścianie: najbliższy pusty narożnik w TRACE_CORNERS od zakopanej znajdźki `f` (tam wystaje jej róg) albo Vector2.INF.
 func find_trace(f: Dictionary) -> Vector2:
@@ -1431,6 +1572,7 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 	if s.is_empty():
 		islands_fallen = 0
 		collapses = 0
+		_wake_reset()                                            # wipe i nowa misja: strefa znów może obudzić (punkt kontrolny — bez zmian)
 	var out_mask := int(dm[n - 1])
 	var pr := _props_from(dm.slice(_w * _h * 2, n - 1))                 # stemple ze stanu (wipe: bez), ostrzeżenia serwer liczy od nowa
 	if pr != props:
@@ -1520,6 +1662,7 @@ func _physics_process(delta: float) -> void:
 	_pour_t = maxf(0.0, _pour_t - delta)
 	_tick_prop_work(delta)
 	_tick_warns(delta)
+	_tick_wake(delta)
 	if _check_spans and is_settled():
 		_check_spans = false
 		_update_warns()
