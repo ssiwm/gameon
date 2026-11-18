@@ -39,6 +39,7 @@ const NICHES := [
 ## ściany szczytowe z cegły w kolumnach 1 i 138, słupy przy ścianie tylnej w osiach `bays` (co ok. 11 kafli, poza wnękami i oknami dyspozytorni;
 ## w basenie też — słupy stoją w wodzie), bez słupów w płaszczyźnie przekroju (arena bossa — nic nie zasłania kadru). Do 1.7.612 hala
 ## nie miała wpisu: ściany i strop to były pudła skały 1,31 m, a z przodu otwarta skała bez przekroju (sprawdzenie budynków 2026-11-18).
+## Podłoga brzegów (wiersz 31) z betonu `C` jak płyta przekroju — ze skałą `#` przed żwirem podłogi leżał pas betonu przekroju.
 const FRONT := [
 	{"set": "station", "c0": 1, "c1": 138, "r0": 11, "r1": 31, "shell": true, "build": "vault",
 			"bays": [14, 25, 36, 47, 58, 70, 83, 94, 105, 115, 126], "cut_cols": false},
@@ -76,7 +77,7 @@ const MAP := [
 	"##bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbbbbbbbbbbbbbbbbbbbb-----bbbbbbbbbbbbbbbbbbb-------bbbbbbbbbbbbbbbbbbbbb-------bbbbbbbbbbbbbbbbbbb-----------bbbbbbbbbbbbbbbbbbbbbbbb##",
 	"##bbbbSbbSbbbbfbbbabQbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbKbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbfbabbbEbbbbbbbbbbb##",
-	"############################~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#############################",
+	"#CCCCCCCCCCCCCCCCCCCCCCCCCCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~CCCCCCCCCCCCCCCCCCCCCCCCCCCC#",
 	"############################################################################################################################################",
 	"############################################################################################################################################",
 	"############################################################################################################################################",

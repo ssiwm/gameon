@@ -258,6 +258,10 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 				for n: Dictionary in niches:                          # słup nie zasłania okna dyspozytorni ani wnęki
 					_check(k - 1 > int(n["c1"]) or k < int(n["c0"]), "B1: słup x %.2f przed wnęką %s" % [xf.origin.x, n])
 			_check(wet >= 5, "B1: %d słupów w basenie" % wet)
+			# podłoga brzegów z betonu jak płyta przekroju (ze skałą `#` był pas „żwir | beton | żwir”, uwaga z gry 2026-11-18)
+			for c in range(int(b["c0"]), int(b["c1"]) + 1):
+				var fl := Level3D._ch(rows, c, int(b["r1"]))
+				_check(fl == "C" or fl == "~", "B1 kol. %d: podłoga hali '%s' zamiast betonu „C”" % [c, fl])
 			_check((p["beam"] as Array).size() > 100, "B1: %d żeber i podciągów stropu" % (p["beam"] as Array).size())
 	if map_id == "z1_m3":
 		# 1.3: nadproże nad niskim tunelem obok sali (skała między stropem tunelu a stropem sali) to płyta świata, nie ściana pierwszego planu
