@@ -599,6 +599,7 @@ func _tick(delta: float) -> void:
 	_tick_dig_dust(delta)
 	_tick_dig_drips(delta)
 	_sync_items()
+	_sync_loot_glints()
 	tp = _tp("items", tp)
 	if warm == 1:
 		return
@@ -8513,6 +8514,50 @@ func _sync_items() -> void:
 			md *= (up as CanvasItem).modulate
 			up = up.get_parent()
 		m.albedo_color = Color(md.r * ITEM_TONE, md.g * ITEM_TONE, md.b * ITEM_TONE, md.a)
+
+## Iskra rzadkiej znajdźki (DIG_LOOT_PLAN.md K6, pickup.gd `rarity`): nad rzadkim łupem co ok. 2,4 s błyska krótka gwiazdka w kolorze jego
+## poświaty (addytywny quad przed przedmiotem) — rzadkość widać od razu, także w świetle lamp, gdzie sama poświata ginie. Faza z id węzła,
+## więc kilka rzadkich rzeczy obok siebie nie błyska naraz. Zwykłe i fabularne bez iskry (fabularna oddycha poświatą).
+const LOOT_GLINT_UP := 7.0                  ## iskra tyle px nad stopami przedmiotu
+const LOOT_GLINT_Z := 0.18                  ## przed przedmiotem [m]
+var _loot_glints := {}                      ## id pickupu → [pickup, MeshInstance3D, faza]
+
+func _sync_loot_glints() -> void:
+	var t := float(Time.get_ticks_msec()) * 0.001
+	for n in get_tree().get_nodes_in_group("pickups"):
+		var id := n.get_instance_id()
+		if _loot_glints.has(id) or int(n.get("rarity")) != 1 or bool(n.get("static_display")):
+			continue
+		var col: Color = (n.call("_glow_color") as Color).lerp(Color.WHITE, 0.45)
+		var root := Node3D.new()
+		root.name = "LootGlint"
+		_world.add_child(root)
+		var mats: Array = []
+		for sz in [Vector3(1.0, 1.0, 1.0), Vector3(2.2, 0.09, 1.0), Vector3(0.09, 2.2, 1.0)]:     # jądro i dwa promienie gwiazdki
+			var q := _glow_quad(Color(col.r, col.g, col.b, 0.0))
+			q.layers = LAYER_WORLD | LAYER_ACTORS
+			q.scale = sz
+			root.add_child(q)
+			mats.append(q.material_override)
+		_loot_glints[id] = [n, root, fposmod(float(id % 1000) * 0.37, TAU), mats]
+	for id in _loot_glints.keys():
+		var g: Array = _loot_glints[id]
+		var q := g[1] as Node3D
+		if not is_instance_valid(g[0]) or (g[0] as Node).is_queued_for_deletion():
+			if is_instance_valid(q):
+				q.queue_free()
+			_loot_glints.erase(id)
+			continue
+		var pk := g[0] as Node2D
+		var k := pow(maxf(0.0, sin(t * 2.6 + float(g[2]))), 8.0)                   # błysk ok. 0,4 s raz na okres (~2,4 s)
+		q.visible = k > 0.01 and pk.is_visible_in_tree()
+		if not q.visible:
+			continue
+		q.position = Level3D.px_to_m(pk.global_position + Vector2(0.0, -LOOT_GLINT_UP)) + Vector3(0.0, 0.0, LOOT_GLINT_Z)
+		q.rotation.z = t * 0.8
+		q.scale = Vector3.ONE * (0.08 + 0.28 * k)
+		for m in g[3]:
+			(m as StandardMaterial3D).albedo_color.a = 0.95 * k
 
 ## Model 3D przedmiotu (art/items3d/<nazwa>.glb z `tools/prep_items3d.py`) albo null, gdy go nie ma; sceny są trzymane w pamięci podręcznej.
 func _item_scene(name: String) -> PackedScene:
