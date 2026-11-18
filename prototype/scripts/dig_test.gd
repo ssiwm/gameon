@@ -105,6 +105,7 @@ func run(m: Node2D) -> void:
 	await _loot_k1()
 	await _signals_k2()
 	await _wake_k3()
+	await _minimap_k5()
 	await _signals()
 	await _collapse()
 	await _slope()
@@ -1589,6 +1590,53 @@ func _wake_k3() -> void:
 	check("K3: wipe — strefa znów może obudzić", zone.wake_stage == 0 and zone.wake_hits == 0.0 and zone.wake_spawned.is_empty())
 	zone.wakes_on = false
 	player.hp = player.MAX_HP
+	_place_player(pp0)
+	level.reset_breakables()
+	await _frames(0.1)
+
+# ---------------------------------------------------------------- 11c. K5: wejście strefy na rzucie mapy
+
+## DIG_LOOT_PLAN.md K5: znacznik strefy na rzucie mapy pojawia się dopiero, gdy gracz zobaczy znak przy wejściu (blisko, bez ściany na linii
+## wzroku), i zostaje, póki w strefie leży zakopana znajdźka.
+func _minimap_k5() -> void:
+	level.reset_breakables()
+	zone.reset_to(PackedByteArray())
+	await _frames(0.1)
+	var hud := _hud()
+	check("K5: HUD z rzutem mapy", hud != null and hud._minimap != null)
+	if hud == null or hud._minimap == null:
+		return
+	var pp0: Vector2 = player.global_position
+	var at: Vector2 = zone.sign_point()
+	var space := zone.get_world_2d().direct_space_state
+	var pq := PhysicsPointQueryParameters2D.new()
+	pq.position = at
+	pq.collision_mask = 1
+	check("K5: punkt znaku strefy przed wejściem, w powietrzu (%s)" % str(at), at != Vector2.INF and space.intersect_point(pq).is_empty())
+	(hud._dig_seen as Dictionary).clear()
+	var marked := func() -> bool:
+		return (hud._minimap.markers as Array).any(func(k: Dictionary) -> bool:
+			return String(k["kind"]) == "dig" and (k["pos"] as Vector2).is_equal_approx(at))
+	_place_player(Vector2(at.x + 300.0, TOP - 2.0))
+	await _frames(0.3)
+	var far_seen: bool = hud.dig_seen(zone)
+	var far_mark: bool = marked.call()
+	_place_player(Vector2(at.x + 30.0, TOP - 2.0))
+	await _frames(0.3)
+	var near_seen: bool = hud.dig_seen(zone)
+	var near_mark: bool = marked.call()
+	_place_player(Vector2(at.x + 300.0, TOP - 2.0))
+	await _frames(0.3)
+	var kept: bool = marked.call()
+	info("K5: daleko widziany %s / znacznik %s, blisko %s / %s, po odejściu znacznik %s" % [far_seen, far_mark, near_seen, near_mark, kept])
+	check("K5: znacznik dopiero po zobaczeniu znaku z bliska i zostaje po odejściu", not far_seen and not far_mark and near_seen and near_mark and kept)
+	check("K5: zakopanych znajdziek w strefie %d" % zone.buried_left(), zone.buried_left() > 0)
+	for f in zone.finds:
+		f["state"] = DigZone.Find.OUT
+	await _frames(0.2)
+	check("K5: strefa bez zakopanych znajdziek znika z rzutu mapy", zone.buried_left() == 0 and not marked.call())
+	zone.reset_to(PackedByteArray())
+	(hud._dig_seen as Dictionary).clear()
 	_place_player(pp0)
 	level.reset_breakables()
 	await _frames(0.1)

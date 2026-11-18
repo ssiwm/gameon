@@ -198,9 +198,11 @@ var sim_usec := 0                     ## czas ostatniego kroku z ruchem (µs)
 var islands_fallen := 0               ## serwer: wysp, które spadły od wczytania / resetu
 var fx_hits := 0                      ## u każdego peera: efektów ciosu od wczytania (test)
 var fx_last := {}                     ## ostatni efekt ciosu {"mat", "tool", "metal", "by"} (test)
+var _sign_at := Vector2(-1, -1)       ## punkt przed znakiem strefy (`sign_point`; (-1, -1) — jeszcze nie liczony)
 static var _jag_noise: FastNoiseLite
 
-## Ustawia strefę z wpisu `DIG_ZONES` ([c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?], kafle włącznie). `solid_at(c, r) -> bool` — czy
+## Ustawia strefę z wpisu `DIG_ZONES` ([c0, r0, c1, r1, materiał, ziarno, udział wtrąceń?, opcje?], kafle włącznie; opcje: {"wake": false}
+## — kopanie nie budzi wrogów). `solid_at(c, r) -> bool` — czy
 ## kafel mapy (poza strefą) jest bryłą; `zone_solid(c, r) -> bool` — czy kafel strefy był skałą w danych mapy (przed wycięciem).
 func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 	add_to_group("dig_zones")
@@ -213,6 +215,8 @@ func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 		mat_key = "dirt"
 	seed_v = int(def[5]) if def.size() > 5 else 0
 	var mix: float = float(def[6]) if def.size() > 6 else float(Mats.MATS[mat_key]["mix"])
+	var opts: Dictionary = def[7] if def.size() > 7 and def[7] is Dictionary else {}
+	wakes_on = bool(opts.get("wake", true))                   # K5: krótka strefa przy trasie uczy kopania — nie budzi wrogów (K3)
 	nx = tiles.x * PER_TILE
 	ny = tiles.y * PER_TILE
 	_w = nx + 3
@@ -1961,7 +1965,7 @@ func _plan_finds(solid_at: Callable) -> void:
 	var total := 0
 	for e in FIND_KINDS:
 		total += int(e[1])
-	var want := mini(FIND_MAX, rock_n / FIND_EVERY)
+	var want := clampi(rock_n / FIND_EVERY, 1, FIND_MAX)               # K5: krótka strefa (mniej niż FIND_EVERY kafli) ma główną znajdźkę
 	var taken: Array[Vector2i] = []
 	for t in cands:
 		if taken.size() >= want:
@@ -2164,6 +2168,22 @@ func entrance() -> Dictionary:
 			if bool(air.call(c, r0 - 1)) and solid_in_data(c, r0):
 				return {"wall_x": (float(c) + 0.5) * TILE, "floor_y": float(r0) * TILE, "dir": 0}
 	return best
+
+## K5: punkt przed znakiem strefy (kilof przy wejściu, view3d.gd) na wysokości piersi — znacznik na rzucie mapy i linia wzroku z HUD-u;
+## Vector2.INF, gdy strefa nie ma wejścia. Wejście liczy się raz (z danych mapy).
+func sign_point() -> Vector2:
+	if _sign_at == Vector2(-1, -1):
+		var e := entrance()
+		_sign_at = Vector2.INF if e.is_empty() else Vector2(float(e["wall_x"]) - float(e["dir"]) * 8.0, float(e["floor_y"]) - 12.0)
+	return _sign_at
+
+## Zakopane i odkopane do połowy znajdźki, które jeszcze nie wypadły.
+func buried_left() -> int:
+	var n := 0
+	for f in finds:
+		if int(f["state"]) != Find.OUT:
+			n += 1
+	return n
 
 # ---------------------------------------------------------------- marching squares
 

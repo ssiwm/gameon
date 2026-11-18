@@ -2746,8 +2746,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				Combat.apply(wnd.get_node("Pane"), Combat.make_info(Weapons.KILOF, 8.0, wnd.call("body_center"), Vector2.LEFT, 1, "bullet")))
 			if "--shotwindow=2" in OS.get_cmdline_user_args():
 				get_tree().create_timer(4.0).timeout.connect(func() -> void: level.reset_breakables())
-	if _has_arg_prefix("--shotlamp"):               # dev: gracz 1 pod lampą misji `I` (MissionLamp2 na 1.2, legowisko Stalkera), bez wrogów w pobliżu; po 1,5 s kula ją tłucze (D1); `=2` — po 4 s znów świeci jak po wipe'ie
-		var lmp: Node2D = level.get_node_or_null("MissionLamp2")
+	if _has_arg_prefix("--shotlamp"):               # dev: gracz 1 pod lampą misji `I` (na 1.2 legowisko Stalkera, kafel 182, 31), bez wrogów w pobliżu; po 1,5 s kula ją tłucze (D1); `=2` — po 4 s znów świeci jak po wipe'ie
+		var lmp: Node2D = level.mission_lamp_at(182, 31)
 		if lmp == null:
 			lmp = get_tree().get_first_node_in_group("mission_lamps") as Node2D
 		var lp2: Node2D = _players.get_node_or_null("1")
@@ -4697,6 +4697,12 @@ func _map_test() -> void:
 			else:
 				print("[MAPTEST] %s: %s wejście x %.0f, grunt y %.0f, skała %s" % [id, z.name, float(ent["wall_x"]), float(ent["floor_y"]),
 					["pod stopami", "w prawo", "w lewo"][0 if int(ent["dir"]) == 0 else (1 if int(ent["dir"]) > 0 else 2)]])
+		if id in ["z1_m1", "z1_m2", "z1_m3"]:                    # K5: dwie strefy na mapę kampanii — krótka (1 znajdźka, bez budzenia) i głęboka
+			var zs: Array = level.dig_zones()
+			var short_n := zs.filter(func(z: Node) -> bool: return not bool(z.wakes_on) and (z.finds as Array).size() == 1).size()
+			var deep_n := zs.filter(func(z: Node) -> bool: return bool(z.wakes_on)).size()
+			if zs.size() != 2 or short_n != 1 or deep_n != 1:
+				dig_bad.append("K5: %d stref (krótkich %d, głębokich %d) — powinny być 2: krótka z 1 znajdźką bez budzenia i głęboka" % [zs.size(), short_n, deep_n])
 		for msg in dig_bad:
 			print("[MAPTEST] %s: BŁĄD strefy wydobycia: %s" % [id, msg])
 		fails += dig_bad.size()
