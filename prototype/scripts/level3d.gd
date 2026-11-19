@@ -1976,7 +1976,7 @@ void fragment() {
 		nw += kw * normalize(tx.zyx * w.x + ty.xzy * w.y + tz.xyz * w.z);
 	}
 	ALBEDO = col * COLOR.rgb;
-	AO = o.r;
+	AO = o.r * COLOR.a;          // alfa koloru wierzchołków: zasłonięcie nieba (wnętrze jaskini `cave3d.gd`); bez koloru = 1
 	AO_LIGHT_AFFECT = 0.5;
 	ROUGHNESS = o.g;
 	METALLIC = o.b;

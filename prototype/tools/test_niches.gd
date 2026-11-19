@@ -6,7 +6,7 @@ extends SceneTree
 ## (3) bryła wnęki jest na warstwie świata i wnęk (oświetlają ją światła mapy i wnęki),
 ## (4) płyty ściany tła: w otworze ich nie ma, poza nim są te same co bez wnęki,
 ## (5) las: żadne drzewo nie stoi w korytarzu wnęki (z zapasem `TREE_MARGIN`),
-## (6) jaskinie (`scripts/cave3d.gd`, stała `CAVES`): bryła w warstwie świata z cieniem, materiał skały z drugą skalą tekstury (jak płyta), nie wychodzi przed tło gry, obrys lasu obejmuje wychodnię, prostokąty skały w mapie.
+## (6) jaskinie (`scripts/cave3d.gd`, stała `CAVES`): bryła w warstwie świata z cieniem, materiał skały z drugą skalą tekstury (jak płyta), nie wychodzi przed tło gry, obrys lasu obejmuje wychodnię, prostokąty skały w mapie, wnętrze zasłonięte od nieba (AO z alfy koloru) przy pełnym niebie wierzchu, skalne dno nad gruntem.
 ## godot --headless --path prototype -s tools/test_niches.gd      → ma wypisać PASS
 const Level3D := preload("res://scripts/level3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
@@ -178,6 +178,33 @@ func _check_caves(id: String, rows: Array, caves: Array) -> int:
 		_check(bb.position.x >= float(h[0]) and bb.end.x <= float(h[1]), "%s: jaskinia %d poza obrysem lasu w x (%.1f–%.1f)" % [id, i, bb.position.x, bb.end.x])
 		var yg := -float((caves[i] as Dictionary)["floor"]) * Level3D.T
 		_check(bb.position.y <= yg and bb.position.y >= yg - Cave3D.SINK - Cave3D.AMP - 0.5, "%s: dół jaskini %d na y = %.2f, grunt %.2f" % [id, i, bb.position.y, yg])
+		# wnętrze: zasłonięte od nieba (alfa koloru → AO shadera), skalne dno nad gruntem; z zewnątrz pełne niebo
+		var occ_sum := 0.0
+		var occ_n := 0
+		var occ_out := 1.0
+		var floor_low := INF
+		var zd := -Level3D.DEPTH_BACK - float((caves[i] as Dictionary).get("d", Cave3D.DEPTH))
+		var x0 := float((caves[i] as Dictionary)["c0"]) * Level3D.T + Cave3D.SIDE_W
+		var x1 := float(int((caves[i] as Dictionary)["c1"]) + 1) * Level3D.T - Cave3D.SIDE_W
+		for si in mi.mesh.get_surface_count():
+			var arr := mi.mesh.surface_get_arrays(si)
+			var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var cs: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+			var ns: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			for vi in vs.size():
+				var v := vs[vi]
+				var a := cs[vi].a
+				if v.z < zd + 0.3 and v.x > x0 and v.x < x1:      # środek tylnej ściany (bez rogów przy stropie i bokach)
+					occ_sum += a
+					occ_n += 1
+				if v.y > -float((caves[i] as Dictionary)["r0"]) * Level3D.T - 0.01:
+					occ_out = minf(occ_out, a)
+				if ns[vi].y > 0.7 and v.z < -Level3D.DEPTH_BACK - 1.0 and v.z > zd + 1.0 and v.x > x0 and v.x < x1 and v.y < yg + 1.0:
+					floor_low = minf(floor_low, v.y)
+		var occ_avg := occ_sum / maxf(1.0, float(occ_n))
+		_check(occ_n > 0 and occ_avg < 0.6, "%s: tylna ściana jaskini %d niezasłonięta od nieba (AO %.2f) — wnętrze jasne jak zbocze" % [id, i, occ_avg])
+		_check(occ_out > 0.99, "%s: wierzch jaskini %d przyciemniony jak wnętrze (AO %.2f)" % [id, i, occ_out])
+		_check(floor_low > yg, "%s: dno jaskini %d pod gruntem (y = %.2f, grunt %.2f) — las przebija plamami" % [id, i, floor_low, yg])
 		var r: Array = rects[i]
 		var solid := 0
 		for row in range(int(r[1]), int(r[3]) + 1):
