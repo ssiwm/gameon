@@ -468,6 +468,7 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 		return
 	var d := SHELL_Z - DEPTH_FRONT
 	var by_row := {}                                            # "wiersz|materiał" → [kolumny]
+	var rock := not "--shellterrain" in OS.get_cmdline_user_args()
 	for k: Vector2i in shell_cells:
 		var ch := _ch(rows, k.x, k.y)
 		if ch == "C" and is_roof_cell(rows, k.x, k.y):
@@ -477,6 +478,8 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 		var key: String = shell_cells[k]
 		if key == "":
 			key = _shell_liquid_base(rows, k) if ch in "O~m" else ch   # ciecz: niecka kończy się na DEPTH_FRONT, przed nią lita płyta (plama oleju — `oil_spills`)
+		if rock and key == "#":
+			key = "R"
 		if not mats.has(key):
 			continue
 		var rk := "%d|%s|%d" % [k.y, key, int(in_trench(k.x, k.y))]
@@ -1097,7 +1100,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				# podłoga pod nią jest odsłonięta — bez wierzchu wzdłuż ściany biegł czarny pas (kryjówka, uwaga z gry 2026-11-10)
 				var hidden := func(cc: int, rr: int) -> bool: return is_solid_ch(_ch(rows, cc, rr)) and not crate_cells.has(Vector2i(cc, rr)) and not bld_cells.has(Vector2i(cc, rr))
 				if hidden.call(c - 1, r) and hidden.call(c + 1, r) and hidden.call(c, r - 1) and hidden.call(c, r + 1):
-					caps["R" if ch == "#" and in_rock_rect(c, r) else ch].append(Vector2i(c, r))
+					caps["R" if ch == "#" and (in_rock_rect(c, r) or shell_rock(c, r)) else ch].append(Vector2i(c, r))
 					continue
 				var p := cell_pos(c, r)
 				if (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, c, r, ch) and not "--noliquids" in OS.get_cmdline_user_args():
@@ -1109,7 +1112,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, back_d / full)), p + Vector3(0.0, 0.0, TRENCH_Z0 - back_d * 0.5)))
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, (T - TRENCH_D) / T, bed_d / full)), p + Vector3(0.0, -TRENCH_D * 0.5, TRENCH_Z0 + bed_d * 0.5)))
 					continue
-				groups["R" if ch == "#" and in_rock_rect(c, r) else ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))   # R: płyta nawisu (`cave3d.gd`)
+				groups["R" if ch == "#" and (in_rock_rect(c, r) or shell_rock(c, r)) else ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))   # R: płyta nawisu (`cave3d.gd`) i skała przekroju podziemi
 			if back_wall_at(rows, c, r) and not bld_back.has(Vector2i(c, r)) and not bld_walls.has(Vector2i(c, r)):
 				(rock_walls if in_rock_rect(c, r) else walls).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
@@ -1985,6 +1988,18 @@ void fragment() {
 """
 
 
+## Skała przekroju podziemi (UNDERGROUND_PLAN.md D2, od 1.7.621): kafel gruntu `#` przedłużony przekrojem tunelu (`shell_cells` bez betonu
+## fundamentu, ściana przekroju `#`) ma skałę nawisu i jaskini (`rock_material`) zamiast proceduralnego gruntu z rastrem kamyków — płyta, kafel
+## pod nią i ściana w jednym materiale (w spike'u U0 bok kafla przy mijance 1.1 był gruntem między skałą płyty a murem tła).
+## Dev `--shellterrain`: przekrój gruntem jak do 1.7.620 (porównanie A/B).
+static func shell_rock(c: int, r: int) -> bool:
+	if "--shellterrain" in OS.get_cmdline_user_args():
+		return false
+	var k := Vector2i(c, r)
+	if shell_cells.has(k):
+		return String(shell_cells[k]) == ""
+	return shell_walls.has(k) and String((shell_walls[k] as Array)[0]) == "#"
+
 static func in_rock_rect(c: int, r: int) -> bool:
 	for q in rock_rects:
 		if c >= int(q[0]) and c <= int(q[2]) and r >= int(q[1]) and r <= int(q[3]):
@@ -2068,6 +2083,11 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 			if c >= int(b["c0"]) and c <= int(b["c1"]) and r > int(b["r0"]) and r < int(b["r1"]):
 				return true
 		return false
+	var in_dig := func(c: int, r: int) -> bool:
+		for z in digs:
+			if c >= int(z[0]) and c <= int(z[2]) and r >= int(z[1]) and r <= int(z[3]):
+				return true
+		return false
 	for e: Dictionary in bands:
 		var concrete := String(e.get("set", "")) in ["station", "bunker"]   # budynek: fundament z betonu; tunel: przekrój skały
 		var r0 := int(e["r0"])
@@ -2076,14 +2096,10 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 			if _ch(rows, c, r0) in SHELL_CH and not bld_cells.has(Vector2i(c, r0)):
 				shell_cells[Vector2i(c, r0)] = "C" if concrete else ""
 			var r := r1
-			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH and not in_band.call(c, r):
+			# fundament kończy się na strefie wydobycia (sala 1.1 nad zachodnią strefą dolnej galerii): kafle strefy przebudowuje kopanie
+			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH and not in_band.call(c, r) and not in_dig.call(c, r):
 				shell_cells[Vector2i(c, r)] = "C" if concrete else ""
 				r += 1
-	var in_dig := func(c: int, r: int) -> bool:
-		for z in digs:
-			if c >= int(z[0]) and c <= int(z[2]) and r >= int(z[1]) and r <= int(z[3]):
-				return true
-		return false
 	var wall_key := func(e: Dictionary, c: int, r: int) -> String:
 		return "C" if String(e.get("set", "")) in ["station", "bunker"] else _ch(rows, c, r)
 	for e: Dictionary in bands:

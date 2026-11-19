@@ -2246,13 +2246,18 @@ static func update(points: Array, mid_y: float, frame_h: float, reduced: bool) -
 # ---------------------------------------------------------------- ściany przekroju (F3, uwaga z gry 2026-11-08)
 
 ## Tekstury ścian przekroju jak materiały świata (`Level3D.build_level`: `mats["C"]`, `mats["#"]`): nazwa, kafli na metr, brud.
-const WALL_TEX := {"C": ["concrete", 0.33, "stone"], "#": ["terrain", 0.30, "organic"]}
+## Skała `#` (UNDERGROUND_PLAN.md D2, od 1.7.621): tekstura `dig_rock` jak płyty przekroju (`Level3D.rock_material`, mniejsza skala 2,5 m), bez brudu
+## (plamy brudu na skale wyglądały jak kamuflaż — przegląd spójności 2026-11-19); `--shellterrain` — grunt jak do 1.7.620.
+const WALL_TEX := {"C": ["concrete", 0.33, "stone"], "#": ["dig_rock", 0.4, ""]}
+const WALL_TEX_TERRAIN := ["terrain", 0.30, "organic"]
 
 ## Materiał ściany przekroju: shader pierwszego planu (wygaszanie na sylwetkach, `occ`) z teksturą świata w rzucie trójpłaszczyznowym.
 static func wall_material(key: String) -> ShaderMaterial:
 	if _wall_mats.has(key):
 		return _wall_mats[key]
 	var spec: Array = WALL_TEX.get(key, WALL_TEX["#"])
+	if key != "C" and "--shellterrain" in OS.get_cmdline_user_args():
+		spec = WALL_TEX_TERRAIN
 	var m := ShaderMaterial.new()
 	m.shader = _shader()
 	m.set_shader_parameter("min_a", MIN_A)
@@ -2265,7 +2270,7 @@ static func wall_material(key: String) -> ShaderMaterial:
 	m.set_shader_parameter("arm_tex", _tex(dir + "_orm.png"))
 	m.set_shader_parameter("normal_tex", _tex(dir + "_normal.png"))
 	var gp := Level3D.PBR_DIR + "grime_%s.png" % String(spec[2])
-	if ResourceLoader.exists(gp) and not "--nograime" in OS.get_cmdline_user_args():
+	if String(spec[2]) != "" and ResourceLoader.exists(gp) and not "--nograime" in OS.get_cmdline_user_args():
 		m.set_shader_parameter("grime_tex", _tex(gp))
 		m.set_shader_parameter("grime_a", float(Level3D.GRIME_ALPHA.get(String(spec[2]), 1.0)))
 	_wall_mats[key] = m

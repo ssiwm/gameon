@@ -121,6 +121,19 @@ func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: 
 	Level3D.set_shells(front, rows, digs)
 	var shelled := front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
 	_check(shelled.is_empty() or not Level3D.shell_cells.is_empty(), map_id + ": wpis z przekrojem bez kafli przekroju")
+	# skała przekroju (UNDERGROUND_PLAN.md D2, od 1.7.621): płyty i kafle gruntu `#` w materiale skały, beton fundamentu budynku nie
+	for k: Vector2i in Level3D.shell_cells:
+		if String(rows[k.y]).substr(k.x, 1) == "#":
+			_check(Level3D.shell_rock(k.x, k.y) == (String(Level3D.shell_cells[k]) == ""), "%s %s: materiał płyty przekroju (skała tunelu / beton budynku)" % [map_id, k])
+	_check(String(Front3D.WALL_TEX["#"][0]) == "dig_rock", "ściany przekroju `#` nie w skale `dig_rock`")
+	if map_id == "z1_m1":
+		# podziemia 1.1 z przekrojem (U1): sztolnia, komora pod niecką, sala pod wieżą, dolna galeria; nic w strefie zawału rampy (D3)
+		for k: Vector2i in [Vector2i(60, 34), Vector2i(60, 30), Vector2i(105, 26), Vector2i(160, 29), Vector2i(225, 34), Vector2i(225, 28), Vector2i(230, 37), Vector2i(230, 43)]:
+			_check(Level3D.shell_cells.has(k), "1.1 %s: podziemia bez przekroju (UNDERGROUND_PLAN.md U1)" % k)
+		var consts: Dictionary = (load("res://scripts/maps/z1_m1.gd") as GDScript).get_script_constant_map()
+		for q: Array in consts["COLLAPSE"]:
+			for k: Vector2i in Level3D.shell_cells:
+				_check(not (k.x >= int(q[0]) and k.x <= int(q[2]) and k.y >= int(q[1]) and k.y <= int(q[3])), "1.1 %s: przekrój w strefie zawału rampy" % k)
 	for k: Vector2i in Level3D.shell_cells:
 		var ch := String(rows[k.y]).substr(k.x, 1)
 		_check(ch in Level3D.SHELL_CH, "%s %s: kafel przekroju '%s' nie jest litym kaflem" % [map_id, k, ch])
