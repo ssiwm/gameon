@@ -65,6 +65,7 @@ func _process(_dt: float) -> bool:
 	_check_trench()
 	_check_roof()
 	_check_mine()
+	_check_strata()
 	_check_oil()
 	_check_forest()
 	_check_fade()
@@ -979,6 +980,21 @@ func _check_trench() -> void:
 			seen[0 if inside else 1] += 1
 	_check(seen[0] > 0 and seen[1] > 0, "torowisko: brak elementów nad torowiskiem albo obok (%d / %d)" % seen)
 	root.queue_free()
+
+## Warstwy gruntu (`Level3D.strata_rock`): wierzch kolumny to grunt `#`, nie wieża strażnicy 1.1 (kol. 218) ani płyta nawisu nad jaskinią
+## (kol. 170); grunt przy wierzchu zostaje gruntem, głębiej (STRATA_DEPTH kafli) i obok końca pomieszczenia za kratką 1.2 — skała.
+func _check_strata() -> void:
+	var c1: Dictionary = (load("res://scripts/maps/z1_m1.gd") as Script).get_script_constant_map()
+	var rows: Array = c1["MAP"]
+	Level3D.rock_rects = (load("res://scripts/cave3d.gd") as Script).rock_rects(c1["CAVES"])
+	Level3D.set_strata(rows)
+	_check(Level3D.strata_top[218] == 23 and Level3D.strata_top[170] == 23 and Level3D.strata_top[80] == 23, "1.1: wierzch kolumny przy wieży / pod nawisem / w lesie %d / %d / %d zamiast 23" % [Level3D.strata_top[218], Level3D.strata_top[170], Level3D.strata_top[80]])
+	_check(not Level3D.rock_at(80, 23) and not Level3D.rock_at(80, 25) and Level3D.rock_at(80, 26), "1.1: grunt przy wierzchu albo skała głębiej (kol. 80)")
+	Level3D.rock_rects = []
+	var rows2: Array = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()["MAP"]
+	Level3D.set_strata(rows2)
+	_check(String(rows2[37]).substr(222, 1) == "#" and Level3D.rock_at(222, 37), "1.2: grunt obok końca pomieszczenia za kratką nie w skale")
+	Level3D.strata_top = PackedInt32Array()
 
 ## Kopalnia 1.1 (UNDERGROUND_PLAN.md U4): wpisy z przekrojem w zestawie `mine` (wschodni koniec pod betonem bunkra — `tunnel`), w nich
 ## tylko obudowa drewniana jako duże elementy — stojak z kory albo deski, bez stalowej płytki pod stropem, stropnica w głąb kończy się
