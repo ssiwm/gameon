@@ -67,6 +67,7 @@ func _process(_dt: float) -> bool:
 	_check_mine()
 	_check_strata()
 	_check_graffiti_pl()
+	_check_grime()
 	_check_oil()
 	_check_forest()
 	_check_fade()
@@ -1012,6 +1013,44 @@ func _check_graffiti_pl() -> void:
 	_check(n >= 2, "1.2: %d napisów grafiti do sprawdzenia" % n)
 	TranslationServer.set_locale(loc0)
 	root.queue_free()
+
+## Warstwa brudu (przegląd spójności, pkt 4): maski bez wielkich plam „kamuflażu” (średnie i największe krycie), wzór przesunięty
+## inaczej na każdej mapie gry, przesunięcie trafia do przebiegów brudu z pamięci `make_pbr` (także tych sprzed zmiany mapy) i do shaderów
+## stref wydobycia i pierwszego planu (globalny uniform `grime_ofs`).
+func _check_grime() -> void:
+	for kind: String in ["stone", "rust", "organic"]:
+		var img := Image.load_from_file(ProjectSettings.globalize_path(Level3D.PBR_DIR + "grime_%s.png" % kind))
+		if img == null:
+			_check(false, "brak grime_%s.png" % kind)
+			continue
+		img.resize(128, 128, Image.INTERPOLATE_BILINEAR)
+		var sum := 0.0
+		var top := 0.0
+		for y in 128:
+			for x in 128:
+				var a := img.get_pixel(x, y).a
+				sum += a
+				top = maxf(top, a)
+		var mean := sum / (128.0 * 128.0)
+		_check(mean <= 0.22 and top <= 0.72, "grime_%s: krycie średnie %.2f / największe %.2f (plamy jak kamuflaż)" % [kind, mean, top])
+	var ids := ["z1_m1", "z1_m2", "z1_m3", "z1_b1", "z1_hub"]
+	for i in ids.size():
+		for j in range(i + 1, ids.size()):
+			var d := (Level3D.grime_offset(ids[i]) - Level3D.grime_offset(ids[j])).abs()
+			var w := Vector3(minf(d.x, 1.0 - d.x), minf(d.y, 1.0 - d.y), minf(d.z, 1.0 - d.z))
+			_check(maxf(w.x, maxf(w.y, w.z)) >= 0.15, "%s i %s: prawie ten sam wzór brudu %s" % [ids[i], ids[j], w])
+	_check(Level3D.grime_offset("z1_m2") == Level3D.grime_offset("z1_m2") and Level3D.grime_offset("") == Vector3.ZERO, "przesunięcie brudu niestałe dla mapy")
+	var before := Level3D.make_pbr("concrete", 0.33, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone")
+	Level3D.set_grime_offset("z1_m3")
+	var after := Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")
+	for m: StandardMaterial3D in [before, after]:
+		var g := m.next_pass as StandardMaterial3D
+		_check(g != null and g.has_meta("grime") and g.uv1_offset == Level3D.grime_offset("z1_m3") and is_equal_approx(g.uv1_scale.x, Level3D.GRIME_SCALE), "przebieg brudu %s bez przesunięcia mapy" % m.albedo_texture.resource_path.get_file())
+	_check(&"grime_ofs" in RenderingServer.global_shader_parameter_get_list(), "brak globalnego uniformu grime_ofs w project.godot")   # wartości headless nie odczyta (atrapa renderera)
+	var dig_code := String((load("res://scripts/dig_ground.gd") as Script).get_script_constant_map()["GRIME_SHADER"])
+	_check(dig_code.contains("scale + grime_ofs"), "strefa wydobycia: brud bez przesunięcia mapy")
+	_check(Front3D.SHADER.contains("wpos * 0.07 + grime_ofs") and is_equal_approx(Level3D.GRIME_SCALE, 0.07), "pierwszy plan: brud bez przesunięcia mapy albo inna skala")
+	Level3D.set_grime_offset("")
 
 ## Warstwy gruntu (`Level3D.strata_rock`): wierzch kolumny to grunt `#`, nie wieża strażnicy 1.1 (kol. 218) ani płyta nawisu nad jaskinią
 ## (kol. 170); grunt przy wierzchu zostaje gruntem, głębiej (STRATA_DEPTH kafli) i obok końca pomieszczenia za kratką 1.2 — skała.

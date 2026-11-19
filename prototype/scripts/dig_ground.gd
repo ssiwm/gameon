@@ -97,6 +97,7 @@ render_mode blend_mix, depth_draw_opaque, cull_back;
 uniform sampler2D grime : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform float scale = 0.07;
+global uniform vec3 grime_ofs;               // przesunięcie wzoru wg mapy (`Level3D.set_grime_offset`), jak `uv1_offset` przebiegu mapy
 
 varying vec3 tpos;
 varying vec3 tw;
@@ -105,7 +106,7 @@ void vertex() {
 	vec3 n = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	tw = abs(n);
 	tw /= dot(tw, vec3(1.0));
-	tpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz * scale * vec3(1.0, -1.0, 1.0);
+	tpos = ((MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz * scale + grime_ofs) * vec3(1.0, -1.0, 1.0);
 }
 
 void fragment() {

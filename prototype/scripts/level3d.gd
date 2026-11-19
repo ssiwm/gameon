@@ -125,7 +125,29 @@ const PBR_DIR := "res://art/world3d/"
 ## Krycie warstwy brudu wg rodzaju: organiczny (grunt, błoto, drewno) dawał na przekroju gruntu wielkie ciemne plamy jak kamuflaż — widoczne
 ## w każdym świetle latarki i flary; kamień i rdza zostają pełne.
 const GRIME_ALPHA := {"organic": 0.5}
+const GRIME_SCALE := 0.07                   ## powtórzeń warstwy brudu na metr (kafel ok. 14 m)
+## Przesunięcie wzoru brudu w kaflach warstwy, inne na każdej mapie (`set_grime_offset`): do 1.7.625 te same plamy w tych samych
+## współrzędnych świata na wszystkich mapach. Globalny uniform `grime_ofs` dla shaderów (dig_ground.gd, front3d.gd), `uv1_offset`
+## dla przebiegu StandardMaterial3D — wszystkie trzy rzuty przesunięte tak samo, więc szew przodu strefy i przekroju zostaje.
+static var grime_ofs := Vector3.ZERO
 static var _pbr_cache := {}
+
+## Przesunięcie wzoru brudu dla mapy (w kaflach warstwy, 0..1 na osi): stałe dla `map_id`, u wszystkich graczy to samo bez RPC.
+static func grime_offset(map_id: String) -> Vector3:
+	if map_id == "" or "--nogrimeofs" in OS.get_cmdline_user_args():     # dev: --nogrimeofs = ten sam wzór na każdej mapie (porównanie)
+		return Vector3.ZERO
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("grime:" + map_id)
+	return Vector3(rng.randf(), rng.randf(), rng.randf())
+
+## Ustawia przesunięcie brudu mapy przed budową świata (view3d.gd `_build_steps`): przebiegi brudu w pamięci `make_pbr` i globalny uniform.
+static func set_grime_offset(map_id: String) -> void:
+	grime_ofs = grime_offset(map_id)
+	for m: Material in _pbr_cache.values():
+		var g := m.next_pass as StandardMaterial3D if m != null else null
+		if g != null and g.has_meta("grime"):
+			g.uv1_offset = grime_ofs
+	RenderingServer.global_shader_parameter_set("grime_ofs", grime_ofs)
 
 ## Materiał PBR ze skanu / generatora (`tools/world_pbr_import.py`, `world_pbr_gen.py`): albedo + normalne + ORM (R = AO, G = roughness, B = metallic),
 ## rzutowanie triplanarne w jednostkach świata (`per_m` = powtórzeń na metr). Brak plików → szum proceduralny (`make_mat`) z kolorem awaryjnym.
@@ -169,7 +191,9 @@ static func make_pbr(name: String, per_m: float, fallback: Color, rough := 0.95,
 		g.roughness = 0.95
 		g.uv1_triplanar = true
 		g.uv1_world_triplanar = true
-		g.uv1_scale = Vector3(0.07, 0.07, 0.07)
+		g.uv1_scale = Vector3(GRIME_SCALE, GRIME_SCALE, GRIME_SCALE)
+		g.uv1_offset = grime_ofs
+		g.set_meta("grime", true)
 		g.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 		m.next_pass = g
 	if alpha:
