@@ -1081,6 +1081,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 		for k in range(int(s["c0"]), int(s["c1"]) + 1):
 			slabs[Vector2i(k, int(s["r"]))] = true
 	var zc := (DEPTH_FRONT - DEPTH_BACK) * 0.5
+	set_strata(rows)
 	for r in nrows:
 		for c in cols:
 			var ch := _ch(rows, c, r)
@@ -1100,7 +1101,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				# podłoga pod nią jest odsłonięta — bez wierzchu wzdłuż ściany biegł czarny pas (kryjówka, uwaga z gry 2026-11-10)
 				var hidden := func(cc: int, rr: int) -> bool: return is_solid_ch(_ch(rows, cc, rr)) and not crate_cells.has(Vector2i(cc, rr)) and not bld_cells.has(Vector2i(cc, rr))
 				if hidden.call(c - 1, r) and hidden.call(c + 1, r) and hidden.call(c, r - 1) and hidden.call(c, r + 1):
-					caps["R" if ch == "#" and (in_rock_rect(c, r) or shell_rock(c, r)) else ch].append(Vector2i(c, r))
+					caps["R" if ch == "#" and rock_at(c, r) else ch].append(Vector2i(c, r))
 					continue
 				var p := cell_pos(c, r)
 				if (ch == "O" or ch == "~" or ch == "m") and _liquid_surface_col(rows, c, r, ch) and not "--noliquids" in OS.get_cmdline_user_args():
@@ -1112,7 +1113,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, back_d / full)), p + Vector3(0.0, 0.0, TRENCH_Z0 - back_d * 0.5)))
 					groups[ch].append(Transform3D(Basis().scaled(Vector3(1.0, (T - TRENCH_D) / T, bed_d / full)), p + Vector3(0.0, -TRENCH_D * 0.5, TRENCH_Z0 + bed_d * 0.5)))
 					continue
-				groups["R" if ch == "#" and (in_rock_rect(c, r) or shell_rock(c, r)) else ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))   # R: płyta nawisu (`cave3d.gd`) i skała przekroju podziemi
+				groups["R" if ch == "#" and rock_at(c, r) else ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))   # R: płyta nawisu (`cave3d.gd`) i skała przekroju podziemi
 			if back_wall_at(rows, c, r) and not bld_back.has(Vector2i(c, r)) and not bld_walls.has(Vector2i(c, r)):
 				(rock_walls if in_rock_rect(c, r) else walls).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
@@ -1999,6 +2000,42 @@ static func shell_rock(c: int, r: int) -> bool:
 	if shell_cells.has(k):
 		return String(shell_cells[k]) == ""
 	return shell_walls.has(k) and String((shell_walls[k] as Array)[0]) == "#"
+
+## Warstwy gruntu (przegląd spójności 2026-11-19, punkt 2 — „łatanina kafli”): lity kafel `#` głębiej niż STRATA_DEPTH kafli pod wierzchem
+## swojej kolumny (`strata_top`) jest skałą jak przekrój podziemi i nawisy (`rock_material`), płycej — gruntem
+## z kamykami i trawą. Pod ziemią lite kafle poza przekrojem (np. obok końca pomieszczenia za kratką 1.2, nad stropem dolnej galerii 1.1,
+## górne kieszenie 1.3) były gruntem obok płyt ze skały; na powierzchni schodki i półki zostają gruntem. Dev `--nostrata` — jak wcześniej.
+const STRATA_DEPTH := 3
+static var strata_top := PackedInt32Array()
+
+## Wierzch kolumny: pierwszy kafel gruntu `#` od góry — bez budynków, wież i pomostów (`C`, `M`; grunt przy wieży strażnicy 1.1 byłby skałą),
+## bez płyt nawisu (`rock_rects`) i bez cienkich półek wiszących w powietrzu (mniej niż STRATA_DEPTH litych kafli, pod nimi powietrze).
+static func set_strata(rows: Array) -> void:
+	var cols: int = (rows[0] as String).length() if not rows.is_empty() else 0
+	strata_top.resize(cols)
+	for c in cols:
+		strata_top[c] = rows.size()
+		var r := 0
+		while r < rows.size():
+			if _ch(rows, c, r) != "#" or in_rock_rect(c, r):
+				r += 1
+				continue
+			var run := 0
+			while r + run < rows.size() and is_solid_ch(_ch(rows, c, r + run)):
+				run += 1
+			if run >= STRATA_DEPTH or r + run >= rows.size():
+				strata_top[c] = r
+				break
+			r += run
+
+static func strata_rock(c: int, r: int) -> bool:
+	if c < 0 or c >= strata_top.size() or "--nostrata" in OS.get_cmdline_user_args():
+		return false
+	return r - strata_top[c] >= STRATA_DEPTH
+
+## Kafel `#` w skale (`mats["R"]`): płyta nawisu, przekrój podziemi albo głębiej pod wierzchem kolumny.
+static func rock_at(c: int, r: int) -> bool:
+	return in_rock_rect(c, r) or shell_rock(c, r) or strata_rock(c, r)
 
 static func in_rock_rect(c: int, r: int) -> bool:
 	for q in rock_rects:
