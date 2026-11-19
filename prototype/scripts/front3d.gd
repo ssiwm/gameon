@@ -53,20 +53,33 @@ const SETS := {
 	"station": {"big": ["pipe", "pipes2"], "small": ["chain", "cables"], "tint": Color(0.8, 0.8, 0.8)},
 	"tunnel": {"big": ["pipe", "pipes2"], "small": ["lamp", "cables", "lamp"], "tint": Color(0.7, 0.72, 0.75)},
 	"bunker": {"big": ["pipe", "pipes2"], "small": ["cables", "lamp"], "tint": Color(0.85, 0.8, 0.74)},    # kryjówka: bez łańcuchów, lampy na przewodzie
+	# kopalnia 1.1 (UNDERGROUND_PLAN.md U4): obudowa drewniana zamiast rur — stojak z okrąglaka w korze albo z kantówki pod stropnicą
+	# w głąb; lampy na przewodzie jak w tunelu (rury z trójnikiem i zaworem wyglądały w sztolni obco)
+	"mine": {"big": ["prop", "prop2"], "small": ["lamp", "cables", "lamp"], "tint": Color(0.78, 0.74, 0.68)},
 	# las pod gołym niebem (F3): pnie przez cały kadr, zwisające gałęzie świerka u góry i paprocie z trawą u dołu; pas wpisu otwarty
 	# w pionie (pień nie kończy się na linii stropu — koniec zasłania górny brzeg kadru); pnie i kępy stoją na podłożu przed płaszczyzną
 	# gry (`_build_ground`), które wpis otwarty buduje w warstwie świata
 	# las: w każdej przerwie między pniami dwa małe elementy — gałąź u góry kadru (`small`) i kępa u dołu (`small2`); nie zasłaniają się nawzajem
 	"forest": {"big": ["pine"], "small": ["shrub"], "small2": ["ferns", "grass", "ferns"], "tint": Color(0.62, 0.64, 0.66), "open": true},
 }
-const BIG_KINDS := ["pipe", "pipes2", "pine"]
+const BIG_KINDS := ["pipe", "pipes2", "pine", "prop", "prop2"]
+const TIMBER_KINDS := ["prop", "prop2"]          ## obudowa drewniana: bez stalowej płytki pod stropem (`_contact`)
 const PARTS_GLB := "res://art/world3d/front/pipe_parts.glb"
 const PIPE_TEX := "res://art/items3d/pipes_modular_industrial_pipes_01_group0%d_%s_1k.jpg"   ## %d grupa 1–2, %s diff / arm / nor_gl
 const LAMP_GLB := "res://art/items3d/lamp.glb"
 const LAMP_TEX := "res://art/items3d/lamp_%s_14ae6b34-1cdc-422e-9215-833102ba089b.jpg"           ## Color / ORM / NormalGL
 const LAMP_EMI := "res://art/items3d/lamp_lamp_emi.jpg"
 ## Materiały elementu w kolejności powierzchni siatki.
-const MATS := ["g1", "g2", "dark", "lamp"]
+const MATS := ["g1", "g2", "dark", "lamp", "bark", "beam"]
+## Obudowa kopalni (zestaw „mine”): kora ze skanu sosny (PBR_BARK) na okrąglaku, deski świata (`Level3D.make_pbr("plank")`) na kantówce,
+## stropnicy i okładzinie — te same co stemple stref zawału i obudowa wejść stref wydobycia.
+const PLANK_TEX := "res://art/world3d/plank_%s.png"   ## albedo / orm / normal
+const PLANK_PER_M := 0.8                    ## powtórzeń tekstury desek na metr (jak `make_pbr("plank", 0.8)`)
+const PROP_R := Vector2(0.15, 0.18)         ## m: promień okrąglaka stojaka (średnica 30–36 cm; cieńszy w kadrze czytał się jak tyczka)
+const PROP_SQ := 0.28                       ## m: przekrój kantówki
+const PROP_LEAN := 0.015                    ## najwięcej odchylenia stojaka od pionu (tangens; w perspektywie kadru widać je mocniej)
+const CAP := Vector3(0.34, 0.26, 1.1)       ## m: stropnica — szerokość (x), wysokość, długość w głąb (z); dłuższa w perspektywie kadru wystawała w bok jak ramię szubienicy
+const CAP_FRONT := 0.3                      ## m: stropnica kończy się tyle przed stojakiem (ku kamerze): przy z ≤ 5,0 — za przodem przekroju
 
 ## Las (zestaw „forest”): tekstury kory i kart z `art/world3d/forest/` (`world_forest_gen.py`; karty dalekiego lasu ze skanów, `pine_cards.py --far`).
 const FOREST_TEX := "res://art/world3d/forest/%s.png"
@@ -560,6 +573,14 @@ static func materials() -> Dictionary:
 				m.set_shader_parameter("base_col", Color(0.045, 0.043, 0.042))
 				m.set_shader_parameter("base_rough", 0.5)
 				m.set_shader_parameter("base_metal", 0.3)
+			"bark":
+				m.set_shader_parameter("albedo_tex", _tex(String(PBR_BARK["pine_bark"]) % "diff"))
+				m.set_shader_parameter("arm_tex", _tex(String(PBR_BARK["pine_bark"]) % "arm"))
+				m.set_shader_parameter("normal_tex", _tex(String(PBR_BARK["pine_bark"]) % "nor_gl"))
+			"beam":
+				m.set_shader_parameter("albedo_tex", _tex(PLANK_TEX % "albedo"))
+				m.set_shader_parameter("arm_tex", _tex(PLANK_TEX % "orm"))
+				m.set_shader_parameter("normal_tex", _tex(PLANK_TEX % "normal"))
 			"lamp":
 				m.set_shader_parameter("albedo_tex", _tex(LAMP_TEX % "Color"))
 				m.set_shader_parameter("arm_tex", _tex(LAMP_TEX % "ORM"))
@@ -866,6 +887,8 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			hook.ring_segments = 8
 			dark.append_from(hook, 0, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.0, yl - 0.1, 0.0)))
 			used["dark"] = true
+		"prop", "prop2":
+			_prop(sts, used, kind, y_top, y_bot, phys, rng)
 		"pine":
 			_trunk(sts, used, kind, band.x, rng)
 		"bough":
@@ -900,6 +923,54 @@ static func _element_mesh(kind: String, y_top: float, y_bot: float, band: Vector
 			st.commit(mesh)
 			keys.append(key)
 	return [mesh, keys]
+
+
+## Obudowa kopalni (zestaw „mine”): stojak od `y_bot` do stropnicy pod stropem `y_top`, lekko odchylony od pionu; „prop” — okrąglak
+## w korze, „prop2” — kantówka. Z przekrojem (`phys`) stropnica w głąb (ku tylnej ścianie, przed przodem przekroju) i podkładka na płycie
+## podłogi. Bez przekroju sam stojak (strop poza kadrem). Bez desek okładziny wzdłuż mapy: nad stojakiem czytały się jak poprzeczki
+## słupa telegraficznego (zrzuty U4).
+static func _prop(sts: Dictionary, used: Dictionary, kind: String, y_top: float, y_bot: float, phys: bool, rng: RandomNumberGenerator) -> void:
+	var beam := sts["beam"] as SurfaceTool
+	var post_top := y_top - (CAP.y if phys else 0.0)
+	var lean := Vector3(rng.randf_range(-PROP_LEAN, PROP_LEAN), 1.0, 0.0).normalized()
+	var length := (post_top - y_bot) / lean.y
+	var top := Vector3(0.0, y_bot, 0.0) + lean * length
+	if kind == "prop":
+		var r := rng.randf_range(PROP_R.x, PROP_R.y)
+		var bark := sts["bark"] as SurfaceTool
+		_cone(bark, Vector3(0.0, y_bot, 0.0), lean, length, r, r * 0.94, 14, maxi(4, int(length)), Vector2(length / BARK_TILE, 0.0), 1.0, 0.04, rng.randf() * TAU, Vector3(rng.randf_range(-0.04, 0.04), 0.0, 0.0), false, 0.25)
+		used["bark"] = true
+	else:
+		_box(beam, (Vector3(0.0, y_bot, 0.0) + top) * 0.5, Vector3(PROP_SQ, length, PROP_SQ), PLANK_PER_M, Basis(Vector3.BACK, -atan2(lean.x, lean.y)))
+	used["beam"] = true
+	if not phys:
+		return
+	_box(beam, Vector3(0.0, y_bot + 0.03, 0.0), Vector3(0.42, 0.06, 0.38), PLANK_PER_M)                       # podkładka
+	_box(beam, Vector3(top.x, y_top - CAP.y * 0.5, CAP_FRONT - CAP.z * 0.5), CAP, PLANK_PER_M)           # stropnica w głąb
+
+
+## Prostopadłościan `size` o środku `c` (obrót `b`) z UV w metrach × `per_m` — tekstura bez rozciągania (BoxMesh rozciąga jedną kopię
+## na ścianę). Trójkąty bez indeksów, przód zgodnie z ruchem wskazówek zegara od zewnątrz jak w `_cone`.
+static func _box(st: SurfaceTool, c: Vector3, size: Vector3, per_m: float, b := Basis.IDENTITY) -> void:
+	var h := size * 0.5
+	for ax in 3:
+		for sg: float in [-1.0, 1.0]:
+			var n := Vector3.ZERO
+			n[ax] = sg
+			var ua := (ax + 1) % 3
+			var va := (ax + 2) % 3
+			var pts := []
+			for q: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+				var p := Vector3.ZERO
+				p[ax] = sg * h[ax]
+				p[ua] = q.x * h[ua]
+				p[va] = q.y * h[va]
+				pts.append([c + b * p, Vector2(p[ua], p[va]) * per_m])
+			var order := [0, 2, 1, 0, 3, 2] if sg > 0.0 else [0, 1, 2, 0, 2, 3]
+			for k: int in order:
+				st.set_normal(b * n)
+				st.set_uv(pts[k][1])
+				st.add_vertex(pts[k][0])
 
 
 # ---------------------------------------------------------------- las (F3)
@@ -1314,7 +1385,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 			var occ := Vector4(clip.w + 0.02, clip.z - 0.02, occ_z, Level3D.SHELL_Z)
 			mi.set_instance_shader_parameter("occ", occ)
 			if bool(it["big"]):
-				_contact(mi, clip.z, clip.w)
+				_contact(mi, clip.z, clip.w, not String(it["kind"]) in TIMBER_KINDS)
 				var plate := mi.get_node_or_null("Plate") as MeshInstance3D
 				if plate != null:
 					plate.set_instance_shader_parameter("occ", occ)
@@ -2202,7 +2273,7 @@ void fragment() {
 static var _contact_mat: ShaderMaterial = null
 
 ## F2b: plama okluzji pod kołnierzem na wierzchu płyty (warstwa świata — pierwszy plan nie rzuca cienia) i płytka mocująca pod stropem.
-static func _contact(mi: MeshInstance3D, y_floor: float, y_ceil: float) -> void:
+static func _contact(mi: MeshInstance3D, y_floor: float, y_ceil: float, plate_on := true) -> void:
 	if _contact_mat == null:
 		var sh := Shader.new()
 		sh.code = CONTACT_SHADER
@@ -2218,6 +2289,8 @@ static func _contact(mi: MeshInstance3D, y_floor: float, y_ceil: float) -> void:
 	blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	blob.position = Vector3(0.0, y_floor + 0.01, 0.0)
 	mi.add_child(blob)
+	if not plate_on:
+		return
 	var plate := BoxMesh.new()
 	plate.size = Vector3(0.9, 0.06, 0.7)
 	var pm := MeshInstance3D.new()
