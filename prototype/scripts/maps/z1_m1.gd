@@ -85,6 +85,10 @@ const DIG_ZONES := [[192, 36, 201, 44, "rock", 1101, 0.3, {"chamber": [194, 41, 
 ## Pierwszy plan (`front3d.gd`, `FOREGROUND_PLAN.md` F3): las z podłożem na całej powierzchni (wiersz gruntu 23); bez pni przed jaskinią
 ## pod skalnym sufitem i przed strażnicą. Nad płytką kopalnią (rampa, sala, szyb wentylacyjny) las i podłoże gasną, kiedy kamera schodzi
 ## pod powierzchnię (`Front3D.SURF_FADE`).
+## Skalny nawis widoku 3D (`cave3d.gd`; przegląd budynków 2026-11-19): płyta skały nad jaskinią (kol. 148–191, wiersze 10–14) to wydrążenie
+## w wychodni — strop w głąb, tylna ściana i zbocza do gruntu; wcześniej blok gruntu lasu wisiał nad drzewami. Mapa bez zmian.
+const CAVES := [{"c0": 148, "c1": 191, "r0": 10, "r1": 14, "floor": 23}]
+
 const FRONT := [
 	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[39, 44], [110, 115], [148, 191], [192, 198], [210, 223], [242, 255]]},   # L3: bez drzew nad włazami szybów (pień widać w przekroju); 1.7.550: ani na wykopie, który zawał zasypuje (drzewo wyrosłoby w chwili zawału)
 ]

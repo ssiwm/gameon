@@ -171,6 +171,7 @@ var collapse_rects: Array = []
 ## FINALE_SPAWNS z danych mapy: [rodzaj, kolumna, wiersz podłogi] — śpiący wrogowie, których finał 1.1 wypuszcza na drogę powrotną („obudzony las”).
 var finale_spawns: Array = []
 var backdrop: Array = []                  ## BACKDROP z danych mapy: dalekie punkty orientacyjne tła 3D (`backdrop3d.gd`); czysta kosmetyka
+var caves: Array = []                     ## CAVES z danych mapy: skalne nawisy widoku 3D (`cave3d.gd`); czysta kosmetyka
 var niches: Array = []                    ## NICHES z danych mapy: wnęki ze światłem w tylnej ścianie wnętrz (`niches3d.gd`); czysta kosmetyka
 var front: Array = []                     ## FRONT z danych mapy: zakresy pierwszego planu przed płaszczyzną gry (`front3d.gd`); czysta kosmetyka
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
@@ -292,6 +293,7 @@ func _load(id: String) -> void:
 	finale_spawns = ((m as GDScript).get_script_constant_map().get("FINALE_SPAWNS", []) as Array).duplicate()
 	backdrop = ((m as GDScript).get_script_constant_map().get("BACKDROP", []) as Array).duplicate()
 	niches = ((m as GDScript).get_script_constant_map().get("NICHES", []) as Array).duplicate()
+	caves = ((m as GDScript).get_script_constant_map().get("CAVES", []) as Array).duplicate()
 	front = ((m as GDScript).get_script_constant_map().get("FRONT", []) as Array).duplicate()
 	front_skip = ((m as GDScript).get_script_constant_map().get("FRONT_SKIP", []) as Array).duplicate()
 	streams = ((m as GDScript).get_script_constant_map().get("STREAMS", []) as Array).duplicate()
