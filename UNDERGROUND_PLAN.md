@@ -90,7 +90,7 @@ Drugi problem wychodzi przy okazji: przekrój skały (`shell_cells` z kluczem �
   Zostaje: lity grunt `#` poza przekrojem (np. obok końca pomieszczenia za kratką) ma dalej teksturę gruntu — punkt 2 przeglądu (łatanina kafli).
 - **U4 (1.7.623):** zestaw `mine` w `Front3D.SETS` bez nowych GLB: duże `prop` (okrąglak w korze — `PBR_BARK` sosny) i `prop2` (kantówka
   w deskach `plank` jak stemple), stropnica 1,1 m w głąb, podkładka; małe jak w tunelu (lampa na przewodzie, kable). Wpisy 1.1 poza betonowym
-  końcem dolnej galerii (250–256) na `mine`. Odrzucone po zrzutach (C:\deadair87\shots_u4): deski okładziny wzdłuż mapy (poprzeczki słupa
+  końcem dolnej galerii (250–256) na `mine`. Odrzucone po zrzutach: deski okładziny wzdłuż mapy (poprzeczki słupa
   telegraficznego), stropnica 2,1 m i odchylenie 3,5% (w perspektywie kadru ramię szubienicy), okrąglak 22–28 cm (tyczka). Nie robione:
   lutnia wentylacyjna i kabel na hakach (oba poziomo pod stropem — poza pionowym układem elementów pierwszego planu). GPU bez różnicy.
 
