@@ -1418,7 +1418,7 @@ static func _span(rows: Array, c0: int, c1: int, r1: int, z0: float, drop := GRO
 		var r := r1
 		if nrows > 0:
 			var cc := clampi(c, 0, cols - 1)
-			while r < mini(r1 + 8, nrows - 1) and not ground_stop(Level3D._ch(rows, cc, r)):
+			while r < mini(r1 + 8, nrows - 1) and not ground_stop(Level3D._ch(rows, cc, r)) and not shell_roof(cc, r):
 				r += 1
 		ys.append(-float(r) * T)
 	return {"x0": float(c0) * T, "x1": float(c1 + 1) * T, "c0": c0, "ys": ys, "z0": z0, "base": -float(r1) * T, "drop": drop,
@@ -1430,6 +1430,16 @@ static func _span(rows: Array, c0: int, c1: int, r1: int, z0: float, drop := GRO
 ## 2026-11-10: komora pod obozem 1.1, też szyb brodu i wentylacji).
 static func ground_stop(ch: String) -> bool:
 	return Level3D.is_solid_ch(ch) or ch == "-"
+
+
+## Dołek podłoża przed szybem kończy się na stropie przekroju pod szybem (UNDERGROUND_PLAN.md U3, od 1.7.622): szyby 1.2 schodzą przez
+## kraty do dolnej hali z przekrojem — płyta podłoża w dołku leżała w wysokości hali (do 8 wierszy pod gruntem) i przed płytami przekroju
+## było widać pas gruntu z trawą od kamienia do kamienia. Wiersz stropu `r0` wpisu z przekrojem w tej kolumnie.
+static func shell_roof(c: int, r: int) -> bool:
+	for e: Dictionary in Level3D.shell_bands:
+		if r == int(e["r0"]) and c >= int(e["c0"]) and c <= int(e["c1"]):
+			return true
+	return false
 
 
 ## y podłoża (m) w punkcie x i z (m przed płaszczyzną gry) albo -INF poza podłożem.
@@ -1862,7 +1872,13 @@ static func _build_floors(parent: Node3D, front: Array, rows: Array) -> void:
 		var mi := MeshInstance3D.new()
 		mi.name = "FrontFloor"
 		mi.mesh = _plate_mesh(by_mat[key])
-		mi.material_override = Level3D.make_pbr("concrete", 0.33, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone") if key == "C" 				else Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")   # jak bryła
+		# skała jak płyty przekroju (UNDERGROUND_PLAN.md D2, od 1.7.622): pod płytą skały sztolni 1.1 i skrytki 1.2 leżał pas gruntu z trawą
+		if key == "C":
+			mi.material_override = Level3D.make_pbr("concrete", 0.33, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone")
+		elif "--shellterrain" in OS.get_cmdline_user_args():
+			mi.material_override = Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")
+		else:
+			mi.material_override = Level3D.rock_material()
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)
 
