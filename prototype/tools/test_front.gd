@@ -66,6 +66,7 @@ func _process(_dt: float) -> bool:
 	_check_roof()
 	_check_mine()
 	_check_strata()
+	_check_graffiti_pl()
 	_check_oil()
 	_check_forest()
 	_check_fade()
@@ -979,6 +980,37 @@ func _check_trench() -> void:
 			_check(absf((yw as Vector2).x - want) < 0.001, "%s x %.1f: podstawa %.3f m zamiast %.3f (%s torowiska)" % [mi.name, mi.position.x, (yw as Vector2).x, want, "nad dnem" if inside else "obok"])
 			seen[0 if inside else 1] += 1
 	_check(seen[0] > 0 and seen[1] > 0, "torowisko: brak elementów nad torowiskiem albo obok (%d / %d)" % seen)
+	root.queue_free()
+
+## Grafiti po polsku (przegląd spójności 2026-11-19, punkt 5): napisy mają warianty `_pl` brane przy języku `pl`, „PATROL 7” i „'87” nie;
+## dekale kryjówki zbudowane po polsku mają polskie napisy, a zmiana języka (`relocalize_decals`) podmienia je na angielskie i z powrotem.
+func _check_graffiti_pl() -> void:
+	var texts := ["g_dont_listen", "g_they_hear", "g_silence", "g_no_exit", "g_help", "g_run"]
+	for nm: String in texts:
+		_check(Level3D.decal_path(nm, "pl") == Level3D.DECAL_DIR + nm + "_pl.png" and Level3D.decal_path(nm, "en") == Level3D.DECAL_DIR + nm + ".png", "%s: brak polskiego wariantu napisu" % nm)
+	for nm: String in ["g_patrol7", "g_47", "g_eye"]:
+		_check(Level3D.decal_path(nm, "pl") == Level3D.DECAL_DIR + nm + ".png", "%s: wariant polski bez napisu do tłumaczenia" % nm)
+	var loc0 := TranslationServer.get_locale()
+	TranslationServer.set_locale("pl")
+	var root := Node3D.new()
+	get_root().add_child(root)
+	var rows: Array = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()["MAP"]
+	Level3D.build_decals(root, rows)
+	var n := 0
+	for c in root.get_children():
+		var nm := String(c.name).trim_prefix("Decals_")
+		if nm in texts:
+			n += 1
+			var mat := (c as MultiMeshInstance3D).material_override as StandardMaterial3D
+			_check(mat.albedo_texture.resource_path.ends_with("_pl.png"), "%s: po polsku angielski napis" % nm)
+			TranslationServer.set_locale("en")
+			Level3D.relocalize_decals()
+			_check(not mat.albedo_texture.resource_path.ends_with("_pl.png"), "%s: po zmianie na angielski dalej polski napis" % nm)
+			TranslationServer.set_locale("pl")
+			Level3D.relocalize_decals()
+			_check(mat.albedo_texture.resource_path.ends_with("_pl.png"), "%s: po powrocie do polskiego angielski napis" % nm)
+	_check(n >= 2, "1.2: %d napisów grafiti do sprawdzenia" % n)
+	TranslationServer.set_locale(loc0)
 	root.queue_free()
 
 ## Warstwy gruntu (`Level3D.strata_rock`): wierzch kolumny to grunt `#`, nie wieża strażnicy 1.1 (kol. 218) ani płyta nawisu nad jaskinią

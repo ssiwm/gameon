@@ -87,17 +87,22 @@ def paint_img(alpha, color, name, var=0.25):
     return Image.fromarray((np.clip(out, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA")
 
 
-def text_mask(text, font_path, size, canvas=(1024, 512), angle=0.0, pad=0.08, weight=None, stroke=0):
+def text_mask(text, font_path, size, canvas=(1024, 512), angle=0.0, pad=0.08, weight=None, stroke=0, fit=False):
     w, h = canvas
-    f = ImageFont.truetype(font_path, size)
-    if weight is not None:
-        try:
-            f.set_variation_by_name(weight)
-        except Exception:
-            pass
     im = Image.new("L", (w * 2, h * 2), 0)
     d = ImageDraw.Draw(im)
-    bb = d.textbbox((0, 0), text, font=f, stroke_width=stroke)
+    while True:
+        f = ImageFont.truetype(font_path, size)
+        if weight is not None:
+            try:
+                f.set_variation_by_name(weight)
+            except Exception:
+                pass
+        bb = d.textbbox((0, 0), text, font=f, stroke_width=stroke)
+        # fit: dłuższy napis (polski wariant) zmniejszany, aż mieści się w płótnie z marginesem `pad` — angielskie bez zmian
+        if not fit or (bb[2] - bb[0] <= w * (1 - 2 * pad) and bb[3] - bb[1] <= h * (1 - 2 * pad)) or size < 40:
+            break
+        size = int(size * 0.95)
     tx = (w * 2 - (bb[2] - bb[0])) // 2 - bb[0]
     ty = (h * 2 - (bb[3] - bb[1])) // 2 - bb[1]
     d.text((tx, ty), text, font=f, fill=255, stroke_width=stroke)
@@ -113,9 +118,9 @@ def save(img, out, name):
 
 # ---------------------------------------------------------------- grafiti
 
-def g_text(out, name, text, color, font="stencil", size=190, angle=0.0, stroke=0, canvas=(1024, 512), drips=True):
+def g_text(out, name, text, color, font="stencil", size=190, angle=0.0, stroke=0, canvas=(1024, 512), drips=True, fit=False):
     f = FONT_STENCIL if font == "stencil" else FONT_HAND
-    m = text_mask(text, f, size, canvas, angle, weight="ExtraBold" if font == "stencil" else None, stroke=stroke)
+    m = text_mask(text, f, size, canvas, angle, weight="ExtraBold" if font == "stencil" else None, stroke=stroke, fit=fit)
     a = spray_alpha(m, name, drips=drips)
     save(paint_img(a, PAINT[color], name), out, name)
 
@@ -441,12 +446,33 @@ def grime_maps(out, kind, n=512):
     Image.fromarray((rgba * 255 + 0.5).astype(np.uint8)).save(os.path.join(out, f"grime_{kind}.png"))
 
 
+## Polskie warianty napisów (`<nazwa>_pl.png`, przegląd spójności 2026-11-19, punkt 5: przy polskim interfejsie „ZBROJOWNIA” na tablicy
+## obok „NO WAY OUT” na ścianie). Gra bierze je przy języku `pl` (`Level3D.decal_texture`); „PATROL 7” i „'87” są te same w obu językach.
+## Ten sam kolor, krój i kąt co angielski; dłuższy napis zmniejszony do płótna (`fit`).
+GRAFFITI_PL = [
+    ("g_dont_listen_pl", "NIE SŁUCHAJ", "red", "stencil", 200, -4),
+    ("g_they_hear_pl", "ONE SŁYSZĄ", "white", "stencil", 225, 3),
+    ("g_silence_pl", "CISZA", "yellow", "stencil", 235, -2),
+    ("g_no_exit_pl", "NIE MA WYJŚCIA", "red", "stencil", 185, 2),
+    ("g_help_pl", "RATUNKU", "white", "hand", 205, -5),
+    ("g_run_pl", "UCIEKAJ", "red", "hand", 300, 4),
+]
+
+
+def graffiti_pl(out):
+    for name, text, color, font, size, angle in GRAFFITI_PL:
+        g_text(out, name, text, color, font=font, size=size, angle=angle, fit=True)
+
+
 def main():
     a = sys.argv[1:]
     out = next((x.split("=")[1] for x in a if x.startswith("--out=")), os.path.join(ROOT, "prototype", "art", "world3d"))
     os.makedirs(out, exist_ok=True)
     if "--only=d_crack_cave" in a:                           # tylko pęknięcia nad zawałem (reszta bez zmian)
         d_crack_cave(out)
+        return
+    if "--only=pl" in a:                                     # tylko polskie warianty napisów (reszta bez zmian)
+        graffiti_pl(out)
         return
     # grafiti (rozmiar docelowy w kaflach: patrz Level3D.DECALS)
     g_text(out, "g_dont_listen", "DON'T LISTEN", "red", size=200, angle=-4)
@@ -457,6 +483,7 @@ def main():
     g_text(out, "g_help", "HELP US", "white", font="hand", size=205, angle=-5)
     g_text(out, "g_run", "RUN", "red", font="hand", size=330, angle=4)
     g_text(out, "g_47", "'87", "yellow", size=420, angle=-6)
+    graffiti_pl(out)
     g_symbol_eye(out)
     g_symbol_tally(out)
     g_symbol_arrow(out)

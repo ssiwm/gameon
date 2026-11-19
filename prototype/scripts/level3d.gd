@@ -1655,9 +1655,29 @@ const DECALS := {
 	"d_rustbleed": [3, 3, "bM", 1.2, true], "d_damp": [4, 4, "bC", 1.1, true],
 }
 
+## Napisy grafiti mają polskie warianty (`<nazwa>_pl.png` z `world_decals_gen.py`, przegląd spójności 2026-11-19, punkt 5: przy polskim
+## interfejsie „ZBROJOWNIA” na tablicy kryjówki obok „NO WAY OUT” na ścianie). Materiały napisów zostają w `_decal_mats`, żeby zmiana
+## języka w czasie gry podmieniła teksturę bez przebudowy świata (`relocalize_decals`, z `View3D._notification`).
+static var _decal_mats := {}
+
+## Tekstura dekala: przy języku `pl` polski wariant, gdy jest; `locale` puste = bieżący język.
+static func decal_path(name: String, locale := "") -> String:
+	var loc := locale if locale != "" else TranslationServer.get_locale()
+	if loc.begins_with("pl") and ResourceLoader.exists(DECAL_DIR + name + "_pl.png"):
+		return DECAL_DIR + name + "_pl.png"
+	return DECAL_DIR + name + ".png"
+
+static func relocalize_decals() -> void:
+	for name: String in _decal_mats:
+		var m := _decal_mats[name] as StandardMaterial3D
+		var path := decal_path(name)
+		if m != null and m.albedo_texture.resource_path != path:
+			m.albedo_texture = load(path) as Texture2D
+
 ## Ślady zniszczeń na ścianach: grafiti, pęknięcia, ślady po kulach, sadza, zacieki, odpryski. Rozmieszczenie deterministyczne (ziarno z mapy), więc
 ## każdy peer widzi to samo; tylko widok. `--nodecals` wyłącza.
 static func build_decals(parent: Node3D, rows: Array) -> void:
+	_decal_mats = {}
 	if "--nodecals" in OS.get_cmdline_user_args():
 		return
 	var nrows := rows.size()
@@ -1736,7 +1756,9 @@ static func build_decals(parent: Node3D, rows: Array) -> void:
 		if not ResourceLoader.exists(path):
 			continue
 		var m := StandardMaterial3D.new()
-		m.albedo_texture = load(path) as Texture2D
+		m.albedo_texture = load(decal_path(String(name))) as Texture2D
+		if ResourceLoader.exists(DECAL_DIR + String(name) + "_pl.png"):
+			_decal_mats[String(name)] = m
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		m.roughness = 0.95
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
