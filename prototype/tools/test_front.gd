@@ -192,6 +192,9 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		_check(n > 0, map_id + ": build_walls nic nie zbudował")
 		for c in root.find_children("*", "MultiMeshInstance3D", true, false):
 			var mmi := c as MultiMeshInstance3D
+			if String(mmi.name).begins_with("ShellWallsShadow"):     # bryła cienia ściany: tylko mapy cieni, w warstwie świata (latarka w wykopie 1.3)
+				_check(mmi.layers == 1 and mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY, "%s: cień ściany %s ze złą warstwą albo widoczny" % [map_id, mmi.name])
+				continue
 			_check(mmi.layers == Front3D.LAYER_WALL and mmi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: ściana %s ze złą warstwą albo z cieniem" % [map_id, mmi.name])
 		var nb := 0
 		for k: Vector2i in Level3D.shell_walls:
@@ -270,6 +273,8 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		_check(Level3D.shell_cells.has(Vector2i(91, 32)) and not Level3D.shell_walls.has(Vector2i(91, 32)), "1.3: nadproże nad tunelem 91–108 nie jest płytą przekroju")
 		# 1.3: strefa kopania przy zachodniej hali stoi w jednej płaszczyźnie z podłogą przekroju
 		_check(is_equal_approx(Level3D.zone_front_z(1, 31, 5, 39), Level3D.SHELL_Z), "1.3: strefa wydobycia przy hali nie wysunięta do przekroju")
+		var zo := Level3D.zone_shell_occ(2, 36, 5, 39)                # przedłużenie strefy do przekroju (warstwa ścian) zasłaniane płytami pasa
+		_check(zo.x > zo.y and is_equal_approx(zo.z, Level3D.SHELL_Z), "1.3: przedłużenie strefy wydobycia bez okluzji stropu i podłogi")
 		var muds := Level3D.mud_spills(rows)
 		_check(muds.size() >= 2, "1.3: %d plam błota (start i hala)" % muds.size())
 		for sp: Dictionary in muds:

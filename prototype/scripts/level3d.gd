@@ -2102,6 +2102,15 @@ static func zone_front_z(c0: int, r0: int, c1: int, r1: int) -> float:
 			return SHELL_Z
 	return DEPTH_FRONT
 
+## `occ` ścian przekroju (`shell_walls`) dla strefy wydobycia przy pasie wpisu z przekrojem (jak `zone_front_z`): y spodu stropu i wierzchu
+## podłogi pasa, przód SHELL_Z — przedłużenie strefy do przekroju w warstwie pierwszego planu nie prześwituje przez płyty z kamery nad
+## stropem albo pod podłogą. Bez pasa: brak okluzji.
+static func zone_shell_occ(c0: int, r0: int, c1: int, r1: int) -> Vector4:
+	for e: Dictionary in shell_bands:
+		if c1 >= int(e["c0"]) - 1 and c0 <= int(e["c1"]) + 1 and r1 > int(e["r0"]) and r0 < int(e["r1"]):
+			return Vector4(-float(int(e["r0"]) + 1) * T + 0.02, -float(e["r1"]) * T - 0.02, SHELL_Z, SHELL_Z)
+	return Vector4(1e6, -1e6, 0.0, 0.0)
+
 ## Torowisko drezyny z ostatniego `build_level` ({"row", "c0", "c1"}; puste bez drezyny).
 static var rail_trench := {}
 
