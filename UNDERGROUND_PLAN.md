@@ -1,6 +1,6 @@
 # Plan: jeden styl podziemi (przekrój i pierwszy plan pod ziemią)
 
-Status: **decyzje D1–D5 przyjęte 2026-11-19 zgodnie z rekomendacjami; U0–U4 niezaczęte.** Etap po przeglądzie spójności wizualnej z 2026-11-19 (61 zrzutów wszystkich map,
+Status: **decyzje D1–D5 przyjęte 2026-11-19 (D4 zmieniona przy U1); U0 i U1 (z U2) zrobione w 1.7.621 (PR #743); zostają U3 (dolna hala 1.2) i U4.** Etap po przeglądzie spójności wizualnej z 2026-11-19 (61 zrzutów wszystkich map,
 `C:\deadair87\shots_visrev`, arkusze `L1.jpg`–`L3.jpg`, `A_m2.jpg`, `B_m3.jpg`). Stan odniesienia: `main` 1.7.620 (73a60c19).
 
 ## Werdykt
@@ -40,7 +40,7 @@ Drugi problem wychodzi przy okazji: przekrój skały (`shell_cells` z kluczem �
 | D1 | Zestaw elementów pierwszego planu w kopalni 1.1: istniejący `tunnel` (rury, kable, lampy) czy nowy `mine` (stemple drewniane, lutnia wentylacyjna, kabel, lampa górnicza)? | **`tunnel` w U1** (zero nowych assetów, od razu ten sam styl co 1.3), `mine` jako osobny etap U4 po ocenie w grze |
 | D2 | Materiał przekroju skały pod ziemią: `terrain` jak dziś w 1.3 czy `rock_material()` jak nawis i jaskinia 1.1? | **`rock_material()` na wszystkich mapach** (także 1.3 i tunel 1.2): jedna skała w całej grze, bez rastru kamyków; zmiana w `shell_cells` i `Front3D.WALL_TEX["#"]` |
 | D3 | Rampa w strefie zawału 1.1 (kolumny 216–253, wiersze 23–33, `COLLAPSE`): przekrój czy płasko? | **Płasko w U1** (skos schodami kafli nie mieści się w prostokątnych pasach, a świat jest budowany dwa razy — `GeometryAfterCollapse`); wrócić w U2, jeśli przejście na rampę razi |
-| D4 | Betonowe wstawki `C` w skale (1.1 kolumny 251–257 wiersze 39 i 43; szare prostokąty w kadrze `m1_c246u`): zostawić czy zamienić na `#`? | **Zamienić na `#`** (wygląd; `C` i `#` są dla symulacji tym samym litym kaflem — sprawdzić w U1 `--maptest`) |
+| D4 | Betonowe wstawki `C` w skale (1.1 kolumny 251–257 wiersze 39 i 43; szare prostokąty w kadrze `m1_c246u`): zostawić czy zamienić na `#`? | ~~Zamienić na `#`~~ **Zostają (zmiana przy U1):** to zamierzony betonowy kanał na wschodnim końcu dolnej galerii (schowek z baterią i amunicją za deskami, 1.7.490), a z przekrojem czyta się jako obudowa kanału, nie przypadkowy prostokąt |
 | D5 | Szyby 1.2 z podestami (kolumny 60–70, 145–155, 207–216, 274–280): przekrój na całą wysokość (głęboki wąwóz) czy bez? | **Bez w U3**, tylko dolna hala; szyby jako osobna próba, jeśli hala się sprawdzi |
 
 ## Etapy
@@ -72,6 +72,17 @@ Drugi problem wychodzi przy okazji: przekrój skały (`shell_cells` z kluczem �
 - Modele: stempel z okorkiem (jest `stake`/`post`?), lutnia wentylacyjna z blachy, kabel na hakach, lampa górnicza w siatce — Poly Haven
   albo `tools/` (Blender, CC0); `tools/tex_vram.py` po nowych GLB.
 - Podmiana `set` w 1.1 z `tunnel` na `mine`.
+
+## Wyniki
+
+- **U0 (spike, 2026-11-19):** trzy wpisy w zachodniej sztolni 1.1 i flaga `--shellrock`. Skała `rock_material` bez rastru kamyków, nocą w tonie
+  betonu 1.2 i 1.3; grunt w przekroju wyglądał jak przekopana łąka. Bok kafla świata przy mijance zostawał gruntem (kafel 1,1 m za płytą
+  skały) — stąd skała także dla kafli pod przekrojem (`Level3D.shell_rock`) i ścian (`Front3D.WALL_TEX["#"]`). GPU 4K HIGH 3 × 12 s:
+  bez przekroju 11,00, grunt 11,12, skała 11,17 ms (szum). Rury zestawu `tunnel` (trójnóg) wyglądają w kopalni obco — argument za U4.
+- **U1 + U2 (1.7.621, PR #743):** cała sztolnia (44–192, osobne wpisy dla mijanki, komory, wnęki i zalanego odcinka), sala pod wieżą 193–231
+  (przed strefą zawału, D3), dolna galeria 202–256 (razem z U1: fundament sali sięga stropu dolnej galerii, bez jej przekroju byłby
+  „balkonem” nad płaskim kadrem). Fundament przekroju kończy się na strefie wydobycia (wcześniej wchodził w zachodnią strefę dolnej galerii).
+  Skała na wszystkich mapach, dev `--shellterrain`. GPU w sali: 11,03 / 11,06 ms. Zrzuty `C:\deadair87\shots_u1` (też po zawale).
 
 ## Ryzyka
 
