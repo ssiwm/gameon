@@ -414,6 +414,11 @@ func bar_targets() -> Array:
 func player_model(p: Node) -> Node:
 	return p.get("c3d") if _rigs.has(p) else null
 
+## Zmiana języka w czasie gry (menu pauzy): napisy grafiti na ścianach po polsku albo po angielsku (`Level3D.relocalize_decals`).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSLATION_CHANGED:
+		Level3D.relocalize_decals()
+
 func _exit_tree() -> void:
 	_free_bars()
 	GunModel.drain()                                   # wczytywanie broni w tle odebrane przed zamknięciem (inaczej wyciek przy wyjściu)
