@@ -947,6 +947,10 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 			var bb := ((c as MeshInstance3D).mesh as ArrayMesh).get_aabb()
 			_check(bb.position.z >= Level3D.SHELL_Z - 0.05 and bb.end.z >= float(Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1]) - 0.01 and bb.end.y <= ytop + 0.01,
 					"%s: podłoga tunelu z %.2f..%.2f, wierzch %.2f (podłoga %.2f)" % [map_id, bb.position.z, bb.end.z, bb.end.y, ytop])
+			# skała albo beton, nie grunt z trawą (UNDERGROUND_PLAN.md D2, od 1.7.622)
+			var fm := (c as MeshInstance3D).material_override
+			var tex := (fm as StandardMaterial3D).albedo_texture if fm is StandardMaterial3D else null
+			_check(fm == Level3D.rock_material() or (tex != null and not tex.resource_path.contains("terrain")), "%s: podłoga tunelu przed przekrojem z gruntu" % map_id)
 	root.queue_free()
 	Front3D.prepare_ground([], rows, [])
 

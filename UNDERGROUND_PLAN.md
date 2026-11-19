@@ -1,6 +1,6 @@
 # Plan: jeden styl podziemi (przekrój i pierwszy plan pod ziemią)
 
-Status: **decyzje D1–D5 przyjęte 2026-11-19 (D4 zmieniona przy U1); U0 i U1 (z U2) zrobione w 1.7.621 (PR #743); zostają U3 (dolna hala 1.2) i U4.** Etap po przeglądzie spójności wizualnej z 2026-11-19 (61 zrzutów wszystkich map,
+Status: **decyzje D1–D5 przyjęte 2026-11-19 (D4 zmieniona przy U1); U0 i U1 (z U2) zrobione w 1.7.621 (PR #743), U3 w 1.7.622 (PR na #743); zostaje U4.** Etap po przeglądzie spójności wizualnej z 2026-11-19 (61 zrzutów wszystkich map,
 `C:\deadair87\shots_visrev`, arkusze `L1.jpg`–`L3.jpg`, `A_m2.jpg`, `B_m3.jpg`). Stan odniesienia: `main` 1.7.620 (73a60c19).
 
 ## Werdykt
@@ -83,6 +83,11 @@ Drugi problem wychodzi przy okazji: przekrój skały (`shell_cells` z kluczem �
   (przed strefą zawału, D3), dolna galeria 202–256 (razem z U1: fundament sali sięga stropu dolnej galerii, bez jej przekroju byłby
   „balkonem” nad płaskim kadrem). Fundament przekroju kończy się na strefie wydobycia (wcześniej wchodził w zachodnią strefę dolnej galerii).
   Skała na wszystkich mapach, dev `--shellterrain`. GPU w sali: 11,03 / 11,06 ms. Zrzuty `C:\deadair87\shots_u1` (też po zawale).
+- **U3 (1.7.622):** dolna hala 1.2 150–214 (strop 30, podłoga 40) i niższe pomieszczenia obok: skrytka za zamurowaniem 143–149 i pomieszczenie
+  za kratką 215–221 (strop 36). Wyszły dwa źródła gruntu przed przekrojem: dołek podłoża lasu przed szybem schodził do 8 wierszy pod grunt
+  (do wysokości hali) — teraz kończy się na stropie przekroju (`Front3D.shell_roof`); podłoga przed płytą przekroju (`Front3D._build_floors`)
+  miała dla `#` materiał gruntu — teraz skała (także 1.1). GPU w hali z wpisami U3 i bez: 12,71 / 12,55 ms (szum, zegar pływał 12,2–12,9).
+  Zostaje: lity grunt `#` poza przekrojem (np. obok końca pomieszczenia za kratką) ma dalej teksturę gruntu — punkt 2 przeglądu (łatanina kafli).
 
 ## Ryzyka
 

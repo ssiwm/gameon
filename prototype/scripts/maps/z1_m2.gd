@@ -67,6 +67,12 @@ const FRONT := [
 	{"set": "station", "c0": 66, "c1": 100, "r0": 18, "r1": 26, "shell": true, "build": "hall"},     # hala stacji (budynek 3D: szkielet z cegłą)
 	{"set": "station", "c0": 216, "c1": 246, "r0": 16, "r1": 26, "shell": true, "build": "hall", "floors": [22]},   # pompownia (budynek 3D: szkielet z cegłą, strop piętra z otworem)
 	{"set": "tunnel", "c0": 8, "c1": 282, "r0": 44, "r1": 51, "shell": true},      # tunel drezyny
+	# dolna hala z betonu między powierzchnią a tunelem (UNDERGROUND_PLAN.md U3, od 1.7.622): przekrój jak tunel — strop w wierszu 30
+	# z otworami szybów (kol. 152–157 i 207–212, bez przekroju szybów: D5), pomosty w pasie gry; osobne wpisy dla niższych pomieszczeń obok:
+	# zamurowana skrytka `q` na zachodzie (strefa wydobycia za nią sięga przekroju) i pomieszczenie generatora za kratką na wschodzie
+	{"set": "tunnel", "c0": 150, "c1": 214, "r0": 30, "r1": 40, "shell": true},    # dolna hala
+	{"set": "tunnel", "c0": 143, "c1": 149, "r0": 36, "r1": 40, "shell": true},    # skrytka za zamurowaniem
+	{"set": "tunnel", "c0": 215, "c1": 221, "r0": 36, "r1": 40, "shell": true},    # pomieszczenie za kratką
 	{"set": "forest", "c0": 2, "c1": 62, "r0": 0, "r1": 26, "skip": [[38, 43], [59, 62]]},   # las od startu do hali stacji (F3, pilot lasu); bez drzew nad włazami przepustu i studni (pień widać w przekroju)
 	# las za halą stacji do masztu; bez pni przed szopą na bagnie (wnętrze bez przekroju) i pompownią (przekrój budynku), podłoże ciągłe (dołki przed szybami)
 	{"set": "forest", "c0": 101, "c1": 215, "r0": 0, "r1": 26, "skip": [[112, 132]]},
