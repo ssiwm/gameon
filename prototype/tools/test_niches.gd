@@ -6,7 +6,7 @@ extends SceneTree
 ## (3) bryła wnęki jest na warstwie świata i wnęk (oświetlają ją światła mapy i wnęki),
 ## (4) płyty ściany tła: w otworze ich nie ma, poza nim są te same co bez wnęki,
 ## (5) las: żadne drzewo nie stoi w korytarzu wnęki (z zapasem `TREE_MARGIN`),
-## (6) jaskinie (`scripts/cave3d.gd`, stała `CAVES`): bryła w warstwie świata z cieniem, nie wychodzi przed tło gry, obrys lasu obejmuje wychodnię, prostokąty skały w mapie.
+## (6) jaskinie (`scripts/cave3d.gd`, stała `CAVES`): bryła w warstwie świata z cieniem, materiał skały z drugą skalą tekstury (jak płyta), nie wychodzi przed tło gry, obrys lasu obejmuje wychodnię, prostokąty skały w mapie.
 ## godot --headless --path prototype -s tools/test_niches.gd      → ma wypisać PASS
 const Level3D := preload("res://scripts/level3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
@@ -158,6 +158,8 @@ func _check_map(id: String, rows: Array, entries: Array, dig: Array) -> void:
 func _check_caves(id: String, rows: Array, caves: Array) -> int:
 	if caves.is_empty():
 		return 0
+	var rm := Level3D.rock_material() as ShaderMaterial          # kafel 2,5 m na nawisie 57 m robił kratkę plam: druga skala tekstury w shaderze
+	_check(rm != null and rm.get_shader_parameter("alb") != null and rm.shader != null and "scale_b" in rm.shader.code, "%s: materiał skały bez drugiej skali tekstury" % id)
 	var root := Node3D.new()
 	_check(Cave3D.build(root, caves) == caves.size(), "%s: zbudowano inną liczbę jaskiń niż w CAVES" % id)
 	var holes := Cave3D.forest_holes(caves)
@@ -169,6 +171,7 @@ func _check_caves(id: String, rows: Array, caves: Array) -> int:
 			continue
 		_check(mi.layers == 1, "%s: jaskinia %d na warstwach %d (ma być sam świat)" % [id, i, mi.layers])
 		_check(mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: jaskinia %d nie rzuca cienia" % [id, i])
+		_check(mi.material_override == Level3D.rock_material(), "%s: jaskinia %d ma inny materiał niż płyta skały" % [id, i])
 		var bb := mi.mesh.get_aabb()
 		_check(bb.end.z <= -Level3D.DEPTH_BACK + 0.001, "%s: jaskinia %d wychodzi przed tło gry (z = %.2f)" % [id, i, bb.end.z])
 		var h: Array = holes[i]

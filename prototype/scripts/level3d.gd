@@ -1877,11 +1877,113 @@ static var rock_rects: Array = []
 
 ## Materiał skały nawisów: kafle płyty (`rock_rects`) i wychodnia za nią (`cave3d.gd`) — ten sam, przekrój i bryła stykają się bez szwu.
 ## Skała jak strefy wydobycia, bez warstwy brudu (plamy jak kamuflaż na wielkich ścianach).
-static var _rock_mat: StandardMaterial3D
-static func rock_material() -> StandardMaterial3D:
-	if _rock_mat == null:
-		_rock_mat = make_pbr("dig_rock", 0.4, Color(0.27, 0.27, 0.28), 0.92, 1.0, 1.0, false, "")
-	return _rock_mat
+## Materiał skały płyt i jaskiń (`CAVES`, `rock_rects`): tekstura `dig_rock` w rzucie trójpłaszczyznowym w dwóch skalach (2,5 m i ~7,7 m, druga obrócona o 37°),
+## mieszanych wielkoskalowym szumem — na nawisie 1.1 (57 × 20 m) kafel 2,5 m układał się w regularną kratkę plam. Normalne z obu skal
+## (mieszanie „whiteout” na osiach świata), odcień z koloru wierzchołków (jaskinia; kafle bez kolorów mają biały). Gdy tekstur brak, zwykły materiał skały.
+static var _rock_mat: Material
+static func rock_material() -> Material:
+	if _rock_mat != null:
+		return _rock_mat
+	var base := make_pbr("dig_rock", 0.4, Color(0.27, 0.27, 0.28), 0.92, 1.0, 1.0, false, "")
+	if base.albedo_texture == null:
+		var m := base.duplicate() as StandardMaterial3D
+		m.vertex_color_use_as_albedo = true
+		_rock_mat = m
+		return m
+	var sh := Shader.new()
+	sh.code = ROCK_SHADER
+	var sm := ShaderMaterial.new()
+	sm.shader = sh
+	sm.set_shader_parameter("alb", base.albedo_texture)
+	sm.set_shader_parameter("nrm", base.normal_texture)
+	sm.set_shader_parameter("orm", base.roughness_texture)
+	sm.set_shader_parameter("has_nrm", base.normal_texture != null)
+	sm.set_shader_parameter("has_orm", base.roughness_texture != null)
+	_rock_mat = sm
+	return sm
+
+const ROCK_SHADER := """
+shader_type spatial;
+render_mode cull_back;
+uniform sampler2D alb : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D nrm : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D orm : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform bool has_nrm = true;
+uniform bool has_orm = true;
+uniform float scale_a = 0.4;      // kafli na metr: jak reszta skały gry
+uniform float scale_b = 0.13;     // druga, większa skala
+uniform float rot_b = 0.65;       // rad: obrót drugiej skali (kratki obu skal się nie pokrywają)
+uniform float blend_freq = 0.045; // 1/m: plamy mieszania skal ~22 m
+uniform float sharp = 4.0;
+varying vec3 wpos;
+varying vec3 wnrm;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+vec2 rot(vec2 p, float a) { float c = cos(a); float s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
+vec3 tn(vec2 uv, float a) {
+	if (!has_nrm) { return vec3(0.0, 0.0, 1.0); }
+	vec2 xy = texture(nrm, uv).xy * 2.0 - 1.0;
+	xy = rot(xy, -a);                                   // normalna z obróconego UV z powrotem do osi świata
+	return vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
+}
+
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+}
+
+void fragment() {
+	vec3 n = normalize(wnrm);
+	vec3 w = pow(abs(n), vec3(sharp));
+	w /= (w.x + w.y + w.z);
+	vec3 sg = sign(n);
+	vec2 px = vec2(wpos.z * sg.x, wpos.y);
+	vec2 py = vec2(wpos.x * sg.y, wpos.z);
+	vec2 pz = vec2(wpos.x * -sg.z, wpos.y);
+	float bl = vnoise(wpos.xy * blend_freq + wpos.zz * blend_freq * 0.7) * 0.65 + vnoise(wpos.xy * blend_freq * 2.3 + 17.0) * 0.35;
+	bl = smoothstep(0.3, 0.7, bl);
+	vec3 col = vec3(0.0);
+	vec3 o = vec3(0.0);
+	vec3 nw = vec3(0.0);
+	for (int k = 0; k < 2; k++) {
+		float sc = k == 0 ? scale_a : scale_b;
+		float a = k == 0 ? 0.0 : rot_b;
+		float kw = k == 0 ? 1.0 - bl * 0.75 : bl * 0.75;   // obie skale zawsze trochę widać: bez szwu na granicy plam
+		vec2 ux = rot(px * sc, a);
+		vec2 uy = rot(py * sc, a);
+		vec2 uz = rot(pz * sc, a);
+		col += kw * (texture(alb, ux).rgb * w.x + texture(alb, uy).rgb * w.y + texture(alb, uz).rgb * w.z);
+		if (has_orm) {
+			o += kw * (texture(orm, ux).rgb * w.x + texture(orm, uy).rgb * w.y + texture(orm, uz).rgb * w.z);
+		} else {
+			o += kw * vec3(1.0, 0.92, 0.0);
+		}
+		vec3 tx = tn(ux, a);
+		vec3 ty = tn(uy, a);
+		vec3 tz = tn(uz, a);
+		tx.x *= sg.x;
+		ty.x *= sg.y;
+		tz.x *= -sg.z;
+		tx = vec3(tx.xy + n.zy, abs(tx.z) * n.x);
+		ty = vec3(ty.xy + n.xz, abs(ty.z) * n.y);
+		tz = vec3(tz.xy + n.xy, abs(tz.z) * n.z);
+		nw += kw * normalize(tx.zyx * w.x + ty.xzy * w.y + tz.xyz * w.z);
+	}
+	ALBEDO = col * COLOR.rgb;
+	AO = o.r;
+	AO_LIGHT_AFFECT = 0.5;
+	ROUGHNESS = o.g;
+	METALLIC = o.b;
+	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(nw), 0.0)).xyz);
+}
+"""
+
 
 static func in_rock_rect(c: int, r: int) -> bool:
 	for q in rock_rects:

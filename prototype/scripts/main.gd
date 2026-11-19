@@ -1879,6 +1879,10 @@ func _perf_run(secs: float, col: int) -> void:
 		await get_tree().create_timer(1.5).timeout
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)     # ponownie: Settings przy starcie przywraca własny vsync i limit klatek
 	Engine.max_fps = 0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--perfhide="):
+			_shot_hide(a.substr("--perfhide=".length()).split(","), 0.0)    # --perfhide=Prefiks,...: pomiar A/B bez tych brył (koszt GPU jednego elementu)
+			await get_tree().create_timer(1.0).timeout
 	# czas renderu z liczników silnika (okno + SubViewporty widoku 3D) — niezależny od vsync, który sterownik może wymuszać mimo ustawień gry
 	var vps: Array[RID] = [get_viewport().get_viewport_rid()]
 	for n in get_tree().root.find_children("*", "SubViewport", true, false):

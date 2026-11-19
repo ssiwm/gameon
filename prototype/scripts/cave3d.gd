@@ -23,7 +23,7 @@ const SINK := 0.4                          ## m: dół ścian i zboczy pod wierz
 static var _noise: FastNoiseLite
 static var _noise_big: FastNoiseLite
 static var _noise_col: FastNoiseLite
-static var _mat: StandardMaterial3D
+static var _mat: Material
 
 ## Prostokąty kafli płyt [c0, r0, c1, r1] do materiału skały (`Level3D.rock_rects`).
 static func rock_rects(caves: Array) -> Array:
@@ -64,8 +64,7 @@ static func build(parent: Node3D, caves: Array) -> int:
 		_noise_col.fractal_octaves = 2
 		_noise_col.seed = 23
 	if _mat == null:
-		_mat = Level3D.rock_material().duplicate() as StandardMaterial3D
-		_mat.vertex_color_use_as_albedo = true              # plamy odcienia na dużych ścianach: bez nich powtarzała się tekstura
+		_mat = Level3D.rock_material()                    # ten sam co płyta i wnęka: dwie skale tekstury, odcień z koloru wierzchołków
 	var n := 0
 	for e: Dictionary in caves:
 		var b := _bounds(e)
@@ -181,3 +180,4 @@ static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, nrm: Vecto
 		var k := 0.9 + 0.22 * _noise_col.get_noise_3dv(p)
 		st.set_color(Color(k, k, k * 0.97))
 		st.add_vertex(p)
+
