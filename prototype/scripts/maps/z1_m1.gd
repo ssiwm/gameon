@@ -93,22 +93,23 @@ const FRONT := [
 	# podziemia z przekrojem (UNDERGROUND_PLAN.md U1, od 1.7.621): jak tunel 1.2 i podziemia 1.3 — osobny wpis na każdą wysokość stropu
 	# (jeden wpis z niższym stropem nad salą dałby „balkon”). Sztolnia (wiersze 31–33, podłoga 34) od szybu przy brodzie (kol. 40–43)
 	# do otworu `:` pod salą; strop wyżej w mijance, komorze pod niecką obozu (lej do włazu — otwór w stropie), wnęce z baterią i nad zalanym
-	# odcinkiem (gniazdo ćm pod stropem, woda w niecce podłogi).
-	{"set": "tunnel", "c0": 44, "c1": 75, "r0": 30, "r1": 34, "shell": true},
-	{"set": "tunnel", "c0": 76, "c1": 84, "r0": 28, "r1": 34, "shell": true},     # mijanka
-	{"set": "tunnel", "c0": 85, "c1": 99, "r0": 30, "r1": 34, "shell": true},
-	{"set": "tunnel", "c0": 100, "c1": 125, "r0": 26, "r1": 34, "shell": true},   # komora pod niecką obozu
-	{"set": "tunnel", "c0": 126, "c1": 136, "r0": 30, "r1": 34, "shell": true},
-	{"set": "tunnel", "c0": 137, "c1": 141, "r0": 29, "r1": 34, "shell": true},   # wnęka z baterią
-	{"set": "tunnel", "c0": 142, "c1": 149, "r0": 30, "r1": 34, "shell": true},
-	{"set": "tunnel", "c0": 150, "c1": 175, "r0": 29, "r1": 34, "shell": true},   # zalany odcinek
-	{"set": "tunnel", "c0": 176, "c1": 192, "r0": 30, "r1": 34, "shell": true},
+	# odcinkiem (gniazdo ćm pod stropem, woda w niecce podłogi). Od 1.7.623 zestaw `mine` (U4): drewniana obudowa zamiast rur; wschodni
+	# koniec dolnej galerii pod betonem bunkra zostaje przy `tunnel`.
+	{"set": "mine", "c0": 44, "c1": 75, "r0": 30, "r1": 34, "shell": true},
+	{"set": "mine", "c0": 76, "c1": 84, "r0": 28, "r1": 34, "shell": true},     # mijanka
+	{"set": "mine", "c0": 85, "c1": 99, "r0": 30, "r1": 34, "shell": true},
+	{"set": "mine", "c0": 100, "c1": 125, "r0": 26, "r1": 34, "shell": true},   # komora pod niecką obozu
+	{"set": "mine", "c0": 126, "c1": 136, "r0": 30, "r1": 34, "shell": true},
+	{"set": "mine", "c0": 137, "c1": 141, "r0": 29, "r1": 34, "shell": true},   # wnęka z baterią
+	{"set": "mine", "c0": 142, "c1": 149, "r0": 30, "r1": 34, "shell": true},
+	{"set": "mine", "c0": 150, "c1": 175, "r0": 29, "r1": 34, "shell": true},   # zalany odcinek
+	{"set": "mine", "c0": 176, "c1": 192, "r0": 30, "r1": 34, "shell": true},
 	# sala pod wieżą (strop w wierszu 28) z szybem wentylacyjnym na zachodnim końcu; kończy się przed strefą zawału rampy (`COLLAPSE`,
 	# kol. 232+) — zawał przebudowuje świat, rampa zostaje płaskim przekrojem (UNDERGROUND_PLAN.md D3)
-	{"set": "tunnel", "c0": 193, "c1": 231, "r0": 28, "r1": 34, "shell": true},
+	{"set": "mine", "c0": 193, "c1": 231, "r0": 28, "r1": 34, "shell": true},
 	# dolna galeria (strop w wierszu 37, szyb serwisowy z sali — otwór) między strefami wydobycia (kol. 192–201 i 257–260, ich czoła sięgają
 	# przekroju); wschodni koniec niższy, pod betonowym stropem bunkra (wiersz 39)
-	{"set": "tunnel", "c0": 202, "c1": 249, "r0": 37, "r1": 43, "shell": true},
+	{"set": "mine", "c0": 202, "c1": 249, "r0": 37, "r1": 43, "shell": true},
 	{"set": "tunnel", "c0": 250, "c1": 256, "r0": 39, "r1": 43, "shell": true},
 	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[39, 44], [110, 115], [148, 191], [192, 198], [210, 223], [242, 255]]},   # L3: bez drzew nad włazami szybów (pień widać w przekroju); 1.7.550: ani na wykopie, który zawał zasypuje (drzewo wyrosłoby w chwili zawału)
 ]

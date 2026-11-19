@@ -1,6 +1,6 @@
 # Plan: jeden styl podziemi (przekrój i pierwszy plan pod ziemią)
 
-Status: **decyzje D1–D5 przyjęte 2026-11-19 (D4 zmieniona przy U1); U0 i U1 (z U2) zrobione w 1.7.621 (PR #743), U3 w 1.7.622 (PR na #743); zostaje U4.** Etap po przeglądzie spójności wizualnej z 2026-11-19 (61 zrzutów wszystkich map,
+Status: **decyzje D1–D5 przyjęte 2026-11-19 (D4 zmieniona przy U1); U0 i U1 (z U2) zrobione w 1.7.621 (PR #743), U3 w 1.7.622 (PR #744), U4 w 1.7.623 — plan zrobiony.** Etap po przeglądzie spójności wizualnej z 2026-11-19 (61 zrzutów wszystkich map,
 `C:\deadair87\shots_visrev`, arkusze `L1.jpg`–`L3.jpg`, `A_m2.jpg`, `B_m3.jpg`). Stan odniesienia: `main` 1.7.620 (73a60c19).
 
 ## Werdykt
@@ -88,6 +88,11 @@ Drugi problem wychodzi przy okazji: przekrój skały (`shell_cells` z kluczem �
   (do wysokości hali) — teraz kończy się na stropie przekroju (`Front3D.shell_roof`); podłoga przed płytą przekroju (`Front3D._build_floors`)
   miała dla `#` materiał gruntu — teraz skała (także 1.1). GPU w hali z wpisami U3 i bez: 12,71 / 12,55 ms (szum, zegar pływał 12,2–12,9).
   Zostaje: lity grunt `#` poza przekrojem (np. obok końca pomieszczenia za kratką) ma dalej teksturę gruntu — punkt 2 przeglądu (łatanina kafli).
+- **U4 (1.7.623):** zestaw `mine` w `Front3D.SETS` bez nowych GLB: duże `prop` (okrąglak w korze — `PBR_BARK` sosny) i `prop2` (kantówka
+  w deskach `plank` jak stemple), stropnica 1,1 m w głąb, podkładka; małe jak w tunelu (lampa na przewodzie, kable). Wpisy 1.1 poza betonowym
+  końcem dolnej galerii (250–256) na `mine`. Odrzucone po zrzutach (C:\deadair87\shots_u4): deski okładziny wzdłuż mapy (poprzeczki słupa
+  telegraficznego), stropnica 2,1 m i odchylenie 3,5% (w perspektywie kadru ramię szubienicy), okrąglak 22–28 cm (tyczka). Nie robione:
+  lutnia wentylacyjna i kabel na hakach (oba poziomo pod stropem — poza pionowym układem elementów pierwszego planu). GPU bez różnicy.
 
 ## Ryzyka
 

@@ -64,6 +64,7 @@ func _process(_dt: float) -> bool:
 	_check_layers()
 	_check_trench()
 	_check_roof()
+	_check_mine()
 	_check_oil()
 	_check_forest()
 	_check_fade()
@@ -977,6 +978,42 @@ func _check_trench() -> void:
 			_check(absf((yw as Vector2).x - want) < 0.001, "%s x %.1f: podstawa %.3f m zamiast %.3f (%s torowiska)" % [mi.name, mi.position.x, (yw as Vector2).x, want, "nad dnem" if inside else "obok"])
 			seen[0 if inside else 1] += 1
 	_check(seen[0] > 0 and seen[1] > 0, "torowisko: brak elementów nad torowiskiem albo obok (%d / %d)" % seen)
+	root.queue_free()
+
+## Kopalnia 1.1 (UNDERGROUND_PLAN.md U4): wpisy z przekrojem w zestawie `mine` (wschodni koniec pod betonem bunkra — `tunnel`), w nich
+## tylko obudowa drewniana jako duże elementy — stojak z kory albo deski, bez stalowej płytki pod stropem, stropnica w głąb kończy się
+## przed przodem przekroju, a cała obudowa mieści się między płytą podłogi i stropu.
+func _check_mine() -> void:
+	var consts: Dictionary = (load("res://scripts/maps/z1_m1.gd") as Script).get_script_constant_map()
+	var rows: Array = consts["MAP"]
+	var front: Array = (consts["FRONT"] as Array).filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)))
+	var mine := front.filter(func(e: Dictionary) -> bool: return String(e["set"]) == "mine")
+	_check(mine.size() >= 10 and front.size() - mine.size() == 1, "1.1: %d z %d wpisów z przekrojem w zestawie mine" % [mine.size(), front.size()])
+	Level3D.set_shells(mine, rows)
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Front3D.build(root, mine, [], false, rows)
+	var fr := root.get_node_or_null("Front")
+	var n := 0
+	if fr != null:
+		for c in fr.get_children():
+			var mi := c as MeshInstance3D
+			var kind := String(mi.name).get_slice("_", 0)
+			_check(not kind in ["pipe", "pipes2"], "1.1 %s: rura w kopalni" % mi.name)
+			if not kind in Front3D.TIMBER_KINDS:
+				continue
+			n += 1
+			_check(mi.get_node_or_null("Plate") == null, "%s: stalowa płytka pod stropnicą" % mi.name)
+			var keys := []
+			for si in mi.mesh.get_surface_count():
+				keys.append(mi.get_surface_override_material(si))
+			_check(keys.has(Front3D.materials()["beam"]) and (kind == "prop2" or keys.has(Front3D.materials()["bark"])), "%s: obudowa bez kory albo desek" % mi.name)
+			var a := mi.mesh.get_aabb()
+			var yw: Vector2 = mi.get_instance_shader_parameter("ywin")
+			_check(mi.position.z + a.end.z < Level3D.SHELL_Z - 0.05, "%s: stropnica wychodzi przed przekrój (z %.2f)" % [mi.name, mi.position.z + a.end.z])
+			_check(a.position.y >= yw.x - 0.01 and a.end.y <= yw.y + 0.01, "%s: obudowa poza pasem (%.2f–%.2f, pas %s)" % [mi.name, a.position.y, a.end.y, yw])
+	_check(n >= 6, "1.1: %d elementów obudowy" % n)
+	Level3D.set_shells([], rows)
 	root.queue_free()
 
 ## Hala stacji 1.2 jako budynek 3D (`building3d.gd`, od 1.7.529; wcześniej dach z blachy na płatwiach): nad pasem nie ma dachu z blachy
