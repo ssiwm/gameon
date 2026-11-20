@@ -1460,6 +1460,12 @@ func _check_terrain_cut() -> void:
 	_check(m.next_pass == base.next_pass and m.next_pass != null, "grunt: bez brudu i mokrego przebiegu mapy")
 	var code := (m.shader as Shader).code
 	_check(code.contains("bw.y * step(0.0, n.y)"), "grunt: podział wierzch / boki zmieniony")
+	# rozproszenie Burleya jak StandardMaterial3D dna lasu (shader własny w Godot 4.7 domyślnie liczy Lambertem — nocą wierzch ciemniejszy od dna)
+	_check(code.contains("diffuse_burley"), "grunt: przekrój bez diffuse_burley — wierzch bryły nocą ciemniejszy od dna lasu")
+	# runo na bryle: normalna w świecie ustawiana we fragment() (w vertex() obracała się z egzemplarzem, a tył karty dostawał ją odwróconą w dół)
+	var ug := Level3D.UNDERGROWTH_SHADER
+	var ug_frag := ug.substr(ug.find("void fragment()"))
+	_check(ug_frag.contains("NORMAL = normalize((VIEW_MATRIX * vec4(") and not ug.substr(0, ug.find("void fragment()")).contains("NORMAL ="), "runo: normalna kart w vertex() — tył karty nocą czarny")
 	var rows: Array = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()["MAP"]
 	var root := Node3D.new()
 	get_root().add_child(root)
