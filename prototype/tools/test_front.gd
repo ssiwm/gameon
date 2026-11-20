@@ -70,6 +70,7 @@ func _process(_dt: float) -> bool:
 	_check_grime()
 	_check_stream()
 	_check_front_stream()
+	_check_hills()
 	_check_oil()
 	_check_forest()
 	_check_fade()
@@ -906,6 +907,7 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 				var y := Front3D.ground_y((float(c) + fx) * T, Level3D.DEPTH_FRONT)
 				if y > -INF:
 					_check(y <= -float(top) * T + 0.001, "%s kolumna %d: podłoże %.2f m nad gruntem kolumny" % [map_id, c, y + float(top) * T])
+					y -= Level3D.hill_h((float(c) + fx) * T, 0.0, true)          # płyta pod pagórkiem przed schodkami (`_check_hills`)
 					_check(absf(y + float(r) * T) < 0.001, "%s kolumna %d: podłoże %.2f m od gruntu kolumny od r1" % [map_id, c, y + float(r) * T])
 					if Level3D._ch(rows, cc, int(e["r1"])) == "-":   # właz z desek: płyta na powierzchni, nie w sztolni pod nim (1.1, 2026-11-10)
 						_check(absf(y + float(int(e["r1"])) * T) < 0.001, "%s kolumna %d: podłoże zjeżdża pod właz z desek (%.2f m)" % [map_id, c, y])
@@ -1118,6 +1120,84 @@ func _check_front_stream() -> void:
 	Front3D.prepare_ground([], rows, [])
 	Level3D.set_shells([], rows)
 	Level3D.set_streams([])
+
+## Pagórki ze schodków (przegląd spójności, pkt 2): piramidki stopni 1.1 i 1.2 wykryte (1.3 bez), zbocze za bryłą przy niej sięga
+## wierzchu stopnia, przed bryłą nie wyżej niż stopy na stopniu (+0,12 m na metr od bryły), gładkie w x (bez pionowych ścianek między kolumnami),
+## opada do zera; siatki zbocza na płycie i w lesie, pnie i rekwizyty podłoża nie na zboczu.
+func _check_hills() -> void:
+	var T := Level3D.T
+	var want := {"z1_m1": [Vector2i(85, 96), Vector2i(125, 135)], "z1_m2": [Vector2i(20, 27)], "z1_m3": []}
+	for m: String in want:
+		var cm: Dictionary = (load("res://scripts/maps/%s.gd" % m) as Script).get_script_constant_map()
+		Level3D.set_hills(Level3D.sky_edges(cm["MAP"]))
+		var got: Array = []
+		for hl: Dictionary in Level3D.hills:
+			got.append(Vector2i(int(hl["c0"]), int(hl["c1"])))
+		_check(got == want[m], "pagórki %s: schodki %s zamiast %s" % [m, str(got), str(want[m])])
+		for hl: Dictionary in Level3D.hills:
+			var h: PackedFloat32Array = hl["h"]
+			var k0 := int(hl["c0"]) - Level3D.HILL_PAD
+			var hmax := 0.0
+			var fmax := 0.0
+			var over := 0.0
+			var steep := 0.0
+			var tail := 0.0
+			for c in range(int(hl["c0"]), int(hl["c1"]) + 1):
+				var hc := h[c - k0]
+				hmax = maxf(hmax, hc)
+				var xm := (float(c) + 0.5) * T
+				_check(absf(Level3D.hill_h(xm, 0.0, false) - hc) < 0.02, "pagórki %s kol. %d: zbocze za bryłą %.2f m zamiast wierzchu stopnia %.2f" % [m, c, Level3D.hill_h(xm, 0.0, false), hc])
+			for i in (h.size() * 20):
+				var x := (float(k0) + float(i) / 20.0) * T
+				var c := int(floor(x / T))
+				var hc := h[c - k0] if c >= k0 and c - k0 < h.size() else 0.0
+				for d: float in [0.0, 0.5, 1.0, 2.0, 4.0]:
+					var f := Level3D.hill_h(x, d, true)
+					over = maxf(over, f - (hc + 0.12 * d))
+					steep = maxf(steep, absf(Level3D.hill_h(x + 0.05, d, true) - f) / 0.05)
+					if d == 0.0:
+						fmax = maxf(fmax, f)
+				tail = maxf(tail, maxf(Level3D.hill_h(x, 2.0 + hmax * 1.2, true), Level3D.hill_h(x, 2.0 + hmax * 1.2, false)))
+			_check(over < 0.01, "pagórki %s %d–%d: zbocze przed bryłą %.2f m ponad stopy na stopniu" % [m, hl["c0"], hl["c1"], over])
+			_check(steep < 10.0, "pagórki %s %d–%d: przed bryłą ścianka w x (nachylenie %.1f)" % [m, hl["c0"], hl["c1"], steep])
+			_check(fmax > 0.5 * hmax, "pagórki %s %d–%d: przed bryłą zbocze %.2f m przy schodkach %.2f m" % [m, hl["c0"], hl["c1"], fmax, hmax])
+			_check(tail < 0.01, "pagórki %s %d–%d: zbocze nie opada (%.2f m daleko od bryły)" % [m, hl["c0"], hl["c1"], tail])
+	var c1: Dictionary = (load("res://scripts/maps/z1_m1.gd") as Script).get_script_constant_map()
+	var rows: Array = Level3D.sky_edges(c1["MAP"])
+	var front: Array = c1["FRONT"]
+	Level3D.set_shells(front, rows)
+	Level3D.set_hills(rows)
+	for it: Dictionary in Front3D.layout(front, c1.get("FRONT_SKIP", []), false, Front3D.blocked_x(front, rows)):
+		var hh := Level3D.hill_h(float(it["x"]), float(it["z"]) - Level3D.DEPTH_FRONT, true)
+		_check(hh < 0.01, "pagórki 1.1: %s x %.1f stoi na zboczu (%.2f m)" % [it["kind"], it["x"], hh])
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Front3D.build(root, front, [], false, rows)
+	var n_hill := 0
+	var props := 0
+	for c in root.get_children():
+		var nm := String(c.name)
+		if nm.begins_with("FrontGround_hill_"):
+			n_hill += 1
+			_check((c as MeshInstance3D).layers & 1 != 0, "pagórki 1.1: %s poza warstwą świata" % nm)
+		elif c is MeshInstance3D and nm.begins_with("FrontGround_") and not nm.begins_with("FrontGround_plate") and not nm.begins_with("FrontGround_stream"):
+			var mi := c as MeshInstance3D
+			var o := mi.global_transform * mi.get_aabb().get_center()
+			props += 1
+			_check(Level3D.hill_h(o.x, o.z - Level3D.DEPTH_FRONT, true) < 0.03, "pagórki 1.1: rekwizyt %s na zboczu (x %.1f)" % [nm, o.x])
+	_check(n_hill == 2, "pagórki 1.1: %d siatek zbocza na płycie zamiast 2" % n_hill)
+	var forest := Node3D.new()
+	root.add_child(forest)
+	Level3D.build_forest_floor(forest, rows)
+	var n_far := 0
+	for c in forest.get_children():
+		if String(c.name).begins_with("ForestHill_"):
+			n_far += 1
+	_check(n_far == 2, "pagórki 1.1: %d siatek zbocza w lesie zamiast 2" % n_far)
+	root.queue_free()
+	Front3D.prepare_ground([], rows, [])
+	Level3D.set_shells([], rows)
+	Level3D.set_hills([])
 
 ## Warstwa brudu (przegląd spójności, pkt 4): maski bez wielkich plam „kamuflażu” (średnie i największe krycie), wzór przesunięty
 ## inaczej na każdej mapie gry, przesunięcie trafia do przebiegów brudu z pamięci `make_pbr` (także tych sprzed zmiany mapy) i do shaderów

@@ -790,6 +790,10 @@ static func blocked_x(front: Array, rows: Array) -> Array:
 			hi = maxf(hi, cx + hw)
 			z += 0.25
 		out.append(Vector2(lo - Level3D.STREAM_BANK_M - FOOT.x, hi + Level3D.STREAM_BANK_M + FOOT.x))
+	# pagórek przed schodkami (`Level3D.hills`): pień stałby na zboczu
+	Level3D.set_hills(rows)
+	for hl: Dictionary in Level3D.hills:
+		out.append(Vector2(float(int(hl["c0"]) - Level3D.HILL_PAD) * Level3D.T - FOOT.x * 0.6, float(int(hl["c1"]) + Level3D.HILL_PAD + 1) * Level3D.T + FOOT.x * 0.6))
 	# plama błota na płycie przekroju (`Level3D.mud_spills`): rura nie stoi w błocie
 	for sp: Dictionary in Level3D.mud_spills(rows):
 		if (sp["zr"] as Vector2).y > Level3D.DEPTH_FRONT:
@@ -1444,6 +1448,7 @@ static func build(parent: Node3D, front: Array, skip: Array, low: bool, rows: Ar
 static func prepare_ground(front: Array, rows: Array, items: Array) -> void:
 	_ground = []
 	_feet = []
+	Level3D.set_hills(rows)
 	if _noise == null:
 		_noise = FastNoiseLite.new()
 		_noise.seed = 87
@@ -1533,7 +1538,7 @@ static func shell_roof(c: int, r: int) -> bool:
 static func ground_y(x: float, z: float) -> float:
 	for g: Dictionary in _ground:
 		if x >= float(g["x0"]) - 0.01 and x <= float(g["x1"]) + 0.01 and z >= float(g["z0"]) - 0.05:
-			return _span_y(g, x) + _bump(x, z, g["zb"])
+			return _span_y(g, x) + _bump(x, z, g["zb"]) + Level3D.hill_h(x, z - Level3D.DEPTH_FRONT, true)
 	return -INF
 
 
@@ -1842,6 +1847,7 @@ static func _build_ground(parent: Node3D, rows: Array, merge := false) -> void:
 			i = j
 	_ground_cover(parent)
 	_build_front_stream(parent)
+	_build_hills(parent, mat)
 	for c in parent.get_children():
 		if not String(c.name).begins_with("FrontGround_") or not c is GeometryInstance3D:
 			continue
@@ -1916,6 +1922,21 @@ static func _build_front_stream(parent: Node3D) -> void:
 		mi.name = "FrontGround_stream_%d" % si
 		mi.mesh = am
 		mi.material_override = Level3D.stream_material(-0.55, 1.0)     # UV.y rośnie ku kamerze; płycizna widziana z góry
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
+
+
+## Zbocze pagórka przed schodkami (`Level3D.hills`, `hill_mesh`): na płycie podłoża, tym samym materiałem; jego wierzch to `ground_y`
+## (runo i kępy stają na zboczu). Bez pagórka na płycie (przekrój, tunel) — nic.
+static func _build_hills(parent: Node3D, mat: Material) -> void:
+	for i in Level3D.hills.size():
+		var hm := Level3D.hill_mesh(Level3D.hills[i], true, func(x: float, d: float) -> float: return ground_y(x, Level3D.DEPTH_FRONT - 0.04 + d))
+		if hm == null:
+			continue
+		var mi := MeshInstance3D.new()
+		mi.name = "FrontGround_hill_%d" % i
+		mi.mesh = hm
+		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mi)
 
@@ -2105,7 +2126,9 @@ static func _ground_cover(parent: Node3D) -> void:
 				var big := maxf(maxf(ab.size.x, ab.size.z), 0.001)
 				var sz: Vector2 = PROP_SIZE.get(pname, Vector2(0.6, 1.2))
 				var size := rng.randf_range(sz.x, sz.y)
-				if Level3D.front_stream_dist(x, z) < size * 0.6 + 1.0:      # płot, kłoda: cały na suchym, nie końcem w nurcie
+				var dz := z - Level3D.DEPTH_FRONT
+				if Level3D.front_stream_dist(x, z) < size * 0.6 + 1.0 or maxf(Level3D.hill_h(x - size * 0.6, dz, true), Level3D.hill_h(x + size * 0.6, dz, true)) > 0.03:
+					# płot, kłoda: cały na suchym, nie końcem w nurcie; nie na zboczu pagórka
 					x += rng.randf_range(PROP_STEP.x, PROP_STEP.y)
 					continue
 				var s := size / big
