@@ -218,7 +218,7 @@ static func make_pbr(name: String, per_m: float, fallback: Color, rough := 0.95,
 ## `weather_wet` 0..1: narastanie od początku deszczu i schnięcie w przejaśnieniu z zegara pogody (u wszystkich graczy to samo).
 const WET_SHADER := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_never, cull_back, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_never, cull_back, specular_schlick_ggx, diffuse_burley;
 global uniform float weather_wet;
 global uniform sampler2D weather_roof : filter_nearest, repeat_disable;
 global uniform vec4 weather_roof_info;
@@ -1536,7 +1536,8 @@ float surf_h(vec2 w, float wd) {
 ## Tafla bez własnego światła (ciemność to mechanika, GDD §8.3): nocą widać ją tylko w świetle sceny — latarka, flara, ogień dają połysk.
 const LIQUID_TOP := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
+// diffuse_burley jak grunt pod spodem (StandardMaterial3D, TERRAIN_CUT_SHADER): Lambertem tafla i mokry brzeg pod kątem ciemniejsze o ok. 12%
+render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx, diffuse_burley;
 uniform int kind = 0;                  // 0 błoto, 1 olej, 2 woda
 uniform float seed = 0.0;
 uniform vec4 prints[48];               // błoto: kroki przechodzących (view3d._sync_mud_prints) — x, z, czas powstania, kierunek ±1; „teraz” w print_now
@@ -1665,7 +1666,7 @@ void fragment() {
 """
 const LIQUID_FRONT := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx, diffuse_burley;
 uniform int kind = 2;                  // 0 błoto, 1 olej, 2 woda
 uniform float y_s = 0.0;               // poziom tafli (m, świat)
 uniform float seed = 0.0;
@@ -1715,7 +1716,7 @@ void fragment() {
 """
 const LIQUID_DRIP := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx, diffuse_burley;
 uniform int kind = 0;                  // 0 błoto, 1 olej, 2 woda (mokry ślad)
 uniform float seed = 0.0;
 uniform float side = 1.0;              // +1: quad rośnie w prawo od brzegu, −1: w lewo
@@ -2034,7 +2035,7 @@ static func pool_hw(st: Dictionary, z: float, dx := 0.0) -> float:
 ## niecka przechodzi w grunt sąsiednich kafli bez szwu.
 const POOL_BANK_SHADER := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_never, cull_back, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_never, cull_back, specular_schlick_ggx, diffuse_burley;
 uniform int kind = 2;
 uniform float seed = 0.0;
 varying vec3 v_wp;
@@ -2232,7 +2233,8 @@ static func rock_material() -> Material:
 
 const ROCK_SHADER := """
 shader_type spatial;
-render_mode cull_back;
+// diffuse_burley jak StandardMaterial3D świata (por. TERRAIN_CUT_SHADER): Lambertem skała pod kątem do światła była o ok. 20% ciemniejsza
+render_mode cull_back, diffuse_burley;
 uniform sampler2D alb : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D nrm : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D orm : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -2908,7 +2910,7 @@ static func out_of_stream(x: float, d: float, margin: float) -> float:
 ## gdzie mgła wolumetryczna rozjaśnia wszystko wokół, koryto było czarną plamą).
 const STREAM_SHADER := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx, diffuse_burley;
 uniform float flow = 0.55;             // m/s: nurt ku kamerze
 uniform float fade0 = 18.0;
 uniform float fade1 = 30.0;
@@ -3369,7 +3371,7 @@ float fbm(vec2 p) {
 ## Kałuża: nieregularny owal z niskim roughness — światła sceny (flary, latarka, lampy) dają w niej prawdziwe błyski; bez własnej poświaty (GDD §8.3).
 const PUDDLE_SHADER := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx, diffuse_burley;
 varying vec2 v_uv;
 varying float v_seed;
 varying vec3 v_wp;
@@ -3401,7 +3403,7 @@ void fragment() {
 ## Rozchlapane krople: kropki o zmiennej wielkości, gęstsze przy brzegu (uv.x = 0 przy brzegu), z wydłużeniem w dół na froncie.
 const SPLAT_SHADER := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx, diffuse_burley;
 uniform int kind = 0;                  // 0 błoto, 1 olej, 2 woda
 uniform float seed = 0.0;
 uniform float side = 1.0;
@@ -3602,7 +3604,7 @@ static func oil_spills(rows: Array) -> Array:
 ## Plama oleju na betonie (`oil_spills`): pole metakul z poszarpanym brzegiem; nad niecką gry (prostokąt `pit`) nic nie rysuje.
 const OIL_STAIN_SHADER := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx, diffuse_burley;
 uniform vec4 blobs[14];
 uniform vec3 pit = vec3(0.0);
 uniform float seed = 0.0;

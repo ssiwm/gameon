@@ -2027,7 +2027,7 @@ func _local_xf(n: Node3D, root: Node) -> Transform3D:
 ## przewrócona beczka — zalany wylot (górny koniec modelu).
 const OIL_BARREL_OVERLAY := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, specular_schlick_ggx, diffuse_burley;
 uniform vec4 leak = vec4(0.0, 0.3, 0.22, 1.0);     // kąt, wysokość otworu 0–1, szerokość (rad), 1 = jest
 uniform float lying = 0.0;
 uniform float h_px = 11.4;
@@ -8212,7 +8212,7 @@ func _sync_wet(id: String, k: float, clock: float, delta: float) -> void:
 
 const BLOOD_SHADER := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, specular_schlick_ggx, diffuse_burley;
 uniform float seed = 0.0;
 uniform float wet = 1.0;             // 1 = świeża (lśni), 0 = zaschnięta (matowa, ciemniejsza)
 uniform float fade = 1.0;
