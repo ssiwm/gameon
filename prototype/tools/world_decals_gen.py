@@ -412,16 +412,23 @@ def d_damp(out, name="d_damp"):
 # ---------------------------------------------------------------- warstwa detalu (okresowa)
 
 def grime_maps(out, kind, n=512):
-    """Okresowa maska brudu + kolor warstwy detalu materiału (stone: zacieki i sadza; rust: rdza; organic: ciemne plamy i pleśń)."""
+    """Okresowa maska brudu + kolor warstwy detalu materiału (stone: zacieki i sadza; rust: rdza; organic: ciemne plamy i pleśń).
+
+    Od 1.7.626 (przegląd spójności 2026-11-19, punkt 4): bez wielkich plam o ostrym brzegu (3 komórki szumu na kafel 14 m, maska do 0,85 —
+    „kamuflaż”) i bez zacieków przez cały kafel — ten sam rzut trójpłaszczyznowy kładzie mapę na podłogach, gdzie pionowe zacieki dawały
+    długie ukośne pasy na betonie. Teraz: miękkie przebarwienia średniej skali o niskim kontraście, drobne plamki i krótkie zacieki
+    (ok. 1,5 m) pod przebarwieniami; maska najwyżej ok. 0,6."""
     seed = {"stone": 1100, "rust": 1200, "organic": 1300}[kind]
-    yy = np.mgrid[0:n, 0:n][0].astype(np.float32) / n
-    base = G.fbm(n, 3, 3, 6, seed)
-    big = G.smoothstep(0.42, 0.66, base)
-    mid = G.smoothstep(0.50, 0.70, G.fbm(n, 9, 9, 5, seed + 3))
-    cols = np.broadcast_to(G.vnoise(n, 28, 1, seed + 5)[0][None, :], (n, n))
-    run = G.smoothstep(0.55, 0.85, cols * 0.6 + G.fbm(n, 5, 5, 3, seed + 7) * 0.5)
+    mottle = G.smoothstep(0.30, 0.85, G.fbm(n, 5, 5, 5, seed))
+    fine = G.smoothstep(0.40, 0.85, G.fbm(n, 14, 14, 4, seed + 3))
+    spots = G.smoothstep(0.80, 0.92, G.fbm(n, 24, 24, 3, seed + 13))
+    cols = np.broadcast_to(G.vnoise(n, 40, 1, seed + 5)[0][None, :], (n, n))
+    seg = G.smoothstep(0.62, 0.85, G.vnoise(n, 40, 9, seed + 15))         # zaciek na ok. 1/9 kafla (1,5 m), nie przez cały kafel
+    run = G.smoothstep(0.62, 0.9, cols) * seg
+    big = mottle
+    mid = fine
     if kind == "stone":
-        mask = np.clip(big * 0.9 + run * G.smoothstep(0.0, 0.3, yy) * 0.55 + mid * 0.25, 0, 1)
+        mask = np.clip(mottle * 0.55 + fine * mottle * 0.25 + run * 0.45 + spots * 0.3, 0, 1)
         dark = np.dstack([np.full((n, n), 0.020, np.float32), np.full((n, n), 0.020, np.float32), np.full((n, n), 0.022, np.float32)])
         damp = np.dstack([np.full((n, n), 0.020, np.float32), np.full((n, n), 0.030, np.float32), np.full((n, n), 0.025, np.float32)])
         salt = np.dstack([np.full((n, n), 0.34, np.float32), np.full((n, n), 0.33, np.float32), np.full((n, n), 0.31, np.float32)])
@@ -430,19 +437,19 @@ def grime_maps(out, kind, n=512):
         col = dark * (1 - pick) + damp * pick
         col = col * (1 - sp * 0.5) + salt * sp * 0.5
     elif kind == "rust":
-        mask = np.clip(big * 0.85 + run * 0.35 + mid * 0.3, 0, 1)
+        mask = np.clip(big * 0.55 + run * 0.4 + mid * big * 0.3 + spots * 0.2, 0, 1)
         r1 = np.dstack([np.full((n, n), 0.20, np.float32), np.full((n, n), 0.075, np.float32), np.full((n, n), 0.03, np.float32)])
         r2 = np.dstack([np.full((n, n), 0.09, np.float32), np.full((n, n), 0.035, np.float32), np.full((n, n), 0.02, np.float32)])
         pick = G.smoothstep(0.45, 0.65, G.fbm(n, 6, 6, 4, seed + 9))[..., None]
         col = r1 * (1 - pick) + r2 * pick
     else:
-        mask = np.clip(big * 0.9 + mid * 0.3, 0, 1)
+        mask = np.clip(big * 0.6 + mid * big * 0.3 + spots * 0.3, 0, 1)
         d1 = np.dstack([np.full((n, n), 0.018, np.float32), np.full((n, n), 0.016, np.float32), np.full((n, n), 0.012, np.float32)])
         d2 = np.dstack([np.full((n, n), 0.025, np.float32), np.full((n, n), 0.04, np.float32), np.full((n, n), 0.018, np.float32)])
         pick = G.smoothstep(0.5, 0.7, G.fbm(n, 5, 5, 4, seed + 9))[..., None]
         col = d1 * (1 - pick) + d2 * pick
     col = np.clip(col, 0, 1) ** (1 / 2.2)
-    rgba = np.dstack([col, np.clip(mask * 0.85, 0, 1)])
+    rgba = np.dstack([col, np.clip(mask * 0.7, 0, 1)])
     Image.fromarray((rgba * 255 + 0.5).astype(np.uint8)).save(os.path.join(out, f"grime_{kind}.png"))
 
 
@@ -470,6 +477,10 @@ def main():
     os.makedirs(out, exist_ok=True)
     if "--only=d_crack_cave" in a:                           # tylko pęknięcia nad zawałem (reszta bez zmian)
         d_crack_cave(out)
+        return
+    if "--only=grime" in a:                                  # tylko mapy brudu (reszta bez zmian)
+        for k in ("stone", "rust", "organic"):
+            grime_maps(out, k)
         return
     if "--only=pl" in a:                                     # tylko polskie warianty napisów (reszta bez zmian)
         graffiti_pl(out)

@@ -347,6 +347,7 @@ uniform float bark_bump = 0.0;             // kora pnia: wypukłość z jasnośc
 uniform bool world_uv = false;             // ściany przekroju (`build_walls`): tekstura świata w rzucie trójpłaszczyznowym jak `Level3D.make_pbr`
 uniform float uv_per_m = 0.33;
 uniform sampler2D grime_tex : source_color, hint_default_transparent, filter_linear_mipmap_anisotropic, repeat_enable;
+global uniform vec3 grime_ofs;             // przesunięcie wzoru brudu wg mapy (`Level3D.set_grime_offset`)
 uniform float grime_a = 0.0;               // brud wielkoskalowy jak `next_pass` materiału świata (kafel ok. 14 m)
 uniform vec3 base_col : source_color = vec3(0.05);
 uniform float base_rough = 0.55;
@@ -418,7 +419,8 @@ void fragment() {
 		vec3 p = wpos * vec3(1.0, -1.0, 1.0);
 		vec2 pp = an.x > 0.5 ? p.zy : (an.y > 0.5 ? p.xz : p.xy);
 		uv = pp * uv_per_m;
-		guv = pp * 0.07;
+		vec3 gq = (wpos * 0.07 + grime_ofs) * vec3(1.0, -1.0, 1.0);   // jak `uv1_offset` przebiegu brudu mapy (`Level3D.GRIME_SCALE`)
+		guv = an.x > 0.5 ? gq.zy : (an.y > 0.5 ? gq.xz : gq.xy);
 	}
 	if (use_tex) {
 		vec3 alb = texture(albedo_tex, uv, lod_b).rgb;

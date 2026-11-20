@@ -1119,6 +1119,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 		front = []                                          # dev: mapa bez pierwszego planu (porównanie A/B, `FOREGROUND_PLAN.md`)
 	var steps := [
 		["level", func() -> void:
+			Level3D.set_grime_offset(String(_level.get("map_id")) if _level != null and _level.get("map_id") != null else "")
 			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches) + Cave3D.forest_holes(caves))
 			Level3D.rock_rects = Cave3D.rock_rects(caves)
 			Level3D.set_shells(front, rows)
