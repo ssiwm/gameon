@@ -69,6 +69,7 @@ func _process(_dt: float) -> bool:
 	_check_graffiti_pl()
 	_check_grime()
 	_check_stream()
+	_check_front_stream()
 	_check_oil()
 	_check_forest()
 	_check_fade()
@@ -1048,6 +1049,75 @@ func _check_stream() -> void:
 	Level3D.set_streams([])
 	root.queue_free()
 	env_root.queue_free()
+
+## Koryto przed bryłą (przegląd spójności, pkt 6, od 1.7.628): strumień 1.1 płynie z niecki brodu dalej ku kamerze przez płytę podłoża —
+## przy bryle szerokość i środek niecki, dalej węższy nurt; wstęga od przodu bryły do przodu płyty, nad płaską płytą; bez runa, kamieni,
+## kłód i pni w wodzie i na wewnętrznym brzegu.
+func _check_front_stream() -> void:
+	var c1: Dictionary = (load("res://scripts/maps/z1_m1.gd") as Script).get_script_constant_map()
+	var rows: Array = Level3D.sky_edges(c1["MAP"])
+	var front: Array = c1["FRONT"]
+	var T := Level3D.T
+	Level3D.set_streams(c1["STREAMS"])
+	Level3D.set_shells(front, rows)
+	var st: Dictionary = Level3D.streams[0]
+	var zf := Level3D.DEPTH_FRONT
+	var z_end: float = Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1]
+	_check(is_equal_approx(Level3D.front_stream_hw(st, zf), float(st["hw"])) and is_equal_approx(Level3D.front_stream_x(st, zf), float(st["x"])),
+			"koryto 1.1 przed bryłą: przy bryle %.2f m w x %.2f zamiast niecki %.2f w %.2f" % [Level3D.front_stream_hw(st, zf), Level3D.front_stream_x(st, zf), float(st["hw"]), float(st["x"])])
+	var hw_far := Level3D.front_stream_hw(st, z_end)
+	_check(hw_far >= Level3D.FRONT_STREAM_HW * 0.9 and hw_far <= Level3D.FRONT_STREAM_HW * 1.1, "koryto 1.1 przed bryłą: przy kamerze pół szerokości %.2f m" % hw_far)
+	var keep := Level3D.STREAM_BANK_M + 0.5
+	for it: Dictionary in Front3D.layout(front, c1.get("FRONT_SKIP", []), false, Front3D.blocked_x(front, rows)):
+		var d := Level3D.front_stream_dist(float(it["x"]), float(it["z"]))
+		_check(d > keep, "koryto 1.1: %s x %.1f stoi %.2f m od wody" % [it["kind"], it["x"], d])
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Front3D.build(root, front, [], false, rows)
+	var mi := root.get_node_or_null("FrontGround_stream_0") as MeshInstance3D
+	_check(mi != null, "koryto 1.1: brak wstęgi przed bryłą")
+	if mi != null:
+		_check(mi.layers & 1 != 0, "koryto 1.1: wstęga przed bryłą poza warstwą świata")
+		var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
+		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var cs: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+		var across := 11
+		_check(absf(vs[0].z - zf) < 0.001 and absf(vs[vs.size() - 1].z - z_end) < 0.001, "koryto 1.1: wstęga od z %.2f do %.2f zamiast od przodu bryły do przodu płyty" % [vs[0].z, vs[vs.size() - 1].z])
+		var w0 := vs[across - 1].x - vs[0].x
+		_check(absf(w0 - 2.0 * (float(st["hw"]) + Level3D.STREAM_BANK_M)) < 0.01, "koryto 1.1: przy bryle wstęga %.2f m (niecka z brzegami %.2f)" % [w0, 2.0 * (float(st["hw"]) + Level3D.STREAM_BANK_M)])
+		var worst := 0.0
+		var flat := 0.0
+		for i in vs.size():
+			var v := vs[i]
+			var yg := Front3D.ground_y(v.x, v.z)
+			worst = minf(worst, v.y - yg - 0.01)
+			var u := float(i % across) / float(across - 1)
+			if minf(u, 1.0 - u) > cs[i].g:                                # woda: płyta pod nią płaska (bez nierówności `_bump`)
+				flat = maxf(flat, absf(yg - Front3D._span_at(v.x)))
+		_check(worst >= 0.0, "koryto 1.1: wstęga %.3f m pod płytą podłoża" % worst)
+		_check(flat < 0.001, "koryto 1.1: płyta pod wodą nierówna o %.3f m" % flat)
+	var wet := 0
+	var cover := 0
+	for c in root.get_children():
+		if not String(c.name).begins_with("FrontGround_") or c == mi:
+			continue
+		if c is MultiMeshInstance3D:
+			var mm := (c as MultiMeshInstance3D).multimesh
+			for i in mm.instance_count:
+				var o := ((c as Node3D).transform * mm.get_instance_transform(i)).origin
+				cover += 1
+				if Level3D.front_stream_dist(o.x, o.z) < 0.6:
+					wet += 1
+		elif c is MeshInstance3D and not String(c.name).begins_with("FrontGround_plate"):
+			var o := (c as MeshInstance3D).global_transform * ((c as MeshInstance3D).get_aabb().get_center())
+			if Level3D.front_stream_dist(o.x, o.z) < 0.6:
+				wet += 1
+	_check(cover > 0, "koryto 1.1: brak runa na płycie (test nic nie sprawdził)")
+	_check(wet == 0, "koryto 1.1: %d roślin, kamieni albo kłód w wodzie lub na wewnętrznym brzegu" % wet)
+	root.queue_free()
+	Front3D.prepare_ground([], rows, [])
+	Level3D.set_shells([], rows)
+	Level3D.set_streams([])
 
 ## Warstwa brudu (przegląd spójności, pkt 4): maski bez wielkich plam „kamuflażu” (średnie i największe krycie), wzór przesunięty
 ## inaczej na każdej mapie gry, przesunięcie trafia do przebiegów brudu z pamięci `make_pbr` (także tych sprzed zmiany mapy) i do shaderów
