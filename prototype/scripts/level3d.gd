@@ -3949,8 +3949,10 @@ static func _sky_open_below(rows: Array, c: int, e: int) -> bool:
 			k += dir
 	return false
 
-## y dna lasu (m) w punkcie x (m) i głębokości `d` (m w głąb, dodatnia): interpolacja między kolumnami i węzłami głębi profilu `forest_terrain`.
-static func forest_ground_y(ft: Dictionary, x: float, d: float) -> float:
+## y dna lasu (m) w punkcie x (m) i głębokości `d` (m w głąb, dodatnia): interpolacja między kolumnami i węzłami głębi profilu `forest_terrain`,
+## z pagórkiem za schodkami (`hill_h`; `hill` false — sama siatka dna lasu, pagórek ma własną siatkę).
+static func forest_ground_y(ft: Dictionary, x: float, d: float, hill := true) -> float:
+	var hh := hill_h(x, d - DEPTH_BACK, false) if hill and d >= DEPTH_BACK - 0.05 else 0.0
 	var ys: Array = ft["y"]
 	var a: PackedFloat32Array = ys[0]
 	var u := clampf(x / T - 0.5, 0.0, float(a.size() - 1))
@@ -3964,7 +3966,7 @@ static func forest_ground_y(ft: Dictionary, x: float, d: float) -> float:
 	var fk := (dd - float(FOREST_KNOTS[k])) / (float(FOREST_KNOTS[k + 1]) - float(FOREST_KNOTS[k]))
 	a = ys[k]
 	var b: PackedFloat32Array = ys[k + 1]
-	return lerpf(lerpf(a[c0], a[c1], fu), lerpf(b[c0], b[c1], fu), fk)
+	return lerpf(lerpf(a[c0], a[c1], fu), lerpf(b[c0], b[c1], fu), fk) + hh
 
 ## Dno lasu za bryłą gruntu: siatka terenu od tyłu bryły (z = −DEPTH_BACK) do ostatniego węzła FOREST_KNOTS w głąb, po profilu `forest_terrain`.
 ## Materiał gruntu (`terrain`, ta sama projekcja triplanarna w świecie co wierzch bryły — tekstura przechodzi bez szwu) ciemnieje w głąb kolorem
@@ -3988,7 +3990,7 @@ static func build_forest_floor(parent: Node3D, rows: Array) -> void:
 	hs.resize(nx * nz)
 	for j in nz:
 		for i in nx:
-			hs[j * nx + i] = forest_ground_y(ft, x0 + float(i) * T, depths[j]) - (0.03 if j == 0 else 0.0)
+			hs[j * nx + i] = forest_ground_y(ft, x0 + float(i) * T, depths[j], false) - (0.03 if j == 0 else 0.0)
 	var verts := PackedVector3Array()
 	var nrms := PackedVector3Array()
 	var cols_c := PackedColorArray()
@@ -4032,6 +4034,188 @@ static func build_forest_floor(parent: Node3D, rows: Array) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.layers = 1 | LAYER_FAR                                  # w błysku burzy dno rozbłyskuje razem z lasem (`StormFlash`), plan gry nie
 	parent.add_child(mi)
+	set_hills(rows)
+	for i in hills.size():
+		var hm := hill_mesh(hills[i], false, func(x: float, d: float) -> float: return forest_ground_y(ft, x, d + DEPTH_BACK))
+		if hm == null:
+			continue
+		var hmi := MeshInstance3D.new()
+		hmi.name = "ForestHill_%d" % i
+		hmi.mesh = hm
+		hmi.material_override = mat
+		hmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		hmi.layers = 1 | LAYER_FAR
+		parent.add_child(hmi)
+
+## Pagórki ze schodków (przegląd spójności 2026-11-19, pkt 2: „schodki z kafli terenu obok skanów drzew”): piramidki stopni na powierzchni
+## (1.1 kol. 85–96 i 125–136, 1.2 kol. 20–27) stały na płaskim dnie lasu i płaskiej płycie pierwszego planu jak wytłoczone pudełka —
+## dno lasu wygładza wierzch medianą z FOREST_MEDIAN kolumn, a płyta leży na wysokości podstawy. Teraz przed bryłą i za nią rośnie
+## pagórek: przy bryle sięga wierzchu każdego stopnia (przody i tyły stopni znikają w zboczu), dalej wygładza się i opada — stopnie
+## czytają się jak tarasy wcięte w zbocze. Schodki: kolumny, w których lity `#` od wierzchu sięga podstawy (mediana wierzchu z okna
+## FOREST_MEDIAN), bez budynków, wież, nawisów i jaskiń. Rozgrywka bez zmian (płaszczyzna gry nietknięta).
+const HILL_PAD := 4                        ## kolumn poza schodkami, na które sięga zbocze
+const HILL_ROWS := [0.0, 0.12, 0.3, 0.55, 0.85, 1.2, 1.6, 2.1, 2.7, 3.4, 4.2, 5.1, 6.1, 7.2, 8.4, 9.7]   ## m od bryły: rzędy siatki zbocza
+static var hills: Array = []               ## [{c0, c1, h: PackedFloat32Array — m nad podstawą w kolumnach c0 − HILL_PAD … c1 + HILL_PAD}]
+static var _hills_key := 0
+
+static func set_hills(rows: Array) -> void:
+	var key := rows.hash()
+	if key == _hills_key and not rows.is_empty():
+		return
+	_hills_key = key
+	hills = []
+	if rows.is_empty() or "--nohills" in OS.get_cmdline_user_args():      # dev: schodki bez pagórka (A/B)
+		return
+	var nrows := rows.size()
+	var cols: int = (rows[0] as String).length()
+	var tops := PackedInt32Array()
+	tops.resize(cols)
+	for c in cols:
+		var r := 0
+		while r < nrows and not is_solid_ch(_ch(rows, c, r)):
+			r += 1
+		tops[c] = r
+	var hc := PackedFloat32Array()
+	hc.resize(cols)
+	for c in cols:
+		if tops[c] < 6 or tops[c] >= nrows:
+			continue                                       # lita od góry (brzeg mapy) albo bez gruntu
+		var win: Array = []
+		for k in range(maxi(0, c - FOREST_MEDIAN), mini(cols, c + FOREST_MEDIAN + 1)):
+			if tops[k] < nrows:
+				win.append(tops[k])
+		win.sort()
+		var rb: int = win[win.size() >> 1]
+		if tops[c] >= rb:
+			continue
+		var ok := true
+		for r in range(tops[c], rb + 1):
+			if _ch(rows, c, r) != "#":
+				ok = false
+				break
+		if ok:
+			hc[c] = float(rb - tops[c]) * T
+	var c := 0
+	while c < cols:
+		if hc[c] <= 0.0:
+			c += 1
+			continue
+		var c1 := c
+		while c1 + 1 < cols and hc[c1 + 1] > 0.0:
+			c1 += 1
+		if c - HILL_PAD < 0 or c1 + HILL_PAD >= cols:
+			c = c1 + 1                                     # przy krawędzi mapy (1.1 kol. 258–261: próg pod ścianą krawędzi) zbocze wyszłoby za mapę
+			continue
+		var h := PackedFloat32Array()
+		for k in range(c - HILL_PAD, c1 + HILL_PAD + 1):
+			h.append(hc[k] if k >= c and k <= c1 else 0.0)
+		var ero := PackedFloat32Array()                # erozja ±1 kolumna: przednie zbocze nie wyżej niż niższy sąsiad stopnia
+		for i in h.size():
+			ero.append(minf(h[i], minf(h[i - 1] if i > 0 else 0.0, h[i + 1] if i + 1 < h.size() else 0.0)))
+		hills.append({"c0": c, "c1": c1, "h": h, "e": ero})
+		c = c1 + 1
+
+## Wysokość zbocza (m nad podłożem) w x (m) i odległości `d` (m) od przodu (`front`) albo tyłu bryły; opada do zera na 1,5 m + 1 m
+## na metr wysokości. Za bryłą przy niej profil stopni (σ 0,02 kolumny — pionowo między kolumnami; zbocze wychodzi zza wierzchów),
+## dalej wygładzony (σ rośnie z `d`). Przed bryłą całe zbocze gładkie w x (σ ≥ 0,5 kolumny) i najwyżej gładki profil po erozji ±1
+## kolumna + 0,12 m na metr: przody stopni chowa od dołu, bez pionowych ścianek między kolumnami (zrzut 2026-11-20: „żebra”);
+## przy bryle nie wyżej niż wierzch własnego stopnia (stopy na stopniu widać, podłoże pod linią podłogi jak w `_check_map_ground`).
+static func hill_h(x: float, d: float, front: bool) -> float:
+	if hills.is_empty() or d < -0.05:
+		return 0.0
+	d = maxf(d, 0.0)
+	var cx := x / T
+	for hl: Dictionary in hills:
+		var h: PackedFloat32Array = hl["h"]
+		var k0 := int(hl["c0"]) - HILL_PAD
+		if cx < float(k0) or cx > float(k0 + h.size()):
+			continue
+		var s := _hill_smooth(h, k0, cx, (0.5 if front else 0.02) + 0.35 * d)
+		var len_m := 1.5 + _hill_smooth(h, k0, cx, 1.0)
+		var m := s * (1.0 - smoothstep(0.0, len_m, d))
+		if front:
+			m = minf(m, minf(_hill_smooth(hl["e"], k0, cx, 0.4), _hill_smooth(h, k0, cx, 0.02)) + 0.12 * d)
+		return maxf(m, 0.0)
+	return 0.0
+
+static func _hill_smooth(h: PackedFloat32Array, k0: int, cx: float, sig: float) -> float:
+	var rad := int(ceil(sig * 3.0)) + 1
+	var ci := floori(cx)
+	var e0 := 0.5 * pow((cx - (float(ci) + 0.5)) / sig, 2.0)       # waga najbliższego środka = 1 (przy σ 0,02 reszta znika, suma się nie zeruje)
+	var acc := 0.0
+	var ws := 0.0
+	for k in range(ci - rad, ci + rad + 1):
+		var i := k - k0
+		var w := exp(e0 - 0.5 * pow((cx - (float(k) + 0.5)) / sig, 2.0))
+		acc += w * (h[i] if i >= 0 and i < h.size() else 0.0)
+		ws += w
+	return acc / ws
+
+## Siatka zbocza pagórka `hl`: rzędy HILL_ROWS od bryły (przed nią ku kamerze, za nią w głąb), w kolumnie 6 punktów — skrajne 1 cm od
+## granicy kolumn, więc przy bryle stopień jest pionowy. `gy(x, d)`: y gruntu z pagórkiem (płyta albo dno lasu); brzeg zbocza schodzi
+## 3 cm pod grunt (bez migotania z płytą i dnem lasu). Null, gdy pagórka tu nie ma.
+static func hill_mesh(hl: Dictionary, front: bool, gy: Callable) -> ArrayMesh:
+	var h: PackedFloat32Array = hl["h"]
+	var k0 := int(hl["c0"]) - HILL_PAD
+	var xs := PackedFloat32Array()
+	for k in h.size():
+		for f: float in [0.008, 0.2, 0.4, 0.6, 0.8, 0.992]:
+			xs.append((float(k0 + k) + f) * T)
+	var hmax := 0.0
+	for v in h:
+		hmax = maxf(hmax, v)
+	var ds := PackedFloat32Array()
+	for d: float in HILL_ROWS:
+		ds.append(d)
+		if d > 1.5 + hmax + 0.3:
+			break
+	var nx := xs.size()
+	var nd := ds.size()
+	var sgn := 1.0 if front else -1.0
+	var z0 := DEPTH_FRONT - 0.04 if front else -DEPTH_BACK
+	var verts := PackedVector3Array()
+	var nrms := PackedVector3Array()
+	var cols_c := PackedColorArray()
+	var idx := PackedInt32Array()
+	var ys := PackedFloat32Array()
+	ys.resize(nx * nd)
+	for j in nd:
+		for i in nx:
+			var x := xs[i]
+			var y: float = gy.call(x, ds[j])
+			if y == -INF:
+				return null
+			ys[j * nx + i] = y - 0.03 * (1.0 - smoothstep(0.0, 0.08, hill_h(x, ds[j], front)))
+	for j in nd:
+		for i in nx:
+			var x := xs[i]
+			var e := 0.2
+			var dm := maxf(ds[j] - e, 0.0)
+			var dydx: float = (float(gy.call(x + e, ds[j])) - float(gy.call(x - e, ds[j]))) / (2.0 * e)
+			var dydd: float = (float(gy.call(x, ds[j] + e)) - float(gy.call(x, dm))) / (ds[j] + e - dm)
+			verts.append(Vector3(x, ys[j * nx + i], z0 + sgn * ds[j]))
+			nrms.append(Vector3(-dydx, 1.0, -dydd * sgn).normalized())
+			cols_c.append(Color(1.0, 1.0, 1.0))
+	for j in nd - 1:
+		for i in nx - 1:
+			var a := j * nx + i                                      # a, b: przy bryle; c, d: dalej od niej
+			var b := a + 1
+			var c := a + nx
+			var dd := c + 1
+			if front:
+				idx.append_array(PackedInt32Array([a, b, c, b, dd, c]))
+			else:
+				idx.append_array(PackedInt32Array([a, c, b, c, dd, b]))
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = nrms
+	arr[Mesh.ARRAY_COLOR] = cols_c
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return mesh
+
 static func build_forest(parent: Node3D, rows: Array) -> void:
 	var nrows := rows.size()
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
@@ -4056,6 +4240,7 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 	var ft := forest_terrain(rows)
 	if ft.is_empty():
 		return
+	set_hills(rows)
 	var first := parent.get_child_count()
 	_wind_cards.clear()
 	var mask: PackedByteArray = ft["mask"]
