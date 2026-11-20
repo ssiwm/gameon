@@ -24,6 +24,18 @@ static func plate_w(font: Font, text: String, arrow: bool) -> float:
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x * PIXEL if font != null else float(text.length()) * 0.17
 	return w + PAD_M * 2.0 + (ARROW_M + PAD_M if arrow else 0.0)
 
+## Szerokość płyty [m] dla klucza `key` (tekst angielski) — najszersza ze wszystkich wczytanych języków. Pas bez dekali za tabliczką
+## (view3d.gd `_decal_skip`) liczony z bieżącego języka przetasowywał dekale całej kryjówki (odrzucenie miejsca zmienia losowanie): po polsku
+## inne ściany niż po angielsku, a w co-op gracze z różnym językiem widzieli różne.
+static func plate_w_any(font: Font, key: String, arrow: bool) -> float:
+	var w := plate_w(font, key, arrow)
+	for loc in TranslationServer.get_loaded_locales():
+		var t := TranslationServer.get_translation_object(loc)
+		var s := String(t.get_message(StringName(key))) if t != null else ""
+		if s != "":
+			w = maxf(w, plate_w(font, s, arrow))
+	return w
+
 ## Kłopoty z tabliczkami w bieżącym języku: za szeroka płyta albo nachodzenie na sąsiadkę na tym samym pokładzie. Pusta lista = w porządku.
 static func problems(signs: Array, font: Font) -> Array:
 	var out: Array = []
