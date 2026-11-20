@@ -14,7 +14,8 @@ const SETS := [["terrain", 0.30], ["dig_dirt", 0.55], ["dig_gravel", 0.8], ["dig
 
 const SHADER := """
 shader_type spatial;
-render_mode depth_draw_opaque;
+// diffuse_burley jak grunt mapy obok strefy (StandardMaterial3D) i skała (`Level3D.ROCK_SHADER`): bez szwu na brzegu strefy pod kątem
+render_mode depth_draw_opaque, diffuse_burley;
 
 uniform sampler2D a0 : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D n0 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -92,7 +93,7 @@ void fragment() {
 ## na czole w snopie latarki półprzezroczysty nalot (alfa 0,5) przykrywał kolor i cień grud i robił z niego równą, oliwkową płytę.
 const GRIME_SHADER := """
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back;
+render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley;
 
 uniform sampler2D grime : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 tint : source_color = vec4(1.0);

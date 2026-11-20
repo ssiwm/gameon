@@ -38,6 +38,11 @@ func _check(ok: bool, msg: String) -> void:
 		print("FAIL  " + msg)
 		_fail += 1
 
+## Pierwsza deklaracja `render_mode ...;` w kodzie shadera (pusty tekst, gdy jej brak).
+func _render_mode(code: String) -> String:
+	var i := code.find("render_mode")
+	return "" if i < 0 else code.substr(i, code.find(";", i) - i)
+
 func _process(_dt: float) -> bool:
 	_frames += 1
 	if _frames < 2:
@@ -1469,6 +1474,16 @@ func _check_terrain_cut() -> void:
 	# trzcina przy cieczach i korycie: normalna ku kamerze pochylona ku górze, Burley i prześwit (pozioma normalna wstęgi — czarna sylwetka nocą)
 	var rd := Level3D.REED_SHADER
 	_check(rd.contains("diffuse_burley") and rd.contains("up_k") and rd.contains("BACKLIGHT") and rd.substr(rd.find("void fragment()")).contains("NORMAL = "), "trzcina: bez normalnej ku górze, Burleya albo prześwitu — nocą czarna")
+	# skała, strefy kopania i ciecze z plamami: Burley jak StandardMaterial3D świata obok (Lambertem pod kątem do światła o 12–20% ciemniejsze)
+	var lv: Dictionary = (Level3D as Script).get_script_constant_map()
+	for nm: String in ["ROCK_SHADER", "WET_SHADER", "LIQUID_TOP", "LIQUID_FRONT", "LIQUID_DRIP", "POOL_BANK_SHADER", "STREAM_SHADER", "PUDDLE_SHADER", "SPLAT_SHADER", "OIL_STAIN_SHADER"]:
+		_check(_render_mode(str(lv[nm])).contains("diffuse_burley"), "Burley: %s liczy rozproszenie Lambertem — ciemniejszy od świata obok" % nm)
+	var dg: Dictionary = (load("res://scripts/dig_ground.gd") as Script).get_script_constant_map()
+	for nm: String in ["SHADER", "GRIME_SHADER"]:
+		_check(_render_mode(str(dg[nm])).contains("diffuse_burley"), "Burley: dig_ground %s liczy rozproszenie Lambertem — szew na brzegu strefy" % nm)
+	var v3 := FileAccess.get_file_as_string("res://scripts/view3d.gd")
+	for nm: String in ["OIL_BARREL_OVERLAY", "BLOOD_SHADER"]:
+		_check(_render_mode(v3.substr(v3.find("const %s :=" % nm))).contains("diffuse_burley"), "Burley: view3d %s liczy rozproszenie Lambertem" % nm)
 	var rows: Array = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()["MAP"]
 	var root := Node3D.new()
 	get_root().add_child(root)
