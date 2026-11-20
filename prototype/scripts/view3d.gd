@@ -92,6 +92,9 @@ const AURA_ACTOR_RANGE := 2.4                ## m: zasięg aury dla modeli (gło
 const AURA_ACTOR_ATT := 1.4                  ## spadek z odległością (OmniLight3D.omni_attenuation)
 const AURA_BOUNCE := Color(0.80, 0.60, 0.42)  ## kolor odbicia od gruntu (ziemia, drewno), domieszany do koloru aury
 const AURA_BOUNCE_K := 0.4
+## Połysk aury gracza na świecie: 0 — aura to odbicie od gruntu, nie lampa. Jej odblask w tafli brodu i kałużach wypadał przy granicy
+## zasięgu AURA_RANGE_M (okno zasięgu gasi światło na ostatnich centymetrach) i kończył się twardą krawędzią (1.1, kol. 20).
+const AURA_SPECULAR := 0.0
 ## Poświata latarki na dłoniach, broni i twarzy: słabe światło przy wylocie, tylko na modele graczy (snop świeci przed siebie, nie na trzymającego)
 const FLASH_SPILL := 0.35                   ## część energii światła latarki 2D
 const FLASH_SPILL_RANGE := 1.1              ## m
@@ -9919,6 +9922,8 @@ func _scan_lights() -> void:
 				l3 = OmniLight3D.new()
 			l3.light_color = li.color
 			l3.layers = LAYER_WORLD | LAYER_ACTORS
+			if is_aura:
+				l3.light_specular = AURA_SPECULAR
 			var l3a: Light3D = null
 			if is_cone:
 				# reflektor oświetla i teren, i graczy (cień: `_pick_shadows`); latarka gracza dostaje też poświatę na samego trzymającego

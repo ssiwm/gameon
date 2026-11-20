@@ -1484,6 +1484,8 @@ func _check_terrain_cut() -> void:
 	var v3 := FileAccess.get_file_as_string("res://scripts/view3d.gd")
 	for nm: String in ["OIL_BARREL_OVERLAY", "BLOOD_SHADER"]:
 		_check(_render_mode(v3.substr(v3.find("const %s :=" % nm))).contains("diffuse_burley"), "Burley: view3d %s liczy rozproszenie Lambertem" % nm)
+	# aura gracza bez połysku: odblask w tafli brodu wypadał przy granicy zasięgu światła i kończył się twardą krawędzią
+	_check(v3.contains("const AURA_SPECULAR := 0.0") and v3.contains("l3.light_specular = AURA_SPECULAR"), "aura: połysk na świecie — twarda krawędź odblasku w wodzie")
 	var rows: Array = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()["MAP"]
 	var root := Node3D.new()
 	get_root().add_child(root)
