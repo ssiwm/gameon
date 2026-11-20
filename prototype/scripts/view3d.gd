@@ -2983,7 +2983,7 @@ func _decal_skip() -> Dictionary:
 	var signs: Array = _level.get("signs") if _level.get("signs") != null else []
 	var font := UiTheme.heading_font()
 	for sg in signs:
-		var w := HubSigns.plate_w(font, tr(String(sg[2])), String(sg[3]) != "")
+		var w := HubSigns.plate_w_any(font, String(sg[2]), String(sg[3]) != "")    # najszerszy język: ten sam rozkład dekali w każdym
 		var x := HubSigns.x_m(int(sg[0]))
 		var r := int(sg[1]) - int(ceil(HubSigns.UP_M / Level3D.T))           # wiersz tabliczki
 		for c in range(int(floor((x - w * 0.5) / Level3D.T)) - 1, int(floor((x + w * 0.5) / Level3D.T)) + 2):

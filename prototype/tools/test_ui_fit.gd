@@ -22,6 +22,7 @@ const TAB_NAMES := ["SETTINGS", "BESTIARY", "WEAPONS", "GEAR", "PERKS", "ARCHIVE
 const SLACK := 0.5                     ## tolerancja zaokrągleń [px]
 
 var _fails := 0
+var _skip_w_en := {}                    ## klucz tabliczki → szerokość pasa bez dekali po angielsku (`_hub_signs_checks`)
 var _seen := {}                        ## zgłoszone już (język, karta, kontrolka) — wpisy kodeksu powtarzają te same błędy
 
 
@@ -120,6 +121,17 @@ func _hub_signs_checks() -> void:
 				if tr_pl == null or String(tr_pl.get_message(StringName(String(sg[2])))) == "":     # „RADIO” zostaje „RADIO” — liczy się wiersz w ui.csv
 					_fail("tabliczka „%s” bez tłumaczenia" % sg[2])
 					bad.append(sg[2])
+		# pas bez dekali za tabliczką (view3d.gd `_decal_skip`) nie zależy od języka i obejmuje płytę w każdym języku
+		var font := UiTheme.heading_font()
+		for sg in signs:
+			var arrow := String(sg[3]) != ""
+			var wa := HubSigns.plate_w_any(font, String(sg[2]), arrow)
+			var differs := _skip_w_en.has(sg[2]) and absf(wa - float(_skip_w_en[sg[2]])) > 0.0001
+			if differs or wa + 0.0001 < HubSigns.plate_w(font, tr(String(sg[2])), arrow):
+				_fail("tabliczka „%s” (%s): pas bez dekali zależy od języka albo jest węższy od płyty" % [sg[2], loc])
+				bad.append(sg[2])
+			if loc == "en":
+				_skip_w_en[sg[2]] = wa
 		if bad.is_empty():
 			print("[UI-FIT] PASS  tabliczki kryjówki (%s): %d płyt, najszersza do %.1f m, odstępy co najmniej %.1f m" % [loc, signs.size(), HubSigns.MAX_W, HubSigns.GAP_M])
 
