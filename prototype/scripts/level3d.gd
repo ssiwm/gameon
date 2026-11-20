@@ -1909,6 +1909,10 @@ static func run_shore_back(x0: float, w: float) -> float:
 static var streams: Array = []
 const STREAM_LEN := 30.0                   ## m w głąb od tyłu bryły; dalej koryto znika w ciemności (dno lasu też ciemnieje w głąb)
 const STREAM_HW_FAR := 1.6                 ## m: pół szerokości koryta w lesie (przy bryle — szerokość ciągu wody)
+## m: mokry brzeg z każdej strony wody. Do 1.7.626 brzeg był stałą częścią szerokości wstęgi (22%), więc przy bryle, gdzie koryto ma
+## szerokość brodu (1.1: 9 kafli), wychodził na 3,9 m z każdej strony — szeroki jasny wachlarz błota z prostą krawędzią na tyle bryły.
+const STREAM_BANK_M := 1.1
+const STREAM_BANK_IN := 1.4                ## m: na tylu metrach od tyłu bryły brzeg narasta od zera (bez prostej krawędzi wzdłuż bryły)
 
 static func set_streams(list: Array) -> void:
 	streams = []
@@ -2513,7 +2517,9 @@ static func stream_x(st: Dictionary, d: float) -> float:
 ## Pół szerokości koryta (m) na głębokości `d`: od szerokości brodu do STREAM_HW_FAR w ~12 m.
 static func stream_hw(st: Dictionary, d: float) -> float:
 	var e := maxf(d - DEPTH_BACK, 0.0)
-	return lerpf(float(st["hw"]), STREAM_HW_FAR, smoothstep(0.0, 12.0, e)) * (0.9 + 0.2 * sin(d * 0.4 + float(st["ph"])))
+	# zmienność szerokości narasta od tyłu bryły: przy bryle woda ma dokładnie szerokość niecki (wcześniej ±10% — woda wystawała za nieckę
+	# prostym cięciem albo odsłaniała jej róg)
+	return lerpf(float(st["hw"]), STREAM_HW_FAR, smoothstep(0.0, 12.0, e)) * (1.0 + (0.2 * sin(d * 0.4 + float(st["ph"])) - 0.1) * smoothstep(0.0, 4.0, e))
 
 ## x przesunięty poza koryto (na bliższy brzeg, `margin` m od wody), gdy punkt (x, głębokość d) leży w korycie; inaczej bez zmian.
 static func out_of_stream(x: float, d: float, margin: float) -> float:
@@ -2526,44 +2532,50 @@ static func out_of_stream(x: float, d: float, margin: float) -> float:
 			return cx + (lim if x >= cx else -lim)
 	return x
 
-## Nurt: mętna woda torfowa jak w niecce (bez własnego światła, GDD §8.3), wzór i pasma piany płyną ku kamerze; po bokach mokry brzeg,
-## który przechodzi w dno lasu. Ciemnieje w głąb jak dno lasu (kolor wierzchołków), a za ~20 m gaśnie. Mgłę przyjmuje (bez niej w snopie latarki,
+## Nurt: mętna woda torfowa jak w niecce (bez własnego światła, GDD §8.3), wzór i pasma piany płyną ku kamerze; po bokach mokry brzeg
+## (STREAM_BANK_M; ułamek szerokości w COLOR.g), który przechodzi w dno lasu. Brzeg matowy jak brzeg niecki (szorstkość 0,86, odbicie 0,32):
+## do 1.7.626 miał szorstkość 0,55 i odbicie 0,6 — nocą odbijał jasne niebo i księżyc przy horyzoncie i świecił jak śnieg z przepaloną plamą. Ciemnieje w głąb jak dno lasu (kolor wierzchołków), a za ~20 m gaśnie. Mgłę przyjmuje (bez niej w snopie latarki,
 ## gdzie mgła wolumetryczna rozjaśnia wszystko wokół, koryto było czarną plamą).
 const STREAM_SHADER := """
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
-uniform float bank = 0.22;             // część szerokości z każdej strony: mokry brzeg zamiast wody
 uniform float flow = 0.55;             // m/s: nurt ku kamerze
 uniform float fade0 = 18.0;
 uniform float fade1 = 30.0;
 varying float v_shade;
+varying float v_bank;                  // część szerokości z każdej strony: mokry brzeg zamiast wody (STREAM_BANK_M)
 varying vec3 v_wp;
 //COMMON
 //RIPPLE
 void vertex() {
 	v_shade = COLOR.r;
+	v_bank = COLOR.g;
 	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 void fragment() {
 	float u = UV.x;                       // 0..1 w poprzek (z brzegami)
 	float v = UV.y;                       // m wzdłuż koryta od tyłu bryły
 	float edge = min(u, 1.0 - u);
-	float wob = (vn(vec2(v * 0.7, 2.0)) - 0.5) * 0.06;                   // łagodnie falisty brzeg (wcześniej poszarpany szumem w poprzek)
-	float water = smoothstep(bank - 0.03, bank + 0.03, edge + wob);
+	float bank = v_bank;
+	float bk = bank / 0.22;                                                // skala ułamków dobranych przy brzegu 22% szerokości
+	float wob = (vn(vec2(v * 0.7, 2.0)) - 0.5) * 0.06 * bk;              // łagodnie falisty brzeg (wcześniej poszarpany szumem w poprzek)
+	float water = smoothstep(bank - 0.03 * bk, bank + 0.03 * bk, edge + wob);
+	float ew = clamp((edge - bank) / max(0.5 - bank, 0.01), 0.0, 1.0);    // 0 na linii wody, 1 w środku nurtu
 	vec2 q = vec2(u * 7.0, v * 1.7 + TIME * flow * 1.7);
 	float r1 = vn(q) - 0.5;
 	float r2 = vn(q * 1.9 + 7.0) - 0.5;
 	vec2 rp = rain_ripple(v_wp.xz, v_wp) * water;
 	vec3 n = normalize(vec3(r1 * 0.30 * water + rp.x * 0.5, 1.0, r2 * 0.30 * water + rp.y * 0.5));
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
-	float streak = smoothstep(0.60, 0.80, fbm(vec2(u * 9.0, v * 0.6 + TIME * flow * 0.6))) * smoothstep(0.30, 0.45, edge);
+	float streak = smoothstep(0.60, 0.80, fbm(vec2(u * 9.0, v * 0.6 + TIME * flow * 0.6))) * smoothstep(0.29, 0.82, ew);
 	// ta sama woda torfowa co płycizna niecki (LIQUID_TOP przy brzegu) i mokry brzeg jaśniejszy od nurtu — w latarce koryto nie jest czarną plamą
-	vec3 wat = mix(vec3(0.105, 0.090, 0.056), vec3(0.070, 0.062, 0.040), smoothstep(0.30, 0.50, edge)) + vec3(0.10, 0.088, 0.060) * streak * 0.6;
+	vec3 wat = mix(vec3(0.105, 0.090, 0.056), vec3(0.070, 0.062, 0.040), smoothstep(0.29, 1.0, ew)) + vec3(0.10, 0.088, 0.060) * streak * 0.6;
 	vec3 mud = vec3(0.062, 0.050, 0.036) * (0.8 + 0.4 * vn(vec2(u * 24.0, v * 7.0)));
 	ALBEDO = mix(mud, wat, water) * v_shade;
-	ROUGHNESS = mix(0.55, mix(0.18, 0.5, streak), water);
-	SPECULAR = 0.6;
-	ALPHA = smoothstep(0.0, 0.12, edge + wob * 0.5) * (1.0 - smoothstep(fade0, fade1, v + DEPTH_BACK_C));
+	ROUGHNESS = mix(0.86, mix(0.18, 0.5, streak), water);
+	SPECULAR = mix(0.32, 0.6, water);
+	float near = mix(smoothstep(0.0, BANK_IN_C, v), 1.0, water);         // brzeg narasta od tyłu bryły, woda łączy się z niecką od razu
+	ALPHA = smoothstep(0.0, 0.12 * bk, edge + wob * 0.5) * near * (1.0 - smoothstep(fade0, fade1, v + DEPTH_BACK_C));
 }
 """
 
@@ -2575,7 +2587,7 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 	if ft.is_empty():
 		return
 	var sh := Shader.new()
-	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("//RIPPLE", RAIN_RIPPLE).replace("DEPTH_BACK_C", str(DEPTH_BACK))
+	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("//RIPPLE", RAIN_RIPPLE).replace("DEPTH_BACK_C", str(DEPTH_BACK)).replace("BANK_IN_C", str(STREAM_BANK_IN))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x57E4
 	var rocks: Array = []
@@ -2595,7 +2607,8 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 		var rowc := 0
 		while d <= DEPTH_BACK + STREAM_LEN:
 			var cx := stream_x(st, d)
-			var hw := stream_hw(st, d) / (1.0 - 2.0 * 0.22)              # wstęga szersza o mokre brzegi (`bank` w shaderze)
+			var hw := stream_hw(st, d) + STREAM_BANK_M                    # wstęga szersza o mokre brzegi (`v_bank` w shaderze)
+			var bank := STREAM_BANK_M / (2.0 * hw)
 			var e := d - DEPTH_BACK
 			var shade := lerpf(1.0, 0.3, smoothstep(DEPTH_BACK, 40.0, d))
 			for k in across:
@@ -2605,7 +2618,7 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 				verts.append(Vector3(x, y, -d))
 				nrms.append(Vector3.UP)
 				uvs.append(Vector2(u, e))
-				cols.append(Color(shade, shade, shade))
+				cols.append(Color(shade, bank, 0.0))
 			rowc += 1
 			d += 0.5 + e * 0.04
 		for j in rowc - 1:
@@ -2631,7 +2644,7 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 		mi.mesh = am
 		mi.material_override = m
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.layers = 1 | LAYER_FOREST
+		mi.layers = 1 | LAYER_FOREST                                  # kontra księżyca jak na dnie lasu (bez warstwy lasu koryto było czarną dziurą)
 		parent.add_child(mi)
 		# kamienie w nurcie i przy brzegach (rzadziej dalej)
 		var rd := DEPTH_BACK + 0.8
@@ -4916,6 +4929,9 @@ static func build_environment(parent: Node3D,ambient := Color(0.0245, 0.0266, 0.
 		rim.light_energy = MOON_RIM
 		rim.light_cull_mask = LAYER_FOREST
 		rim.light_volumetric_fog_energy = 0.0
+		# bez odbicia: kontra świeci zza drzew ku kamerze, więc gładka woda strumienia i mokry brzeg odbijały ją pod ostrym kątem —
+		# do 1.7.626 przepalona plama i brzeg jasny jak śnieg nocą (1.1, kol. 20). Las i jego dno to rozproszenie i prześwit kart.
+		rim.light_specular = 0.0
 		rim.layers = 3
 		parent.add_child(rim)
 		# błyskawica na lesie: z kierunku księżyca, tylko warstwa lasu — las rozbłyskuje w pełni, a plan gry dostaje mały udział błysku

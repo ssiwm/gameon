@@ -68,6 +68,7 @@ func _process(_dt: float) -> bool:
 	_check_strata()
 	_check_graffiti_pl()
 	_check_grime()
+	_check_stream()
 	_check_oil()
 	_check_forest()
 	_check_fade()
@@ -1013,6 +1014,40 @@ func _check_graffiti_pl() -> void:
 	_check(n >= 2, "1.2: %d napisów grafiti do sprawdzenia" % n)
 	TranslationServer.set_locale(loc0)
 	root.queue_free()
+
+## Strumień 1.1 (przegląd spójności, pkt 6): przy bryle woda ma szerokość niecki, mokry brzeg ma stałą szerokość w metrach (bez wachlarza
+## błota 3,9 m z każdej strony), wstęga zostaje na warstwie lasu, a kontra księżyca (`MoonRim`) nie daje odbić (przepalona plama w nurcie).
+func _check_stream() -> void:
+	var c1: Dictionary = (load("res://scripts/maps/z1_m1.gd") as Script).get_script_constant_map()
+	var rows: Array = Level3D.sky_edges(c1["MAP"])
+	Level3D.set_streams(c1["STREAMS"])
+	var st: Dictionary = Level3D.streams[0]
+	_check(is_equal_approx(Level3D.stream_hw(st, Level3D.DEPTH_BACK), float(st["hw"])), "strumień 1.1: przy bryle szerokość %.2f zamiast niecki %.2f" % [Level3D.stream_hw(st, Level3D.DEPTH_BACK), float(st["hw"])])
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Level3D.build_streams(root, rows)
+	var mi := root.get_node_or_null("Stream_0") as MeshInstance3D
+	_check(mi != null, "strumień 1.1: brak wstęgi")
+	if mi != null:
+		_check(mi.layers & Level3D.LAYER_FOREST != 0, "strumień 1.1: wstęga poza warstwą lasu (bez kontry księżyca jak dno lasu)")
+		var arr := (mi.mesh as ArrayMesh).surface_get_arrays(0)
+		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var cs: PackedColorArray = arr[Mesh.ARRAY_COLOR]
+		var worst := 0.0
+		for row in range(0, vs.size() / 9):
+			var w := absf(vs[row * 9 + 8].x - vs[row * 9].x)          # 9 wierzchołków w poprzek (`across`)
+			worst = maxf(worst, absf(cs[row * 9].g * w - Level3D.STREAM_BANK_M) - w / 255.0)   # kolor wierzchołka w 8 bitach
+		_check(worst < 0.005, "strumień 1.1: mokry brzeg różni się od %.1f m o %.2f m" % [Level3D.STREAM_BANK_M, worst])
+		var w0 := absf(vs[8].x - vs[0].x)
+		_check(w0 <= 2.0 * (float(st["hw"]) + Level3D.STREAM_BANK_M) + 0.01, "strumień 1.1: przy bryle wstęga %.1f m (wachlarz brzegu)" % w0)
+	var env_root := Node3D.new()
+	get_root().add_child(env_root)
+	Level3D.build_environment(env_root)
+	var rim := env_root.find_child("MoonRim", true, false) as DirectionalLight3D
+	_check(rim != null and rim.light_specular == 0.0, "MoonRim z odbiciem: przepalona plama w nurcie strumienia")
+	Level3D.set_streams([])
+	root.queue_free()
+	env_root.queue_free()
 
 ## Warstwa brudu (przegląd spójności, pkt 4): maski bez wielkich plam „kamuflażu” (średnie i największe krycie), wzór przesunięty
 ## inaczej na każdej mapie gry, przesunięcie trafia do przebiegów brudu z pamięci `make_pbr` (także tych sprzed zmiany mapy) i do shaderów
