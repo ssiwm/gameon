@@ -2521,6 +2521,48 @@ static func stream_hw(st: Dictionary, d: float) -> float:
 	# prostym cięciem albo odsłaniała jej róg)
 	return lerpf(float(st["hw"]), STREAM_HW_FAR, smoothstep(0.0, 12.0, e)) * (1.0 + (0.2 * sin(d * 0.4 + float(st["ph"])) - 0.1) * smoothstep(0.0, 4.0, e))
 
+## Koryto przed bryłą (przegląd spójności 2026-11-20, pkt 6): do 1.7.627 strumień z lasu kończył się w niecce brodu, a płyta podłoża
+## pierwszego planu (`Front3D._build_ground`) ucinała wodę prostą linią na przodzie bryły — prostokątna kałuża bez odpływu. Teraz nurt
+## płynie dalej ku kamerze: na przodzie bryły ma szerokość brodu, na FRONT_STREAM_NARROW m zwęża się do FRONT_STREAM_HW i meandruje.
+## Wstęgę, płaskie dno pod nią i runo omijające koryto buduje `Front3D` (z = m przed płaszczyzną gry, ≥ DEPTH_FRONT).
+const FRONT_STREAM_HW := 1.2
+const FRONT_STREAM_NARROW := 4.0
+static var _front_stream_off := -1         ## dev `--nofrontstream`: 1 = bez koryta przed bryłą (stan do 1.7.627, A/B)
+
+## Środek koryta przed bryłą (x, m) w odległości `z` przed płaszczyzną gry: przy bryle środek brodu, dalej meandruje.
+static func front_stream_x(st: Dictionary, z: float) -> float:
+	var e := maxf(z - DEPTH_FRONT, 0.0)
+	var ph := float(st["ph"]) + 1.3
+	return float(st["x"]) + (1.8 * (sin(e * 0.23 + ph) - sin(ph)) + 0.6 * sin(e * 0.61 + ph * 2.3) * smoothstep(0.0, 3.0, e)) * smoothstep(0.0, 4.0, e)
+
+## Pół szerokości wody przed bryłą (m): przy bryle szerokość niecki, potem zwęża się do FRONT_STREAM_HW.
+static func front_stream_hw(st: Dictionary, z: float) -> float:
+	var e := maxf(z - DEPTH_FRONT, 0.0)
+	return lerpf(float(st["hw"]), FRONT_STREAM_HW, smoothstep(0.0, FRONT_STREAM_NARROW, e)) * (1.0 + (0.16 * sin(z * 0.5 + float(st["ph"])) - 0.08) * smoothstep(0.0, 3.0, e))
+
+## Odległość (m) punktu (x, z przed płaszczyzną gry) od wody koryta przed bryłą: ujemna w wodzie, INF bez strumieni albo za bryłą.
+static func front_stream_dist(x: float, z: float) -> float:
+	if _front_stream_off < 0:
+		_front_stream_off = 1 if "--nofrontstream" in OS.get_cmdline_user_args() else 0
+	if z < DEPTH_FRONT - 0.05 or _front_stream_off == 1:
+		return INF
+	var best := INF
+	for st in streams:
+		best = minf(best, absf(x - front_stream_x(st, z)) - front_stream_hw(st, z))
+	return best
+
+## Materiał nurtu (STREAM_SHADER): `flow` m/s wzdłuż UV.y (w lesie dodatni — ku kamerze, bo UV.y rośnie w głąb; przed bryłą ujemny).
+## `shallow` 0..1: płycizna z widocznym dnem i jaśniejszy brzeg — przed bryłą kamera patrzy na wodę z góry, ciemna tafla nie odbija
+## nieba jak w lesie pod kątem i koryto było nocą czarną wstęgą (zrzuty 2026-11-20).
+static func stream_material(flow: float, shallow := 0.0) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("//RIPPLE", RAIN_RIPPLE).replace("DEPTH_BACK_C", str(DEPTH_BACK)).replace("BANK_IN_C", str(STREAM_BANK_IN))
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("flow", flow)
+	m.set_shader_parameter("shallow", shallow)
+	return m
+
 ## x przesunięty poza koryto (na bliższy brzeg, `margin` m od wody), gdy punkt (x, głębokość d) leży w korycie; inaczej bez zmian.
 static func out_of_stream(x: float, d: float, margin: float) -> float:
 	if streams.is_empty() or d > DEPTH_BACK + STREAM_LEN + 2.0 or d < DEPTH_BACK - 0.5:
@@ -2542,6 +2584,7 @@ render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
 uniform float flow = 0.55;             // m/s: nurt ku kamerze
 uniform float fade0 = 18.0;
 uniform float fade1 = 30.0;
+uniform float shallow = 0.0;           // przed bryłą: płycizna z dnem i jaśniejszy brzeg (`stream_material`)
 varying float v_shade;
 varying float v_bank;                  // część szerokości z każdej strony: mokry brzeg zamiast wody (STREAM_BANK_M)
 varying vec3 v_wp;
@@ -2569,11 +2612,13 @@ void fragment() {
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	float streak = smoothstep(0.60, 0.80, fbm(vec2(u * 9.0, v * 0.6 + TIME * flow * 0.6))) * smoothstep(0.29, 0.82, ew);
 	// ta sama woda torfowa co płycizna niecki (LIQUID_TOP przy brzegu) i mokry brzeg jaśniejszy od nurtu — w latarce koryto nie jest czarną plamą
-	vec3 wat = mix(vec3(0.105, 0.090, 0.056), vec3(0.070, 0.062, 0.040), smoothstep(0.29, 1.0, ew)) + vec3(0.10, 0.088, 0.060) * streak * 0.6;
-	vec3 mud = vec3(0.062, 0.050, 0.036) * (0.8 + 0.4 * vn(vec2(u * 24.0, v * 7.0)));
+	float sh = shallow * smoothstep(0.3, 3.0, v);                          // przy bryle jak tafla niecki (bez progu jasności na styku)
+	vec3 wat = mix(vec3(0.105, 0.090, 0.056), vec3(0.070, 0.062, 0.040), smoothstep(0.29, 1.0, ew) * (1.0 - 0.6 * sh)) + vec3(0.10, 0.088, 0.060) * streak * 0.6;
+	wat = mix(wat, vec3(0.125, 0.108, 0.074) * (0.85 + 0.3 * vn(v_wp.xz * 3.1)), sh * 0.45);   // dno płycizny przez mętną wodę
+	vec3 mud = vec3(0.062, 0.050, 0.036) * (0.8 + 0.4 * vn(vec2(u * 24.0, v * 7.0))) * (1.0 + 0.55 * shallow);
 	ALBEDO = mix(mud, wat, water) * v_shade;
-	ROUGHNESS = mix(0.86, mix(0.18, 0.5, streak), water);
-	SPECULAR = mix(0.32, 0.6, water);
+	ROUGHNESS = mix(0.86, mix(mix(0.18, 0.42, shallow), 0.5, streak), water);
+	SPECULAR = mix(0.32, mix(0.6, 0.35, shallow), water);                      // płycizna z góry: aura gracza bez białej plamy odbicia
 	float near = mix(smoothstep(0.0, BANK_IN_C, v), 1.0, water);         // brzeg narasta od tyłu bryły, woda łączy się z niecką od razu
 	ALPHA = smoothstep(0.0, 0.12 * bk, edge + wob * 0.5) * near * (1.0 - smoothstep(fade0, fade1, v + DEPTH_BACK_C));
 }
@@ -2586,8 +2631,6 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 	var ft := forest_terrain(rows)
 	if ft.is_empty():
 		return
-	var sh := Shader.new()
-	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("//RIPPLE", RAIN_RIPPLE).replace("DEPTH_BACK_C", str(DEPTH_BACK)).replace("BANK_IN_C", str(STREAM_BANK_IN))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 0x57E4
 	var rocks: Array = []
@@ -2637,8 +2680,7 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 		arr[Mesh.ARRAY_INDEX] = idx
 		var am := ArrayMesh.new()
 		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-		var m := ShaderMaterial.new()
-		m.shader = sh
+		var m := stream_material(0.55)
 		var mi := MeshInstance3D.new()
 		mi.name = "Stream_%d" % si
 		mi.mesh = am

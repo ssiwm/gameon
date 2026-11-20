@@ -254,6 +254,8 @@ const PROP_SIZE := {"tree_log": Vector2(2.6, 3.8), "stump": Vector2(0.7, 0.95), 
 const PROP_ALONG := ["tree_log", "fence", "logs", "trunk_big", "ph_branches_a", "ph_branches_b"]
 const PROP_ACROSS := ["logs", "ph_branches_a", "ph_branches_b"]   ## modele z długą osią wzdłuż z — obrót o 90°, żeby leżały wzdłuż mapy
 const PROP_Z := Vector2(5.6, 9.0)          ## m: przed pniami (rzut niżej niż ich nasada — pień ich nie przykrywa)
+const STREAM_LIFT := 0.02                  ## m: wstęga koryta przed bryłą nad płytą podłoża
+const STREAM_FLAT := Vector2(1.5, 2.7)     ## m od linii wody: do pierwszej płyta pod korytem płaska, za drugą pełna nierówność (`_bump`)
 ## Kamera pod podłożem (rampa i szyby kopalni 1.1 tuż pod powierzchnią, szyby 1.2 i 1.3): las i podłoże gasną, kiedy y kamery spada
 ## z SURF_FADE.y do SURF_FADE.x m nad najwyższy punkt podłoża w pobliżu kamery (`SURF_NEAR`; gracz na podłożu: kamera ok. 5,3 m nad nim).
 ## Spod ziemi płyta zakrywałaby przekrój korytarza, a pnie przycięte do podłoża (`ywin`) wisiałyby nad nim. Przejście wąskie: gracz kafel
@@ -776,6 +778,18 @@ static func blocked_x(front: Array, rows: Array) -> Array:
 	for sp: Dictionary in Level3D.oil_spills(rows):
 		var xr: Vector2 = sp["xr"]
 		out.append(Vector2(xr.x - 0.3, xr.y + 0.3))
+	# koryto strumienia przed bryłą (`Level3D.front_stream_x`): pień nie stoi w nurcie ani na mokrym brzegu
+	for st: Dictionary in Level3D.streams:
+		var lo := INF
+		var hi := -INF
+		var z := Z_RANGE.x - FOOT.y
+		while z <= Z_RANGE.y + FOOT.y:
+			var cx := Level3D.front_stream_x(st, z)
+			var hw := Level3D.front_stream_hw(st, z)
+			lo = minf(lo, cx - hw)
+			hi = maxf(hi, cx + hw)
+			z += 0.25
+		out.append(Vector2(lo - Level3D.STREAM_BANK_M - FOOT.x, hi + Level3D.STREAM_BANK_M + FOOT.x))
 	# plama błota na płycie przekroju (`Level3D.mud_spills`): rura nie stoi w błocie
 	for sp: Dictionary in Level3D.mud_spills(rows):
 		if (sp["zr"] as Vector2).y > Level3D.DEPTH_FRONT:
@@ -1760,6 +1774,7 @@ static func _bump(x: float, z: float, zb: float) -> float:
 	for f: Vector2 in _feet:
 		flat = minf(flat, smoothstep(0.75, 1.0, Vector2((x - f.x) / FOOT.x, (z - f.y) / FOOT.y).length()))
 	flat = minf(flat, 1.0 - _mud_k(x, z))
+	flat = minf(flat, smoothstep(STREAM_FLAT.x, STREAM_FLAT.y, Level3D.front_stream_dist(x, z)))
 	return amp * _noise.get_noise_2d(x, z) * flat
 
 
@@ -1771,6 +1786,17 @@ static func _mud_k(x: float, z: float) -> float:
 		var dz := z - (Level3D.MUD_FRONT_Z - 0.6)
 		k = maxf(k, 1.0 - smoothstep(0.0, 1.2, maxf(dx, dz)))
 	return k
+
+
+## 1 w korycie strumienia przed bryłą (woda i wewnętrzna część mokrego brzegu `Level3D.STREAM_BANK_M`), 0 od ok. 1,2 m za linią wody —
+## runo dochodzi do zewnętrznej, wygasającej części brzegu wstęgi (`_build_front_stream`), jak trawa do brzegu niecki.
+static func _stream_k(x: float, z: float) -> float:
+	return 1.0 - smoothstep(0.6, 1.5, Level3D.front_stream_dist(x, z))
+
+
+## Bagno albo koryto: bez runa, kamieni i kłód.
+static func _wet_k(x: float, z: float) -> float:
+	return maxf(_mud_k(x, z), _stream_k(x, z))
 
 
 static func _in_foot(x: float, z: float, k := 1.0) -> bool:
@@ -1815,6 +1841,7 @@ static func _build_ground(parent: Node3D, rows: Array, merge := false) -> void:
 			_gchunk_top.append(top)
 			i = j
 	_ground_cover(parent)
+	_build_front_stream(parent)
 	for c in parent.get_children():
 		if not String(c.name).begins_with("FrontGround_") or not c is GeometryInstance3D:
 			continue
@@ -1829,6 +1856,68 @@ static func _build_ground(parent: Node3D, rows: Array, merge := false) -> void:
 			var cx := floori(ab.get_center().x / Level3D.T)
 			gi.set_meta("gc", Vector2i(cx, cx))
 		_ground_nodes.append(gi)
+
+
+## Koryto strumienia przed bryłą (`Level3D.front_stream_x` / `front_stream_hw`): ta sama wstęga co w lesie (`Level3D.build_streams`,
+## STREAM_SHADER — woda torfowa i mokry brzeg STREAM_BANK_M, narastający od przodu bryły), od przodu bryły do przodu płyty, nurt ku kamerze.
+## Leży STREAM_LIFT nad płytą (płaską pod korytem, `_bump`); przy bryle łączy się z taflą niecki brodu. Warstwa świata jak płyta.
+static func _build_front_stream(parent: Node3D) -> void:
+	if Level3D.streams.is_empty() or Level3D.front_stream_dist(Level3D.front_stream_x(Level3D.streams[0], 3.0), 3.0) == INF:
+		return                                                          # dev `--nofrontstream`: prostokątna niecka jak do 1.7.627 (A/B)
+	var z_end: float = GROUND_Z[GROUND_Z.size() - 1]
+	var across := 11
+	for si in Level3D.streams.size():
+		var st: Dictionary = Level3D.streams[si]
+		var verts := PackedVector3Array()
+		var nrms := PackedVector3Array()
+		var uvs := PackedVector2Array()
+		var cols := PackedColorArray()
+		var idx := PackedInt32Array()
+		var z := Level3D.DEPTH_FRONT
+		var rowc := 0
+		while true:
+			var cx := Level3D.front_stream_x(st, z)
+			var hw := Level3D.front_stream_hw(st, z) + Level3D.STREAM_BANK_M
+			var e := z - Level3D.DEPTH_FRONT
+			var y0 := ground_y(cx, z)
+			if y0 == -INF:
+				break
+			for k in across:
+				var u := float(k) / float(across - 1)
+				var x := cx + (u * 2.0 - 1.0) * hw
+				var yg := ground_y(x, z)
+				verts.append(Vector3(x, (yg if yg > -INF else y0) + STREAM_LIFT, z))
+				nrms.append(Vector3.UP)
+				uvs.append(Vector2(u, e))
+				cols.append(Color(1.0, Level3D.STREAM_BANK_M / (2.0 * hw), 0.0))
+			rowc += 1
+			if z >= z_end - 0.01:
+				break
+			z = minf(z + 0.25 + e * 0.05, z_end)
+		if rowc < 2:
+			continue
+		for j in rowc - 1:
+			for k in across - 1:
+				var a := j * across + k                                   # a, b: dalej od kamery; c, d: bliżej
+				var b := a + 1
+				var c := a + across
+				var d := c + 1
+				idx.append_array(PackedInt32Array([a, b, c, b, d, c]))
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = verts
+		arr[Mesh.ARRAY_NORMAL] = nrms
+		arr[Mesh.ARRAY_TEX_UV] = uvs
+		arr[Mesh.ARRAY_COLOR] = cols
+		arr[Mesh.ARRAY_INDEX] = idx
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		var mi := MeshInstance3D.new()
+		mi.name = "FrontGround_stream_%d" % si
+		mi.mesh = am
+		mi.material_override = Level3D.stream_material(-0.55, 1.0)     # UV.y rośnie ku kamerze; płycizna widziana z góry
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
 
 
 ## Siatka płyty z pasów (`_span`): wierzch od z0 do GROUND_Z[-1] z nierównością, osobno w każdej kolumnie (dwa odcinki na kolumnę), pionowe
@@ -1975,7 +2064,7 @@ static func _ground_cover(parent: Node3D) -> void:
 		for _n in int((x1 - x0) * (GROUND_GRASS_M if models else GROUND_GRASS)):
 			var x := rng.randf_range(x0, x1)
 			var z := z0 + (z1 - z0) * pow(rng.randf(), 1.3)
-			if _in_foot(x, z) or _span_y(g, x) < float(g["base"]) - 0.3 or _mud_k(x, z) > 0.55:
+			if _in_foot(x, z) or _span_y(g, x) < float(g["base"]) - 0.3 or _wet_k(x, z) > 0.55:
 				continue                                     # bez runa na dnie dołka przed szybem i na bagnie
 			var hmax := 0.3 + 0.12 * (z - zf)
 			var fern := z > zf + 1.7 and rng.randf() < 0.22
@@ -2010,12 +2099,15 @@ static func _ground_cover(parent: Node3D) -> void:
 			var pname: String = GROUND_PROPS[k % GROUND_PROPS.size()]
 			k += 1
 			var mm := Level3D.model_mesh(pname)
-			if not mm.is_empty() and not _in_foot(x, z, 1.25) and level_at(x) and _mud_k(x, z) < 0.05:
+			if not mm.is_empty() and not _in_foot(x, z, 1.25) and level_at(x) and _wet_k(x, z) < 0.05:
 				var local: Transform3D = mm[1]
 				var ab := local * (mm[0] as Mesh).get_aabb()
 				var big := maxf(maxf(ab.size.x, ab.size.z), 0.001)
 				var sz: Vector2 = PROP_SIZE.get(pname, Vector2(0.6, 1.2))
 				var size := rng.randf_range(sz.x, sz.y)
+				if Level3D.front_stream_dist(x, z) < size * 0.6 + 1.0:      # płot, kłoda: cały na suchym, nie końcem w nurcie
+					x += rng.randf_range(PROP_STEP.x, PROP_STEP.y)
+					continue
 				var s := size / big
 				var ry := rng.randf_range(-0.45, 0.45) if pname in PROP_ALONG else rng.randf() * TAU
 				if pname in PROP_ACROSS:
@@ -2089,7 +2181,7 @@ static func _clump_cover(mxf: Dictionary, rng: RandomNumberGenerator) -> void:
 					x += rng.randf_range(-0.9, 0.9)
 					z += rng.randf_range(-0.45, 0.45)
 				var yg := ground_y(x, z)
-				if yg == -INF or _mud_k(x, z) > 0.3:
+				if yg == -INF or _wet_k(x, z) > 0.3:
 					continue
 				var h := minf(rng.randf_range(hr.x, hr.y), 0.3 + 0.2 * (z - _front_z(x)))
 				var nm := String(names[rng.randi() % names.size()])
@@ -2120,7 +2212,7 @@ static func _grass_tufts(parent: Node3D, rng: RandomNumberGenerator, z1: float) 
 			var n := noise.get_noise_2d(x, z) * 0.5 + 0.5
 			if rng.randf() > smoothstep(0.05, 0.45, n) * lerpf(0.75, 1.0, clampf((z - zf) / TUFT_NEAR, 0.0, 1.0)):
 				continue
-			if _in_foot(x, z, 0.6) or _span_y(g, x) < float(g["base"]) - 0.3 or _mud_k(x, z) > 0.3:
+			if _in_foot(x, z, 0.6) or _span_y(g, x) < float(g["base"]) - 0.3 or _wet_k(x, z) > 0.3:
 				continue
 			var hmax := 0.3 + 0.12 * (z - zf)
 			var h := minf(rng.randf_range(TUFT_H.x, TUFT_H.y) * (0.7 + 0.6 * n), hmax)
