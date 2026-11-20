@@ -66,6 +66,7 @@ func _process(_dt: float) -> bool:
 	_check_roof()
 	_check_mine()
 	_check_strata()
+	_check_back_rock()
 	_check_graffiti_pl()
 	_check_grime()
 	_check_stream()
@@ -1251,6 +1252,53 @@ func _check_strata() -> void:
 	Level3D.set_strata(rows2)
 	_check(String(rows2[37]).substr(222, 1) == "#" and Level3D.rock_at(222, 37), "1.2: grunt obok końca pomieszczenia za kratką nie w skale")
 	Level3D.strata_top = PackedInt32Array()
+
+## Ściana tła pod ziemią (przegląd spójności, pkt 2 — cegła w kieszeniach): w pasach przekroju `mine` i `tunnel` całe tło ze skały, szyb spod
+## posterunku 1.3 skałą tylko poniżej betonu, tło na powierzchni i w budynkach (hale, kryjówka, B1) dalej murem; kratka w skale ma skalne ościeża.
+func _check_back_rock() -> void:
+	var want_rock := {"z1_m1": [], "z1_m2": [], "z1_m3": []}
+	for m: String in ["z1_m1", "z1_m2", "z1_m3", "z1_hub", "z1_b1"]:
+		var cm: Dictionary = (load("res://scripts/maps/%s.gd" % m) as Script).get_script_constant_map()
+		var rows: Array = cm["MAP"]
+		var front: Array = cm.get("FRONT", [])
+		Level3D.set_shells(front, rows)
+		Level3D.set_strata(rows)
+		var rock := 0
+		var brick_in_band := 0
+		var built_rock := 0
+		for r in rows.size():
+			for c in (rows[0] as String).length():
+				if not Level3D.back_wall_at(rows, c, r):
+					continue
+				var br := Level3D.back_rock(c, r)
+				if br:
+					rock += 1
+				for e: Dictionary in front:
+					if not bool(e.get("shell", false)) or c < int(e["c0"]) or c > int(e["c1"]) or r < int(e["r0"]) or r > int(e["r1"]):
+						continue
+					if String(e["set"]) in ["tunnel", "mine"] and not br and not Level3D.bld_back.has(Vector2i(c, r)) and not Level3D.bld_walls.has(Vector2i(c, r)):
+						var inside_station := false
+						for e2: Dictionary in front:
+							if bool(e2.get("shell", false)) and String(e2["set"]) in ["station", "bunker"] and c >= int(e2["c0"]) and c <= int(e2["c1"]) and r >= int(e2["r0"]) and r <= int(e2["r1"]):
+								inside_station = true
+						if not inside_station:
+							brick_in_band += 1
+					if String(e["set"]) in ["station", "bunker"] and br:
+						built_rock += 1
+		_check(brick_in_band == 0, "%s: %d kafli tła z cegły w pasach tunnel/mine" % [m, brick_in_band])
+		_check(built_rock == 0, "%s: %d kafli tła ze skały w pasach budynków" % [m, built_rock])
+		if m in ["z1_hub", "z1_b1"]:
+			_check(rock == 0, "%s: %d kafli tła ze skały w budynku pod ziemią" % [m, rock])
+		elif m in want_rock:
+			_check(rock > 50, "%s: tylko %d kafli tła ze skały pod ziemią" % [m, rock])
+		if m == "z1_m3":
+			_check(Level3D.back_rock(40, 33) and Level3D.back_rock(40, 35), "1.3: szyb spod posterunku 3 kafle pod betonem z cegłą zamiast skały")
+			_check(not Level3D.back_rock(40, 27) and not Level3D.back_rock(40, 31) and not Level3D.back_rock(30, 23), "1.3: szyb w betonie albo wnętrze posterunku ze skałą")
+			var mat := Niches3D._building_wall({"kind": "vent", "c0": 36, "c1": 36, "r0": 36, "r1": 36})
+			_check(mat == Level3D.rock_material(), "1.3: kratka w skalnym tunelu bez skalnych ościeży")
+	Level3D.set_shells([], [])
+	Level3D.strata_top = PackedInt32Array()
+	Level3D.solid_top = PackedInt32Array()
 
 ## Kopalnia 1.1 (UNDERGROUND_PLAN.md U4): wpisy z przekrojem w zestawie `mine` (wschodni koniec pod betonem bunkra — `tunnel`), w nich
 ## tylko obudowa drewniana jako duże elementy — stojak z kory albo deski, bez stalowej płytki pod stropem, stropnica w głąb kończy się
