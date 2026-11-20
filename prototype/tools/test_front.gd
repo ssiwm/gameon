@@ -67,6 +67,7 @@ func _process(_dt: float) -> bool:
 	_check_mine()
 	_check_strata()
 	_check_back_rock()
+	_check_terrain_cut()
 	_check_graffiti_pl()
 	_check_grime()
 	_check_stream()
@@ -1299,6 +1300,34 @@ func _check_back_rock() -> void:
 	Level3D.set_shells([], [])
 	Level3D.strata_top = PackedInt32Array()
 	Level3D.solid_top = PackedInt32Array()
+
+## Grunt `#` z przekrojem ziemi (przegląd spójności, pkt 2 — raster kamyków na stopniach): wierzch ściółką `terrain` w tej samej skali
+## co płyta pierwszego planu (bez szwu), boki ziemią `dig_dirt`, brud i mokry przebieg gruntu mapy; bryła gruntu w `build_level` go używa.
+func _check_terrain_cut() -> void:
+	var base := Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")
+	var m := Level3D.terrain_cut_material() as ShaderMaterial
+	_check(m != null, "grunt: brak materiału z przekrojem ziemi")
+	if m == null:
+		return
+	var a0 := m.get_shader_parameter("a0") as Texture2D
+	var a1 := m.get_shader_parameter("a1") as Texture2D
+	_check(a0 != null and a0.resource_path == base.albedo_texture.resource_path, "grunt: wierzch nie ściółką mapy (%s)" % (a0.resource_path if a0 else "brak"))
+	_check(a1 != null and a1.resource_path.ends_with("dig_dirt_albedo.png"), "grunt: boki nie ziemią dig_dirt")
+	var per: Vector2 = m.get_shader_parameter("per_m")
+	_check(is_equal_approx(per.x, base.uv1_scale.x), "grunt: skala wierzchu %.2f zamiast %.2f płyty pierwszego planu" % [per.x, base.uv1_scale.x])
+	_check(m.next_pass == base.next_pass and m.next_pass != null, "grunt: bez brudu i mokrego przebiegu mapy")
+	var code := (m.shader as Shader).code
+	_check(code.contains("bw.y * step(0.0, n.y)"), "grunt: podział wierzch / boki zmieniony")
+	var rows: Array = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()["MAP"]
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Level3D.build_level(root, rows)
+	var used := false
+	for c in root.get_children():
+		if c is MultiMeshInstance3D and (c as MultiMeshInstance3D).material_override == m:
+			used = true
+	_check(used, "grunt: bryła gruntu 1.2 bez materiału z przekrojem ziemi")
+	root.queue_free()
 
 ## Kopalnia 1.1 (UNDERGROUND_PLAN.md U4): wpisy z przekrojem w zestawie `mine` (wschodni koniec pod betonem bunkra — `tunnel`), w nich
 ## tylko obudowa drewniana jako duże elementy — stojak z kory albo deski, bez stalowej płytki pod stropem, stropnica w głąb kończy się

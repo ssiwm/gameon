@@ -1149,7 +1149,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 			elif ch == "E" or ch == "e":
 				marks["E"].append(cell_pos(c, r) + Vector3(0.0, -T * 0.5, 0.0))
 	var mats := {
-		"#": make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic"),
+		"#": terrain_cut_material(),
 		"C": make_pbr("concrete", 0.33, Color(0.30, 0.31, 0.33), 0.9, 1.0, 1.0, false, "stone"),
 		"roof": make_pbr("roof", 0.25, Color(0.30, 0.22, 0.20), 0.8, 1.0, 1.0, false, "rust"),
 		"M": make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust"),
@@ -1935,6 +1935,88 @@ static var rock_rects: Array = []
 ## mieszanych wielkoskalowym szumem — na nawisie 1.1 (57 × 20 m) kafel 2,5 m układał się w regularną kratkę plam. Normalne z obu skal
 ## (mieszanie „whiteout” na osiach świata), odcień z koloru wierzchołków (jaskinia; kafle bez kolorów mają biały). Gdy tekstur brak, zwykły materiał skały.
 static var _rock_mat: Material
+## Grunt `#` z przekrojem ziemi (przegląd spójności 2026-11-19, pkt 2 — „raster kamyków” na schodkach): tekstura `terrain` to ściółka
+## widziana z góry (igły, mech, duże kamienie co ~3 m), a triplanar kładł ją też na pionowe lica kafli — stopnie, półki i ściany szybów
+## miały ten sam kamienny raster co wierzch. Teraz wierzch (normalna w górę) ma ściółkę jak dotąd (ten sam rzut co płyta pierwszego
+## planu i strefy wydobycia — bez szwu), a boki i spód suchą ziemię `dig_dirt` (Poly Haven `brown_mud_dry`, ta sama co ściany wykopu).
+## Brud i mokry przebieg z `make_pbr("terrain")`. Dev `--noterraincut` — ściółka na wszystkich licach jak do 1.7.630.
+const TERRAIN_CUT_SHADER := """
+shader_type spatial;
+render_mode depth_draw_opaque;
+
+uniform sampler2D a0 : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D n0 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D o0 : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D a1 : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D n1 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D o1 : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec2 per_m = vec2(0.30, 0.55);
+
+varying vec3 wpos;
+varying vec3 wnrm;
+
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+}
+
+// triplanar jednego zestawu (jak `dig_ground.gd`): kolor, normalna świata (whiteout), AO i szorstkość
+void tri(sampler2D a, sampler2D nm, sampler2D o, float s, vec3 n, vec3 bw, inout vec3 alb, inout vec3 nw, inout vec2 ar) {
+	vec2 ux = wpos.zy * s;
+	vec2 uy = wpos.xz * s;
+	vec2 uz = wpos.xy * s;
+	alb += texture(a, ux).rgb * bw.x + texture(a, uy).rgb * bw.y + texture(a, uz).rgb * bw.z;
+	vec3 tx = texture(nm, ux).xyz * 2.0 - 1.0;
+	vec3 ty = texture(nm, uy).xyz * 2.0 - 1.0;
+	vec3 tz = texture(nm, uz).xyz * 2.0 - 1.0;
+	tx = vec3(tx.xy + n.zy, abs(tx.z) * n.x);
+	ty = vec3(ty.xy + n.xz, abs(ty.z) * n.y);
+	tz = vec3(tz.xy + n.xy, abs(tz.z) * n.z);
+	nw += tx.zyx * bw.x + ty.xzy * bw.y + tz.xyz * bw.z;
+	ar += texture(o, ux).rg * bw.x + texture(o, uy).rg * bw.y + texture(o, uz).rg * bw.z;
+}
+
+void fragment() {
+	vec3 n = normalize(wnrm);
+	vec3 bw = pow(abs(n), vec3(4.0));
+	bw /= (bw.x + bw.y + bw.z);
+	vec3 top = vec3(0.0, bw.y * step(0.0, n.y), 0.0);      // wierzch: ściółka; boki i spód: ziemia
+	vec3 side = bw - top;
+	vec3 alb = vec3(0.0);
+	vec3 nw = vec3(0.0);
+	vec2 ar = vec2(0.0);
+	if (top.y > 0.001) { tri(a0, n0, o0, per_m.x, n, top, alb, nw, ar); }
+	if (top.y < 0.999) { tri(a1, n1, o1, per_m.y, n, side, alb, nw, ar); }
+	ALBEDO = alb;
+	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(nw), 0.0)).xyz);
+	AO = ar.x;
+	ROUGHNESS = ar.y;
+	METALLIC = 0.0;
+}
+"""
+static var _terrain_cut: Material = null
+
+static func terrain_cut_material() -> Material:
+	var base := make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")
+	if "--noterraincut" in OS.get_cmdline_user_args() or "--noworldpbr" in OS.get_cmdline_user_args() 			or not ResourceLoader.exists(PBR_DIR + "dig_dirt_albedo.png") or base.albedo_texture == null:
+		return base
+	if _terrain_cut != null:
+		return _terrain_cut
+	var sh := Shader.new()
+	sh.code = TERRAIN_CUT_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	var i := 0
+	for nm: String in ["terrain", "dig_dirt"]:
+		m.set_shader_parameter("a%d" % i, load(PBR_DIR + nm + "_albedo.png"))
+		m.set_shader_parameter("n%d" % i, load(PBR_DIR + nm + "_normal.png"))
+		m.set_shader_parameter("o%d" % i, load(PBR_DIR + nm + "_orm.png"))
+		i += 1
+	m.set_shader_parameter("per_m", Vector2(0.30, 0.55))
+	m.next_pass = base.next_pass                                # brud i mokry przebieg gruntu mapy
+	_terrain_cut = m
+	return m
+
 static func rock_material() -> Material:
 	if _rock_mat != null:
 		return _rock_mat
