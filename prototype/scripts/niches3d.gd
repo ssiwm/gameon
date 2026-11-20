@@ -227,7 +227,8 @@ static func _geom(d: Dictionary) -> Dictionary:
 			"ix0": x0 + JAMB, "ix1": x1 - JAMB, "iy1": y_top - LINTEL, "front": WALL_Z + 0.3}
 
 ## Materiał muru wnęki w budynku 3D (`Level3D.buildings`): ściana tylna typu budynku — w żelbetowym posterunku 1.3 beton zamiast cegły
-## (przegląd budynków 2026-11-17: ceglane ościeża i boki wnęk w betonowej ścianie); poza budynkiem null (cegła). Ustawia `build` na czas wnęki.
+## (przegląd budynków 2026-11-17: ceglane ościeża i boki wnęk w betonowej ścianie); w ścianie tła ze skały (`Level3D.back_rock`, od 1.7.630)
+## skała — kratka w tunelu 1.3 miała ceglany kwadrat w skale; poza tym null (cegła). Ustawia `build` na czas wnęki.
 static var _wall_mat: Material = null
 
 static func _building_wall(d: Dictionary) -> Material:
@@ -240,6 +241,8 @@ static func _building_wall(d: Dictionary) -> Material:
 			if Level3D.bld_walls.has(Vector2i(c, r)):
 				var spec2: Dictionary = Building3D.KINDS.get(String(Level3D.bld_walls[Vector2i(c, r)]), Building3D.KINDS["bunker"])
 				return Building3D._tinted(spec2.get("back", spec2["wall"]))
+	if Level3D.back_rock((int(d["c0"]) + int(d["c1"])) >> 1, int(d["r1"])):
+		return Level3D.rock_material()
 	return null
 
 static func _mats() -> Dictionary:

@@ -1139,7 +1139,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 					continue
 				groups["R" if ch == "#" and rock_at(c, r) else ch].append(Transform3D(Basis.IDENTITY, p + Vector3(0.0, 0.0, zc)))   # R: płyta nawisu (`cave3d.gd`) i skała przekroju podziemi
 			if back_wall_at(rows, c, r) and not bld_back.has(Vector2i(c, r)) and not bld_walls.has(Vector2i(c, r)):
-				(rock_walls if in_rock_rect(c, r) else walls).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
+				(rock_walls if in_rock_rect(c, r) or back_rock(c, r) else walls).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
 				pass
 			elif is_platform_ch(ch):
@@ -2057,12 +2057,30 @@ static func shell_rock(c: int, r: int) -> bool:
 ## górne kieszenie 1.3) były gruntem obok płyt ze skały; na powierzchni schodki i półki zostają gruntem. Dev `--nostrata` — jak wcześniej.
 const STRATA_DEPTH := 3
 static var strata_top := PackedInt32Array()
+static var solid_top := PackedInt32Array()     ## pierwszy lity kafel od góry z co najmniej STRATA_DEPTH litymi pod nim, z budynkami (`back_rock`)
+static var _strata_rows: Array = []
 
 ## Wierzch kolumny: pierwszy kafel gruntu `#` od góry — bez budynków, wież i pomostów (`C`, `M`; grunt przy wieży strażnicy 1.1 byłby skałą),
 ## bez płyt nawisu (`rock_rects`) i bez cienkich półek wiszących w powietrzu (mniej niż STRATA_DEPTH litych kafli, pod nimi powietrze).
 static func set_strata(rows: Array) -> void:
 	var cols: int = (rows[0] as String).length() if not rows.is_empty() else 0
+	_strata_rows = rows
 	strata_top.resize(cols)
+	solid_top.resize(cols)
+	for c in cols:
+		solid_top[c] = rows.size()
+		var q := 0
+		while q < rows.size():
+			if not is_solid_ch(_ch(rows, c, q)):
+				q += 1
+				continue
+			var n := 0
+			while q + n < rows.size() and is_solid_ch(_ch(rows, c, q + n)):
+				n += 1
+			if n >= STRATA_DEPTH or q + n >= rows.size():
+				solid_top[c] = q
+				break
+			q += n
 	for c in cols:
 		strata_top[c] = rows.size()
 		var r := 0
@@ -2082,6 +2100,38 @@ static func strata_rock(c: int, r: int) -> bool:
 	if c < 0 or c >= strata_top.size() or "--nostrata" in OS.get_cmdline_user_args():
 		return false
 	return r - strata_top[c] >= STRATA_DEPTH
+
+## Ściana tła pod ziemią (przegląd spójności 2026-11-19, pkt 2 — „cegła tła w kieszeniach pod ziemią”): płyta tła głębiej niż STRATA_DEPTH
+## kafli pod wierzchem kolumny ma skałę (`rock_material`) zamiast muru z cegły — kopalnia 1.1, tunele i hala pod ziemią 1.2, podziemia 1.3
+## miały ceglany prostokąt w kształcie pustki, ze schodkowym brzegiem o skałę nad nim. Także całe pasy przekroju `tunnel` i `mine` (pod
+## budynkiem wierzch kolumny leży głębiej — sam warunek głębokości zostawiał ceglane łaty). Cegła zostaje w pasach budynków (`station`,
+## `bunker`: hale, kryjówka) i na powierzchni. Także kieszeń, której najbliższe lite kafle w wierszu po obu stronach to grunt `#` co najmniej
+## STRATA_DEPTH kafli pod wierzchem swojej kolumny liczonym z budynkami (`solid_top`) — szyb spod posterunku 1.3 (kol. 38–43): nad nim
+## betonowa podłoga, więc wierzch gruntu wypadał 14 wierszy niżej; część szybu w betonie zostaje murem. Dev `--nobackrock` — cegła jak do 1.7.629.
+static func back_rock(c: int, r: int) -> bool:
+	if "--nobackrock" in OS.get_cmdline_user_args():
+		return false
+	var deep := strata_rock(c, r) or (_flank_deep(c, r, -1) and _flank_deep(c, r, 1))
+	for e: Dictionary in shell_bands:
+		if c < int(e["c0"]) or c > int(e["c1"]) or r < int(e["r0"]) or r > int(e["r1"]):
+			continue
+		var st := String(e.get("set", ""))
+		if st in ["station", "bunker"]:
+			return false
+		if st in ["tunnel", "mine"]:
+			deep = true
+	return deep
+
+## Najbliższy lity kafel w wierszu `r` w stronę `dir` (do 40 kolumn): grunt `#` co najmniej STRATA_DEPTH pod wierzchem `solid_top`.
+static func _flank_deep(c: int, r: int, dir: int) -> bool:
+	for k in range(1, 41):
+		var cc := c + dir * k
+		if cc < 0 or cc >= solid_top.size():
+			return false
+		var ch := _ch(_strata_rows, cc, r)
+		if is_solid_ch(ch):
+			return ch == "#" and r - solid_top[cc] >= STRATA_DEPTH
+	return false
 
 ## Kafel `#` w skale (`mats["R"]`): płyta nawisu, przekrój podziemi albo głębiej pod wierzchem kolumny.
 static func rock_at(c: int, r: int) -> bool:
