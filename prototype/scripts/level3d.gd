@@ -2132,7 +2132,9 @@ static var _rock_mat: Material
 ## Brud i mokry przebieg z `make_pbr("terrain")`. Dev `--noterraincut` — ściółka na wszystkich licach jak do 1.7.630.
 const TERRAIN_CUT_SHADER := """
 shader_type spatial;
-render_mode depth_draw_opaque;
+// diffuse_burley jawnie: shader własny w Godot 4.7 liczy rozproszenie Lambertem, a StandardMaterial3D dna lasu Burleyem — przy płaskim
+// spojrzeniu kamery na wierzch bryły Burley jest o ok. 20% jaśniejszy i nocą (kontrast 1,10 ucina czerń) wierzch był wyraźnie ciemniejszy od dna lasu
+render_mode depth_draw_opaque, diffuse_burley;
 
 uniform sampler2D a0 : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D n0 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -4906,12 +4908,14 @@ void vertex() {
 	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float sway = sin(TIME * 1.1 + w.x * 0.8 + w.z * 1.9) * 0.6 + sin(TIME * 2.7 + w.x * 2.3) * 0.4;
 	VERTEX.x += (sway - lean) * 0.14 * amp * k * k;
-	NORMAL = normalize(vec3(0.0, 1.0, 0.45));
 	COLOR = INSTANCE_CUSTOM;
 	if (gmask_at(MODEL_MATRIX[3].x) < 0.5) { VERTEX = vec3(0.0); }
 }
 void fragment() {
 	vec4 c = texture(tex, UV);
+	// normalna w świecie (w górę, lekko ku kamerze) wspólna dla obu stron karty: do 1.7.632 ustawiana w vertex() w układzie modelu, więc
+	// obracała się z egzemplarzem, a na tylnej stronie (cull_disabled) silnik odwracał ją w dół — nocą połowa runa na bryle była czarna
+	NORMAL = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.45, 0.0)).xyz);
 	ALBEDO = c.rgb * mix(0.6, 1.5, 1.0 - UV.y) * (0.8 + 0.5 * COLOR.r);
 	ALPHA = c.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.45;
