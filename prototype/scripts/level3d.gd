@@ -3438,11 +3438,14 @@ void fragment() {
 ## Trzcina, patyki: cienkie wstęgi i pryzmy z kolorem wierzchołkowym; alfa koloru = waga kołysania (u podstawy 0, na końcu 1).
 const REED_SHADER := """
 shader_type spatial;
-render_mode cull_disabled, specular_schlick_ggx;
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 uniform float sway = 0.045;
+uniform float up_k = 0.55;             // normalna źdźbła pochylona ku górze (jak trawa przed bryłą, `Front3D.GRASS_SHADER`)
+varying vec3 v_nw;
 uniform vec4 pushers[8];               // przechodzący (view3d._sync_reeds): x, y stóp, z, siła 0..1 — kępy rozchylają się na boki i lekko kładą
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_nw = (MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	float k = COLOR.a;
 	VERTEX.x += (sin(TIME * 1.25 + wp.x * 2.3 + wp.z * 1.7) * 0.7 + sin(TIME * 2.9 + wp.x * 5.0) * 0.3) * sway * k * k;
 	for (int i = 0; i < 8; i++) {
@@ -3458,7 +3461,13 @@ void vertex() {
 	}
 }
 void fragment() {
+	// normalna w świecie: strona źdźbła ku kamerze, pochylona ku górze — do 1.7.633 pozioma normalna płaskiej wstęgi dostawała od księżyca
+	// (z góry) prawie nic, a strona odwrócona od jego kierunku nic; nocą trzcina przy brodzie była czarną sylwetką na jasnym gruncie
+	vec3 nw = normalize(v_nw);
+	if (dot(nw, (INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz) < 0.0) { nw = -nw; }
+	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mix(nw, vec3(0.0, 1.0, 0.0), up_k)), 0.0)).xyz);
 	ALBEDO = COLOR.rgb;
+	BACKLIGHT = COLOR.rgb * 0.6;                        // cienkie źdźbło prześwituje pod światło (kontra `MoonRim` przy korycie w lesie)
 	ROUGHNESS = 0.88;
 	SPECULAR = 0.25;
 }

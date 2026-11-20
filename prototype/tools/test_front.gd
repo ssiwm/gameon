@@ -1466,6 +1466,9 @@ func _check_terrain_cut() -> void:
 	var ug := Level3D.UNDERGROWTH_SHADER
 	var ug_frag := ug.substr(ug.find("void fragment()"))
 	_check(ug_frag.contains("NORMAL = normalize((VIEW_MATRIX * vec4(") and not ug.substr(0, ug.find("void fragment()")).contains("NORMAL ="), "runo: normalna kart w vertex() — tył karty nocą czarny")
+	# trzcina przy cieczach i korycie: normalna ku kamerze pochylona ku górze, Burley i prześwit (pozioma normalna wstęgi — czarna sylwetka nocą)
+	var rd := Level3D.REED_SHADER
+	_check(rd.contains("diffuse_burley") and rd.contains("up_k") and rd.contains("BACKLIGHT") and rd.substr(rd.find("void fragment()")).contains("NORMAL = "), "trzcina: bez normalnej ku górze, Burleya albo prześwitu — nocą czarna")
 	var rows: Array = (load("res://scripts/maps/z1_m2.gd") as Script).get_script_constant_map()["MAP"]
 	var root := Node3D.new()
 	get_root().add_child(root)
