@@ -1404,6 +1404,51 @@ float fbm(vec2 p) {
 	for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.03 + vec2(17.1, 9.7); a *= 0.5; }
 	return s;
 }
+// szum wody nurtu (zmarszczki, smugi): dwie siatki komórek obrócone o ±37° — siatka `vn` wzdłuż osi świata dawała na tafli brodu
+// i wstędze koryta poziome pasy i prostokątne „kafle” (do 1.7.632); kontrast jak pojedynczej siatki
+float vnr(vec2 p) {
+	float a = vn(mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * p);
+	float b = vn(mat2(vec2(0.8, -0.6), vec2(0.6, 0.8)) * p * 1.13 + vec2(5.3, 1.7));
+	return 0.5 + (a + b - 1.0) * 0.7;
+}
+// fbm z obrotem każdej oktawy (bez wspólnej siatki oktaw)
+// pole wysokości zmarszczek i jego gradient — normalna z nachylenia, nie z wartości szumu (wartość `vn` jako normalna dawała płaskie
+// płaty z kanciastymi przejściami). Szum gradientowy z interpolacją 5. stopnia: `vn` ma zerową pochodną na krawędziach komórek, więc
+// jego nachylenie rysowało jasne linie siatki. Hasz `hq` (hash12 Hoskinsa): kąty z `h21` korelowały wzdłuż przekątnych — długie proste
+// rysy w odblasku
+float hq(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+float gn(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+	float a0 = hq(i) * 6.2832;
+	float a1 = hq(i + vec2(1.0, 0.0)) * 6.2832;
+	float a2 = hq(i + vec2(0.0, 1.0)) * 6.2832;
+	float a3 = hq(i + vec2(1.0, 1.0)) * 6.2832;
+	float va = dot(vec2(cos(a0), sin(a0)), f);
+	float vb = dot(vec2(cos(a1), sin(a1)), f - vec2(1.0, 0.0));
+	float vc = dot(vec2(cos(a2), sin(a2)), f - vec2(0.0, 1.0));
+	float vd = dot(vec2(cos(a3), sin(a3)), f - vec2(1.0, 1.0));
+	return mix(mix(va, vb, u.x), mix(vc, vd, u.x), u.y);
+}
+float wh(vec2 q) {
+	return gn(mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * q) + 0.45 * gn(mat2(vec2(0.8, -0.6), vec2(0.6, 0.8)) * q * 2.1 + vec2(3.1, 7.7));
+}
+vec2 wgrad(vec2 q) {
+	float h0 = wh(q);
+	return vec2(wh(q + vec2(0.12, 0.0)) - h0, wh(q + vec2(0.0, 0.12)) - h0) / 0.12;
+}
+float fbmr(vec2 p) {
+	float a = 0.5; float s = 0.0;
+	mat2 r = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
+	p = mat2(vec2(0.96, -0.28), vec2(0.28, 0.96)) * p;
+	for (int i = 0; i < 5; i++) { s += a * vn(p); p = r * p * 2.03 + vec2(17.1, 9.7); a *= 0.5; }
+	return s;
+}
 """
 ## Kręgi kropel na wodzie (WEATHER_PLAN.md W5): nachylenie normalnej od rozchodzących się kręgów w dwóch siatkach komórek; ilość kręgów
 ## i ich siła z `weather_rain` (siła deszczu, view3d.gd). Pod dachem (`weather_roof`: woda poniżej wierzchu pierwszej bryły w kolumnie) nie ma.
@@ -1445,6 +1490,8 @@ uniform float sink = 0.04;
 uniform float z_back = -2.4;           // tył bryły (m) — tylny brzeg niecki: `shore_z` / `shore_k` (te same wzory w GDScript)
 uniform float shore_back = 0.55;
 uniform float shore_bank = 0.65;
+uniform vec4 pool_a = vec4(0.0, 0.0, 0.0, 0.0);     // boki niecki ze strumieniem (`pool_hw`): x środka, pół szerokości w pasie gry, przy tyle i przodzie bryły
+uniform vec2 pool_b = vec2(0.0, 0.0);               // faza meandrów, 1 = boki włączone
 float depth_at(float x) {
 	return texture(prof, vec2(clamp((x - x0) / run_w, 0.0, 1.0), 0.5)).r;
 }
@@ -1452,8 +1499,22 @@ float shore_k(vec2 w) {
 	float zs = z_back + shore_back + 0.25 * sin(w.x * 0.9 + seed) + 0.12 * sin(w.x * 2.3 + seed * 1.7);
 	return smoothstep(zs, zs + shore_bank, w.y);
 }
+float pool_hw_at(vec2 w) {                          // pół szerokości wody niecki ze strumieniem w (x, z) — `Level3D.pool_hw`
+	float dx = w.x - pool_a.x;
+	float ze = w.y + POOL_ZWOB_C * sin(dx * 1.1 + pool_b.x * 1.3);
+	float nb = smoothstep(POOL_N0_C, POOL_NB_C, -ze);
+	float nf = smoothstep(POOL_N0_C, POOL_NF_C, ze);
+	float face = (w.y < 0.0) ? DEPTH_BACK_C : DEPTH_FRONT_C;
+	float env = smoothstep(POOL_N0_C, POOL_N0_C + 0.5, abs(w.y)) * (1.0 - smoothstep(face - 0.3, face, abs(w.y)));
+	return mix(mix(pool_a.y, pool_a.z, nb), pool_a.w, nf) + POOL_WOB_C * sin(w.y * 3.1 + pool_b.x + sign(dx) * 1.7) * env;
+}
+float pool_k(vec2 w) {
+	if (pool_b.y < 0.5) { return 1.0; }
+	float hw = pool_hw_at(w);
+	return 1.0 - smoothstep(hw - POOL_EDGE_C, hw, abs(w.x - pool_a.x));
+}
 float depth_xz(vec2 w) {
-	return depth_at(w.x) * shore_k(w);
+	return depth_at(w.x) * shore_k(w) * pool_k(w);
 }
 float surf_h(vec2 w, float wd) {
 	float bank = smoothstep(0.0, 0.40, wd);
@@ -1504,6 +1565,26 @@ vec2 mud_print(vec2 p) {
 	}
 	return vec2(inside, rim);
 }
+// Niecka brodu ze strumieniem (`pool_b.y`): ta sama woda co nurt (STREAM_SHADER) — kolor od linii wody do środka, zmarszczki i smugi
+// płyną ku kamerze; za płaszczyzną gry wzór nurtu z lasu (UV.y = m od tyłu bryły w głąb), przed nią wzór koryta przed bryłą (od przodu).
+void stream_look(vec2 p, float wy, out vec3 n, out vec3 alb, out float rough) {
+	float dx = p.x - pool_a.x;
+	float hw = pool_hw_at(p);
+	float ew = clamp((hw - abs(dx)) / max(hw, 0.1), 0.0, 1.0);
+	float vb = -p.y - DEPTH_BACK_C;
+	float vf = p.y - DEPTH_FRONT_C;
+	float fb = smoothstep(-0.4, 0.4, p.y);
+	float tb = TIME * 0.55;
+	vec2 qb = vec2(p.x * 1.8, (vb + tb) * 1.7);                            // w metrach świata, jak wstęga (x świata, m od lica bryły)
+	vec2 qf = vec2(p.x * 1.8, (vf - tb) * 1.7);
+	vec2 g = mix(wgrad(qb), wgrad(qf), fb) * RIPPLE_TILT_C;
+	vec2 rp = rain_ripple(p, vec3(p.x, wy, p.y));
+	n = normalize(vec3(g.x + rp.x * 0.5, 1.0, g.y + rp.y * 0.5));
+	float sk = mix(fbmr(vec2(p.x, (vb + tb) * 0.6)), fbmr(vec2(p.x, (vf - tb) * 0.6)), fb);
+	float streak = smoothstep(0.60, 0.80, sk) * smoothstep(0.29, 0.82, ew);
+	alb = mix(vec3(0.105, 0.090, 0.056), vec3(0.070, 0.062, 0.040), smoothstep(0.29, 1.0, ew)) + vec3(0.10, 0.088, 0.060) * streak * 0.6;
+	rough = mix(0.18, 0.5, streak);
+}
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_w = wp.xz;
@@ -1517,6 +1598,17 @@ void fragment() {
 	float wd_f = depth_xz(p) - sink;                                       // per piksel: linia tylnego brzegu bez schodków siatki
 	if (wd_f < -0.01) { discard; }
 	float wd = max(wd_f, 0.0);
+	if (kind == 2 && pool_b.y > 0.5) {
+		vec3 sn;
+		vec3 alb;
+		float rgh;
+		stream_look(p, v_y, sn, alb, rgh);
+		NORMAL = normalize((VIEW_MATRIX * vec4(sn, 0.0)).xyz);
+		ALBEDO = alb;
+		ROUGHNESS = rgh;
+		SPECULAR = 0.6;
+		ALPHA = 0.97 * smoothstep(-0.01, 0.05, wd_f);
+	} else {
 	float e0 = 0.035;
 	float h0 = surf_h(p, wd);
 	float hx = surf_h(p + vec2(e0, 0.0), wd);
@@ -1567,6 +1659,7 @@ void fragment() {
 		ROUGHNESS = mix(0.16, 0.6, foam);
 		SPECULAR = 0.6;
 		ALPHA = clamp(0.92 + foam * 0.08, 0.0, 1.0) * smoothstep(-0.01, 0.05, wd_f);
+	}
 	}
 }
 """
@@ -1901,6 +1994,103 @@ static func run_shore_back(x0: float, w: float) -> float:
 		if float(st["x"]) > x0 and float(st["x"]) < x0 + w:
 			return -10.0
 	return SHORE_BACK
+
+## Boki niecki ze strumieniem (przegląd spójności 2026-11-19, pkt 3): do 1.7.631 niecka brodu 1.1 miała w głębi bryły pełną szerokość ciągu
+## (9 kafli) — prostokąt wody z prostymi bokami między wachlarzem koryta z lasu a lejem koryta przed bryłą. Teraz pełną szerokość ma tylko
+## w pasie gry (±POOL_N0 m, przekrój 2D i brodzenie bez zmian), a ku tyłowi i przodowi bryły zwęża się do szerokości, w której przechodzi
+## w koryto (POOL_FACE_K drogi od szerokości brodu do szerokości koryta), z falującymi bokami. Dno za linią wody wychodzi do poziomu gruntu
+## skarpą POOL_EDGE. Te same wzory liczy shader tafli (`LIQUID_SURF`: pool_k).
+const RIPPLE_TILT := 0.09                ## nachylenie normalnej nurtu na jednostkę gradientu pola zmarszczek (`wgrad`; tafla brodu i wstęga)
+const POOL_N0 := 0.3
+const POOL_NB := 1.6                       ## m za płaszczyzną gry: od tego miejsca do tyłu bryły niecka ma szerokość koryta z lasu
+const POOL_NF := 0.85                      ## m przed płaszczyzną gry: od tego miejsca do przodu bryły — szerokość koryta przed bryłą
+const POOL_FACE_K := 0.45
+const POOL_EDGE := 0.9
+const POOL_WOB := 0.35
+const POOL_ZWOB := 0.22                    ## m: przesunięcie przejścia w z zależne od x (bez prostej krawędzi brodu w poprzek); < POOL_N0, więc pas gry bez zmian
+static var _pool_sides_off := -1           ## dev `--nopoolsides`: 1 = niecka na pełną szerokość ciągu w głębi bryły (stan do 1.7.631, A/B)
+
+static func pool_sides_on() -> bool:
+	if _pool_sides_off < 0:
+		_pool_sides_off = 1 if "--nopoolsides" in OS.get_cmdline_user_args() else 0
+	return _pool_sides_off == 0
+
+## Pół szerokości niecki strumienia `st` (m) w odległości `z` od płaszczyzny gry (ujemne w głąb), `dx` m od środka (strona i falowanie brzegu).
+static func pool_hw(st: Dictionary, z: float, dx := 0.0) -> float:
+	var hw := float(st["hw"])
+	if not pool_sides_on():
+		return hw
+	var ze := z + POOL_ZWOB * sin(dx * 1.1 + float(st["ph"]) * 1.3)
+	var nb := smoothstep(POOL_N0, POOL_NB, -ze)
+	var nf := smoothstep(POOL_N0, POOL_NF, ze)
+	var h := lerpf(lerpf(hw + POOL_EDGE + 0.1, lerpf(hw, STREAM_HW_FAR, POOL_FACE_K), nb), lerpf(hw, FRONT_STREAM_HW, POOL_FACE_K), nf)
+	# boki falują od brodu prawie do lic bryły (bez prostego odcinka przy korycie); na samym licu szerokość koryta (łączy się z wstęgą)
+	var face := DEPTH_BACK if z < 0.0 else DEPTH_FRONT
+	var env := smoothstep(POOL_N0, POOL_N0 + 0.5, absf(z)) * (1.0 - smoothstep(face - 0.3, face, absf(z)))
+	return h + POOL_WOB * sin(z * 3.1 + float(st["ph"]) + signf(dx) * 1.7) * env
+
+## Mokry brzeg niecki brodu (drugi przebieg na dnie, `pool_bank_material`): pas błota STREAM_BANK_M wzdłuż linii wody w kolorze brzegu nurtu
+## (STREAM_SHADER), gasnący na ostatnich 0,6 m w ściółkę dna; pod nim dno ma materiał kafli gruntu (`terrain_cut_material`), więc za brzegiem
+## niecka przechodzi w grunt sąsiednich kafli bez szwu.
+const POOL_BANK_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_back, specular_schlick_ggx;
+uniform int kind = 2;
+uniform float seed = 0.0;
+varying vec3 v_wp;
+//COMMON
+//SURF
+void vertex() {
+	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	vec2 p = v_wp.xz;
+	float dx = p.x - pool_a.x;
+	float wob = (vn(vec2(p.y * 0.7, 2.0 + sign(dx) * 3.0)) - 0.5) * 0.25;
+	float d = abs(dx) - pool_hw_at(p) + wob;                // m za linią wody (pod wodą ujemne)
+	ALBEDO = vec3(0.062, 0.050, 0.036) * (0.8 + 0.4 * vn(vec2(p.x * 2.4, p.y * 7.0)));
+	ROUGHNESS = 0.86;
+	SPECULAR = 0.32;
+	ALPHA = 1.0 - smoothstep(STREAM_BANK_C - 0.6, STREAM_BANK_C, d);
+}
+"""
+
+## Materiał dna niecki brodu: grunt kafli (`terrain_cut_material`) + mokry brzeg (POOL_BANK_SHADER) + brud gruntu.
+static func pool_bank_material(params: Array) -> Material:
+	var base := terrain_cut_material().duplicate() as Material
+	var bank := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = _pool_consts(POOL_BANK_SHADER.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF))
+	bank.shader = sh
+	for sp in params:
+		bank.set_shader_parameter(sp[0], sp[1])
+	bank.next_pass = terrain_cut_material().next_pass
+	base.next_pass = bank
+	return base
+
+## Stałe niecki brodu wstawione do kodu shadera (`LIQUID_SURF`, `LIQUID_TOP`, `POOL_BANK_SHADER`).
+static func _pool_consts(code: String) -> String:
+	return code.replace("RIPPLE_TILT_C", str(RIPPLE_TILT)).replace("POOL_N0_C", str(POOL_N0)).replace("POOL_NB_C", str(POOL_NB)).replace("POOL_NF_C", str(POOL_NF)).replace("DEPTH_BACK_C", str(DEPTH_BACK)).replace("DEPTH_FRONT_C", str(DEPTH_FRONT)).replace("STREAM_BANK_C", str(STREAM_BANK_M)).replace("POOL_WOB_C", str(POOL_WOB)).replace("POOL_ZWOB_C", str(POOL_ZWOB)).replace("POOL_EDGE_C", str(POOL_EDGE))
+
+## Mnożnik głębokości dna niecki strumienia w punkcie (x, z): 1 w wodzie, 0 za skarpą boku (`pool_hw`).
+static func pool_side_k(st: Dictionary, x: float, z: float) -> float:
+	if not pool_sides_on():
+		return 1.0
+	var dx := x - float(st["x"])
+	var hw := pool_hw(st, z, dx)
+	return 1.0 - smoothstep(hw - POOL_EDGE, hw, absf(dx))
+
+## Strumień zasilany przez ciąg [x0, x0 + w] (pusty słownik, gdy ciąg nie ma strumienia).
+static func run_stream(x0: float, w: float) -> Dictionary:
+	for st in streams:
+		if float(st["x"]) > x0 and float(st["x"]) < x0 + w:
+			return st
+	return {}
+
+## Mnożnik głębokości dna ciągu [x0, x0 + w] w punkcie (x, z): boki niecki ze strumieniem, 1 dla zwykłej niecki.
+static func run_pool_k(x0: float, w: float, x: float, z: float) -> float:
+	var st := run_stream(x0, w)
+	return 1.0 if st.is_empty() else pool_side_k(st, x, z)
 
 # ---------------------------------------------------------------- strumień z lasu (kosmetyka)
 
@@ -2651,7 +2841,7 @@ static func stream_hw(st: Dictionary, d: float) -> float:
 	var e := maxf(d - DEPTH_BACK, 0.0)
 	# zmienność szerokości narasta od tyłu bryły: przy bryle woda ma dokładnie szerokość niecki (wcześniej ±10% — woda wystawała za nieckę
 	# prostym cięciem albo odsłaniała jej róg)
-	return lerpf(float(st["hw"]), STREAM_HW_FAR, smoothstep(0.0, 12.0, e)) * (1.0 + (0.2 * sin(d * 0.4 + float(st["ph"])) - 0.1) * smoothstep(0.0, 4.0, e))
+	return lerpf(pool_hw(st, -DEPTH_BACK), STREAM_HW_FAR, smoothstep(0.0, 12.0, e)) * (1.0 + (0.2 * sin(d * 0.4 + float(st["ph"])) - 0.1) * smoothstep(0.0, 4.0, e))
 
 ## Koryto przed bryłą (przegląd spójności 2026-11-20, pkt 6): do 1.7.627 strumień z lasu kończył się w niecce brodu, a płyta podłoża
 ## pierwszego planu (`Front3D._build_ground`) ucinała wodę prostą linią na przodzie bryły — prostokątna kałuża bez odpływu. Teraz nurt
@@ -2670,7 +2860,7 @@ static func front_stream_x(st: Dictionary, z: float) -> float:
 ## Pół szerokości wody przed bryłą (m): przy bryle szerokość niecki, potem zwęża się do FRONT_STREAM_HW.
 static func front_stream_hw(st: Dictionary, z: float) -> float:
 	var e := maxf(z - DEPTH_FRONT, 0.0)
-	return lerpf(float(st["hw"]), FRONT_STREAM_HW, smoothstep(0.0, FRONT_STREAM_NARROW, e)) * (1.0 + (0.16 * sin(z * 0.5 + float(st["ph"])) - 0.08) * smoothstep(0.0, 3.0, e))
+	return lerpf(pool_hw(st, DEPTH_FRONT), FRONT_STREAM_HW, smoothstep(0.0, FRONT_STREAM_NARROW, e)) * (1.0 + (0.16 * sin(z * 0.5 + float(st["ph"])) - 0.08) * smoothstep(0.0, 3.0, e))
 
 ## Odległość (m) punktu (x, z przed płaszczyzną gry) od wody koryta przed bryłą: ujemna w wodzie, INF bez strumieni albo za bryłą.
 static func front_stream_dist(x: float, z: float) -> float:
@@ -2688,11 +2878,15 @@ static func front_stream_dist(x: float, z: float) -> float:
 ## nieba jak w lesie pod kątem i koryto było nocą czarną wstęgą (zrzuty 2026-11-20).
 static func stream_material(flow: float, shallow := 0.0) -> ShaderMaterial:
 	var sh := Shader.new()
-	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("//RIPPLE", RAIN_RIPPLE).replace("DEPTH_BACK_C", str(DEPTH_BACK)).replace("BANK_IN_C", str(STREAM_BANK_IN))
+	sh.code = STREAM_SHADER.replace("//COMMON", LIQUID_COMMON).replace("//RIPPLE", RAIN_RIPPLE).replace("DEPTH_BACK_C", str(DEPTH_BACK)).replace("BANK_IN_C", str(STREAM_BANK_IN)).replace("RIPPLE_TILT_C", str(RIPPLE_TILT))
+	if shallow == 0.0 and pool_sides_on():
+		var md := MOON_DIR.normalized()
+		sh.code = sh.code.replace("//LIGHT", STREAM_LIGHT.replace("RIM_L_C", "vec3(%f, %f, %f)" % [md.x, md.y, md.z]))
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.set_shader_parameter("flow", flow)
 	m.set_shader_parameter("shallow", shallow)
+	m.set_shader_parameter("bank_face", 1.0 if pool_sides_on() else 0.0)
 	return m
 
 ## x przesunięty poza koryto (na bliższy brzeg, `margin` m od wody), gdy punkt (x, głębokość d) leży w korycie; inaczej bez zmian.
@@ -2717,15 +2911,19 @@ uniform float flow = 0.55;             // m/s: nurt ku kamerze
 uniform float fade0 = 18.0;
 uniform float fade1 = 30.0;
 uniform float shallow = 0.0;           // przed bryłą: płycizna z dnem i jaśniejszy brzeg (`stream_material`)
+uniform float bank_face = 0.0;         // 1: brzeg pełny już przy bryle (niecka brodu z bokami ma na dnie ten sam mokry brzeg, `POOL_BANK_SHADER`)
 varying float v_shade;
 varying float v_bank;                  // część szerokości z każdej strony: mokry brzeg zamiast wody (STREAM_BANK_M)
 varying vec3 v_wp;
+varying float v_rimk;
+varying float v_spec;
 //COMMON
 //RIPPLE
 void vertex() {
 	v_shade = COLOR.r;
 	v_bank = COLOR.g;
 	v_wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_rimk = smoothstep(0.0, 4.0, UV.y);
 }
 void fragment() {
 	float u = UV.x;                       // 0..1 w poprzek (z brzegami)
@@ -2736,23 +2934,52 @@ void fragment() {
 	float wob = (vn(vec2(v * 0.7, 2.0)) - 0.5) * 0.06 * bk;              // łagodnie falisty brzeg (wcześniej poszarpany szumem w poprzek)
 	float water = smoothstep(bank - 0.03 * bk, bank + 0.03 * bk, edge + wob);
 	float ew = clamp((edge - bank) / max(0.5 - bank, 0.01), 0.0, 1.0);    // 0 na linii wody, 1 w środku nurtu
-	vec2 q = vec2(u * 7.0, v * 1.7 + TIME * flow * 1.7);
-	float r1 = vn(q) - 0.5;
-	float r2 = vn(q * 1.9 + 7.0) - 0.5;
+	// zmarszczki i smugi w metrach świata (x świata, v), komórki ok. 0,55 × 0,6 m na obróconych siatkach (`vnr`, `fbmr`) — do 1.7.632
+	// w ułamkach szerokości (u · 7: komórka ok. 1,4 m w poprzek, 0,6 m wzdłuż) i na siatce wzdłuż osi: poziome pasy i „kafle”
+	vec2 q = vec2(v_wp.x * 1.8, (v + TIME * flow) * 1.7);
+	vec2 g = wgrad(q) * RIPPLE_TILT_C * water;
 	vec2 rp = rain_ripple(v_wp.xz, v_wp) * water;
-	vec3 n = normalize(vec3(r1 * 0.30 * water + rp.x * 0.5, 1.0, r2 * 0.30 * water + rp.y * 0.5));
+	vec3 n = normalize(vec3(g.x + rp.x * 0.5, 1.0, g.y + rp.y * 0.5));
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
-	float streak = smoothstep(0.60, 0.80, fbm(vec2(u * 9.0, v * 0.6 + TIME * flow * 0.6))) * smoothstep(0.29, 0.82, ew);
+	float streak = smoothstep(0.60, 0.80, fbmr(vec2(v_wp.x, (v + TIME * flow) * 0.6))) * smoothstep(0.29, 0.82, ew);
 	// ta sama woda torfowa co płycizna niecki (LIQUID_TOP przy brzegu) i mokry brzeg jaśniejszy od nurtu — w latarce koryto nie jest czarną plamą
 	float sh = shallow * smoothstep(0.3, 3.0, v);                          // przy bryle jak tafla niecki (bez progu jasności na styku)
 	vec3 wat = mix(vec3(0.105, 0.090, 0.056), vec3(0.070, 0.062, 0.040), smoothstep(0.29, 1.0, ew) * (1.0 - 0.6 * sh)) + vec3(0.10, 0.088, 0.060) * streak * 0.6;
 	wat = mix(wat, vec3(0.125, 0.108, 0.074) * (0.85 + 0.3 * vn(v_wp.xz * 3.1)), sh * 0.45);   // dno płycizny przez mętną wodę
-	vec3 mud = vec3(0.062, 0.050, 0.036) * (0.8 + 0.4 * vn(vec2(u * 24.0, v * 7.0))) * (1.0 + 0.55 * shallow);
+	vec3 mud = vec3(0.062, 0.050, 0.036) * (0.8 + 0.4 * vn(vec2(u * 24.0, v * 7.0))) * (1.0 + 0.55 * mix(shallow, sh, bank_face));   // przy bryle jak brzeg brodu
 	ALBEDO = mix(mud, wat, water) * v_shade;
-	ROUGHNESS = mix(0.86, mix(mix(0.18, 0.42, shallow), 0.5, streak), water);
-	SPECULAR = mix(0.32, mix(0.6, 0.35, shallow), water);                      // płycizna z góry: aura gracza bez białej plamy odbicia
-	float near = mix(smoothstep(0.0, BANK_IN_C, v), 1.0, water);         // brzeg narasta od tyłu bryły, woda łączy się z niecką od razu
+	float shf = mix(shallow, sh, bank_face);                                // przy licu bryły połysk jak tafla brodu (do 1.7.632 próg odblasku na styku)
+	ROUGHNESS = mix(0.86, mix(mix(0.18, 0.42, shf), 0.5, streak), water);
+	SPECULAR = mix(0.32, mix(0.6, 0.35, shf), water);                          // płycizna z góry: aura gracza bez białej plamy odbicia
+	v_spec = SPECULAR;
+	float near = mix(smoothstep(0.0, BANK_IN_C, v), 1.0, max(water, bank_face));   // brzeg narasta od tyłu bryły, woda łączy się z niecką od razu
 	ALPHA = smoothstep(0.0, 0.12 * bk, edge + wob * 0.5) * near * (1.0 - smoothstep(fade0, fade1, v + DEPTH_BACK_C));
+}
+//LIGHT
+"""
+## Oświetlenie wstęgi koryta w lesie przy niecce brodu z bokami (`stream_material`): Lambert + GGX jak domyślne cieniowanie, ale kontra
+## księżyca (`MoonRim`, rozpoznana po kierunku MOON_DIR) narasta od 0 przy tyle bryły do pełnej po 4 m. Tafla brodu leży w warstwie świata
+## i kontry nie dostaje — do 1.7.632 nocą wstęga od samego tyłu bryły była jasnoniebieska, a tafla czarna (skok jasności na styku).
+const STREAM_LIGHT := """
+void light() {
+	float k = 1.0;
+	if (LIGHT_IS_DIRECTIONAL && dot(LIGHT, normalize((VIEW_MATRIX * vec4(RIM_L_C, 0.0)).xyz)) > 0.999) {
+		k = v_rimk;
+	}
+	float ndl = max(dot(NORMAL, LIGHT), 0.0);
+	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * ndl * k / PI;
+	vec3 h = normalize(VIEW + LIGHT);
+	float ndh = max(dot(NORMAL, h), 0.0);
+	float ndv = max(dot(NORMAL, VIEW), 0.001);
+	float a = max(ROUGHNESS * ROUGHNESS, 0.002);
+	float a2 = a * a;
+	float dd = ndh * ndh * (a2 - 1.0) + 1.0;
+	float d = a2 / (PI * dd * dd);
+	float kk = a * 0.5;
+	float vis = 0.25 / ((ndl * (1.0 - kk) + kk) * (ndv * (1.0 - kk) + kk));
+	float f0 = 0.16 * v_spec * v_spec;
+	float f = f0 + (1.0 - f0) * pow(1.0 - max(dot(LIGHT, h), 0.0), 5.0);
+	SPECULAR_LIGHT += LIGHT_COLOR * ATTENUATION * ndl * d * vis * f * SPECULAR_AMOUNT * k;
 }
 """
 
@@ -2778,7 +3005,10 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 		var cols := PackedColorArray()
 		var idx := PackedInt32Array()
 		var across := 9
-		var d := DEPTH_BACK - 0.02
+		var pool_on := pool_sides_on()
+		# przy niecce z bokami wstęga zaczyna się równo z tyłem bryły na poziomie tafli brodu i po 4 cm wychodzi nad dno lasu (bez nakładki
+		# na taflę — podwójna warstwa dawała jasną kreskę — i bez szczeliny między krawędziami na różnej wysokości)
+		var d := DEPTH_BACK if pool_on else DEPTH_BACK - 0.02
 		var rowc := 0
 		while d <= DEPTH_BACK + STREAM_LEN:
 			var cx := stream_x(st, d)
@@ -2789,13 +3019,18 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 			for k in across:
 				var u := float(k) / float(across - 1)
 				var x := cx + (u * 2.0 - 1.0) * hw
-				var y := forest_ground_y(ft, x, maxf(d, DEPTH_BACK)) + 0.05 - 0.07 * (1.0 - smoothstep(0.0, 2.5, e))     # przy bryle równo z taflą niecki
+				# przy bryle równo z taflą niecki; z bokami brodu nad dnem lasu już po 4 cm — do 1.7.631 schodziła pod nie przez 0,8 m
+				# (smoothstep do 2,5 m) i dno lasu przykrywało ją pasem żwiru w poprzek koryta tuż za bryłą
+				var fy := forest_ground_y(ft, x, maxf(d, DEPTH_BACK))
+				var y := fy + 0.05 - 0.07 * (1.0 - smoothstep(0.0, 2.5, e))
+				if pool_on:
+					y = fy - LIQUID_SINK if e <= 0.001 else fy + 0.05 - 0.035 * (1.0 - smoothstep(0.0, 0.5, e))
 				verts.append(Vector3(x, y, -d))
 				nrms.append(Vector3.UP)
 				uvs.append(Vector2(u, e))
 				cols.append(Color(shade, bank, 0.0))
 			rowc += 1
-			d += 0.5 + e * 0.04
+			d = DEPTH_BACK + 0.04 if pool_on and rowc == 1 else d + 0.5 + e * 0.04
 		for j in rowc - 1:
 			for k in across - 1:
 				var a := j * across + k                                   # a, b: bliżej kamery; c, d: dalej
@@ -2888,9 +3123,9 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 	var cols: int = (rows[0] as String).length() if nrows > 0 else 0
 	var kinds := {"m": 0, "O": 1, "~": 2}
 	var top_sh := Shader.new()
-	top_sh.code = LIQUID_TOP.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF).replace("//RIPPLE", RAIN_RIPPLE)
+	top_sh.code = _pool_consts(LIQUID_TOP.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF).replace("//RIPPLE", RAIN_RIPPLE))
 	var front_sh := Shader.new()
-	front_sh.code = LIQUID_FRONT.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF)
+	front_sh.code = _pool_consts(LIQUID_FRONT.replace("//COMMON", LIQUID_COMMON).replace("//SURF", LIQUID_SURF))
 	var drip_sh := Shader.new()
 	drip_sh.code = LIQUID_DRIP.replace("//COMMON", LIQUID_COMMON)
 	var wet := make_pbr("terrain", 0.30, Color(0.12, 0.10, 0.08), 1.0, 1.0, 1.0, false, "organic")
@@ -2932,6 +3167,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			var d0 := clampf(0.50 + 0.065 * w, 0.70, 1.20) if kd > 0 else clampf(0.26 + 0.030 * w, 0.34, 0.60)
 			var bank := 0.75 if kd > 0 else 0.55
 			var prof := _liquid_profile(w, ns, d0, bank, seed, cap)
+			var pst := run_stream(x0, w) if pool_sides_on() else {}     # niecka ze strumieniem: boki zwężają się w głąb i ku przodowi (`pool_hw`)
 
 			# --- bryła gruntu pod nieckę: front (przekrój), dno niecki (powierzchnia profilu) i boki ciągu
 			var verts := PackedVector3Array()
@@ -2941,7 +3177,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 				var x := x0 + w * float(i) / float(ns)
 				var col := mini(i / per_tile, n - 1)
 				var yb := y_top - float(stack[col]) * T
-				var yt := y_top - prof[i]
+				var yt := y_top - prof[i] * (1.0 if pst.is_empty() else pool_side_k(pst, x, zf))
 				# front (z = +DEPTH_FRONT): dwa wierzchołki na próbkę
 				verts.append(Vector3(x, yt, zf))
 				verts.append(Vector3(x, yb, zf))
@@ -2953,7 +3189,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			# dno: siatka x × z — w głąb profil wypłyca się skarpą tylnego brzegu (`shore_k`), gęściej przy samej skarpie
 			var zrows: Array = []
 			var zz := zb
-			while zz < zb + SHORE_BACK + 0.37 + SHORE_BANK:
+			while zz < (zf if not pst.is_empty() else zb + SHORE_BACK + 0.37 + SHORE_BANK):    # boki niecki: gęsto na całą głębokość
 				zrows.append(zz)
 				zz += 0.12
 			zrows.append(zf)
@@ -2962,7 +3198,8 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			var sback := run_shore_back(x0, w)
 			var bed_h := func(i: int, z: float) -> float:
 				var xi := clampi(i, 0, ns)
-				return y_top - prof[xi] * shore_k(x0 + dx * float(xi), z, seed, sback)
+				var k := 1.0 if pst.is_empty() else pool_side_k(pst, x0 + dx * float(xi), z)
+				return y_top - prof[xi] * shore_k(x0 + dx * float(xi), z, seed, sback) * k
 			var base := verts.size()
 			for i in ns + 1:
 				var x := x0 + dx * float(i)
@@ -2978,6 +3215,19 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 					var g0 := base + i * nz + j                         # (x_i, z_j) — z_j bliżej tyłu niż z_(j+1)
 					var g1 := base + (i + 1) * nz + j
 					idx.append_array(PackedInt32Array([g0, g1, g1 + 1, g0, g1 + 1, g0 + 1]))
+			# tył niecki ze strumieniem: nurt wpływa z lasu, więc tylnego brzegu (`shore_k`) nie ma i dno urywa się na tyle bryły na pełnej
+			# głębokości — do 1.7.632 przez tę szczelinę pod taflą (alfa 0,97) i na szwach z wstęgą prześwitywało tło spod dna lasu.
+			# Ściana od dna do 1 cm pod taflą (wyżej jej krawędź rysowała się nad wodą ciemną kreską na styku z wstęgą), licem ku kamerze
+			if not pst.is_empty():
+				var bw0 := verts.size()
+				for i in ns + 1:
+					verts.append(Vector3(x0 + dx * float(i), maxf(float(bed_h.call(i, zb)), y_top - sink - 0.01), zb))
+					verts.append(Vector3(x0 + dx * float(i), float(bed_h.call(i, zb)), zb))                # te same wysokości co pierwszy rząd dna: bez szczeliny
+					norms.append(Vector3.BACK)
+					norms.append(Vector3.BACK)
+				for i in ns:
+					var a := bw0 + i * 2
+					idx.append_array(PackedInt32Array([a, a + 2, a + 3, a, a + 3, a + 1]))
 			# boki ciągu (widoczne, gdy obok jest powietrze): pionowe ściany od profilu w dół na pełną głębokość
 			for sidec in [0, 1]:
 				var xi := 0 if sidec == 0 else ns
@@ -3017,7 +3267,7 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			var fi := PackedInt32Array()
 			for i in ns + 1:
 				var x := x0 + w * float(i) / float(ns)
-				var yb2 := minf(y_top - prof[i], y_s)
+				var yb2 := minf(y_top - prof[i] * (1.0 if pst.is_empty() else pool_side_k(pst, x, zf)), y_s)
 				fv.append(Vector3(x, y_s, zf + 0.012))
 				fv.append(Vector3(x, yb2, zf + 0.012))
 			for i in ns:
@@ -3038,7 +3288,12 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			fmat.set_shader_parameter("x0", x0)
 			fmat.set_shader_parameter("run_w", w)
 			fmat.set_shader_parameter("sink", sink)
-			for sp in [["z_back", zb], ["shore_back", sback], ["shore_bank", SHORE_BANK]]:
+			var pool_a := Vector4.ZERO if pst.is_empty() else Vector4(float(pst["x"]), pool_hw(pst, 0.0), pool_hw(pst, zb), pool_hw(pst, zf))
+			var pool_b := Vector2.ZERO if pst.is_empty() else Vector2(float(pst["ph"]), 1.0)
+			if not pst.is_empty():                             # dno brodu: grunt kafli z mokrym brzegiem wzdłuż linii wody (jak brzeg nurtu)
+				shell.material_override = pool_bank_material([["prof", ptex], ["x0", x0], ["run_w", w], ["sink", sink], ["z_back", zb],
+						["shore_back", sback], ["shore_bank", SHORE_BANK], ["pool_a", pool_a], ["pool_b", pool_b], ["seed", seed], ["kind", kd]])
+			for sp in [["z_back", zb], ["shore_back", sback], ["shore_bank", SHORE_BANK], ["pool_a", pool_a], ["pool_b", pool_b]]:
 				fmat.set_shader_parameter(sp[0], sp[1])
 			var fmi := MeshInstance3D.new()
 			fmi.name = "LiquidFront_%s_%d_%d" % [ch, c, r]
@@ -3049,7 +3304,8 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 
 			# --- tafla (siatka z falami i przemieszczeniem)
 			var pm := PlaneMesh.new()
-			pm.size = Vector2(w, zf - zb)
+			var zb_t := zb - (0.03 if not pst.is_empty() else 0.0)     # niecka ze strumieniem: 3 cm pod wstęgę lasu — bez szczeliny na styku
+			pm.size = Vector2(w, zf - zb_t)
 			pm.subdivide_width = maxi(8, int(w * 10.0))
 			pm.subdivide_depth = 20
 			var sm := ShaderMaterial.new()
@@ -3059,14 +3315,14 @@ static func build_liquids(parent: Node3D, rows: Array) -> void:
 			sm.set_shader_parameter("x0", x0)
 			sm.set_shader_parameter("run_w", w)
 			sm.set_shader_parameter("sink", sink)
-			for sp in [["z_back", zb], ["shore_back", sback], ["shore_bank", SHORE_BANK]]:
+			for sp in [["z_back", zb], ["shore_back", sback], ["shore_bank", SHORE_BANK], ["pool_a", pool_a], ["pool_b", pool_b]]:
 				sm.set_shader_parameter(sp[0], sp[1])
 			sm.set_shader_parameter("seed", seed)
 			var tmi := MeshInstance3D.new()
 			tmi.name = "LiquidTop_%s_%d_%d" % [ch, c, r]
 			tmi.mesh = pm
 			tmi.material_override = sm
-			tmi.position = Vector3(x0 + w * 0.5, y_s, (zf + zb) * 0.5)
+			tmi.position = Vector3(x0 + w * 0.5, y_s, (zf + zb_t) * 0.5)
 			tmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			parent.add_child(tmi)
 
@@ -3760,8 +4016,8 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 					if prof[xi] > 0.40:
 						continue
 					var bx := x0 + (float(xi) / float(ns)) * w
-					var by := y_top - prof[xi] + 0.02
 					var wz := rng.randf_range(maxf(zb + 1.0, shore_z(bx, float(run["seed"]), run_shore_back(x0, w)) + SHORE_BANK), zf - 0.45)
+					var by := y_top - prof[xi] * run_pool_k(x0, w, bx, wz) + 0.02             # boki niecki ze strumieniem: kępa na dnie albo na brzegu
 					reed_spots.append(Vector3(bx, by, wz))
 					for b in rng.randi_range(4, 9):
 						var base := Vector3(bx + rng.randf_range(-0.16, 0.16), by, wz + rng.randf_range(-0.25, 0.25))
@@ -3778,6 +4034,32 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 				var d := Vector3(cos(yaw) * cos(tilt), sin(tilt), sin(yaw) * cos(tilt))
 				var p0 := Vector3(sx, ground_y + 0.015, sz)
 				_stick(v, nr, col, idx, p0, p0 + d * ln, rng.randf_range(0.012, 0.028), stick_c.lerp(Color(0.09, 0.07, 0.05), rng.randf()))
+		# brzeg brodu ze strumieniem (boki niecki, `pool_hw`): kępy trzciny na suchym dnie tuż za linią wody, w głębi i przed pasem gry
+		# (osobne losowanie — rekwizyty innych niecek bez zmian)
+		var pst := run_stream(x0, w) if pool_sides_on() and kd == 2 else {}
+		if not pst.is_empty():
+			var prng := RandomNumberGenerator.new()
+			prng.seed = int(run["seed"]) * 131 + 7
+			for sd in [-1.0, 1.0]:
+				var pz := zb + prng.randf_range(0.15, 0.45)
+				while pz < zf - 0.15:
+					if absf(pz) < 0.55:                                   # pas gry: postacie brodzą przez cały bród
+						pz = 0.55
+						continue
+					var hw := pool_hw(pst, pz, sd)
+					var px := clampf(float(pst["x"]) + sd * (hw + prng.randf_range(0.05, 0.75)), x0 + 0.15, x0 + w - 0.15)
+					if pool_side_k(pst, px, pz) > 0.25:
+						pz += 0.3
+						continue
+					var xi := int(clampf((px - x0) / w * float(ns), 0.0, float(ns)))
+					var py := y_top - prof[xi] * pool_side_k(pst, px, pz)
+					reed_spots.append(Vector3(px, py, pz))
+					for b in prng.randi_range(5, 11):
+						var base := Vector3(px + prng.randf_range(-0.2, 0.2), py - 0.02, pz + prng.randf_range(-0.16, 0.16))
+						var hh := prng.randf_range(0.6, 1.5)
+						var lean := Vector3(prng.randf_range(-0.25, 0.25) * hh, 0.0, prng.randf_range(-0.10, 0.10) * hh)
+						_blade(v, nr, col, idx, base, hh, prng.randf_range(0.020, 0.036), prng.randf() * TAU, lean, cb, ct, prng.randf() < 0.25)
+					pz += prng.randf_range(0.45, 1.0)
 		# tylny brzeg: pas trzciny (woda) albo turzycy (błoto) wzdłuż falistej linii brzegu — tam, gdzie staw przechodzi w dno lasu
 		var sback := run_shore_back(x0, w)
 		if kd != 1 and sback > 0.0:
@@ -3804,7 +4086,10 @@ static func build_liquid_props(parent: Node3D, rows: Array) -> void:
 					continue
 				var yaw := rng.randf_range(-0.5, 0.5) + (PI * 0.5 if rng.randf() < 0.2 else 0.0)
 				var ln := rng.randf_range(0.35, 1.0)
-				var p0 := Vector3(x0 + fx, y_s + 0.012, rng.randf_range(maxf(zb + 1.0, shore_z(x0 + fx, float(run["seed"]), run_shore_back(x0, w)) + SHORE_BANK), zf - 0.5))
+				var pz := rng.randf_range(maxf(zb + 1.0, shore_z(x0 + fx, float(run["seed"]), run_shore_back(x0, w)) + SHORE_BANK), zf - 0.5)
+				if prof[xi] * run_pool_k(x0, w, x0 + fx, pz) - sink < 0.12:              # boki niecki ze strumieniem: patyk tylko na wodzie
+					continue
+				var p0 := Vector3(x0 + fx, y_s + 0.012, pz)
 				var d := Vector3(cos(yaw), 0.0, sin(yaw))
 				_stick(v, nr, col, idx, p0, p0 + d * ln, rng.randf_range(0.012, 0.024), stick_c)
 	if v.size() > 0:
@@ -4105,6 +4390,16 @@ static func forest_ground_y(ft: Dictionary, x: float, d: float, hill := true) ->
 ## wierzchołków. Przy bryle leży tuż pod jej wierzchem. Wychodzi FOREST_FLOOR_MARGIN poza brzegi mapy:
 ## w perspektywie daleki pas widać szerzej niż plan gry.
 const FOREST_FLOOR_MARGIN := 30.0
+## Przy niecce brodu z bokami: przedni rząd dna lasu pod wstęgą koryta schodzi 6 cm niżej (pod taflę brodu, LIQUID_SINK). Do 1.7.632 leżał
+## 3 cm pod gruntem, czyli 1 cm nad taflą — jego krawędź rysowała się na tyle bryły przerywaną kreską między taflą a wstęgą. Tylko węzły,
+## których sąsiedzi (co T) też leżą pod wstęgą — obniżenie nie wychodzi spod niej.
+static func _floor_dip(x: float) -> float:
+	if not pool_sides_on():
+		return 0.0
+	for st: Dictionary in streams:
+		if absf(x - stream_x(st, DEPTH_BACK)) < stream_hw(st, DEPTH_BACK) + STREAM_BANK_M - T:
+			return 0.06
+	return 0.0
 static func build_forest_floor(parent: Node3D, rows: Array) -> void:
 	var ft := forest_terrain(rows)
 	if ft.is_empty() or "--noforestfloor" in OS.get_cmdline_user_args():      # dev: bez dna lasu (porównanie)
@@ -4122,7 +4417,7 @@ static func build_forest_floor(parent: Node3D, rows: Array) -> void:
 	hs.resize(nx * nz)
 	for j in nz:
 		for i in nx:
-			hs[j * nx + i] = forest_ground_y(ft, x0 + float(i) * T, depths[j], false) - (0.03 if j == 0 else 0.0)
+			hs[j * nx + i] = forest_ground_y(ft, x0 + float(i) * T, depths[j], false) - (0.03 if j == 0 else 0.0) - (_floor_dip(x0 + float(i) * T) if j == 0 else 0.0)
 	var verts := PackedVector3Array()
 	var nrms := PackedVector3Array()
 	var cols_c := PackedColorArray()

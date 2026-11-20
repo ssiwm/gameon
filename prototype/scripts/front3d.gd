@@ -1879,19 +1879,23 @@ static func _build_front_stream(parent: Node3D) -> void:
 		var uvs := PackedVector2Array()
 		var cols := PackedColorArray()
 		var idx := PackedInt32Array()
-		var z := Level3D.DEPTH_FRONT
+		# przy niecce z bokami pierwszy rząd 4 cm w głąb nad taflą brodu: wstęga jest w obrazie graczy (inny viewport niż tafla), więc
+		# styk krawędzią w krawędź zostawiał na z = DEPTH_FRONT przerywaną jasną szczelinę (przód przekroju wody pod spodem)
+		var lap := 0.04 if Level3D.pool_sides_on() else 0.0
+		var z := Level3D.DEPTH_FRONT - lap
 		var rowc := 0
 		while true:
-			var cx := Level3D.front_stream_x(st, z)
-			var hw := Level3D.front_stream_hw(st, z) + Level3D.STREAM_BANK_M
+			var zg := maxf(z, Level3D.DEPTH_FRONT)
+			var cx := Level3D.front_stream_x(st, zg)
+			var hw := Level3D.front_stream_hw(st, zg) + Level3D.STREAM_BANK_M
 			var e := z - Level3D.DEPTH_FRONT
-			var y0 := ground_y(cx, z)
+			var y0 := ground_y(cx, zg)
 			if y0 == -INF:
 				break
 			for k in across:
 				var u := float(k) / float(across - 1)
 				var x := cx + (u * 2.0 - 1.0) * hw
-				var yg := ground_y(x, z)
+				var yg := ground_y(x, zg)
 				verts.append(Vector3(x, (yg if yg > -INF else y0) + STREAM_LIFT, z))
 				nrms.append(Vector3.UP)
 				uvs.append(Vector2(u, e))
@@ -1899,7 +1903,7 @@ static func _build_front_stream(parent: Node3D) -> void:
 			rowc += 1
 			if z >= z_end - 0.01:
 				break
-			z = minf(z + 0.25 + e * 0.05, z_end)
+			z = Level3D.DEPTH_FRONT if z < Level3D.DEPTH_FRONT else minf(z + 0.25 + e * 0.05, z_end)
 		if rowc < 2:
 			continue
 		for j in rowc - 1:

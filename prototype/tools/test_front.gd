@@ -72,6 +72,7 @@ func _process(_dt: float) -> bool:
 	_check_grime()
 	_check_stream()
 	_check_front_stream()
+	_check_pool_sides()
 	_check_hills()
 	_check_oil()
 	_check_forest()
@@ -1027,7 +1028,8 @@ func _check_stream() -> void:
 	var rows: Array = Level3D.sky_edges(c1["MAP"])
 	Level3D.set_streams(c1["STREAMS"])
 	var st: Dictionary = Level3D.streams[0]
-	_check(is_equal_approx(Level3D.stream_hw(st, Level3D.DEPTH_BACK), float(st["hw"])), "strumień 1.1: przy bryle szerokość %.2f zamiast niecki %.2f" % [Level3D.stream_hw(st, Level3D.DEPTH_BACK), float(st["hw"])])
+	var hw_b := Level3D.pool_hw(st, -Level3D.DEPTH_BACK)
+	_check(is_equal_approx(Level3D.stream_hw(st, Level3D.DEPTH_BACK), hw_b), "strumień 1.1: przy bryle szerokość %.2f zamiast niecki %.2f" % [Level3D.stream_hw(st, Level3D.DEPTH_BACK), hw_b])
 	var root := Node3D.new()
 	get_root().add_child(root)
 	Level3D.build_streams(root, rows)
@@ -1044,7 +1046,39 @@ func _check_stream() -> void:
 			worst = maxf(worst, absf(cs[row * 9].g * w - Level3D.STREAM_BANK_M) - w / 255.0)   # kolor wierzchołka w 8 bitach
 		_check(worst < 0.005, "strumień 1.1: mokry brzeg różni się od %.1f m o %.2f m" % [Level3D.STREAM_BANK_M, worst])
 		var w0 := absf(vs[8].x - vs[0].x)
-		_check(w0 <= 2.0 * (float(st["hw"]) + Level3D.STREAM_BANK_M) + 0.01, "strumień 1.1: przy bryle wstęga %.1f m (wachlarz brzegu)" % w0)
+		_check(w0 <= 2.0 * (hw_b + Level3D.STREAM_BANK_M) + 0.01, "strumień 1.1: przy bryle wstęga %.1f m (wachlarz brzegu)" % w0)
+		# wstęga nad dnem lasu już ~0,2 m za bryłą (do 1.7.631 schodziła pod nie na 0,8 m: pas żwiru w poprzek koryta tuż za bryłą)
+		var ft := Level3D.forest_terrain(rows)
+		var under := 0.0
+		for v in vs:
+			if -v.z >= Level3D.DEPTH_BACK + 0.2:
+				under = minf(under, v.y - Level3D.forest_ground_y(ft, v.x, -v.z))
+		_check(under >= 0.0, "strumień 1.1: wstęga %.3f m pod dnem lasu dalej niż 0,2 m za bryłą" % under)
+		# pierwszy rząd równo z tyłem bryły na poziomie tafli brodu (bez nakładki na taflę i bez szczeliny), brzeg pełny już przy bryle
+		var y_s := -23.0 * Level3D.T - Level3D.LIQUID_SINK
+		var first := 0.0
+		for k in 9:
+			first = maxf(first, maxf(absf(vs[k].z + Level3D.DEPTH_BACK), absf(vs[k].y - y_s)))
+		_check(first < 0.002, "strumień 1.1: pierwszy rząd wstęgi %.3f m od tyłu bryły / tafli brodu" % first)
+		var sm := mi.material_override as ShaderMaterial
+		_check(sm != null and float(sm.get_shader_parameter("bank_face")) == 1.0, "strumień 1.1: brzeg wstęgi gaśnie przy bryle (bank_face)")
+		# kontra księżyca na wstędze narasta od tyłu bryły (własne `light()`): tafla brodu jej nie dostaje — bez skoku jasności nocą
+		var code := (sm.shader as Shader).code if sm != null else ""
+		_check(code.contains("void light()") and code.contains("v_rimk"), "strumień 1.1: wstęga z pełną kontrą księżyca od tyłu bryły (brak `light()`)")
+		_check(not Level3D.stream_material(-0.55, 1.0).shader.code.contains("void light()"), "strumień 1.1: płycizna przed bryłą z własnym `light()`")
+		# zmarszczki z szumu gradientowego na obróconych siatkach (bez pasów i „kafli” siatki wzdłuż osi)
+		_check(code.contains("wgrad(") and not code.contains("vn(q) - 0.5"), "strumień 1.1: zmarszczki z wartości szumu na siatce wzdłuż osi")
+		# dno lasu: przedni rząd pod wstęgą poniżej tafli brodu (krawędź nie wystaje między taflą a wstęgą)
+		Level3D.build_forest_floor(root, rows)
+		var ff := root.get_node_or_null("ForestFloor") as MeshInstance3D
+		var high := -INF
+		var nunder := 0
+		if ff != null:
+			for v in (ff.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+				if absf(v.z + Level3D.DEPTH_BACK) < 0.001 and absf(v.x - Level3D.stream_x(st, Level3D.DEPTH_BACK)) < hw_b:
+					high = maxf(high, v.y - y_s)
+					nunder += 1
+		_check(ff != null and nunder >= 3 and high < -0.01, "strumień 1.1: przedni rząd dna lasu pod korytem %.3f m nad taflą brodu (%d węzłów)" % [high, nunder])
 	var env_root := Node3D.new()
 	get_root().add_child(env_root)
 	Level3D.build_environment(env_root)
@@ -1067,8 +1101,9 @@ func _check_front_stream() -> void:
 	var st: Dictionary = Level3D.streams[0]
 	var zf := Level3D.DEPTH_FRONT
 	var z_end: float = Front3D.GROUND_Z[Front3D.GROUND_Z.size() - 1]
-	_check(is_equal_approx(Level3D.front_stream_hw(st, zf), float(st["hw"])) and is_equal_approx(Level3D.front_stream_x(st, zf), float(st["x"])),
-			"koryto 1.1 przed bryłą: przy bryle %.2f m w x %.2f zamiast niecki %.2f w %.2f" % [Level3D.front_stream_hw(st, zf), Level3D.front_stream_x(st, zf), float(st["hw"]), float(st["x"])])
+	var hw_f := Level3D.pool_hw(st, zf)
+	_check(is_equal_approx(Level3D.front_stream_hw(st, zf), hw_f) and is_equal_approx(Level3D.front_stream_x(st, zf), float(st["x"])),
+			"koryto 1.1 przed bryłą: przy bryle %.2f m w x %.2f zamiast niecki %.2f w %.2f" % [Level3D.front_stream_hw(st, zf), Level3D.front_stream_x(st, zf), hw_f, float(st["x"])])
 	var hw_far := Level3D.front_stream_hw(st, z_end)
 	_check(hw_far >= Level3D.FRONT_STREAM_HW * 0.9 and hw_far <= Level3D.FRONT_STREAM_HW * 1.1, "koryto 1.1 przed bryłą: przy kamerze pół szerokości %.2f m" % hw_far)
 	var keep := Level3D.STREAM_BANK_M + 0.5
@@ -1086,13 +1121,19 @@ func _check_front_stream() -> void:
 		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 		var cs: PackedColorArray = arr[Mesh.ARRAY_COLOR]
 		var across := 11
-		_check(absf(vs[0].z - zf) < 0.001 and absf(vs[vs.size() - 1].z - z_end) < 0.001, "koryto 1.1: wstęga od z %.2f do %.2f zamiast od przodu bryły do przodu płyty" % [vs[0].z, vs[vs.size() - 1].z])
+		# przy niecce z bokami pierwszy rząd 4 cm w głąb nad taflą (inny viewport niż tafla — bez szczeliny na styku), drugi na przodzie bryły
+		var lap := 0.04 if Level3D.pool_sides_on() else 0.0
+		_check(absf(vs[0].z - (zf - lap)) < 0.001 and absf(vs[vs.size() - 1].z - z_end) < 0.001, "koryto 1.1: wstęga od z %.2f do %.2f zamiast od przodu bryły do przodu płyty" % [vs[0].z, vs[vs.size() - 1].z])
+		if lap > 0.0:
+			_check(absf(vs[across].z - zf) < 0.001, "koryto 1.1: drugi rząd wstęgi w z %.2f zamiast na przodzie bryły" % vs[across].z)
 		var w0 := vs[across - 1].x - vs[0].x
-		_check(absf(w0 - 2.0 * (float(st["hw"]) + Level3D.STREAM_BANK_M)) < 0.01, "koryto 1.1: przy bryle wstęga %.2f m (niecka z brzegami %.2f)" % [w0, 2.0 * (float(st["hw"]) + Level3D.STREAM_BANK_M)])
+		_check(absf(w0 - 2.0 * (hw_f + Level3D.STREAM_BANK_M)) < 0.01, "koryto 1.1: przy bryle wstęga %.2f m (niecka z brzegami %.2f)" % [w0, 2.0 * (hw_f + Level3D.STREAM_BANK_M)])
 		var worst := 0.0
 		var flat := 0.0
 		for i in vs.size():
 			var v := vs[i]
+			if v.z < zf - 0.001:
+				continue                                                  # zakładka nad taflą: przed nią nie ma płyty
 			var yg := Front3D.ground_y(v.x, v.z)
 			worst = minf(worst, v.y - yg - 0.01)
 			var u := float(i % across) / float(across - 1)
@@ -1303,6 +1344,107 @@ func _check_back_rock() -> void:
 
 ## Grunt `#` z przekrojem ziemi (przegląd spójności, pkt 2 — raster kamyków na stopniach): wierzch ściółką `terrain` w tej samej skali
 ## co płyta pierwszego planu (bez szwu), boki ziemią `dig_dirt`, brud i mokry przebieg gruntu mapy; bryła gruntu w `build_level` go używa.
+## Boki niecki brodu 1.1 (przegląd spójności, pkt 3, od 1.7.632): pełna szerokość ciągu tylko w pasie gry (przekrój 2D i brodzenie bez zmian),
+## ku tyłowi i przodowi bryły niecka zwęża się do szerokości koryta z lasu i koryta przed bryłą, a dno za linią wody wychodzi do poziomu gruntu;
+## krawędź brodu w poprzek faluje (bez prostej linii), zwykłe niecki bez boków.
+func _check_pool_sides() -> void:
+	var c1: Dictionary = (load("res://scripts/maps/z1_m1.gd") as Script).get_script_constant_map()
+	var rows: Array = Level3D.sky_edges(c1["MAP"])
+	Level3D.set_streams(c1["STREAMS"])
+	var st: Dictionary = Level3D.streams[0]
+	var cx := float(st["x"])
+	var hw := float(st["hw"])
+	var zb := -Level3D.DEPTH_BACK
+	var zf := Level3D.DEPTH_FRONT
+	var worst := 1.0
+	for z in [-0.06, 0.0, 0.06]:
+		var x := cx - hw
+		while x <= cx + hw:
+			worst = minf(worst, Level3D.pool_side_k(st, x, z))
+			x += 0.1
+	_check(worst > 0.999, "niecka 1.1: w pasie gry dno płytsze (mnożnik %.3f) — zmieniony przekrój brodu" % worst)
+	var hb := Level3D.pool_hw(st, zb)
+	var hf := Level3D.pool_hw(st, zf)
+	_check(hb < hw - 1.5 and hb > Level3D.STREAM_HW_FAR + 1.0, "niecka 1.1: przy tyle bryły pół szerokości %.2f m (brodu %.2f)" % [hb, hw])
+	_check(hf < hw - 1.5 and hf > Level3D.FRONT_STREAM_HW + 1.0, "niecka 1.1: przy przodzie bryły pół szerokości %.2f m (brodu %.2f)" % [hf, hw])
+	for z in [zb, -1.8, zf - 0.05]:
+		for sd in [-1.0, 1.0]:
+			var k := Level3D.pool_side_k(st, cx + sd * (hw - 0.5), z)
+			_check(k < 0.001, "niecka 1.1: w z %.2f przy %s brzegu ciągu woda (mnożnik %.2f) — prosty bok" % [z, "lewym" if sd < 0.0 else "prawym", k])
+	# krawędź brodu w poprzek: z, w którym mnożnik spada do 0,5, różni się wzdłuż x (bez prostej linii)
+	var zc := PackedFloat32Array()
+	for dx in [4.9, 5.3, 5.7, 6.1]:
+		var z := -0.3
+		while z > zb and Level3D.pool_side_k(st, cx + dx, z) > 0.5:
+			z -= 0.01
+		zc.append(z)
+	var span := 0.0
+	for z in zc:
+		span = maxf(span, absf(z - (zc[0] + zc[zc.size() - 1]) * 0.5))
+	_check(span > 0.05, "niecka 1.1: krawędź brodu w poprzek prosta (z przejścia %s)" % str(zc))
+	# boki falują aż do lic bryły (bez prostego odcinka przy korycie): pół szerokości przy licach nie jest stała
+	for zr in [[-2.1, -1.6], [0.95, 1.05]]:
+		var lo := INF
+		var hi := -INF
+		var z: float = zr[0]
+		while z <= zr[1]:
+			var h := Level3D.pool_hw(st, z, 1.0)
+			lo = minf(lo, h)
+			hi = maxf(hi, h)
+			z += 0.02
+		_check(hi - lo > (0.1 if zr[0] < 0.0 else 0.02), "niecka 1.1: prosty bok w z %.2f..%.2f (pół szerokości %.2f..%.2f)" % [zr[0], zr[1], lo, hi])
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Level3D.build_liquids(root, rows)
+	var bed := root.get_node_or_null("LiquidBed_~_18_23") as MeshInstance3D
+	var top := root.get_node_or_null("LiquidTop_~_18_23") as MeshInstance3D
+	_check(bed != null and top != null, "niecka 1.1: brak dna albo tafli brodu")
+	if bed != null and top != null:
+		var y_top := -23.0 * Level3D.T
+		var vs: PackedVector3Array = (bed.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var n_dry := 0
+		var wet_dry := 0.0
+		for v in vs:
+			if v.z < -1.8 and absf(v.x - cx) > hw - 0.6 and absf(v.x - cx) < hw - 0.02:      # bez pionowych boków ciągu
+				n_dry += 1
+				wet_dry = maxf(wet_dry, absf(v.y - y_top))
+		_check(n_dry > 20 and wet_dry < 0.001, "niecka 1.1: dno przy brzegu ciągu w głębi bryły %.3f m pod gruntem (%d wierzchołków)" % [wet_dry, n_dry])
+		# tył niecki ze strumieniem: ściana od dna do 1 cm pod taflą (bez szczeliny do tła spod dna lasu)
+		var sink := Level3D.LIQUID_SINK
+		var wall := 0
+		for v in vs:
+			if absf(v.z - zb) < 0.001 and absf(v.x - cx) < 1.0 and absf(v.y - (y_top - sink - 0.01)) < 0.001:
+				wall += 1
+		_check(wall >= 5, "niecka 1.1: brak tylnej ściany dna (%d wierzchołków pod taflą)" % wall)
+		var pm := top.mesh as PlaneMesh
+		_check(absf((top.position.z - pm.size.y * 0.5) - (zb - 0.03)) < 0.001, "niecka 1.1: tafla nie sięga 3 cm pod wstęgę lasu (tył %.3f)" % (top.position.z - pm.size.y * 0.5))
+		var m := top.material_override as ShaderMaterial
+		var pa: Vector4 = m.get_shader_parameter("pool_a")
+		var pb: Vector2 = m.get_shader_parameter("pool_b")
+		_check(pb.y == 1.0 and is_equal_approx(pa.x, cx) and is_equal_approx(pa.z, hb) and is_equal_approx(pa.w, hf), "niecka 1.1: tafla bez boków (pool_a %s, pool_b %s)" % [pa, pb])
+		# dno: grunt kafli z mokrym brzegiem wzdłuż linii wody (drugi przebieg z tymi samymi bokami co tafla)
+		var bank := (bed.material_override as Material).next_pass as ShaderMaterial if bed.material_override != null else null
+		var bpb: Vector2 = bank.get_shader_parameter("pool_b") if bank != null else Vector2.ZERO
+		_check(bank != null and bpb.y == 1.0 and bank.next_pass != null, "niecka 1.1: dno bez mokrego brzegu albo bez brudu gruntu")
+		# trzcina na suchym dnie przy linii wody, w głębi i przed pasem gry, nie w pasie gry
+		Level3D.build_liquid_props(root, rows)
+		var shore := 0
+		for sp in Level3D.reed_spots:
+			# na suchym dnie (stare kępy płycizny przy brzegu ciągu stoją w wodzie z założenia)
+			if absf(sp.x - cx) < hw and sp.z > -Level3D.DEPTH_BACK and sp.z < Level3D.DEPTH_FRONT and Level3D.pool_side_k(st, sp.x, sp.z) <= 0.25:
+				shore += 1
+				_check(absf(sp.z) >= 0.55, "niecka 1.1: trzcina na brzegu w pasie gry (x %.2f, z %.2f)" % [sp.x, sp.z])
+		_check(shore >= 4, "niecka 1.1: %d kęp trzciny na brzegu brodu" % shore)
+	var other := 0
+	for c in root.get_children():
+		if String(c.name).begins_with("LiquidTop_") and c != top:
+			var pb2: Vector2 = ((c as MeshInstance3D).material_override as ShaderMaterial).get_shader_parameter("pool_b")
+			other += 1
+			_check(pb2.y == 0.0, "%s: zwykła niecka z bokami brodu" % c.name)
+	_check(other > 0, "niecka 1.1: brak zwykłych niecek do porównania")
+	root.queue_free()
+	Level3D.set_streams([])
+
 func _check_terrain_cut() -> void:
 	var base := Level3D.make_pbr("terrain", 0.30, Color(0.20, 0.17, 0.14), 0.97, 1.0, 1.0, false, "organic")
 	var m := Level3D.terrain_cut_material() as ShaderMaterial
