@@ -1062,6 +1062,23 @@ func _check_stream() -> void:
 		_check(first < 0.002, "strumień 1.1: pierwszy rząd wstęgi %.3f m od tyłu bryły / tafli brodu" % first)
 		var sm := mi.material_override as ShaderMaterial
 		_check(sm != null and float(sm.get_shader_parameter("bank_face")) == 1.0, "strumień 1.1: brzeg wstęgi gaśnie przy bryle (bank_face)")
+		# kontra księżyca na wstędze narasta od tyłu bryły (własne `light()`): tafla brodu jej nie dostaje — bez skoku jasności nocą
+		var code := (sm.shader as Shader).code if sm != null else ""
+		_check(code.contains("void light()") and code.contains("v_rimk"), "strumień 1.1: wstęga z pełną kontrą księżyca od tyłu bryły (brak `light()`)")
+		_check(not Level3D.stream_material(-0.55, 1.0).shader.code.contains("void light()"), "strumień 1.1: płycizna przed bryłą z własnym `light()`")
+		# zmarszczki z szumu gradientowego na obróconych siatkach (bez pasów i „kafli” siatki wzdłuż osi)
+		_check(code.contains("wgrad(") and not code.contains("vn(q) - 0.5"), "strumień 1.1: zmarszczki z wartości szumu na siatce wzdłuż osi")
+		# dno lasu: przedni rząd pod wstęgą poniżej tafli brodu (krawędź nie wystaje między taflą a wstęgą)
+		Level3D.build_forest_floor(root, rows)
+		var ff := root.get_node_or_null("ForestFloor") as MeshInstance3D
+		var high := -INF
+		var nunder := 0
+		if ff != null:
+			for v in (ff.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+				if absf(v.z + Level3D.DEPTH_BACK) < 0.001 and absf(v.x - Level3D.stream_x(st, Level3D.DEPTH_BACK)) < hw_b:
+					high = maxf(high, v.y - y_s)
+					nunder += 1
+		_check(ff != null and nunder >= 3 and high < -0.01, "strumień 1.1: przedni rząd dna lasu pod korytem %.3f m nad taflą brodu (%d węzłów)" % [high, nunder])
 	var env_root := Node3D.new()
 	get_root().add_child(env_root)
 	Level3D.build_environment(env_root)
@@ -1104,13 +1121,19 @@ func _check_front_stream() -> void:
 		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 		var cs: PackedColorArray = arr[Mesh.ARRAY_COLOR]
 		var across := 11
-		_check(absf(vs[0].z - zf) < 0.001 and absf(vs[vs.size() - 1].z - z_end) < 0.001, "koryto 1.1: wstęga od z %.2f do %.2f zamiast od przodu bryły do przodu płyty" % [vs[0].z, vs[vs.size() - 1].z])
+		# przy niecce z bokami pierwszy rząd 4 cm w głąb nad taflą (inny viewport niż tafla — bez szczeliny na styku), drugi na przodzie bryły
+		var lap := 0.04 if Level3D.pool_sides_on() else 0.0
+		_check(absf(vs[0].z - (zf - lap)) < 0.001 and absf(vs[vs.size() - 1].z - z_end) < 0.001, "koryto 1.1: wstęga od z %.2f do %.2f zamiast od przodu bryły do przodu płyty" % [vs[0].z, vs[vs.size() - 1].z])
+		if lap > 0.0:
+			_check(absf(vs[across].z - zf) < 0.001, "koryto 1.1: drugi rząd wstęgi w z %.2f zamiast na przodzie bryły" % vs[across].z)
 		var w0 := vs[across - 1].x - vs[0].x
 		_check(absf(w0 - 2.0 * (hw_f + Level3D.STREAM_BANK_M)) < 0.01, "koryto 1.1: przy bryle wstęga %.2f m (niecka z brzegami %.2f)" % [w0, 2.0 * (hw_f + Level3D.STREAM_BANK_M)])
 		var worst := 0.0
 		var flat := 0.0
 		for i in vs.size():
 			var v := vs[i]
+			if v.z < zf - 0.001:
+				continue                                                  # zakładka nad taflą: przed nią nie ma płyty
 			var yg := Front3D.ground_y(v.x, v.z)
 			worst = minf(worst, v.y - yg - 0.01)
 			var u := float(i % across) / float(across - 1)
@@ -1386,6 +1409,15 @@ func _check_pool_sides() -> void:
 				n_dry += 1
 				wet_dry = maxf(wet_dry, absf(v.y - y_top))
 		_check(n_dry > 20 and wet_dry < 0.001, "niecka 1.1: dno przy brzegu ciągu w głębi bryły %.3f m pod gruntem (%d wierzchołków)" % [wet_dry, n_dry])
+		# tył niecki ze strumieniem: ściana od dna do 1 cm pod taflą (bez szczeliny do tła spod dna lasu)
+		var sink := Level3D.LIQUID_SINK
+		var wall := 0
+		for v in vs:
+			if absf(v.z - zb) < 0.001 and absf(v.x - cx) < 1.0 and absf(v.y - (y_top - sink - 0.01)) < 0.001:
+				wall += 1
+		_check(wall >= 5, "niecka 1.1: brak tylnej ściany dna (%d wierzchołków pod taflą)" % wall)
+		var pm := top.mesh as PlaneMesh
+		_check(absf((top.position.z - pm.size.y * 0.5) - (zb - 0.03)) < 0.001, "niecka 1.1: tafla nie sięga 3 cm pod wstęgę lasu (tył %.3f)" % (top.position.z - pm.size.y * 0.5))
 		var m := top.material_override as ShaderMaterial
 		var pa: Vector4 = m.get_shader_parameter("pool_a")
 		var pb: Vector2 = m.get_shader_parameter("pool_b")
