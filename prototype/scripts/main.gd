@@ -3206,6 +3206,9 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			seq_n = int(parts[0])
 			seq_dt = float(parts[1]) if parts.size() > 1 else 0.1
 	if seq_n > 0:
+		for sa in OS.get_cmdline_user_args():
+			if sa.begins_with("--shotslow="):          # dev: --shotslow=F zwalnia czas gry na czas sekwencji (klatki skoku, podciągania; DT w czasie gry)
+				Engine.time_scale = float(sa.substr("--shotslow=".length()))
 		for i in seq_n:
 			get_viewport().get_texture().get_image().save_png(path.replace(".png", "_%d.png" % i))
 			await get_tree().create_timer(seq_dt).timeout

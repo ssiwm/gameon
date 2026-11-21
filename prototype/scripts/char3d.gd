@@ -286,7 +286,16 @@ var recoil_px := 0.0                         ## px odrzutu broni (to samo co gun
 var grabbed := false                         ## chwycony przez Pijawkę (player.gd): szamocze się, nogi dyndają nad ziemią
 var _grab_w := 0.0                           ## 0..1 waga pozy chwycenia (płynne wejście i wyjście)
 var air_vy := 0.0                            ## px/s prędkość pionowa w locie (− w górę): steruje pozą skoku (wyprost, podciągnięte kolana, sięganie do ziemi)
-var climb_t := -1.0                          ## 0..1 podciągnięcia przy wskakiwaniu na platformę (player.gd), <0 = brak
+var climb_t := -1.0                          ## 0..1 podciągnięcia przy wskakiwaniu przez kratę `=` (player.gd), <0 = brak
+var mantle_h := NAN                          ## m: wierzch pomostu `-` nad stopami przy wspinaniu od dołu (player.gd `_mantle_h`), NAN = brak
+var mantle_z := 0.0                          ## m: wysunięcie modelu ku kamerze przed przednią krawędź pomostu (czyta view3d.gd)
+var _mw := 0.0                               ## 0..1 waga pozy podciągania
+var _m_h := 0.0                              ## ostatni wierzch pomostu nad stopami (m) — pozy wygasają po zejściu z pomostu
+var _m_over := -1.0                          ## s od chwili, gdy stopy minęły wierzch pomostu (wypchnięcie); <0 = jeszcze pod wierzchem
+const MANTLE_Z := 1.0                        ## m: model przed pomostem (przód desek ±0,65, płyt ostańca do +0,8; bark 0,2 od osi)
+const MANTLE_EDGE_Z := 0.65                  ## m: przednia krawędź pomostu w świecie — tu kładzie się dłoń
+const MANTLE_IN := Vector2(2.0, 2.5)         ## m wierzchu nad stopami: wysunięcie od 2,5 (odbicie spod pomostu) do pełnego przy 2,0 (głowa pod spodem)
+const MANTLE_OUT := 0.22                     ## s: powrót nad pokład od minięcia wierzchu (lądowanie ok. 0,3 s później)
 var _air_t := 0.0                            ## s w powietrzu (od odbicia)
 var sink_m := 0.0                            ## m: o tyle opuszczamy model pod podłoże (czyta view3d.gd)
 var _mc := {}                                ## bieżący cios bronią białą (krzywe ruchu), puste = brak ciosu
@@ -1461,6 +1470,7 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		climb_t += delta / 0.40
 		if climb_t >= 1.0:
 			climb_t = -1.0
+	_mantle_step(delta)
 	_air_t = _air_t + delta if (anim == "jump" or anim == "fall") else 0.0
 	var fall_s := 1.0 if (clips_on and CharClips.has("down")) else 0.75      # klip upadku jest dłuższy niż upadek z kodu
 	_down = move_toward(_down, 1.0 if anim == "down" else 0.0, delta / (fall_s if anim == "down" else 0.95))
@@ -1565,7 +1575,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	for n in AW_STATES:
 		_aw[n] = lerpf(float(_aw.get(n, 0.0)), 1.0 if n == key else 0.0, kk)
 		sum += float(_aw[n])
-	_stand_w = float(_aw["idle"]) / maxf(sum, 0.0001) * (1.0 - smoothstep(0.0, 0.12, _down)) * (1.0 - _grab_w) if climb_t < 0.0 else 0.0
+	_stand_w = float(_aw["idle"]) / maxf(sum, 0.0001) * (1.0 - smoothstep(0.0, 0.12, _down)) * (1.0 - _grab_w) if not _climbing() else 0.0
 	var stand_offset := Vector3.ZERO
 	if anim == "run" or anim == "crouch_walk":
 		_phase += (-1.0 if back_run else 1.0) * delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
@@ -1684,6 +1694,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		var cw := sin(PI * climb_t)
 		lean += 15.0 * cw
 		drop += 0.07 * cw
+	lean += 14.0 * _mantle_legs()                                 # podciąganie na pomost: tułów nad krawędzią przy wypchnięciu
 	# upadek (po zdjęciu zdrowia) i wstawanie po reanimacji: ten sam ruch w drugą stronę
 	var stand := 1.0 - smoothstep(0.0, 1.0, _down)
 	var e := 0.0 if fall_clip else 1.0 - stand                    # upadek z kodu tylko wtedy, gdy nie ma klipu upadku
@@ -1737,7 +1748,7 @@ func _terrain_pose(delta: float) -> void:
 	for v in _aw.values():
 		sum += float(v)
 	var air := (float(_aw.get("jump", 0.0)) + float(_aw.get("fall", 0.0))) / maxf(sum, 0.0001)
-	var on := _probe.is_valid() and not is_nan(_body_y) and _down < 0.01 and _grab_w < 0.01 and climb_t < 0.0
+	var on := _probe.is_valid() and not is_nan(_body_y) and _down < 0.01 and _grab_w < 0.01 and not _climbing()
 	_terrain_w = move_toward(_terrain_w, (1.0 - air) if on else 0.0, delta / 0.12)
 	if not on or _terrain_w <= 0.001:
 		_foot_abs.clear()
@@ -1780,7 +1791,7 @@ func _ground_hips() -> void:
 	for value in _aw.values():
 		sum += float(value)
 	var planted := (float(_aw.get("idle", 0.0)) + float(_aw.get("crouch", 0.0))) / maxf(sum, 0.0001)
-	if (planted <= 0.995 and _stand_w < 0.001) or _down >= 0.12 or _grab_w >= 0.01 or climb_t >= 0.0:
+	if (planted <= 0.995 and _stand_w < 0.001) or _down >= 0.12 or _grab_w >= 0.01 or _climbing():
 		return
 	var drop := 0.0
 	for side in ["Left", "Right"]:
@@ -1873,6 +1884,10 @@ func _pose_legs(e: float) -> void:
 			var cw2 := sin(PI * climb_t)
 			off.y += 0.22 * cw2
 			off.x += (0.10 if side == "Right" else -0.04) * cw2
+		var mlw := _mantle_legs()
+		if mlw > 0.001:                                           # podciąganie na pomost: kolana pod brzuch, noga bliższa kamery wyżej (wejdzie pierwsza)
+			off.y += (0.34 if side == "Right" else 0.24) * mlw
+			off.x += (0.12 if side == "Right" else 0.02) * mlw
 		if not _mc.is_empty() and _combat_clip.is_empty():         # fallback: stopa bliższa kamery wysuwa się do przodu, druga zostaje i dociąża
 			var st := float(_mc["step"])
 			off.x += st if side == "Right" else -0.4 * st
@@ -1894,7 +1909,7 @@ func _pose_legs(e: float) -> void:
 				if pole.length() < 0.05:
 					pole = ck
 		var planted := (float(_aw.get("idle", 0.0)) + float(_aw.get("crouch", 0.0))) / maxf(sum, 0.0001)
-		if planted > 0.995 and _down < 0.01 and _grab_w < 0.01 and climb_t < 0.0:
+		if planted > 0.995 and _down < 0.01 and _grab_w < 0.01 and not _climbing():
 			target.y = _ankle_y # statyczna postawa: podparcie na ziemi, bez pionowego pływania klipu
 		if _stand_w > 0.001:
 			var support: Transform3D = _stand_foot[side]
@@ -2042,6 +2057,55 @@ func _pose_arms(theta: float) -> void:
 	muzzle_px = _to_px(gx * (_gun_info["muzzle"] as Vector3))
 	grip_px = _to_px(gx.origin)
 
+# ---------------------------------------------------------------- podciąganie na pomost (STEPS_PLAN.md S3)
+
+## Wskakując od dołu przez pomost `-`, gracz w symulacji przechodzi przez deski (kładka jednokierunkowa) — obraz pokazuje podciągnięcie
+## przed przednią krawędzią: model wysuwa się ku kamerze (`mantle_z`), zanim głowa dojdzie pod pomost, wolna dłoń sięga do krawędzi
+## i wypycha ciało, kolana idą pod brzuch; gdy stopy miną wierzch, model w MANTLE_OUT wraca nad pokład. Symulacja i skok bez zmian.
+func _mantle_step(delta: float) -> void:
+	if is_nan(mantle_h) or _down > 0.1 or _grab_w > 0.1:
+		_m_over = -1.0
+		mantle_z = move_toward(mantle_z, 0.0, delta * MANTLE_Z / 0.1)
+		_mw = move_toward(_mw, 0.0, delta / 0.12)
+		return
+	_m_h = mantle_h
+	if _m_over < 0.0 and mantle_h <= 0.0:
+		_m_over = 0.0
+	elif _m_over >= 0.0:
+		_m_over += delta
+	if _m_over >= 0.0:
+		mantle_z = minf(mantle_z, MANTLE_Z * (1.0 - smoothstep(0.0, MANTLE_OUT, _m_over)))
+	else:                                                 # spadając z powrotem pod pomost model nie wchodzi w deski — wraca dopiero na ziemi
+		mantle_z = maxf(mantle_z, MANTLE_Z * (1.0 - smoothstep(MANTLE_IN.x, MANTLE_IN.y, mantle_h)))
+	_mw = move_toward(_mw, 1.0, delta / 0.03)
+
+func _climbing() -> bool:
+	return climb_t >= 0.0 or _mw > 0.001
+
+## Waga dłoni na krawędzi: od sięgnięcia do chwili tuż po minięciu wierzchu (potem dłoń puszcza i wraca do broni).
+func _mantle_hand_w() -> float:
+	return _mw * (1.0 - smoothstep(0.06, 0.16, maxf(_m_over, 0.0)))
+
+## Waga podkurczonych nóg i pochylenia: gdy wierzch jest niżej niż ok. 1,7 m nad stopami, do lądowania na pokładzie.
+func _mantle_legs() -> float:
+	return _mw * (1.0 - smoothstep(0.9, 1.7, _m_h)) * (1.0 - smoothstep(0.14, 0.28, maxf(_m_over, 0.0)))
+
+## Cel wolnej dłoni: przednia krawędź pomostu (wierzch `_m_h` nad stopami, MANTLE_EDGE_Z w świecie → układ modelu obróconego o `model_yaw`),
+## nieco przed osią ciała. Poza zasięgiem dłoń zostaje na wysokości krawędzi i ustępuje w głębi (ręka w poprzek ciała, gdy krawędź jest
+## za plecami: z kamery tego nie widać); gdy i to nie wystarcza — ręka wyciągnięta ku krawędzi (z dołu w górę, przy wypchnięciu w dół).
+func _mantle_hand(sl: Vector3, reach: float) -> Vector3:
+	var wz := MANTLE_EDGE_Z - mantle_z
+	var t := Vector3(_origin_x + 0.3 - wz * sin(model_yaw), _m_h, wz * cos(model_yaw))
+	var r := reach * 0.97
+	var d := t - sl
+	if d.length() <= r:
+		return t
+	var rest := r * r - d.x * d.x - d.y * d.y
+	if rest > 0.0:
+		t.z = sl.z + signf(d.z) * sqrt(rest)
+		return t
+	return sl + d.normalized() * r
+
 ## Punkt lewej dłoni dla chwytu, przeładowania i cyklu; pas pozostaje w układzie ciała.
 func _left_weapon_pose(gx: Transform3D, wp: Dictionary, pistol: bool) -> Array:
 	var sl := _gp(_b["LeftArm"]).origin
@@ -2049,7 +2113,11 @@ func _left_weapon_pose(gx: Transform3D, wp: Dictionary, pistol: bool) -> Array:
 	var lh := _left_hold(gx, _gun_info, wp)
 	var keep := 1.0                                           # ile orientacji chwytu zostaje dłoni (w drodze po magazynek dłoń idzie za przedramieniem)
 	var reach_l: float = float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])
-	if climb_t >= 0.0 and not pistol:                         # podciągnięcie: wolna ręka podpiera się o krawędź platformy
+	var mhw := _mantle_hand_w()
+	if mhw > 0.001 and not pistol:                            # podciąganie na pomost: wolna dłoń na przedniej krawędzi
+		lh.origin = lh.origin.lerp(_mantle_hand(sl, reach_l), mhw)
+		keep = 1.0 - mhw
+	elif climb_t >= 0.0 and not pistol:                         # podciągnięcie: wolna ręka podpiera się o krawędź platformy
 		var cw := sin(PI * climb_t)
 		lh.origin = lh.origin.lerp(sl + Vector3(0.20, -reach_l * 0.97, 0.08), cw)
 		keep = 1.0 - cw
@@ -2290,6 +2358,9 @@ func _pose_left_relaxed() -> void:
 	var tgt := sl + Vector3(0.12, -reach * 0.9, 0.05)
 	if climb_t >= 0.0:                                                # podciągnięcie: ręka wyciągnięta w dół i w przód, na krawędź
 		tgt = tgt.lerp(sl + Vector3(0.22, -reach * 0.98, 0.08), sin(PI * climb_t))
+	var mhw := _mantle_hand_w()
+	if mhw > 0.001:                                                   # podciąganie na pomost: dłoń na przedniej krawędzi
+		tgt = tgt.lerp(_mantle_hand(sl, reach), mhw)
 	_arm_ik("Left", tgt, Vector3(-0.3, -1.0, -0.5))
 
 ## Pchanie: obie dłonie na ścianie skrzyni (łokcie w dół i na zewnątrz). Klip Push_Loop trzyma ręce wyżej niż nasza skrzynia,

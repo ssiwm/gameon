@@ -439,6 +439,7 @@ var _c3_hp := -1                       ## ostatnie zdrowie widziane przez animac
 var _c3_was_air := false
 var _c3_air_vy := 0.0                  ## największa prędkość spadania w ostatnim locie (siła lądowania)
 var _c3_climbed := false               ## podciągnięcie już odegrane w tym locie
+var _mantle_top := NAN                 ## px: wierzch pomostu (`Level.mantle_deck`), na który gracz się wspina (tylko obraz 3D, `_mantle_h`); NAN = brak
 ## Zejście ze stopnia (zbocze wykopane w strefie wydobycia, schody po skosie co 8 px): ciało 2D spada z krawędzi ok. 0,1 s, ale animacja
 ## traktuje to jak krok w dół, nie skok — bez pozy lotu i bez amortyzacji lądowania; model schodzi płynnie (char3d.gd `terrain`).
 const STEP_DOWN_PX := 12.0             ## px: najwyższy stopień liczony jako krok w dół (stopień wykopu to 8 px)
@@ -511,6 +512,36 @@ func _ground_below(dx: float, up: float, down: float) -> float:
 func _foot_probe(dx: float) -> float:
 	return _ground_below(dx, FOOT_PROBE_UP, FOOT_PROBE_DOWN)
 
+## Podciąganie na pomost (deski `-` i pomosty z STEPS — `Level.mantle_deck`; tylko obraz 3D, STEPS_PLAN.md S3): wskakując od dołu, gracz przechodzi przez pomost (kładka jednokierunkowa) —
+## zapamiętujemy jego wierzch i podajemy modelowi wysokość wierzchu nad stopami (m), aż gracz stanie na pomoście albo wróci pod niego.
+## Szukamy przy odbiciu: wierzch 9–50 px nad stopami w kolumnie gracza (głowa wejdzie w pomost; 50 px = pomost 3 kafle wyżej, skok go nie sięga).
+func _mantle_h(grounded: bool) -> float:
+	var lvl: Node = get_tree().get_first_node_in_group("level")
+	if dead or grabbed or lvl == null or not lvl.has_method("mantle_deck"):
+		_mantle_top = NAN
+		return NAN
+	var cc := int(floor(global_position.x / 16.0))
+	if is_nan(_mantle_top):
+		if grounded or velocity.y > -40.0:
+			return NAN
+		var feet := global_position.y
+		for rr in range(int(floor((feet - 9.0) / 16.0)), int(floor((feet - 50.0) / 16.0)) - 1, -1):
+			if float(rr * 16) > feet - 9.0:
+				continue
+			if float(rr * 16) < feet - 50.0:
+				break
+			if bool(lvl.call("mantle_deck", cc, rr)):
+				_mantle_top = float(rr * 16)
+				break
+			if bool(lvl.call("_is_solid", cc, rr)):
+				break
+		if is_nan(_mantle_top):
+			return NAN
+	elif not bool(lvl.call("mantle_deck", cc, int(_mantle_top / 16.0))) or (grounded and (absf(global_position.y - _mantle_top) < 3.0 or global_position.y > _mantle_top + 9.0)):
+		_mantle_top = NAN                                      # zszedł w bok spod pomostu, stanął na nim albo spadł z powrotem pod niego
+		return NAN
+	return (global_position.y - _mantle_top) / Char3D.WP_PER_M          # px świata → m (22 px = 1,8 m, jak 16 px = 1 kafel 1,309 m)
+
 ## Postać 3D (dev): animacja z tego samego stanu co sprite'y, celowanie z aim_dir; broń trzymana IK-iem w obu dłoniach.
 func _update_char3d() -> void:
 	var grounded := (is_on_floor() if not _is_remote else absf(velocity.y) < 5.0) or _stepping_down()
@@ -530,8 +561,10 @@ func _update_char3d() -> void:
 		_c3_air_vy = 0.0
 	_c3_was_air = not grounded
 	c3d.air_vy = velocity.y if not grounded else 0.0
-	# podciągnięcie: wskakując od dołu przez kładkę (kafel kładki na wysokości stóp), wolna ręka podpiera się o krawędź
-	if not grounded and velocity.y < -40.0 and not dead and not _c3_climbed and c3d.climb_t < 0.0:
+	# podciągnięcie na pomost (STEPS_PLAN.md S3): model wychodzi przed przednią krawędź, dłoń na krawędzi, wypchnięcie nad pokład
+	c3d.mantle_h = _mantle_h(grounded)
+	# podciągnięcie przez kratę `=`: wskakując od dołu (kafel kładki na wysokości stóp), wolna ręka podpiera się o krawędź
+	if not grounded and velocity.y < -40.0 and not dead and not _c3_climbed and c3d.climb_t < 0.0 and is_nan(_mantle_top):
 		var lvl: Node = get_tree().get_first_node_in_group("level")
 		if lvl != null and lvl.has_method("_is_platform_cell"):
 			var cc := int(floor(global_position.x / 16.0))

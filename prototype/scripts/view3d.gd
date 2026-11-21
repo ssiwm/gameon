@@ -1236,7 +1236,7 @@ func _sync_rigs() -> void:
 				want_lift = TRACK_ZC
 		rig["lift"] = lerpf(float(rig.get("lift", 0.0)), want_lift, 0.25)
 		rig["wade"] = _wade_step(float(rig.get("wade", 0.0)), p.global_position)
-		actor.position = Level3D.px_to_m(p.global_position) + Vector3(0.0, -float(c3.sink_m) - float(rig["wade"]), float(rig["lift"]))
+		actor.position = Level3D.px_to_m(p.global_position) + Vector3(0.0, -float(c3.sink_m) - float(rig["wade"]), float(rig["lift"]) + float(c3.mantle_z))   # mantle_z: podciąganie przed krawędzią pomostu
 		_splash_update(actor, p.global_position, absf(float(p.get("velocity").x)) if p.get("velocity") != null else 0.0, LAYER_ACTORS, float(rig["wade"]))
 		rig["casts"] = ShadowCasts.sync(rig["casts"])
 		_actor_contact(rig, p, actor)

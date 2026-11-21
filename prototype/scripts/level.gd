@@ -173,6 +173,7 @@ var finale_spawns: Array = []
 var backdrop: Array = []                  ## BACKDROP z danych mapy: dalekie punkty orientacyjne tła 3D (`backdrop3d.gd`); czysta kosmetyka
 var caves: Array = []                     ## CAVES z danych mapy: skalne nawisy widoku 3D (`cave3d.gd`); czysta kosmetyka
 var niches: Array = []                    ## NICHES z danych mapy: wnęki ze światłem w tylnej ścianie wnętrz (`niches3d.gd`); czysta kosmetyka
+var _step_deck := {}                      ## Vector2i(c, r) → true: kafle pomostów z STEPS (`mantle_deck`, liczone przy pierwszym pytaniu)
 var steps: Array = []                     ## STEPS z danych mapy: pomosty z natury i z historii miejsca (`step3d.gd`, STEPS_PLAN.md); czysta kosmetyka
 var front: Array = []                     ## FRONT z danych mapy: zakresy pierwszego planu przed płaszczyzną gry (`front3d.gd`); czysta kosmetyka
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
@@ -910,6 +911,25 @@ func window_changed(w: Node2D) -> void:
 	var rows := int(w.get("rows"))
 	var r1 := int(w.global_position.y / TILE) - 1
 	sound_grid.refresh(Rect2i(c - 1, r1 - rows, 3, rows + 2), _is_sound_solid)
+
+## Czy gracz wskakujący od dołu przez pomost w kaflu (c, r) podciąga się przed jego przednią krawędzią (tylko obraz 3D, STEPS_PLAN.md S3):
+## deski `-` i każdy pomost z wpisu STEPS. Krata `=` poza wpisami sięga głęboko w scenę (antresole, przekrój) — tam bez podciągania.
+func mantle_deck(c: int, r: int) -> bool:
+	var ch := _ch(c, r)
+	if ch == "-":
+		return true
+	if ch != "=" or steps.is_empty():
+		return false
+	if _step_deck.is_empty():
+		for e in steps:
+			for d in (e as Dictionary).get("decks", []):
+				var rr := int(d[0])
+				var cc := int(d[1])
+				var dc := _ch(cc, rr)
+				while _ch(cc, rr) == dc:
+					_step_deck[Vector2i(cc, rr)] = true
+					cc += 1
+	return _step_deck.has(Vector2i(c, r))
 
 func _is_platform_cell(c: int, r: int) -> bool:
 	var ch := _ch(c, r)

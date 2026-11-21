@@ -64,6 +64,15 @@ Pomosty z wpisu nie mają modelu desek ani nóg (`Level3D.step_cells`).
   - tkanka: szum o dużej skali i jasne żyły dawały „moro”; teraz drobne żyły (skala 6,5 / 15) na ciemnej bazie, poświata tylko w żyłach;
   - las `FRONT` 1.3 bez pni w kol. 46–86, 101–111 i 143–154.
 - **S3** podciąganie na przedniej krawędzi pokładu (`char3d`): model przed pokładem z ≈ +0,8, IK dłoni na krawędzi, faza wypchnięcia; ścieżka symulacji bez zmian.
+- **Stan 2026-11-21 (1.7.642):** S3 zrobione. `player.gd` `_mantle_h`: przy odbiciu szuka w kolumnie gracza pomostu 9–50 px nad stopami
+  (`Level.mantle_deck`: deski `-` i każdy pomost z wpisu, także kraty `=` placu 1.3) i do lądowania podaje wierzch nad stopami (m);
+  `char3d.gd`: `mantle_z` 0 → 1,0 m, gdy wierzch schodzi z 2,5 do 2,0 m nad stopy (głowa wchodzi pod pomost przy 2,1 m), dłoń na krawędzi
+  (z = 0,65 w świecie), kolana pod brzuch, pochylenie; od minięcia wierzchu powrót w 0,22 s (lądowanie ok. 0,3 s później).
+  - z = 1,0, nie 0,8: płyty ostańca sięgają +0,8, czubki kłód wykrotu +0,85, bark jest 0,2 m od osi;
+  - skok trwa ok. 0,45 s, głowa wchodzi pod pomost ok. 0,03 s po odbiciu — wysunięcie to 1–2 klatki, a całość czyta się jako jeden ruch;
+  - patrząc w lewo, wolna (lewa) ręka jest od strony kamery, a krawędź za plecami: dłoń zostaje na wysokości krawędzi przed piersią,
+    brakuje jej do 0,37 m w głąb (z kamery niewidoczne); obrót tułowia ku pomostowi albo zmiana ręki (prawa trzyma broń) — gdyby to raziło;
+  - kraty `=` poza wpisami (antresole, przekrój kryjówki) sięgają 2–4 m w głąb — bez podciągania, zostaje dawna poza `climb_t`.
 - **S4** 1.2 — osobna runda propozycji (maszt z platformą i koszem drabiny, stacja słupowa).
 
 Drabiny tylko w obrazie (decyzja z rundy 1). Szyby kopalni 1.1 (c40–43, 111–114, 193–197) zostają bez zmian.
