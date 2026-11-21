@@ -179,7 +179,7 @@ func _spawn_group(humans: Array) -> void:
 
 ## Serwer: grupa wędrowców `kinds` od `pos` (kolejni `step` px dalej w poziomie), od razu w drodze ku `hunt_at`. Zwraca nazwy węzłów.
 ## Wołają: `_spawn_group` (miejsce poza kadrem) i strefa wydobycia (DIG_LOOT_PLAN.md K3: kieszeń za czołem wykopu, dig_zone.gd `_wake_hit`).
-func spawn_at(kinds: Array, pos: Vector2, hunt_at: Vector2, step := 14.0) -> Array:
+func spawn_at(kinds: Array, pos: Vector2, hunt_at: Vector2, step := 14.0, entry_face := 0.0) -> Array:
 	var group: Array = []
 	for i in kinds.size():
 		_serial += 1
@@ -187,9 +187,9 @@ func spawn_at(kinds: Array, pos: Vector2, hunt_at: Vector2, step := 14.0) -> Arr
 		group.append(n)
 		var at := pos + Vector2(float(i) * step, 0.0)
 		if NoiseMgr.has_network():
-			_spawn_roamer.rpc(n, String(kinds[i]), at, hunt_at)
+			_spawn_roamer.rpc(n, String(kinds[i]), at, hunt_at, entry_face)
 		else:
-			_spawn_roamer(n, String(kinds[i]), at, hunt_at)
+			_spawn_roamer(n, String(kinds[i]), at, hunt_at, entry_face)
 	_groups.append(group)
 	return group
 
@@ -406,7 +406,7 @@ static func pincer_side_ok(avoid: float, dx: float, try_i: int) -> bool:
 	return avoid == 0.0 or try_i >= PINCER_TRIES or signf(dx) != avoid
 
 @rpc("authority", "call_local", "reliable")
-func _spawn_roamer(n: String, kind: String, pos: Vector2, hunt_at: Vector2) -> void:
+func _spawn_roamer(n: String, kind: String, pos: Vector2, hunt_at: Vector2, entry_face := 0.0, state: Dictionary = {}) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	if lvl == null or lvl.has_node(n):
 		return
@@ -416,10 +416,32 @@ func _spawn_roamer(n: String, kind: String, pos: Vector2, hunt_at: Vector2) -> v
 	e.position = pos
 	lvl.add_child(e)
 	e.add_to_group("roamers")
+	if entry_face != 0.0 and e._beh.has_method("begin_entry"):
+		e._beh.begin_entry(entry_face, float(state.get("burrow_time", 0.0)))
 	if NoiseMgr.is_server():
 		_roamers.append(n)
 		e._lead_at(hunt_at)        # rusza na ostatnią znaną pozycję drużyny
 		e.wake()
+	elif not state.is_empty():
+		e.hp = state.hp             # pierwsza migawka wędrowca: istniejąca rana nie odtwarza trafienia
+		e._sync(pos, state.hp, state.active, true, state.winding, state.sp, state.ai, state.face,
+			state.windup_remaining, state.windup_duration, state.grounded)
+		if state.has("swipe_recovery"):
+			e._beh.recovery_left = float(state.swipe_recovery)
+
+## Dołączający dostaje żywych wędrowców po wczytaniu mapy i wykopu, także w połowie wychodzenia ze skały.
+func send_roamers_to(peer_id: int) -> void:
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null:
+		return
+	for n in _roamers:
+		var e = lvl.get_node_or_null(n)
+		if e == null or e.is_queued_for_deletion() or not e.alive:
+			continue
+		var state: Dictionary = e.view_info()
+		state.merge({"hp": e.hp, "active": e.active, "face": e._facing}, true)
+		_spawn_roamer.rpc_id(peer_id, n, e.kind, e.global_position, e._last_known,
+			e._facing if state.has("burrow_time") else 0.0, state)
 
 @rpc("authority", "call_local", "reliable")
 func _despawn_rpc(n: String) -> void:

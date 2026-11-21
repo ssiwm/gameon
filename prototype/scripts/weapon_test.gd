@@ -3624,8 +3624,8 @@ func _t_lag() -> void:
 	var x1: float = e.global_position.x
 	var y1: float = e.global_position.y
 	e._hist.clear()
-	e._hist.append(Vector3(t0 - 0.2, x1 - 20.0, y1))
-	e._hist.append(Vector3(t0, x1, y1))
+	e._hist.append(Vector4(t0 - 0.2, x1 - 20.0, y1, e._hurt_h()))
+	e._hist.append(Vector4(t0, x1, y1, e._hurt_h()))
 	var old_rect: Rect2 = e.lag_rect(t0 - 0.2)
 	check("lag_rect: 0,2 s temu wróg stał 20 px bliżej", absf(old_rect.get_center().x - (x1 - 20.0)) < 1.5, str(old_rect))
 	var mid: Rect2 = e.lag_rect(t0 - 0.1)

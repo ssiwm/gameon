@@ -290,9 +290,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_priority = -100
 
-	_listener = AudioListener2D.new()
-	_listener.name = "AudioListener2D"
-	add_child(_listener)
+	_follow_listener()
 
 	for _i in ONESHOT_POOL:
 		var p := AudioStreamPlayer.new()
@@ -1064,6 +1062,11 @@ func _tier_bus(base: String, tier: int) -> String:
 ## zmienia się właściciel (boty też mają autorytet hosta; reparent z keep_global=false,
 ## inaczej słuchawka zostawałaby w (0,0) świata i promienie okluzji szłyby w złe miejsce).
 func _follow_listener() -> void:
+	# Po wyjściu z sesji kamera i jej dzieci mogą zniknąć przed następną klatką autoloadu.
+	if not is_instance_valid(_listener):
+		_listener = AudioListener2D.new()
+		_listener.name = "AudioListener2D"
+		add_child(_listener)
 	for p in get_tree().get_nodes_in_group("players"):
 		var pp := p as Node2D
 		if pp == null or pp.is_bot or not pp.is_multiplayer_authority():
@@ -1975,9 +1978,9 @@ func _process(delta: float) -> void:
 	_clock += delta
 	if not _warm.is_empty():
 		_poll_warm()
+	_follow_listener()
 	_listener_pos = _listener.global_position
 	_occl.clear()                      # przeszkody zmieniają się dynamicznie
-	_follow_listener()
 	_loop_occl_timer -= delta
 	if _loop_occl_timer <= 0.0:
 		_loop_occl_timer = 0.2

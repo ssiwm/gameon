@@ -103,6 +103,7 @@ var _was_hidden := false      ## zamaskowany (np. Żerca przed porwaniem): niewi
 var burning := false          ## replikowane wizualnie przez RPC (_ignite_fx); logika tylko na serwerze
 
 var _def: Dictionary
+var _hit_shape: RectangleShape2D
 var _home := Vector2.ZERO
 var _windup := 0.0
 var _windup_target: Node2D = null
@@ -151,7 +152,7 @@ var _repath := 0.0
 var _path_goal := Vector2.ZERO
 var _drop_t := 0.0
 var _blocked := false         ## następny krok grafu to skok, którego nie potrafi
-var _hist: Array = []         ## Vector3(czas, x, y) — pozycje z ostatnich HISTORY_S s (serwer)
+var _hist: Array[Vector4] = []  ## czas, x, y i wysokość strefy trafień z ostatnich HISTORY_S s (serwer)
 var _flee_src := Vector2.ZERO ## od czego ucieka w panice (ZERO = od gracza)
 var _sp := 0                  ## Wołek: 0 nic, 1 zapowiedź szarży, 2 szarża, 3 zapowiedź rzutu, 4 ogłuszony po uderzeniu
 var _ai: int = Ai.SLEEP       ## bieżący stan AI (patrz `Ai`)
@@ -206,7 +207,8 @@ func _ready() -> void:
 	cs.position = Vector2(0, -size.y * 0.5)
 	if bool(_def.get("melee_only", false)):
 		set_collision_layer_value(3, false)          # warstwa celów (4): pociski i promienie (Combat.LAYER_TARGET) przelatują — dosięga go tylko cios (grupa „enemies”)
-	Hurtbox.add(self, float(_def.get("hurt_w", size.x)), _hurt_h())   # strefa trafień na wysokość modelu (ciało ruchu zostaje niższe)
+	Hurtbox.add(self, float(_def.get("hurt_w", size.x)), maxf(float(_def.get("hurt_h", 0.0)), size.y))
+	_hit_shape = (get_meta("hurt_shape") as CollisionShape2D).shape as RectangleShape2D if has_meta("hurt_shape") else shape
 	# oczy i pasek HP świecą w ciemności — śpiącego wroga widać jako
 	# przygaszone oczy, a nie wcale (skradanie musi mieć informację)
 	if Sprites.has(Sprites.enemy_sheet(String(_def.get("sheet", kind)))):        # `sheet`: rodzaj bez własnych klatek pożycza zegar animacji od innego (elity do czasu własnych modeli)
@@ -621,6 +623,8 @@ func _scaled_damage(base: int) -> int:
 func _update_facing() -> void:
 	var dx := global_position.x - _phys_x
 	_phys_x = global_position.x
+	if winding and _def.get("frontal", false):
+		return
 	if absf(dx) > 0.05:
 		_facing = signf(dx)
 	var look: Vector2 = _beh.look_at_point()
@@ -655,27 +659,30 @@ func hear_scream(pos: Vector2) -> void:
 
 func _record_history() -> void:
 	var t := LagComp.now()
-	_hist.append(Vector3(t, global_position.x, global_position.y))
-	while _hist.size() > 2 and (_hist[0] as Vector3).x < t - HISTORY_S:
+	_hist.append(Vector4(t, global_position.x, global_position.y, _hurt_h()))
+	while _hist.size() > 2 and _hist[0].x < t - HISTORY_S:
 		_hist.pop_front()
 
 ## Prostokąt trafień wroga tak, jak stał w chwili `at_time` (interpolacja z historii).
 func lag_rect(at_time: float) -> Rect2:
 	var p := global_position
+	var height := _hurt_h()
 	var n := _hist.size()
-	if n > 0 and at_time < (_hist[n - 1] as Vector3).x:
-		var first: Vector3 = _hist[0]
+	if n > 0 and at_time < _hist[n - 1].x:
+		var first := _hist[0]
 		if at_time <= first.x:
 			p = Vector2(first.y, first.z)
+			height = first.w
 		else:
 			for i in range(n - 1, 0, -1):
-				var a: Vector3 = _hist[i - 1]
-				var b: Vector3 = _hist[i]
+				var a := _hist[i - 1]
+				var b := _hist[i]
 				if at_time >= a.x:
 					var k := inverse_lerp(a.x, b.x, at_time)
 					p = Vector2(lerpf(a.y, b.y, k), lerpf(a.z, b.z, k))
+					height = lerpf(a.w, b.w, k)
 					break
-	var size := Vector2((_def["size"] as Vector2).x, _hurt_h())
+	var size := Vector2(_hit_shape.size.x, height)
 	return Rect2(p.x - size.x * 0.5 - 1.0, p.y - size.y - 1.0, size.x + 2.0, size.y + 2.0)
 
 ## Mnożnik prędkości wynikający z powierzchni pod stopami (surfaces.gd).
@@ -1304,6 +1311,11 @@ func _try_begin_attack(target: Node2D) -> void:
 	if _cd > 0.0 or _windup > 0.0 or not _beh.may_attack():
 		return
 	if _in_reach(target, 0.0) and not _wall_between(target):
+		if _def.get("frontal", false):
+			var dx := target.global_position.x - global_position.x
+			if absf(dx) > 0.1:
+				_facing = signf(dx)
+			velocity.x = 0.0
 		_windup = windup_time(float(_def["windup"]), Difficulty.m("enemy_windup"))
 		_windup_duration = _windup
 		_windup_target = target
@@ -1326,6 +1338,8 @@ func _resolve_attack() -> void:
 			bw.call("take_hit", {"type": "claw", "amount": float(_def["claw_barricade"]), "pos": at, "dir": Vector2(side, 0.0), "src": kind})
 		return
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0) and not _wall_between(pp):
+		if _def.get("frontal", false) and (pp.global_position.x - global_position.x) * _facing < -1.0:
+			return
 		pp.deliver_hit(_scaled_damage(int(_def["damage"])), global_position, kind)
 
 ## Barykada na drodze do celu albo śladu (`claw_barricade` w danych rodzaju — obrażenia ciosu, DESTRUCTION_PLAN.md D2): wróg podchodzi i bije
@@ -1394,7 +1408,7 @@ func head_y() -> float:
 ## Wysokość strefy trafień (px): wysokość modelu 3D (`hurt_h` w KINDS = SPEC „fit" z enemy3d.gd), a bez niej — ciało ruchu.
 ## Ćma (model dopasowany szerokością) wisi w środku ramki 2 px i rozpościera skrzydła na ok. 1,7 × 1,5 px — `hurt_h` / `hurt_w` (3 px) obejmują je całe.
 func _hurt_h() -> float:
-	return maxf(float(_def.get("hurt_h", 0.0)), (_def["size"] as Vector2).y)
+	return _hit_shape.size.y
 
 func body_center() -> Vector2:
 	return global_position + Vector2(0, -(_def["size"] as Vector2).y * 0.5)

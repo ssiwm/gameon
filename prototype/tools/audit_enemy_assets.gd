@@ -47,7 +47,7 @@ func meshes(e: Node3D, stats: Dictionary) -> Array:
 					var bind := mi.skin.get_bind_pose(bones[index])
 					rest += sk.get_bone_global_rest(bone) * bind * (xf * vertices[vertex]) * weight
 					var name := String(sk.get_bone_name(bone))
-					if "Foot" in name or "Toe" in name or name.ends_with("Limb_3") or name.ends_with("Limb_4"):
+					if "Foot" in name or "Toe" in name or name.begins_with("Forepaw") or name.begins_with("Hindpaw") or name.ends_with("Limb_3") or name.ends_with("Limb_4"):
 						sole_weight += weight
 					influences.append([bone, bind, weight])
 					sum += weight
