@@ -494,6 +494,8 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 	var by_row := {}                                            # "wiersz|materiał" → [kolumny]
 	var rock := not "--shellterrain" in OS.get_cmdline_user_args()
 	for k: Vector2i in shell_cells:
+		if shell_skip.has(k):
+			continue
 		var ch := _ch(rows, k.x, k.y)
 		if ch == "C" and is_roof_cell(rows, k.x, k.y):
 			continue
@@ -2456,6 +2458,17 @@ static var shell_cells := {}               ## Vector2i → klucz materiału prze
 ## z wygaszaniem (`Front3D.build_walls`): ściana wysunięta ku kamerze rozrasta się w rzucie i bez wygaszania zasłaniałaby wrogów
 ## i znaczniki obok siebie (wynik spike'a F2b). Vector2i → [klucz materiału ("C" / "#"), occ: Vector4 jak u elementów pierwszego planu].
 static var shell_walls := {}
+## Płytki przekrój podziemi (przegląd pierwszego planu pod ziemią 2026-11-21, spike trzech wariantów): w tunelach i kopalniach (wpisy
+## `tunnel` / `mine` bez budynku 3D) przed płaszczyzną gry zostaje tylko płyta podłogi z fundamentem. Strop, ściany przekroju (koniec
+## sali, ściana do kopania), nadproża i przedłużenie strefy wydobycia do SHELL_Z w rzucie (×1,38) nachodziły na sąsiednie otwory: czoło
+## kopania 1.1 zasłaniało snop latarki i salę obok, przód strefy 1.3 — wykop, a ściany w osobnej warstwie (`Front3D.wall_material`) miały
+## inne światło niż skała świata. Fundament nie schodzi też obok strefy wydobycia (`SHELL_DIG_CUT` kolumn) — nachodził w rzucie na wykop.
+## Kafle w `shell_cells` / `shell_walls` zostają (materiał skały `shell_rock`, ściana tła); `shell_skip` to te, których skrzynka do SHELL_Z
+## nie powstaje. Dev `--deepshell`: przekrój jak do 1.7.643 (porównanie A/B).
+static var shell_skip := {}
+const SHELL_DIG_CUT := 3
+static func shallow_band(e: Dictionary) -> bool:
+	return not e.has("build") and not e.has("wall") and String(e.get("set", "")) in ["tunnel", "mine"] 		and not "--deepshell" in OS.get_cmdline_user_args()
 static var shell_bands: Array = []         ## wpisy FRONT z przekrojem z ostatniego `set_shells` (strefy wydobycia obok sięgają SHELL_Z)
 ## Ściany wejścia budynku (`shell_entry`): kafle z `shell_walls` budowane w warstwie świata razem z płytami przekroju (`_build_facades`) —
 ## to samo światło i ten sam beton co podłoga i strop, więc budynek jest jedną bryłą, a nie czarną płytą z przodu (uwaga z gry 2026-11-09).
@@ -2484,6 +2497,7 @@ const ENTRY_KEEP := "+%:q"                 ## niszczalne przegrody: kolumna z ni
 static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	shell_cells = {}
 	shell_walls = {}
+	shell_skip = {}
 	shell_bands = []
 	shell_entry_cells = {}
 	shell_facades = []
@@ -2516,6 +2530,11 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 			if c >= int(z[0]) and c <= int(z[2]) and r >= int(z[1]) and r <= int(z[3]):
 				return true
 		return false
+	var near_dig := func(c: int, r: int) -> bool:
+		for z in digs:
+			if c >= int(z[0]) - SHELL_DIG_CUT and c <= int(z[2]) + SHELL_DIG_CUT and r >= int(z[1]) - 1 and r <= int(z[3]) + 1:
+				return true
+		return false
 	for e: Dictionary in bands:
 		var concrete := String(e.get("set", "")) in ["station", "bunker"]   # budynek: fundament z betonu; tunel: przekrój skały
 		var r0 := int(e["r0"])
@@ -2523,10 +2542,14 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
 			if _ch(rows, c, r0) in SHELL_CH and not bld_cells.has(Vector2i(c, r0)):
 				shell_cells[Vector2i(c, r0)] = "C" if concrete else ""
+				if shallow_band(e):
+					shell_skip[Vector2i(c, r0)] = true
 			var r := r1
 			# fundament kończy się na strefie wydobycia (sala 1.1 nad zachodnią strefą dolnej galerii): kafle strefy przebudowuje kopanie
 			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH and not in_band.call(c, r) and not in_dig.call(c, r):
 				shell_cells[Vector2i(c, r)] = "C" if concrete else ""
+				if shallow_band(e) and r > r1 and near_dig.call(c, r):
+					shell_skip[Vector2i(c, r)] = true
 				r += 1
 	var wall_key := func(e: Dictionary, c: int, r: int) -> String:
 		return "C" if String(e.get("set", "")) in ["station", "bunker"] else _ch(rows, c, r)
@@ -2559,6 +2582,8 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 			for r in range(int(e["r0"]) + 1, int(e["r1"])):
 				if _ch(rows, c, r) in WALL_CH and not shell_cells.has(Vector2i(c, r)) and not in_dig.call(c, r):
 					shell_walls[Vector2i(c, r)] = [wall_key.call(e, c, r), occ]
+					if shallow_band(e):
+						shell_skip[Vector2i(c, r)] = true
 	# nadproża: wpis o niższym stropie (a) obok wpisu o wyższym (b), pasy na wspólnej wysokości — skała nad stropem a do wiersza stropu b.
 	# W warstwie świata, jak płyta stropu (`shell_cells`): w warstwie pierwszego planu (rysowanej nad światem) `occ` nie zna kolumn —
 	# z kamery w sali pod wysokością stropu tunelu wycinał dół nadproża i w stropie podziemi była dziura (uwaga z gry 2026-11-08).
@@ -2577,6 +2602,8 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 					var k := Vector2i(c, r)
 					if _ch(rows, c, r) in SHELL_CH and not shell_cells.has(k) and not shell_walls.has(k) and not in_band.call(c, r) and not in_dig.call(c, r):
 						shell_cells[k] = "C" if concrete else ""
+						if shallow_band(a):
+							shell_skip[k] = true
 
 ## Budynek 3D z wpisu FRONT (`buildings`, `bld_cells`, `bld_back`): wiersz r0 to dach, kolumny c0 i c1 — ściany szczytowe; otwory w nich
 ## (ciągi wierszy bez muru: drzwi, brama, okno `|`) przechodzą przez ścianę 3D w pasie gry.
@@ -2661,12 +2688,13 @@ static func shell_entry(e: Dictionary, c: int, rows: Array) -> bool:
 		wall = wall or ch in WALL_CH or ch == "|"
 	return wall
 
-## Przód strefy wydobycia (`dig_zone.chunk_mesh`): SHELL_Z, gdy strefa styka się z pasem wpisu z przekrojem (koniec sali podziemi 1.3 —
-## ściana do kopania stoi w jednym planie z podłogą i stropem przekroju), inaczej DEPTH_FRONT. Prostokąt w kaflach.
+## Przód strefy wydobycia (`dig_zone.chunk_mesh`): SHELL_Z, gdy strefa styka się z pasem wpisu z przekrojem (ściana do kopania stoi
+## w jednym planie z podłogą i stropem przekroju), inaczej DEPTH_FRONT. W tunelach i kopalniach (`shallow_band`) DEPTH_FRONT — bez stropu
+## i ścian przekroju przedłużenie strefy zasłaniało tylko wykop i snop latarki. Prostokąt w kaflach.
 static func zone_front_z(c0: int, r0: int, c1: int, r1: int) -> float:
 	for e: Dictionary in shell_bands:
 		if c1 >= int(e["c0"]) - 1 and c0 <= int(e["c1"]) + 1 and r1 > int(e["r0"]) and r0 < int(e["r1"]):
-			return SHELL_Z
+			return DEPTH_FRONT if shallow_band(e) else SHELL_Z
 	return DEPTH_FRONT
 
 ## `occ` ścian przekroju (`shell_walls`) dla strefy wydobycia przy pasie wpisu z przekrojem (jak `zone_front_z`): y spodu stropu i wierzchu

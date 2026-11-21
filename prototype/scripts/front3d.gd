@@ -2654,8 +2654,8 @@ static func build_walls(parent: Node3D) -> int:
 	var groups := {}                                         # "occ|klucz" → {wiersz: [kolumny]}
 	var occs := {}
 	for k: Vector2i in Level3D.shell_walls:
-		if Level3D.shell_entry_cells.has(k):
-			continue                                         # ściana wejścia budynku: w warstwie świata z fasadą (`Level3D._build_facades`)
+		if Level3D.shell_entry_cells.has(k) or Level3D.shell_skip.has(k):
+			continue                                         # ściana wejścia budynku: w warstwie świata z fasadą (`Level3D._build_facades`); podziemia: bez ścian (`shell_skip`)
 		var v: Array = Level3D.shell_walls[k]
 		var key := String(v[0]) if WALL_TEX.has(String(v[0])) else "#"
 		var gk := "%s|%s" % [str(v[1]), key]
