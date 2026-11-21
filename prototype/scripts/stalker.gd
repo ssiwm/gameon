@@ -261,7 +261,7 @@ func _physics_process(delta: float) -> void:
 		if lighter == null:
 			lighter = Lights.lamp_lit_player(global_position + Vector2(0, -20), get_tree(), get_world_2d().direct_space_state)   # gracz pod zapaloną lampą misji
 		if lighter != null:
-			NoiseMgr.break_lure()             # snop latarki przerywa przytrzymanie na wabiku (FUN_PLAN.md P0.2)
+			NoiseMgr.break_lure(true)
 			target_pos = lighter.global_position
 			_arrived = false
 			_listen = 0.0

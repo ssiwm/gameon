@@ -24,7 +24,7 @@ const TIPS := [
 	["culvert", "A pack sleeps across the yard. The hatch at your feet drops into an old culvert that runs under them to the station well — {crouch} all the way through: they hear you through the ground"],
 	["sneak", "Something is asleep close by — hold {crouch} and walk: a crouching step is silent and wakes it from half the distance"],
 	["quiet", "Attention is up. Stop shooting — in silence the meter drains fast. Sneaking ({crouch}) is silent too"],
-	["broadcast", "The transmitter is live and HE heard it. Press {overcharge} to throw a lure and pull him away — then run for the exit"],
+	["broadcast", "He heard the transmitter. Activate the lure here ({overcharge}), then move away toward the exit."],
 	["handcar", "Stand on the handcar and HOLD {interact} to pump — more hands, more speed. You cannot shoot while pumping"],
 	["generator", "Hold {interact} at a generator to start it. The work is loud, and a running generator keeps humming"],
 	["uneasy", "Something is listening. Stop shooting, sneak ({crouch}) — or press {overcharge} to lure it away"],

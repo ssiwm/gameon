@@ -35,6 +35,9 @@ var _frames := 0
 var GROUND_PROP_RE := RegEx.create_from_string("^FrontGround_(rock|rock_b|rock_c|fence|logs|tyre|bones|trunk_big|ph_branches_a|ph_branches_b|ph_fern_a|ph_fern_c)_-?[0-9]+$")
 var _fail := 0
 
+class MaskLevel extends Node2D:
+	var front := [{}]
+
 func _check(ok: bool, msg: String) -> void:
 	if not ok:
 		print("FAIL  " + msg)
@@ -85,10 +88,47 @@ func _process(_dt: float) -> bool:
 	_check_oil()
 	_check_forest()
 	_check_fade()
+	_check_wall_tracking()
 	print("PASS" if _fail == 0 else "FAIL (%d)" % _fail)
 	quit(0 if _fail == 0 else 1)
 	return true
 
+
+## Dwie postacie mijają kolejne słupy. Sprawdzamy maskę materiału po normalnej aktualizacji kamery, także przy starcie w OFF.
+func _check_wall_tracking() -> void:
+	var holder := MaskLevel.new()
+	root.add_child(holder)
+	var camera := Camera2D.new()
+	holder.add_child(camera)
+	camera.make_current()
+	var players := Node2D.new()
+	holder.add_child(players)
+	players.add_child(Node2D.new())
+	players.add_child(Node2D.new())
+	var view = load("res://scripts/view3d.gd").new()
+	holder.add_child(view)
+	view._level = holder
+	view._players = players
+	view._cam_a = Camera3D.new()
+	holder.add_child(view._cam_a)
+	var wall := Front3D.wall_material("C")
+	var settings := root.get_node("Settings")
+	var old_mode: int = settings.front_idx
+	for mode in [2, 0, 2, 1]:
+		settings.front_idx = mode
+		for i in players.get_child_count():
+			var actor := players.get_child(i) as Node2D
+			actor.position.x += 128.0 + 48.0 * i
+		view._front_tick(Front3D.FADE_T)
+		var count := int(wall.get_shader_parameter("npts"))
+		_check(count >= 2, "tryb %d: maska ściany pomija graczy" % mode)
+		if count >= 2:
+			var pts: PackedVector4Array = wall.get_shader_parameter("pts")
+			for i in players.get_child_count():
+				var x: float = players.get_child(i).position.x * view.PX
+				_check(is_equal_approx(pts[i].x, x), "tryb %d: maska ściany została za graczem %d" % [mode, i + 1])
+	settings.front_idx = old_mode
+	holder.free()
 
 func _check_map(map_id: String, rows: Array, front: Array, skip: Array) -> void:
 	var nrows := rows.size()

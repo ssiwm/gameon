@@ -80,6 +80,10 @@ func run(host: Node) -> int:
 					for _f in 2:
 						await tree.process_frame
 					_check_tab(pm, loc, t, " wpis %d" % i)
+					if page._entries[i].get("beast", "") == "stalker":
+						var tip: String = page._tip.text
+						if not tip.contains("%d s" % ceili(NoiseMgr.LURE_LOCK)) or not tip.contains(Actions.key("overcharge")) or tip.contains("{"):
+							_fail("%s: wskazówka Stalkera nie pokazuje czasu wabika lub przypisanego przycisku: %s" % [loc, tip])
 		if loc == "en":
 			# zmiana języka przy otwartym menu (ustawienia → Język): karta przebudowuje się w nowym języku
 			TranslationServer.set_locale("pl")

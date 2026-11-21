@@ -130,9 +130,9 @@ const STEPS := [
 	{"kind": "bank", "decks": [[19, 31]], "posts": [30, 37]},
 	{"kind": "windfall", "decks": [[21, 28]]},
 	{"kind": "tor", "decks": [[21, 57], [19, 60], [17, 63], [15, 66]], "cache": true},
-	{"kind": "boughs", "decks": [[14, 99], [14, 105], [14, 110], [16, 94], [16, 111]], "trunks": [[93, 18]]},
+	{"kind": "boughs", "decks": [[14, 99], [14, 105], [14, 110], [16, 94], [16, 111]], "trunks": [[93, 18]], "worn_landings": [[16, 94], [14, 99]]},
 	{"kind": "tor", "decks": [[19, 97], [21, 97]]},
-	{"kind": "tor", "decks": [[19, 123], [21, 123]]},
+	{"kind": "tor", "decks": [[19, 123], [21, 123]], "scree": true},
 ]
 
 const MAP := [

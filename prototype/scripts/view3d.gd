@@ -240,7 +240,7 @@ var _scan_labels: Array = []             ## napisy głębokości cennych znajdzi
 var _xray := {}                          ## id wroga 2D → [model 3D, siatki z nakładką prześwietlenia, materiał] (skaner)
 var _xray_mat: Array[ShaderMaterial] = []   ## [spokojny, zagrożenie]
 var _motes: CPUParticles3D               ## pył w powietrzu wokół kamery
-var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 3D efektów na wodzie]
+var _leechfx := {}                       ## id Pijawki → [węzeł 2D, korzeń 3D, przypływ, zasłona wody, faza kropli kwasu]
 var _lampfx := {}                        ## id lampy → [węzeł 2D, poświata żarówki]
 var _winfx := {}                         ## id okna (window_glass.gd) → [węzeł 2D, model, szyba, resztki szkła]
 var _bossfx := {}                        ## id Żyły → [węzeł 2D, korzeń 3D efektów]
@@ -657,7 +657,7 @@ func _tick(delta: float) -> void:
 	_sync_boss_fx()
 	_sync_vein_gate(delta)
 	tp = _tp("boss_fx", tp)
-	_sync_leech_fx()
+	_sync_leech_fx(delta)
 	tp = _tp("leech_fx", tp)
 	_sync_lamps()
 	_sync_windows()
@@ -1051,11 +1051,9 @@ func _build_world(root: Node3D, rows: Array, hub: bool, spread := false) -> Dict
 var _front_w := {}                           ## id węzła → [Vector4 prostokąt sylwetki, waga 0–1]
 
 func _front_tick(delta: float) -> void:
-	if _level == null or (_level.get("front") as Array).is_empty():
+	if _level == null or ((_level.get("front") as Array).is_empty() and Level3D.buildings.is_empty()):
 		return
 	Front3D.set_camera_y(_cam_a.global_position.y, _cam_a.global_position.x, _cam_a.global_position.z)             # pod ziemią las i podłoże gasną (także przy „Foreground: OFF”)
-	if Settings.front_idx == 2:
-		return
 	var c2 := get_viewport().get_camera_2d()
 	if c2 == null:
 		return
@@ -1105,7 +1103,7 @@ func _front_tick(delta: float) -> void:
 		if not now.has(id):
 			pts.append(_front_w[id])
 	var frame_h := vis.y / maxf(c2.zoom.y, 0.01) * PX
-	Front3D.update(pts, -ctr.y * PX, frame_h, Settings.front_idx == 1)
+	Front3D.update(pts, -ctr.y * PX, frame_h, Settings.front_idx)
 
 ## Kroki `_build_world` w kolejności (nazwa do pomiaru, wywołanie). Kolejność ma znaczenie: ciecze potrzebują strumieni, las — dna lasu itd.
 func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
@@ -6434,11 +6432,6 @@ const POOL_Y := 0.12                     ## wysokość kręgów i cienia nad dne
 const TIDE_Z0 := -1.6                    ## woda przypływu: od ściany w głębi…
 const TIDE_Z1 := 0.95                    ## …do krawędzi przed graczami [m]
 
-## Okrąg leżący na wodzie (pierścień w płaszczyźnie XZ, spłaszczony w głąb) dopisany do siatki `im`.
-const LEECH_SPIT_GLOW := 0.3            ## B1 jest prawie czarna, więc pełna poświata znacznika robiła z niej jaskrawy prostokąt wokół gracza
-
-## Znacznik lądowania plwociny (Żyła, Pijawka): plama na podłodze, pionowa poświata nad nią i krąg zasięgu trafienia. `sm` w pikselach świata, INF = brak.
-## Kamera patrzy prawie poziomo, więc sam krąg na podłodze był kreską.
 const HUMP_RISE := 5.0                   ## /s: garb wysuwa się spod podłogi i chowa (ok. 0,2 s)
 const HUMP_TRAIL_S := 0.8                ## s: tyle zostaje ciemny ślad za garbem
 const HUMP_SINK_M := 0.42                ## m: schowany garb jest tyle pod podłogą
@@ -6528,7 +6521,7 @@ func _sync_vein_hump(b: Node, root: Node3D, base: Vector3, t: float) -> void:
 		im.surface_add_vertex(p + Vector3(0.0, 0.02, 0.3 + 0.22))
 	im.surface_end()
 
-## Znacznik na podłodze: plwocina (zielony kwas) albo — z `col` — miejsce wynurzenia Żyły (pomarańczowy żar spod pęknięć).
+## Znaczniki Żyły na podłodze: plwocina (zielony kwas) albo miejsce wynurzenia (pomarańczowy żar spod pęknięć).
 func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, flying: bool, t: float, glow := 1.0, col := Color(0.55, 1.0, 0.25)) -> void:
 	mark.clear_surfaces()
 	if not sm.is_finite():
@@ -6561,6 +6554,39 @@ func _draw_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: flo
 	mark.surface_end()
 	_water_ring(mark, c, hit_r, 0.05, Color(acid, 0.6 + 0.4 * mp2))
 
+## Kwas Pijawki: zewnętrzne zęby sięgają promienia trafienia. Wewnątrz krople zbiegają do celu, szybciej podczas lotu.
+func _draw_leech_spit_mark(mark: ImmediateMesh, sm: Vector2, base: Vector3, hit_r: float, drop_phase: float) -> void:
+	mark.clear_surfaces()
+	if not sm.is_finite():
+		return
+	var center := Level3D.px_to_m(sm) - base + Vector3.UP * 0.08
+	var acid := Color(0.55, 1.0, 0.25)
+	var sectors := 12
+	mark.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in sectors:
+		var angle := TAU * float(i) / float(sectors)
+		var radial := Vector3(cos(angle), 0.0, 0.55 * sin(angle))
+		var arc := angle + TAU / float(sectors) * (0.58 + 0.13 * sin(3.0 * angle))
+		var edge_end := Vector3(cos(arc), 0.0, 0.55 * sin(arc))
+		mark.surface_set_color(Color(acid, 0.92))
+		mark.surface_add_vertex(center + radial * hit_r)
+		mark.surface_add_vertex(center + edge_end * hit_r * 0.97)
+		mark.surface_set_color(Color(acid, 0.50))
+		var tooth := center + radial * hit_r * (0.72 + 0.06 * cos(5.0 * angle))
+		mark.surface_add_vertex(tooth + Vector3.UP * (0.06 + 0.045 * sin(5.0 * angle)))
+		if i % 2 == 0:
+			var phase := fposmod(drop_phase + float(i) * 0.37, 1.0)
+			var head := center + radial * hit_r * lerpf(0.78, 0.08, phase)
+			head.y += sin(phase * PI) * 0.22
+			var across := Vector3(-sin(angle), 0.0, cos(angle) * 0.55) * hit_r * 0.045
+			mark.surface_set_color(Color(acid, 0.85 * sin(phase * PI)))
+			mark.surface_add_vertex(head - across)
+			mark.surface_add_vertex(head + across + Vector3.UP * 0.07)
+			mark.surface_set_color(Color(acid, 0.16))
+			mark.surface_add_vertex(head + radial * hit_r * 0.16 + Vector3.UP * 0.13)
+	mark.surface_end()
+
+## Pierścień na wodzie w płaszczyźnie XZ, spłaszczony w głąb.
 func _water_ring(im: ImmediateMesh, c: Vector3, r: float, w: float, col: Color) -> void:
 	im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 	for i in 33:
@@ -6577,7 +6603,7 @@ func _water_ring(im: ImmediateMesh, c: Vector3, r: float, w: float, col: Color) 
 ##  - cień pod wodą: ciemna podłużna plama z dwojgiem bladych oczu, widoczna tylko tam, gdzie pada światło;
 ##  - woda przypływu (fazy 2–3): bryła wody nad basenem i brzegami, rosnąca do `SURGE_H`, z falującą powierzchnią i jasną krawędzią piany.
 ##    Leży na warstwie graczy, więc zakrywa postaci stojące w wodzie.
-func _sync_leech_fx() -> void:
+func _sync_leech_fx(delta: float) -> void:
 	for n in get_tree().get_nodes_in_group("boss"):
 		if not (n is Node2D) or n.is_queued_for_deletion() or _leechfx.has(n.get_instance_id()) or not n.has_method("fx_state"):
 			continue
@@ -6640,7 +6666,7 @@ func _sync_leech_fx() -> void:
 		veil.mesh = ImmediateMesh.new()
 		veil.layers = LAYER_ACTORS
 		_world.add_child(veil)
-		_leechfx[n.get_instance_id()] = [n, root, tide, veil]
+		_leechfx[n.get_instance_id()] = [n, root, tide, veil, 0.0]
 	var t := Time.get_ticks_msec() / 1000.0
 	for id in _leechfx.keys():
 		var b = _leechfx[id][0]
@@ -6657,7 +6683,11 @@ func _sync_leech_fx() -> void:
 		var fs: Array = b.call("fx_state")
 		var base := Level3D.px_to_m((b as Node2D).global_position)
 		root.position = base
-		_draw_spit_mark((root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh, b.spit_mark, base, float(b.SPIT_HIT_R) * PX, b.spit_flying(), t, LEECH_SPIT_GLOW)
+		var drop_phase := 0.0
+		if b.spit_mark.is_finite():
+			drop_phase = fposmod(float(_leechfx[id][4]) + delta * (1.5 if b.spit_flying() else 0.85), 1.0)
+		_leechfx[id][4] = drop_phase
+		_draw_leech_spit_mark((root.get_node("SpitMark") as MeshInstance3D).mesh as ImmediateMesh, b.spit_mark, base, float(b.SPIT_HIT_R) * PX, drop_phase)
 		root.visible = (b as Node2D).is_visible_in_tree()
 		var rings := (root.get_node("Rings") as MeshInstance3D).mesh as ImmediateMesh
 		rings.clear_surfaces()
