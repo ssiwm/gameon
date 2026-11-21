@@ -37,6 +37,14 @@ const DIG_ZONES := [[187, 31, 190, 39, "dirt", 1301, 0.2, {"tape": "m3_dig"}], [
 ## Posterunek: zaplecze z żarówką. Skład: magazyn za kratą na parterze (antresola to kładka `=`, nie podłoga — tam wnęk nie ma).
 ## Podziemia (niski tunel między salami): sztolnia, regał u dołu środkowego szybu i korytarz techniczny,
 ## co najmniej 10 kolumn od Ślepców i gniazd ćm i z dala od strefy wydobycia.
+## Pomosty pod gołym niebem z historii miejsca (`step3d.gd`, STEPS_PLAN.md S2): plac — ciepłociąg na wspornikach Γ z kładką z desek
+## (każdy pomost to pętla kompensacyjna nad drogą, magistrala za placem); przy budynkach — narośl Żyły wylewająca się z okien piętra.
+const STEPS := [
+	{"kind": "heat", "decks": [[24, 44], [22, 48], [20, 58], [24, 56], [22, 62], [24, 70], [22, 76]]},
+	{"kind": "vein", "decks": [[20, 108], [22, 105], [24, 103]]},
+	{"kind": "vein", "decks": [[20, 143], [22, 146], [24, 148]]},
+]
+
 const NICHES := [
 	{"kind": "doorway", "c0": 19, "c1": 21, "r0": 23, "r1": 25, "lit": "bulb"},
 	{"kind": "grate", "c0": 134, "c1": 136, "r0": 23, "r1": 25, "lit": "bulb"},
@@ -67,8 +75,8 @@ const FRONT := [
 	{"set": "tunnel", "c0": 171, "c1": 191, "r0": 30, "r1": 40, "shell": true},    # ślepa wschodnia sala pod tartakiem z końcową ścianą (skrytka — cel poboczny)
 	# las z podłożem (F3) na powierzchni poza przekrojami posterunku i Składu: skraj lasu przy starcie, arena z kładkami, tartak nad stawem
 	{"set": "forest", "c0": 2, "c1": 17, "r0": 0, "r1": 26},
-	{"set": "forest", "c0": 38, "c1": 111, "r0": 0, "r1": 26},
-	{"set": "forest", "c0": 143, "c1": 163, "r0": 0, "r1": 26},
+	{"set": "forest", "c0": 38, "c1": 111, "r0": 0, "r1": 26, "skip": [[46, 86], [101, 111]]},   # STEPS_PLAN.md S2: bez pni przed pomostami placu i przy budynku (dół korony 6,5–8 m, pomosty do 7,9 m nad placem)
+	{"set": "forest", "c0": 143, "c1": 163, "r0": 0, "r1": 26, "skip": [[143, 154]]},
 	# hala Żyły (VEIN_PLAN.md §6.1): przekrój, bez lasu przed areną; budynek 3D z blachy na stalowym szkielecie (`building3d.gd` "shed"),
 	# ściana wschodnia na skraju mapy (kol. 190), ściana tylna na całej wysokości (wnętrze bez tła `b`), słupy przy ścianie tylnej w osiach
 	# słupów `w` hali, bez słupów w płaszczyźnie przekroju (arena bossa — nic nie zasłania kadru)

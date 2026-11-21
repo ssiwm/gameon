@@ -17,12 +17,14 @@ func _check(ok: bool, msg: String) -> void:
 		print("FAIL  " + msg)
 		_fail += 1
 
-## Poziomy chodzenia w kolumnie `c`: y wierzchu kafli bryły i pomostów z powietrzem nad sobą.
+## Poziomy chodzenia w kolumnie `c`: y wierzchu kafli bryły i pomostów z powietrzem nad sobą. Bez wierzchu pod oknem `|` (rama zatrzymuje
+## ruch) i bez ciasnych wnęk z pomostem tuż nad wierzchem (skrzynia `M` o kafel pod pomostem — nikt tam nie stoi wyprostowany).
 func _levels(rows: Array, c: int) -> Array:
 	var out: Array = []
 	for r in rows.size():
 		var ch := Level3D._ch(rows, c, r)
-		if (Level3D.is_solid_ch(ch) or Level3D.is_platform_ch(ch)) and not Level3D.is_solid_ch(Level3D._ch(rows, c, r - 1)):
+		var up := Level3D._ch(rows, c, r - 1)
+		if (Level3D.is_solid_ch(ch) or Level3D.is_platform_ch(ch)) and not Level3D.is_solid_ch(up) and up != "|" and not Level3D.is_platform_ch(up):
 			out.append(-float(r) * T)
 	return out
 

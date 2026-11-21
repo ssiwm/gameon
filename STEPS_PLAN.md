@@ -55,6 +55,14 @@ Pomosty z wpisu nie mają modelu desek ani nóg (`Level3D.step_cells`).
     gracza na pomoście: korona sosen z konarami 5,5 m nad najwyższym pomostem (`BOUGH_CROWN`), las `FRONT` 1.1 z pominięciem kol. 98–106.
 - **S2** 1.3: plac — ciepłociąg na wspornikach Γ (rura ⌀ 0,6 m, ramię na ok. 1,85 m, pętla rury w głębi przy zmianie poziomu);
   przy budynkach — narośl Żyły z drzwi (łuki co 1,3 m nad ścieżką, mata żył na wierzchu).
+- **Stan 2026-11-21 (1.7.641):** S2 zrobione (`heat`, `vein` w `step3d.gd`, wpisy w `maps/z1_m3.gd`). Odstępstwa i ustalenia:
+  - ciepłociąg: rura ⌀ 0,5 m (nie 0,6) pod kładką z poprzecznych desek — kładka daje wierzch na wysokości pokładu, rura pod nią mieści się
+    nad pasem 1,85 m; wsporniki co ≤ 3 m, słupy wspólne dla sąsiednich pomostów, bez słupów w kolumnach pod skrzynią / w miejscu pionu rury;
+  - narośl nie wychodzi z drzwi, tylko z okna piętra przy najwyższym pomoście, i spływa kaskadą za pasem gry (z ≤ −0,8); pierwsza wersja
+    z łukami od ziemi co 1,3 m dawała rząd czerwonych kolumn jak rury z plastiku — odrzucona; łuki nad ścieżką zostały jako półłuki
+    ze spływu pod matą (bez nóg przed płaszczyzną gry: zasłaniałyby wrogów, a wygaszanie pierwszego planu wymaga tekstur i `LAYER_WALL`);
+  - tkanka: szum o dużej skali i jasne żyły dawały „moro”; teraz drobne żyły (skala 6,5 / 15) na ciemnej bazie, poświata tylko w żyłach;
+  - las `FRONT` 1.3 bez pni w kol. 46–86, 101–111 i 143–154.
 - **S3** podciąganie na przedniej krawędzi pokładu (`char3d`): model przed pokładem z ≈ +0,8, IK dłoni na krawędzi, faza wypchnięcia; ścieżka symulacji bez zmian.
 - **S4** 1.2 — osobna runda propozycji (maszt z platformą i koszem drabiny, stacja słupowa).
 
