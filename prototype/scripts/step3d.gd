@@ -221,6 +221,10 @@ static func _mat(key: String) -> Material:
 				cm.emission_enabled = true
 				cm.emission = Color(0.80, 0.68, 0.50)
 				cm.emission_energy_multiplier = 0.065 if key == "bough_wear" else 0.035
+				if key == "bough_wear" and cm.albedo_texture != null:
+					cm.emission_texture = cm.albedo_texture    # poza snopem dalej widać włókna w odsłoniętym drewnie
+					cm.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+					cm.emission_energy_multiplier = 0.48
 			m = cm
 		"soil":
 			m = Level3D.terrain_cut_material()
@@ -1159,21 +1163,20 @@ static func _bough_wear(st: SurfaceTool, a: Vector3, b: Vector3, ra: float, rb: 
 	var last_upper := Vector3.ZERO
 	var last_ridge := Vector3.ZERO
 	var last_lower := Vector3.ZERO
-	var normal := Vector3(0.0, 0.75, 0.66).normalized()
 	var bb := AABB()
 	for i in 7:
 		var u := float(i) / 6.0
 		var f := inverse_lerp(a.x, b.x, lerpf(left, right, u))
 		var axis := a.lerp(b, f)
 		var radius := lerpf(ra, rb, f) + 0.009
-		var spread := sin(PI * u) * (0.68 + 0.12 * sin(18.0 * u))
-		var angle := 0.70 + 0.10 * sin(9.0 * u)
+		var spread := sin(PI * u) * (0.68 + 0.18 * sin(18.0 * u + x))
+		var angle := 0.70 + 0.14 * sin(9.0 * u + x)
 		var upper := axis + Vector3(0, cos(angle - spread), sin(angle - spread)) * radius
 		var ridge := axis + Vector3(0, cos(angle), sin(angle)) * radius
 		var lower := axis + Vector3(0, cos(angle + spread), sin(angle + spread)) * radius
 		if i > 0:
-			_quad(st, last_upper, upper, ridge, last_ridge, normal)
-			_quad(st, last_ridge, ridge, lower, last_lower, normal)
+			_quad(st, last_upper, upper, ridge, last_ridge, Vector3(0, cos(angle - spread * 0.5), sin(angle - spread * 0.5)))
+			_quad(st, last_ridge, ridge, lower, last_lower, Vector3(0, cos(angle + spread * 0.5), sin(angle + spread * 0.5)))
 		else:
 			bb = AABB(upper, Vector3.ZERO)
 		bb = bb.expand(upper).expand(lower).expand(ridge)
