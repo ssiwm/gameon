@@ -251,6 +251,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_quad_gait.gd 2>&1 | tee quad_gait.log
           grep -a "\[QUAD-GAIT\] PASS (0" quad_gait.log
+      - name: Podciąganie na pomost (test_mantle.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_mantle.gd 2>&1 | tee mantle.log
+          grep -a "^\[MANTLE\] PASS$" mantle.log
       - name: Stopy postaci na zboczu i schodach wykopu (test_foot_terrain.gd)
         run: |
           godot --headless --path prototype -s tools/test_foot_terrain.gd 2>&1 | tee foot_terrain.log
