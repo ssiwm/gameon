@@ -30,6 +30,7 @@ extends Node2D
 ## osypiskiem wychodzi na wierzch usypiska z krótkim ogłuszeniem (przygniecenie, nie śmierć), wróg — na wierzch (serwer).
 
 const Mats := preload("res://scripts/dig_materials.gd")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
@@ -111,8 +112,8 @@ const WAKE_CALM := 20.0               ## s bez ciosu, po których licznik zaczyn
 const WAKE_DECAY := 4.0               ## s na jeden cios mniej (po WAKE_CALM)
 const WAKE_DROP := 4                  ## ciosów poniżej progu, przy których zapowiedź gaśnie (następna seria zapowie od nowa)
 const WAKE_KINDS := {"z1_m3": ["slepiec"]}   ## mapa → kto wychodzi (1.3: Ślepiec); reszta — WAKE_DEFAULT
-const WAKE_DEFAULT := ["trzosek", "trzosek"]
-const WAKE_POCKET := Vector2(13.0, 10.0)     ## px: połowy boków kieszeni, z której wychodzą (wróg 10 × 14 px)
+const WAKE_DEFAULT := ["lupacz"]
+const WAKE_POCKET := Vector2(13.0, 10.0)     ## px: połowy boków kieszeni wyjściowej, wspólnej dla Łupacza i Ślepca
 const WAKE_FACE := 48.0               ## px: najdalsze czoło wykopu od kopiącego, za którym szukamy kieszeni
 const WAKE_TOAST_R := 220.0           ## px od strefy: tak blisko człowiek dostaje napis zapowiedzi
 ## K5b, komora (DIG_LOOT_PLAN.md): pusta kieszeń w głębi strefy z gniazdem ćm pod stropem i główną znajdźką w dnie. Wkopanie się do niej
@@ -1256,7 +1257,9 @@ func _wake_hit(feet: Vector2, dir: Vector2) -> void:
 		_pocket_blast = false
 		var kinds := wake_kinds(map_key)
 		var h: float = spot[2]
-		wake_spawned = Director.spawn_at(kinds, Vector2(src.x - h * 5.0, src.y + WAKE_POCKET.y - 1.0), feet, h * 10.0)
+		var mole := kinds.has("lupacz")
+		var spawn_pos := Vector2(src.x + h * (4.0 if mole else -5.0), src.y + WAKE_POCKET.y - 1.0)
+		wake_spawned = Director.spawn_at(kinds, spawn_pos, feet, h * 10.0, -h if mole else 0.0)
 		SessionLog.note_dig(String(name), "woke")
 	SessionLog.event("dig_wake", {"zone": String(name), "stage": stage, "hits": int(wake_hits), "map": map_key})
 	var kind := String(wake_kinds(map_key)[0])
@@ -1334,13 +1337,16 @@ func _wake_rpc(key: String, stage: int, at: Vector2, kind: String) -> void:
 		else:
 			tree.create_timer(0.14 * float(k) + randf_range(0.0, 0.08)).timeout.connect(
 				func() -> void: Audio.play_variant_at("dig_gravel", 3, at, Audio.BUS_WORLD, db, pitch))
-	var who := "slepiec" if kind == "slepiec" else "trzosek"
 	if stage == 2:
-		Audio.play_variant_at(who + "_sleep", 3, at, Audio.BUS_WORLD, -8.0, 0.8)
+		var sleep := EnemyDefs.voice(kind, "sleep")
+		if not sleep.is_empty():
+			Audio.play_variant_at(sleep[0], sleep[1], at, Audio.BUS_WORLD, -8.0, 0.8 * float(sleep[3]))
 	elif stage == 3:
 		var chip: Color = Mats.MATS[material_at_px(at)]["chip"] if rect_px().has_point(at) else Color(0.4, 0.35, 0.3)
 		Audio.play_at("collapse", at, Audio.BUS_WORLD, -4.0, 1.35)
-		Audio.play_variant_at(who + "_attack", 2, at, Audio.BUS_WORLD, -2.0, 0.95)
+		var callout := EnemyDefs.voice(kind, "attack")
+		if not callout.is_empty():
+			Audio.play_variant_at(callout[0], callout[1], at, Audio.BUS_WORLD, -2.0, 0.95 * float(callout[3]))
 		Vfx.chips(lvl, at, Vector2.UP, chip, 12, "chip", 120.0, Vector2(1.0, 2.2))
 	var me := _local_human()
 	if me == null or not rect_px().grow(WAKE_TOAST_R).has_point(me.global_position):

@@ -34,7 +34,18 @@ extends RefCounted
 ##           rodzaj bez wpisu milczy (Ćma). Skoczek mówi głosem Trzoska (niżej), zdemaskowany Mimik głosem Ślepca (wyżej).
 ##           „sleep" = odgłos snu (IDLE_PLAN.md I3): co kilka s, tylko z bliska (enemy.gd SLEEP_SOUND_R); Mimik (przebranie), Skoczek i Żerca śpią cicho.
 
+const Mole := preload("res://scripts/enemy_mole.gd")
+
 const DEFS := {
+	"lupacz": {
+		"behavior": "mole", "sheet": "trzosek", "frontal": true,
+		"hp": 72.0, "speed": 16.0, "damage": 2, "windup": Mole.CONTACT, "reach": 13.0,
+		"cooldown": 1.55, "leap": false, "hear": 220.0, "wake_near": 35.0, "sight": 62.0, "hear_error": 32.0,
+		"color": Color(0.42, 0.39, 0.34), "size": Vector2(13, 10), "hurt_w": 17.0, "hurt_h": 12.0,
+		"knock": 40.0, "knock_mult": 0.65, "head": 0.0,
+		"xp": 4, "scrap": 4, "ammo": 0.36, "battery": 0.08,
+		"voice": {"attack": ["wolek_attack", 2, -5.0, 0.86], "sleep": ["wolek_sleep", 3, -7.0, 0.84], "death": ["wolek_death", 2, -5.0, 0.92]},
+	},
 	"trzosek": {
 		"hp": 30.0, "speed": 88.0, "damage": 1, "windup": 0.28, "reach": 13.0,
 		"cooldown": 0.9, "leap": true, "hear": 200.0, "wake_near": 90.0, "sight": 260.0,

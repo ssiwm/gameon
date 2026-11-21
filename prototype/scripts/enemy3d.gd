@@ -28,6 +28,8 @@ const LIT_GLOW := 1.6                      ## Ćma: emisja ciała w snopie latar
 ## walk_clip: zestaw klipów chodu z char_clips.gd — „zombie" (powłóczysty krok) albo „human" (zwykły chód: Mimik udaje człowieka);
 ## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
+	"lupacz": {"fit": ["length", EnemyDefs.Mole.LENGTH_PX], "quad": true, "clips": true, "burrow_clips": true,
+		"cycle": 0.38, "eye_glow": 0.0},
 	# Chód z kodu (`gait: heavy`, `_heavy_gait`): ciężki, kołyszący krok goryli z wymachem długich rąk. Klip `zombie` dawał drobny
 	# krok na palcach z głową opuszczoną pod barki (krótkie nogi Wołka). Cykl 0.62 s: podpora przesuwa stopę z prędkością ciała z DEFS.
 	# Oczy: tekstura ma ledwie kilka ciepłych pikseli, więc maska HSV nie dawała zapowiedzi — świecą kulki przy kości głowy (`eye_lamp`:
@@ -288,6 +290,8 @@ var _motion_time := 0.0
 var _motion_wind_clock := 0.0
 var _motion_remaining := NAN
 var _motion_duration := 0.0
+var _burrow_time := -1.0
+var _swipe_recovery := 0.0
 var _motion_values: Dictionary = {}
 var _contact_frame := false
 var _grounded_hint := -1
@@ -316,6 +320,9 @@ var _blade: Array = []                       ## SPEC `death_blade`: [kość dło
 
 ## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
 func motion_context(info: Dictionary) -> void:
+	if _spec.get("burrow_clips", false):
+		_burrow_time = float(info.get("burrow_time", -1.0))
+		_swipe_recovery = float(info.get("swipe_recovery", 0.0))
 	_vein_face = float(info.get("face", 0.0))
 	_grounded_hint = int(bool(info["grounded"])) if info.has("grounded") else -1
 	_target_world_y = -float(info.get("target_y", NAN)) * PX
@@ -325,9 +332,17 @@ func motion_context(info: Dictionary) -> void:
 		_motion_pending = String(info.get("motion_action", Motion.action(kind)))
 
 func clip_duration(clip: String) -> float:
+	if clip == "attack" and _spec.get("burrow_clips", false):
+		return EnemyDefs.Mole.RECOVERY
 	return Motion.recovery(_motion_name) if clip == "attack" and _motion_name != "" else float(CLIP_DUR.get(clip, 0.42))
 
 func motion_phase() -> String:
+	if _spec.get("burrow_clips", false) and not _dead:
+		if _clip == "attack":
+			return "contact" if _clip_t <= 0.0001 else "recovery"
+		if _swipe_recovery > 0.0:
+			return "recovery"
+		return "anticipation" if is_finite(_motion_remaining) else "idle"
 	if _dead or _motion_weight < 0.001: return "idle"
 	if _clip == "attack": return "contact" if _clip_t <= 0.0001 else "recovery"
 	return "anticipation" if _prev_anim == "windup" else "cancelled"
@@ -1100,6 +1115,11 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		_phase += (step_px if is_finite(step_px) else delta * speed_px) * TAU / cycle_px
 		if is_finite(horizontal_speed) and absf(horizontal_speed) < 0.5:
 			anim = "idle"
+	if _spec.get("burrow_clips", false) and not _dead:
+		if not skip_skeleton:
+			_pose_burrower(anim)
+		_prev_anim = anim
+		return
 	_advance_motion(delta, anim)
 	if skip_skeleton:
 		_prev_anim = anim
@@ -1146,7 +1166,7 @@ func trigger(clip: String, action := "") -> void:
 		_motion_name = action if action != "" else (_motion_pending if _motion_pending != "" else Motion.action(kind))
 		_motion_pending = ""
 		_motion_weight = 1.0 if clips_on and _motion_name != "" else 0.0
-		_contact_frame = _motion_weight > 0.0
+		_contact_frame = _motion_weight > 0.0 or bool(_spec.get("burrow_clips", false))
 	_foot_locks.clear()
 
 ## Śmierć: odtwarza upadek, potem leży, zapada się i `finished` = true. Modele bez klipów kończą od razu.
@@ -1504,6 +1524,30 @@ func _mix_quad(sample: Array, w: float) -> void:
 	for bi in rs.size():
 		_sk.set_bone_pose_rotation(bi, _sk.get_bone_pose_rotation(bi).slerp(rs[bi], w))
 		_sk.set_bone_pose_position(bi, _sk.get_bone_pose_position(bi).lerp(ps[bi], w))
+
+## Klipy z własnego szkieletu. W animacji wyjścia Root zawiera już przesunięcie
+## ciała, więc odejmujemy drogę przebytą przez kolizję. Trafienie otwiera klatkę 19.
+func _pose_burrower(anim: String) -> void:
+	var clip := "idle"
+	var t := fmod(_t, _qlen("idle"))
+	_tilt.position = Vector3.ZERO
+	_pivot.basis = Basis.from_scale(Vector3.ONE * _scale)
+	if _burrow_time >= 0.0:
+		clip = "emerge"
+		t = _burrow_time
+		_tilt.position.x = (EnemyDefs.Mole.ENTRY_TRAVEL - EnemyDefs.Mole.entry_travel(t)) * PX
+	elif _clip == "attack" or _swipe_recovery > 0.0:
+		clip = "attack"
+		t = EnemyDefs.Mole.CONTACT + (_clip_t if _clip == "attack" else EnemyDefs.Mole.RECOVERY - _swipe_recovery)
+	elif is_finite(_motion_remaining) and _motion_duration > 0.0:
+		clip = "attack"
+		# Nawet gdy kolejny pakiet spóźni się o klatkę, kontakt zaczyna dopiero zdarzenie serwera.
+		t = EnemyDefs.Mole.CONTACT * clampf(1.0 - _motion_remaining / _motion_duration, 0.0, 0.999)
+	elif anim == "walk" or anim == "run":
+		clip = "walk"
+		t = fposmod(_phase / TAU, 1.0) * _qlen(clip)
+	_ap.assigned_animation = clip
+	_ap.seek(t, true)
 
 func _pose_quad(anim: String, delta: float) -> void:
 	var len := 1.0

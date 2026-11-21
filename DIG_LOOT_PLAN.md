@@ -100,9 +100,8 @@ pule bez farmienia, nagrania tylko lokalnie. **Progi zawału zostają** (decyzja
   na 1.1 jako lekcję.
 
 ### K3 — ryzyko i rytm (po playteście K1–K2)
-- **„Coś drapie”**: po ok. 20 ciosach w strefę zza ściany słychać drapanie. Po kolejnych ok. 10 z czoła wykopu wychodzi para Trzosków
-  (na 1.3 Ślepiec). Gracz dostaje zapowiedź i może przestać. Dziś dyrektor prawie nikogo nie wypuszcza, a strefa to dobre lokalne miejsce
-  na zaplanowaną walkę. Bot pilnuje kopiącego (niezrobione w D5).
+- **„Coś drapie”**: po 20 ciosach w głębokiej strefie zza ściany słychać drapanie. Po 26 odgłos jest bliżej, a po 30 ze skały wychodzi
+  jeden Łupacz (na 1.3 Ślepiec). Gracz może przerwać kopanie po ostrzeżeniu. Bot pilnuje strony, z której nadchodzi wróg.
 - **Komora na końcu** (Vault z DRG): najgłębsze miejsce strefy 1.1 to pusta kieszeń z gniazdem ćm i główną znajdźką. Odkopanie jej
   daje „aha”, ale budzi rój.
 

@@ -62,6 +62,7 @@ func run(m: Node2D) -> void:
 	await _test_pack_shout()
 	await _test_pack_morale()
 	await _test_windup_interrupt()
+	await _test_mole_swipe()
 	await _test_director()
 	await _test_pincer()
 	await _test_director_composition()
@@ -812,7 +813,8 @@ func _test_behaviors() -> void:
 			if not Base.BEHAVIORS.has(b) or not ResourceLoader.exists(String(Base.BEHAVIORS[b])):
 				bad.append("%s→%s" % [k, b])
 	check("zachowania: każdy `behavior` z enemy_defs.gd ma klasę (BEHAVIORS)", bad.is_empty(), str(bad))
-	check("zachowania: rodzaje z własną mechaniką mają zachowanie (10 rodzajów)", kinds_with.size() == 10 and kinds_with.get("podsluchacz") == "listener" and kinds_with.get("wolek") == "bruiser" and kinds_with.get("slepiec") == "blind" and kinds_with.get("trzosek") == "pack", str(kinds_with))
+	check("zachowania: rodzaje z własną mechaniką mają zachowanie (11 rodzajów)", kinds_with.size() == 11 and kinds_with.get("lupacz") == "mole"
+		and kinds_with.get("podsluchacz") == "listener" and kinds_with.get("wolek") == "bruiser" and kinds_with.get("slepiec") == "blind" and kinds_with.get("trzosek") == "pack", str(kinds_with))
 	var unknown = Base.create("nie_ma_takiego", null)
 	var empty = Base.create("", null)
 	check("zachowania: pusta i nieznana nazwa → baza z domyślnymi hakami (bez błędu)", unknown != null and empty != null and unknown.damage_mult() == 1.0 and unknown.threat_ok() and not unknown.tick_special(0.1) and unknown.derive_pre() == -1 and empty.returns_home() and not empty.holds_still())
@@ -1893,8 +1895,78 @@ func _test_facing() -> void:
 # ---------------------------------------------------------------- dane rodzajów (ENEMY_PLAN.md F2)
 
 const STAT_KEYS := ["hp", "speed", "damage", "windup", "reach", "cooldown", "leap", "hear", "wake_near", "sight", "color", "size", "knock", "knock_mult", "head"]
+
+func _test_mole_swipe() -> void:
+	var pos := Vector2(FAR_X + 28000.0, -7200.0)
+	var floor_body := _floor(pos.x - 50.0, pos.x + 50.0, pos.y)
+	var e := _spawn("lupacz", pos)
+	e.set_physics_process(false)
+	var model := preload("res://scripts/enemy3d.gd").new()
+	level.add_child(model)
+	var built := model.setup("lupacz")
+	check("Łupacz: model i cztery klipy z GLB", built and model._qhas("emerge") and model._qhas("idle")
+		and model._qhas("walk") and model._qhas("attack") and is_equal_approx(model._qlen("attack"), 32.0 / 24.0))
+	var saved_pos := player.global_position
+	var saved_hp := int(player.hp)
+	player.set_physics_process(false)
+	player.global_position = pos + Vector2.RIGHT * 10.0
+	player.hp = 5
+	player._invuln = 0.0
+	e.active = true
+	e._try_begin_attack(player)
+	var duration: float = e._windup
+	check("Łupacz: zamach zapowiedziany, bez obrażeń", e.winding and duration >= Enemy.MIN_WINDUP and player.hp == 5)
+	if built:
+		model.motion_context({"winding": true, "windup_duration": duration, "windup_remaining": 0.0})
+		model.pose(1.0 / 60.0, "windup", false, Color.WHITE)
+		check("Łupacz: oczekiwanie na pakiet trafienia kończy się przed klatką 19", model.motion_phase() == "anticipation"
+			and model._ap.current_animation_position < EnemyDefs.Mole.CONTACT)
+	e._tick_server(duration * 0.68)
+	e._beh.tick_prelude(0.0)
+	check("Łupacz: uniesiona sylwetka przyjmuje pociski przed kontaktem", e._hurt_h() >= 18.0 and player.hp == 5)
+	e._tick_server(e._windup + 0.0001)
+	check("Łupacz: jedno trafienie po zamachu, przerwa na podparcie", e.visual_attack_seq == 1 and e.visual_attack_action == "swipe"
+		and player.hp == 5 - e._scaled_damage(2) and e._beh.holds_still())
+	if built:
+		model.motion_context(e.view_info())
+		model.trigger("attack", "swipe")
+		model.pose(1.0 / 60.0, "idle", false, Color.WHITE)
+		check("Łupacz: zdarzenie obrażeń pokazuje klatkę 19 zatwierdzonego klipu", model.motion_phase() == "contact" and model._ap.assigned_animation == "attack"
+			and is_equal_approx(model._ap.current_animation_position, EnemyDefs.Mole.CONTACT))
+	# Cel przechodzi przez wroga już po rozpoczęciu zamachu.
+	e._cd = 0.0
+	e._beh.tick_prelude(1.0)
+	e._try_begin_attack(player)
+	var before := int(player.hp)
+	player._invuln = 0.0
+	player.global_position = e.global_position + Vector2.LEFT * 10.0
+	e._tick_server(e._windup + 0.0001)
+	check("Łupacz: cios chybia po przejściu za plecy", player.hp == before and e.visual_attack_seq == 2)
+	e._cd = 0.0
+	e._beh.tick_prelude(1.0)
+	e._try_begin_attack(player)
+	player.global_position.x -= 30.0
+	e._tick_server(e._windup + 0.0001)
+	check("Łupacz: odskok poza zasięg pazurów pozwala uniknąć ciosu", player.hp == before and e.visual_attack_seq == 3)
+	e._hist.clear()
+	e._hist.append(Vector4(1.0, pos.x, pos.y, 19.0))
+	e._hist.append(Vector4(1.2, pos.x, pos.y, 12.0))
+	var rewound: Rect2 = e.lag_rect(1.0)
+	check("Łupacz: strzał klienta w uniesiony bark trafia według sylwetki w chwili strzału", rewound.has_point(pos + Vector2(8.0, -18.0))
+		and not e.lag_rect(1.2).has_point(pos + Vector2(8.0, -18.0)))
+	e.queue_free()
+	model.queue_free()
+	floor_body.queue_free()
+	player.global_position = saved_pos
+	player.hp = saved_hp
+	player._invuln = 0.0
+	player.velocity = Vector2.ZERO
+	player.set_physics_process(true)
+	await get_tree().physics_frame
+
 ## Wartości sprzed przeniesienia do `enemy_defs.gd` (SUPPLY_DROP, AMMO_DROP, HEALTH_DROP, KILL_XP, Scrap.DROP, VOICES): przeniesienie nie zmienia balansu.
 const GOLDEN := {
+	"lupacz": {"xp": 4, "scrap": 4, "supply": 0.0, "ammo": 0.36, "health": 0.0, "voice": ["wolek_attack", 2, -5.0, 0.86]},
 	"trzosek": {"xp": 2, "scrap": 2, "supply": 0.0, "ammo": 0.22, "health": 0.0, "voice": ["trzosek_attack", 3, -6.0, 1.0]},
 	"cma": {"xp": 1, "scrap": 0, "supply": 0.0, "ammo": 0.0, "health": 0.0, "voice": []},            # rój od 1.7.442 (było 3 / 4); od 1.7.445 12 ćm w gnieździe, złom tylko za gniazdo (`nest_scrap`)
 	"skoczek": {"xp": 5, "scrap": 5, "supply": 0.08, "ammo": 0.25, "health": 0.0, "voice": ["trzosek_attack", 3, -5.0, 0.8]},
