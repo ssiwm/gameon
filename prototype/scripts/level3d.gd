@@ -3643,6 +3643,7 @@ uniform float inset = 0.0;                 // błoto: pas przy bokach niecki, w 
 uniform float pit_b = -1000.0;             // bagno (mode 2): z tylnego brzegu tafli błota — za nim (w głąb) plama leży na gruncie
 varying vec3 wp;
 varying float v_bog;                       // bagno (mode 2): pole `Level3D.bog_k` z wierzchołków siatki po gruncie
+varying float v_ch;                        // bagno: 1 na linii wody koryta, 0 od BOG_SHORE m w głąb bagna (`bog_mesh`, COLOR.r)
 //COMMON
 // bagno: fbm z szumu gradientowego (jak `gn` nurtu w LIQUID_COMMON, hasz Hoskinsa) z oktawami obracanymi o ok. 37° — `vn` z haszem `h21`
 // przy ostrych progach plamy dawał prostokąty, a obracany — ostre trójkąty i romby (zrzuty 2026-11-21)
@@ -3674,6 +3675,7 @@ float fbmq(vec2 p) {
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_bog = mode == 2 ? COLOR.a : 0.0;
+	v_ch = mode == 2 ? COLOR.r : 0.0;
 }
 void fragment() {
 	float f = 0.0;
@@ -3684,7 +3686,8 @@ void fragment() {
 	// bagno: pole z wierzchołków + duże płaty (oczka stojącej wody, kępy suchszego gruntu) w głębi pola, brzeg zostaje poszarpany drobnym szumem
 	f += v_bog * (BOG_F_C + (fbmq(wp.xz * 0.55 + seed * 3.7) - 0.5) * 0.6 * smoothstep(0.35, 1.0, v_bog));
 	float g = f + ((mode == 2 ? fbmq(wp.xz * 1.6 + seed) : fbm(wp.xz * 1.6 + seed)) - 0.5) * 0.5 + (vn(wp.xz * 6.0 + seed) - 0.5) * 0.06;
-	float soak = smoothstep(0.10, 0.32, g);        // wsiąknięty w beton: ciemny, matowy, ku brzegowi coraz jaśniejszy
+	// wsiąknięty w beton: ciemny, matowy, ku brzegowi coraz jaśniejszy; bagno z szerszym progiem — brzeg od koryta narasta łagodnie
+	float soak = mode == 2 ? smoothstep(0.03, 0.42, g) : smoothstep(0.10, 0.32, g);
 	float wet = smoothstep(0.40, 0.56, g);         // świeża warstwa: czarne lustro (szeroki próg: kamera patrzy na płytę pod ostrym kątem)
 	// nad niecką gry plama zachodzi tylko przez przednią krawędź (poszarpany pas do ok. 0,4 m): niecka i plama na płycie są jedną kałużą,
 	// a reszta niecki zostaje żywą taflą (fale, brodzenie). Pas przy bokach i z tyłu rysował ciemną ramkę wokół niecki (zrzut f2b6/oil3).
@@ -3718,20 +3721,26 @@ void fragment() {
 		SPECULAR = 0.32;
 		ALPHA = soak * mix(0.75, 0.97, max(deep, wet));
 	} else if (mode == 2) {
-		// bagno: błoto w kolorach brzegu nurtu (STREAM_SHADER, POOL_BANK_SHADER), środek mokry i ciemny jak błoto niecki (mode 1);
-		// oczka stojącej wody torfowej z lekką zmarszczką osobnym dużym szumem tylko w głębi plamy (próg pola dawał jedną taflę
-		// na całych płatach przed niecką); suche kępy między nimi (soak < 1) odsłaniają grunt
-		vec3 dry = mix(vec3(0.062, 0.050, 0.036), vec3(0.044, 0.035, 0.024), deep) * (0.8 + 0.4 * vn(wp.xz * 9.0 + seed));
-		vec3 mud = mix(dry, vec3(0.024, 0.019, 0.013) * (0.85 + 0.3 * vn(wp.xz * 22.0 + seed)), wet);
+		// bagno w kolorach kafla błota w płaszczyźnie gry (uwaga z gry 2026-11-21: „bagno spójne z kolorem głównego kafla przejścia”):
+		// ten sam brąz, placki rozmokłe i grudki co tafla błota (LIQUID_TOP, kind 0) — w pierwszej wersji mokry środek pola (0,024 na prawie
+		// całej plamie) dawał czarną płachtę obok brązowego kafla; szum gradientowy (`fbmq`) zamiast `fbm`, bo plama leży pod ostrym kątem.
+		// Oczka stojącej wody torfowej tylko w głębi pola. Przy korycie (v_ch) błoto przechodzi w mokry, błyszczący brzeg wody — bez ostrej
+		// krawędzi między taflą a bagnem.
+		float wetn = smoothstep(0.52, 0.70, fbmq(wp.xz * 1.7 + seed * 2.0));
+		vec3 dry = mix(vec3(0.036, 0.027, 0.019), vec3(0.060, 0.045, 0.031), fbmq(wp.xz * 3.2 + seed * 0.7));
+		vec3 mud = mix(dry, vec3(0.020, 0.015, 0.011), wetn * 0.85) * (0.80 + 0.35 * vn(wp.xz * 22.0 + seed));
+		float ch = smoothstep(0.0, 1.0, v_ch);
+		mud = mix(mud, vec3(0.068, 0.056, 0.039), ch * 0.6);
 		float pq = fbmq(wp.xz * 0.42 + seed * 2.1);
 		float pools = smoothstep(0.57, 0.66, pq + (fbmq(wp.xz * 1.9 + seed) - 0.5) * 0.14) * smoothstep(0.34, 0.6, g);
 		vec3 pool = mix(vec3(0.040, 0.035, 0.023), vec3(0.028, 0.024, 0.016), smoothstep(0.66, 0.8, pq));
 		ALBEDO = mix(mud, pool, pools);
 		vec3 nb = normalize(vec3((vn(wp.xz * 2.2 + vec2(t, 0.0)) - 0.5) * 0.10, 1.0, (vn(wp.xz * 2.6 - vec2(0.0, t)) - 0.5) * 0.10));
-		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mix(n, nb, pools)), 0.0)).xyz);
-		ROUGHNESS = mix(mix(0.88, 0.5, wet), 0.16, pools);
-		SPECULAR = mix(0.32, 0.5, pools);
-		ALPHA = soak * mix(0.78, 0.98, max(max(deep, wet), pools));
+		vec3 nm = normalize(n + vec3(vn(wp.xz * 38.0) - 0.5, 0.0, vn(wp.xz * 41.0 + 3.0) - 0.5) * 0.45 * (1.0 - ch));   // grudki jak kafel błota
+		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mix(nm, nb, pools)), 0.0)).xyz);
+		ROUGHNESS = mix(mix(mix(0.86, 0.48, wetn), 0.3, ch), 0.16, pools);
+		SPECULAR = mix(0.32, 0.5, max(pools, ch * 0.6));
+		ALPHA = soak * mix(0.85, 0.98, max(deep, pools)) * mix(1.0, 0.75, ch);
 	}
 }
 """
@@ -3814,6 +3823,7 @@ const BOG_BACK := 7.0
 const BOG_FRONT := 3.4
 const BOG_F := 0.42                        ## wkład pola bagna w pole plamy (progi OIL_STAIN_SHADER: brzeg 0,10–0,32, głęboko 0,32–0,46, woda 0,40–0,56)
 const BOG_STEP := 0.2                      ## m: oczko siatki plamy
+const BOG_SHORE := 1.4                     ## m od linii wody koryta: pas, w którym bagno narasta i przechodzi w mokry brzeg wody (łagodna granica)
 static var bogs: Array = []
 
 ## Bagna mapy z ciągów błota pod gołym niebem tuż przy ciągu wody ze strumieniem (`streams`): {si — strumień, s — strona (+1: błoto na prawo
@@ -3900,7 +3910,7 @@ static func bog_k_one(b: Dictionary, x: float, z: float) -> float:
 	if v < -0.9:
 		return 0.0
 	var te := t + 0.32 * (_vn1(x * 0.42, float(b["seed"]) + 3.0) - 0.5) + 0.12 * (_vn1(x * 1.3, float(b["seed"]) + 9.0) - 0.5)   # koniec bagna falisty w x
-	return smoothstep(-0.05, 0.6, u) * smoothstep(-0.9, 0.7, v) * (1.0 - smoothstep(0.62, 0.92, te))
+	return smoothstep(-0.05, BOG_SHORE, u) * smoothstep(-0.9, 0.7, v) * (1.0 - smoothstep(0.62, 0.92, te))
 
 ## Materiał plamy bagna `bi`: kształt błota z `mud_spills` (płaty przy bokach i przed niecką) + pole bagna z wierzchołków (mode 2).
 static func bog_material(rows: Array, bi: int) -> ShaderMaterial:
@@ -3953,10 +3963,11 @@ static func bog_mesh(b: Dictionary, blobs: Array, za: float, zb: float, yfn: Cal
 				f += exp(-d.dot(d) * 1.6)
 			var y: float = yfn.call(x, z)
 			var n := j * (nx + 1) + i
+			var cu := 1.0 - smoothstep(0.0, BOG_SHORE, s * (x - bog_chan(b, z)))
 			# 0: bez gruntu, 1: grunt bez plamy, 2: plama
 			live[n] = 0 if y == -INF else (2 if f > 0.01 else 1)
 			verts[n] = Vector3(x, y if y > -INF else 0.0, z)
-			cols[n] = Color(1.0, 1.0, 1.0, k)
+			cols[n] = Color(cu, 1.0, 1.0, k)
 	var idx := PackedInt32Array()
 	for j in nz:
 		for i in nx:

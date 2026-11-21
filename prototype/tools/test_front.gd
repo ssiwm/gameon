@@ -31,6 +31,8 @@ const LAYER_WORLD := 1                    ## view3d.gd LAYER_WORLD
 const LAYER_ACTORS := 2                   ## view3d.gd LAYER_ACTORS
 const FRAME_H_NORMAL := Front3D.FRAME_H_NORMAL
 var _frames := 0
+## nazwy rekwizytów podłoża płyty (`Front3D.GROUND_PROPS`: FrontGround_<model>_<x>)
+var GROUND_PROP_RE := RegEx.create_from_string("^FrontGround_(rock|rock_b|rock_c|fence|logs|tyre|bones|trunk_big|ph_branches_a|ph_branches_b|ph_fern_a|ph_fern_c)_-?[0-9]+$")
 var _fail := 0
 
 func _check(ok: bool, msg: String) -> void:
@@ -1261,8 +1263,8 @@ func _check_bog() -> void:
 		var ch := Level3D.bog_chan(b, z)
 		if Level3D.bog_k(ch - 0.06, z) > 0.0:
 			gaps.append("z %.2f nad wodą" % z)
-		if Level3D.bog_k(ch + 0.8, z) < 0.5:
-			gaps.append("z %.2f bez styku z korytem (%.2f)" % [z, Level3D.bog_k(ch + 0.8, z)])
+		if Level3D.bog_k(ch + 1.2, z) < 0.5:
+			gaps.append("z %.2f bez styku z korytem (%.2f)" % [z, Level3D.bog_k(ch + 1.2, z)])
 		z += 0.25
 	_check(gaps.is_empty(), "1.1: bagno nie łączy się z korytem: %s" % ", ".join(gaps.slice(0, 6)))
 	for zz: float in [-Level3D.DEPTH_BACK + 0.3, -1.0, 0.8]:
@@ -1297,6 +1299,26 @@ func _check_bog() -> void:
 	_check(trees == 0, "1.1: %d drzew w bagnie" % trees)
 	_check(Level3D.forest_origins.size() > 100, "1.1: sonda lasu pusta (test drzew nic nie sprawdził)")
 	root.queue_free()
+	# rekwizyty płyty (kamienie, kłody, płot) tam, gdzie bez bagna: runo w bagnie odpada po losowaniach (`Front3D._wet_nobog_k`)
+	var props := {}
+	for nob in [true, false]:
+		var saved: Array = Level3D.bogs
+		if nob:
+			Level3D.bogs = []
+		var pr := Node3D.new()
+		get_root().add_child(pr)
+		Front3D.build(pr, front, c1.get("FRONT_SKIP", []), false, rows)
+		var got: Array = []
+		for n in pr.get_children():
+			var nm := String(n.name)
+			if n is MeshInstance3D and nm.begins_with("FrontGround_") and GROUND_PROP_RE.search(nm) != null:
+				got.append("%s@%.2f,%.2f" % [nm, (n as Node3D).position.x, (n as Node3D).position.z])
+		got.sort()
+		props[nob] = got
+		Level3D.bogs = saved
+		pr.free()
+	_check(props[true] == props[false] and (props[false] as Array).any(func(s: String) -> bool: return s.begins_with("FrontGround_fence_")),
+		"1.1: bagno przestawia rekwizyty płyty (bez: %d, z: %d) albo brak płotu" % [(props[true] as Array).size(), (props[false] as Array).size()])
 	var fr := Node3D.new()
 	get_root().add_child(fr)
 	Front3D.build(fr, front, [], false, rows)

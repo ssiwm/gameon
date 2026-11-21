@@ -1807,7 +1807,14 @@ static func _bog_k(x: float, z: float) -> float:
 
 ## Bagno albo koryto: bez runa, kamieni i kłód.
 static func _wet_k(x: float, z: float) -> float:
-	return maxf(maxf(_mud_k(x, z), _stream_k(x, z)), _bog_k(x, z))
+	return maxf(_wet_nobog_k(x, z), _bog_k(x, z))
+
+
+## `_wet_k` bez bagna przy korycie. Pętle runa przed rekwizytami podłoża odrzucają punkt w bagnie dopiero po wszystkich losowaniach:
+## ten sam ciąg `rng` co bez bagna, więc kamienie, kłody i płot stoją tam, gdzie do 1.7.638 (odrzucenie przed losowaniem przesuwało
+## cały układ płyty, a płot przed brodem 1.1 znikał).
+static func _wet_nobog_k(x: float, z: float) -> float:
+	return maxf(_mud_k(x, z), _stream_k(x, z))
 
 
 static func _in_foot(x: float, z: float, k := 1.0) -> bool:
@@ -2142,8 +2149,9 @@ static func _ground_cover(parent: Node3D) -> void:
 		for _n in int((x1 - x0) * (GROUND_GRASS_M if models else GROUND_GRASS)):
 			var x := rng.randf_range(x0, x1)
 			var z := z0 + (z1 - z0) * pow(rng.randf(), 1.3)
-			if _in_foot(x, z) or _span_y(g, x) < float(g["base"]) - 0.3 or _wet_k(x, z) > 0.55:
+			if _in_foot(x, z) or _span_y(g, x) < float(g["base"]) - 0.3 or _wet_nobog_k(x, z) > 0.55:
 				continue                                     # bez runa na dnie dołka przed szybem i na bagnie
+			var bog := _bog_k(x, z) > 0.55                   # bagno przy korycie: po losowaniach (`_wet_nobog_k`)
 			var hmax := 0.3 + 0.12 * (z - zf)
 			var fern := z > zf + 1.7 and rng.randf() < 0.22
 			var h := minf(rng.randf_range(0.55, 0.95) if fern else rng.randf_range(0.2, 0.42) + 0.03 * (z - zf), hmax)
@@ -2153,12 +2161,16 @@ static func _ground_cover(parent: Node3D) -> void:
 				var names: Array = FERN_MODELS if fern else (GRASS_MODELS.slice(3) if rng.randf() < 0.7 else GRASS_MODELS)   # trawę dają kępki
 				var nm := String(names[rng.randi() % names.size()])
 				var t := _plant_xf(nm, Vector3(x, ground_y(x, z), z), h * (0.75 if fern else 1.0), h * 2.4, rng.randf() * TAU)
+				if bog:
+					continue
 				if not mxf.has(nm):
 					mxf[nm] = []
 				(mxf[nm] as Array).append(t)
 				cover_tops.append(Vector2(ground_y(x, z) + h, z))
 				continue
 			var kind := "fern_a" if fern else ("grass_a" if rng.randf() < 0.6 else "grass_b")
+			if bog:
+				continue
 			var base := ground_y(x, z) - h * (0.42 if fern else 0.04)
 			(xf[kind] as Array).append(Transform3D(b, Vector3(x, base, z)))
 			cover_tops.append(Vector2(base + h, z))
@@ -2280,15 +2292,18 @@ static func _clump_cover(mxf: Dictionary, rng: RandomNumberGenerator) -> void:
 					x += rng.randf_range(-0.9, 0.9)
 					z += rng.randf_range(-0.45, 0.45)
 				var yg := ground_y(x, z)
-				if yg == -INF or _wet_k(x, z) > 0.3:
+				if yg == -INF or _wet_nobog_k(x, z) > 0.3:
 					continue
 				var h := minf(rng.randf_range(hr.x, hr.y), 0.3 + 0.2 * (z - _front_z(x)))
 				var nm := String(names[rng.randi() % names.size()])
 				if Level3D.model_mesh(nm).is_empty():
 					continue
+				var rot := rng.randf() * TAU
+				if _bog_k(x, z) > 0.3:                       # bagno przy korycie: po losowaniach (`_wet_nobog_k`)
+					continue
 				if not mxf.has(nm):
 					mxf[nm] = []
-				(mxf[nm] as Array).append(_plant_xf(nm, Vector3(x, yg, z), h, h * 2.2, rng.randf() * TAU))
+				(mxf[nm] as Array).append(_plant_xf(nm, Vector3(x, yg, z), h, h * 2.2, rot))
 				cover_tops.append(Vector2(yg + h, z))
 
 
@@ -2311,17 +2326,21 @@ static func _grass_tufts(parent: Node3D, rng: RandomNumberGenerator, z1: float) 
 			var n := noise.get_noise_2d(x, z) * 0.5 + 0.5
 			if rng.randf() > smoothstep(0.05, 0.45, n) * lerpf(0.75, 1.0, clampf((z - zf) / TUFT_NEAR, 0.0, 1.0)):
 				continue
-			if _in_foot(x, z, 0.6) or _span_y(g, x) < float(g["base"]) - 0.3 or _wet_k(x, z) > 0.3:
+			if _in_foot(x, z, 0.6) or _span_y(g, x) < float(g["base"]) - 0.3 or _wet_nobog_k(x, z) > 0.3:
 				continue
+			var bog := _bog_k(x, z) > 0.3                    # bagno przy korycie: po losowaniach (`_wet_nobog_k`)
 			var hmax := 0.3 + 0.12 * (z - zf)
 			var h := minf(rng.randf_range(TUFT_H.x, TUFT_H.y) * (0.7 + 0.6 * n), hmax)
 			var y := ground_y(x, z) - 0.01
 			var c := floori(x / COVER_CHUNK)
+			var wd := maxf(h, TUFT_W * rng.randf_range(0.8, 1.2))
+			var tx := Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(wd, h, wd)), Vector3(x, y, z))
+			var tc := Color(rng.randf(), clampf(rng.randf() * 1.4 - 0.6, 0.0, 1.0) * 0.8, 0.0, 1.0)
+			if bog:
+				continue
 			if not chunks.has(c):
 				chunks[c] = []
-			var wd := maxf(h, TUFT_W * rng.randf_range(0.8, 1.2))
-			(chunks[c] as Array).append([Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(wd, h, wd)), Vector3(x, y, z)),
-					Color(rng.randf(), clampf(rng.randf() * 1.4 - 0.6, 0.0, 1.0) * 0.8, 0.0, 1.0)])
+			(chunks[c] as Array).append([tx, tc])
 			tuft_tops.append(Vector2(y + h, z))
 	if _grass_mat == null:
 		_grass_mat = ShaderMaterial.new()
