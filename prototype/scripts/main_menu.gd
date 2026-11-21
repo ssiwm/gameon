@@ -412,7 +412,6 @@ func _build_cards() -> void:
 		_cards.append(c)
 		y += CARD_H[i] + GAP
 	_cards[0].button = "OPEN LOBBY"
-	_cards[1].right = tr("ENDLESS")
 	_last_card = _cards[0]
 	_drawer = Drawer.new()
 	_drawer.position = Vector2(MX, DRAWER_Y)
@@ -452,7 +451,7 @@ func _build_side() -> void:
 		_refresh())
 	_squad.add_child(_ai)
 	_join = Row.new()
-	_join.label = "JOIN SESSION"
+	_join.label = "JOIN"
 	_join.position = Vector2(12, 41 + 37 + 6)
 	_join.size = Vector2(SIDE_W - 24.0, 37)
 	_join.pressed.connect(func() -> void:
@@ -619,6 +618,7 @@ func _refresh() -> void:
 		best = "%d / %d" % [Settings.shift_best_cleared, NightShift.MISSIONS]
 		if Settings.shift_best_time > 0.0:
 			best += "  ·  %d:%02d" % [floori(Settings.shift_best_time / 60.0), int(Settings.shift_best_time) % 60]
+	_cards[1].right = tr("%d MISSIONS") % NightShift.MISSIONS
 	_cards[1].details = [["MISSIONS", "%d · %s" % [NightShift.MISSIONS, tr("RANDOM MAPS")]],
 		["MODIFIERS", tr("UP TO %d PER MISSION") % NightShift.MODS_PER_MISSION.max()], ["BEST RUN", best], ["REWARD", tr("HALF XP")]]
 	var last := String(Profile.last_record.get("map", ""))

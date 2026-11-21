@@ -15,13 +15,14 @@ extends Control
 ##               and barrel-heat lines; thumbnails of slots 1–4 appear for 2.5 s after a weapon change; context prompt sits above it
 ##   bottom-right gear as four 3D models: LURE (Q), FLARE (F), selected item (ALT), flashlight (L, battery line); count and key under each
 ##   centre      messages (message_view.gd): alerts, toasts, title card, tips; wipe
-##   bottom      controls strip — only for beginners in the first seconds (TOAST_LEVEL_MAX), F1 toggles
+##   bottom      krótkie podpowiedzi dla nowych graczy, F1 otwiera pełną ściągę
 ##   full screen damage vignette; after-action report after extraction (result_screen.gd, RESULTS_PLAN.md) — the gameplay HUD fades out under it
 ## Adaptive music and the warning sting are driven from here (GDD §13).
 
 const WeaponInspect := preload("res://scripts/weapon_inspect.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Mission := preload("res://scripts/mission.gd")
+const Level3D := preload("res://scripts/level3d.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Ammo := preload("res://scripts/ammo.gd")
@@ -50,10 +51,12 @@ const UI_SCALE := 0.56
 const MSG_SCALE := 0.8            ## komunikaty (alerty, toasty, karta tytułowa, porady, dziennik, notatki, pasek akcji) o 20% mniejsze niż reszta HUD-u
 const MARGIN := 8.0              ## odstęp kart od krawędzi (jednostki logiczne HUD)
 const CONTROLS_SHOW_S := 20.0
+const CONTROLS_FONT := 13
+const WORKSHOP_PROMPT := "hud.action.workshop"
 const TOAST_S := 9.0               ## s, przez które opis celu jest widoczny po zmianie celu / fazy (potem gaśnie; F1 przywołuje)
 const TOAST_LEVEL_MAX := 2           ## pasek sterowania pokazuje się sam tylko początkującym (poziom profilu do tego)
 const NOISE_COL_CALM := Color(0.62, 0.72, 0.78)
-const OBJ_W := 250.0             ## szerokość treści karty celu (zawijanie)
+const OBJ_W := 405.0             ## szerokość treści karty celu (zawijanie)
 const SESSION_W := 152.0         ## szerokość bloku „sesja + zegar" w prawym górnym rogu
 const WARN_Y := 0.255            ## wysokość ostrzeżenia nad środkiem ekranu (ułamek wysokości; 92/360)
 const CENTER_Y := 0.39           ## napis „SQUAD DOWN" (140/360)
@@ -61,7 +64,7 @@ const BRIEF_ROWS := 5             ## ile wierszy zagrożeń pokazuje odprawa (re
 const PROMPT_Y := 0.76           ## pasek kontekstowy — nad paskiem broni (dół, środek)
 ## Układ wzorowany na koop-strzelankach (Left 4 Dead, Deep Rock Galactic, Helldivers): drużyna i zdrowie w lewym dolnym
 ## rogu (własny wiersz na górze, koledzy pod nim), broń i zasoby w płaskim pasku na środku dołu, a w lewym górnym tylko miernik hałasu.
-const BOTTOM_PAD := 20.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
+const BOTTOM_PAD := 27.0         ## odstęp kart dolnych od krawędzi (nad paskiem sterowania)
 const SQUAD_W := 150.0
 const ROW_H := 68.0              ## dolny rząd: karty drużyny i ekwipunku (jednostki logiczne); pasek broni jest niższy (własna wysokość)
 const TOP_H := 55.0              ## górny rząd: hałas, cel i RUN mają wspólną wysokość (dolne krawędzie się pokrywają)
@@ -419,8 +422,7 @@ var _music_dir := MusicDirector.new()     ## wynik zagrożenia → warstwa muzyk
 var _music_motif := 0                       ## 0 bez motywu, 1 daleki, 2 bliski (dziennik sesji)
 var _music_scene := "0"                     ## scena E4 + faza ostatnio zapisana w dzienniku sesji
 var _session_t := 0.0
-## Pasek sterowania: -1 = auto (pierwsze CONTROLS_SHOW_S s), 0 = ukryty, 1 = pokazany (F1).
-var _controls_mode := -1
+var _controls_open := false
 var _hit_flash := 0.0
 var _dev_noise := -1.0
 var _dim: ColorRect                   ## ściemnienie HUD-u pod modalami (karta wyniku, warsztat)
@@ -505,10 +507,16 @@ var _run_xp_bar: Bar                  ## pasek XP w karcie RUN
 var _xp_txt: Label
 var _squad_info: Label               ## „HOST · 1/4 +1 AI” w nagłówku karty drużyny
 var _prompt_card: PanelContainer
+var _prompt_flat: StyleBox
+var _prompt_backing: StyleBoxFlat
 var _prompt: RichTextLabel             ## pasek akcji: tekst z klawiszami jako klawisze (UiTheme.keycaps)
 var _prompt_bar: Bar
-var _controls: Label
-var _controls_range := false            ## pasek sterowania pokazuje ściągę strzelnicy (kontekst „range”)
+var _controls_intro: Label
+var _controls_panel: PanelContainer
+var _controls_title: Label
+var _controls_columns: HBoxContainer
+var _controls_range := false
+var _controls_locale := ""
 var _f1: Label
 var _hints := Hints.new()
 var _inspect: Control                   ## oględziny broni ([H], gablota też [E]): rozmyte tło, model 3D i statystyki — weapon_inspect.gd
@@ -568,6 +576,8 @@ func _run_top() -> float:
 
 func _apply_scale() -> void:
 	scale = Vector2(_scale_now(), _scale_now())
+	if _controls_locale != TranslationServer.get_locale():
+		_refresh_controls()
 	_fit()
 
 ## Dopasowuje rozmiar logiczny do viewportu i układa elementy przypięte do krawędzi / środka.
@@ -587,8 +597,10 @@ func _fit() -> void:
 	_journal.scale = Vector2.ONE * MSG_SCALE
 	_journal.position = Vector2.ZERO
 	_journal.size = size / MSG_SCALE
-	_place(_controls, Vector2(MARGIN, h - 16.0), Vector2(w - 2.0 * MARGIN, 12))
-	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 16.0), Vector2(SESSION_W, 12))   # dół, prawy koniec paska podpowiedzi
+	_place(_controls_intro, Vector2(MARGIN, h - 24.0), Vector2(w - 2.0 * MARGIN, 18.0))
+	_place(_f1, Vector2(w - MARGIN - SESSION_W, h - 24.0), Vector2(SESSION_W, 18.0))
+	_controls_panel.size.x = minf(820.0, w - 4.0 * MARGIN)
+	_center_controls()
 
 # ---------------------------------------------------------------- budowa
 
@@ -756,7 +768,8 @@ func _build_gear_card() -> void:
 	_ammo_mag = UiTheme.heading("", 36, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 	_ammo_mag.custom_minimum_size = Vector2(52, 0)
 	nums.add_child(_ammo_mag)
-	_ammo_res = UiTheme.label("", 9, UiTheme.MUTED)
+	_ammo_res = UiTheme.label("", 13, UiTheme.TEXT)
+	_ammo_res.add_theme_constant_override("outline_size", 3)
 	_ammo_res.size_flags_vertical = Control.SIZE_SHRINK_END
 	nums.add_child(_ammo_res)
 	row.add_child(nums)
@@ -810,7 +823,8 @@ func _build_gear_card() -> void:
 	_battery.back = Color("1f1e19")
 	_battery.position = Vector2(5, 38)
 	(lt["box"] as Control).add_child(_battery)
-	_battery_note = UiTheme.mono(UiTheme.label("100%", 6, UiTheme.MUTED))                  # procent baterii obok klawisza
+	_battery_note = UiTheme.mono(UiTheme.label("100%", 11, UiTheme.BONE_DIM))
+	_battery_note.add_theme_constant_override("outline_size", 3)
 	(lt["keyrow"] as Control).add_child(_battery_note)
 	res.add_child(lt["root"])
 
@@ -981,27 +995,31 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 			bar.value = p.taken_t / 20.0
 			bar.fill = Color(1.0, 0.45, 0.2)
 		elif p.revive_progress > 0.0:
-			txt = "REVIVING"
+			txt = tr("REVIVING")
 			col = UiTheme.OK
 			bar.value = p.revive_progress
 			bar.fill = UiTheme.OK
 		else:
-			txt = "DOWN  %ds" % ceili(p.bleed_left)
+			txt = tr("DOWN  %ds") % ceili(p.bleed_left)
 			col = UiTheme.DANGER
 			bar.value = p.bleed_left / maxf(0.1, p.bleed_time())
 			bar.fill = UiTheme.DANGER
 		bar.queue_redraw()
 	elif p.stun_t > 0.0:
-		txt = "STUNNED"
+		txt = tr("STUNNED")
 		col = Color(0.95, 0.75, 0.3)
 	elif hp == 1:
-		txt = "CRITICAL"
+		txt = tr("CRITICAL")
 		col = UiTheme.DANGER.lerp(Color.WHITE, 0.3 * (0.5 + 0.5 * sin(_blink * 7.0)))
 	status.text = txt
 	status.add_theme_color_override("font_color", col)
 
 func _build_objective_card() -> void:
-	_obj_card = _card(Vector2(MARGIN, MARGIN))
+	_obj_card = _card(Vector2(MARGIN, MARGIN), false)
+	var panel := UiTheme.panel_box()
+	panel.set_content_margin_all(6)
+	panel.set_border_width_all(0)
+	_obj_card.add_theme_stylebox_override("panel", panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	box.alignment = BoxContainer.ALIGNMENT_BEGIN
@@ -1037,7 +1055,7 @@ func _build_objective_card() -> void:
 	_obj_text.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_toast_box.add_child(_obj_text)
-	_obj_hint = UiTheme.whisper(UiTheme.label("", UiTheme.T_BODY - 1, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
+	_obj_hint = UiTheme.label("", 13, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 	_obj_hint.custom_minimum_size = Vector2(OBJ_W, 0)
 	_obj_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_obj_hint.add_theme_constant_override("outline_size", 3)     # na jasnej ścianie kryjówki przygaszony tekst bez obrysu ginął
@@ -1143,6 +1161,10 @@ func _build_center() -> void:
 
 func _build_prompt() -> void:
 	_prompt_card = _card(Vector2(MARGIN, MARGIN))
+	_prompt_flat = _prompt_card.get_theme_stylebox("panel")
+	_prompt_backing = UiTheme.panel_box()
+	_prompt_backing.bg_color.a = 0.92
+	_prompt_backing.set_content_margin_all(5)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	_prompt_card.add_child(box)
@@ -1162,16 +1184,77 @@ func _build_prompt() -> void:
 	box.add_child(_prompt_bar)
 
 func _build_controls() -> void:
-	_controls = UiTheme.label(Actions.hud_line(), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
-	add_child(_controls)
-	_f1 = UiTheme.label(tr("%s  controls") % Actions.key("help"), 7, UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	var refresh_keys := func() -> void:        # klawiatura ↔ pad albo zmiana przypisań: podpowiedzi pokazują właściwe klawisze
+	_controls_intro = UiTheme.label("", CONTROLS_FONT, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	add_child(_controls_intro)
+	_f1 = UiTheme.label("", CONTROLS_FONT, UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_RIGHT)
+	add_child(_f1)
+	_controls_panel = _card(Vector2.ZERO, false)
+	_controls_panel.z_index = 3
+	var panel := UiTheme.panel_box()
+	panel.bg_color.a = 0.94
+	panel.set_content_margin_all(18)
+	_controls_panel.add_theme_stylebox_override("panel", panel)
+	_controls_panel.visible = false
+	var content := VBoxContainer.new()
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_theme_constant_override("separation", 12)
+	_controls_panel.add_child(content)
+	_controls_title = UiTheme.heading("", 19, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	content.add_child(_controls_title)
+	_controls_columns = HBoxContainer.new()
+	_controls_columns.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_controls_columns.add_theme_constant_override("separation", 22)
+	content.add_child(_controls_columns)
+	_controls_panel.resized.connect(_center_controls)
+	_controls_panel.minimum_size_changed.connect(func() -> void: _controls_panel.size.y = 0.0)
+	_refresh_controls()
+	var refresh_keys := func() -> void:
 		_refresh_gear_keys()
-		_controls.text = Actions.range_hud_line() if _controls_range else Actions.hud_line()
-		_f1.text = tr("%s  controls") % Actions.key("help")
+		_refresh_controls()
 	InputSetup.device_changed.connect(func(_pad: bool) -> void: refresh_keys.call())
 	Settings.bindings_changed.connect(refresh_keys)
-	add_child(_f1)
+
+func _center_controls() -> void:
+	_controls_panel.position = (size - _controls_panel.size) * 0.5
+
+func _refresh_controls() -> void:
+	_controls_locale = TranslationServer.get_locale()
+	var help_key := Actions.key("help")
+	_f1.text = "%s  ·  %s" % [tr("Pause menu").to_upper(), tr("CONTROLS")] if help_key == "—" else tr("%s  controls") % help_key
+	_controls_intro.text = "  ·  ".join([
+		tr("%s move") % Actions.cluster(Actions.MOVE_IDS, "", true).to_upper(),
+		tr("%s jump") % Actions.key("jump"),
+		tr("%s interact") % Actions.key("interact"),
+		tr("%s light") % Actions.key("flashlight"),
+		_f1.text,
+	])
+	_controls_title.text = tr("CONTROLS") if help_key == "—" else "%s  ·  %s" % [tr("CONTROLS"), help_key]
+	for child in _controls_columns.get_children():
+		_controls_columns.remove_child(child)
+		child.queue_free()
+	var entries := Actions.range_sheet() if _controls_range else Actions.sheet()
+	var per_column := ceili(entries.size() / 2.0)
+	for first in range(0, entries.size(), per_column):
+		var column := VBoxContainer.new()
+		column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		column.add_theme_constant_override("separation", 5)
+		_controls_columns.add_child(column)
+		for i in range(first, mini(first + per_column, entries.size())):
+			var row := HBoxContainer.new()
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_theme_constant_override("separation", 8)
+			column.add_child(row)
+			var key := UiTheme.mono(UiTheme.label(entries[i][0], CONTROLS_FONT, UiTheme.ACCENT))
+			key.custom_minimum_size.x = 128.0
+			key.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			row.add_child(key)
+			var label := UiTheme.label(tr(entries[i][1]), CONTROLS_FONT, UiTheme.TEXT)
+			label.custom_minimum_size.x = 180.0
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(label)
+	_controls_panel.size.y = 0.0
 
 func _refresh_gear_keys() -> void:
 	for id in _gear_keys:
@@ -1264,11 +1347,10 @@ func _drive_tiers(delta: float) -> void:
 	_calm_t = _calm_t + delta if calm else 0.0
 	var target := 0.5 if _calm_t > 4.0 else 1.0
 	_tier_k = lerpf(_tier_k, target, minf(1.0, delta * (1.5 if target < 1.0 else 6.0)))
-	_obj_card.modulate.a = lerpf(1.0, 0.6, (1.0 - _tier_k) * 2.0)
+	_obj_card.modulate.a = lerpf(1.0, 0.85, (1.0 - _tier_k) * 2.0)
 	_squad_box.modulate.a = lerpf(1.0, 0.55, (1.0 - _tier_k) * 2.0)       # koledzy przygasają; własne życie (T1) zawsze w pełni
 	_run_card.modulate.a = lerpf(1.0, 0.65, (1.0 - _tier_k) * 2.0)
-	for c in [_f1, _controls]:
-		(c as Control).self_modulate.a = lerpf(1.0, 0.45, (1.0 - _tier_k) * 2.0)
+	_f1.self_modulate.a = lerpf(1.0, 0.8, (1.0 - _tier_k) * 2.0)
 	# ściemnienie pod karta wyniku i warsztatem
 	var ws := get_tree().get_first_node_in_group("workshop_ui")
 	var bench: bool = ws != null and ws.is_open()
@@ -1397,8 +1479,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("chat") and not _chat_edit.visible and NoiseMgr.has_network() and _chat != null:
 		_open_chat()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("help"):
-		_controls_mode = 0 if _controls.visible else 1
+	elif event.is_action_pressed("help") and visible and _controls_available():
+		_controls_open = not _controls_open
+		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("journal") and NoiseMgr.has_network():
 		_journal.set_open(not _journal.open)
 		get_viewport().set_input_as_handled()
@@ -1513,7 +1596,7 @@ func _drive_status() -> void:
 	_battery.fill = UiTheme.DANGER if pct < 0.2 else (Color("e8e2c4") if _player.flashlight else UiTheme.CALM)
 	_battery.queue_redraw()
 	_battery_note.text = "%d%%" % int(ceil(pct * 100.0))
-	_battery_note.add_theme_color_override("font_color", UiTheme.DANGER if pct < 0.2 else (UiTheme.TEXT if _player.flashlight else UiTheme.MUTED))
+	_battery_note.add_theme_color_override("font_color", UiTheme.DANGER if pct < 0.2 else (UiTheme.TEXT if _player.flashlight else UiTheme.BONE_DIM))
 
 ## Karta broni: sloty z aktualnego zestawu, magazynek / zapas, ciepło lufy i koszt hałasu.
 func _drive_weapons() -> void:
@@ -1745,7 +1828,7 @@ func _drive_mission() -> void:
 		_toast_t = TOAST_S
 	var dt := get_process_delta_time()
 	_toast_t = maxf(0.0, _toast_t - dt)
-	var want := 1.0 if (in_hub or _toast_t > 0.0 or _controls_mode == 1) and not in_range else 0.0
+	var want := 1.0 if (in_hub or _toast_t > 0.0 or _controls_open) and not in_range else 0.0
 	_toast_box.modulate.a = move_toward(_toast_box.modulate.a, want, dt * (4.0 if want > 0.0 else 1.5))
 	_toast_box.visible = _toast_box.modulate.a > 0.01
 	# karta celu: wyśrodkowana, szerokość wg treści
@@ -2135,12 +2218,12 @@ func _fill_brief(info: Dictionary, c := {}) -> void:
 	_fill_info(c, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
 
 ## Czy lokalny gracz stoi przy ławie warsztatu (kryjówka) i panel jest zamknięty.
-func _near_workshop() -> bool:
+func _near_workshop() -> Node2D:
 	for w in get_tree().get_nodes_in_group("workshop"):
 		if w.local_in_range:
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return ui == null or not ui.is_open()
-	return false
+			return w if ui == null or not ui.is_open() else null
+	return null
 
 ## Czy lokalny gracz stoi przy tokarce (kryjówka) i panel jest zamknięty.
 func _near_lathe() -> bool:
@@ -2286,8 +2369,8 @@ func _near_generator() -> Node:
 ## najwyższą wagę — dawny łańcuch elif jako dane. Pusty tekst też bywa kandydatem: zagłusza niższe wagi (panel oględzin, wipe).
 func _prompt_candidates() -> Array:
 	var out: Array = []
-	var add := func(text: String, prog := -1.0, col := UiTheme.TEXT) -> void:
-		out.append({"text": text, "prog": prog, "col": col})
+	var add := func(text: String, prog := -1.0, col := UiTheme.TEXT, station: Node2D = null) -> void:
+		out.append({"text": text, "prog": prog, "col": col, "station": station})
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
 	var gen := _near_generator()
@@ -2381,8 +2464,9 @@ func _prompt_candidates() -> Array:
 			add.call(tr("THE CEILING IS GIVING WAY — get out!") + ("  " + tr("(no boards or scrap for a prop)") if String(dz.local_prop) == "nomat" else ""), -1.0, UiTheme.DANGER)
 		elif String(dz.local_prop) == "nomat":
 			add.call(tr("Wide ceiling — no boards for a prop (break crates, or carry %d scrap)") % int(dz.PROP_SCRAP), -1.0, UiTheme.MUTED)
-	if _near_workshop():
-		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT)
+	var workshop := _near_workshop()
+	if workshop != null:
+		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT, workshop)
 	if _near_lathe():
 		add.call(tr("[%s]  Lathe and grinder  ·  %d schematics") % [Actions.key("interact"), Scrap.schematics.size()], -1.0, UiTheme.ACCENT)
 	if _near_lab() and Scrap.geodes > 0:                                     # geody z żyły (DIG_LOOT_PLAN.md K4): otwiera się je w karcie pracowni
@@ -2486,9 +2570,16 @@ func _drive_prompt() -> void:
 		Msg.hold("hud.wipe", Msg.Ch.ALERT, tr("SQUAD DOWN"), {"sub": (tr("Extraction failed — the shift ends in %d") if NightShift.active else (tr("Back to the checkpoint — the fight restarts in %d") if _wipe_to_checkpoint() else tr("Extraction failed — restarting the mission in %d"))) % ceili(wipe_left), "style": Msg.Style.DANGER, "prio": 90})
 	var in_range := _in_range()
 	var cands := [] if in_range else _prompt_candidates()
+	var workshop: Node2D
 	for i in cands.size():
 		var c: Dictionary = cands[i]
-		Msg.hold("hud.action.%d" % i, Msg.Ch.ACTION, String(c["text"]), {"prio": 100 - i * 4, "progress": float(c["prog"]), "style": _style_of(c["col"]), "color": c["col"]})
+		var id := "hud.action.%d" % i
+		if c["station"] != null:
+			workshop = c["station"]
+			id = WORKSHOP_PROMPT
+		Msg.hold(id, Msg.Ch.ACTION, String(c["text"]), {"prio": 100 - i * 4, "progress": float(c["prog"]), "style": _style_of(c["col"]), "color": c["col"]})
+	if workshop == null:
+		Msg.withdraw(WORKSHOP_PROMPT)
 	var cur: Dictionary = Msg.current(Msg.Ch.ACTION)
 	if not cur.is_empty():
 		text = String(cur["text"])
@@ -2507,10 +2598,33 @@ func _drive_prompt() -> void:
 		_prompt_bar.value = prog
 		_prompt_bar.fill = col
 		_prompt_bar.queue_redraw()
+		var active_station := workshop if cur.get("id") == WORKSHOP_PROMPT else null
+		var panel: StyleBox = _prompt_backing if active_station != null else _prompt_flat
+		if _prompt_card.get_theme_stylebox("panel") != panel:
+			_prompt_card.add_theme_stylebox_override("panel", panel)
+			_prompt.add_theme_font_size_override("normal_font_size", 15 if active_station != null else UiTheme.T_BODY)
 		_prompt_card.reset_size()
 		_prompt_card.scale = Vector2.ONE * MSG_SCALE
-		_prompt_card.pivot_offset = Vector2(_prompt_card.size.x * 0.5, 0.0)
-		_prompt_card.position = Vector2((size.x - _prompt_card.size.x) * 0.5, _gear_card.position.y - _prompt_card.size.y * MSG_SCALE - 8.0)
+		var card_size := _prompt_card.size * MSG_SCALE
+		var pos := Vector2((size.x - card_size.x) * 0.5, _gear_card.position.y - card_size.y - 8.0)
+		if active_station != null:
+			pos = _station_prompt_position(active_station, card_size, pos)
+		_prompt_card.position = pos
+
+func _station_prompt_position(station: Node2D, card_size: Vector2, fallback: Vector2) -> Vector2:
+	var scene := get_tree().current_scene
+	var view := scene.get_node_or_null("View3D") if scene != null else null
+	if view == null:
+		return fallback
+	# Punkt nad blatem modelu warsztatu, przesuniętym względem znacznika z mapy.
+	var point := Level3D.px_to_m(station.global_position + Vector2(8.0, -18.0)) + Vector3(0.0, 0.0, -1.0)
+	var screen: Vector2 = view.screen_point(point)
+	var local := get_global_transform_with_canvas().affine_inverse() * screen
+	var area := Rect2(Vector2.ONE * MARGIN, size - Vector2.ONE * MARGIN * 2.0)
+	var top := local.y - card_size.y - 4.0
+	if not local.is_finite() or not area.has_point(local) or top < area.position.y or card_size.x > area.size.x:
+		return fallback
+	return Vector2(clampf(local.x - card_size.x * 0.5, area.position.x, area.end.x - card_size.x), top)
 
 ## Drzwi strzelnicy FPP, przy których stoi lokalny gracz (range_door.gd), albo null.
 func _near_range_door() -> Node:
@@ -2526,14 +2640,20 @@ func _in_range() -> bool:
 	var rv := get_tree().get_first_node_in_group("range_view")     # wyjście: tunel jeszcze gaśnie (range_view.gd, faza OUT)
 	return rv != null and bool(rv.call("fading_out"))
 
+func _controls_available() -> bool:
+	var pause := get_parent().get_node_or_null("PauseMenu") as Control
+	return not (_dim.visible or _inspect.visible or _journal.open or _chat_edit.visible or (pause != null and pause.visible))
+
 func _drive_controls() -> void:
-	var show := (_session_t < CONTROLS_SHOW_S and Profile.level() <= TOAST_LEVEL_MAX) if _controls_mode < 0 else _controls_mode == 1
 	var range_ctx := _in_range()
-	if range_ctx != _controls_range or (show and not _controls.visible):     # kontekst „range”: ściąga strzelnicy (Actions.RANGE_SHEET)
+	if range_ctx != _controls_range:
 		_controls_range = range_ctx
-		_controls.text = Actions.range_hud_line() if range_ctx else Actions.hud_line()
-	_controls.visible = show
-	_f1.visible = not show
+		_refresh_controls()
+	var available := _controls_available()
+	var intro := not range_ctx and _session_t < CONTROLS_SHOW_S and Profile.level() <= TOAST_LEVEL_MAX
+	_controls_panel.visible = available and _controls_open
+	_controls_intro.visible = available and not _controls_open and intro
+	_f1.visible = available and not _controls_open and not intro
 
 ## Muzyka adaptacyjna: 4 warstwy po progach Uwagi (GDD §13).
 ## Muzyka (MUSIC_PLAN.md E0): warstwę wybiera wynik zagrożenia lokalnego gracza (`music_director.gd`), nie sama Uwaga;

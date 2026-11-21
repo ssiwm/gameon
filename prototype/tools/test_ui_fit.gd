@@ -10,6 +10,7 @@ const Tapes := preload("res://scripts/tapes.gd")
 const OperatorsScreen := preload("res://scripts/operators_screen.gd")
 const Codex := preload("res://scripts/codex.gd")
 const MainMenu := preload("res://scripts/main_menu.gd")
+const Hud := preload("res://scripts/hud.gd")
 const HubSigns := preload("res://scripts/hub_signs.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Actions := preload("res://scripts/actions.gd")
@@ -99,12 +100,58 @@ func run(host: Node) -> int:
 		await tree.process_frame
 	await _operators_checks(host)
 	await _main_menu_checks(host)
+	await _hud_controls_checks(host)
 	_hub_signs_checks()
 	TranslationServer.set_locale(keep)
 	_bestiary_checks()
 	_new_marks_checks()
 	print("[UI-FIT] %s (%d błędów)" % ["PASS" if _fails == 0 else "FAIL", _fails])
 	return _fails
+
+
+## Lista HUD-u mieści dłuższe opisy PL i EN przy największej skali gracza.
+func _hud_controls_checks(host: Node) -> void:
+	var before := _fails
+	var keep_ui := Settings.ui_idx
+	var keep_pad := Actions.pad_mode
+	var screen := Rect2(0, 0, 640, 360)
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(screen.size)
+	host.add_child(viewport)
+	Settings.ui_idx = 2
+	var hud := Hud.new()
+	viewport.add_child(hud)
+	hud.set_process(false)
+	hud.visible = true
+	var help := InputEventAction.new()
+	help.action = "help"
+	help.pressed = true
+	hud._unhandled_input(help)
+	for loc in LOCALES:
+		TranslationServer.set_locale(loc)
+		for pad in [false, true]:
+			Actions.pad_mode = pad
+			hud._refresh_controls()
+			hud._drive_controls()
+			for _f in 4:
+				await host.get_tree().process_frame
+			var panel: Control = hud._controls_panel
+			if not panel.visible or not screen.grow(SLACK).encloses(panel.get_global_rect()):
+				_fail("%s HUD: panel sterowania poza ekranem (%s)" % [loc, panel.get_global_rect()])
+			for column in hud._controls_columns.get_children():
+				for row in column.get_children():
+					if not panel.get_global_rect().grow(SLACK).encloses(row.get_global_rect()):
+						_fail("%s HUD: wiersz sterowania poza panelem (%s)" % [loc, row.get_global_rect()])
+	hud._unhandled_input(help)
+	hud._drive_controls()
+	if hud._controls_panel.visible:
+		_fail("HUD: drugie naciśnięcie pomocy nie zamknęło sterowania")
+	viewport.queue_free()
+	await host.get_tree().process_frame
+	Settings.ui_idx = keep_ui
+	Actions.pad_mode = keep_pad
+	if _fails == before:
+		print("[UI-FIT] PASS  pełna ściąga HUD-u mieści się w 720p na LARGE (PL/EN, klawiatura i pad)")
 
 
 ## Tabliczki kryjówki w świecie (HUB_LAYOUT_PLAN.md E4, `SIGNS` w z1_hub.gd): po angielsku i po polsku każda płyta najwyżej HubSigns.MAX_W,

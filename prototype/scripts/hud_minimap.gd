@@ -245,7 +245,7 @@ func _draw_marks() -> void:
 	var win := _window()
 	var f := UiTheme.mono_font()
 	var me := _to_screen(player_pos, win)
-	var taken: Array = []
+	var taken: Array[Rect2] = []
 	var order := markers.duplicate()
 	order.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return (a["pos"] as Vector2).distance_squared_to(player_pos) < (b["pos"] as Vector2).distance_squared_to(player_pos))
@@ -256,11 +256,12 @@ func _draw_marks() -> void:
 		var edge := not inner.has_point(s)
 		s = s.clamp(inner.position, inner.end)
 		var kind := String(m["kind"])
+		var primary := kind == "obj" or kind == "exit"
 		var col: Color = m["col"]
 		if kind == "down" and Settings.fx_mult() > 0.0:
 			col.a = 0.55 + 0.45 * (0.5 + 0.5 * sin(_t * 6.0))
 		if edge:
-			col.a *= 0.6
+			col.a *= 0.85 if primary else 0.6
 		var r := 4.5 if kind == "obj" else (3.0 if kind == "dig" else 3.5)
 		var dia := PackedVector2Array([s + Vector2(0, -r), s + Vector2(r, 0), s + Vector2(0, r), s + Vector2(-r, 0)])
 		if kind == "dig":                                  # strefa wydobycia (K5): kwadrat w kolorze urobku, nie romb celu
@@ -274,16 +275,19 @@ func _draw_marks() -> void:
 		if absf(d.y) >= 3.0 * TILE:
 			arrow = " ↑" if d.y < 0.0 else " ↓"
 		var txt := "%s · %d m%s" % [String(m["label"]), int(d.length() / TILE), arrow]
-		var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 6).x
-		var x0 := clampf(s.x - tw * 0.5, 0.0, size.x - tw)
-		var ty := s.y + r + 7.0 if s.y < size.y - 12.0 else s.y - r - 3.0
+		var font_size := 9 if primary else 7
+		var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var x0 := clampf(s.x - tw * 0.5, 0.0, maxf(0.0, size.x - tw))
+		var ty := s.y + r + f.get_ascent(font_size) + 2.0 if s.y < size.y - 15.0 else s.y - r - 3.0
+		var rect := Rect2(Vector2(x0, ty - f.get_ascent(font_size)), Vector2(tw, f.get_height(font_size)))
 		var clash := false
-		for t in taken:
-			if x0 < float(t[1]) + 4.0 and x0 + tw > float(t[0]) - 4.0 and absf(ty - float(t[2])) < 8.0:
+		for other in taken:
+			if rect.grow(2.0).intersects(other):
 				clash = true
+				break
 		if not clash:
-			taken.append([x0, x0 + tw, ty])
-			_mark_layer.draw_string(f, Vector2(x0, ty), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(UiTheme.TEXT if kind == "obj" else UiTheme.MUTED, col.a))
+			taken.append(rect)
+			_mark_layer.draw_string(f, Vector2(x0, ty), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(UiTheme.TEXT if primary else UiTheme.BONE_DIM, col.a))
 	# gracz: romb z ciemną obwódką (czytelny na jasnej krawędzi terenu)
 	var pr := 4.0
 	_mark_layer.draw_colored_polygon(PackedVector2Array([me + Vector2(0, -pr - 1), me + Vector2(pr + 1, 0), me + Vector2(0, pr + 1), me + Vector2(-pr - 1, 0)]), Color(0, 0, 0, 0.7))
