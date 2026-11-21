@@ -1500,10 +1500,10 @@ func _wake_k3() -> void:
 	var zr: Rect2 = zone.rect_px()
 	var pp0: Vector2 = player.global_position
 	zone.wakes_on = true
-	check("K3: progi %d / %d / %d, na 1.3 Ślepiec, gdzie indziej para Trzosków" % [DigZone.WAKE_SCRATCH, DigZone.WAKE_NEAR, DigZone.WAKE_EMERGE],
+	check("K3: progi %d / %d / %d, na 1.3 Ślepiec, gdzie indziej Łupacz" % [DigZone.WAKE_SCRATCH, DigZone.WAKE_NEAR, DigZone.WAKE_EMERGE],
 		DigZone.wake_stage_for(DigZone.WAKE_SCRATCH - 1) == 0 and DigZone.wake_stage_for(DigZone.WAKE_SCRATCH) == 1
 		and DigZone.wake_stage_for(DigZone.WAKE_NEAR) == 2 and DigZone.wake_stage_for(DigZone.WAKE_EMERGE) == 3
-		and DigZone.wake_kinds("z1_m3") == ["slepiec"] and DigZone.wake_kinds("z1_m1") == ["trzosek", "trzosek"])
+		and DigZone.wake_kinds("z1_m3") == ["slepiec"] and DigZone.wake_kinds("z1_m1") == ["lupacz"])
 	# prawdziwy cios liczy się do budzenia; wyłączone (testy liczby ciosów) — nie
 	var d0: Dictionary = zone.melee_dig(space, Vector2(zr.position.x + 24.0, TOP - 9.0), Vector2.DOWN, 24.0, DigMats.Tool.PICK)
 	var h1: float = zone.wake_hits
@@ -1557,15 +1557,16 @@ func _wake_k3() -> void:
 		zone._wake_hit(feet, Vector2.RIGHT)
 	await _frames(0.1)
 	var names: Array = zone.wake_spawned.duplicate()
-	var ok_out := names.size() == 2
+	var ok_out := names.size() == 1
 	var where := []
 	for n in names:
 		var e := level.get_node_or_null(String(n)) as Node2D
-		ok_out = ok_out and e != null and String(e.kind) == "trzosek" and bool(e.alive) and bool(e.active) and e.is_in_group("roamers")
+		ok_out = ok_out and e != null and String(e.kind) == "lupacz" and bool(e.alive) and bool(e.active) and e.is_in_group("roamers")
 		if e != null:
 			where.append(e.global_position.round())
+			ok_out = ok_out and e.view_info().has("burrow_time") and e._facing == -1.0 and not e.winding
 			ok_out = ok_out and zr.grow(2.0).has_point(e.global_position) and not zone.solid_at_px(e.global_position + Vector2(0, -7))
-	check("K3: na %d. ciosie z kieszeni za czołem wychodzi para Trzosków — w powietrzu, na łowach (%s)" % [DigZone.WAKE_EMERGE, str(where)],
+	check("K3: na %d. ciosie z kieszeni wychodzi jeden Łupacz przodem do kopiącego (%s)" % [DigZone.WAKE_EMERGE, str(where)],
 		ok_out and _solid_count(zone) < solid0 and not zone.solid_at_px(sp) and zone.wake_fx_last == 3)
 	await _shot("k3_emerge", Callable(), 0.4)
 	await _frames(0.4)
@@ -1574,6 +1575,12 @@ func _wake_k3() -> void:
 		var e := level.get_node_or_null(String(n)) as Node2D
 		stuck = stuck or (e != null and zone.solid_at_px(e.global_position + Vector2(0, -7)))
 	check("K3: po 0,5 s nikt nie utknął w skale", not stuck)
+	if names.size() == 1:
+		var mole = level.get_node_or_null(String(names[0]))
+		await _frames(1.65)
+		check("K3: Łupacz opuścił kieszeń w stronę chodnika i może polować", is_instance_valid(mole)
+			and not mole.view_info().has("burrow_time") and mole.global_position.x < (where[0] as Vector2).x - 8.0
+			and not zone.solid_at_px(mole.global_position + Vector2.UP * 5.0))
 	var fx3: int = zone.wake_fx
 	for _i in 5:
 		zone._wake_hit(feet, Vector2.RIGHT)

@@ -8,6 +8,7 @@ extends RefCounted
 ## mają bezpieczne domyślne działanie „nic się nie dzieje", więc rodzaj bez zachowania (pusty `behavior`) działa jak zwykły wróg.
 
 const BEHAVIORS := {
+	"mole": "res://scripts/enemy_mole.gd",
 	"listener": "res://scripts/enemy_listener.gd",
 	"bruiser": "res://scripts/enemy_bruiser.gd",
 	"moth": "res://scripts/enemy_moth.gd",

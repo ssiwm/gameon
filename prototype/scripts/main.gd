@@ -5090,6 +5090,7 @@ func _on_peer_connected(id: int) -> void:
 		_load_map_rpc.rpc_id(id, level.map_id)       # mapa zanim pojawi się postać
 		level.send_collapse_to(id)                   # zawały, które już się wydarzyły w tej misji
 		level.send_walls_to(id)                      # rozbite zamurowane przejścia
+		Director.send_roamers_to(id)
 		level.send_vein_gate_to(id)                  # brama z korzeni hali Żyły (VEIN_PLAN.md §6.3)
 		for vb in get_tree().get_nodes_in_group("boss"):
 			if vb.has_method("send_brood_to"):
