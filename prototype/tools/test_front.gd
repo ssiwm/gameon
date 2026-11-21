@@ -77,6 +77,7 @@ func _process(_dt: float) -> bool:
 	_check_grime()
 	_check_stream()
 	_check_front_stream()
+	_check_bog()
 	_check_pool_sides()
 	_check_hills()
 	_check_oil()
@@ -1222,6 +1223,107 @@ func _check_front_stream() -> void:
 	Front3D.prepare_ground([], rows, [])
 	Level3D.set_shells([], rows)
 	Level3D.set_streams([])
+
+## Bagno przy korycie (uwaga z gry 2026-11-21): rekwizyty z ACCENTS na żadnej mapie nie stoją nad cieczą (1.1: skrzynka i kanister
+## leżały na tafli brodu); błoto 1.1 (kol. 27–37) jest jednym bagnem ze strumieniem — w lesie, na bryle i przed bryłą pole bagna
+## zaczyna się na linii wody koryta (nie nad wodą) i sięga dalszego brzegu błota przy bryle; siatki plamy w lesie (warstwa lasu),
+## na bryle i na płycie, bez osobnej plamy MudStain; drzewa, runo i kamienie poza bagnem; 1.3 bez bagna (brak strumienia).
+func _check_bog() -> void:
+	var dir := DirAccess.open("res://scripts/maps")
+	for f in dir.get_files():
+		if not f.ends_with(".gd"):
+			continue
+		var cm := (load("res://scripts/maps/" + f) as GDScript).get_script_constant_map()
+		var mrows: Array = cm.get("MAP", [])
+		for a: Array in cm.get("ACCENTS", []):
+			var p: Vector2 = a[0]
+			var ac := floori(p.x / 16.0)
+			var ar := floori(p.y / 16.0)
+			# tylko woda: pniak w bagnie 1.1 i beczka z wyciekiem w plamie oleju 1.3 są zamierzone
+			for rr in [ar, ar + 1]:
+				_check(Level3D._ch(mrows, ac, rr) != "~", "%s: rekwizyt %d w (%d, %d) na tafli wody" % [f, int(a[1]), ac, rr])
+	var c1: Dictionary = (load("res://scripts/maps/z1_m1.gd") as Script).get_script_constant_map()
+	var rows: Array = Level3D.sky_edges(c1["MAP"])
+	var front: Array = c1["FRONT"]
+	var T := Level3D.T
+	Level3D.set_streams(c1["STREAMS"])
+	Level3D.set_shells(front, rows)
+	Level3D.set_bogs(rows)
+	_check(Level3D.bogs.size() == 1, "1.1: %d bagien przy korycie zamiast 1" % Level3D.bogs.size())
+	if Level3D.bogs.size() != 1:
+		Level3D.set_streams([])
+		return
+	var b: Dictionary = Level3D.bogs[0]
+	_check(float(b["s"]) > 0.0 and absf(float(b["x0"]) - 27.0 * T) < 0.01 and absf(float(b["xf"]) - 38.0 * T) < 0.01, "1.1: bagno nie z błota 27–37 na prawo od brodu")
+	var gaps: Array = []
+	var z := -Level3D.DEPTH_BACK - Level3D.BOG_BACK * 0.6
+	while z < Level3D.DEPTH_FRONT + Level3D.BOG_FRONT * 0.6:
+		var ch := Level3D.bog_chan(b, z)
+		if Level3D.bog_k(ch - 0.06, z) > 0.0:
+			gaps.append("z %.2f nad wodą" % z)
+		if Level3D.bog_k(ch + 0.8, z) < 0.5:
+			gaps.append("z %.2f bez styku z korytem (%.2f)" % [z, Level3D.bog_k(ch + 0.8, z)])
+		z += 0.25
+	_check(gaps.is_empty(), "1.1: bagno nie łączy się z korytem: %s" % ", ".join(gaps.slice(0, 6)))
+	for zz: float in [-Level3D.DEPTH_BACK + 0.3, -1.0, 0.8]:
+		_check(Level3D.bog_k(38.0 * T - 0.3, zz) > 0.5, "1.1: bagno w z %.1f nie sięga dalszego brzegu błota" % zz)
+	_check(Level3D.bog_k(38.0 * T, -Level3D.DEPTH_BACK - Level3D.BOG_BACK - 0.5) == 0.0 and Level3D.bog_k(38.0 * T, Level3D.DEPTH_FRONT + Level3D.BOG_FRONT + 0.5) == 0.0, "1.1: bagno bez końca w głąb albo ku kamerze")
+	var muds := Level3D.mud_spills(rows)
+	_check(muds.any(func(sp: Dictionary) -> bool: return int(sp.get("bog", -1)) == 0), "1.1: plama błota 27–37 nie oznaczona jako bagno")
+	var root := Node3D.new()
+	get_root().add_child(root)
+	Level3D.build_oil_stains(root, muds)
+	Level3D.build_bogs(root, rows)
+	_check(root.get_children().all(func(n: Node) -> bool: return not String(n.name).begins_with("MudStain_")), "1.1: osobna plama MudStain nad bagnem")
+	var bm := root.get_node_or_null("Bog_0") as MeshInstance3D
+	var bf := root.get_node_or_null("BogForest_0") as MeshInstance3D
+	_check(bm != null and bm.layers == 1, "1.1: brak plamy bagna na bryle (warstwa świata)")
+	_check(bf != null and bf.layers & Level3D.LAYER_FOREST != 0, "1.1: brak plamy bagna w lesie (warstwa lasu)")
+	if bf != null:
+		var vs: PackedVector3Array = (bf.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var ft := Level3D.forest_terrain(rows)
+		var low := 0.0
+		for v in vs:
+			if v.z < -Level3D.DEPTH_BACK - 0.6:
+				low = minf(low, v.y - Level3D.forest_ground_y(ft, v.x, -v.z) - 0.02)
+		_check(low >= 0.0, "1.1: plama bagna %.3f m pod dnem lasu" % low)
+	Level3D.forest_probe = true                                  # MultiMesh w headless nie trzyma transformacji — podstawy drzew z sondy
+	Level3D.build_forest(root, rows)
+	Level3D.forest_probe = false
+	var trees := 0
+	for o in Level3D.forest_origins:
+		if Level3D.bog_k(o.x, o.z) >= 0.25:
+			trees += 1
+	_check(trees == 0, "1.1: %d drzew w bagnie" % trees)
+	_check(Level3D.forest_origins.size() > 100, "1.1: sonda lasu pusta (test drzew nic nie sprawdził)")
+	root.queue_free()
+	var fr := Node3D.new()
+	get_root().add_child(fr)
+	Front3D.build(fr, front, [], false, rows)
+	_check(fr.get_node_or_null("FrontGround_bog_0") != null, "1.1: brak plamy bagna na płycie pierwszego planu")
+	var dry := 0                                                  # runo, kamienie i kłody płyty omijają `Front3D._wet_k` (MultiMesh w headless bez transformacji)
+	for zz in range(12, 46, 3):
+		for xx in range(int(26.0 * T), int(40.0 * T)):
+			if Level3D.bog_k(float(xx), float(zz) * 0.1) > 0.5 and Front3D._wet_k(float(xx), float(zz) * 0.1) < 0.99:
+				dry += 1
+	_check(dry == 0, "1.1: %d punktów bagna na płycie, w których może rosnąć runo" % dry)
+	var bump := 0.0
+	for zz: float in [1.6, 2.2, 2.8]:
+		var xx := Level3D.bog_chan(b, zz) + 1.2
+		if Level3D.bog_k(xx, zz) > 0.99:
+			bump = maxf(bump, absf(Front3D.ground_y(xx, zz) - Front3D._span_at(xx)))
+	_check(bump < 0.001, "1.1: płyta pod bagnem nierówna o %.3f m" % bump)
+	fr.queue_free()
+	Front3D.prepare_ground([], rows, [])
+	Level3D.set_shells([], rows)
+	Level3D.set_streams([])
+	Level3D.set_bogs([])
+	var c3: Dictionary = (load("res://scripts/maps/z1_m3.gd") as Script).get_script_constant_map()
+	Level3D.set_streams(c3.get("STREAMS", []))
+	Level3D.set_bogs(Level3D.sky_edges(c3["MAP"]))
+	_check(Level3D.bogs.is_empty(), "1.3: bagno bez strumienia")
+	Level3D.set_streams([])
+	Level3D.set_bogs([])
 
 ## Pagórki ze schodków (przegląd spójności, pkt 2): piramidki stopni 1.1 i 1.2 wykryte (1.3 bez), zbocze za bryłą przy niej sięga
 ## wierzchu stopnia, przed bryłą nie wyżej niż stopy na stopniu (+0,12 m na metr od bryły), gładkie w x (bez pionowych ścianek między kolumnami),

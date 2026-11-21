@@ -3082,6 +3082,36 @@ static func build_streams(parent: Node3D, rows: Array) -> void:
 					_blade(rv, rn, rc, ri, base, hh, rng.randf_range(0.022, 0.036), rng.randf() * TAU, lean,
 						Color(0.050, 0.095, 0.045), Color(0.150, 0.165, 0.080), rng.randf() < 0.18)
 			bd += rng.randf_range(0.8, 1.5) + (bd - DEPTH_BACK) * 0.05
+	# bagno przy korycie (`bogs`): kępy turzycy w głębi bagna, trzcina z pałką przy dalszym brzegu (osobne ziarno — koryto bez zmian)
+	var brng := RandomNumberGenerator.new()
+	brng.seed = 0xB06
+	for b: Dictionary in bogs:
+		var s: float = b["s"]
+		var bd := DEPTH_BACK + 0.35
+		while bd < DEPTH_BACK + BOG_BACK:
+			var ch := bog_chan(b, -bd)
+			var fa := bog_far(b, -bd)
+			var bx := ch + s * brng.randf_range(0.3, 1.0)
+			while s * (fa + s * 0.4 - bx) > 0.0:
+				var k := bog_k_one(b, bx, -bd)
+				var edge := s * (fa - bx) < 1.1                       # dalszy brzeg: trzcina
+				var roll := brng.randf()
+				var px := bx + brng.randf_range(-0.25, 0.25)
+				var pz := -bd + brng.randf_range(-0.25, 0.25)
+				if k > 0.12 and roll < (0.55 if edge else 0.22):
+					var by := forest_ground_y(ft, px, -pz)
+					var reed := edge or brng.randf() < 0.2
+					for bl in (brng.randi_range(6, 11) if reed else brng.randi_range(10, 18)):
+						var base := Vector3(px + brng.randf_range(-0.22, 0.22), by - 0.02, pz + brng.randf_range(-0.22, 0.22))
+						var hh := brng.randf_range(0.9, 1.8) if reed else brng.randf_range(0.3, 0.75)
+						var sp := 0.25 if reed else 0.55                     # turzyca rozkłada się na boki
+						var lean := Vector3(brng.randf_range(-sp, sp) * hh, 0.0, brng.randf_range(-sp, sp) * 0.5 * hh)
+						var cb := Color(0.050, 0.095, 0.045) if reed else Color(0.075, 0.090, 0.040)
+						var ct := Color(0.150, 0.165, 0.080) if reed else Color(0.190, 0.175, 0.085)
+						_blade(rv, rn, rc, ri, base, hh, brng.randf_range(0.020, 0.034) if reed else brng.randf_range(0.012, 0.020),
+							brng.randf() * TAU, lean, cb, ct, reed and brng.randf() < 0.2)
+				bx += s * brng.randf_range(0.8, 1.6)
+			bd += brng.randf_range(0.55, 0.9) + (bd - DEPTH_BACK) * 0.04
 	var rock := model_mesh("rock")
 	if not rock.is_empty() and not rocks.is_empty():
 		var local: Transform3D = rock[1]
@@ -3610,23 +3640,57 @@ uniform vec3 pit = vec3(0.0);
 uniform float seed = 0.0;
 uniform int mode = 0;                      // 0 = olej, 1 = błoto (`mud_spills`: plama zachodzi na boki niecki, w środku zostaje tafla)
 uniform float inset = 0.0;                 // błoto: pas przy bokach niecki, w którym plama leży na tafli i łamie prostokąt [m]
+uniform float pit_b = -1000.0;             // bagno (mode 2): z tylnego brzegu tafli błota — za nim (w głąb) plama leży na gruncie
 varying vec3 wp;
+varying float v_bog;                       // bagno (mode 2): pole `Level3D.bog_k` z wierzchołków siatki po gruncie
 //COMMON
-void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+// bagno: fbm z szumu gradientowego (jak `gn` nurtu w LIQUID_COMMON, hasz Hoskinsa) z oktawami obracanymi o ok. 37° — `vn` z haszem `h21`
+// przy ostrych progach plamy dawał prostokąty, a obracany — ostre trójkąty i romby (zrzuty 2026-11-21)
+float hqb(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+float gnb(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+	float a0 = hqb(i) * 6.2832;
+	float a1 = hqb(i + vec2(1.0, 0.0)) * 6.2832;
+	float a2 = hqb(i + vec2(0.0, 1.0)) * 6.2832;
+	float a3 = hqb(i + vec2(1.0, 1.0)) * 6.2832;
+	float va = dot(vec2(cos(a0), sin(a0)), f);
+	float vb = dot(vec2(cos(a1), sin(a1)), f - vec2(1.0, 0.0));
+	float vc = dot(vec2(cos(a2), sin(a2)), f - vec2(0.0, 1.0));
+	float vd = dot(vec2(cos(a3), sin(a3)), f - vec2(1.0, 1.0));
+	return mix(mix(va, vb, u.x), mix(vc, vd, u.x), u.y);
+}
+float fbmq(vec2 p) {
+	mat2 r = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
+	float a = 0.5; float s = 0.0;
+	for (int i = 0; i < 4; i++) { p = r * p; s += a * gnb(p); p = p * 2.03 + vec2(17.1, 9.7); a *= 0.5; }
+	return 0.5 + s * 0.8;
+}
+void vertex() {
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_bog = mode == 2 ? COLOR.a : 0.0;
+}
 void fragment() {
 	float f = 0.0;
 	for (int i = 0; i < 14; i++) {
 		vec2 d = (wp.xz - blobs[i].xy) / max(blobs[i].zw, vec2(0.01));
 		f += exp(-dot(d, d) * 1.6);
 	}
-	float g = f + (fbm(wp.xz * 1.6 + seed) - 0.5) * 0.5 + (vn(wp.xz * 6.0 + seed) - 0.5) * 0.06;
+	// bagno: pole z wierzchołków + duże płaty (oczka stojącej wody, kępy suchszego gruntu) w głębi pola, brzeg zostaje poszarpany drobnym szumem
+	f += v_bog * (BOG_F_C + (fbmq(wp.xz * 0.55 + seed * 3.7) - 0.5) * 0.6 * smoothstep(0.35, 1.0, v_bog));
+	float g = f + ((mode == 2 ? fbmq(wp.xz * 1.6 + seed) : fbm(wp.xz * 1.6 + seed)) - 0.5) * 0.5 + (vn(wp.xz * 6.0 + seed) - 0.5) * 0.06;
 	float soak = smoothstep(0.10, 0.32, g);        // wsiąknięty w beton: ciemny, matowy, ku brzegowi coraz jaśniejszy
 	float wet = smoothstep(0.40, 0.56, g);         // świeża warstwa: czarne lustro (szeroki próg: kamera patrzy na płytę pod ostrym kątem)
 	// nad niecką gry plama zachodzi tylko przez przednią krawędź (poszarpany pas do ok. 0,4 m): niecka i plama na płycie są jedną kałużą,
 	// a reszta niecki zostaje żywą taflą (fale, brodzenie). Pas przy bokach i z tyłu rysował ciemną ramkę wokół niecki (zrzut f2b6/oil3).
-	if (mode == 1) {
-		float e = min(min(wp.x - pit.x, pit.y - wp.x), (pit.z - wp.z) * 0.8) + (fbm(wp.xz * 2.1 + seed * 1.3) - 0.5) * 0.5;
-		if (wp.x > pit.x && wp.x < pit.y && wp.z < pit.z) {
+	if (mode >= 1) {
+		float e = min(min(min(wp.x - pit.x, pit.y - wp.x), (pit.z - wp.z) * 0.8), (wp.z - pit_b) * 0.8) + (fbm(wp.xz * 2.1 + seed * 1.3) - 0.5) * 0.5;
+		if (wp.x > pit.x && wp.x < pit.y && wp.z < pit.z && wp.z > pit_b) {
 			float k = 1.0 - smoothstep(inset * 0.5, inset, e);
 			soak *= k;
 			wet *= k;
@@ -3653,6 +3717,21 @@ void fragment() {
 		ROUGHNESS = mix(0.88, 0.5, wet);
 		SPECULAR = 0.32;
 		ALPHA = soak * mix(0.75, 0.97, max(deep, wet));
+	} else if (mode == 2) {
+		// bagno: błoto w kolorach brzegu nurtu (STREAM_SHADER, POOL_BANK_SHADER), środek mokry i ciemny jak błoto niecki (mode 1);
+		// oczka stojącej wody torfowej z lekką zmarszczką osobnym dużym szumem tylko w głębi plamy (próg pola dawał jedną taflę
+		// na całych płatach przed niecką); suche kępy między nimi (soak < 1) odsłaniają grunt
+		vec3 dry = mix(vec3(0.062, 0.050, 0.036), vec3(0.044, 0.035, 0.024), deep) * (0.8 + 0.4 * vn(wp.xz * 9.0 + seed));
+		vec3 mud = mix(dry, vec3(0.024, 0.019, 0.013) * (0.85 + 0.3 * vn(wp.xz * 22.0 + seed)), wet);
+		float pq = fbmq(wp.xz * 0.42 + seed * 2.1);
+		float pools = smoothstep(0.57, 0.66, pq + (fbmq(wp.xz * 1.9 + seed) - 0.5) * 0.14) * smoothstep(0.34, 0.6, g);
+		vec3 pool = mix(vec3(0.040, 0.035, 0.023), vec3(0.028, 0.024, 0.016), smoothstep(0.66, 0.8, pq));
+		ALBEDO = mix(mud, pool, pools);
+		vec3 nb = normalize(vec3((vn(wp.xz * 2.2 + vec2(t, 0.0)) - 0.5) * 0.10, 1.0, (vn(wp.xz * 2.6 - vec2(0.0, t)) - 0.5) * 0.10));
+		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mix(n, nb, pools)), 0.0)).xyz);
+		ROUGHNESS = mix(mix(0.88, 0.5, wet), 0.16, pools);
+		SPECULAR = mix(0.32, 0.5, pools);
+		ALPHA = soak * mix(0.78, 0.98, max(max(deep, wet), pools));
 	}
 }
 """
@@ -3716,17 +3795,248 @@ static func mud_spills(rows: Array) -> Array:
 		var xr := Vector2(x0 - 1.8, x1 + 1.8)
 		var zr := Vector2(-DEPTH_BACK + 0.3, zmax)
 		out.append({"x0": x0, "x1": x1, "y": y, "pit": Vector3(x0, x1, zf + 0.01), "blobs": blobs, "xr": xr, "zr": zr, "barrels": [],
-			"seed": float(run["seed"]), "mode": 1, "inset": MUD_INSET, "open": open})
+			"seed": float(run["seed"]), "mode": 1, "inset": MUD_INSET, "open": open, "bog": bog_of(x0)})
 	return out
+
+# ---------------------------------------------------------------- bagno przy korycie
+
+## Bagno przy korycie (uwaga z gry 2026-11-21: „za taflą wody zaczyna się bagno, połącz je z korytem rzeki na wszystkich planach”):
+## do 1.7.638 ciąg błota tuż obok brodu (1.1 kol. 27–37) był osobnym prostokątem z płatami tylko przed sobą — w lesie za bryłą,
+## w głębi bryły (niecka brodu zwęża się do szerokości koryta) i na płycie pierwszego planu (koryto meandruje) między korytem a błotem
+## leżał suchy grunt, a za bryłą błoto kończyło się prostą linią. Teraz ciąg błota pod gołym niebem, który zaczyna się najwyżej
+## BOG_GAP m od wody strumienia, łączy się z korytem jednym polem bagna (`bog_k`): od linii wody koryta (las: `stream_x`/`stream_hw`,
+## bryła: `pool_hw`, przed bryłą: `front_stream_x`/`front_stream_hw`) do dalszego brzegu błota, w lesie BOG_BACK m w głąb, przed bryłą
+## BOG_FRONT m, z dalszym brzegiem cofającym się ku korytu. Plamę (OIL_STAIN_SHADER, mode 2: pole z wierzchołków, oczka stojącej wody)
+## niesie siatka po gruncie: w lesie (`BogForest_*`, warstwa lasu) i na bryle (`Bog_*`) z `build_bogs`, na płycie `Front3D._build_bogs`.
+## Drzewa, runo i kamienie omijają bagno; w lesie rośnie w nim turzyca i trzcina (`build_streams`). Dev `--nobog`: stan do 1.7.638.
+const BOG_GAP := 1.5
+const BOG_BACK := 7.0
+const BOG_FRONT := 3.4
+const BOG_F := 0.42                        ## wkład pola bagna w pole plamy (progi OIL_STAIN_SHADER: brzeg 0,10–0,32, głęboko 0,32–0,46, woda 0,40–0,56)
+const BOG_STEP := 0.2                      ## m: oczko siatki plamy
+static var bogs: Array = []
+
+## Bagna mapy z ciągów błota pod gołym niebem tuż przy ciągu wody ze strumieniem (`streams`): {si — strumień, s — strona (+1: błoto na prawo
+## od wody), xf — dalszy brzeg błota, x0, x1, y — wierzch gruntu, seed}. Po `set_streams`, przed budową plam i lasu.
+static func set_bogs(rows: Array) -> void:
+	bogs = []
+	if streams.is_empty() or "--nobog" in OS.get_cmdline_user_args():
+		return
+	for run in _liquid_runs(rows):
+		if int(run["kd"]) != 0:
+			continue
+		var c: int = run["c"]
+		var r: int = run["r"]
+		var c1 := int(run["c1"]) - 1
+		if in_shell(c, r) or in_shell(c1, r) or not (_open_sky(rows, c, r) and _open_sky(rows, c1, r)):
+			continue
+		var x0: float = run["x0"]
+		var x1: float = x0 + float(run["w"])
+		for si in streams.size():
+			var st: Dictionary = streams[si]
+			var we := float(st["x"]) + float(st["hw"])
+			var ww := float(st["x"]) - float(st["hw"])
+			var s := 0.0
+			if x0 >= we - 0.01 and x0 - we <= BOG_GAP:
+				s = 1.0
+			elif x1 <= ww + 0.01 and ww - x1 <= BOG_GAP:
+				s = -1.0
+			if s != 0.0:
+				bogs.append({"si": si, "s": s, "xf": x1 if s > 0.0 else x0, "x0": x0, "x1": x1, "y": float(run["y_top"]), "seed": float(run["seed"])})
+				break
+
+## Indeks bagna ciągu błota zaczynającego się w x0 (−1: zwykłe błoto).
+static func bog_of(x0: float) -> int:
+	for i in bogs.size():
+		if absf(float(bogs[i]["x0"]) - x0) < 0.01:
+			return i
+	return -1
+
+## x linii wody koryta po stronie bagna w punkcie z (m świata; ujemne w głąb).
+static func bog_chan(b: Dictionary, z: float) -> float:
+	var st: Dictionary = streams[int(b["si"])]
+	var s: float = b["s"]
+	if z < -DEPTH_BACK:
+		return stream_x(st, -z) + s * stream_hw(st, -z)
+	if z > DEPTH_FRONT and front_stream_dist(float(st["x"]), z) != INF:
+		return front_stream_x(st, z) + s * front_stream_hw(st, z)
+	return float(st["x"]) + s * pool_hw(st, clampf(z, -DEPTH_BACK, DEPTH_FRONT), s)
+
+## Udział głębi: 0 przy bryle, 1 na końcu bagna (w lesie BOG_BACK, przed bryłą BOG_FRONT).
+static func _bog_t(z: float) -> float:
+	if z < -DEPTH_BACK:
+		return clampf((-z - DEPTH_BACK) / BOG_BACK, 0.0, 1.0)
+	if z > DEPTH_FRONT:
+		return clampf((z - DEPTH_FRONT) / BOG_FRONT, 0.0, 1.0)
+	return 0.0
+
+## x dalszego brzegu bagna w z: przy bryle za dalszym brzegiem błota, w głąb i ku kamerze cofa się ku korytu, falisty.
+static func bog_far(b: Dictionary, z: float) -> float:
+	var s: float = b["s"]
+	var sd: float = b["seed"]
+	var t := _bog_t(z)
+	var ch := bog_chan(b, z)
+	var near := float(b["xf"]) + s * 0.5
+	var far := lerpf(near, ch + s * 1.6, pow(t, 1.25))
+	var wob := 1.1 * (_vn1(z * 0.33, sd) - 0.5) + 0.45 * (_vn1(z * 1.05, sd + 7.0) - 0.5)
+	return far + s * wob * smoothstep(0.0, 0.15, t)
+
+## Pole bagna 0..1 w punkcie (x, z świata): 1 w bagnie, 0 w wodzie koryta i na suchym gruncie (łagodne brzegi; drobny brzeg robi shader).
+static func bog_k(x: float, z: float) -> float:
+	var best := 0.0
+	for b: Dictionary in bogs:
+		best = maxf(best, bog_k_one(b, x, z))
+	return best
+
+static func bog_k_one(b: Dictionary, x: float, z: float) -> float:
+	var t := _bog_t(z)
+	if t >= 1.0:
+		return 0.0
+	var s: float = b["s"]
+	var u := s * (x - bog_chan(b, z))
+	if u < -0.05:
+		return 0.0
+	var v := s * (bog_far(b, z) - x)
+	if v < -0.9:
+		return 0.0
+	var te := t + 0.32 * (_vn1(x * 0.42, float(b["seed"]) + 3.0) - 0.5) + 0.12 * (_vn1(x * 1.3, float(b["seed"]) + 9.0) - 0.5)   # koniec bagna falisty w x
+	return smoothstep(-0.05, 0.6, u) * smoothstep(-0.9, 0.7, v) * (1.0 - smoothstep(0.62, 0.92, te))
+
+## Materiał plamy bagna `bi`: kształt błota z `mud_spills` (płaty przy bokach i przed niecką) + pole bagna z wierzchołków (mode 2).
+static func bog_material(rows: Array, bi: int) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = OIL_STAIN_SHADER.replace("//COMMON", PROP_COMMON).replace("BOG_F_C", str(BOG_F))
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	for sp: Dictionary in mud_spills(rows):
+		if int(sp.get("bog", -1)) == bi:
+			mat.set_shader_parameter("blobs", PackedVector4Array(sp["blobs"]))
+			mat.set_shader_parameter("pit", sp["pit"])
+			mat.set_shader_parameter("seed", float(sp["seed"]))
+			mat.set_shader_parameter("inset", float(sp.get("inset", 0.0)))
+	mat.set_shader_parameter("mode", 2)
+	mat.set_shader_parameter("pit_b", -DEPTH_BACK + SHORE_BACK + 0.2)
+	return mat
+
+## Siatka plamy bagna `b` w pasie z ∈ [za, zb] po gruncie `yfn(x, z)` (−INF: bez gruntu): COLOR.a = `bog_k_one`; tylko oczka, w których
+## pole bagna albo płaty błota (`blobs`) coś rysują. null, gdy pusto.
+static func bog_mesh(b: Dictionary, blobs: Array, za: float, zb: float, yfn: Callable) -> ArrayMesh:
+	var s: float = b["s"]
+	var nz := maxi(int(ceil((zb - za) / BOG_STEP)), 1)
+	var xa := INF
+	var xb := -INF
+	for j in nz + 1:
+		var z := lerpf(za, zb, float(j) / float(nz))
+		var ch := bog_chan(b, z)
+		var fa := bog_far(b, z)
+		xa = minf(xa, minf(ch, fa + s * 1.0) if s > 0.0 else minf(ch - 0.2, fa - 1.0))
+		xb = maxf(xb, maxf(ch + 0.2, fa + 1.0) if s > 0.0 else maxf(ch, fa + 1.0))
+	for bl: Vector4 in blobs:                                    # płaty błota z `mud_spills` w tym pasie
+		if bl.y + bl.w * 1.4 > za and bl.y - bl.w * 1.4 < zb:
+			xa = minf(xa, bl.x - bl.z * 1.4)
+			xb = maxf(xb, bl.x + bl.z * 1.4)
+	var nx := maxi(int(ceil((xb - xa) / BOG_STEP)), 1)
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var live := PackedByteArray()
+	verts.resize((nx + 1) * (nz + 1))
+	cols.resize((nx + 1) * (nz + 1))
+	live.resize((nx + 1) * (nz + 1))
+	for j in nz + 1:
+		var z := lerpf(za, zb, float(j) / float(nz))
+		for i in nx + 1:
+			var x := lerpf(xa, xb, float(i) / float(nx))
+			var k := bog_k_one(b, x, z)
+			var f := k
+			for bl: Vector4 in blobs:
+				var d := Vector2((x - bl.x) / maxf(bl.z, 0.01), (z - bl.y) / maxf(bl.w, 0.01))
+				f += exp(-d.dot(d) * 1.6)
+			var y: float = yfn.call(x, z)
+			var n := j * (nx + 1) + i
+			# 0: bez gruntu, 1: grunt bez plamy, 2: plama
+			live[n] = 0 if y == -INF else (2 if f > 0.01 else 1)
+			verts[n] = Vector3(x, y if y > -INF else 0.0, z)
+			cols[n] = Color(1.0, 1.0, 1.0, k)
+	var idx := PackedInt32Array()
+	for j in nz:
+		for i in nx:
+			var a := j * (nx + 1) + i
+			var c := a + nx + 1
+			var q := [live[a], live[a + 1], live[c], live[c + 1]]
+			if q.has(0) or not q.has(2):
+				continue
+			idx.append_array(PackedInt32Array([a, c, a + 1, a + 1, c, c + 1]))
+	if idx.is_empty():
+		return null
+	var nrms := PackedVector3Array()
+	nrms.resize(verts.size())
+	nrms.fill(Vector3.UP)
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = nrms
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return am
+
+## Najwyższy węzeł siatki dna lasu (`build_forest_floor`: co T w x od −FOREST_FLOOR_MARGIN, w głąb węzły FOREST_KNOTS i pół drogi
+## między nimi) w oczku wokół (x, głębokość d) — plama po `forest_ground_y` przecinałaby trójkąty dna na zboczach.
+static func _floor_top(ft: Dictionary, x: float, d: float) -> float:
+	var ds: Array = []
+	for i in FOREST_KNOTS.size():
+		ds.append(float(FOREST_KNOTS[i]))
+		if i + 1 < FOREST_KNOTS.size():
+			ds.append((float(FOREST_KNOTS[i]) + float(FOREST_KNOTS[i + 1])) * 0.5)
+	var j := 0
+	while j + 1 < ds.size() and float(ds[j + 1]) <= d:
+		j += 1
+	var xa := -FOREST_FLOOR_MARGIN + floorf((x + FOREST_FLOOR_MARGIN) / T) * T
+	var best := forest_ground_y(ft, x, d)
+	for dd: float in [float(ds[j]), float(ds[mini(j + 1, ds.size() - 1)])]:
+		for xx: float in [xa, xa + T]:
+			best = maxf(best, forest_ground_y(ft, xx, dd, false))
+	return best
+
+## Plama bagna w lesie za bryłą (warstwa lasu, jak koryto) i na wierzchu bryły (warstwa świata). Płyta pierwszego planu: `Front3D`.
+static func build_bogs(parent: Node3D, rows: Array) -> void:
+	if bogs.is_empty():
+		return
+	var ft := forest_terrain(rows)
+	for bi in bogs.size():
+		var b: Dictionary = bogs[bi]
+		var mat := bog_material(rows, bi)
+		var blobs: Array = Array(mat.get_shader_parameter("blobs"))
+		var y: float = b["y"]
+		var parts: Array = [["Bog_%d" % bi, -DEPTH_BACK, DEPTH_FRONT, 1, func(_x: float, _z: float) -> float: return y + 0.008]]
+		if not ft.is_empty():
+			# przy tyle bryły równo z plamą na bryle, po 0,6 m nad dnem lasu jak koryto (wstęga koryta leży wyżej i przykrywa brzeg bagna)
+			parts.append(["BogForest_%d" % bi, -DEPTH_BACK - BOG_BACK, -DEPTH_BACK, 1 | LAYER_FOREST, func(x: float, z: float) -> float:
+				var e := -z - DEPTH_BACK
+				return lerpf(y + 0.008, _floor_top(ft, x, -z) + 0.035, smoothstep(0.0, 0.6, e))])
+		for p: Array in parts:
+			var am := bog_mesh(b, blobs, float(p[1]), float(p[2]), p[4])
+			if am == null:
+				continue
+			var mi := MeshInstance3D.new()
+			mi.name = String(p[0])
+			mi.mesh = am
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.layers = int(p[3])
+			parent.add_child(mi)
 
 ## Plamy oleju z `oil_spills` i błota z `mud_spills` (warstwa świata, bez cienia): jeden czworokąt na plamę tuż nad posadzką.
 static func build_oil_stains(parent: Node3D, spills: Array) -> void:
 	if spills.is_empty():
 		return
 	var sh := Shader.new()
-	sh.code = OIL_STAIN_SHADER.replace("//COMMON", PROP_COMMON)
+	sh.code = OIL_STAIN_SHADER.replace("//COMMON", PROP_COMMON).replace("BOG_F_C", str(BOG_F))
 	for i in spills.size():
 		var sp: Dictionary = spills[i]
+		if int(sp.get("bog", -1)) >= 0:
+			continue                                     # błoto bagna przy korycie: plama na siatce po gruncie (`build_bogs`)
 		var xr: Vector2 = sp["xr"]
 		var zr: Vector2 = sp["zr"]
 		var pm := PlaneMesh.new()
@@ -4750,6 +5060,12 @@ static func build_forest(parent: Node3D, rows: Array) -> void:
 					var yb := Basis(Vector3.UP, yrng.randf_range(0.0, TAU)).scaled(Vector3(ysw, yh / 100.0, ysw))
 					(trees["tree_spruce_young_" + "abc"[yrng.randi() % 3]] as Array).append(
 							[Transform3D(yb, Vector3(yx, forest_ground_y(ft, yx, -yz) - 0.15, yz)), Color(yv * 0.97, yv, yv * 0.98)])
+	if not bogs.is_empty():                              # bagno przy korycie (`bog_k`): bez drzew w błocie; filtr po losowaniu jak wnęki
+		for lists in [trees, xf]:
+			for k in lists:
+				(lists as Dictionary)[k] = ((lists as Dictionary)[k] as Array).filter(func(e: Array) -> bool:
+					var o := (e[0] as Transform3D).origin
+					return bog_k(o.x, o.z) < 0.25)
 	if not niche_holes.is_empty():                       # korytarze wnęk (`niches3d.gd`): bez drzew w środku; filtr po losowaniu — reszta lasu bez zmian
 		for lists in [trees, xf]:
 			for k in lists:
@@ -4967,7 +5283,8 @@ static func build_undergrowth(parent: Node3D, rows: Array) -> void:
 				var b := Basis(Vector3.UP, rng.randf_range(-0.6, 0.6)).scaled(Vector3(wd, h, wd))
 				var kind := "fern_a" if fern else ("grass_a" if rng.randf() < 0.6 else "grass_b")
 				var at := top + Vector3(rng.randf_range(-0.5, 0.5) * T, -h * (0.42 if fern else 0.04), z)
-				(xf[kind] as Array).append(Transform3D(b, at))
+				if bogs.is_empty() or bog_k(at.x, at.z) < 0.3:              # bagno przy korycie bez runa
+					(xf[kind] as Array).append(Transform3D(b, at))
 	undergrowth_cards(parent, xf, "Undergrowth_", rng)
 
 ## Karty runa (`xf`: tekstura z FOREST_DIR → [Transform3D]; skrzyżowane karty z podstawą w y = 0) jako `MultiMesh` z wiatrem

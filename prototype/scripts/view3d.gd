@@ -1133,6 +1133,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
 		["liquids", func() -> void:
 			Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
+			Level3D.set_bogs(rows)
 			Level3D.build_liquids(root, rows)],
 		["liquid_props", func() -> void: Level3D.build_liquid_props(root, rows)],
 		["wade_veils", func() -> void: Level3D.build_wade_veils(root, rows, LAYER_ACTORS)],
@@ -2066,6 +2067,7 @@ func _build_oil_spills(root: Node3D, rows: Array) -> void:
 	var spills := Level3D.oil_spills(rows)
 	Level3D.build_oil_stains(root, spills)
 	Level3D.build_oil_stains(root, Level3D.mud_spills(rows))     # kształt błota: plama w kolorach tafli nad bokami niecki
+	Level3D.build_bogs(root, rows)                               # bagno przy korycie: błoto połączone z korytem w lesie i na bryle
 	var ps := _item_scene("barrel_n")
 	if ps == null or spills.is_empty():
 		return

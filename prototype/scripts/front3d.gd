@@ -1779,6 +1779,7 @@ static func _bump(x: float, z: float, zb: float) -> float:
 	for f: Vector2 in _feet:
 		flat = minf(flat, smoothstep(0.75, 1.0, Vector2((x - f.x) / FOOT.x, (z - f.y) / FOOT.y).length()))
 	flat = minf(flat, 1.0 - _mud_k(x, z))
+	flat = minf(flat, 1.0 - _bog_k(x, z))
 	flat = minf(flat, smoothstep(STREAM_FLAT.x, STREAM_FLAT.y, Level3D.front_stream_dist(x, z)))
 	return amp * _noise.get_noise_2d(x, z) * flat
 
@@ -1799,9 +1800,14 @@ static func _stream_k(x: float, z: float) -> float:
 	return 1.0 - smoothstep(0.6, 1.5, Level3D.front_stream_dist(x, z))
 
 
+## 1 w bagnie przy korycie (`Level3D.bog_k`) już od jego brzegu — płyta płaska, bez runa i kamieni.
+static func _bog_k(x: float, z: float) -> float:
+	return smoothstep(0.0, 0.35, Level3D.bog_k(x, z)) if not Level3D.bogs.is_empty() else 0.0
+
+
 ## Bagno albo koryto: bez runa, kamieni i kłód.
 static func _wet_k(x: float, z: float) -> float:
-	return maxf(_mud_k(x, z), _stream_k(x, z))
+	return maxf(maxf(_mud_k(x, z), _stream_k(x, z)), _bog_k(x, z))
 
 
 static func _in_foot(x: float, z: float, k := 1.0) -> bool:
@@ -1847,6 +1853,7 @@ static func _build_ground(parent: Node3D, rows: Array, merge := false) -> void:
 			i = j
 	_ground_cover(parent)
 	_build_front_stream(parent)
+	_build_bogs(parent, rows)
 	_build_hills(parent, mat)
 	for c in parent.get_children():
 		if not String(c.name).begins_with("FrontGround_") or not c is GeometryInstance3D:
@@ -1927,6 +1934,52 @@ static func _build_front_stream(parent: Node3D) -> void:
 		mi.mesh = am
 		mi.material_override = Level3D.stream_material(-0.55, 1.0)     # UV.y rośnie ku kamerze; płycizna widziana z góry
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
+
+
+## Bagno przy korycie na płycie (`Level3D.bogs`, `bog_mesh`): ta sama plama co w lesie i na bryle, od przodu bryły do końca bagna,
+## BOG_LIFT nad płytą (płaską pod bagnem, `_bump`) — pod wstęgą koryta (STREAM_LIFT), która przykrywa jej brzeg. Warstwa świata jak płyta.
+## Płyta ma rzadką siatkę (pół kafla × rzędy GROUND_Z), a nierówność przy brzegu bagna nie jest zerowa: plama ułożona po `ground_y`
+## przecinała trójkąty płyty (ostre trójkąty gruntu w plamie) — leży więc nad najwyższym węzłem oczka płyty (`_plate_top`).
+const BOG_LIFT := 0.01
+
+## Najwyższy wierzch płyty w oczku jej siatki wokół (x, z): węzły co pół kafla w x i w rzędach GROUND_Z (pierwszy rząd przy przodzie bryły
+## z GROUND_LIFT); −INF bez płyty.
+static func _plate_top(x: float, z: float) -> float:
+	var h := Level3D.T * 0.5
+	var xa := floorf(x / h) * h
+	var zs: Array = [Level3D.DEPTH_FRONT]
+	for gz: float in GROUND_Z:
+		if gz > Level3D.DEPTH_FRONT + 0.3:
+			zs.append(gz)
+	var j := 0
+	while j + 1 < zs.size() and float(zs[j + 1]) <= z:
+		j += 1
+	var best := ground_y(x, z)
+	for zz: float in [float(zs[j]), float(zs[mini(j + 1, zs.size() - 1)])]:
+		for xx: float in [xa, xa + h]:
+			var y := ground_y(xx, zz)
+			if y > -INF:
+				best = maxf(best, y + (GROUND_LIFT if zz == Level3D.DEPTH_FRONT else 0.0))
+	return best
+
+static func _build_bogs(parent: Node3D, rows: Array) -> void:
+	for bi in Level3D.bogs.size():
+		var b: Dictionary = Level3D.bogs[bi]
+		var mat := Level3D.bog_material(rows, bi)
+		var am := Level3D.bog_mesh(b, Array(mat.get_shader_parameter("blobs")), Level3D.DEPTH_FRONT, Level3D.DEPTH_FRONT + Level3D.BOG_FRONT + 0.4,
+			func(x: float, z: float) -> float:
+				var y := _plate_top(x, z)
+				return y + BOG_LIFT if y > -INF and ground_y(x, z) > -INF else -INF)
+		if am == null:
+			continue
+		var mi := MeshInstance3D.new()
+		mi.name = "FrontGround_bog_%d" % bi
+		mi.mesh = am
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var ab := am.get_aabb()
+		mi.set_meta("gc", Vector2i(floori(ab.position.x / Level3D.T), floori(ab.end.x / Level3D.T)))
 		parent.add_child(mi)
 
 
@@ -2164,7 +2217,26 @@ static func _ground_cover(parent: Node3D) -> void:
 				if models:
 					if not bank.has(nm):
 						bank[nm] = []
-					(bank[nm] as Array).append(_plant_xf(nm, Vector3(p.x, ground_y(p.x, p.z), p.z), minf(rng.randf_range(0.5, 0.8), hmax), 1.2, rng.randf() * TAU))
+					var pxf := _plant_xf(nm, Vector3(p.x, ground_y(p.x, p.z), p.z), minf(rng.randf_range(0.5, 0.8), hmax), 1.2, rng.randf() * TAU)
+					if _bog_k(p.x, p.z) < 0.3:                  # bok błota od strony koryta leży w bagnie (`Level3D.bogs`)
+						(bank[nm] as Array).append(pxf)
+	# brzeg bagna przy korycie: kępy wzdłuż dalszego brzegu, od przodu bryły do końca bagna (`Level3D.bog_far`)
+	for b: Dictionary in Level3D.bogs:
+		var bz := Level3D.DEPTH_FRONT + 0.5
+		while bz < Level3D.DEPTH_FRONT + Level3D.BOG_FRONT:
+			var bx := Level3D.bog_far(b, bz) + float(b["s"]) * rng.randf_range(0.2, 0.7)
+			var zf := _front_z(bx)
+			for j in 3:
+				var p := Vector3(bx + rng.randf_range(-0.4, 0.4), 0.0, bz + rng.randf_range(-0.3, 0.3))
+				var yg := ground_y(p.x, p.z)
+				var nm := String(GRASS_MODELS[3 + rng.randi() % 3] if j == 0 else GRASS_MODELS[rng.randi() % GRASS_MODELS.size()])
+				var hh := minf(rng.randf_range(0.5, 0.8), 0.3 + 0.12 * (p.z - zf))
+				var rot := rng.randf() * TAU
+				if models and yg > -INF and Level3D.bog_k(p.x, p.z) < 0.25:
+					if not bank.has(nm):
+						bank[nm] = []
+					(bank[nm] as Array).append(_plant_xf(nm, Vector3(p.x, yg, p.z), hh, 1.2, rot))
+			bz += rng.randf_range(0.6, 1.0)
 	if models:
 		_cover_models(parent, bank, "FrontGround_bank_")
 		return
