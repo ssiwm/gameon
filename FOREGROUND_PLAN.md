@@ -210,6 +210,12 @@ Zmiany (decyzja użytkownika: kroki 1 i 2 naraz):
 
 ### F2b — przekrój budynku: świat sięga do pierwszego planu (plan 2026-11-08, przed F3)
 
+> **Zmiana 2026-11-21 (1.7.648): płytki przekrój podziemi.** W tunelach i kopalniach (`tunnel`, `mine` bez budynku 3D) przed płaszczyzną gry
+> zostaje tylko płyta podłogi z fundamentem. Strop, ściany przekroju, nadproża i przedłużenie strefy wydobycia do `SHELL_Z` w rzucie (×1,38)
+> nachodziły na sąsiednie otwory: kopanie 1.1 i 1.3 było niewidoczne, a ściany w warstwie `LAYER_WALL` miały inne światło niż skała świata.
+> Porównanie trzech wariantów (obecny, bez wysunięcia, hybryda) na zrzutach w 17 miejscach: hybryda daje widok na czoło kopania i sale bez
+> czarnego pasa pod podłogą. Fundament omija strefę wydobycia o `SHELL_DIG_CUT` = 3 kolumny. Budynki 3D bez zmian; `--deepshell` — stary przekrój.
+
 Druga uwaga użytkownika po 1.7.520: „rury są teraz na pierwszym planie, ale nie mamy tam świata, dlatego wyglądają nienaturalnie”.
 
 **Przyczyna.** Świat kończy się przekrojem na z = `DEPTH_FRONT` = 1,1 m. Rura stoi na z = 3,5–5 m, więc między nią a światem

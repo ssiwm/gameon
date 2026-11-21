@@ -223,7 +223,43 @@ func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: 
 					if sx1 > clip.x and sx0 < clip.y:
 						_check(x < sx0 or x > sx1, "%s %s x %.1f: przed stanowiskiem '%s' (%d, %d)" % [map_id, it["kind"], x, String(rows[r]).substr(cc, 1), cc, r])
 	_check_walls(map_id, rows, digs)
+	_check_shallow(map_id, rows, digs)
 	Level3D.set_shells([], rows)
+
+
+## Płytki przekrój podziemi (`Level3D.shallow_band`, przegląd 2026-11-21): w tunelach i kopalniach przed płaszczyzną gry tylko płyta podłogi
+## z fundamentem — strop, ściany i nadproża bez skrzynki do SHELL_Z (`shell_skip`, kafle zostają w `shell_cells` / `shell_walls` dla
+## materiału skały), przód strefy wydobycia na DEPTH_FRONT, fundament bez skrzynek obok strefy wydobycia, wiersz podłogi zawsze z płytą.
+func _check_shallow(map_id: String, rows: Array, digs: Array) -> void:
+	for k: Vector2i in Level3D.shell_skip:
+		_check(Level3D.shell_cells.has(k) or Level3D.shell_walls.has(k), "%s %s: pominięty kafel spoza przekroju" % [map_id, k])
+	for e: Dictionary in Level3D.shell_bands:
+		if not Level3D.shallow_band(e):
+			continue
+		for c in range(int(e["c0"]), int(e["c1"]) + 1):
+			var top := Vector2i(c, int(e["r0"]))
+			_check(not Level3D.shell_cells.has(top) or Level3D.shell_skip.has(top), "%s %s: strop podziemi wysunięty do przekroju" % [map_id, top])
+			var fl := Vector2i(c, int(e["r1"]))
+			_check(not Level3D.shell_skip.has(fl), "%s %s: podłoga podziemi bez płyty przekroju" % [map_id, fl])
+			for r in range(int(e["r0"]) + 1, int(e["r1"])):
+				var k := Vector2i(c, r)
+				_check(not Level3D.shell_walls.has(k) or Level3D.shell_skip.has(k), "%s %s: ściana podziemi wysunięta do przekroju" % [map_id, k])
+		for z in digs:
+			if int(z[2]) >= int(e["c0"]) - 1 and int(z[0]) <= int(e["c1"]) + 1 and int(z[3]) > int(e["r0"]) and int(z[1]) < int(e["r1"]):
+				_check(is_equal_approx(Level3D.zone_front_z(int(z[0]), int(z[1]), int(z[2]), int(z[3])), Level3D.DEPTH_FRONT), "%s: strefa wydobycia %s przy podziemiach wysunięta" % [map_id, z])
+	for k: Vector2i in Level3D.shell_cells:
+		if Level3D.shell_skip.has(k):
+			continue
+		for z in digs:
+			var near := k.x >= int(z[0]) - Level3D.SHELL_DIG_CUT and k.x <= int(z[2]) + Level3D.SHELL_DIG_CUT and k.y >= int(z[1]) - 1 and k.y <= int(z[3]) + 1
+			var under := false                                   # fundament (pod wierszem podłogi) wpisu podziemi, nie podłoga wpisu niżej
+			var floor := false
+			for e: Dictionary in Level3D.shell_bands:
+				var inc := k.x >= int(e["c0"]) and k.x <= int(e["c1"])
+				under = under or (Level3D.shallow_band(e) and inc and k.y > int(e["r1"]))
+				floor = floor or (inc and k.y == int(e["r1"]))
+			under = under and not floor
+			_check(not (near and under), "%s %s: fundament przekroju nachodzi w rzucie na strefę wydobycia %s" % [map_id, k, z])
 
 
 ## Ściany przekroju (`Level3D.shell_walls`): lite ściany w pasie wpisu i nadproża między przekrojami o różnym stropie, wysunięte do
@@ -260,7 +296,10 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		var root := Node3D.new()
 		get_root().add_child(root)
 		var n := Front3D.build_walls(root)
-		_check(n > 0, map_id + ": build_walls nic nie zbudował")
+		var nw := 0
+		for k: Vector2i in Level3D.shell_walls:
+			nw += int(not Level3D.shell_entry_cells.has(k) and not Level3D.shell_skip.has(k))
+		_check(n == 0 if nw == 0 else n > 0, "%s: build_walls zbudował %d skrzynek przy %d ścianach do wysunięcia" % [map_id, n, nw])
 		for c in root.find_children("*", "MultiMeshInstance3D", true, false):
 			var mmi := c as MultiMeshInstance3D
 			if String(mmi.name).begins_with("ShellWallsShadow"):     # bryła cienia ściany: tylko mapy cieni, w warstwie świata (latarka w wykopie 1.3)
@@ -343,8 +382,8 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 	if map_id == "z1_m3":
 		# 1.3: nadproże nad niskim tunelem obok sali (skała między stropem tunelu a stropem sali) to płyta świata, nie ściana pierwszego planu
 		_check(Level3D.shell_cells.has(Vector2i(91, 32)) and not Level3D.shell_walls.has(Vector2i(91, 32)), "1.3: nadproże nad tunelem 91–108 nie jest płytą przekroju")
-		# 1.3: strefa kopania przy zachodniej hali stoi w jednej płaszczyźnie z podłogą przekroju
-		_check(is_equal_approx(Level3D.zone_front_z(1, 31, 5, 39), Level3D.SHELL_Z), "1.3: strefa wydobycia przy hali nie wysunięta do przekroju")
+		# 1.3: strefa kopania przy zachodniej sali podziemi w płaszczyźnie gry — sala bez stropu i ścian przekroju (płytki przekrój podziemi)
+		_check(is_equal_approx(Level3D.zone_front_z(1, 31, 5, 39), Level3D.DEPTH_FRONT), "1.3: strefa wydobycia przy sali podziemi wysunięta do przekroju")
 		var zo := Level3D.zone_shell_occ(2, 36, 5, 39)                # przedłużenie strefy do przekroju (warstwa ścian) zasłaniane płytami pasa
 		_check(zo.x > zo.y and is_equal_approx(zo.z, Level3D.SHELL_Z), "1.3: przedłużenie strefy wydobycia bez okluzji stropu i podłogi")
 		var muds := Level3D.mud_spills(rows)
