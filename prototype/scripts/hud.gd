@@ -1134,6 +1134,10 @@ func _build_center() -> void:
 	add_child(_journal)
 	NoiseMgr.overcharge_stale.connect(func() -> void: show_note(tr("They know this trick — move before you lure again")))
 	NoiseMgr.lured.connect(_on_lured)
+	NoiseMgr.lure_broken_by_light.connect(func() -> void:
+		Msg.withdraw("hud.noise.lured")
+		Msg.withdraw("hud.lured")
+		Msg.post("hud.lure.light", Msg.Ch.TOAST, tr("HE SAW THE LIGHT — LURE BROKEN"), {"ttl": 2.5, "style": Msg.Style.WARN, "prio": 75}))
 	NoiseMgr.peak_released.connect(func() -> void:
 		Msg.post("hud.breath", Msg.Ch.TOAST, tr("THE NOISE FADES"), {"sub": tr("A breath, not safety — for a few seconds every sound counts half"), "style": Msg.Style.INFO, "ttl": 4.0, "prio": 55})
 		Audio.duck_music(-6.0, 2.0))
@@ -1706,6 +1710,7 @@ func _wipe_to_checkpoint() -> bool:
 func _on_lured(lock: float) -> void:
 	if lock <= 0.0 or not NoiseMgr.stalker_awake:
 		return
+	Msg.withdraw("hud.lure.light")
 	Msg.post("hud.lured", Msg.Ch.TOAST, tr("HE TAKES THE BAIT"), {"ttl": 2.5, "style": Msg.Style.SUCCESS, "prio": 70})
 	var st := _stalker()
 	if st != null:
@@ -1744,7 +1749,7 @@ func _drive_warning() -> void:
 		Msg.hold("hud.noise.hunted", Msg.Ch.ALERT, tr("He's on %s!") % hunted,
 			{"sub": Actions.fmt(tr("{overcharge} lures him away from them")), "style": Msg.Style.DANGER, "prio": 70})
 	elif awake:
-		Msg.hold("hud.noise.awake", Msg.Ch.ALERT, tr("He hears you…"), {"sub": tr("Go quiet until the noise drops below 30% — or use Q to lure him off"), "style": Msg.Style.DANGER, "prio": 60})
+		Msg.hold("hud.noise.awake", Msg.Ch.ALERT, tr("He hears you…"), {"sub": Actions.fmt(tr("Go quiet until noise drops below 30%, or activate the lure here ({overcharge}) and move away")), "style": Msg.Style.DANGER, "prio": 60})
 	elif uneasy:
 		Msg.hold("hud.noise.uneasy", Msg.Ch.ALERT, tr("Something is listening…"), {"sub": tr("Above 60% noise he wakes up"), "style": Msg.Style.WARN, "prio": 40})
 	if awake and not _warn_was:

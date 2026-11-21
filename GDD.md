@@ -274,7 +274,7 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 - **Nie da się go zabić.** HP ∞. Trafienie spowalnia go na 1,2 s (do 40% prędkości) i zatrzymuje na 0,7 s, ale zatrzymanie działa najwyżej raz na 3 s — ostrzałem kupuje się czas, nie unieruchamia go.
 - Aktywuje się, gdy Poziom Uwagi misji przekroczy próg (start: 60/100).
 - Porusza się poza kadrem (dźwięk z głośników 3D), atakuje znienacka.
-- **Mechanika tropu:** idzie do ostatniego głośnego punktu. Wabik odciąga go na 20–30 s: udane Q (§8.4) **przytrzymuje** go przy wabiku przez 15 s (`NoiseMgr.LURE_LOCK`, od 1.7.401) — nowy hałas w tym czasie go nie zawraca, przerywa to tylko snop latarki na nim albo kolejne Q; potem nasłuchuje przy wabiku do następnego hałasu.
+- **Mechanika tropu:** idzie do ostatniego głośnego punktu. Udane przesterowanie (§8.4) przyciąga go do miejsca aktywacji przez maksymalnie 15 s (`NoiseMgr.LURE_LOCK`). W tym czasie ignoruje nowy hałas. Wykrycie światła przerywa działanie wabika, a kolejny udany wabik przenosi źródło dźwięku. Po upływie czasu nasłuchuje przy wabiku do następnego hałasu.
 - **Światło go przyciąga** (latarka na wrogu = śmierć). Ciemność i kucanie = szansa ucieczki. Od 1.7.487 widzi też gracza stojącego w świetle zapalonej lampy misji (znacznik `I`, do 8 m od żarówki, z 12 m, bez ściany) — lampę można zestrzelić: gaśnie, sypie szkłem, hałas mały.
 - Można go „uspokoić": obniżyć Uwagę poniżej progu przez 60 s (żadnych strzałów, wabik gdzieś daleko).
 - Pojawia się w 3 formach zależnie od strefy (sylwetka, dźwięk, cień).

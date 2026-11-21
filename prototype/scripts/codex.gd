@@ -35,7 +35,7 @@ const ENEMIES := [
 		"Look up before you cross a gap, and keep moving."],
 	["slepiec", "slepiec", "idle", "BLIND ONE", "Blind hunter",
 		"Cannot see — only hears. Walks to the source of the last noise and searches around it.",
-		"Crouch ({crouch}) and walk past. Throw a lure ({overcharge}) to pull it away. Shots will bring it running."],
+		"Crouch ({crouch}) and walk past. Activate the lure here ({overcharge}) and move away. Shots will bring it running."],
 	["podsluchacz", "podsluchacz", "idle", "EAVESDROPPER", "Listener",
 		"Stands motionless and listens. If it sees or hears you it screams, and every enemy nearby gets a trail to your position.",
 		"Kill it quietly — the machete is almost silent — or avoid its line of sight altogether."],
@@ -83,8 +83,9 @@ static func bestiary() -> Array:
 	out.append({"title": "STALKER", "tag": "Cannot be killed", "accent": Color(0.55, 0.75, 1.0), "beast": "stalker", "group": "SPECIAL",
 		"portrait": _portrait_of("stalker", {"type": "sprite", "sheet": "stalker", "anim": "idle"}),
 		"stats": [["HP", "∞"], ["Hunting", "5.5 m/s"], ["Lurking", "3.4 m/s"], ["Wakes at", "60% noise"], ["Sleeps at", "30% noise"], ["Reach", "0.9 m (0.5 m crouched)"]],
-		"text": "Reacts to noise only, never to you directly. Walks to the loudest recent sound, listens there, then strikes — with a wind-up you can run from. Light draws him. Attacks make no noise.",
-		"tip": "Stop shooting and let the meter fall below 30%. {overcharge} lures him away for 20–30 s. Crouch in the dark. You can outrun him (slower than you)."})
+		"text": "He tracks loud sounds and listens where they came from. Light draws him to a player. His attacks are silent, but he winds up before striking and you can outrun him.",
+		"tip": "Activate the lure here ({overcharge}) and move away. He follows the sound for up to {seconds} s. If he sees light, he abandons the lure. Crouch in the dark and let noise drop below 30%.",
+		"tip_values": {"seconds": ceili(NoiseMgr.LURE_LOCK)}})
 	out.append({"title": "NEST", "tag": "Mission objective", "accent": Color(1.0, 0.5, 0.2), "beast": "nest", "group": "SPECIAL",
 		"portrait": _portrait_of("nest", {"type": "sprite", "sheet": "nest", "anim": "pulse"}),
 		"stats": [["HP", "60"], ["Noise when destroyed", "+8"]],

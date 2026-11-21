@@ -2522,8 +2522,8 @@ static func apply_settings(mode: int, _low: bool) -> void:
 
 
 ## Co klatkę: sylwetki do wygaszenia ([Vector4(x, y, pół szer., pół wys.), waga] na płaszczyźnie gry, w kolejności ważności),
-## środek i wysokość kadru [m].
-static func update(points: Array, mid_y: float, frame_h: float, reduced: bool) -> void:
+## środek i wysokość kadru [m]. Ustawienie dekoracji nie wyłącza maski konstrukcji.
+static func update(points: Array, mid_y: float, frame_h: float, mode: int) -> void:
 	var arr := PackedVector4Array()
 	arr.resize(MAX_PTS)
 	var wts := PackedFloat32Array()
@@ -2532,16 +2532,18 @@ static func update(points: Array, mid_y: float, frame_h: float, reduced: bool) -
 	for i in n:
 		arr[i] = points[i][0]
 		wts[i] = float(points[i][1])
+	for m: ShaderMaterial in _wall_mats.values():           # słupy i ściany przekroju zostają w kadrze także przy wyłączonych dekoracjach
+		m.set_shader_parameter("pts", arr)
+		m.set_shader_parameter("wts", wts)
+		m.set_shader_parameter("npts", n)
+	if mode == 2:
+		return
 	for m: ShaderMaterial in materials().values():
 		m.set_shader_parameter("pts", arr)
 		m.set_shader_parameter("wts", wts)
 		m.set_shader_parameter("npts", n)
 		m.set_shader_parameter("mid_y", mid_y)
-		m.set_shader_parameter("band", frame_h * REDUCED_BAND if reduced else 0.0)
-	for m: ShaderMaterial in _wall_mats.values():           # ściany przekroju: wygaszanie tak samo, ale bez pasa REDUCED (to bryła budynku)
-		m.set_shader_parameter("pts", arr)
-		m.set_shader_parameter("wts", wts)
-		m.set_shader_parameter("npts", n)
+		m.set_shader_parameter("band", frame_h * REDUCED_BAND if mode == 1 else 0.0)
 
 
 # ---------------------------------------------------------------- ściany przekroju (F3, uwaga z gry 2026-11-08)

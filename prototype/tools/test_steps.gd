@@ -71,6 +71,20 @@ func _process(_dt: float) -> bool:
 		get_root().add_child(holder)
 		Step3D.build(holder, rows, steps)
 		_check(not Step3D.parts.is_empty(), "%s: brak elementów" % map)
+		var wear := Step3D.parts.filter(func(p: Array) -> bool: return p[1] == "bough wear")
+		var landings := 0
+		for entry in steps:
+			for rc in entry.get("worn_landings", []):
+				landings += 1
+				var deck := Step3D.deck_at(rows, int(rc[0]), int(rc[1]))
+				if deck.is_empty():
+					_check(false, "%s: ślad ma leżeć na istniejącym pomoście %s" % [map, rc])
+					continue
+				var matches := wear.filter(func(p: Array) -> bool:
+					var bb: AABB = p[0]
+					return bb.position.x >= float(deck["x0"]) and bb.end.x <= float(deck["x1"]) and absf(bb.end.y - float(deck["top"])) <= Step3D.TOP_TOL)
+				_check(matches.size() == 1, "%s: oczekiwano jednego śladu na konarze %s" % [map, rc])
+		_check(wear.size() == landings, "%s: ślad poza oznaczonym lądowaniem" % map)
 		var checked := 0
 		for p in Step3D.parts:
 			var bb: AABB = p[0]

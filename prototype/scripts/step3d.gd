@@ -6,6 +6,7 @@ extends RefCounted
 ## nośność daje masa za pasem (z < −0,9), wspornik (konar, płyta skalna, nawis darni) albo kłoda leżąca w poprzek ścieżki.
 ## Wpis w danych mapy (`STEPS`, czyta `level.gd`): {"kind" (z `KINDS`), "decks": [[wiersz, pierwsza kolumna], …], "posts": [kolumny słupów `w`,
 ## które znikają], "cache": true (ostaniec: nisza ze skrytką, lina i strzałka patrolu), "legs": [kolumny nóg kratowych pomostu przy maszcie] (pole antenowe), "trunks": [[kolumna, wiersz podłoża], …] (konary: dodatkowa sosna)}.
+## "worn_landings" oznacza pomosty z przetartą korą na podejściu, "scree" wybiera skałę z piargiem przy podstawie.
 
 const Level3D := preload("res://scripts/level3d.gd")
 const Front3D := preload("res://scripts/front3d.gd")
@@ -170,16 +171,19 @@ static func trunk_cells(rows: Array, steps: Array) -> Dictionary:
 	var out := {}
 	for e in steps:
 		if String(e.get("kind", "")) == "boughs":
-			var crown := crown_y(rows, e)
 			for t in bough_trunks(rows, e):
+				var crown := crown_y(rows, e, int(t["c"]))
 				out[Vector2i(int(t["c"]), int(t["r0"]))] = maxf(0.0, crown + float(t["r0"]) * T)
 	return out
 
-## y, na którym zaczynają się korony sosen wpisu "boughs".
-static func crown_y(rows: Array, entry: Dictionary) -> float:
+## Przy pierwszych lądowaniach najniższe kępy igliwia sąsiadujących sosen mają dodatkowy metr prześwitu.
+static func crown_y(rows: Array, entry: Dictionary, trunk_col: int) -> float:
 	var top := -INF
 	for d in decks_of(rows, entry):
 		top = maxf(top, float(d["top"]))
+	for rc in entry.get("worn_landings", []):
+		if absf(float(trunk_col) + 0.5 - (float(rc[1]) + 1.0)) <= BOUGH_REACH:
+			return top + BOUGH_CROWN + 1.0
 	return top + BOUGH_CROWN
 
 # --- materiały -------------------------------------------------------------------------------------------------------------
@@ -210,13 +214,17 @@ static func _mat(key: String) -> Material:
 				sm.roughness = 0.95
 			sm.albedo_color = Color(0.62, 0.58, 0.54) if key == "bark" else Color(0.40, 0.34, 0.30)   # kora jak pnie lasu; korzenie ciemniejsze, ziemiste
 			m = sm
-		"cut", "porch_edge":
+		"cut", "porch_edge", "bough_wear":
 			var cm := Level3D.make_pbr("plank", 0.8, Color(0.50, 0.40, 0.28), 0.9).duplicate() as StandardMaterial3D
 			cm.albedo_color = Color(0.95, 0.82, 0.62)       # świeży przekrój piłą: jaśniejszy od kory
-			if key == "porch_edge":                       # krawędź chwytu czytelna także obok snopu latarki
+			if key != "cut":                              # odsłonięte drewno czytelne także obok snopu latarki
 				cm.emission_enabled = true
 				cm.emission = Color(0.80, 0.68, 0.50)
-				cm.emission_energy_multiplier = 0.035
+				cm.emission_energy_multiplier = 0.065 if key == "bough_wear" else 0.035
+				if key == "bough_wear" and cm.albedo_texture != null:
+					cm.emission_texture = cm.albedo_texture    # poza snopem dalej widać włókna w odsłoniętym drewnie
+					cm.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+					cm.emission_energy_multiplier = 0.48
 			m = cm
 		"soil":
 			m = Level3D.terrain_cut_material()
@@ -637,13 +645,44 @@ static func _windfall(sts: Dictionary, models: Dictionary, rows: Array, d: Dicti
 	var y_rest := top - 2.0 * r * 1.05 * 1.03                      # głaz pod pniami za pasem gry
 	_rock(sts, Vector3(x0 - 0.15, yg - 0.25, -2.25), Vector3(x1 + 0.15, y_rest, -STRIP - 0.55), rng, "windfall rock")
 
+## Wschodnia krawędź niecki: ukośny trzon wrasta w brzeg, a u stóp przechodzi w ziemię i malejący rumosz.
+static func _tor_scree(sts: Dictionary, rows: Array, lo: Dictionary, hi: Dictionary, rng: RandomNumberGenerator) -> void:
+	var x0: float = lo["x0"]
+	var x1: float = hi["x1"]
+	var ground := floor_y(rows, int(lo["c0"]), int(lo["r"]), false)
+	var height := float(hi["top"]) - ground
+	var toe := x0 - 2.3
+	var rock := _st(sts, "rock")
+	var face := PackedVector2Array([
+		Vector2(toe, ground - 0.25), Vector2(x1 + 0.4, ground - 0.25),
+		Vector2(x1 + 0.4, ground + height), Vector2(x0 + 0.55, ground + height - 0.14),
+		Vector2(x0 + 0.12, ground + height * 0.66), Vector2(x0 - 0.66, ground + height * 0.50),
+		Vector2(x0 - 0.52, ground + height * 0.34), Vector2(toe + 0.48, ground + height * 0.18)])
+	_prism(rock, face, -3.8, -1.22, "tor outcrop")
+	# Pęknięta płyta wystaje z litego trzonu. Przechył i nieregularne lico przerywają poziomą linię pokładów.
+	_tint = _granite_tint(rng)
+	_rbox(rock, Vector3(x0 - 0.45, ground + 0.6, -2.25), Vector3(x1 - 0.3, ground + height * 0.82, -1.02),
+		0.26, "tor outcrop", Basis(Vector3.BACK, -0.22), 0.55, false, rng.randf() * 10.0)
+	_tint = Color.WHITE
+	var soil := PackedVector2Array([Vector2(toe - 1.5, ground - 0.15), Vector2(x1, ground - 0.15),
+		Vector2(x1, ground + 1.12), Vector2(x0 - 0.3, ground + 0.76), Vector2(toe, ground + 0.23)])
+	_prism(_st(sts, "turf"), soil, -2.2, -0.97, "tor scree")
+	for i in 8:
+		var f := float(i) / 7.0
+		var x := lerpf(toe - 1.4, x0 + 0.1, f)
+		var y := ground + lerpf(-0.10, 0.73, f)
+		var size := lerpf(0.14, 0.80, f) * rng.randf_range(0.74, 1.1)
+		_rock(sts, Vector3(x - size, y - size * 0.4, -1.55), Vector3(x + size, y + size * 0.58, -0.78), rng, "tor scree")
+
 ## Ostaniec granitowy (wietrzenie „materacowe”): płyty o zaokrąglonych krawędziach i różnej grubości z wierzchem na wysokości pokładu
 ## wystają nad ścieżką; pod nimi i za nimi masa bloków za pasem gry z przesuniętymi spoinami; za niższymi stopniami garb skały do wysokości
 ## następnego, więc ostaniec czyta się jako jedna bryła, a nie schody z kolumn; na szczycie i u stóp luźne głazy. Mech na wierzchach (`OUTDOOR_ROCK`).
 ## `cache`: na szczycie nisza ze skrytką `H` pod nawisem (za pasem gry), lina patrolu na haku po płytach w dół i czerwona strzałka na najniższej płycie.
-static func _tor(sts: Dictionary, models: Dictionary, rows: Array, ds: Array, cache: bool) -> void:
+static func _tor(sts: Dictionary, models: Dictionary, rows: Array, ds: Array, entry: Dictionary) -> void:
 	if ds.is_empty():
 		return
+	var cache := bool(entry.get("cache", false))
+	var scree := bool(entry.get("scree", false))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 23 + int(ds[0]["c0"]) * 17
 	var st := _st(sts, "rock")
@@ -688,6 +727,8 @@ static func _tor(sts: Dictionary, models: Dictionary, rows: Array, ds: Array, ca
 			slab_low = minf(slab_low, y0)
 			if low:
 				arrow = {"x": a, "y0": y0, "top": top, "zf": zf}
+		if scree:
+			continue                                        # wspólny trzon obu półek i osypisko powstają raz, za pokładami
 		var y := yg - 0.25                                  # masa pod płytami za pasem gry: rzędy bloków, spoiny przesunięte
 		while y < slab_low - 0.3:
 			var hh := rng.randf_range(0.9, 1.8)
@@ -717,6 +758,8 @@ static func _tor(sts: Dictionary, models: Dictionary, rows: Array, ds: Array, ca
 	var hx0: float = hi["x0"]
 	var hx1: float = hi["x1"]
 	var xh := (hx0 + hx1) * 0.5
+	if scree:
+		_tor_scree(sts, rows, lo, hi, rng)
 	for c in range(int(hi["c0"]), int(hi["c1"]) + 1):       # skrytka `H` nad szczytem
 		if Level3D._ch(rows, c, int(hi["r"]) - 1) == "H":
 			xh = (float(c) + 0.5) * T
@@ -1040,7 +1083,7 @@ static func _boughs(sts: Dictionary, models: Dictionary, rows: Array, e: Diction
 		var c := int(t[0])
 		var rf := int(t[1])
 		var foot := Vector3((float(c) + 0.5) * T, -float(rf) * T, Level3D.TRUNK_Z)
-		_pine(models, foot, 17.0, c * 13 + rf, crown_y(rows, e))
+		_pine(models, foot, 17.0, c * 13 + rf, crown_y(rows, e, c))
 		trunks.append(foot.x)
 	for d in ds:
 		var x0: float = d["x0"]
@@ -1054,20 +1097,23 @@ static func _boughs(sts: Dictionary, models: Dictionary, rows: Array, e: Diction
 		var inside: Array = near.filter(func(t): return t > x0 and t < x1)
 		var left: Array = near.filter(func(t): return t <= mid)
 		var right: Array = near.filter(func(t): return t > mid)
+		var wear_x := INF
+		if [d["r"], d["c0"]] in e.get("worn_landings", []):
+			wear_x = x0 + minf(1.15, (x1 - x0) * 0.36)       # pierwsze miejsce na stopy przy podejściu od zachodu
 		if not inside.is_empty():
-			_limb(sts, rng, inside[0], inside[0], x0, top, BOUGH_R.y)
-			_limb(sts, rng, inside[0], inside[0], x1, top, BOUGH_R.y)
+			_limb(sts, rng, inside[0], inside[0], x0, top, BOUGH_R.y, wear_x)
+			_limb(sts, rng, inside[0], inside[0], x1, top, BOUGH_R.y, wear_x)
 		elif not left.is_empty() and not right.is_empty() and left.max() >= x0 - 2.5 * T and right.min() <= x1 + 2.5 * T:
-			_limb(sts, rng, left.max(), x0, mid + 0.4, top, 0.18)
-			_limb(sts, rng, right.min(), x1, mid - 0.4, top, 0.18)
+			_limb(sts, rng, left.max(), x0, mid + 0.4, top, 0.18, wear_x)
+			_limb(sts, rng, right.min(), x1, mid - 0.4, top, 0.18, wear_x)
 		else:
 			near.sort_custom(func(a, b): return absf(a - mid) < absf(b - mid))
 			var t: float = near[0]
-			_limb(sts, rng, t, x1 if t > mid else x0, x0 if t > mid else x1, top, BOUGH_R.y)
+			_limb(sts, rng, t, x1 if t > mid else x0, x0 if t > mid else x1, top, BOUGH_R.y, wear_x)
 
 ## Konar z pnia w `t` (oś w głębi na TRUNK_Z): ukośnie ku pasowi gry do `xs` (koniec pomostu przy pniu), dalej wzdłuż pomostu do `xe`;
 ## promień BOUGH_R.x → `r_end`, oś na wysokości pokładu minus promień (płaski wierzch). Suche gałązki z tyłu, za pasem gry.
-static func _limb(sts: Dictionary, rng: RandomNumberGenerator, t: float, xs: float, xe: float, top: float, r_end: float) -> void:
+static func _limb(sts: Dictionary, rng: RandomNumberGenerator, t: float, xs: float, xe: float, top: float, r_end: float, wear_x: float) -> void:
 	var st := _st(sts, "bark")
 	var dir := signf(xe - t) if absf(xe - t) > 0.01 else 1.0
 	var zt := Level3D.TRUNK_Z
@@ -1094,16 +1140,50 @@ static func _limb(sts: Dictionary, rng: RandomNumberGenerator, t: float, xs: flo
 		prev = p
 		prev_r = rr
 	_disc(_st(sts, "bark"), prev, Vector3(dir, 0.0, 0.0), prev_r)
+	if wear_x >= minf(xs, xe) and wear_x <= maxf(xs, xe):
+		_bough_wear(_st(sts, "bough_wear"), c, prev, r0, r_end, wear_x)
 	for i in 4:                                             # suche gałązki dolnych konarów (w tył i w górę, za pasem gry)
 		var f := rng.randf_range(0.15, 0.95)
 		var rr := lerpf(r0, r_end, f)
 		var x := xs + (xe - xs) * f
 		var p0 := Vector3(x, top - rr, -STRIP - 0.05)
 		var p1 := Vector3(x + dir * rng.randf_range(0.3, 0.9), top + rng.randf_range(0.5, 1.3), -STRIP - rng.randf_range(0.5, 1.2))
-		_cone(st, p0, p1, 0.035, 0.012, "bough twig", 5, 0.0)
+		var clear_landing := wear_x < minf(p0.x, p1.x) - 1.1 or wear_x > maxf(p0.x, p1.x) + 1.1
+		if clear_landing:
+			_cone(st, p0, p1, 0.035, 0.012, "bough twig", 5, 0.0)
 		if rng.randf() < 0.6:
 			var p2 := p1 + Vector3(dir * rng.randf_range(0.1, 0.4), rng.randf_range(0.2, 0.5), -rng.randf_range(0.1, 0.4))
-			_cone(st, p1, p2, 0.012, 0.005, "bough twig", 4, 0.0)
+			if clear_landing:
+				_cone(st, p1, p2, 0.012, 0.005, "bough twig", 4, 0.0)
+
+## Wytarta kora na górnym łuku konaru. Brzegi zbiegają się w drzazgi wzdłuż włókien.
+static func _bough_wear(st: SurfaceTool, a: Vector3, b: Vector3, ra: float, rb: float, x: float) -> void:
+	var left := maxf(minf(a.x, b.x), x - 0.95)
+	var right := minf(maxf(a.x, b.x), x + 0.95)
+	var last_upper := Vector3.ZERO
+	var last_ridge := Vector3.ZERO
+	var last_lower := Vector3.ZERO
+	var bb := AABB()
+	for i in 7:
+		var u := float(i) / 6.0
+		var f := inverse_lerp(a.x, b.x, lerpf(left, right, u))
+		var axis := a.lerp(b, f)
+		var radius := lerpf(ra, rb, f) + 0.009
+		var spread := sin(PI * u) * (0.68 + 0.18 * sin(18.0 * u + x))
+		var angle := 0.70 + 0.14 * sin(9.0 * u + x)
+		var upper := axis + Vector3(0, cos(angle - spread), sin(angle - spread)) * radius
+		var ridge := axis + Vector3(0, cos(angle), sin(angle)) * radius
+		var lower := axis + Vector3(0, cos(angle + spread), sin(angle + spread)) * radius
+		if i > 0:
+			_quad(st, last_upper, upper, ridge, last_ridge, Vector3(0, cos(angle - spread * 0.5), sin(angle - spread * 0.5)))
+			_quad(st, last_ridge, ridge, lower, last_lower, Vector3(0, cos(angle + spread * 0.5), sin(angle + spread * 0.5)))
+		else:
+			bb = AABB(upper, Vector3.ZERO)
+		bb = bb.expand(upper).expand(lower).expand(ridge)
+		last_upper = upper
+		last_ridge = ridge
+		last_lower = lower
+	_part(bb, "bough wear")
 
 # --- radiostacja 1.2 (S4): schody na dach, stacja słupowa, pole antenowe -------------------------------------------------------
 
@@ -1462,7 +1542,7 @@ static func build(parent: Node3D, rows: Array, steps: Array) -> Node3D:
 				for d in ds:
 					_windfall(sts, models, rows, d)
 			"tor":
-				_tor(sts, models, rows, ds, bool(e.get("cache", false)))
+				_tor(sts, models, rows, ds, e)
 			"boughs":
 				_boughs(sts, models, rows, e, sc)
 			"heat":

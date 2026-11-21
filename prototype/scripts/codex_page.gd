@@ -193,7 +193,7 @@ func select(i: int) -> void:
 		_stats.add_child(UiTheme.label(val if bool(e.get("plain_stats", false)) else UiTheme.num_text(val), 8, UiTheme.TEXT))   # archiwum: „1.1” to numer misji, nie ułamek
 	_fill_bars(e)
 	_text.text = Actions.fmt(tr(e["text"]))                  # klawisze w opisach to znaczniki {akcja} — po przypisaniu gracza
-	_tip.text = tr("TIP  ") + Actions.fmt(tr(e["tip"])) if String(e["tip"]) != "" else ""
+	_tip.text = tr("TIP  ") + Actions.fmt(tr(e["tip"]).format(e.get("tip_values", {}))) if String(e["tip"]) != "" else ""
 	_tip.visible = _tip.text != ""
 	_access.text = String(e.get("access", ""))
 	_access.visible = _access.text != ""

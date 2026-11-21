@@ -150,10 +150,33 @@ func _lure(ground: Dictionary) -> void:
 	NoiseMgr.add_noise(10.0, b)
 	await _ticks(3)
 	check("w czasie przytrzymania nowy hałas go nie zawraca (cel x=%.0f, wabik x=%.0f)" % [stalker.target_pos.x, a.x], stalker.target_pos.distance_to(a) < 2.0)
-	NoiseMgr.break_lure()
+	var breaks := []
+	var on_light := func() -> void: breaks.append(NoiseMgr.lure_left)
+	NoiseMgr.lure_broken_by_light.connect(on_light)
+	var flash0: bool = player.flashlight
+	var aim0: Vector2 = player.aim_dir
+	player.set_physics_process(false)
+	_place_player(stalker.global_position + Vector2(-48.0, 0.0))
+	player.aim_dir = Vector2(48.0, -11.0).normalized()
+	player.flashlight = true
+	stalker._lit_cd = 0.0
+	await _ticks(3)
+	check("snop latarki przerywa wabik i raz podaje powód", breaks == [0.0])
+	check("HUD zastępuje sukces i odliczanie informacją o świetle", Msg.has("hud.lure.light") and not Msg.has("hud.lured") and not Msg.has("hud.noise.lured"))
+	player.flashlight = false
 	NoiseMgr.add_noise(10.0, b)
 	await _ticks(3)
 	check("po przerwaniu (snop latarki) znów idzie na hałas", NoiseMgr.lure_left <= 0.0 and stalker.target_pos.distance_to(b) < 2.0)
+	var second_lure := NoiseMgr.use_overcharge(b, player) and NoiseMgr.lure_left > 0.0
+	NoiseMgr.calm()
+	check("uspokojenie kończy wabik bez komunikatu o świetle", second_lure and NoiseMgr.lure_left == 0.0 and breaks.size() == 1 and not Msg.has("hud.lure.light"))
+	NoiseMgr.lure_left = 0.01
+	await _ticks(3)
+	check("wygaśnięcie wabika nie zgłasza światła", NoiseMgr.lure_left == 0.0 and breaks.size() == 1)
+	NoiseMgr.lure_broken_by_light.disconnect(on_light)
+	player.flashlight = flash0
+	player.aim_dir = aim0
+	player.set_physics_process(true)
 	_sleep()
 	await _ticks(3)
 

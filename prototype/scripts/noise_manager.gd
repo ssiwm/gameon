@@ -13,6 +13,7 @@ signal overcharge_stale                  ## wabik użyty drugi raz w tym samym m
 signal flares_changed(n: int)
 signal lure_used(by: Node)                  ## serwer: udane Q (nie „zwietrzałe”); `by` = gracz, który je użył (mission.gd: wyróżnienie BAIT)
 signal lured(lock: float)                   ## każdy peer: Stalker przytrzymany na wabiku przez `lock` s (0 = przytrzymanie przerwane)
+signal lure_broken_by_light                  ## każdy peer: Stalker dostrzegł światło w trakcie przytrzymania
 signal noise_added(amount: float, pos: Vector2, tag: String)   ## serwer: każde zdarzenie hałasu po mnożnikach (mission.gd: hałas graczy)
 signal peak_released                        ## każdy peer: Uwaga za długo na 100 — sama opadła do PEAK_RELEASE (hud.gd: komunikat „oddech”)
 
@@ -85,7 +86,7 @@ var _server_last_active := 0.0
 var _last_overcharge := -INF
 ## Gdzie ostatnio użyto Q (serwer) — Żyła daje się tam odciągnąć (boss.gd).
 var last_overcharge_pos := Vector2.ZERO
-## Przytrzymanie na wabiku (FUN_PLAN.md P0.2, GDD §7.3 „wabik odciąga go na 20–30 s"): po udanym Q obudzony Stalker idzie do `lure_pos`
+## Przytrzymanie na wabiku (FUN_PLAN.md P0.2, GDD §7.3): po udanym Q obudzony Stalker idzie do `lure_pos`
 ## i przez `lure_left` s nie zawraca go nowy hałas — tylko snop latarki (`break_lure`) albo kolejne Q. Serwer rozstrzyga, klienci dostają
 ## odliczanie w `_lure_rpc` i liczą je sami (HUD).
 const LURE_LOCK := 15.0
@@ -423,20 +424,21 @@ func hot_spot_near(from: Vector2, radius: float, max_age: float) -> Variant:
 	return best
 
 ## Snop latarki na Stalkerze (stalker.gd) albo cisza po misji przerywa przytrzymanie na wabiku.
-func break_lure() -> void:
+func break_lure(by_light := false) -> void:
 	if not is_server() or lure_left <= 0.0:
 		return
-	lure_left = 0.0
 	if has_network():
-		_lure_rpc.rpc(lure_pos, 0.0)
-	lured.emit(0.0)
+		_lure_rpc.rpc(lure_pos, 0.0, by_light)
+	_lure_rpc(lure_pos, 0.0, by_light)
 
 ## Wabik wzięty (`lock` > 0) albo przerwany (0): odliczanie dla HUD i sygnał `lured` (hud.gd: komunikat, warkot Stalkera, który zawraca).
 @rpc("authority", "call_remote", "reliable")
-func _lure_rpc(pos: Vector2, lock: float) -> void:
+func _lure_rpc(pos: Vector2, lock: float, by_light := false) -> void:
 	lure_pos = pos
 	lure_left = lock
 	lured.emit(lock)
+	if by_light:
+		lure_broken_by_light.emit()
 
 @rpc("authority", "call_remote", "reliable")
 func _stale_fx() -> void:
