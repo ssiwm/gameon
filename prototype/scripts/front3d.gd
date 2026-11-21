@@ -2468,6 +2468,14 @@ static func wall_material(key: String) -> ShaderMaterial:
 	var spec: Array = WALL_TEX.get(key, WALL_TEX["#"])
 	if key != "C" and "--shellterrain" in OS.get_cmdline_user_args():
 		spec = WALL_TEX_TERRAIN
+	return _tex_wall_mat(key, spec)
+
+
+## Materiał ściany przekroju z wpisu [tekstura, kafli na metr, brud] (`WALL_TEX` albo materiał budynku 3D) — wspólny dla `_wall_mats`,
+## więc `update` wygasza go na sylwetkach jak ściany.
+static func _tex_wall_mat(key: String, spec: Array) -> ShaderMaterial:
+	if _wall_mats.has(key):
+		return _wall_mats[key]
 	var m := ShaderMaterial.new()
 	m.shader = _shader()
 	m.set_shader_parameter("min_a", MIN_A)
@@ -2485,6 +2493,61 @@ static func wall_material(key: String) -> ShaderMaterial:
 		m.set_shader_parameter("grime_a", float(Level3D.GRIME_ALPHA.get(String(spec[2]), 1.0)))
 	_wall_mats[key] = m
 	return m
+
+
+## Słupy przekroju budynków 3D (wariant A, `Building3D.parts` → „cutcol”) w warstwie ścian przekroju (LAYER_WALL), z materiałem słupa
+## budynku i nakładką przekroju na licu w SHELL_Z. Przegląd budynków 2026-11-17, punkt 5: w obrazie świata słup 5 m przed płaszczyzną gry
+## był nocą czarnym pasem przez cały kadr i zasłaniał wroga (gracza nie — obraz graczy leży nad światem); teraz gaśnie do MIN_A na sylwetkach
+## graczy i wrogów jak ściana przekroju, a gracz za nim chowa się tak samo jak wróg. Cień rzuca kopia „tylko cień” w warstwie świata.
+## Zwraca liczbę słupów.
+static func build_cut_cols(parent: Node3D, rows: Array) -> int:
+	var n := 0
+	for b: Dictionary in Level3D.buildings:
+		var xfs: Array = Building3D.parts(b, rows)["cutcol"]
+		if xfs.is_empty():
+			continue
+		var spec: Dictionary = Building3D.KINDS.get(String(b["kind"]), Building3D.KINDS["bunker"])
+		var cuts := cut_col_faces(xfs)
+		var unit := BoxMesh.new()
+		unit.size = Vector3.ONE
+		var cut_mm := MultiMesh.new()
+		cut_mm.transform_format = MultiMesh.TRANSFORM_3D
+		cut_mm.mesh = unit
+		cut_mm.instance_count = cuts.size()
+		for i in cuts.size():
+			cut_mm.set_instance_transform(i, cuts[i])
+		var cut_mi := MultiMeshInstance3D.new()
+		cut_mi.multimesh = cut_mm
+		for pr: Array in [[MeshInstance3D.new(), spec.get("col", spec["wall"]), "CutCols"], [cut_mi, spec["cut"], "CutColsFace"]]:
+			var gi: GeometryInstance3D = pr[0]
+			var cs: Array = pr[1]
+			if gi is MeshInstance3D:
+				(gi as MeshInstance3D).mesh = Building3D._box_mesh(xfs, true)
+			gi.name = "%s_%d" % [String(pr[2]), int(b["c0"])]   # unikalna nazwa (dwa budynki na mapie)
+			gi.material_override = _tex_wall_mat("bld:%s:%.3f:%s" % [String(cs[0]), float(cs[1]), String(cs[4])], [cs[0], cs[1], cs[4]])
+			gi.set_instance_shader_parameter("tint", Color(float(cs[3]), float(cs[3]), float(cs[3]), 1.0))   # przyciemnienie albedo jak `Building3D._tinted`
+			gi.layers = LAYER_WALL
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			gi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+			parent.add_child(gi)
+		var sh := MeshInstance3D.new()                        # cień słupa (lampy hali): ta sama bryła tylko do map cieni, w warstwie świata
+		sh.name = "CutColsShadow_%d" % int(b["c0"])
+		sh.mesh = Building3D._box_mesh(xfs, true)
+		sh.layers = 1
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		sh.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+		parent.add_child(sh)
+		n += xfs.size()
+	return n
+
+
+## Lico przekroju słupów `xfs` (pudła 1×1×1): nakładka grubości `Building3D.CUT` przed płaszczyzną SHELL_Z o obrysie słupa.
+static func cut_col_faces(xfs: Array) -> Array:
+	var out: Array = []
+	for xf: Transform3D in xfs:
+		var sz := xf.basis.get_scale()
+		out.append(Transform3D(Basis.from_scale(Vector3(sz.x, sz.y, Building3D.CUT)), Vector3(xf.origin.x, xf.origin.y, Level3D.SHELL_Z + Building3D.CUT * 0.5)))
+	return out
 
 
 ## Ściany przekroju (`Level3D.shell_walls`) od DEPTH_FRONT do SHELL_Z: poziome ciągi kafli o tym samym materiale i `occ` jako jedna skrzynka,

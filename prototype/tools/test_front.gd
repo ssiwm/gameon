@@ -234,6 +234,7 @@ func _check_walls(map_id: String, rows: Array, digs: Array) -> void:
 		_check(Level3D.shell_facades.is_empty(), "1.2: fasada z kafli przy budynku 3D (%s)" % [Level3D.shell_facades])
 		_check_building(rows, "1.2 hala stacji", 66, 100, 18, 26, ["-1:gate", "1:gate", "-1:window", "1:window"])
 		_check_rail_occluders(rows, "1.2 hala stacji", 66, 21)
+		_check_cut_cols(rows, "1.2")
 		# pompownia: bramy parteru po obu stronach, strop piętra (wiersz 22) jako płyta 0,25 m z żebrami zamiast pudeł kafli 1,31 m, z otworem
 		# do wskoczenia na piętro (kol. 217–222) bez płyty
 		_check_building(rows, "1.2 pompownia", 216, 246, 16, 26, ["-1:gate", "1:gate"])
@@ -594,9 +595,11 @@ func _check_ground(root: Node3D, y_floor: float) -> void:
 ## Budynek 3D (`building3d.gd`, pilot: posterunek 1.3): kafle dachu i ścian szczytowych bez pudła, płyty przekroju i ściany wejścia;
 ## drzwi po obu stronach; płyta 0,25 m na górze kafla dachu, ściany 0,4 m, słupy poza pasem gry, przekrój na SHELL_Z dla każdej
 ## skrzynki dochodzącej do płaszczyzny przekroju, nic przed SHELL_Z.
-## Balustrada antresoli (obraz graczy nad obrazem świata) chowa się za słupami przekroju budynku `c0`: zestaw brył (`Building3D.rail_occluders`)
-## mieści się w RAIL_OCC_MAX przy balustradzie i — jak shader `Level3D.RAIL_SHADER` — odcinek od poręczy (wiersz pokładu `deck_r`) do kamery
-## na wprost słupa przecina bryłę, a obok słupa nie (uwaga z gry 2026-11-18: poręcz przed słupami hali stacji 1.2).
+## Balustrada antresoli (obraz graczy nad obrazem świata) chowa się za słupami przekroju budynku `c0` (uwaga z gry 2026-11-18: poręcz przed
+## słupami hali stacji 1.2): od 1.7.638 słupy przekroju rysuje ta sama kamera graczy (warstwa balustrady = LAYER_WALL), więc zasłania ją
+## test głębi, a zestaw brył (`Building3D.rail_occluders`) ich nie zawiera — inaczej za słupem zgaszonym na sylwetce zostawałaby dziura
+## w poręczy. Zestaw mieści się w RAIL_OCC_MAX przy balustradzie, a odcinek od poręczy (wiersz `deck_r`) do kamery na wprost słupa i obok
+## niego nie przecina żadnej bryły z zestawu.
 func _check_rail_occluders(rows: Array, name: String, c0: int, deck_r: int) -> void:
 	var b: Dictionary = {}
 	for x: Dictionary in Level3D.buildings:
@@ -608,7 +611,8 @@ func _check_rail_occluders(rows: Array, name: String, c0: int, deck_r: int) -> v
 	var y := -float(deck_r) * Level3D.T + Level3D.RAIL_H * 0.5
 	var z := 0.6
 	var cols: Array = []
-	for xf: Transform3D in Building3D.parts(b, rows)["col"]:
+	_check(Level3D.RAIL_LAYER == Front3D.LAYER_WALL, "%s: balustrada poza warstwą słupów przekroju — bez testu głębi z nimi" % name)
+	for xf: Transform3D in Building3D.parts(b, rows)["cutcol"]:
 		var a := _box_aabb(xf)
 		if a.end.z >= Level3D.SHELL_Z - 0.01 and a.size.y > Level3D.T:
 			cols.append(a)
@@ -622,9 +626,59 @@ func _check_rail_occluders(rows: Array, name: String, c0: int, deck_r: int) -> v
 		var cx := a.get_center().x
 		var p := Vector3(cx, y, z)
 		var cam := Vector3(cx, y + 1.0, 20.0)
-		_check(_rail_blocked(p, cam, occ), "%s: poręcz za słupem przekroju x %.2f niezasłonięta" % [name, cx])
+		_check(not _rail_blocked(p, cam, occ), "%s: poręcz za słupem przekroju x %.2f odrzucana przez bryły balustrady (słup gaśnie na sylwetce)" % [name, cx])
 		var p2 := Vector3(cx + 1.0, y, z)
 		_check(not _rail_blocked(p2, Vector3(cx + 1.0, y + 1.0, 20.0), occ), "%s: poręcz obok słupa x %.2f zasłonięta" % [name, cx + 1.0])
+
+## Słupy przekroju budynków 3D (przegląd budynków 2026-11-17, punkt 5: nocą czarny pas zasłaniał wroga): poza budową brył budynku w warstwie
+## świata, bez nakładki przekroju z `parts`; `Front3D.build_cut_cols` stawia je w warstwie ścian przekroju (LAYER_WALL, bez cienia) z materiałem
+## wygaszanym przez `Front3D.update` (`_wall_mats`), z licem przekroju w SHELL_Z, a cień rzuca kopia „tylko cień” w warstwie świata.
+## Krycie słupa na sylwetce = MIN_A, poza miękkim brzegiem 1.
+func _check_cut_cols(rows: Array, tag: String) -> void:
+	var want := 0
+	for b: Dictionary in Level3D.buildings:
+		var p := Building3D.parts(b, rows)
+		var cc: Array = p["cutcol"]
+		_check(bool(b.get("cut_cols", true)) == not cc.is_empty(), "%s: słupy przekroju niezgodne z cut_cols budynku %d" % [tag, int(b["c0"])])
+		want += cc.size()
+		var faces := Front3D.cut_col_faces(cc)
+		for i in cc.size():
+			var a := _box_aabb(faces[i])
+			var ca := _box_aabb(cc[i])
+			_check(is_equal_approx(a.position.z, Level3D.SHELL_Z) and absf(a.size.z - Building3D.CUT) < 0.001 and a.position.is_equal_approx(Vector3(ca.position.x, ca.position.y, a.position.z))
+				and is_equal_approx(a.size.x, ca.size.x) and is_equal_approx(a.size.y, ca.size.y), "%s: lico przekroju słupa poza obrysem albo SHELL_Z (%s)" % [tag, a])
+		for xf: Transform3D in cc:
+			for cu: Transform3D in p["cut"]:
+				_check((cu.origin - Vector3(xf.origin.x, xf.origin.y, cu.origin.z)).length() > 0.001, "%s: nakładka przekroju słupa x %.2f w warstwie świata" % [tag, xf.origin.x])
+		var node := Node3D.new()
+		get_root().add_child(node)
+		Building3D.build_one(node, b, rows)
+		for c in node.get_children():
+			var gi := c as GeometryInstance3D
+			if gi is MeshInstance3D and (gi as MeshInstance3D).mesh != null:
+				_check((gi as MeshInstance3D).mesh.get_aabb().end.z < Level3D.SHELL_Z - Building3D.COL + 0.01 or String(gi.name) != "col",
+					"%s: słup przekroju w warstwie świata (%s)" % [tag, gi.name])
+		node.free()
+	_check(want > 0, tag + ": brak słupów przekroju")
+	var root := Node3D.new()
+	get_root().add_child(root)
+	_check(Front3D.build_cut_cols(root, rows) == want, "%s: build_cut_cols zbudował inną liczbę słupów niż %d" % [tag, want])
+	var seen := {}
+	for c in root.get_children():
+		var gi := c as GeometryInstance3D
+		var nm := String(gi.name).get_slice("_", 0)
+		seen[nm] = true
+		if nm == "CutColsShadow":
+			_check(gi.layers == 1 and gi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY, "%s: cień słupa ze złą warstwą albo widoczny" % tag)
+			continue
+		_check(gi.layers == Front3D.LAYER_WALL and gi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: %s poza warstwą ścian przekroju albo z cieniem" % [tag, gi.name])
+		_check(Front3D._wall_mats.values().has(gi.material_override), "%s: %s bez materiału wygaszanego na sylwetkach" % [tag, gi.name])
+		if nm == "CutColsFace":
+			_check((gi as MultiMeshInstance3D).multimesh.instance_count > 0, "%s: puste lico przekroju słupów" % tag)
+	for nm in ["CutCols", "CutColsFace", "CutColsShadow"]:
+		_check(seen.has(nm), "%s: brak %s" % [tag, nm])
+	_check(is_equal_approx(Front3D.fade(0.0), Front3D.MIN_A) and is_equal_approx(Front3D.fade(Front3D.FADE_M), 1.0), tag + ": krycie słupa na sylwetce")
+	root.free()
 
 func _rail_blocked(p: Vector3, cam: Vector3, occ: Array) -> bool:
 	var d := cam - p
@@ -678,7 +732,7 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 			var sz := xf.basis.get_scale()
 			var zmax := xf.origin.z + sz.z * 0.5
 			_check(zmax <= zc + Building3D.CUT + 0.001, "%s: element budynku '%s' przed przekrojem (z %.2f)" % [name, key, zmax])
-			if key == "cut":
+			if key == "cut" or key == "cutcol":                 # słup przekroju: lico przekroju w warstwie ścian przekroju (`_check_cut_cols`)
 				continue
 			slab = slab or (is_equal_approx(xf.origin.y + sz.y * 0.5, yr) and absf(sz.y - Building3D.SLAB) < 0.001 and sz.x > 20.0)
 			if zmax >= zc - 0.001:                           # dochodzi do płaszczyzny przekroju: nakładka o tym samym obrysie
@@ -703,7 +757,7 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 	for xf: Transform3D in leaves:
 		var a := _box_aabb(xf)
 		_check(a.position.z >= -Level3D.DEPTH_BACK - 0.001 and a.end.z <= zc - Building3D.COL + 0.001, "%s: skrzydło poza obrysem budynku (z %.2f–%.2f)" % [name, a.position.z, a.end.z])
-	for pr: Array in [["leaf", "col"], ["leaf", "plinth"], ["leaf", "steel"], ["leaf", "wall"], ["leaf", "glass"], ["col", "glass"], ["col", "steel"]]:
+	for pr: Array in [["leaf", "col"], ["leaf", "plinth"], ["leaf", "steel"], ["leaf", "wall"], ["leaf", "glass"], ["col", "glass"], ["col", "steel"], ["leaf", "cutcol"], ["cutcol", "glass"], ["cutcol", "steel"]]:
 		for xa: Transform3D in p[pr[0]]:
 			for xb: Transform3D in p[pr[1]]:
 				var i := _box_aabb(xa).intersection(_box_aabb(xb))
@@ -834,11 +888,11 @@ func _check_vault_one(rows: Array, b: Dictionary, tag: String) -> void:
 			var xb := xf.origin.x + sz.x * 0.5
 			_check(xa >= x0 - 0.001 and xb <= x1 + 0.001, "%s: '%s' poza ścianami (x %.2f–%.2f)" % [tag, key, xa, xb])
 			_check(xf.origin.z + sz.z * 0.5 <= zc + Building3D.CUT + 0.001, "%s: '%s' przed przekrojem" % [tag, key])
-			if key in ["slab", "beam", "col"]:
+			if key in ["slab", "beam", "col", "cutcol"]:
 				for c in range(int(floorf((xa + 0.001) / T)), int(ceilf((xb - 0.001) / T))):
 					var top := not Level3D._ch(rows, c, int(b["r0"])) in Level3D.WALL_CH and xf.origin.y > -float(int(b["r0"]) + 1) * T
 					_check(not top, "%s: '%s' nad otworem stropu w kolumnie %d" % [tag, key, c])
-					if key == "col" and sz.y > 4.0:
+					if key in ["col", "cutcol"] and sz.y > 4.0:
 						_check(Level3D._ch(rows, c, int(b["r1"])) in Level3D.WALL_CH + "~", "%s: słup nad otworem podłogi w kolumnie %d" % [tag, c])
 			slabs += int(key == "slab")
 	var shafts := false
