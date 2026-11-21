@@ -876,7 +876,7 @@ func _perceive(delta: float) -> void:
 		return
 	_perceive_t -= delta
 	if _perceive_t > 0.0:
-		if _target != null and (not is_instance_valid(_target) or _target.dead):
+		if not is_instance_valid(_target) or _target.dead:
 			_target = null
 		return
 	_perceive_t = PERCEIVE_DT

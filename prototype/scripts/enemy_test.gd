@@ -2198,6 +2198,11 @@ func _test_target_hysteresis() -> void:
 	e._perceive_t = 0.0
 	e._perceive(0.2)
 	check("cel: dotychczasowy cel poza wzrokiem → przejmuje widoczny", e._target == bot, str(e._target))
+	var leaving := Node2D.new()
+	e._target = leaving
+	leaving.free()                               # klient odłączył się między kolejnymi sprawdzeniami wzroku
+	e._perceive(0.01)
+	check("cel: po rozłączeniu gracza AI dostaje null już w następnym tiku", typeof(e._target) == TYPE_NIL)
 	for p in frozen:
 		p.set_physics_process(true)
 	player.global_position = Vector2(-4000.0, -4000.0)
