@@ -38,6 +38,8 @@ const POLE_WIRE_OUT := 8.0                 ## m: linia wychodzi tyle za skrajne 
 const ANT_Z := -1.6                        ## m: oś masztu anteny w głąb
 const ANT_A := 0.7                         ## m: bok kratownicy masztu anteny
 const GALLERY_Z := Vector2(-1.15, -2.05)   ## m: kratownice pomostu obsługi przy dużym maszcie
+const RADIO_EDGE_Z := preload("res://scripts/char3d.gd").MANTLE_EDGE_Z
+const GRATE_EDGE_T := 0.025                ## m: grubość przedniej listwy na stalowych podestach
 const BOUGH_CROWN := 5.5                   ## m: korona sosny z konarami zaczyna się tyle nad najwyższym niesionym pomostem (suche dolne konary, korona nad kadrem)
 
 ## Tkanka Żyły (mata i spływ narośli): ciemne mięso z grzbietami żył z szumu wartości 3D (grzbiet |2n − 1|), mokre, z poświatą tylko w żyłach,
@@ -208,9 +210,13 @@ static func _mat(key: String) -> Material:
 				sm.roughness = 0.95
 			sm.albedo_color = Color(0.62, 0.58, 0.54) if key == "bark" else Color(0.40, 0.34, 0.30)   # kora jak pnie lasu; korzenie ciemniejsze, ziemiste
 			m = sm
-		"cut":
+		"cut", "porch_edge":
 			var cm := Level3D.make_pbr("plank", 0.8, Color(0.50, 0.40, 0.28), 0.9).duplicate() as StandardMaterial3D
 			cm.albedo_color = Color(0.95, 0.82, 0.62)       # świeży przekrój piłą: jaśniejszy od kory
+			if key == "porch_edge":                       # krawędź chwytu czytelna także obok snopu latarki
+				cm.emission_enabled = true
+				cm.emission = Color(0.80, 0.68, 0.50)
+				cm.emission_energy_multiplier = 0.035
 			m = cm
 		"soil":
 			m = Level3D.terrain_cut_material()
@@ -248,7 +254,11 @@ static func _mat(key: String) -> Material:
 			gm.albedo_color = Color(0.82, 0.84, 0.86)
 			m = gm
 		"hazard":
-			m = Level3D.make_mat(Color(0.72, 0.55, 0.10), 0.6)
+			var hm := Level3D.make_mat(Color(0.72, 0.55, 0.10), 0.6)
+			hm.emission_enabled = true
+			hm.emission = hm.albedo_color
+			hm.emission_energy_multiplier = 0.045
+			m = hm
 		"hazard_dark":
 			m = Level3D.make_mat(Color(0.05, 0.05, 0.05), 0.7)
 		"mast_red":
@@ -1119,9 +1129,10 @@ static func _beam_xy(st: SurfaceTool, a: Vector3, b: Vector3, h: float, w: float
 	var c := (a + b) * 0.5
 	_box(st, c - Vector3(length * 0.5, h * 0.5, w * 0.5), c + Vector3(length * 0.5, h * 0.5, w * 0.5), what, Basis(Vector3.BACK, atan2(d.y, d.x)))
 
-## Krata pomostu: rama i płaskowniki w poprzek co ok. 0,11 m, wierzch na `top`, od z0 do z1; przednia listwa w żółto-czarne pasy (krawędź do chwytu).
-static func _grate(sts: Dictionary, x0: float, x1: float, top: float, z0: float, z1: float, what: String) -> void:
+## Krata pomostu: rama i płaskowniki w poprzek co ok. 0,11 m. Przednia listwa w żółto-czarne pasy kończy się w punkcie chwytu.
+static func _grate(sts: Dictionary, x0: float, x1: float, top: float, z0: float, what: String) -> void:
 	var gal := _st(sts, "galv")
+	var z1 := RADIO_EDGE_Z - GRATE_EDGE_T
 	for z: float in [z0, z1 - 0.06]:
 		_box(gal, Vector3(x0, top - 0.06, z), Vector3(x1, top, z + 0.06), what + " frame")
 	_box(gal, Vector3(x0, top - 0.06, z0), Vector3(x0 + 0.05, top, z1), what + " frame")
@@ -1138,7 +1149,7 @@ static func _grate(sts: Dictionary, x0: float, x1: float, top: float, z0: float,
 	for i in m:
 		var xa := lerpf(x0, x1, float(i) / float(m))
 		var xb := lerpf(x0, x1, float(i + 1) / float(m))
-		_box(_st(sts, "hazard" if i % 2 == 0 else "hazard_dark"), Vector3(xa, top - 0.17, z1), Vector3(xb, top, z1 + 0.025), what + " edge")
+		_box(_st(sts, "hazard" if i % 2 == 0 else "hazard_dark"), Vector3(xa, top - 0.17, z1), Vector3(xb, top, RADIO_EDGE_Z), what + " edge")
 
 ## Poręcz z tyłu pomostu w głębi `z`: słupki co ok. 1,3 m, pochwyt na 1,05 m i przeciąg w połowie.
 static func _rail(st: SurfaceTool, x0: float, x1: float, top: float, z: float, what: String, t := 0.03) -> void:
@@ -1207,6 +1218,7 @@ static func _porch(sts: Dictionary, rows: Array, ds: Array) -> void:
 	var plank := _st(sts, "plank")
 	var zf := PORCH_Z.x
 	var zb := PORCH_Z.y
+	var fascia_back := RADIO_EDGE_Z - 0.07
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 61 + int(ds[0]["c0"]) * 7
 	for d: Dictionary in sorted:
@@ -1218,7 +1230,7 @@ static func _porch(sts: Dictionary, rows: Array, ds: Array) -> void:
 		for i in n:                                         # deski w poprzek, od tylnej poręczy do przedniej krawędzi
 			var a := lerpf(x0, x1, float(i) / float(n))
 			var b := lerpf(x0, x1, float(i + 1) / float(n))
-			_box(plank, Vector3(a + 0.008, top - 0.05, zb), Vector3(b - 0.008, top, 0.70 + rng.randf_range(-0.015, 0.01)), "porch board",
+			_box(plank, Vector3(a + 0.008, top - 0.05, zb), Vector3(b - 0.008, top, RADIO_EDGE_Z - 0.012 + rng.randf_range(-0.015, 0.01)), "porch board",
 				Basis(Vector3.UP, rng.randf_range(-0.006, 0.006)))
 		var xs: Array = []                                  # legary w głąb co ok. 1,15 m
 		var xj := x0 + 0.15
@@ -1227,9 +1239,9 @@ static func _porch(sts: Dictionary, rows: Array, ds: Array) -> void:
 			xj += 1.15
 		xs.append(x1 - 0.15)
 		for x: float in xs:
-			_box(plank, Vector3(x - 0.06, top - 0.26, zb), Vector3(x + 0.06, top - 0.05, 0.66), "porch joist")
+			_box(plank, Vector3(x - 0.06, top - 0.26, zb), Vector3(x + 0.06, top - 0.05, fascia_back), "porch joist")
 		_box(plank, Vector3(x0, top - 0.38, zf - 0.07), Vector3(x1, top - 0.26, zf + 0.07), "porch header")
-		_box(_st(sts, "cut"), Vector3(x0, top - 0.26, 0.66), Vector3(x1, top - 0.005, 0.73), "porch fascia")
+		_box(_st(sts, "porch_edge"), Vector3(x0, top - 0.26, fascia_back), Vector3(x1, top - 0.005, RADIO_EDGE_Z), "porch fascia")
 		var np := maxi(1, int(round((x1 - x0) / 3.6)))
 		for i in np + 1:                                    # słupy: przedni pod legarami, tylny przez poręcz; stopy z betonu
 			var x := lerpf(x0 + 0.12, x1 - 0.12, float(i) / float(np))
@@ -1300,7 +1312,7 @@ static func _pole(sts: Dictionary, rows: Array, ds: Array) -> void:
 				for z: float in [POLE_Z.x, POLE_Z.y]:
 					_cone(_st(sts, "concrete"), Vector3(x, yg - 0.2, z), Vector3(x, y_top, z), 0.17, 0.11, "pole", 10, 0.0)
 					_box(_st(sts, "concrete"), Vector3(x - 0.3, yg - 0.05, z - 0.3), Vector3(x + 0.3, yg + 0.12, z + 0.3), "pole footing")
-			_box(gal, Vector3(x - 0.08, top - 0.3, POLE_DECK_Z - 0.02), Vector3(x + 0.08, top - 0.06, 0.70), "pole crossbeam")
+			_box(gal, Vector3(x - 0.08, top - 0.3, POLE_DECK_Z - 0.02), Vector3(x + 0.08, top - 0.06, RADIO_EDGE_Z - GRATE_EDGE_T), "pole crossbeam")
 			_rod(gal, Vector3(x, top - 1.55, POLE_Z.x), Vector3(x, top - 0.32, -STRIP - 0.06), 0.04, "pole strut")
 			_rod(gal, Vector3(x, top - 1.55, POLE_Z.y), Vector3(x, top - 0.32, POLE_Z.x - 0.1), 0.035, "pole strut")
 			var yp := yg + 1.2
@@ -1313,7 +1325,7 @@ static func _pole(sts: Dictionary, rows: Array, ds: Array) -> void:
 					_rod(_st(sts, "porcelain"), Vector3(x, line_y - 0.32, z), Vector3(x, line_y - 0.05, z), 0.06, "pole insulator")
 		for z: float in [-0.56, 0.44, -2.1]:                # podłużnice pod kratą
 			_box(gal, Vector3(x0, top - 0.2, z - 0.06), Vector3(x1, top - 0.06, z + 0.06), "pole stringer")
-		_grate(sts, x0, x1, top, POLE_DECK_Z, 0.68, "pole deck")
+		_grate(sts, x0, x1, top, POLE_DECK_Z, "pole deck")
 		_rail(gal, x0, x1, top, POLE_DECK_Z + 0.03, "pole rail")
 		if is_hi:
 			var w := x1 - x0
@@ -1368,12 +1380,12 @@ static func _antenna(sts: Dictionary, rows: Array, e: Dictionary, ds: Array) -> 
 		_box(_st(sts, "lamp"), Vector3(xc - 0.08, yt + 0.9, ANT_Z - 0.08), Vector3(xc + 0.08, yt + 1.06, ANT_Z + 0.08), "antenna lamp")
 		_cage_ladder(sts, xc, ANT_Z - ANT_A * 0.5 - 0.1, yg + 0.15, top + 1.05)
 		var zb := ANT_Z + ANT_A * 0.5 + 0.12                 # spocznik przed masztem: z tyłu do podłużnicy, kosz drabiny za nim
-		_grate(sts, x0, x1, top, zb, 0.68, "antenna deck")
+		_grate(sts, x0, x1, top, zb, "antenna deck")
 		for yy: float in [top - 0.3, top - 0.98]:
 			_box(gal, Vector3(x0, yy, zb - 0.1), Vector3(x1, yy + 0.1, zb), "antenna stringer")
 		var x := x0 + 0.12
 		while x < x1:
-			_box(gal, Vector3(x - 0.05, top - 0.2, zb - 0.1), Vector3(x + 0.05, top - 0.06, 0.66), "antenna bracket")
+			_box(gal, Vector3(x - 0.05, top - 0.2, zb - 0.1), Vector3(x + 0.05, top - 0.06, RADIO_EDGE_Z - GRATE_EDGE_T), "antenna bracket")
 			_rod(gal, Vector3(x, top - 0.93, zb - 0.05), Vector3(x, top - 0.22, -STRIP - 0.06), 0.025, "antenna strut")
 			_rod(gal, Vector3(x, top - 0.93, zb - 0.05), Vector3(x, top - 0.3, zb - 0.05), 0.02, "antenna strut")
 			x += 1.3
@@ -1410,7 +1422,7 @@ static func _antenna(sts: Dictionary, rows: Array, e: Dictionary, ds: Array) -> 
 		for k in n + 1:
 			var xk := a + s * float(k)
 			_rod(gal, Vector3(xk, yb2, GALLERY_Z.x), Vector3(xk, yb2, GALLERY_Z.y), 0.025, "gallery tie")
-			_box(gal, Vector3(xk - 0.05, yt2 - 0.02, GALLERY_Z.y - 0.05), Vector3(xk + 0.05, htop - 0.06, 0.66), "gallery bracket")
+			_box(gal, Vector3(xk - 0.05, yt2 - 0.02, GALLERY_Z.y - 0.05), Vector3(xk + 0.05, htop - 0.06, RADIO_EDGE_Z - GRATE_EDGE_T), "gallery bracket")
 			_rod(gal, Vector3(xk, yb2 + 0.1, GALLERY_Z.x), Vector3(xk, htop - 0.24, -STRIP - 0.06), 0.03, "gallery strut")
 		for i in 3:                                         # wiązka kabli od masztu
 			var zk := -1.5 - 0.1 * float(i)
@@ -1422,10 +1434,10 @@ static func _antenna(sts: Dictionary, rows: Array, e: Dictionary, ds: Array) -> 
 		_box(_st(sts, "concrete"), Vector3(xl - 0.8, yl - 0.1, -2.4), Vector3(xl + 0.8, yl + 0.25, -0.8), "gallery footing")
 	for sp in spans:                                        # krata na całą głębokość kratownicy, przy maszcie (przód w −0,64) tylko przed nim
 		if float(sp[1]) - float(sp[0]) > 0.05:
-			_grate(sts, sp[0], sp[1], htop, GALLERY_Z.y - 0.05, 0.68, "gallery deck")
+			_grate(sts, sp[0], sp[1], htop, GALLERY_Z.y - 0.05, "gallery deck")
 			_rail(gal, sp[0], sp[1], htop, GALLERY_Z.y - 0.02, "gallery rail")
 	if mast.x != INF:
-		_grate(sts, mast.x, mast.y, htop, -0.6, 0.68, "gallery deck")
+		_grate(sts, mast.x, mast.y, htop, -0.6, "gallery deck")
 
 ## Buduje wszystkie wpisy `STEPS` mapy pod `parent`. Zwraca węzeł z bryłami (nazwa „Steps”); `parts` opisuje elementy dla testu.
 static func build(parent: Node3D, rows: Array, steps: Array) -> Node3D:
