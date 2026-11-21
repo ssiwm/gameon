@@ -566,18 +566,26 @@ func _rm_tree(path: String) -> void:
 ## Bestiariusz z odkrywaniem (1.7.407): nieznany wpis zakryty, spotkanie odsłania, zabójstwo liczy, profil sprzed 1.7.407 z postępem zna wszystko.
 func _bestiary_checks() -> void:
 	Profile.bestiary = {}
-	var beasts: Array = Codex.bestiary()
-	var cutpurse: Dictionary = beasts[0]
-	var hidden := Codex.beast_view(cutpurse)
-	var stalker: Dictionary = beasts.filter(func(e: Dictionary) -> bool: return e.get("beast", "") == "stalker")[0]
-	var ok: bool = hidden["title"] == "???" and (hidden["stats"] as Array).is_empty() and String(hidden["tip"]) == "" 		and bool((hidden["portrait"] as Dictionary).get("unknown", false)) and Codex.beast_view(stalker)["title"] == "STALKER"
-	Profile.discover("trzosek")
-	var shown := Codex.beast_view(cutpurse)
-	ok = ok and shown["title"] == cutpurse["title"] and (shown["stats"] as Array).any(func(r: Array) -> bool: return r[0] == "Your kills" and r[1] == "0")
+	var entries_by_id := {}
+	for entry: Dictionary in Codex.bestiary():
+		entries_by_id[entry["beast"]] = entry
+	for id in ["stalker", "trzosek", "lupacz"]:
+		if not entries_by_id.has(id):
+			_fail("bestiariusz: brak wpisu %s" % id)
+			return
+	var ok: bool = Codex.beast_view(entries_by_id["stalker"])["title"] == "STALKER"
+	for id: String in ["trzosek", "lupacz"]:
+		var entry: Dictionary = entries_by_id[id]
+		var hidden := Codex.beast_view(entry)
+		ok = ok and hidden["title"] == "???" and (hidden["stats"] as Array).is_empty() and hidden["tip"] == "" \
+			and bool((hidden["portrait"] as Dictionary).get("unknown", false))
+		Profile.discover(id)
+		var shown := Codex.beast_view(entry)
+		ok = ok and shown["title"] == entry["title"] and (shown["stats"] as Array).any(func(r: Array) -> bool: return r[0] == "Your kills" and r[1] == "0")
 	Profile.note_beast_kill("trzosek")
 	Profile.note_beast_kill("trzosek")
 	Profile.note_beast_kill("wolek")
-	ok = ok and Profile.beast_kills("trzosek") == 2 and Profile.knows("wolek") and not Profile.knows("vein")
+	ok = ok and Profile.beast_kills("trzosek") == 2 and Profile.beast_kills("lupacz") == 0 and Profile.knows("wolek") and not Profile.knows("vein")
 	var path := "user://uifit_bestiary.cfg"
 	var cases := [[{"xp": 500}, "vein", true], [{"xp": 0}, "trzosek", false], [{"xp": 500, "bestiary": {"skoczek": 3}}, "trzosek", false]]
 	for c in cases:
