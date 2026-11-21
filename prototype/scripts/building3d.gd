@@ -100,7 +100,9 @@ static func build(parent: Node3D, rows: Array) -> int:
 	return n
 
 ## Bryły świata, które mogą stać między balustradą antresoli a kamerą (`Level3D.set_rail_occluders`): słupy i ściany budynków sięgające przed
-## płaszczyznę balustrady (słupy przekroju, pilastry, ściany szczytowe) i płyty stropu i podłogi wpisów z przekrojem (`Level3D.shell_bands`).
+## płaszczyznę balustrady (pilastry, ściany szczytowe) i płyty stropu i podłogi wpisów z przekrojem (`Level3D.shell_bands`). Słupów przekroju
+## tu nie ma: rysuje je ta sama kamera graczy co balustradę (`Front3D.build_cut_cols`), więc zasłania ją zwykły test głębi — a tam, gdzie słup
+## gaśnie na sylwetce, poręcz za nim ma być widać.
 ## Balustradę rysuje kamera graczy nad obrazem świata — bez testu tych brył poręcz wypadała przed słupem przekroju.
 static func rail_occluders(rows: Array) -> Array:
 	var T := Level3D.T
@@ -174,12 +176,13 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		if x < xb:
 			res.append([x, xb])
 		return res
-	var out := {"wall": [], "col": [], "slab": [], "beam": [], "back": [], "plinth": [], "steel": [], "leaf": [], "glass": [], "cut": []}
+	var out := {"wall": [], "col": [], "slab": [], "beam": [], "back": [], "plinth": [], "steel": [], "leaf": [], "glass": [], "cut": [], "cutcol": []}
 	var box := func(key: String, a: Vector3, b2: Vector3) -> void:
 		if absf(b2.x - a.x) < 0.001 or absf(b2.y - a.y) < 0.001 or absf(b2.z - a.z) < 0.001:
 			return
 		(out[key] as Array).append(Level3D._span_box(a, b2))
-		if maxf(a.z, b2.z) >= zc - 0.001 and key != "cut":   # przecięte płaszczyzną przekroju: nakładka z materiałem przekroju
+		if maxf(a.z, b2.z) >= zc - 0.001 and key != "cut" and key != "cutcol":   # przecięte płaszczyzną przekroju: nakładka z materiałem przekroju
+			# (słup przekroju ma ją w `Front3D.build_cut_cols`)
 			(out["cut"] as Array).append(Level3D._span_box(Vector3(a.x, a.y, zc), Vector3(b2.x, b2.y, zc + CUT)))
 	# stropodach: płyta z okapem, czoło okapu, attyka (z przerwą w bokach nad pasem gry); w skale sama płyta między ścianami, z otworami
 	if buried:
@@ -222,7 +225,8 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 	for x: float in lines:
 		box.call("col", Vector3(x - COL * 0.5, yf, zin), Vector3(x + COL * 0.5, yc, zin + COL))          # słup przy ścianie tylnej
 		if b.get("cut_cols", true):                                  # kryjówka bez niego: przed oboma pokładami stał czarny pas na całą wysokość kadru
-			box.call("col", Vector3(x - COL * 0.5, yf, zc - COL), Vector3(x + COL * 0.5, yc, zc))       # słup w płaszczyźnie przekroju (wariant A)
+			box.call("cutcol", Vector3(x - COL * 0.5, yf, zc - COL), Vector3(x + COL * 0.5, yc, zc))    # słup w płaszczyźnie przekroju (wariant A):
+			# buduje go `Front3D.build_cut_cols` w warstwie ścian przekroju — gaśnie na sylwetkach graczy i wrogów jak ściana przekroju
 		box.call("beam", Vector3(x - GIRDER * 0.5, yc, zin), Vector3(x + GIRDER * 0.5, ys, zc))         # podciąg w głąb
 		for zz in ([zin + COL, zc - COL] if b.get("cut_cols", true) else [zin + COL]):     # wuty pod podciągiem przy słupach
 			var zd := 0.45 if zz < 0.0 else -0.45
@@ -479,6 +483,8 @@ static func build_one(parent: Node3D, b: Dictionary, rows: Array) -> int:
 		n += (p[k] as Array).size()
 		if (p[k] as Array).is_empty():
 			continue
+		if k == "cutcol":
+			continue                                         # `Front3D.build_cut_cols` (warstwa ścian przekroju z wygaszaniem)
 		if ROLE.has(k):
 			var mi := MeshInstance3D.new()
 			mi.name = k

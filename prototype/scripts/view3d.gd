@@ -1151,6 +1151,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 					ents.append(dz.entrance())
 			Front3D.build(root, front, front_skip, Settings.quality_idx == 0, rows, Front3D.dig_blocks(ents))
 			Front3D.build_walls(root)                      # ściany przekroju do SHELL_Z (F3; poza ustawieniem „Foreground”)
+			Front3D.build_cut_cols(root, rows)             # słupy przekroju budynków 3D: gasną na sylwetkach jak ściany przekroju
 			Front3D.apply_settings(Settings.front_idx, Settings.quality_idx == 0)],
 	]
 	if not hub:
