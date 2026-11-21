@@ -4,10 +4,12 @@ extends SceneTree
 ##     pod pomostem, konary mają sosnę w zasięgu (słup `w` ≥ BOUGH_RUN kafli albo "trunks" na bryle);
 ## (2) wolny pas: żaden element nie wchodzi w pas gry (|z| < STRIP) od poziomu chodzenia (wierzch bryły albo pomostu) do CLEAR nad nim;
 ## (3) wierzch: nad każdym kaflem pomostu wpisu jest element w pasie gry z wierzchem na wysokości pokładu (−6 cm … +TOP_TOL);
+##     w 1.2 czoło pokładu pokrywa się z punktem chwytu dłoni;
 ## (4) Level3D: pomosty wpisów bez nóg (`deck_supports`) i bez modelu desek, ukryte słupy i sosny w miejscu słupów konarów.
 ## godot --headless --path prototype -s tools/test_steps.gd      → ma wypisać PASS
 const Level3D := preload("res://scripts/level3d.gd")
 const Step3D := preload("res://scripts/step3d.gd")
+const Char3D := preload("res://scripts/char3d.gd")
 const T := Level3D.T
 var _frames := 0
 var _fail := 0
@@ -83,19 +85,29 @@ func _process(_dt: float) -> bool:
 						_check(false, "%s: %s w pasie gry nad poziomem %.2f m w kolumnie %d (y %.2f…%.2f, z %.2f…%.2f)" % [map, String(p[1]), y, c,
 							bb.position.y, bb.end.y, bb.position.z, bb.end.z])
 		_check(checked > 0, "%s: żaden element nie niesie pomostu w pasie gry" % map)
+		var check_edge := map == "z1_m2"
 		for e in steps:
 			for d in Step3D.decks_of(rows, e):
 				var top: float = d["top"]
 				for c in range(int(d["c0"]), int(d["c1"]) + 1):
 					var x := (float(c) + 0.5) * T
 					var ok := false
+					var edge_z := -INF
 					for p in Step3D.parts:
 						var bb: AABB = p[0]
-						if bb.position.x <= x and bb.end.x >= x and bb.position.z < 0.2 and bb.end.z > -0.2 \
+						if bb.position.x > x or bb.end.x < x:
+							continue
+						if check_edge and absf(bb.end.y - top) <= 0.01:
+							edge_z = maxf(edge_z, bb.end.z)
+						if bb.position.z < 0.2 and bb.end.z > -0.2 \
 								and bb.end.y >= top - 0.06 and bb.end.y <= top + Step3D.TOP_TOL:
 							ok = true
-							break
+							if not check_edge:
+								break
 					_check(ok, "%s: kafel %d,%d pomostu %s bez wierzchu na wysokości pokładu" % [map, int(d["r"]), c, String(e["kind"])])
+					if check_edge:
+						_check(is_equal_approx(edge_z, Char3D.MANTLE_EDGE_Z), "%s: kafel %d,%d ma krawędź z = %.3f m, chwyt z = %.3f m" % [
+							map, int(d["r"]), c, edge_z, Char3D.MANTLE_EDGE_Z])
 		holder.queue_free()
 		# (4) Level3D
 		var cells := Step3D.cells(rows, steps)

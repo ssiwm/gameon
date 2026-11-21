@@ -85,5 +85,8 @@ Pomosty z wpisu nie mają modelu desek ani nóg (`Level3D.step_cells`).
     przykręcony do żerdzi); podłoże słupów — `_foot_y` (właz studni w wierszu gruntu to podłoże, niższy stopień nad powietrzem nie);
   - kraty mają pręty wzdłuż co 0,35 m — wierzch w osi pasa gry na każdym kaflu (test „wierzch na wysokości pokładu”);
   - bez pni pierwszego planu przed wieżą (kol. 154–180) i masztem (250–271): korona zasłaniała podesty 7,9 i 10,5 m.
+- **Odbiór S4:** czoła wszystkich dziesięciu pomostów kończą się w `Char3D.MANTLE_EDGE_Z` (0,65 m). Jasna deska i żółte pola listew mają
+  słabą emisję, żeby krawędź była widoczna także poza snopem latarki. `test_steps.gd` mierzy położenie krawędzi nad każdym kaflem.
+  Próba w misji 1.2 potwierdziła przejście pod konstrukcjami, chwyt i lądowanie po skoku na każdy z dziesięciu pokładów.
 
 Drabiny tylko w obrazie (decyzja z rundy 1). Szyby kopalni 1.1 (c40–43, 111–114, 193–197) zostają bez zmian.
