@@ -1,17 +1,17 @@
 extends RefCounted
 ## Pomosty pod gołym niebem z natury i z historii miejsca (STEPS_PLAN.md): zamiast desek na nogach podmyta skarpa, wykrot, ostaniec granitowy
-## albo konary sosen. Czysta oprawa: mapa, kolizja kładki, nawigacja i skok bez zmian; pomost z wpisu nie ma modelu desek ani nóg
+## albo konary sosen (1.1), ciepłociąg i narośl Żyły (1.3), schody na dach, stacja słupowa i pole antenowe radiostacji (1.2). Czysta oprawa: mapa, kolizja kładki, nawigacja i skok bez zmian; pomost z wpisu nie ma modelu desek ani nóg
 ## (`Level3D.step_cells`), a wierzch elementu, po którym się chodzi, leży na wysokości pokładu na całej długości ciągu.
 ## Zasada fizyczna: pod pomostem gracz chodzi w pasie gry (z ≈ 0), więc w pasie |z| < STRIP od podłoża do CLEAR nad nim nie ma niczego —
 ## nośność daje masa za pasem (z < −0,9), wspornik (konar, płyta skalna, nawis darni) albo kłoda leżąca w poprzek ścieżki.
 ## Wpis w danych mapy (`STEPS`, czyta `level.gd`): {"kind" (z `KINDS`), "decks": [[wiersz, pierwsza kolumna], …], "posts": [kolumny słupów `w`,
-## które znikają], "cache": true (ostaniec: nisza ze skrytką, lina i strzałka patrolu), "trunks": [[kolumna, wiersz podłoża], …] (konary: dodatkowa sosna)}.
+## które znikają], "cache": true (ostaniec: nisza ze skrytką, lina i strzałka patrolu), "legs": [kolumny nóg kratowych pomostu przy maszcie] (pole antenowe), "trunks": [[kolumna, wiersz podłoża], …] (konary: dodatkowa sosna)}.
 
 const Level3D := preload("res://scripts/level3d.gd")
 const Front3D := preload("res://scripts/front3d.gd")
 const T := Level3D.T
 
-const KINDS := ["bank", "windfall", "tor", "boughs", "heat", "vein"]
+const KINDS := ["bank", "windfall", "tor", "boughs", "heat", "vein", "porch", "pole", "antenna"]
 const CLEAR := 1.85                        ## m: wolne nad podłożem w pasie gry (sprawdza `tools/test_steps.gd`)
 const STRIP := 0.45                        ## m: połowa głębokości pasu gry, w którym chodzą postacie
 const ROOT_CLEAR := 2.15                   ## m: korzenie spod nawisu skarpy kończą się w pasie gry najniżej tyle nad ścieżką
@@ -27,6 +27,17 @@ const HEAT_R := 0.25                       ## m: promień rury ciepłociągu w p
 const HEAT_SPAN := 3.0                     ## m: najdłuższy odstęp wsporników Γ
 const HEAT_MAIN_Y := 0.55                  ## m: oś magistrali za placem nad gruntem
 const VEIN_STEP := 1.3                     ## m: odstęp półłuków narośli Żyły
+const PORCH_Z := Vector2(-1.0, -3.8)       ## m: przedni i tylny rząd słupów schodów na dach (spocznik od tylnego do przedniej krawędzi)
+const PORCH_BANDS := [Vector2(-2.05, -2.8), Vector2(-3.0, -3.7)]   ## m: pasy biegów schodów w głębi (przód, tył), na zmianę
+const POLE_Z := Vector2(-1.3, -2.9)        ## m: żerdzie bramki stacji słupowej (przednia, tylna)
+const POLE_DECK_Z := -3.2                  ## m: tylna krawędź podestu stacji słupowej
+const POLE_SPAN := 6.5                     ## m: najdłuższy odstęp bramek stacji słupowej
+const POLE_LINE := 4.6                     ## m: martwa linia nad najwyższym podestem
+const POLE_WIRES := [-0.8, -2.1, -3.4]     ## m: przewody linii w głąb
+const POLE_WIRE_OUT := 8.0                 ## m: linia wychodzi tyle za skrajne podesty
+const ANT_Z := -1.6                        ## m: oś masztu anteny w głąb
+const ANT_A := 0.7                         ## m: bok kratownicy masztu anteny
+const GALLERY_Z := Vector2(-1.15, -2.05)   ## m: kratownice pomostu obsługi przy dużym maszcie
 const BOUGH_CROWN := 5.5                   ## m: korona sosny z konarami zaczyna się tyle nad najwyższym niesionym pomostem (suche dolne konary, korona nad kadrem)
 
 ## Tkanka Żyły (mata i spływ narośli): ciemne mięso z grzbietami żył z szumu wartości 3D (grzbiet |2n − 1|), mokre, z poświatą tylko w żyłach,
@@ -232,6 +243,33 @@ static func _mat(key: String) -> Material:
 			m = jm
 		"wool":
 			m = Level3D.make_mat(Color(0.62, 0.55, 0.33), 1.0)   # wata mineralna spod zdartego płaszcza
+		"galv":                                     # ocynk: kraty, kratownice, poręcze stacji i anten
+			var gm := Level3D.make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.5, 1.0, 0.7, false, "rust").duplicate() as StandardMaterial3D
+			gm.albedo_color = Color(0.82, 0.84, 0.86)
+			m = gm
+		"hazard":
+			m = Level3D.make_mat(Color(0.72, 0.55, 0.10), 0.6)
+		"hazard_dark":
+			m = Level3D.make_mat(Color(0.05, 0.05, 0.05), 0.7)
+		"mast_red":
+			m = Level3D.make_mat(Color(0.50, 0.11, 0.07), 0.6)
+		"mast_white":
+			m = Level3D.make_mat(Color(0.70, 0.69, 0.65), 0.6)
+		"porcelain":
+			m = Level3D.make_mat(Color(0.74, 0.76, 0.72), 0.25, 0.06, 0.0)
+		"transformer":
+			m = Level3D.make_mat(Color(0.22, 0.26, 0.18), 0.6)
+		"cabinet":
+			m = Level3D.make_mat(Color(0.25, 0.30, 0.32), 0.6)
+		"wire":
+			m = Level3D.make_mat(Color(0.03, 0.03, 0.03), 0.5, 0.06, 0.0)
+		"lamp":                                     # lampa przeszkodowa anteny: sama emisja, jak lampy masztu w tle
+			var lm := StandardMaterial3D.new()
+			lm.albedo_color = Color(0.3, 0.02, 0.01)
+			lm.emission_enabled = true
+			lm.emission = Color(1.0, 0.10, 0.04)
+			lm.emission_energy_multiplier = 2.0
+			m = lm
 		"concrete":
 			m = Level3D.make_pbr("concrete", 0.33, Color(0.45, 0.45, 0.43), 0.95, 1.0, 1.0, false, "stone")
 		"vein", "vein_dark":                        # tkanka Żyły: ciemna, mokra, grzbiety żył z szumu i słaba, pulsująca poświata (`TISSUE_SHADER`)
@@ -1057,6 +1095,338 @@ static func _limb(sts: Dictionary, rng: RandomNumberGenerator, t: float, xs: flo
 			var p2 := p1 + Vector3(dir * rng.randf_range(0.1, 0.4), rng.randf_range(0.2, 0.5), -rng.randf_range(0.1, 0.4))
 			_cone(st, p1, p2, 0.012, 0.005, "bough twig", 4, 0.0)
 
+# --- radiostacja 1.2 (S4): schody na dach, stacja słupowa, pole antenowe -------------------------------------------------------
+
+## Podłoże pod kolumną `c` poniżej wiersza `r`: pierwsza bryła albo pokład leżący na czymś (właz studni w wierszu gruntu, podłoga) —
+## pomost nad powietrzem (niższy stopień tych samych schodów) się nie liczy, słup idzie przez niego do ziemi.
+static func _foot_y(rows: Array, c: int, r: int) -> float:
+	var g := r + 1
+	while g < rows.size():
+		var ch := Level3D._ch(rows, c, g)
+		if Level3D.is_solid_ch(ch) or (Level3D.is_platform_ch(ch) and Level3D._ch(rows, c, g + 1) != "."):
+			break
+		g += 1
+	return -float(g) * T
+
+## Pręt (walec) od `a` do `b`.
+static func _rod(st: SurfaceTool, a: Vector3, b: Vector3, r: float, what: String) -> void:
+	_cone(st, a, b, r, r, what, 6, 0.0)
+
+## Belka prostokątna od `a` do `b` (oś w płaszczyźnie x–y), przekrój `h` (w pionie osi) × `w` (w głąb).
+static func _beam_xy(st: SurfaceTool, a: Vector3, b: Vector3, h: float, w: float, what: String) -> void:
+	var d := b - a
+	var length := Vector2(d.x, d.y).length()
+	var c := (a + b) * 0.5
+	_box(st, c - Vector3(length * 0.5, h * 0.5, w * 0.5), c + Vector3(length * 0.5, h * 0.5, w * 0.5), what, Basis(Vector3.BACK, atan2(d.y, d.x)))
+
+## Krata pomostu: rama i płaskowniki w poprzek co ok. 0,11 m, wierzch na `top`, od z0 do z1; przednia listwa w żółto-czarne pasy (krawędź do chwytu).
+static func _grate(sts: Dictionary, x0: float, x1: float, top: float, z0: float, z1: float, what: String) -> void:
+	var gal := _st(sts, "galv")
+	for z: float in [z0, z1 - 0.06]:
+		_box(gal, Vector3(x0, top - 0.06, z), Vector3(x1, top, z + 0.06), what + " frame")
+	_box(gal, Vector3(x0, top - 0.06, z0), Vector3(x0 + 0.05, top, z1), what + " frame")
+	_box(gal, Vector3(x1 - 0.05, top - 0.06, z0), Vector3(x1, top, z1), what + " frame")
+	var n := maxi(2, int(round((x1 - x0) / 0.11)))
+	for i in range(1, n):
+		var x := lerpf(x0, x1, float(i) / float(n))
+		_box(gal, Vector3(x - 0.012, top - 0.045, z0 + 0.06), Vector3(x + 0.012, top, z1 - 0.06), what + " bar")
+	var zc := z0 + 0.35                                     # pręty wzdłuż co 0,35 m (krócej niż 0,4 m — któryś leży w osi pasa gry)
+	while zc < z1 - 0.1:
+		_box(gal, Vector3(x0, top - 0.035, zc - 0.01), Vector3(x1, top, zc + 0.01), what + " bar")
+		zc += 0.35
+	var m := maxi(2, int(round((x1 - x0) / 0.3)))
+	for i in m:
+		var xa := lerpf(x0, x1, float(i) / float(m))
+		var xb := lerpf(x0, x1, float(i + 1) / float(m))
+		_box(_st(sts, "hazard" if i % 2 == 0 else "hazard_dark"), Vector3(xa, top - 0.17, z1), Vector3(xb, top, z1 + 0.025), what + " edge")
+
+## Poręcz z tyłu pomostu w głębi `z`: słupki co ok. 1,3 m, pochwyt na 1,05 m i przeciąg w połowie.
+static func _rail(st: SurfaceTool, x0: float, x1: float, top: float, z: float, what: String, t := 0.03) -> void:
+	var n := maxi(1, int(ceil((x1 - x0) / 1.3)))
+	for i in n + 1:
+		var x := lerpf(x0 + t, x1 - t, float(i) / float(n))
+		_box(st, Vector3(x - t, top, z - t), Vector3(x + t, top + 1.05, z + t), what + " post")
+	_box(st, Vector3(x0, top + 1.0, z - t * 1.2), Vector3(x1, top + 1.06, z + t * 1.2), what)
+	_box(st, Vector3(x0, top + 0.5, z - t * 0.7), Vector3(x1, top + 0.54, z + t * 0.7), what)
+
+## Maszt kratowy o przekroju kwadratu `a` (oś x, zc) od y0 do y1, przęsła co `step`; malowany w pasy co `band` m (0 — ocynk).
+static func _lattice(sts: Dictionary, x: float, zc: float, y0: float, y1: float, a: float, step: float, band: float, what: String) -> void:
+	var h := a * 0.5
+	var cs := [Vector2(-h, -h), Vector2(h, -h), Vector2(h, h), Vector2(-h, h)]
+	var k := maxf(1.0, a / 0.8)
+	var n := maxi(1, int(round((y1 - y0) / step)))
+	var s := (y1 - y0) / float(n)
+	for i in n:
+		var ya := y0 + s * float(i)
+		var yb := ya + s
+		var key := "galv" if band <= 0.0 else ("mast_white" if int(floor((ya - y0) / band)) % 2 == 1 else "mast_red")
+		var st := _st(sts, key)
+		for f in 4:
+			var p: Vector2 = cs[f]
+			var q: Vector2 = cs[(f + 1) % 4]
+			_rod(st, Vector3(x + p.x, ya, zc + p.y), Vector3(x + p.x, yb, zc + p.y), 0.035 * k, what + " leg")
+			var pa := p if i % 2 == 0 else q
+			var pb := q if i % 2 == 0 else p
+			_rod(st, Vector3(x + pa.x, ya, zc + pa.y), Vector3(x + pb.x, yb, zc + pb.y), 0.014 * k, what + " brace")
+			_rod(st, Vector3(x + p.x, yb, zc + p.y), Vector3(x + q.x, yb, zc + q.y), 0.016 * k, what + " brace")
+
+## Drabina z koszem na tylnej ścianie masztu (w `z`): pochwyty, szczeble co 0,3 m, obręcze kosza od 2,3 m co 0,9 m (w głąb) i pięć prętów.
+static func _cage_ladder(sts: Dictionary, x: float, z: float, y0: float, y1: float) -> void:
+	var gal := _st(sts, "galv")
+	for o: float in [-0.22, 0.22]:
+		_rod(gal, Vector3(x + o, y0, z), Vector3(x + o, y1, z), 0.022, "ladder rail")
+	var y := y0 + 0.3
+	while y < y1 - 0.05:
+		_rod(gal, Vector3(x - 0.22, y, z), Vector3(x + 0.22, y, z), 0.012, "ladder rung")
+		y += 0.3
+	var hoops: Array = []
+	y = y0 + 2.3
+	while y < y1 - 0.2:
+		hoops.append(y)
+		var pts: Array = []
+		for i in 9:
+			var ang := PI * float(i) / 8.0
+			pts.append(Vector3(x + cos(ang) * 0.36, y, z - sin(ang) * 0.36))
+		for i in 8:
+			_rod(gal, pts[i], pts[i + 1], 0.012, "ladder hoop")
+		y += 0.9
+	if hoops.size() > 1:
+		for i in 5:
+			var ang := PI * float(i) / 4.0
+			var p := Vector3(x + cos(ang) * 0.36, 0.0, z - sin(ang) * 0.36)
+			_rod(gal, Vector3(p.x, hoops[0], p.z), Vector3(p.x, hoops[hoops.size() - 1], p.z), 0.01, "ladder strap")
+
+## Schody na dach (1.2, radiostacja): do ceglanego budynku dobito zewnętrzne schody z desek. Słupy za pasem gry (PORCH_Z: przedni i tylny
+## rząd), spoczniki to pomosty wpisu — pokład z desek od tylnych słupów do przedniej krawędzi (jasna deska czołowa), legary wspornikowe
+## nad ścieżką z zastrzałem za pasem; biegi w głębi na zmianę w dwóch pasach (PORCH_BANDS), pierwszy z ziemi. Poręcz tylko z tyłu.
+static func _porch(sts: Dictionary, rows: Array, ds: Array) -> void:
+	if ds.is_empty():
+		return
+	var sorted := ds.duplicate()
+	sorted.sort_custom(func(a, b): return float(a["top"]) < float(b["top"]))
+	var plank := _st(sts, "plank")
+	var zf := PORCH_Z.x
+	var zb := PORCH_Z.y
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 61 + int(ds[0]["c0"]) * 7
+	for d: Dictionary in sorted:
+		var x0: float = d["x0"]
+		var x1: float = d["x1"]
+		var top: float = d["top"]
+		var r := int(d["r"])
+		var n := int(round((x1 - x0) / 0.16))
+		for i in n:                                         # deski w poprzek, od tylnej poręczy do przedniej krawędzi
+			var a := lerpf(x0, x1, float(i) / float(n))
+			var b := lerpf(x0, x1, float(i + 1) / float(n))
+			_box(plank, Vector3(a + 0.008, top - 0.05, zb), Vector3(b - 0.008, top, 0.70 + rng.randf_range(-0.015, 0.01)), "porch board",
+				Basis(Vector3.UP, rng.randf_range(-0.006, 0.006)))
+		var xs: Array = []                                  # legary w głąb co ok. 1,15 m
+		var xj := x0 + 0.15
+		while xj < x1 - 0.2:
+			xs.append(xj)
+			xj += 1.15
+		xs.append(x1 - 0.15)
+		for x: float in xs:
+			_box(plank, Vector3(x - 0.06, top - 0.26, zb), Vector3(x + 0.06, top - 0.05, 0.66), "porch joist")
+		_box(plank, Vector3(x0, top - 0.38, zf - 0.07), Vector3(x1, top - 0.26, zf + 0.07), "porch header")
+		_box(_st(sts, "cut"), Vector3(x0, top - 0.26, 0.66), Vector3(x1, top - 0.005, 0.73), "porch fascia")
+		var np := maxi(1, int(round((x1 - x0) / 3.6)))
+		for i in np + 1:                                    # słupy: przedni pod legarami, tylny przez poręcz; stopy z betonu
+			var x := lerpf(x0 + 0.12, x1 - 0.12, float(i) / float(np))
+			var yg := _foot_y(rows, int(floor(x / T)), r)
+			_box(plank, Vector3(x - 0.07, yg, zf - 0.07), Vector3(x + 0.07, top - 0.26, zf + 0.07), "porch post")
+			_box(plank, Vector3(x - 0.07, yg, zb), Vector3(x + 0.07, top + 1.05, zb + 0.14), "porch post")
+			_box(_st(sts, "concrete"), Vector3(x - 0.17, yg - 0.05, zf - 0.17), Vector3(x + 0.17, yg + 0.12, zf + 0.17), "porch footing")
+			_box(_st(sts, "concrete"), Vector3(x - 0.17, yg - 0.05, zb - 0.1), Vector3(x + 0.17, yg + 0.12, zb + 0.24), "porch footing")
+			_cone(plank, Vector3(x, yg + 0.5, zf - 0.05), Vector3(x, top - 0.4, zb + 0.1), 0.04, 0.04, "porch brace", 6, 0.0)
+			_cone(plank, Vector3(x, top - 1.0, zf), Vector3(x, top - 0.27, -STRIP - 0.06), 0.045, 0.045, "porch brace", 6, 0.0)
+			_box(plank, Vector3(x - 0.05, top - 0.36, zb), Vector3(x + 0.05, top - 0.26, zf), "porch tie")
+		_rail(plank, x0, x1, top, zb + 0.07, "porch rail", 0.035)
+	var flight := func(xa: float, ya: float, xb: float, yb: float, band: Vector2) -> void:
+		for z: float in [band.x, band.y]:
+			_beam_xy(plank, Vector3(xa, ya - 0.13, z), Vector3(xb, yb - 0.13, z), 0.26, 0.06, "porch stringer")
+		var k := maxi(2, int(round((yb - ya) / 0.2)))
+		for i in range(1, k):
+			var x := lerpf(xa, xb, float(i) / float(k))
+			var y := lerpf(ya, yb, float(i) / float(k))
+			_box(plank, Vector3(x - 0.15, y - 0.04, band.y), Vector3(x + 0.15, y, band.x), "porch tread")
+		_beam_xy(plank, Vector3(xa, ya + 0.95, band.y), Vector3(xb, yb + 0.95, band.y), 0.05, 0.04, "porch handrail")
+	var lo: Dictionary = sorted[0]
+	var yl := _foot_y(rows, int(lo["c0"]), int(lo["r"]))
+	var run := (float(lo["top"]) - yl) * 1.1
+	flight.call(float(lo["x0"]) + 0.5 - run, yl, float(lo["x0"]) + 0.5, float(lo["top"]), PORCH_BANDS[1])
+	for i in range(1, sorted.size()):
+		var a: Dictionary = sorted[i - 1]
+		var b: Dictionary = sorted[i]
+		var xb := float(b["x0"]) + 0.5
+		flight.call(xb - (float(b["top"]) - float(a["top"])) * 1.1, float(a["top"]), xb, float(b["top"]), PORCH_BANDS[(i + 1) % 2])
+
+## Stacja słupowa (1.2, wieża nad halą): stacja brała prąd z linii, linia padła — stąd generatory. Pomosty to podesty obsługi na bramkach
+## z żerdzi betonowych ustawionych w poprzek płaszczyzny gry (POLE_Z, obie za pasem); poprzecznica z ceownika wysunięta do przedniej krawędzi,
+## zastrzał od przedniej żerdzi kończy się za pasem. Na najwyższym podeście w głębi dwa transformatory z izolatorami, na niższych szafki;
+## żerdzie najwyższego podestu niosą martwą linię (trzy przewody nad wszystkim).
+static func _pole(sts: Dictionary, rows: Array, ds: Array) -> void:
+	if ds.is_empty():
+		return
+	var hi: Dictionary = ds[0]
+	for d: Dictionary in ds:
+		if float(d["top"]) > float(hi["top"]):
+			hi = d
+	var line_y := float(hi["top"]) + POLE_LINE
+	var gal := _st(sts, "galv")
+	var span := Vector2(INF, -INF)
+	var sorted := ds.duplicate()
+	sorted.sort_custom(func(a, b): return float(a["top"]) > float(b["top"]))   # od najwyższego: niższy podest wisi na żerdziach wyższego
+	var poles: Array = []                                   # x bramek już postawionych
+	for d: Dictionary in sorted:
+		var x0: float = d["x0"]
+		var x1: float = d["x1"]
+		var top: float = d["top"]
+		var r := int(d["r"])
+		var is_hi := d == hi
+		span = Vector2(minf(span.x, x0), maxf(span.y, x1))
+		var n := maxi(1, int(round((x1 - x0) / POLE_SPAN)))
+		for i in n + 1:
+			var x := lerpf(x0 + 0.5, x1 - 0.5, float(i) / float(n))
+			var shared := false
+			for p: float in poles:
+				if p > x0 + 0.2 and p < x1 - 0.2 and absf(p - x) < 1.8:
+					x = p
+					shared = true
+			var yg := _foot_y(rows, int(floor(x / T)), r)
+			var y_top := line_y if is_hi else top + 2.2
+			if not shared:
+				poles.append(x)
+				for z: float in [POLE_Z.x, POLE_Z.y]:
+					_cone(_st(sts, "concrete"), Vector3(x, yg - 0.2, z), Vector3(x, y_top, z), 0.17, 0.11, "pole", 10, 0.0)
+					_box(_st(sts, "concrete"), Vector3(x - 0.3, yg - 0.05, z - 0.3), Vector3(x + 0.3, yg + 0.12, z + 0.3), "pole footing")
+			_box(gal, Vector3(x - 0.08, top - 0.3, POLE_DECK_Z - 0.02), Vector3(x + 0.08, top - 0.06, 0.70), "pole crossbeam")
+			_rod(gal, Vector3(x, top - 1.55, POLE_Z.x), Vector3(x, top - 0.32, -STRIP - 0.06), 0.04, "pole strut")
+			_rod(gal, Vector3(x, top - 1.55, POLE_Z.y), Vector3(x, top - 0.32, POLE_Z.x - 0.1), 0.035, "pole strut")
+			var yp := yg + 1.2
+			while yp < top - 0.5 and not shared:                           # stopnie na przedniej żerdzi
+				_rod(gal, Vector3(x - 0.25, yp, POLE_Z.x), Vector3(x + 0.25, yp, POLE_Z.x), 0.016, "pole step")
+				yp += 0.45
+			if is_hi:                                       # trawersa z izolatorami martwej linii
+				_box(gal, Vector3(x - 0.07, line_y - 0.45, -3.7), Vector3(x + 0.07, line_y - 0.32, -0.55), "pole crossarm")
+				for z: float in POLE_WIRES:
+					_rod(_st(sts, "porcelain"), Vector3(x, line_y - 0.32, z), Vector3(x, line_y - 0.05, z), 0.06, "pole insulator")
+		for z: float in [-0.56, 0.44, -2.1]:                # podłużnice pod kratą
+			_box(gal, Vector3(x0, top - 0.2, z - 0.06), Vector3(x1, top - 0.06, z + 0.06), "pole stringer")
+		_grate(sts, x0, x1, top, POLE_DECK_Z, 0.68, "pole deck")
+		_rail(gal, x0, x1, top, POLE_DECK_Z + 0.03, "pole rail")
+		if is_hi:
+			var w := x1 - x0
+			for f: float in [0.3, 0.7]:
+				var xt := x0 + w * f
+				var tank := _st(sts, "transformer")
+				_box(tank, Vector3(xt - 0.8, top, -2.95), Vector3(xt + 0.8, top + 1.5, -1.8), "pole transformer")
+				for k in 7:
+					var fx := xt - 0.66 + float(k) * 0.22
+					_box(tank, Vector3(fx - 0.02, top + 0.15, -1.8), Vector3(fx + 0.02, top + 1.3, -1.55), "pole fin")
+				for k in 3:
+					var bx := xt - 0.45 + 0.45 * float(k)
+					_rod(_st(sts, "porcelain"), Vector3(bx, top + 1.5, -2.35), Vector3(bx, top + 2.1, -2.35), 0.06, "pole bushing")
+					var px: float = poles[0]
+					for p: float in poles:
+						if absf(p - xt) < absf(px - xt):
+							px = p
+					_rod(_st(sts, "wire"), Vector3(bx, top + 2.1, -2.35), Vector3(px, line_y - 0.05, POLE_WIRES[k]), 0.012, "pole drop")
+		else:
+			_box(_st(sts, "cabinet"), Vector3(x0 + 0.35, top, POLE_DECK_Z + 0.15), Vector3(x0 + 1.05, top + 1.25, POLE_DECK_Z + 0.75), "pole cabinet")
+	for z: float in POLE_WIRES:
+		_rod(_st(sts, "wire"), Vector3(span.x - POLE_WIRE_OUT, line_y - 0.05, z), Vector3(span.y + POLE_WIRE_OUT, line_y - 0.05, z), 0.014, "pole wire")
+
+## Pole antenowe przy maszcie (1.2, generator 4): niższe pomosty to spoczniki niskich masztów anten (kratownica ANT_A w z = ANT_Z, malowana
+## w pasy, dipol na szczycie, drabina z koszem na tylnej ścianie); spocznik z kraty na wspornikach od podłużnicy przy maszcie, zastrzały za
+## pasem, cięgno ze szczytu. Najwyższy pomost to pomost obsługi przy dużym maszcie (`Backdrop3D` MAST_Z): kratownica za pasem od nogi
+## kratowej ("legs") do masztu i dalej, wsporniki kraty; generator stoi na nim jak dotąd.
+static func _antenna(sts: Dictionary, rows: Array, e: Dictionary, ds: Array) -> void:
+	if ds.is_empty():
+		return
+	var hi: Dictionary = ds[0]
+	for d: Dictionary in ds:
+		if float(d["top"]) > float(hi["top"]):
+			hi = d
+	var gal := _st(sts, "galv")
+	for d: Dictionary in ds:
+		var x0: float = d["x0"]
+		var x1: float = d["x1"]
+		var top: float = d["top"]
+		var r := int(d["r"])
+		if d == hi:
+			continue
+		var xc := x0 + 0.55
+		var yg := _foot_y(rows, int(floor(xc / T)), r)
+		var yt := top + 3.4
+		_lattice(sts, xc, ANT_Z, yg, yt, ANT_A, 0.9, 3.0, "antenna mast")
+		_box(_st(sts, "concrete"), Vector3(xc - 0.6, yg - 0.1, ANT_Z - 0.6), Vector3(xc + 0.6, yg + 0.2, ANT_Z + 0.6), "antenna footing")
+		_rod(gal, Vector3(xc - 1.7, yt + 0.35, ANT_Z), Vector3(xc + 1.7, yt + 0.35, ANT_Z), 0.025, "antenna dipole")
+		_rod(gal, Vector3(xc, yt, ANT_Z), Vector3(xc, yt + 0.9, ANT_Z), 0.03, "antenna top")
+		for o: float in [-1.7, 1.7]:
+			_rod(_st(sts, "porcelain"), Vector3(xc + o, yt + 0.28, ANT_Z), Vector3(xc + o, yt + 0.42, ANT_Z), 0.05, "antenna insulator")
+		_box(_st(sts, "lamp"), Vector3(xc - 0.08, yt + 0.9, ANT_Z - 0.08), Vector3(xc + 0.08, yt + 1.06, ANT_Z + 0.08), "antenna lamp")
+		_cage_ladder(sts, xc, ANT_Z - ANT_A * 0.5 - 0.1, yg + 0.15, top + 1.05)
+		var zb := ANT_Z + ANT_A * 0.5 + 0.12                 # spocznik przed masztem: z tyłu do podłużnicy, kosz drabiny za nim
+		_grate(sts, x0, x1, top, zb, 0.68, "antenna deck")
+		for yy: float in [top - 0.3, top - 0.98]:
+			_box(gal, Vector3(x0, yy, zb - 0.1), Vector3(x1, yy + 0.1, zb), "antenna stringer")
+		var x := x0 + 0.12
+		while x < x1:
+			_box(gal, Vector3(x - 0.05, top - 0.2, zb - 0.1), Vector3(x + 0.05, top - 0.06, 0.66), "antenna bracket")
+			_rod(gal, Vector3(x, top - 0.93, zb - 0.05), Vector3(x, top - 0.22, -STRIP - 0.06), 0.025, "antenna strut")
+			_rod(gal, Vector3(x, top - 0.93, zb - 0.05), Vector3(x, top - 0.3, zb - 0.05), 0.02, "antenna strut")
+			x += 1.3
+		_rod(gal, Vector3(xc, top + 2.4, zb - 0.05), Vector3(x1 - 0.1, top - 0.3, zb - 0.05), 0.02, "antenna hanger")
+		_rod(gal, Vector3(xc, top + 2.4, zb - 0.05), Vector3(x1 - 0.1, top - 0.93, zb - 0.05), 0.02, "antenna hanger")
+		_rail(gal, x0, x1, top, zb + 0.03, "antenna rail")
+	# pomost obsługi przy dużym maszcie
+	var hx0: float = hi["x0"]
+	var hx1: float = hi["x1"]
+	var htop: float = hi["top"]
+	var mast := Vector2(INF, -INF)                          # x masztu (para kolumn `w` od góry mapy) w obrysie pomostu
+	for c in range(int(hi["c0"]), int(hi["c1"]) + 1):
+		if Level3D._ch(rows, c, 1) == "w" and Level3D._ch(rows, c + 1, 1) == "w":
+			mast = Vector2(float(c) * T + 0.25, float(c + 2) * T - 0.25)
+			break
+	var yt2 := htop - 0.22
+	var yb2 := htop - 1.55
+	var spans: Array = [[hx0, hx1]] if mast.x == INF else [[hx0, mast.x], [mast.y, hx1]]
+	for sp in spans:
+		var a: float = sp[0]
+		var b: float = sp[1]
+		if b - a < 0.3:
+			continue
+		var n := maxi(1, int(round((b - a) / 1.3)))
+		var s := (b - a) / float(n)
+		for z: float in GALLERY_Z:
+			_rod(gal, Vector3(a, yt2, z), Vector3(b, yt2, z), 0.05, "gallery chord")
+			_rod(gal, Vector3(a, yb2, z), Vector3(b, yb2, z), 0.05, "gallery chord")
+			for k in n + 1:
+				var xk := a + s * float(k)
+				_rod(gal, Vector3(xk, yb2, z), Vector3(xk, yt2, z), 0.03, "gallery post")
+				if k < n:
+					_rod(gal, Vector3(xk, yt2 if k % 2 == 1 else yb2, z), Vector3(xk + s, yb2 if k % 2 == 1 else yt2, z), 0.025, "gallery diagonal")
+		for k in n + 1:
+			var xk := a + s * float(k)
+			_rod(gal, Vector3(xk, yb2, GALLERY_Z.x), Vector3(xk, yb2, GALLERY_Z.y), 0.025, "gallery tie")
+			_box(gal, Vector3(xk - 0.05, yt2 - 0.02, GALLERY_Z.y - 0.05), Vector3(xk + 0.05, htop - 0.06, 0.66), "gallery bracket")
+			_rod(gal, Vector3(xk, yb2 + 0.1, GALLERY_Z.x), Vector3(xk, htop - 0.24, -STRIP - 0.06), 0.03, "gallery strut")
+		for i in 3:                                         # wiązka kabli od masztu
+			var zk := -1.5 - 0.1 * float(i)
+			_rod(_st(sts, "wire"), Vector3(a, yb2 + 0.18 + 0.1 * float(i), zk), Vector3(b, yb2 + 0.18 + 0.1 * float(i), zk), 0.05, "gallery cable")
+	for c in e.get("legs", []):                             # noga kratowa pod kratownicą
+		var xl := (float(c) + 0.5) * T
+		var yl := _foot_y(rows, int(c), int(hi["r"]))
+		_lattice(sts, xl, (GALLERY_Z.x + GALLERY_Z.y) * 0.5, yl, yb2, 0.9, 1.2, 0.0, "gallery leg")
+		_box(_st(sts, "concrete"), Vector3(xl - 0.8, yl - 0.1, -2.4), Vector3(xl + 0.8, yl + 0.25, -0.8), "gallery footing")
+	for sp in spans:                                        # krata na całą głębokość kratownicy, przy maszcie (przód w −0,64) tylko przed nim
+		if float(sp[1]) - float(sp[0]) > 0.05:
+			_grate(sts, sp[0], sp[1], htop, GALLERY_Z.y - 0.05, 0.68, "gallery deck")
+			_rail(gal, sp[0], sp[1], htop, GALLERY_Z.y - 0.02, "gallery rail")
+	if mast.x != INF:
+		_grate(sts, mast.x, mast.y, htop, -0.6, 0.68, "gallery deck")
+
 ## Buduje wszystkie wpisy `STEPS` mapy pod `parent`. Zwraca węzeł z bryłami (nazwa „Steps”); `parts` opisuje elementy dla testu.
 static func build(parent: Node3D, rows: Array, steps: Array) -> Node3D:
 	parts.clear()
@@ -1087,6 +1457,12 @@ static func build(parent: Node3D, rows: Array, steps: Array) -> Node3D:
 				_heat(sts, rows, ds)
 			"vein":
 				_vein(sts, rows, ds)
+			"porch":
+				_porch(sts, rows, ds)
+			"pole":
+				_pole(sts, rows, ds)
+			"antenna":
+				_antenna(sts, rows, e, ds)
 			_:
 				push_warning("Step3D: nieznany rodzaj „%s”" % kind)
 	for key in sts:

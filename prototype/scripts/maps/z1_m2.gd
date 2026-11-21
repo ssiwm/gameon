@@ -75,8 +75,15 @@ const FRONT := [
 	{"set": "tunnel", "c0": 215, "c1": 221, "r0": 36, "r1": 40, "shell": true},    # pomieszczenie za kratką
 	{"set": "forest", "c0": 2, "c1": 62, "r0": 0, "r1": 26, "skip": [[38, 43], [59, 62]]},   # las od startu do hali stacji (F3, pilot lasu); bez drzew nad włazami przepustu i studni (pień widać w przekroju)
 	# las za halą stacji do masztu; bez pni przed szopą na bagnie (wnętrze bez przekroju) i pompownią (przekrój budynku), podłoże ciągłe (dołki przed szybami)
-	{"set": "forest", "c0": 101, "c1": 215, "r0": 0, "r1": 26, "skip": [[112, 132]]},
-	{"set": "forest", "c0": 247, "c1": 285, "r0": 0, "r1": 26},
+	{"set": "forest", "c0": 101, "c1": 215, "r0": 0, "r1": 26, "skip": [[112, 132], [154, 180]]},   # STEPS_PLAN.md S4: bez pni przed stacją słupową (korona zasłaniała podest 7,9 m)
+	{"set": "forest", "c0": 247, "c1": 285, "r0": 0, "r1": 26, "skip": [[250, 271]]},   # S4: ani przed polem antenowym i pomostem z generatorem 4
+]
+## Pomosty pod gołym niebem z historii miejsca (`step3d.gd`, STEPS_PLAN.md S4): przy radiostacji drewniane schody na dach, wieża nad halą
+## to stacja słupowa (martwa linia — stąd generatory), przy maszcie pole antenowe ze spocznikami i pomost obsługi z generatorem 4.
+const STEPS := [
+	{"kind": "porch", "decks": [[24, 58], [22, 60], [20, 62]]},
+	{"kind": "pole", "decks": [[24, 158], [22, 160], [20, 162]], "posts": [164, 175]},
+	{"kind": "antenna", "decks": [[24, 252], [22, 254], [20, 256], [18, 258]], "legs": [259]},
 ]
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od

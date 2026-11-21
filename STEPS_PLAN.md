@@ -74,5 +74,16 @@ Pomosty z wpisu nie mają modelu desek ani nóg (`Level3D.step_cells`).
     brakuje jej do 0,37 m w głąb (z kamery niewidoczne); obrót tułowia ku pomostowi albo zmiana ręki (prawa trzyma broń) — gdyby to raziło;
   - kraty `=` poza wpisami (antresole, przekrój kryjówki) sięgają 2–4 m w głąb — bez podciągania, zostaje dawna poza `climb_t`.
 - **S4** 1.2 — osobna runda propozycji (maszt z platformą i koszem drabiny, stacja słupowa).
+- **Stan 2026-11-21 (1.7.643):** S4 zrobione. Runda 3 (artefakt „Pomosty radiostacji 1.2”) — wybrane polecane warianty, wpisy w `maps/z1_m2.gd`:
+  - radiostacja (kol. 58–65): `porch` — drewniane schody na dach, słupy w z = −1,0 i −3,8, biegi w dwóch pasach w głębi, jasna deska czołowa;
+  - wieża nad halą (kol. 158–176): `pole` — bramki z żerdzi betonowych w poprzek płaszczyzny gry co ≤ 6,5 m, niższy podest wisi na żerdziach
+    wyższego (`POLE_SPAN`, wspólne żerdzie — przy bramce na każdym końcu każdego podestu stało 18 żerdzi i czytało się jak las słupów),
+    dwa transformatory i martwa linia nad najwyższym; słupy `w` 164 i 175 ukryte (`posts`);
+  - maszt (kol. 252–269): `antenna` — trzy maszty anten w pasy z drabiną w koszu, spoczniki z kraty przed masztem (z ≥ −1,13), pomost obsługi
+    na kratownicy od nogi kratowej (`legs` 259) do dużego masztu, przy maszcie krata tylko przed jego przednią płaszczyzną (MAST_Z −0,64);
+  - pomosty niższych stopni nachodzą na wyższe o 2 kafle, więc słupy i maszty wyższego stopnia przechodzą przez niższy (realne: podest
+    przykręcony do żerdzi); podłoże słupów — `_foot_y` (właz studni w wierszu gruntu to podłoże, niższy stopień nad powietrzem nie);
+  - kraty mają pręty wzdłuż co 0,35 m — wierzch w osi pasa gry na każdym kaflu (test „wierzch na wysokości pokładu”);
+  - bez pni pierwszego planu przed wieżą (kol. 154–180) i masztem (250–271): korona zasłaniała podesty 7,9 i 10,5 m.
 
 Drabiny tylko w obrazie (decyzja z rundy 1). Szyby kopalni 1.1 (c40–43, 111–114, 193–197) zostają bez zmian.
