@@ -38,6 +38,7 @@ const Weather := preload("res://scripts/weather.gd")
 const WeatherClock := preload("res://scripts/weather_clock.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
+const Step3D := preload("res://scripts/step3d.gd")
 const Cave3D := preload("res://scripts/cave3d.gd")
 const Front3D := preload("res://scripts/front3d.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
@@ -1120,17 +1121,22 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 	var front_skip: Array = _level.get("front_skip") if _level != null and _level.get("front_skip") != null else []
 	if "--nofront" in OS.get_cmdline_user_args():
 		front = []                                          # dev: mapa bez pierwszego planu (porównanie A/B, `FOREGROUND_PLAN.md`)
+	var nat_steps: Array = _level.get("steps") if _level != null and _level.get("steps") != null else []
+	if "--nosteps" in OS.get_cmdline_user_args():
+		nat_steps = []                                      # dev: pomosty na nogach jak dawniej (porównanie A/B, `STEPS_PLAN.md`)
 	var steps := [
 		["level", func() -> void:
 			Level3D.set_grime_offset(String(_level.get("map_id")) if _level != null and _level.get("map_id") != null else "")
 			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches) + Cave3D.forest_holes(caves))
 			Level3D.rock_rects = Cave3D.rock_rects(caves)
 			Level3D.set_shells(front, rows)
+			Level3D.set_steps(Step3D.cells(rows, nat_steps), Step3D.hidden_posts(rows, nat_steps), Step3D.trunk_cells(rows, nat_steps))
 			Level3D.build_level(root, rows, trench)
 			Building3D.build(root, rows)],
 		["niches", func() -> void: Niches3D.build(root, rows, niches, Settings.quality_idx)],
 		["caves", func() -> void: Cave3D.build(root, caves)],
 		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
+		["steps", func() -> void: Step3D.build(root, rows, nat_steps)],
 		["liquids", func() -> void:
 			Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])
 			Level3D.set_bogs(rows)

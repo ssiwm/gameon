@@ -111,7 +111,7 @@ const FRONT := [
 	# przekroju); wschodni koniec niższy, pod betonowym stropem bunkra (wiersz 39)
 	{"set": "mine", "c0": 202, "c1": 249, "r0": 37, "r1": 43, "shell": true},
 	{"set": "tunnel", "c0": 250, "c1": 256, "r0": 39, "r1": 43, "shell": true},
-	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[39, 44], [110, 115], [148, 191], [192, 198], [210, 223], [242, 255]]},   # L3: bez drzew nad włazami szybów (pień widać w przekroju); 1.7.550: ani na wykopie, który zawał zasypuje (drzewo wyrosłoby w chwili zawału)
+	{"set": "forest", "c0": 2, "c1": 259, "r0": 0, "r1": 23, "skip": [[39, 44], [98, 106], [110, 115], [148, 191], [192, 198], [210, 223], [242, 255]]},   # L3: bez drzew nad włazami szybów (pień widać w przekroju); 1.7.550: ani na wykopie, który zawał zasypuje (drzewo wyrosłoby w chwili zawału); STEPS_PLAN.md S1: ani przed pomostami obozu na konarach (korona na wysokości pomostów zasłaniała kadr)
 ]
 const NICHES := [
 	{"kind": "corridor", "c0": 227, "c1": 229, "r0": 31, "r1": 33, "lit": "cage"},
@@ -121,6 +121,18 @@ const NICHES := [
 	{"kind": "window", "c0": 204, "c1": 207, "r0": 40, "r1": 41, "lit": "bulb"},   # N4: okno dyspozytorni na ślepym zachodnim końcu dolnej galerii
 	{"kind": "drift", "c0": 117, "c1": 119, "r0": 31, "r1": 33, "d": 8.0, "lit": "mine"},   # L2: boczny chodnik z lampą w komorze sztolni pod obozem
 	{"kind": "drift", "c0": 80, "c1": 82, "r0": 31, "r1": 33, "d": 8.0, "lit": "mine"},     # L3: boczny chodnik z lampą w mijance
+]
+
+## Pomosty pod gołym niebem z natury i z historii miejsca (`step3d.gd`, STEPS_PLAN.md S1): bród — podmyta skarpa (Wołek śpi na górze)
+## i wykrot nad błotem; polana — ostaniec ze skrytką `H` pod nawisem i liną patrolu; obóz — konary dwóch sosen ze słupów `w` (i trzeciej na skale)
+## oraz półki skalne przy przyczółkach zerwanego mostu.
+const STEPS := [
+	{"kind": "bank", "decks": [[19, 31]], "posts": [30, 37]},
+	{"kind": "windfall", "decks": [[21, 28]]},
+	{"kind": "tor", "decks": [[21, 57], [19, 60], [17, 63], [15, 66]], "cache": true},
+	{"kind": "boughs", "decks": [[14, 99], [14, 105], [14, 110], [16, 94], [16, 111]], "trunks": [[93, 18]]},
+	{"kind": "tor", "decks": [[19, 97], [21, 97]]},
+	{"kind": "tor", "decks": [[19, 123], [21, 123]]},
 ]
 
 const MAP := [

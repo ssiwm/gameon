@@ -199,6 +199,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_niches.gd 2>&1 | tee niches.log
           grep -a "^PASS" niches.log
+      - name: Pomosty z natury (test_steps.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_steps.gd 2>&1 | tee steps.log
+          grep -a "^PASS" steps.log
       - name: Pierwszy plan (test_front.gd)
         run: |
           godot --headless --path prototype -s tools/test_front.gd 2>&1 | tee front.log
