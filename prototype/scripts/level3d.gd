@@ -1064,14 +1064,14 @@ static func _build_ribs(parent: Node3D, rows: Array, mat: Material) -> void:
 
 ## Sosna w miejscu pnia z mapy (kolumna `c`, kafle r0..r1−1): podstawa na dole ciągu, korona od TRUNK_OVER ponad jego górą.
 ## Odmiana, obrót i odcień z ziarna kolumny (każdy peer widzi to samo). false — brak modeli (zostaje słup).
-static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
+static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int, lift := 0.0) -> bool:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(c * 7919 + r0)
 	var pick: Array = TRUNK_MODELS[rng.randi() % TRUNK_MODELS.size()]
 	var tk: String = pick[0]
 	if model_mesh(tk).is_empty():
 		return false
-	var h := (float(r1 - r0) * T + rng.randf_range(TRUNK_OVER[0], TRUNK_OVER[1])) / float(pick[1])
+	var h := (float(r1 - r0) * T + rng.randf_range(TRUNK_OVER[0], TRUNK_OVER[1]) + lift) / float(pick[1])   # `lift`: korona wyżej (sosna z konarami, `step3d.gd`)
 	var sw := h / 100.0 * TRUNK_W * rng.randf_range(0.9, 1.1)
 	var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3(sw, h / 100.0, sw))
 	basis = Basis().scaled(Vector3(1.0, 1.0, TRUNK_DEPTH)) * basis
@@ -1081,6 +1081,16 @@ static func _trunk_add(trunks: Dictionary, c: int, r0: int, r1: int) -> bool:
 		trunks[tk] = []
 	(trunks[tk] as Array).append([Transform3D(basis, foot), Color(v, v * 0.98, v * 0.95)])
 	return true
+
+## Pomosty z natury i z historii miejsca (`step3d.gd`, STEPS_PLAN.md): kafle pomostów bez modelu desek i nóg (Vector2i(c, r)),
+## ciągi słupów, które znikają, i słupy rysowane jako sosny z konarami (Vector2i(c, r0 ciągu) → m podniesienia korony). Ustawia `view3d.gd` przed `build_level`.
+static var step_cells := {}
+static var step_posts := {}
+static var step_trunks := {}
+static func set_steps(cells: Dictionary, posts: Dictionary, trunks: Dictionary) -> void:
+	step_cells = cells
+	step_posts = posts
+	step_trunks = trunks
 
 static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary:
 	rail_trench = trench
@@ -1142,7 +1152,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				(rock_walls if in_rock_rect(c, r) or back_rock(c, r) else walls).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, 0.0, -DEPTH_BACK + 0.15)))
 			if ch == "b":
 				pass
-			elif is_platform_ch(ch):
+			elif is_platform_ch(ch) and not step_cells.has(Vector2i(c, r)):
 				(grates if ch == "=" else planks).append(Transform3D(Basis.IDENTITY, cell_pos(c, r) + Vector3(0.0, T * 0.5 - 0.1, 0.0)))
 			elif ch == "F" or ch == "l" or ch == "k":
 				marks[ch].append(cell_pos(c, r) + Vector3(0.0, -T * 0.5, 0.0))
@@ -1185,8 +1195,10 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 		var r0: int = run["r0"]
 		var r1: int = run["r1"]
 		var z: float = run["z"]
-		if bool(run["tree"]) and _trunk_add(trunks, c, r0, r1):
-			continue
+		if step_posts.has(Vector2i(c, r0)):
+			continue                                            # słup zastąpiony skarpą (`step3d.gd`)
+		if (bool(run["tree"]) or step_trunks.has(Vector2i(c, r0))) and _trunk_add(trunks, c, r0, r1, float(step_trunks.get(Vector2i(c, r0), 0.0))):
+			continue                                            # pień z 2D albo sosna z konarami niosącymi pomosty (`step3d.gd`)
 		if bool(run["roof"]):
 			continue
 		var framed := frame_role(rows, run) != ""                 # maszt i nogi strażnicy: `Backdrop3D.build_frames` (belki pod kładkami zostają)
@@ -1240,6 +1252,9 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 			var c1 := c
 			while c1 < cols and _ch(rows, c1, r) == ch:
 				c1 += 1
+			if step_cells.has(Vector2i(c, r)):
+				c = c1                                              # pomost z natury: wierzch daje skarpa, kłoda, płyta albo konar (`step3d.gd`)
+				continue
 			var per := 1.0 if ch == "-" else 3.0
 			if ch == "=" and bld_back.has(Vector2i(c, r)) and not _in_shell_band(c, r):
 				_mezzanine_rail(rails, float(c) * T, float(c1) * T, -float(r) * T + 0.01, deck_half(ch))
@@ -1313,7 +1328,7 @@ static func deck_supports(rows: Array) -> Array:
 			var c1 := c
 			while c1 + 1 < cols and _ch(rows, c1 + 1, r) == ch:
 				c1 += 1
-			if deck_is_free(rows, ch, r, c, c1):
+			if deck_is_free(rows, ch, r, c, c1) and not step_cells.has(Vector2i(c, r)):
 				var cols_at: Array = [c]
 				var span := c1 - c
 				var nseg := int(ceil(float(span) / float(DECK_LEG_EVERY)))
