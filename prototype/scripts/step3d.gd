@@ -11,7 +11,7 @@ const Level3D := preload("res://scripts/level3d.gd")
 const Front3D := preload("res://scripts/front3d.gd")
 const T := Level3D.T
 
-const KINDS := ["bank", "windfall", "tor", "boughs"]
+const KINDS := ["bank", "windfall", "tor", "boughs", "heat", "vein"]
 const CLEAR := 1.85                        ## m: wolne nad podłożem w pasie gry (sprawdza `tools/test_steps.gd`)
 const STRIP := 0.45                        ## m: połowa głębokości pasu gry, w którym chodzą postacie
 const ROOT_CLEAR := 2.15                   ## m: korzenie spod nawisu skarpy kończą się w pasie gry najniżej tyle nad ścieżką
@@ -23,7 +23,44 @@ const LIMB_STEP := 0.4                     ## m: odcinki konaru (wierzch płaski
 const BARK_TEX := "res://art/world3d/forest/pine_bark_%s_2k.jpg"
 const BARK_TILE := 1.3                     ## m kory na powtórzenie tekstury (jak `Front3D.BARK_TILE`)
 
+const HEAT_R := 0.25                       ## m: promień rury ciepłociągu w płaszczu (⌀ 0,5 m)
+const HEAT_SPAN := 3.0                     ## m: najdłuższy odstęp wsporników Γ
+const HEAT_MAIN_Y := 0.55                  ## m: oś magistrali za placem nad gruntem
+const VEIN_STEP := 1.3                     ## m: odstęp półłuków narośli Żyły
 const BOUGH_CROWN := 5.5                   ## m: korona sosny z konarami zaczyna się tyle nad najwyższym niesionym pomostem (suche dolne konary, korona nad kadrem)
+
+## Tkanka Żyły (mata i spływ narośli): ciemne mięso z grzbietami żył z szumu wartości 3D (grzbiet |2n − 1|), mokre, z poświatą tylko w żyłach,
+## pulsującą powoli i z przesunięciem wzdłuż x (jak brama z korzeni w hali, ale bez jednolitej emisji całej bryły).
+const TISSUE_SHADER := """
+shader_type spatial;
+render_mode diffuse_burley;
+uniform vec3 base_col : source_color = vec3(0.085, 0.032, 0.03);
+uniform vec3 vein_col : source_color = vec3(0.2, 0.045, 0.04);
+uniform vec3 glow_col : source_color = vec3(0.55, 0.07, 0.04);
+uniform float glow = 0.3;
+varying vec3 wpos;
+float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float n3(vec3 x) {
+	vec3 i = floor(x);
+	vec3 f = fract(x);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+		mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	float n = n3(wpos * 6.5) * 0.7 + n3(wpos * 15.0 + 11.0) * 0.3;
+	float v = smoothstep(0.86, 0.97, 1.0 - abs(n * 2.0 - 1.0));
+	float mot = 0.8 + 0.4 * n3(wpos * 2.1 + 3.0);
+	ALBEDO = mix(base_col * mot, vein_col, v);
+	ROUGHNESS = mix(0.42, 0.22, v);
+	SPECULAR = 0.55;
+	float pulse = 0.65 + 0.35 * sin(TIME * 1.4 - wpos.x * 0.8);
+	EMISSION = glow_col * v * glow * pulse;
+}
+"""
 
 ## Wstawka do `Level3D.ROCK_SHADER` w miejsce przypisania albedo: mech w plamach na wierzchach (n.y > 0,45), ciemniejsze spody (zacieki, cień ziemi).
 ## Porosty na licach z szumu wartości dawały kwadratowe plamy („moro”) — odrzucone.
@@ -184,6 +221,27 @@ static func _mat(key: String) -> Material:
 			m = Level3D.make_mat(Color(0.42, 0.06, 0.04), 0.75)   # farba patrolu, wyblakła
 		"metal":
 			m = Level3D.make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust")
+		"steel":                                    # wsporniki i opaski ciepłociągu: stal ze rdzą
+			var stm := Level3D.make_pbr("metal", 0.40, Color(0.28, 0.30, 0.34), 0.6, 1.0, 0.7, false, "rust").duplicate() as StandardMaterial3D
+			stm.albedo_color = Color(0.62, 0.52, 0.44)
+			m = stm
+		"jacket":                                   # płaszcz izolacji z ocynkowanej blachy, zmatowiały
+			var jm := Level3D.make_pbr("metal", 0.40, Color(0.55, 0.57, 0.58), 0.45, 1.0, 0.7, false, "rust").duplicate() as StandardMaterial3D
+			jm.albedo_color = Color(1.0, 1.0, 1.0)
+			jm.roughness = 0.55
+			m = jm
+		"wool":
+			m = Level3D.make_mat(Color(0.62, 0.55, 0.33), 1.0)   # wata mineralna spod zdartego płaszcza
+		"concrete":
+			m = Level3D.make_pbr("concrete", 0.33, Color(0.45, 0.45, 0.43), 0.95, 1.0, 1.0, false, "stone")
+		"vein", "vein_dark":                        # tkanka Żyły: ciemna, mokra, grzbiety żył z szumu i słaba, pulsująca poświata (`TISSUE_SHADER`)
+			var tm := ShaderMaterial.new()
+			var tsh := Shader.new()
+			tsh.code = TISSUE_SHADER
+			tm.shader = tsh
+			if key == "vein":
+				tm.set_shader_parameter("base_col", Color(0.11, 0.04, 0.035))
+			m = tm
 	_mats[key] = m
 	return m
 
@@ -667,6 +725,249 @@ static func _free_above(rows: Array, d: Dictionary, n: int) -> bool:
 				return false
 	return true
 
+## Ciepłociąg (Obiekt 86, wieczna zmarzlina — rury grzewcze nad ziemią): pod każdym pomostem wpisu jedna rura w płaszczu z blachy
+## (⌀ HEAT_R × 2) na wspornikach Γ — słup za pasem gry, ramię nad głową w poprzek pasa; robotnicy położyli na rurze łaty i poprzeczne deski
+## (wierzch na wysokości pokładu). Przy końcach pomostu rura skręca kolanem w głąb i schodzi pionem do magistrali biegnącej za placem
+## na betonowych podporach — każdy pomost to U-pętla kompensacyjna nad drogą. Płaszcz z opaskami co ok. 1 m, gdzieniegdzie zdarty do waty.
+static func _heat(sts: Dictionary, rows: Array, ds: Array) -> void:
+	if ds.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41 + int(ds[0]["c0"]) * 19
+	var sorted := ds.duplicate()
+	sorted.sort_custom(func(a, b): return float(a["top"]) > float(b["top"]))     # od najwyższego: słupy wyższych pomostów niosą też niższe ramiona
+	var posts: Array = []                                   # [x, y wierzchu słupa]
+	var runs: Array = []                                    # x odcinków rury w głąb (słup nie może przez nie przechodzić)
+	for d: Dictionary in sorted:
+		runs.append_array([float(d["x0"]) + 0.02, float(d["x1"]) - 0.02])
+	var main_x := Vector2(INF, -INF)
+	var main_y := -INF
+	for d: Dictionary in sorted:
+		var r := int(d["r"])
+		var x0: float = d["x0"]
+		var x1: float = d["x1"]
+		var top: float = d["top"]
+		var yb := top - 0.045                               # spód desek
+		var yl := yb - 0.07                                 # spód łat
+		var yc := yl - sqrt(HEAT_R * HEAT_R - 0.12 * 0.12)  # oś rury: łaty w z = ±0,12 leżą na płaszczu
+		var arm_top := yc - HEAT_R
+		var arm_bot := arm_top - 0.11
+		var yg := floor_y(rows, int((int(d["c0"]) + int(d["c1"])) / 2), r, false)
+		main_x = Vector2(minf(main_x.x, x0), maxf(main_x.y, x1))
+		main_y = maxf(main_y, yg)
+		var x := x0 + 0.02                                  # deski w poprzek, z przerwami
+		while x < x1 - 0.05:
+			var w := minf(rng.randf_range(0.17, 0.24), x1 - 0.02 - x)
+			var bz := Vector2(-0.6 - rng.randf() * 0.06, 0.52 + rng.randf() * 0.08)
+			_box(_st(sts, "plank"), Vector3(x, yb, bz.x), Vector3(x + w, top, bz.y), "heat board", Basis(Vector3.UP, rng.randf_range(-0.03, 0.03)))
+			x += w + rng.randf_range(0.015, 0.04)
+		for zl in [-0.12, 0.12]:                            # łaty wzdłuż pomostu
+			_box(_st(sts, "plank"), Vector3(x0 + 0.03, yl, zl - 0.04), Vector3(x1 - 0.03, yb, zl + 0.04), "heat batten")
+		var xa := x0 + 0.5                                  # rura: prosto pod pomostem, kolana w głąb w jego obrysie
+		var xe := x1 - 0.5
+		var zb := -2.4
+		var gaps: Array = []                                # zdarty płaszcz: [x0, x1]
+		if xe - xa > 3.0:
+			var g := rng.randf_range(xa + 0.8, xe - 1.2)
+			gaps.append(Vector2(g, g + rng.randf_range(0.35, 0.6)))
+		_pipe_run(sts, Vector3(xa, yc, 0.0), Vector3(xe, yc, 0.0), gaps)
+		for e in [[xa, -1.0], [xe, 1.0]]:
+			var xk: float = e[0]
+			var s: float = e[1]
+			var bend := _crom([Vector3(xk, yc, 0.0), Vector3(xk + s * 0.3, yc, -0.12), Vector3(xk + s * 0.48, yc, -0.5)], 6)
+			_tube(_st(sts, "jacket"), bend, HEAT_R, HEAT_R, "heat elbow", 16)
+			_pipe_run(sts, Vector3(xk + s * 0.48, yc, -0.5), Vector3(xk + s * 0.48, yc, zb + 0.5), [])
+			var drop := _crom([Vector3(xk + s * 0.48, yc, zb + 0.5), Vector3(xk + s * 0.48, yc - 0.12, zb + 0.12), Vector3(xk + s * 0.48, yc - 0.5, zb)], 6)
+			_tube(_st(sts, "jacket"), drop, HEAT_R, HEAT_R, "heat elbow", 16)
+			_pipe_run(sts, Vector3(xk + s * 0.48, yc - 0.5, zb), Vector3(xk + s * 0.48, yg + HEAT_MAIN_Y, zb), [])
+		var n := maxi(2, int(ceil((x1 - x0 - 1.4) / HEAT_SPAN)) + 1)   # wsporniki Γ
+		for i in n:
+			var xp := lerpf(x0 + 0.7, x1 - 0.7, float(i) / float(n - 1)) + rng.randf_range(-0.1, 0.1)
+			for rx: float in runs:
+				if absf(rx - xp) < 0.45:
+					xp = rx + (0.45 if xp >= rx else -0.45)
+			var shared := false
+			for p in posts:
+				if absf(float(p[0]) - xp) < 0.6:
+					xp = float(p[0])
+					shared = true
+			var ok := false
+			for dx: float in [0.0, 0.6, -0.6, 1.1, -1.1]:          # ramię nad głową: obok skrzyni czy rekwizytu pod pomostem
+				var xt := xp + dx
+				if shared and dx != 0.0 or xt < x0 + 0.3 or xt > x1 - 0.3:
+					continue
+				var fy := -INF
+				for c in range(int(floor((xt - 0.1) / T)), int(floor((xt + 0.1) / T)) + 1):
+					if not _cramped(rows, c, r):
+						fy = maxf(fy, floor_y(rows, c, r))
+				if arm_bot >= fy + CLEAR + 0.03:
+					xp = xt
+					ok = true
+					break
+			if not ok:
+				continue
+			var steel := _st(sts, "steel")
+			_box(steel, Vector3(xp - 0.06, arm_bot, -1.24), Vector3(xp + 0.06, arm_top, HEAT_R + 0.05), "heat arm")
+			_box(steel, Vector3(xp - 0.07, arm_top, -0.14), Vector3(xp + 0.07, arm_top + 0.05, 0.14), "heat saddle")
+			var brace_a := Vector3(xp, arm_bot - 0.75, -1.16)
+			_cone(steel, brace_a, Vector3(xp, arm_bot - 0.02, -0.58), 0.035, 0.035, "heat brace", 6, 0.0)
+			if not shared:
+				var ygp := floor_y(rows, int(xp / T), r, false)
+				_box(steel, Vector3(xp - 0.07, ygp, -1.23), Vector3(xp + 0.07, arm_top, -1.09), "heat post")
+				_box(_st(sts, "concrete"), Vector3(xp - 0.22, ygp - 0.05, -1.4), Vector3(xp + 0.22, ygp + 0.18, -0.92), "heat footing")
+				posts.append([xp, arm_top])
+	var ym := main_y + HEAT_MAIN_Y                           # magistrala za placem na betonowych podporach
+	_pipe_run(sts, Vector3(main_x.x - 1.5, ym, -2.4), Vector3(main_x.y + 1.5, ym, -2.4), [])
+	var xs := main_x.x - 1.0
+	while xs < main_x.y + 1.0:
+		var gy := floor_y(rows, int(xs / T), int(ds[0]["r"]), false)
+		_box(_st(sts, "concrete"), Vector3(xs - 0.2, gy - 0.05, -2.75), Vector3(xs + 0.2, ym - HEAT_R + 0.02, -2.05), "heat sleeper")
+		xs += rng.randf_range(3.6, 4.4)
+
+## Odcinek rury w płaszczu od `a` do `b` z opaskami co ok. 1 m; `gaps` (Vector2 x0–x1, tylko odcinki wzdłuż x) — płaszcz zdarty, widać watę.
+static func _pipe_run(sts: Dictionary, a: Vector3, b: Vector3, gaps: Array) -> void:
+	var d := b - a
+	var length := d.length()
+	if length < 0.01:
+		return
+	var segs: Array = [[0.0, 1.0]]
+	for g: Vector2 in gaps:
+		var f0 := (g.x - a.x) / d.x
+		var f1 := (g.y - a.x) / d.x
+		segs = [[0.0, f0], [f1, 1.0]]
+		var wc := a + d * f0
+		_cone(_st(sts, "wool"), wc, a + d * f1, HEAT_R * 0.93, HEAT_R * 0.9, "heat wool", 12, 0.12)
+		for k in 3:                                         # strzępy płaszcza i waty na brzegach
+			var t := f0 if k < 2 else f1
+			var p := a + d * t
+			_cone(_st(sts, "wool"), p, p + Vector3(0.0, -0.1 - 0.08 * float(k), 0.12 * float(k - 1)), 0.06, 0.02, "heat wool", 5, 0.2)
+	for sg in segs:
+		_cone(_st(sts, "jacket"), a + d * float(sg[0]), a + d * float(sg[1]), HEAT_R, HEAT_R, "heat pipe", 16, 0.0)
+	var nb := int(floor(length / 1.0))
+	for i in range(1, nb + 1):
+		var f := float(i) / float(nb + 1)
+		var inside := false
+		for g: Vector2 in gaps:
+			var x := a.x + d.x * f
+			inside = inside or (x > g.x - 0.05 and x < g.y + 0.05)
+		if inside:
+			continue
+		var p := a + d * f
+		var u := d / length * 0.02
+		_cone(_st(sts, "steel"), p - u, p + u, HEAT_R + 0.012, HEAT_R + 0.012, "heat band", 16, 0.0)
+
+## Narośl Żyły (1.3, gniazdo): Żyła wylewa się oknem piętra i spływa po schodach pomostów do ziemi — kilka splecionych, guzowatych pasm
+## za pasem gry (z ≤ −1), na dole rozchodzi się korzeniami po placu. Na każdym pomoście mata żył (płaski wierzch na wysokości pokładu, żyły
+## zwisają z przedniej krawędzi), a pod nią co VEIN_STEP półłuki ze spływu: łukiem nad ścieżką do zwisu przed przednią krawędzią. Bez nóg
+## przed płaszczyzną gry (zasłaniałyby wrogów co 1,3 m; materiał z wygaszaniem pierwszego planu wymaga tekstur i warstwy ścian przekroju).
+static func _vein(sts: Dictionary, rows: Array, ds: Array) -> void:
+	if ds.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 53 + int(ds[0]["c0"]) * 23
+	var sorted := ds.duplicate()
+	sorted.sort_custom(func(a, b): return float(a["top"]) > float(b["top"]))     # od najwyższego (przy oknie) w dół
+	var hi: Dictionary = sorted[0]
+	var lo: Dictionary = sorted[sorted.size() - 1]
+	var hr := int(hi["r"])
+	var dir := 1.0                                          # strona ściany budynku względem pomostów
+	var c_wall := int(hi["c1"]) + 1
+	if not _wall_at(rows, c_wall, hr):
+		c_wall = int(hi["c0"]) - 1
+		dir = -1.0
+	var has_wall := _wall_at(rows, c_wall, hr)
+	var xw := (float(c_wall) + (0.0 if dir > 0.0 else 1.0)) * T
+	var yg := floor_y(rows, int((int(lo["c0"]) + int(lo["c1"])) / 2), int(lo["r"]), false)
+	var far := float(lo["x0"]) if dir > 0.0 else float(lo["x1"])               # koniec najniższego pomostu z dala od ściany
+	var flow: Array = []                                    # oś spływu: okno → wzdłuż tyłu każdej maty → przelew na niższy pomost → ziemia
+	if has_wall:
+		flow.append(Vector3(xw + dir * 0.35, float(hi["top"]) + 1.0, -1.0))
+		flow.append(Vector3(xw - dir * 0.25, float(hi["top"]) + 0.15, -1.1))
+	for d: Dictionary in sorted:
+		var near := float(d["x1"]) if dir > 0.0 else float(d["x0"])           # koniec pomostu od strony ściany
+		var away := float(d["x0"]) if dir > 0.0 else float(d["x1"])
+		flow.append(Vector3(near - dir * 0.4, float(d["top"]) - 0.12, -1.15))
+		flow.append(Vector3(lerpf(near, away, 0.5), float(d["top"]) - 0.2, -1.25))
+		flow.append(Vector3(away + dir * 0.35, float(d["top"]) - 0.3, -1.3))
+		flow.append(Vector3(away - dir * 0.15, float(d["top"]) - 0.75, -1.45))      # przelew przez koniec
+	flow.append(Vector3(far - dir * 0.6, yg + 0.35, -1.6))
+	flow.append(Vector3(far - dir * 1.3, yg + 0.12, -1.8))
+	var tissue := _st(sts, "vein_dark")
+	for k in 4:                                             # pasma spływu
+		var pts: Array = []
+		for p: Vector3 in flow:
+			pts.append(p + Vector3(rng.randf_range(-0.15, 0.15), rng.randf_range(-0.12, 0.12), rng.randf_range(-0.2, 0.1)))
+		var path := _crom(pts, 6)
+		var r0 := rng.randf_range(0.11, 0.2)
+		var tw := rng.randf() * TAU                         # pasma splatają się: przesunięcie po okręgu wokół osi spływu
+		for p in path.size():
+			var f := float(p) / float(path.size() - 1)
+			path[p] = (path[p] as Vector3) + Vector3(0.0, cos(f * 22.0 + tw) * 0.16, sin(f * 22.0 + tw) * 0.2)
+		var ph := rng.randf() * TAU
+		for p in path.size() - 1:
+			var a: Vector3 = path[p]
+			var b: Vector3 = path[p + 1]
+			a.z = minf(a.z, -0.8 - r0)
+			b.z = minf(b.z, -0.8 - r0)
+			var f0 := float(p) / float(path.size() - 1)
+			var f1 := float(p + 1) / float(path.size() - 1)
+			var ra := r0 * (0.75 + 0.3 * sin(f0 * 38.0 + ph)) * lerpf(0.8, 1.15, f0)   # guzy wzdłuż pasma, grubsze u dołu
+			var rb := r0 * (0.75 + 0.3 * sin(f1 * 38.0 + ph)) * lerpf(0.8, 1.15, f1)
+			_cone(tissue, a, b, ra, rb, "vein flow", 10, 0.1, float(k))
+	var foot: Vector3 = flow[flow.size() - 1]
+	for k in 5:                                             # korzenie rozchodzące się po placu, za pasem gry
+		var e := foot + Vector3(rng.randf_range(-2.2, 2.2), 0.0, rng.randf_range(-1.6, -0.2))
+		e.y = floor_y(rows, int(e.x / T), int(lo["r"]), false) + 0.04
+		var m := foot.lerp(e, 0.5) + Vector3(0.0, 0.08, 0.0)
+		_tube(tissue, _crom([foot + Vector3(0.0, 0.1, 0.0), m, e], 4), rng.randf_range(0.08, 0.14), 0.02, "vein root", 7)
+	for d: Dictionary in sorted:
+		var x0: float = d["x0"]
+		var x1: float = d["x1"]
+		var top: float = d["top"]
+		_rbox(_st(sts, "vein"), Vector3(x0 + 0.02, top - 0.16, -0.62), Vector3(x1 - 0.02, top, 0.62), 0.07, "vein mat", Basis.IDENTITY, 0.5, true, rng.randf() * 10.0)
+		for k in 9:                                         # żyły na wierzchu: wzdłuż maty
+			var z := lerpf(-0.5, 0.5, float(k) / 8.0) + rng.randf_range(-0.04, 0.04)
+			var xa := rng.randf_range(x0, x0 + 0.6)
+			var xb := rng.randf_range(x1 - 0.6, x1)
+			var rv := rng.randf_range(0.025, 0.04)
+			var pts: Array = []
+			for j in 6:
+				pts.append(Vector3(lerpf(xa, xb, float(j) / 5.0), top - rv + 0.012, z + rng.randf_range(-0.07, 0.07)))
+			_tube(tissue, _crom(pts, 3), rv, rv * 0.7, "vein strand", 6)
+		for k in rng.randi_range(4, 6):                     # zwisy z przedniej krawędzi
+			var x := rng.randf_range(x0 + 0.2, x1 - 0.2)
+			var dl := rng.randf_range(0.3, 0.9)
+			_tube(tissue, _crom([Vector3(x, top - 0.05, 0.6), Vector3(x + 0.05, top - 0.12, 0.72), Vector3(x + rng.randf_range(-0.1, 0.1), top - 0.1 - dl, 0.78)], 3),
+				rng.randf_range(0.02, 0.035), 0.006, "vein drip", 6)
+		var n := maxi(2, int(round((x1 - x0) / VEIN_STEP)))
+		for i in n:                                         # półłuki ze spływu pod matą
+			var x := lerpf(x0 + 0.45, x1 - 0.45, (float(i) + 0.5) / float(n)) + rng.randf_range(-0.12, 0.12)
+			var ya := top - 0.2
+			var pts := [Vector3(x + rng.randf_range(-0.3, 0.3), top - 0.3, -1.3), Vector3(x, ya - 0.06, -0.9), Vector3(x, ya - 0.02, -0.5), Vector3(x, ya, 0.0),
+				Vector3(x + rng.randf_range(-0.08, 0.08), ya - 0.03, 0.62), Vector3(x + rng.randf_range(-0.1, 0.1), ya - rng.randf_range(0.2, 0.4), 0.8)]
+			var path := _crom(pts, 5)
+			for p in path.size():                           # krzywa nie wychodzi ponad oś pod matą
+				if (path[p] as Vector3).z > -1.2:
+					path[p] = Vector3(path[p].x, minf(path[p].y, ya), path[p].z)
+			var rr := rng.randf_range(0.07, 0.1)
+			for p in path.size() - 1:
+				var f0 := float(p) / float(path.size() - 1)
+				var f1 := float(p + 1) / float(path.size() - 1)
+				_cone(tissue, path[p], path[p + 1], lerpf(rr * 1.4, 0.03, f0), lerpf(rr * 1.4, 0.03, f1), "vein arch", 8, 0.12, float(i))
+
+## Pod pomostem w wierszu `r` kolumny `c` stoi bryła z wierzchem tuż pod nim (skrzynia `M` o kafel niżej): ciasna wnęka, w której
+## nikt nie stoi wyprostowany — nie liczy się jako poziom chodzenia (tak samo `tools/test_steps.gd`).
+static func _cramped(rows: Array, c: int, r: int) -> bool:
+	return Level3D.is_solid_ch(Level3D._ch(rows, c, r + 1))
+
+## Kafel (c, r) albo wiersz nad nim to ściana budynku (lita albo z oknem `|`).
+static func _wall_at(rows: Array, c: int, r: int) -> bool:
+	for rr in [r, r - 1]:
+		var ch := Level3D._ch(rows, c, rr)
+		if Level3D.is_solid_ch(ch) or ch == "|":
+			return true
+	return false
+
 ## Konary sosen: sosny w miejscu słupów `w` (rysuje je `Level3D`, `trunk_cells`) i z "trunks"; konar wychodzi z pnia ukośnie ku kamerze
 ## i od pomostu biegnie wzdłuż niego w pasie gry, wierzch równo z pokładem. Przęsło mostu przechodzące przez pień — belka przybita do pnia.
 static func _boughs(sts: Dictionary, models: Dictionary, rows: Array, e: Dictionary, step_cells: Dictionary) -> void:
@@ -782,6 +1083,10 @@ static func build(parent: Node3D, rows: Array, steps: Array) -> Node3D:
 				_tor(sts, models, rows, ds, bool(e.get("cache", false)))
 			"boughs":
 				_boughs(sts, models, rows, e, sc)
+			"heat":
+				_heat(sts, rows, ds)
+			"vein":
+				_vein(sts, rows, ds)
 			_:
 				push_warning("Step3D: nieznany rodzaj „%s”" % kind)
 	for key in sts:
