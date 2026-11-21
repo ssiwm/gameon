@@ -1238,7 +1238,7 @@ func objective_text() -> String:
 	match phase:
 		Phase.OBJECTIVE:
 			if kind == "boss":
-				return "Kill the %s" % (String(_boss.get("boss_name")).to_lower().replace("the ", "") if _boss != null else "boss")
+				return tr("Kill the leech")
 			if kind == "tags":
 				return tr("Find the patrol's dog tags   %d / %d") % [goal_total - goal_left, goal_total]
 			if kind == "generators":

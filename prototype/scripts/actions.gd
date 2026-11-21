@@ -386,7 +386,7 @@ static func sheet() -> Array:
 		[text("flare"), "Flare — light bait, no noise"],
 		["%s / %s" % [text("throw", true), text("throw_next", true)], "Use item / switch item"],
 		[text("flashlight"), "Flashlight — light is noise"],
-		["Hold %s" % text("interact"), "Take weapon / revive"],
+		[TranslationServer.translate("Hold %s") % text("interact"), "Take weapon / revive"],
 		[text("help"), "Controls on / off"],
 		[text("chat"), "Team chat"],
 		[text("journal"), "Journal (messages and tips)"],
