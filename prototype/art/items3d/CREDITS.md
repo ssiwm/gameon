@@ -29,6 +29,8 @@ Większość modeli w tym katalogu powstaje z Tripo albo z brył proceduralnych 
 | drill_chest | metal_tool_chest + old_drill_press | skrzynia narzędziowa z wiertarką stołową przy tokarce (kryjówka) |
 | stool_metal | metal_stool_02 | taboret przy prasie elaboracyjnej, stole pirotechnicznym, w pracowni i przy stole konserwacji (kryjówka) |
 | pyro_ext | korean_fire_extinguisher_01 | gaśnica przy stole pirotechnicznym (kryjówka) |
+| step_rock_a, step_rock_b, step_rock_c | namaqualand_boulder_03, namaqualand_boulder_05, boulder_01 | głazy ostańców i pomostów z natury (`step3d.gd`, 1.1–1.3) |
+| step_scree | namaqualand_boulder_02 | osypisko u stóp ostańca (`step3d.gd`) |
 
 ## Bloki `M` (`tools/mblock_bake.py`)
 
