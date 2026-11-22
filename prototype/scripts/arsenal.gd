@@ -415,17 +415,18 @@ func _tether_fx(a: Vector2, b: Vector2) -> void:
 	Vfx.streak(lvl if lvl != null else get_tree().current_scene, a, b, Color(0.86, 0.8, 0.62), 1.0, 0.45)
 
 ## Serwer: wybuch — efekt wszędzie (obrażenia liczy Combat.explode na serwerze).
-func broadcast_explosion(pos: Vector2, radius: float) -> void:
+## `frag` — wybuch z odłamkami (granat, WRATH-4): dziobaki na ścianach poza osmaleniem (IMPACT_MARKS_PLAN.md E2); ładunek burzący bez.
+func broadcast_explosion(pos: Vector2, radius: float, frag := true) -> void:
 	if NoiseMgr.has_network():
-		_explosion_fx.rpc(pos, radius)
+		_explosion_fx.rpc(pos, radius, frag)
 	else:
-		_explosion_fx(pos, radius)
+		_explosion_fx(pos, radius, frag)
 
 @rpc("authority", "call_local", "reliable")
-func _explosion_fx(pos: Vector2, radius: float) -> void:
+func _explosion_fx(pos: Vector2, radius: float, frag := true) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	var parent: Node = lvl if lvl != null else get_tree().current_scene
-	Vfx.explosion(parent, pos, radius)
+	Vfx.explosion(parent, pos, radius, frag)
 
 ## Serwer: hitmarker dla strzelca (człowiek — przez sieć, host — lokalnie, bot — nic). `w` — broń trafienia w żywy cel (−1: skrzynia, beczka).
 func confirm(shooter_id: int, kind: int, pos: Vector2, w := -1, rank := 0) -> void:

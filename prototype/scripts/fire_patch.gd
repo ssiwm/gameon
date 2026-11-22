@@ -8,6 +8,7 @@ extends Node2D
 
 const Lights := preload("res://scripts/lights.gd")
 const Combat := preload("res://scripts/combat.gd")
+const Vfx := preload("res://scripts/vfx.gd")
 
 const FIRE_LIFE := 4.0
 const HALF_W := 14.0              ## px: pół szerokości ognia
@@ -30,6 +31,8 @@ var _seed := 0.0
 
 func _ready() -> void:
 	add_to_group("fire_patches")
+	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
+		Vfx.view3d.call("mark_soot", global_position, HALF_W * 2.0)     # sadza na podłodze pod ogniem (IMPACT_MARKS_PLAN.md E3)
 	z_index = 2
 	material = Lights.unshaded()
 	_seed = float(absi(String(name).hash()) % 628) / 100.0

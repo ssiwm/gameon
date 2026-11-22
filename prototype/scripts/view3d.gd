@@ -18,6 +18,7 @@ const Building3D := preload("res://scripts/building3d.gd")
 const DamageMask := preload("res://scripts/damage_mask.gd")
 const Tapes := preload("res://scripts/tapes.gd")
 const Lights := preload("res://scripts/lights.gd")
+const ImpactMarks := preload("res://scripts/impact_marks.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
 const DigGround := preload("res://scripts/dig_ground.gd")
 const DigEntrance3D := preload("res://scripts/dig_entrance3d.gd")
@@ -4826,6 +4827,17 @@ func _warm_destruction(mat_id: String) -> void:
 			dcl.texture_albedo = _hole_tex_for(srf)
 			dcl.size = Vector3(0.002, 0.002, 0.002)
 			_destr_warm.add_child(dcl)
+		for nm in ImpactMarks.all_names():                    # tekstury śladów z generatora (E1–E2) trafiają do atlasu dekali pod planszą
+			var tx: Dictionary = ImpactMarks.textures(nm)
+			if tx.is_empty():
+				continue
+			var wd := Decal.new()
+			wd.texture_albedo = tx["albedo"]
+			wd.texture_normal = tx.get("normal")
+			wd.texture_orm = tx.get("orm")
+			wd.texture_emission = tx.get("emission")
+			wd.size = Vector3(0.002, 0.002, 0.002)
+			_destr_warm.add_child(wd)
 		return
 	var meshes := _fracture_meshes(mat_id)
 	if not meshes.is_empty():
@@ -5473,13 +5485,16 @@ func mirror_trace(a: Vector2, b: Vector2, color: Color, pellet: bool, life: floa
 
 # ---------------------------------------------------------------- ślady po kulach i osmalenia (od 1.7.312)
 
-const MAX_HOLES := 160                      ## najstarsze ślady po kulach znikają ponad ten limit
+const MAX_HOLES := 160                      ## dawny limit (od E1 limit wg jakości: `ImpactMarks.limit`)
 const MAX_SCORCH := 24
 const HOLE_M := 0.09                        ## średnica śladu po kuli [m]
 const MARK_Z := 0.3                         ## głębokość płaszczyzny lotu kul w scenie (jak smugi)
 var _holes: Array = []
 var _scorches: Array = []
-var max_holes := MAX_HOLES                  ## bieżący limit śladów po kulach (pomiar w `--fxtest` podnosi go chwilowo)
+var max_holes := -1                         ## limit śladów po kulach na siłę (pomiar w `--fxtest`); -1 — wg jakości (`ImpactMarks.limit`)
+var _hole_pts := PackedVector2Array()       ## punkty śladów z `_holes` (px) — scalanie bliskich (`ImpactMarks.merge_index`)
+var _hole_kinds := PackedStringArray()      ## rodzaje śladów z `_holes`
+var _pellets := {}                          ## kafel:rodzaj → [czas, liczba, dekale] — śruciny jednego strzału w jednym kaflu (gniazdo śrutu)
 var _marks_root: Node3D                     ## rodzic śladów (IMPACT_MARKS_PLAN.md E0): w `_world`, czyszczony przy zmianie mapy i wipe'ie (`clear_marks`)
 var _marks_dug := {}                        ## id strefy wydobycia → ślady na jej skale (znikają z wykopanymi komórkami, `_prune_dug_marks`)
 static var _hole_tex: Texture2D
@@ -5569,16 +5584,29 @@ static func _hole_tex_for(surface: String) -> Texture2D:
 	return tex
 
 ## Decal 3D w punkcie `pos` (px) na powierzchni o normalnej `normal` (2D): rzut wzdłuż −normalnej, tylko na geometrię świata.
-func _mark(pos: Vector2, normal: Vector2, size_m: float, tex: Texture2D, depth: float) -> Decal:
+## `texs` — tekstury z generatora (`ImpactMarks.textures`: normalna i ORM dają głębię, którą łapie latarka; E1). `along` — kierunek lotu
+## (2D): oś X dekala wzdłuż jego rzutu na powierzchnię, a `stretch` wydłuża ślad w tę stronę (owal, rysa); bez niego obrót z punktu.
+func _mark(pos: Vector2, normal: Vector2, size_m: float, tex: Texture2D, depth: float, texs := {}, along := Vector2.ZERO, stretch := 1.0) -> Decal:
 	var dcl := Decal.new()
-	dcl.texture_albedo = tex
-	dcl.size = Vector3(size_m, depth, size_m)
+	dcl.texture_albedo = texs.get("albedo", tex)
+	if texs.has("normal"):
+		dcl.texture_normal = texs["normal"]
+	if texs.has("orm"):
+		dcl.texture_orm = texs["orm"]
+	dcl.size = Vector3(size_m * stretch, depth, size_m)
 	dcl.cull_mask = LAYER_WORLD
 	dcl.upper_fade = 0.0
 	dcl.lower_fade = 0.0
+	dcl.normal_fade = 0.35 if not texs.is_empty() else 0.0     # nie zawija się na sąsiednią ścianę w narożniku
 	var up := Vector3(normal.x, -normal.y, 0.0).normalized()
 	var side := up.cross(Vector3(0, 0, 1)).normalized()
-	dcl.basis = Basis(side, up, side.cross(up)).orthonormalized().rotated(up, randf() * TAU)
+	var t2 := Vector2(-normal.y, normal.x)                       # styczna w płaszczyźnie gry (2D)
+	if along.length() > 0.01 and absf(along.dot(t2)) > 0.01:
+		if Vector2(side.x, -side.y).dot(along) < 0.0:
+			side = -side                                         # oś X dekala w stronę lotu: wlot rysy z tyłu
+		dcl.basis = Basis(side, up, side.cross(up)).orthonormalized()
+	else:
+		dcl.basis = Basis(side, up, side.cross(up)).orthonormalized().rotated(up, ImpactMarks.spin(pos) if not texs.is_empty() else randf() * TAU)
 	dcl.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, MARK_Z)
 	if _marks_root == null or not is_instance_valid(_marks_root):
 		_marks_root = Node3D.new()
@@ -5587,6 +5615,62 @@ func _mark(pos: Vector2, normal: Vector2, size_m: float, tex: Texture2D, depth: 
 	_marks_root.add_child(dcl)
 	_track_dug_mark(dcl, pos, normal)
 	return dcl
+
+## Odprysk na czole bryły (IMPACT_MARKS_PLAN.md E1, `ImpactMarks.FRONT_*`): dekal rzutowany od kamery (−Z) na przód kafla trafienia, przy
+## krawędzi, w którą weszła kula — dziecko śladu `parent` (znika i gaśnie razem z nim). Tylko kafle z czołem (`FRONT_TILES`) i strefy
+## wydobycia; w strefie przekroju czoło to ściana przekroju (`Front3D.LAYER_WALL`, przód na `SHELL_Z`).
+func _front_mark(parent: Decal, pos: Vector2, normal: Vector2, size_m: float, texs: Dictionary) -> void:
+	if texs.is_empty():
+		return
+	var under := pos - normal.normalized() * 2.0
+	var c := floori(under.x / 16.0)
+	var r := floori(under.y / 16.0)
+	var tile := String(_level.call("tile_char_at", pos, normal)) if _level != null and _level.has_method("tile_char_at") else ""
+	if not (tile in ImpactMarks.FRONT_TILES) and not parent.has_meta("under"):
+		return
+	var zf := Level3D.front_z(c, r)
+	var f := Decal.new()
+	f.texture_albedo = texs["albedo"]
+	f.texture_normal = texs.get("normal")
+	f.texture_orm = texs.get("orm")
+	f.size = Vector3(size_m, 0.3, size_m)
+	f.cull_mask = LAYER_WORLD | (Front3D.LAYER_WALL if zf > Level3D.DEPTH_FRONT + 0.01 else 0)
+	f.upper_fade = 0.0
+	f.lower_fade = 0.0
+	f.normal_fade = 0.35
+	var side := Vector3(1, 0, 0)
+	var up := Vector3(0, 0, 1)
+	f.basis = Basis(side, up, side.cross(up)).rotated(up, ImpactMarks.spin(pos + Vector2(3, 1)))
+	var at := pos - normal.normalized() * (size_m * ImpactMarks.FRONT_IN / PX)
+	_marks_root.add_child(f)
+	f.global_position = Level3D.px_to_m(at) + Vector3(0.0, 0.0, zf)
+	parent.set_meta("front", f)
+	parent.tree_exiting.connect(f.queue_free)
+
+## Rodzaj śladu w punkcie: strefa wydobycia — materiał komórki (skała, ziemia, żwir), kafel mapy — wygląd (`ImpactMarks.kind_for`).
+func _mark_kind(pos: Vector2, normal: Vector2, surface: String) -> String:
+	var under := pos - normal.normalized() * 2.0
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if z.has_method("rect_px") and (z.call("rect_px") as Rect2).has_point(under) and bool(z.call("solid_at_px", under)):
+			var m := String(z.call("material_at_px", under))
+			return "rock" if m in ["rock", "vein", "ore"] else "dirt"
+	var tile := String(_level.call("tile_char_at", pos, normal)) if _level != null and _level.has_method("tile_char_at") else ""
+	var ug := bool(_level.call("is_underground", pos)) if _level != null and _level.has_method("is_underground") else false
+	return ImpactMarks.kind_for(tile, surface, ug)
+
+func _hole_limit() -> int:
+	return max_holes if max_holes > 0 else ImpactMarks.limit(Settings.quality_idx)
+
+## Najstarszy ślad gaśnie przez 1 s i znika (zamiast znikać od razu, także w kadrze).
+func _retire_mark(d) -> void:
+	if not is_instance_valid(d):
+		return
+	var tw := (d as Node).create_tween()
+	tw.tween_property(d, "modulate:a", 0.0, 1.0)
+	var fr = (d as Node).get_meta("front") if (d as Node).has_meta("front") else null
+	if fr != null and is_instance_valid(fr):
+		tw.parallel().tween_property(fr, "modulate:a", 0.0, 1.0)
+	tw.tween_callback((d as Node).queue_free)
 
 ## Ślad na skale strefy wydobycia (D5) zapamiętany przy strefie: komórka pod nim może zostać wykopana, a dekal wisiałby w powietrzu albo
 ## kładł się na nowej ścianie wykopu. Punkt pod śladem: 2 px w głąb powierzchni (jak `level.surface_at_hit`).
@@ -5613,7 +5697,11 @@ func _prune_dug_marks(z: Node) -> void:
 		if bool(z.call("solid_at_px", (d as Node).get_meta("under"))):
 			keep.append(d)
 		else:
-			_holes.erase(d)
+			var i := _holes.find(d)
+			if i >= 0:
+				_holes.remove_at(i)
+				_hole_pts.remove_at(i)
+				_hole_kinds.remove_at(i)
 			_scorches.erase(d)
 			(d as Node).queue_free()
 	_marks_dug[z.get_instance_id()] = keep
@@ -5624,6 +5712,9 @@ func clear_marks() -> void:
 		for ch in _marks_root.get_children():
 			ch.queue_free()
 	_holes.clear()
+	_hole_pts.clear()
+	_hole_kinds.clear()
+	_pellets.clear()
 	_scorches.clear()
 	_marks_dug.clear()
 
@@ -5634,15 +5725,191 @@ func marks_count() -> Vector2i:
 ## Wołane z `Vfx.impact`: ślad po kuli w murze, gruncie, blasze (ciecze bez śladu — Vfx tego pilnuje).
 ## Od D4 ślad zależy od powierzchni (`_hole_tex_for`): beton — krater z jasnym pyłem, ziemia — większa, miękka ciemna plama,
 ## drewno — ciemna dziura z jasnym, poszarpanym przełomem, blacha — mała wgniecina z gołym metalem i rdzawą obwódką.
-func mark_hit(pos: Vector2, normal: Vector2, surface: String) -> void:
-	var tex := _hole_tex_for(surface)
-	_holes.append(_mark(pos, normal, HOLE_M * float(HOLE_SIZE.get(surface, 1.0)) * randf_range(0.8, 1.2), tex, 0.12))
-	while _holes.size() > max_holes:
-		var old = _holes.pop_front()
-		if is_instance_valid(old):
-			(old as Node).queue_free()
+## Od E1 (IMPACT_MARKS_PLAN.md): rodzaj z wyglądu kafla (`_mark_kind`), tekstury z generatora z normalną i ORM w 3 wariantach (wariant
+## i obrót z punktu), średnica z kalibru (`size`), owal i rysa wg kąta padania (`dir`), śrut — gniazdo zamiast wielu dziurek, seria w jeden
+## punkt powiększa stary ślad zamiast dokładać nowe, limit wg jakości, najstarszy gaśnie.
+func mark_hit(pos: Vector2, normal: Vector2, surface: String, dir := Vector2.ZERO, size := 1.0) -> void:
+	var kind := _mark_kind(pos, normal, surface)
+	var inc: Array = ImpactMarks.incidence(dir, normal, kind)
+	var graze := bool(inc[1])
+	var pellet := size < 0.6
+	var texs: Dictionary = ImpactMarks.textures(ImpactMarks.hole_name(kind, graze, false, ImpactMarks.variant(pos, 6)))
+	if texs.is_empty():                                             # brak tekstur generatora — dawny ślad
+		_push_hole(_mark(pos, normal, HOLE_M * float(HOLE_SIZE.get(surface, 1.0)) * randf_range(0.8, 1.2), _hole_tex_for(surface), 0.12), pos, kind)
+		return
+	var d_m := ImpactMarks.hole_size(kind, size) * (0.9 + 0.2 * float(ImpactMarks.variant(pos, 5, 1)) / 4.0)
+	if pellet and _pellet_mark(pos, normal, kind):
+		return
+	if not graze and not pellet:
+		var mi := ImpactMarks.merge_index(_hole_pts, _hole_kinds, pos, kind, d_m / PX)
+		if mi >= 0 and is_instance_valid(_holes[mi]):
+			var old := _holes[mi] as Decal
+			var base := float(old.get_meta("base", old.size.z))
+			var k := minf(ImpactMarks.MERGE_GROW, base * ImpactMarks.MERGE_MAX / maxf(old.size.z, 0.001))
+			if k > 1.0:
+				old.size = Vector3(old.size.x * k, old.size.y, old.size.z * k)
+			return
+	var stretch := float(inc[0]) * (1.6 if graze else 1.0)
+	var d := _mark(pos, normal, d_m, null, 0.12, texs, dir if (graze or stretch > 1.05) else Vector2.ZERO, minf(stretch, ImpactMarks.STRETCH_MAX))
+	d.set_meta("base", d_m)
+	_front_mark(d, pos, normal, d_m * ImpactMarks.FRONT_SCALE,
+		texs if not graze else ImpactMarks.textures(ImpactMarks.hole_name(kind, false, false, ImpactMarks.variant(pos, 6))))
+	_push_hole(d, pos, kind)
+	if pellet:
+		_pellet_note(pos, kind, d)
 
-## Wołane z `Vfx.explosion`: osmalenie gruntu pod wybuchem, średnica wg zasięgu fali (`radius_px`).
+func _push_hole(d: Decal, pos: Vector2, kind: String) -> void:
+	_holes.append(d)
+	_hole_pts.append(pos)
+	_hole_kinds.append(kind)
+	var lim := _hole_limit()
+	while _holes.size() > lim:
+		_retire_mark(_holes.pop_front())
+		_hole_pts.remove_at(0)
+		_hole_kinds.remove_at(0)
+
+func _pellet_key(pos: Vector2, kind: String) -> String:
+	return "%d,%d:%s" % [floori(pos.x / 16.0), floori(pos.y / 16.0), kind]
+
+## Śrucina w kafel, w który ten sam strzał trafił już CLUSTER_AT − 1 razy (w 0,12 s): zamiast kolejnej dziurki jedno gniazdo śrutu na
+## środku skupienia (pojedyncze dziurki znikają). Gniazdo już jest — śrucina nic nie dokłada. True — ślad załatwiony.
+func _pellet_mark(pos: Vector2, normal: Vector2, kind: String) -> bool:
+	var now := _life
+	for k in _pellets.keys():
+		if now - float(_pellets[k][0]) > 0.12:
+			_pellets.erase(k)
+	var key := _pellet_key(pos, kind)
+	if not _pellets.has(key):
+		return false
+	var e: Array = _pellets[key]
+	e[1] = int(e[1]) + 1
+	if e[3] != null:
+		return true
+	if int(e[1]) < ImpactMarks.CLUSTER_AT:
+		return false
+	var mid := pos
+	for it in e[2]:
+		mid += it[1] as Vector2
+	mid /= float((e[2] as Array).size() + 1)
+	for it in e[2]:
+		var d = it[0]
+		var i := _holes.find(d)
+		if i >= 0:
+			_holes.remove_at(i)
+			_hole_pts.remove_at(i)
+			_hole_kinds.remove_at(i)
+		if is_instance_valid(d):
+			(d as Node).queue_free()
+	var texs: Dictionary = ImpactMarks.textures(ImpactMarks.hole_name(kind, false, true, ImpactMarks.variant(mid, 4)))
+	var c := _mark(mid, normal, ImpactMarks.CLUSTER_M, null, 0.12, texs)
+	_front_mark(c, mid, normal, ImpactMarks.CLUSTER_M * ImpactMarks.FRONT_SCALE, texs)
+	_push_hole(c, mid, "cluster:" + kind)
+	e[3] = c
+	e[2] = []
+	return true
+
+func _pellet_note(pos: Vector2, kind: String, d: Decal) -> void:
+	var key := _pellet_key(pos, kind)
+	if not _pellets.has(key):
+		_pellets[key] = [_life, 1, [[d, pos]], null]
+	else:
+		(_pellets[key][2] as Array).append([d, pos])
+
+const SCORCH_DEPTH := 0.3                  ## m: głębokość rzutu osmalenia (od E2; było 0,5 i czerniło stopy wrogów na osmaleniu)
+const SCORCH_GLOW := 2.4                   ## energia emisji żaru tuż po wybuchu
+const SCORCH_GLOW_S := 3.5                 ## s: żar gaśnie
+const SOOT_ALPHA := 0.55                   ## krycie sadzy po plamie ognia (E3)
+
+## Wołane z `Vfx.explosion` (IMPACT_MARKS_PLAN.md E2): osmalenie na każdej powierzchni w zasięgu fali (`ImpactMarks.blast_marks`: grunt,
+## ściana, strop — jedno na płaszczyznę), tekstura wg rodzaju (ziemia — krater z wałem, beton i skała — sadza z odpryskiem i dziobakami,
+## blacha — wgniecenia, drewno — zwęglenie), żar w środku gasnący przez kilka sekund, dwa obłoczki dymu znad osmalenia; przy `frag`
+## dziobaki odłamków na ścianach i stropie dalej od wybuchu. Ciecze bez śladu. Bez tekstur generatora — dawna plama sadzy na gruncie.
+func mark_blast(pos: Vector2, radius_px: float, frag := true) -> void:
+	if _level == null or not (_level is Node2D):
+		return
+	var space := (_level as Node2D).get_world_2d().direct_space_state
+	var q := clampi(Settings.quality_idx, 0, 2)
+	var pts: Array = ImpactMarks.blast_marks(space, pos, radius_px, int(ImpactMarks.BLAST_RAYS[q]), PX)
+	var first := true
+	for g in pts:
+		var p: Vector2 = g["pos"]
+		var n: Vector2 = g["normal"]
+		var srf := String(_level.call("surface_at_hit", p, n)) if _level.has_method("surface_at_hit") else "concrete"
+		if srf in ["water", "mud", "oil"]:
+			continue
+		var kind := _mark_kind(p, n, srf)
+		var texs: Dictionary = ImpactMarks.textures(ImpactMarks.scorch_name(kind, ImpactMarks.variant(p, 4, 3)))
+		if texs.is_empty():
+			if n.dot(Vector2.UP) > 0.7:
+				mark_scorch(p, radius_px * (1.0 - p.distance_to(pos) / radius_px * 0.6))
+			continue
+		var d := _mark(p, n, float(g["size_m"]), null, SCORCH_DEPTH, texs)
+		d.upper_fade = 0.4
+		_front_mark(d, p, n, float(g["size_m"]) * 0.8, texs)          # sadza na czole bryły przy krawędzi (bok ściany kamera widzi krawędzią)
+		if texs.has("emission"):
+			d.texture_emission = texs["emission"]
+			d.emission_energy = SCORCH_GLOW
+			var tw := d.create_tween()
+			tw.tween_property(d, "emission_energy", 0.0, SCORCH_GLOW_S).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+		_push_scorch(d)
+		if first:
+			first = false
+			var lvl := _level
+			get_tree().create_timer(0.45).timeout.connect(func() -> void:
+				if is_instance_valid(lvl):
+					Vfx.puff(lvl, p, n, Color(0.14, 0.13, 0.12, 0.45), 1.3)
+					Vfx.puff(lvl, p + Vector2(n.y, -n.x) * 6.0, n, Color(0.12, 0.11, 0.1, 0.35), 1.0))
+	if not frag:
+		return
+	for pk in ImpactMarks.pock_marks(space, pos, radius_px):
+		var pp: Vector2 = pk["pos"]
+		var pn: Vector2 = pk["normal"]
+		var srf2 := String(_level.call("surface_at_hit", pp, pn)) if _level.has_method("surface_at_hit") else "concrete"
+		if srf2 in ["water", "mud", "oil"]:
+			continue
+		var tx: Dictionary = ImpactMarks.textures("pock_%d" % int(pk["v"]))
+		if tx.is_empty():
+			continue
+		var pd := _mark(pp, pn, ImpactMarks.POCK_M, null, 0.12, tx)
+		_front_mark(pd, pp, pn, ImpactMarks.POCK_M * ImpactMarks.FRONT_SCALE, tx)
+		_push_hole(pd, pp, "pock")
+
+## Sadza po plamie ognia (fire_patch.gd, IMPACT_MARKS_PLAN.md E3): przygaszone osmalenie bez żaru i dziobaków na podłodze pod ogniem;
+## kolejne plamy w tym samym miejscu (strumień HKM-9) nie dokładają dekali.
+func mark_soot(pos: Vector2, width_px: float) -> void:
+	if _level == null or not (_level is Node2D):
+		return
+	var q := PhysicsRayQueryParameters2D.create(pos + Vector2(0, -4), pos + Vector2(0, 24), 1 | 16)
+	var hit := (_level as Node2D).get_world_2d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return
+	var p: Vector2 = hit["position"]
+	var n: Vector2 = hit["normal"]
+	var size_m := clampf(width_px * PX, 0.6, 1.6)
+	for s in _scorches:
+		if is_instance_valid(s) and bool((s as Node).get_meta("soot", false)) and ((s as Node).get_meta("px", Vector2.INF) as Vector2).distance_to(p) < size_m / PX * 0.45:
+			return
+	var srf := String(_level.call("surface_at_hit", p, n)) if _level.has_method("surface_at_hit") else "concrete"
+	if srf in ["water", "mud", "oil"]:
+		return
+	var texs: Dictionary = ImpactMarks.textures(ImpactMarks.scorch_name(_mark_kind(p, n, srf), ImpactMarks.variant(p, 4, 5)))
+	if texs.is_empty():
+		return
+	var only := {"albedo": texs["albedo"], "normal": texs.get("normal"), "orm": texs.get("orm")}
+	var d := _mark(p, n, size_m, null, SCORCH_DEPTH, only)
+	d.upper_fade = 0.4
+	d.modulate = Color(1, 1, 1, SOOT_ALPHA)
+	d.set_meta("soot", true)
+	d.set_meta("px", p)
+	_push_scorch(d)
+
+func _push_scorch(d: Decal) -> void:
+	_scorches.append(d)
+	var lim := ImpactMarks.scorch_limit(Settings.quality_idx)
+	while _scorches.size() > lim:
+		_retire_mark(_scorches.pop_front())
+
+## Wołane z `Vfx.explosion` do E2 (dziś zapas bez tekstur generatora i test): osmalenie gruntu pod wybuchem, średnica wg zasięgu fali (`radius_px`).
 func mark_scorch(pos: Vector2, radius_px: float) -> void:
 	if _scorch_tex == null:
 		_scorch_tex = _make_mark_tex(true)

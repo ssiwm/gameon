@@ -304,13 +304,15 @@ static func pollen(parent: Node, pos: Vector2, amount: int) -> void:
 ## Pocisk w ścianę: efekt wg powierzchni (kafel mapy), z krótkim progiem na dźwięk. Od D4 (DESTRUCTION_PLAN.md) pył i okruchy są
 ## cieniowane — nocą widać je w latarce, a nie świecą same jak iskry; świecą tylko iskry (beton, blacha).
 ## `mark` false — trafienie w przegrodę (breakable.gd): odpryski i dźwięk bez dekala, bo ślad zostawia maska uszkodzeń przegrody (dekal
-## dublowałby dziurę i wracał na nową deskę po resecie; IMPACT_MARKS_PLAN.md E0).
-static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String, heavy := false, mark := true) -> void:
+## dublowałby dziurę i wracał na nową deskę po resecie; IMPACT_MARKS_PLAN.md E0). `dir` — kierunek lotu kuli (owal i rysa przy płaskim
+## trafieniu), `size` — mnożnik średnicy śladu z kalibru (`ImpactMarks.caliber_scale`; śrucina < 0,6 — gniazdo śrutu; E1).
+static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String, heavy := false, mark := true, dir := Vector2.ZERO,
+		size := 1.0) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
 	var out := normal if normal.length() > 0.1 else Vector2.UP
 	if mark and view3d != null and is_instance_valid(view3d) and not (surface in ["water", "mud", "oil"]):
-		view3d.call("mark_hit", pos, out, surface)                 # ślad po kuli w scenie 3D (ciecze go nie trzymają)
+		view3d.call("mark_hit", pos, out, surface, dir, size)      # ślad po kuli w scenie 3D (ciecze go nie trzymają)
 	var hk := 2 if heavy else 0                                   # śrut i ciężkie pociski: więcej odprysków
 	var now := Time.get_ticks_msec()
 	var snd := heavy or now - _impact_snd_ms > 45
@@ -364,6 +366,11 @@ static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String,
 				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -12.0, 1.2)
 				Audio.play_variant_at("ricochet", 2, pos, Audio.BUS_WORLD, -19.0, 1.0, 0.12)
 
+## Rykoszet: rysa w miejscu odbicia (beton, skała, blacha; IMPACT_MARKS_PLAN.md E1). Tylko obraz 3D.
+static func graze(pos: Vector2, normal: Vector2, dir: Vector2, surface: String) -> void:
+	if view3d != null and is_instance_valid(view3d) and not (surface in ["water", "mud", "oil"]):
+		view3d.call("mark_hit", pos, normal, surface, dir, 1.0)
+
 ## Smuga o zanikającej jasności (tor szyny, promień, trasa kuli). Rysowana bez cieniowania.
 static func streak(parent: Node, a: Vector2, b: Vector2, color: Color, width := 2.0, life := 0.12) -> void:
 	if parent == null or not parent.is_inside_tree():
@@ -401,16 +408,13 @@ static func shock(parent: Node, pos: Vector2, radius: float) -> void:
 		view3d.call("mirror_shock", pos, radius)
 
 ## Pełny wybuch (granat, rakieta, beczka): ogień, dym, odłamki, błysk światła i fala.
-## `radius` w px; wszystko w skali do promienia, więc jeden efekt obsługuje każdy rozmiar.
-static func explosion(parent: Node, pos: Vector2, radius: float) -> void:
+## `radius` w px; wszystko w skali do promienia, więc jeden efekt obsługuje każdy rozmiar. `frag` — z odłamkami (dziobaki na ścianach).
+static func explosion(parent: Node, pos: Vector2, radius: float, frag := true) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
 	if view3d != null and is_instance_valid(view3d) and parent is Node2D:
-		# osmalenie: grunt pod wybuchem, jeśli leży w zasięgu fali (wybuch w powietrzu nie zostawia śladu)
-		var q := PhysicsRayQueryParameters2D.create(pos + Vector2(0, -2), pos + Vector2(0, radius * 0.7), 1 | 16)
-		var g := (parent as Node2D).get_world_2d().direct_space_state.intersect_ray(q)
-		if not g.is_empty():
-			view3d.call("mark_scorch", g["position"], radius * (1.0 - (g["position"] as Vector2).distance_to(pos) / radius * 0.6))
+		# osmalenie na gruncie, ścianach i stropie w zasięgu fali, dziobaki odłamków dalej, żar (IMPACT_MARKS_PLAN.md E2)
+		view3d.call("mark_blast", pos, radius, frag)
 	var k := clampf(radius / 64.0, 0.4, 2.0)
 	Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, 2.0, 1.0 / maxf(k * 0.5 + 0.55, 0.7))
 	burst(parent, pos, Color(1.0, 0.6, 0.2), int(30.0 * k), 60.0, 220.0 * k, Vector2.UP, 180.0, 200.0, 0.5, Vector2(1.5, 3.0), true)

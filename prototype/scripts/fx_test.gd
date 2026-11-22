@@ -15,12 +15,16 @@ extends "res://scripts/stalker_test.gd"
 ## 6. Cykl życia śladów (IMPACT_MARKS_PLAN.md E0): trafienie w przegrodę bez dekala (maska uszkodzeń), ślad na skale strefy wydobycia znika
 ##    z wykopaną komórką, punkt kontrolny bossa zostawia ślady, wipe je zdejmuje, zmiana mapy też. Pomiar (informacja): elementy klastrowane
 ##    w kadrze (światła + dekale) i czas GPU świata przy 0 / 160 / 300 / 500 śladach w kadrze; zrzuty `e0_marks_*` i wróg na osmaleniu.
+## 7. Ślady E1–E3: tekstury generatora z normalną i ORM, rysa przy płaskim trafieniu, owal przy 45°, seria w jeden punkt powiększa stary
+##    ślad, śrut w jeden kafel daje gniazdo, osmalenie wybuchu na podłodze i ścianie, żar gaśnie, dziobaki odłamków, ładunek bez nich,
+##    sadza pod plamą ognia (jedna na miejsce); zrzuty `e1_*`, `e2_*` (najlepiej z `--view3dlit`).
 ## Wynik: linie [FX-TEST] i kod wyjścia.
 
 const Level3D := preload("res://scripts/level3d.gd")
 const View3D := preload("res://scripts/view3d.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const ImpactMarks := preload("res://scripts/impact_marks.gd")
 
 var v3d: Node
 
@@ -71,12 +75,18 @@ func run(m: Node2D) -> void:
 	_place_player(lamp.global_position + Vector2(-60.0, 0.0) + _floor_below(lamp.global_position))
 	player.set_physics_process(false)
 	await _frames(1.5)
+	if OS.get_cmdline_user_args().has("--fxonly=marks"):          # same ślady (sekcje 6–7), bez puli, pyłu i lamp
+		await _marks_life()
+		await _marks_look(lamp)
+		_finish()
+		return
 	await _pool(lamp)
 	_chips()
 	_decals()
 	await _ceiling(lamp, roofed)
 	await _lamps(lamp)
 	await _marks_life()
+	await _marks_look(lamp)
 	_finish()
 
 ## Liczba kompilacji potoków GPU od startu, które zatrzymują klatkę (canvas, mesh, surface, draw). Specjalizacje (`SPECIALIZATION`) silnik
@@ -232,7 +242,9 @@ func _decals() -> void:
 	var before := holes.size()
 	v3d.call("mark_hit", player.global_position + Vector2(20.0, 0.0), Vector2.UP, "metal")
 	var d := (v3d.get("_holes") as Array).back() as Decal
-	check("mark_hit kładzie ślad blachy (%d → %d)" % [before, (v3d.get("_holes") as Array).size()], d != null and d.texture_albedo == texs["metal"])
+	var tp := String(d.texture_albedo.resource_path) if d != null and d.texture_albedo != null else ""
+	check("mark_hit kładzie ślad blachy (%d → %d, %s)" % [before, (v3d.get("_holes") as Array).size(), tp.get_file()],
+		d != null and (tp.contains("hole_metal") or d.texture_albedo == texs["metal"]))
 
 # ---------------------------------------------------------------- 4. pył ze stropu
 
@@ -513,7 +525,7 @@ func _marks_budget() -> void:
 		info("%d trafień (limit na czas pomiaru %d): w kadrze światła %d + dekale %d = %d z %d; GPU świata %.2f ms (+%.2f)" % [
 			target, saved, c.x, c.y, c.x + c.y, lim, g, g - base])
 	await _shot("e0_marks_grid")
-	v3d.set("max_holes", View3D.MAX_HOLES)
+	v3d.set("max_holes", -1)
 	v3d.call("mark_hit", at, Vector2.UP, "concrete")          # przycięcie do limitu
 	# bryła w warstwie świata (jak model wroga, enemy3d.gd bez własnej warstwy) na osmaleniu: czy dekal ją maluje (zrzut, błąd 3)
 	var fp := at + Vector2(60.0, -10.0)
@@ -530,3 +542,161 @@ func _marks_budget() -> void:
 	await _shot("e0_marks_scorch")
 	box.queue_free()
 	RenderingServer.viewport_set_measure_render_time(rid, false)
+
+# ---------------------------------------------------------------- 7. ślady E1–E3 (IMPACT_MARKS_PLAN.md)
+
+## Ściana najbliżej gracza w poziomie (promień w lewo i w prawo na wysokości piersi): [punkt, normalna] albo [].
+func _wall_near(at: Vector2) -> Array:
+	var space := (level as Node2D).get_world_2d().direct_space_state
+	var best: Array = []
+	var bd := INF
+	for sx in [-1.0, 1.0]:
+		var q := PhysicsRayQueryParameters2D.create(at, at + Vector2(sx * 220.0, 0.0), 1 | 16)
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty() and (hit["position"] as Vector2).distance_to(at) < bd and absf((hit["normal"] as Vector2).x) > 0.9 				and String(level.call("tile_char_at", hit["position"], hit["normal"])) in ["#", "C"]:     # pełna ściana, nie koniec kładki
+			bd = (hit["position"] as Vector2).distance_to(at)
+			best = [hit["position"], hit["normal"]]
+	return best
+
+## Wierzch gruntu w kolumnie `x` pod graczem: promień od wysokości piersi w dół (start w gruncie omijał podłogę i trafiał w tunel niżej).
+func _ground(x: float) -> Vector2:
+	var p := Vector2(x, player.global_position.y - 20.0)
+	var q := PhysicsRayQueryParameters2D.create(p, p + Vector2(0, 200), 1 | 16)
+	var hit := (level as Node2D).get_world_2d().direct_space_state.intersect_ray(q)
+	return hit["position"] if not hit.is_empty() else p + Vector2(0, 200)
+
+func _last_hole() -> Decal:
+	var h: Array = v3d.get("_holes")
+	return h.back() as Decal if not h.is_empty() else null
+
+func _tex_name(d: Decal) -> String:
+	return String(d.texture_albedo.resource_path).get_file() if d != null and d.texture_albedo != null else ""
+
+func _marks_look(lamp: Node2D) -> void:
+	v3d.call("clear_marks")
+	_place_player(lamp.global_position + Vector2(-60.0, 0.0) + _floor_below(lamp.global_position))   # sztuczna zmiana mapy (sekcja 6) wraca gracza na start
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--fxat="):                      # inne miejsce zrzutów śladów, np. tunel przy ścianie: --fxat=4456,815
+			var xy := a.substr(7).split(",")
+			_place_player(Vector2(float(xy[0]), float(xy[1])))
+	await _frames(1.0)
+	var chest := player.global_position + Vector2(0.0, -12.0)
+	var floor_at := _ground(player.global_position.x + 24.0)
+	info("ślady przy graczu %s: kafel '%s', pod ziemią %s, rodzaj %s" % [player.global_position.round(), level.tile_char_at(floor_at, Vector2.UP),
+		level.is_underground(floor_at), v3d.call("_mark_kind", floor_at, Vector2.UP, "concrete")])
+	# kula prostopadle w podłogę: tekstura generatora z normalną i ORM
+	v3d.call("mark_hit", floor_at, Vector2.UP, "concrete", Vector2.DOWN, 1.0)
+	var d := _last_hole()
+	check("ślad kuli z generatora z normalną i ORM (%s)" % _tex_name(d), d != null and _tex_name(d).begins_with("hole_")
+		and d.texture_normal != null and d.texture_orm != null)
+	# 45°: owal
+	v3d.call("mark_hit", floor_at + Vector2(30.0, 0.0), Vector2.UP, "concrete", Vector2(1, 1).normalized(), 1.0)
+	d = _last_hole()
+	check("kula pod 45°: owal wzdłuż toru (%.2f × %.2f m)" % [d.size.x, d.size.z], d != null and d.size.x > d.size.z * 1.3)
+	# płasko w blachę: rysa
+	v3d.call("mark_hit", floor_at + Vector2(60.0, 0.0), Vector2.UP, "metal", Vector2(1, 0.12).normalized(), 1.0)
+	d = _last_hole()
+	var fk := String(v3d.call("_mark_kind", floor_at, Vector2.UP, "metal"))
+	check("płasko (ok. 7°) w podłogę (%s): %s (%s, %.2f × %.2f m)" % [fk, "rysa" if fk in ImpactMarks.GRAZE_KINDS else "długi owal", _tex_name(d),
+		d.size.x if d else 0.0, d.size.z if d else 0.0], d != null and (_tex_name(d).begins_with("graze_") if fk in ImpactMarks.GRAZE_KINDS
+		else d.size.x > d.size.z * 2.0))
+	# seria w jeden punkt: jeden ślad, większy
+	var n0: int = (v3d.get("_holes") as Array).size()
+	var spot := floor_at + Vector2(-40.0, 0.0)
+	v3d.call("mark_hit", spot, Vector2.UP, "concrete", Vector2.DOWN, 1.0)
+	var first := _last_hole()
+	var s0 := first.size.z if first != null else 0.0
+	for i in 12:
+		v3d.call("mark_hit", spot + Vector2(randf_range(-0.2, 0.2), 0.0), Vector2.UP, "concrete", Vector2.DOWN, 1.0)
+	var n1: int = (v3d.get("_holes") as Array).size()
+	check("seria 13 kul w jeden punkt: 1 ślad (%d → %d), większy (%.3f → %.3f m, ≤ ×%.1f)" % [n0, n1, s0, first.size.z if first else 0.0, ImpactMarks.MERGE_MAX],
+		n1 == n0 + 1 and first != null and first.size.z > s0 * 1.2 and first.size.z <= s0 * ImpactMarks.MERGE_MAX + 0.001)
+	# śrut w jeden kafel: gniazdo
+	var w := _wall_near(chest)
+	if not w.is_empty():
+		var wp: Vector2 = w[0]
+		var wn: Vector2 = w[1]
+		var c0: int = (v3d.get("_holes") as Array).size()
+		for i in 8:
+			v3d.call("mark_hit", wp + Vector2(0.0, -2.0 + float(i % 4) * 1.5), wn, "concrete", -wn, ImpactMarks.PELLET_SIZE)
+		var c1: int = (v3d.get("_holes") as Array).size()
+		var cl := false
+		for h in v3d.get("_holes"):
+			if is_instance_valid(h) and _tex_name(h).begins_with("cluster_"):
+				cl = true
+		check("8 śrucin w jeden kafel ściany: gniazdo zamiast 8 dziurek (%d → %d dekali)" % [c0, c1], cl and c1 - c0 <= 2)
+		var lh := _last_hole()
+		var fr: Decal = lh.get_meta("front") if lh != null and lh.has_meta("front") else null
+		info("ściana w %s n=%s; ślad %s, odprysk %s" % [wp, wn, lh.global_position if lh else Vector3.ZERO, fr.global_position if fr else "brak"])
+		check("ślad na ścianie ma odprysk na czole bryły (rzut wzdłuż Z)", fr != null and absf(fr.global_transform.basis.y.normalized().z) > 0.99)
+		await _frames(0.2)
+		await _shot("e1_wall")
+	else:
+		info("brak ściany obok gracza — gniazdo śrutu pominięte")
+	await _frames(0.3)
+	await _shot("e1_floor")
+	# wybuch przy ścianie: osmalenie na podłodze i ścianie, żar, dziobaki
+	v3d.call("clear_marks")
+	if not w.is_empty():
+		var wp2: Vector2 = w[0]
+		var wn2: Vector2 = w[1]
+		var bp := wp2 + wn2 * 18.0
+		var gy := _ground(bp.x).y
+		var floor_near := gy - wp2.y < 40.0                           # podłoga pod wybuchem w zasięgu fali (na 1.2 obok gracza bywa szyb)
+		if floor_near:
+			bp.y = gy - 10.0
+		Vfx.explosion(level, bp, 48.0, true)
+		var sc: Array = v3d.get("_scorches")
+		var on_floor := false
+		var on_wall := false
+		var glow := 0.0
+		for s in sc:
+			if not is_instance_valid(s):
+				continue
+			var up := (s as Decal).global_transform.basis.y
+			if up.y > 0.9:
+				on_floor = true
+			if absf(up.x) > 0.9:
+				on_wall = true
+			glow = maxf(glow, (s as Decal).emission_energy)
+		check("granat przy ścianie: osmalenie na ścianie%s (%d osmaleń)" % [" i na podłodze" if floor_near else " (podłoga poza zasięgiem)", sc.size()],
+			on_wall and (on_floor or not floor_near))
+		check("żar tuż po wybuchu (emisja %.2f)" % glow, glow > 1.0)
+		var pocks := 0
+		for h in v3d.get("_holes"):
+			if is_instance_valid(h) and _tex_name(h).begins_with("pock_"):
+				pocks += 1
+		info("dziobaki odłamków: %d" % pocks)
+		await _frames(0.6)
+		await _shot("e2_blast")
+		await _frames(View3D.SCORCH_GLOW_S + 0.5)
+		var glow2 := 0.0
+		for s in v3d.get("_scorches"):
+			if is_instance_valid(s):
+				glow2 = maxf(glow2, (s as Decal).emission_energy)
+		check("żar gaśnie po %.1f s (%.2f)" % [View3D.SCORCH_GLOW_S, glow2], glow2 < 0.05)
+		await _shot("e2_blast_cold")
+		v3d.call("clear_marks")
+		Vfx.explosion(level, bp, 48.0, false)
+		var pk2 := 0
+		for h in v3d.get("_holes"):
+			if is_instance_valid(h) and _tex_name(h).begins_with("pock_"):
+				pk2 += 1
+		check("ładunek burzący (bez odłamków): bez dziobaków (%d)" % pk2, pk2 == 0)
+	else:
+		info("brak ściany obok gracza — wybuch przy ścianie pominięty")
+	# wybuch daleko od wszystkiego (w powietrzu): bez osmalenia
+	v3d.call("clear_marks")
+	Vfx.explosion(level, Vector2(player.global_position.x, -600.0), 48.0, true)        # nad mapą (w tunelu 400 px w górę to strop)
+	var air: int = (v3d.get("_scorches") as Array).size()
+	check("wybuch wysoko w powietrzu: bez osmalenia (%d)" % air, air == 0)
+	# sadza pod plamą ognia: jedna na miejsce
+	v3d.call("clear_marks")
+	v3d.call("mark_soot", floor_at + Vector2(0.0, -4.0), 28.0)
+	v3d.call("mark_soot", floor_at + Vector2(3.0, -4.0), 28.0)
+	var so: Array = v3d.get("_scorches")
+	check("sadza pod plamą ognia, druga w tym samym miejscu nic nie dokłada (%d)" % so.size(), so.size() == 1
+		and is_instance_valid(so[0]) and (so[0] as Decal).modulate.a < 0.9 and (so[0] as Decal).texture_emission == null)
+	await _frames(0.3)
+	await _shot("e3_soot")
+	v3d.call("clear_marks")

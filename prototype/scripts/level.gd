@@ -2706,6 +2706,18 @@ func surface_at_hit(pos: Vector2, normal: Vector2) -> String:
 	var s: String = td.get_custom_data("surface")
 	return s if s != "" else "dirt"
 
+## Znak kafla mapy (`KINDS`) w punkcie trafienia przesuniętym w głąb ściany; "" — brak kafla (strefa wydobycia, przegroda, powietrze).
+## Rodzaj śladu po kuli bierze się z wyglądu kafla, nie z powierzchni kroków (IMPACT_MARKS_PLAN.md E1, `ImpactMarks.kind_for`).
+func tile_char_at(pos: Vector2, normal: Vector2) -> String:
+	var cell := _solid.local_to_map(_solid.to_local(pos - normal * 2.0))
+	if _solid.get_cell_source_id(cell) < 0:
+		return ""
+	var col := _solid.get_cell_atlas_coords(cell).x
+	for k in KINDS:
+		if int(KINDS[k][0]) == col:
+			return String(k)
+	return ""
+
 ## Powierzchnia pod stopami (dźwięk kroków). Pusto = kroki „dirt".
 func surface_at(pos: Vector2) -> String:
 	var cell := _solid.local_to_map(_solid.to_local(pos + Vector2(0, 3)))
