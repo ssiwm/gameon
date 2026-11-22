@@ -285,7 +285,7 @@ func _sweep(from: Vector2, to: Vector2, rewind := -1.0) -> bool:
 				_skip.append(hit["rid"])
 				cur = p
 				continue
-			_world_hit(p, n, surface)
+			_world_hit(p, n, surface, true)
 			return true
 		# ściana (metal pod ostrym kątem — rykoszet: kula leci dalej odbita)
 		if _ricochet(p, n):
@@ -355,22 +355,23 @@ func _hit_target(node: Node, p: Vector2, at_dist: float) -> Dictionary:
 func _barrier_fx(bw: Node, p: Vector2, n: Vector2, surface: String, exit: bool) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	var parent: Node = lvl if lvl != null else get_parent()
-	Vfx.impact(parent, p, n, surface, false)
+	Vfx.impact(parent, p, n, surface, false, false)                # przegroda: ślad w masce uszkodzeń, bez dekala
 	if not exit or absf(direction.x) < 0.1:
 		return
 	var rc: Rect2 = bw.call("hit_rect")
 	var ex := rc.end.x if direction.x > 0.0 else rc.position.x
-	Vfx.impact(parent, p + direction * ((ex - p.x) / direction.x), direction, surface, false)
+	Vfx.impact(parent, p + direction * ((ex - p.x) / direction.x), direction, surface, false, false)
 
-## `surface_override` — powierzchnia przegrody (`breakable.gd`, pole `surface`), która nie jest kaflem mapy.
-func _world_hit(p: Vector2, n: Vector2, surface_override := "") -> void:
+## `surface_override` — powierzchnia przegrody (`breakable.gd`, pole `surface`), która nie jest kaflem mapy. `barrier` — trafienie w przegrodę:
+## bez dekala śladu (ślad w masce uszkodzeń przegrody).
+func _world_hit(p: Vector2, n: Vector2, surface_override := "", barrier := false) -> void:
 	var lvl := get_tree().get_first_node_in_group("level")
 	var surface := "dirt"
 	if surface_override != "":
 		surface = surface_override
 	elif lvl != null:
 		surface = lvl.surface_at_hit(p, n)
-	Vfx.impact(lvl if lvl != null else get_parent(), p, n, surface, _def.pellets >= 5)
+	Vfx.impact(lvl if lvl != null else get_parent(), p, n, surface, _def.pellets >= 5, not barrier)
 	if authoritative and sticks_on_hit():
 		_stick(p)
 	if String(_def.payload) != "":

@@ -12,6 +12,9 @@ extends "res://scripts/stalker_test.gd"
 ## 4. Pył ze stropu: wybuch pod stropem sypie pył i kamyki z pasa stropu (z opóźnieniem), pod gołym niebem nic.
 ## 5. Lampy: wybuch obok lampy misji ją rozbuja (model, poświata i światło 3D wychylone od strony wybuchu), daleki nie; po kilku sekundach
 ##    lampa wraca do spoczynku. Światło 2D (Stalker, ćmy) zostaje na miejscu.
+## 6. Cykl życia śladów (IMPACT_MARKS_PLAN.md E0): trafienie w przegrodę bez dekala (maska uszkodzeń), ślad na skale strefy wydobycia znika
+##    z wykopaną komórką, punkt kontrolny bossa zostawia ślady, wipe je zdejmuje, zmiana mapy też. Pomiar (informacja): elementy klastrowane
+##    w kadrze (światła + dekale) i czas GPU świata przy 0 / 160 / 300 / 500 śladach w kadrze; zrzuty `e0_marks_*` i wróg na osmaleniu.
 ## Wynik: linie [FX-TEST] i kod wyjścia.
 
 const Level3D := preload("res://scripts/level3d.gd")
@@ -73,6 +76,7 @@ func run(m: Node2D) -> void:
 	_decals()
 	await _ceiling(lamp, roofed)
 	await _lamps(lamp)
+	await _marks_life()
 	_finish()
 
 ## Liczba kompilacji potoków GPU od startu, które zatrzymują klatkę (canvas, mesh, surface, draw). Specjalizacje (`SPECIALIZATION`) silnik
@@ -383,3 +387,146 @@ func _shot(name: String) -> void:
 	await get_tree().process_frame
 	get_viewport().get_texture().get_image().save_png(dir.path_join(name + ".png"))
 	info("zrzut %s" % dir.path_join(name + ".png"))
+
+# ---------------------------------------------------------------- 6. cykl życia śladów (IMPACT_MARKS_PLAN.md E0)
+
+func _marks() -> Vector2i:
+	return v3d.call("marks_count")
+
+func _marks_life() -> void:
+	v3d.call("clear_marks")
+	# przegroda: odpryski bez dekala
+	var bw: Node2D = null
+	for n in get_tree().get_nodes_in_group("breakables"):
+		if n is Node2D and String((n.call("mat_def") as Dictionary).get("surface", "")) != "":
+			bw = n
+			break
+	if bw == null:
+		for n in level.get_children():
+			if n.has_method("mat_def") and n.has_method("hit_rect"):
+				bw = n
+				break
+	if bw != null:
+		var rc: Rect2 = bw.call("hit_rect")
+		var n0 := _marks().x
+		Vfx.impact(level, rc.get_center(), Vector2.LEFT, "wood", false, false)
+		check("trafienie w przegrodę %s: odpryski bez dekala (%d → %d)" % [bw.name, n0, _marks().x], _marks().x == n0)
+	else:
+		info("brak przegrody na mapie — pominięte")
+	var n1 := _marks().x
+	Vfx.impact(level, player.global_position + Vector2(30.0, 0.0), Vector2.UP, "concrete")
+	check("trafienie w kafel kładzie dekal (%d → %d)" % [n1, _marks().x], _marks().x == n1 + 1)
+	# strefa wydobycia: ślad na skale znika z wykopaną komórką
+	var zone: Node2D = null
+	var rock := Vector2.INF
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		var r: Rect2 = z.call("rect_px")
+		for yy in range(int(r.position.y) + 1, int(r.end.y) - 4, 2):
+			for xx in range(int(r.position.x) + 4, int(r.end.x) - 4, 4):
+				if bool(z.call("solid_at_px", Vector2(xx, yy))) and not bool(z.call("solid_at_px", Vector2(xx, yy - 6))):
+					rock = Vector2(xx, yy)
+					break
+			if rock != Vector2.INF:
+				break
+		if rock != Vector2.INF:
+			zone = z
+			break
+	if zone != null:
+		v3d.call("mark_hit", rock - Vector2(0.0, 2.0), Vector2.UP, "dirt")
+		var d: Decal = (v3d.get("_holes") as Array).back()
+		zone.call("blast_dig", rock, 20.0)
+		var t := 0.0
+		while is_instance_valid(d) and not d.is_queued_for_deletion() and t < 3.0:
+			await get_tree().process_frame
+			t += get_process_delta_time()
+		check("ślad na skale strefy %s znika po wykopaniu (%.2f s)" % [zone.name, t], not is_instance_valid(d) or d.is_queued_for_deletion())
+	else:
+		info("brak strefy wydobycia ze skałą pod powietrzem — pominięte")
+	# pomiar i zrzuty, potem punkt kontrolny i wipe
+	await _marks_budget()
+	var before := _marks()
+	level.reset_breakables(level.breakables_state())
+	await _frames(0.3)
+	check("punkt kontrolny bossa zostawia ślady (%s → %s)" % [before, _marks()], _marks() == before and before.x > 0)
+	level.reset_breakables()
+	await _frames(0.3)
+	check("wipe zdejmuje ślady (%s → %s)" % [before, _marks()], _marks() == Vector2i.ZERO)
+	Vfx.impact(level, player.global_position + Vector2(30.0, 0.0), Vector2.UP, "concrete")
+	Vfx.explosion(level, player.global_position + Vector2(40.0, -6.0), 48.0)
+	var b2 := _marks()
+	level.map_changed.emit(String(level.map_id))
+	check("zmiana mapy zdejmuje ślady (%s → %s)" % [b2, _marks()], b2.x > 0 and _marks() == Vector2i.ZERO)
+
+## Elementy klastrowane w kadrze kamery świata: światła punktowe i stożkowe z zasięgiem w bryle widzenia oraz dekale.
+func _clustered() -> Vector2i:
+	var cam: Camera3D = v3d.get("_cam_a")
+	var lights := 0
+	var decals := 0
+	for n in (v3d.get("_world") as Node).find_children("*", "VisualInstance3D", true, false):
+		if not (n as Node3D).is_visible_in_tree():
+			continue
+		var pos := (n as Node3D).global_position
+		if n is OmniLight3D or n is SpotLight3D:
+			var r := float((n as OmniLight3D).omni_range) if n is OmniLight3D else float((n as SpotLight3D).spot_range)
+			var p := cam.unproject_position(pos)
+			if cam.is_position_in_frustum(pos) or (p.distance_to(Vector2(cam.get_viewport().size) * 0.5) < r * 120.0 and not cam.is_position_behind(pos)):
+				lights += 1
+		elif n is Decal and cam.is_position_in_frustum(pos):
+			decals += 1
+	return Vector2i(lights, decals)
+
+func _gpu_ms(rid: RID, seconds: float) -> float:
+	var acc := 0.0
+	var k := 0
+	var t := 0.0
+	while t < seconds:
+		await get_tree().process_frame
+		t += get_process_delta_time()
+		acc += RenderingServer.viewport_get_measured_render_time_gpu(rid)
+		k += 1
+	return acc / maxf(1.0, float(k))
+
+func _marks_budget() -> void:
+	var vp: SubViewport = v3d.get("_vp_bg")
+	var rid := vp.get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await _frames(0.5)
+	var lim := int(ProjectSettings.get_setting("rendering/limits/cluster_builder/max_clustered_elements", 512))
+	var base := await _gpu_ms(rid, 1.0)
+	var c0 := _clustered()
+	info("elementy klastrowane w kadrze bez śladów: światła %d, dekale %d (limit %d); GPU świata %.2f ms" % [c0.x, c0.y, lim, base])
+	var at := player.global_position
+	var placed := 0
+	v3d.set("max_holes", 600)
+	for target in [160, 300, 500]:
+		while placed < target:
+			var p := at + Vector2(randf_range(-260.0, 260.0), randf_range(-120.0, 10.0))
+			var q := PhysicsRayQueryParameters2D.create(p, p + Vector2(0, 200), 1 | 16)
+			var hit := (level as Node2D).get_world_2d().direct_space_state.intersect_ray(q)
+			if not hit.is_empty():
+				v3d.call("mark_hit", hit["position"], hit["normal"], "concrete")
+			placed += 1
+		var saved: int = v3d.get("max_holes")
+		await _frames(0.3)
+		var c := _clustered()
+		var g := await _gpu_ms(rid, 1.0)
+		info("%d trafień (limit na czas pomiaru %d): w kadrze światła %d + dekale %d = %d z %d; GPU świata %.2f ms (+%.2f)" % [
+			target, saved, c.x, c.y, c.x + c.y, lim, g, g - base])
+	await _shot("e0_marks_grid")
+	v3d.set("max_holes", View3D.MAX_HOLES)
+	v3d.call("mark_hit", at, Vector2.UP, "concrete")          # przycięcie do limitu
+	# bryła w warstwie świata (jak model wroga, enemy3d.gd bez własnej warstwy) na osmaleniu: czy dekal ją maluje (zrzut, błąd 3)
+	var fp := at + Vector2(60.0, -10.0)
+	var foot := fp + _floor_below(fp)
+	v3d.call("mark_scorch", foot, 48.0)
+	var box := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.4, 1.6, 0.4)
+	box.mesh = bm
+	box.layers = View3D.LAYER_WORLD
+	(v3d.get("_world") as Node3D).add_child(box)
+	box.global_position = Level3D.px_to_m(foot) + Vector3(0.0, 0.8, View3D.MARK_Z)
+	await _frames(0.3)
+	await _shot("e0_marks_scorch")
+	box.queue_free()
+	RenderingServer.viewport_set_measure_render_time(rid, false)

@@ -290,6 +290,10 @@ func setup(level: Node2D, players: Node2D) -> void:
 	_level = level
 	_players = players
 	name = "View3D"
+	if level.has_signal("map_changed"):
+		level.connect("map_changed", func(_id: String) -> void: clear_marks())     # ślady poprzedniej mapy nie przechodzą na następną
+	if level.has_signal("world_cleared"):
+		level.connect("world_cleared", clear_marks)                                  # wipe i nowa misja na tej samej mapie
 	_vp_bg = SubViewport.new()
 	_vp_bg.name = "VpWorld"
 	_vp_bg.transparent_bg = false
@@ -5475,6 +5479,9 @@ const HOLE_M := 0.09                        ## średnica śladu po kuli [m]
 const MARK_Z := 0.3                         ## głębokość płaszczyzny lotu kul w scenie (jak smugi)
 var _holes: Array = []
 var _scorches: Array = []
+var max_holes := MAX_HOLES                  ## bieżący limit śladów po kulach (pomiar w `--fxtest` podnosi go chwilowo)
+var _marks_root: Node3D                     ## rodzic śladów (IMPACT_MARKS_PLAN.md E0): w `_world`, czyszczony przy zmianie mapy i wipe'ie (`clear_marks`)
+var _marks_dug := {}                        ## id strefy wydobycia → ślady na jej skale (znikają z wykopanymi komórkami, `_prune_dug_marks`)
 static var _hole_tex: Texture2D
 static var _scorch_tex: Texture2D
 
@@ -5573,8 +5580,56 @@ func _mark(pos: Vector2, normal: Vector2, size_m: float, tex: Texture2D, depth: 
 	var side := up.cross(Vector3(0, 0, 1)).normalized()
 	dcl.basis = Basis(side, up, side.cross(up)).orthonormalized().rotated(up, randf() * TAU)
 	dcl.position = Level3D.px_to_m(pos) + Vector3(0.0, 0.0, MARK_Z)
-	_world.add_child(dcl)
+	if _marks_root == null or not is_instance_valid(_marks_root):
+		_marks_root = Node3D.new()
+		_marks_root.name = "ImpactMarks"
+		_world.add_child(_marks_root)
+	_marks_root.add_child(dcl)
+	_track_dug_mark(dcl, pos, normal)
 	return dcl
+
+## Ślad na skale strefy wydobycia (D5) zapamiętany przy strefie: komórka pod nim może zostać wykopana, a dekal wisiałby w powietrzu albo
+## kładł się na nowej ścianie wykopu. Punkt pod śladem: 2 px w głąb powierzchni (jak `level.surface_at_hit`).
+func _track_dug_mark(dcl: Decal, pos: Vector2, normal: Vector2) -> void:
+	var under := pos - normal.normalized() * 2.0
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if (z as Node2D) != null and z.has_method("rect_px") and (z.call("rect_px") as Rect2).grow(4.0).has_point(under):
+			dcl.set_meta("under", under)
+			var id: int = z.get_instance_id()
+			if not _marks_dug.has(id):
+				_marks_dug[id] = []
+			(_marks_dug[id] as Array).append(dcl)
+			return
+
+## Po przebudowie siatki strefy: ślady, pod którymi nie ma już skały, znikają.
+func _prune_dug_marks(z: Node) -> void:
+	var lst: Array = _marks_dug.get(z.get_instance_id(), [])
+	if lst.is_empty():
+		return
+	var keep: Array = []
+	for d in lst:
+		if not is_instance_valid(d):
+			continue
+		if bool(z.call("solid_at_px", (d as Node).get_meta("under"))):
+			keep.append(d)
+		else:
+			_holes.erase(d)
+			_scorches.erase(d)
+			(d as Node).queue_free()
+	_marks_dug[z.get_instance_id()] = keep
+
+## Wszystkie ślady po kulach i osmalenia znikają (zmiana mapy, wipe, nowa misja; IMPACT_MARKS_PLAN.md E0). Punkt kontrolny bossa ich nie rusza.
+func clear_marks() -> void:
+	if _marks_root != null and is_instance_valid(_marks_root):
+		for ch in _marks_root.get_children():
+			ch.queue_free()
+	_holes.clear()
+	_scorches.clear()
+	_marks_dug.clear()
+
+## Liczba śladów w scenie (testy): [po kulach, osmalenia].
+func marks_count() -> Vector2i:
+	return Vector2i(_holes.size(), _scorches.size())
 
 ## Wołane z `Vfx.impact`: ślad po kuli w murze, gruncie, blasze (ciecze bez śladu — Vfx tego pilnuje).
 ## Od D4 ślad zależy od powierzchni (`_hole_tex_for`): beton — krater z jasnym pyłem, ziemia — większa, miękka ciemna plama,
@@ -5582,7 +5637,7 @@ func _mark(pos: Vector2, normal: Vector2, size_m: float, tex: Texture2D, depth: 
 func mark_hit(pos: Vector2, normal: Vector2, surface: String) -> void:
 	var tex := _hole_tex_for(surface)
 	_holes.append(_mark(pos, normal, HOLE_M * float(HOLE_SIZE.get(surface, 1.0)) * randf_range(0.8, 1.2), tex, 0.12))
-	while _holes.size() > MAX_HOLES:
+	while _holes.size() > max_holes:
 		var old = _holes.pop_front()
 		if is_instance_valid(old):
 			(old as Node).queue_free()
@@ -9044,9 +9099,11 @@ func _sync_dig_zones() -> void:
 			_settle_spoil(st, z)
 		if st.get("spoil_dirty", false):
 			_draw_spoil(st)
+		var rebuilt := false
 		for ci in vers.size():
 			if budget > 0 and vers[ci] != int(z.chunk_ver[ci]):
 				budget -= 1
+				rebuilt = true
 				vers[ci] = int(z.chunk_ver[ci])
 				((st["mis"] as Array)[ci] as MeshInstance3D).mesh = z.chunk_mesh(ci, Level3D.PX, float(st.get("zf", Level3D.DEPTH_FRONT)), -Level3D.DEPTH_BACK)
 				var sh: Array = st.get("shell", [])
@@ -9055,6 +9112,8 @@ func _sync_dig_zones() -> void:
 					((sh[ci] as Array)[0] as MeshInstance3D).mesh = sm
 					((sh[ci] as Array)[1] as MeshInstance3D).mesh = sm
 		st["ver"] = vers
+		if rebuilt:
+			_prune_dug_marks(z)                              # ślady na wykopanej skale znikają razem z nią (IMPACT_MARKS_PLAN.md E0)
 		_sync_dig_glints(st, z)
 		_sync_dig_props(st, z)
 	for id in _dig3d.keys():

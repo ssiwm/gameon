@@ -303,11 +303,13 @@ static func pollen(parent: Node, pos: Vector2, amount: int) -> void:
 
 ## Pocisk w ścianę: efekt wg powierzchni (kafel mapy), z krótkim progiem na dźwięk. Od D4 (DESTRUCTION_PLAN.md) pył i okruchy są
 ## cieniowane — nocą widać je w latarce, a nie świecą same jak iskry; świecą tylko iskry (beton, blacha).
-static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String, heavy := false) -> void:
+## `mark` false — trafienie w przegrodę (breakable.gd): odpryski i dźwięk bez dekala, bo ślad zostawia maska uszkodzeń przegrody (dekal
+## dublowałby dziurę i wracał na nową deskę po resecie; IMPACT_MARKS_PLAN.md E0).
+static func impact(parent: Node, pos: Vector2, normal: Vector2, surface: String, heavy := false, mark := true) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
 	var out := normal if normal.length() > 0.1 else Vector2.UP
-	if view3d != null and is_instance_valid(view3d) and not (surface in ["water", "mud", "oil"]):
+	if mark and view3d != null and is_instance_valid(view3d) and not (surface in ["water", "mud", "oil"]):
 		view3d.call("mark_hit", pos, out, surface)                 # ślad po kuli w scenie 3D (ciecze go nie trzymają)
 	var hk := 2 if heavy else 0                                   # śrut i ciężkie pociski: więcej odprysków
 	var now := Time.get_ticks_msec()
