@@ -201,8 +201,10 @@ napięcie, o które chodzi.
     przy krawędzi ościeżnicy.
   - Strona drzwi: dziś zawsze zewnętrzna. W W1 strona, z której drużyna podchodzi na trasie misji (posterunek 1.3 i hala Żyły od środka?).
   - W W1 `dissolve()` z sygnału rozbicia przegrody (`breakable.gd`), bez przebudowy świata; u dołączającego do rozbitych drzwi ducha nie ma.
-  - Do ustalenia w W1: duch tylko z bliska (np. do 10 m) i tylko przy narzędziu w ekwipunku drużyny? Ruch w pętli zwraca uwagę —
-    pokazywać go po podejściu, a nie przez całą misję.
+  - **Decyzja autora 2026-11-22:** duch tylko przy podejściu i najwyżej 3 pętle. W spike'u: lokalny gracz (bez bota hosta) bliżej
+    niż 10 m od drzwi → pojawia się (0,3 s), gra 3 pętle (7,8 s) i gaśnie; znowu dopiero po odejściu dalej niż 14 m i powrocie.
+    Wyważenie, gdy duch jest ukryty, nie daje błysku. Sprawdzone przebiegiem odległości (30 / 12 / 1 / 16 / 5 m) i filmem
+    `shots_doors/mov/drzwi_podejscie_3petle.mp4`.
 
 **Docelowo (W1–W3):**
 - Zamknięte: skrzydło i ościeżnica jak wyżej. Stan z przegrody (`breakable.gd`) zamiast flagi.
