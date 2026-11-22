@@ -1270,7 +1270,7 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				var b := Basis(Vector3.UP, PI if (i + c + r) % 2 == 1 else 0.0).scaled(Vector3(seg / 100.0, per * T / 100.0, per * T / 100.0))
 				(decks[ch] as Array).append(Transform3D(b, Vector3(x, -float(r) * T + 0.01 - hgt, 0.0)))
 				if ch == "=" and _in_shell_band(int(x / T), r):
-					# krata w przekroju (pion kryjówki): kolejne odcinki w głąb ku kamerze aż do przodu płyty — jak pokład, nie dziura w stropie
+					# krata w wysuniętej płycie (np. w kryjówce): dodatkowe odcinki ku kamerze w otworze płyty
 					var zz := SHELL_Z - per * T * 0.5                     # ostatni odcinek równo z przodem płyty, kolejne w głąb do odcinka w pasie gry
 					while zz > per * T * 0.5 - 0.01:
 						(decks[ch] as Array).append(Transform3D(b, Vector3(x, -float(r) * T + 0.01 - hgt, zz)))
@@ -2865,11 +2865,15 @@ static func _mezzanine_rail(out: Array, x0: float, x1: float, y: float, dh: floa
 		out.append(_span_box(Vector3(x0, y + yy - RAIL_T, z - RAIL_T * 0.5), Vector3(x1, y + yy, z + RAIL_T * 0.5)))
 	out.append(_span_box(Vector3(x0, y, z - 0.01), Vector3(x1, y + 0.1, z + 0.01)))      # krawężnik
 
-## Czy kafel leży w płycie stropu albo podłogi wpisu z przekrojem (`shell_bands`) — krata pionu w płycie między pokładami; podesty w pasie
-## gry zostają w płaszczyźnie gry.
+## Czy krata leży w wysuniętej płycie stropu lub podłogi. W płytkim przekroju tylko `--ugslab` przywraca wysunięcie podłogi.
 static func _in_shell_band(c: int, r: int) -> bool:
-	for e in shell_bands:
-		if c >= int(e["c0"]) and c <= int(e["c1"]) and (r == int(e["r0"]) or r == int(e["r1"])):
+	for e: Dictionary in shell_bands:
+		if c < int(e["c0"]) or c > int(e["c1"]):
+			continue
+		var on_floor := r == int(e["r1"])
+		if not on_floor and r != int(e["r0"]):
+			continue
+		if not shallow_band(e) or (on_floor and ug_slab()):
 			return true
 	return false
 
