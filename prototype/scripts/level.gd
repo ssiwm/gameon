@@ -107,6 +107,9 @@ const CAMPAIGN := ["z1_m1", "z1_m2", "z1_m3", "z1_b1"]
 const SHIFT_POOL := ["z1_m2", "z1_m3"]
 
 signal map_changed(id: String)
+## Świat wrócił do stanu z mapy (wipe, nowa misja na tej samej mapie — `reset_breakables` bez migawki), u każdego peera: widok 3D zdejmuje
+## ślady po kulach i osmalenia (IMPACT_MARKS_PLAN.md E0). Punkt kontrolny bossa go nie wysyła — ślady walki zostają.
+signal world_cleared
 
 ## znak -> [kolumna atlasu, powierzchnia kroków, rodzaj]
 ## rodzaj: 0 bryła, 1 kładka jednokierunkowa, 2 tło bez kolizji
@@ -1670,18 +1673,21 @@ func reset_breakables(state := {}) -> void:
 	var dmg: Dictionary = state.get("damage", {})
 	var stock := int(state.get("planks", 0))
 	var down: PackedStringArray = state.get("supports", PackedStringArray())
+	var clean := not state.has("opened")
 	if NoiseMgr.has_network():
-		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock, down)
+		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock, down, clean)
 	else:
-		_reset_breakables_rpc(map_id, opened, dmg, stock, down)
+		_reset_breakables_rpc(map_id, opened, dmg, stock, down, clean)
 	var dig: Dictionary = state.get("dig", {})
 	for z in dig_zones():
 		z.reset_to(dig.get(String(z.name), PackedByteArray()))   # strefy wydobycia (D5): wykopy wracają do stanu z mapy albo z migawki
 
 @rpc("authority", "call_local", "reliable")
-func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0, down := PackedStringArray()) -> void:
+func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0, down := PackedStringArray(), clean := false) -> void:
 	if id != map_id:
 		return
+	if clean:
+		world_cleared.emit()                                 # ślady trafień w widoku 3D (IMPACT_MARKS_PLAN.md E0)
 	plank_stock = stock                                      # zapas desek: wipe zabiera, punkt kontrolny bossa przywraca
 	_nail_ms.clear()                                         # dziennik: barykada z migawki nie ma czasu przybicia z tej próby
 	_cave_epoch += 1                                         # trzeszczący strop (złamany stempel, zawał jeszcze nie spadł) już nie spadnie
@@ -2699,6 +2705,18 @@ func surface_at_hit(pos: Vector2, normal: Vector2) -> String:
 		return "dirt"
 	var s: String = td.get_custom_data("surface")
 	return s if s != "" else "dirt"
+
+## Znak kafla mapy (`KINDS`) w punkcie trafienia przesuniętym w głąb ściany; "" — brak kafla (strefa wydobycia, przegroda, powietrze).
+## Rodzaj śladu po kuli bierze się z wyglądu kafla, nie z powierzchni kroków (IMPACT_MARKS_PLAN.md E1, `ImpactMarks.kind_for`).
+func tile_char_at(pos: Vector2, normal: Vector2) -> String:
+	var cell := _solid.local_to_map(_solid.to_local(pos - normal * 2.0))
+	if _solid.get_cell_source_id(cell) < 0:
+		return ""
+	var col := _solid.get_cell_atlas_coords(cell).x
+	for k in KINDS:
+		if int(KINDS[k][0]) == col:
+			return String(k)
+	return ""
 
 ## Powierzchnia pod stopami (dźwięk kroków). Pusto = kroki „dirt".
 func surface_at(pos: Vector2) -> String:

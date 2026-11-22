@@ -1323,7 +1323,7 @@ func _rail_visual(d: WeaponDef, from: Vector2, to: Vector2, tr: Dictionary) -> v
 		var surface := "metal"
 		if lvl != null:
 			surface = lvl.surface_at_hit(to, tr["wall_normal"])
-		Vfx.impact(parent, to, tr["wall_normal"], surface, true)
+		Vfx.impact(parent, to, tr["wall_normal"], surface, true, true, (to - from).normalized(), 1.3)
 
 # ---------------------------------------------------------------- ciągły ogień (serwer)
 

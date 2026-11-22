@@ -277,6 +277,8 @@ func explode() -> void:
 func _explode_fx(pos: Vector2, at: Vector2) -> void:
 	_gone(at)
 	var parent := get_parent()
+	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):
+		Vfx.view3d.call("mark_blast", pos, BLAST_R, false)       # osmalenie ścian i stropu przy beczce (grunt ma sadzę wraku; E2)
 	Audio.play_variant_at("explosion", 2, pos, Audio.BUS_WORLD, 2.0, 0.9)
 	Vfx.burst(parent, pos, Color(1.0, 0.6, 0.2), 30, 60.0, 220.0, Vector2.UP, 180.0, 200.0, 0.5, Vector2(1.5, 3.0), true)
 	Vfx.burst(parent, pos, Color(0.25, 0.24, 0.24, 0.6), 14, 20.0, 60.0, Vector2.UP, 70.0, -40.0, 1.6, Vector2(3.0, 5.0))

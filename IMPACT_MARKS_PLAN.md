@@ -1,9 +1,21 @@
 # IMPACT_MARKS_PLAN — ślady po kulach i granatach w świecie
 
 Stan wyjścia: main 1.7.653 (c009767f, 2026-11-22). Kontynuacja `DESTRUCTION_PLAN.md` D4 (kosmetyka walki, 1.7.500).
-Prośba autora: „zaplanuj dodanie śladów po kulach/granatach w środowisku gry”. Ten plik to analiza i plan — **nic nie jest wdrożone**.
+Prośba autora: „zaplanuj dodanie śladów po kulach/granatach w środowisku gry”. Ten plik to analiza i plan; stan wdrożenia niżej.
 
-**Stan (2026-11-22):** decyzje 1–10 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). Następny krok: E0.
+**Stan (2026-11-22):** decyzje 1–10 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). E0–E3 wdrożone w jednym PR (gałąź
+`feat/impact-marks`, 1.7.655, osobne commity E0 i E1–E3); E4 (domknięcie) w tym samym PR. Zostaje ocena na playteście.
+
+**Odkrycia przy wdrożeniu:**
+- **Ślad w płaszczyźnie gry jest prawie niewidoczny.** Kule lecą w płaszczyźnie XY, więc trafiają bok kafla albo wierzch podłogi, a kamera
+  patrzy na nie krawędzią (wierzch podłogi 1 m głębi to kilka pikseli wysokości). Dlatego każdy ślad na bryle (skała, beton, blacha, lód,
+  śnieg, strefa wydobycia) ma **odprysk na czole bryły**: drugi dekal rzutowany wzdłuż −Z na `Level3D.front_z` (w strefie przekroju na
+  ścianie przekroju, `Front3D.LAYER_WALL`), 1,5 × średnicy śladu, przy krawędzi trafienia. Tak samo gniazdo śrutu, osmalenie i dziobaki.
+- **Rozmiar (decyzja 2):** 9 cm dla 7,62 w betonie to ok. 5 px na 1080p i ślad ginął w teksturze betonu — podniesione do 12 cm, ciemny
+  wylot ok. 30% średnicy (był 2–3% powierzchni) i cień niecki gęstniejący ku środkowi.
+- **Limity niższe niż w planie:** 64 / 112 / 160 śladów i 12 / 20 / 32 osmaleń (odprysk to drugi dekal). Pomiar: 8 świateł + 365 elementów
+  klastrowanych przy 500 trafieniach w kadrze (limit 512), czas GPU świata bez mierzalnej zmiany.
+- Na przegrodach (deski, cegła) bez dekala — ślad zostawia maska uszkodzeń (E0).
 
 Skala: kafel 16 px ≈ 1,31 m, 1 px ≈ 8 cm (`Level3D.PX` = 1,8 / 22 m). Kamera `FOV` 40°.
 
@@ -208,4 +220,4 @@ krew na ścianie za celem), **E4** jakość, budżet i dokumenty. Wszystko to ko
 | E3 | 1 na opcję | niskie | E2 |
 | E4 | w ostatnim PR | — | — |
 
-Następny krok: E0.
+Następny krok: playtest (czytelność śladów z kamery, budżet przy lampach, osmalenie pod wrogami).

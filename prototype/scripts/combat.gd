@@ -275,7 +275,7 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 		return
 	if not silent_for_noise:
 		NoiseMgr.add_noise(NoiseMgr.N_GRENADE, pos, "explosive")
-	Arsenal.broadcast_explosion(pos, radius)
+	Arsenal.broadcast_explosion(pos, radius, not demolition)
 	var d: RefCounted = Weapons.def(w)
 	var space: PhysicsDirectSpaceState2D = null
 	for e in tree.get_nodes_in_group("enemies"):
