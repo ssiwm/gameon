@@ -9341,10 +9341,11 @@ func _tick_dig_dust(delta: float) -> void:
 			tn += 1
 	for i in range(_dig_dust.size() - 1, -1, -1):
 		var e: Dictionary = _dig_dust[i]
-		var fv := e["fv"] as FogVolume
-		if not is_instance_valid(fv):
+		# bryła mgły bywa zwolniona razem z mapą (zmiana mapy, wipe) — sprawdzić przed rzutowaniem, bo `as` na zwolnionym obiekcie to błąd co klatkę
+		if not is_instance_valid(e["fv"]):
 			_dig_dust.remove_at(i)
 			continue
+		var fv := e["fv"] as FogVolume
 		var d := float(e["d"]) * fall
 		if d < 0.02:
 			fv.queue_free()
