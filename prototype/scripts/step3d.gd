@@ -5,7 +5,7 @@ extends RefCounted
 ## Zasada fizyczna: pod pomostem gracz chodzi w pasie gry (z ≈ 0), więc w pasie |z| < STRIP od podłoża do CLEAR nad nim nie ma niczego —
 ## nośność daje masa za pasem (z < −0,9), wspornik (konar, płyta skalna, nawis darni) albo kłoda leżąca w poprzek ścieżki.
 ## Wpis w danych mapy (`STEPS`, czyta `level.gd`): {"kind" (z `KINDS`), "decks": [[wiersz, pierwsza kolumna], …], "posts": [kolumny słupów `w`,
-## które znikają], "cache": true (ostaniec: nisza ze skrytką, lina i strzałka patrolu), "legs": [kolumny nóg kratowych pomostu przy maszcie] (pole antenowe), "trunks": [[kolumna, wiersz podłoża], …] (konary: dodatkowa sosna)}.
+## które znikają], "cache": true (ostaniec: skrytka na szczycie, lina i strzałka patrolu), "legs": [kolumny nóg kratowych pomostu przy maszcie] (pole antenowe), "trunks": [[kolumna, wiersz podłoża], …] (konary: dodatkowa sosna)}.
 ## "worn_landings" oznacza pomosty z przetartą korą na podejściu, "scree" wybiera skałę z piargiem przy podstawie.
 
 const Level3D := preload("res://scripts/level3d.gd")
@@ -1031,7 +1031,7 @@ static func _tor_scree(sts: Dictionary, rows: Array, lo: Dictionary, hi: Diction
 ## Ostaniec granitowy (wietrzenie „materacowe”): płyty o zaokrąglonych krawędziach i różnej grubości z wierzchem na wysokości pokładu
 ## wystają nad ścieżką; pod nimi i za nimi masa bloków za pasem gry z przesuniętymi spoinami; za niższymi stopniami garb skały do wysokości
 ## następnego, więc ostaniec czyta się jako jedna bryła, a nie schody z kolumn; na szczycie i u stóp luźne głazy. Mech na wierzchach (`OUTDOOR_ROCK`).
-## `cache`: na szczycie nisza ze skrytką `H` pod nawisem (za pasem gry), lina patrolu na haku po płytach w dół i czerwona strzałka na najniższej płycie.
+## `cache`: na szczycie skrytka `H` (od 1.7.652 bez niszy z nawisem), lina patrolu na haku po płytach w dół i czerwona strzałka na najniższej płycie.
 static func _tor(sts: Dictionary, models: Dictionary, rows: Array, ds: Array, entry: Dictionary) -> void:
 	if ds.is_empty():
 		return
@@ -1117,15 +1117,9 @@ static func _tor(sts: Dictionary, models: Dictionary, rows: Array, ds: Array, en
 	for c in range(int(hi["c0"]), int(hi["c1"]) + 1):       # skrytka `H` nad szczytem
 		if Level3D._ch(rows, c, int(hi["r"]) - 1) == "H":
 			xh = (float(c) + 0.5) * T
-	if cache:                                               # nisza: tylna ściana, boki, nawis; wnętrze otwarte ku kamerze
-		_rock(sts, Vector3(xh - 1.3, ht - 0.1, -4.6), Vector3(xh + 1.3, ht + 2.5, -3.0), rng, "tor cache")
-		_rock(sts, Vector3(xh - 2.6, ht - 0.1, -3.5), Vector3(xh - 0.85, ht + rng.randf_range(2.1, 2.6), -1.0), rng, "tor cache")
-		_rock(sts, Vector3(xh + 0.85, ht - 0.1, -3.5), Vector3(xh + 2.5, ht + rng.randf_range(2.1, 2.6), -1.0), rng, "tor cache")
-		_tint = _granite_tint(rng)
-		_rbox(st, Vector3(xh - 2.3, ht + 2.25, -3.9), Vector3(xh + 2.6, ht + 2.95, -STRIP - 0.5), 0.25, "tor overhang",
-			Basis(Vector3.BACK, rng.randf_range(-0.04, 0.04)), 0.35, false, rng.randf() * 10.0)
-		_tint = Color.WHITE
-	elif _free_above(rows, hi, 3):                          # luźne głazy na szczycie (bez mostu tuż nad nim)
+	# skrytka `H` stoi na szczycie bez niszy: nawis nad nią z bocznymi blokami (do 1.7.650) czytał się w kadrze jak kłoda na dwóch
+	# ciemnych podporach, zbędna nad pomostami (uwaga z gry 2026-11-22)
+	if not cache and _free_above(rows, hi, 3):              # luźne głazy na szczycie (bez mostu tuż nad nim)
 		for k in 2:
 			var xk := lerpf(hx0, hx1, 0.25 + 0.5 * float(k)) + rng.randf_range(-0.4, 0.4)
 			var s := rng.randf_range(0.9, 1.5)

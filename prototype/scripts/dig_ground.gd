@@ -9,8 +9,9 @@ extends RefCounted
 
 const Level3D := preload("res://scripts/level3d.gd")
 
-## nazwa zestawu PBR → kafli na metr
-const SETS := [["terrain", 0.30], ["dig_dirt", 0.55], ["dig_gravel", 0.8], ["dig_rock", 0.4]]
+## nazwa zestawu PBR → kafli na metr. Żwir 0,35 (do 1.7.651: 0,8): skan 512 px na 1,25 m dawał kamyki ok. 1 px w kadrze — czoło strefy
+## w snopie latarki było gładką beżową plamą bez tekstury (1.2, skrytka za zamurowaniem; uwaga z gry 2026-11-22), teraz grube ziarno.
+const SETS := [["terrain", 0.30], ["dig_dirt", 0.55], ["dig_gravel", 0.35], ["dig_rock", 0.4]]
 
 const SHADER := """
 shader_type spatial;
@@ -29,7 +30,7 @@ uniform sampler2D o2 : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D a3 : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D n3 : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D o3 : filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec4 per_m = vec4(0.30, 0.55, 0.8, 0.4);
+uniform vec4 per_m = vec4(0.30, 0.55, 0.35, 0.4);
 uniform bool spoil = false;
 
 varying vec3 wpos;

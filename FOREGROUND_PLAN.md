@@ -215,6 +215,10 @@ Zmiany (decyzja użytkownika: kroki 1 i 2 naraz):
 > nachodziły na sąsiednie otwory: kopanie 1.1 i 1.3 było niewidoczne, a ściany w warstwie `LAYER_WALL` miały inne światło niż skała świata.
 > Porównanie trzech wariantów (obecny, bez wysunięcia, hybryda) na zrzutach w 17 miejscach: hybryda daje widok na czoło kopania i sale bez
 > czarnego pasa pod podłogą. Fundament omija strefę wydobycia o `SHELL_DIG_CUT` = 3 kolumny. Budynki 3D bez zmian; `--deepshell` — stary przekrój.
+>
+> **Zmiana 2026-11-22 (1.7.652): pierwszy plan pod ziemią wyłączony.** W tych samych pasach nie ma też płyty podłogi z fundamentem ani elementów
+> `Front3D` (stojaki obudowy, rury, lampy, kable): stojak ze stropnicą bez stropu przekroju niczego nie podtrzymywał, a brzeg płyty przy strefie
+> wydobycia świecił w snopie latarki. Zrzuty przed/po: bez czarnego pasa pod podłogą. Dev `--ugfront`, `--ugslab` — porównanie A/B.
 
 Druga uwaga użytkownika po 1.7.520: „rury są teraz na pierwszym planie, ale nie mamy tam świata, dlatego wyglądają nienaturalnie”.
 

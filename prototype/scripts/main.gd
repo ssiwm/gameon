@@ -2937,6 +2937,19 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 		var lp: Node2D = _players.get_node_or_null("1")      # --shotlight: flara tuż przed graczem (podgląd oświetlenia z mapą normalnych)
 		if lp != null:
 			level.spawn_flare(lp.global_position + Vector2(34.0, -28.0), Vector2.ZERO)
+	if "--shotthrow" in OS.get_cmdline_user_args():
+		var thp: Node2D = _players.get_node_or_null("1")     # --shotthrow: gracz 1 po 1 s rzuca flarę jak klawiszem F (z --shotaimleft w lewo); potem gdzie leży
+		if thp != null:
+			var report := func() -> void:
+				for f in get_tree().get_nodes_in_group("flares"):
+					var buried := false
+					for z in get_tree().get_nodes_in_group("dig_zones"):
+						buried = buried or bool(z.solid_at_px((f as Node2D).global_position + Vector2(0.0, -6.0)))
+					print("[SHOTTHROW] flara %s (leży: %s), gracz %s, zasypana: %s" % [(f as Node2D).global_position, f.get("_landed"), thp.global_position, buried])
+			get_tree().create_timer(1.0).timeout.connect(func() -> void:
+				thp.call("_throw_flare")
+				for wait in [0.5, 1.0, 2.0, 3.0]:
+					get_tree().create_timer(wait).timeout.connect(report))
 	if "--shottorch" in OS.get_cmdline_user_args():                 # dev: gracz 1 z włączoną latarką (podgląd snopu światła)
 		var tp: Node2D = _players.get_node_or_null("1")
 		if tp != null:
@@ -2945,7 +2958,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			tp.set("shot_aim_lock", true)
 			tp.set("mouse_aim", false)
 			if tp.get("aim_dir") != null and "--shotaimup" in OS.get_cmdline_user_args():
-				tp.set("aim_dir", Vector2(0.8, -0.6))
+				tp.set("aim_dir", Vector2(-0.8 if "--shotaimleft" in OS.get_cmdline_user_args() else 0.8, -0.6))   # z --shotaimleft w lewo i w górę
 			elif tp.get("aim_dir") != null and "--shotaimleft" in OS.get_cmdline_user_args():
 				tp.set("aim_dir", Vector2.LEFT)                 # zrzut w lewo, np. znak strefy wydobycia z wejściem od wschodu (1.2, 1.3)
 	if "--shotshoot" in OS.get_cmdline_user_args():                 # dev: gracz 1 strzela serią w prawo przez cały czas zrzutu (podgląd pocisków i efektów)

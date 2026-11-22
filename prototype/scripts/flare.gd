@@ -20,12 +20,19 @@ const WATER_LIFE := 8.0           ## flara, która spadła do wody (basen areny 
 const CHUTE_LIFE := 40.0
 const CHUTE_FALL := 24.0          ## px/s opadania na spadochronie (≈ 2 m/s w skali świata 3D)
 const CHUTE_DRIFT_DAMP := 0.6     ## /s wygaszania prędkości poziomej
+## Zasypana flara (uwaga z gry 2026-11-22, 1.2: „flare można wrzucić w grunt”): rzucona do wnęki wykopu w żwirze leżała na dnie, a żwir
+## osypujący się do wykopu (dig_zone.gd `_settle`) przykrywał ją — świeciła spod gruntu. Co BURY_CHECK s leżąca flara, nad którą jest skała
+## strefy (BURY_DEPTH px nad nią — nie płytki styk konturu z gęstością), wychodzi na wierzch zsypu i spada na niego od nowa.
+const BURY_CHECK := 0.2
+const BURY_DEPTH := 6.0
+const BURY_SMOTHER := 0.6        ## s: przysypana bez powietrza nad sobą dogasa (energia światła maleje z life / 3)
 
 var vel := Vector2.ZERO
 var life := FLARE_LIFE
 var chute := false                ## ustawiane przed dodaniem do drzewa (level.spawn_flare)
 
 var _landed := false
+var _bury_t := 0.0
 var _light: Lights.GameLight
 var _t := 0.0
 var _lure_t := 0.0
@@ -95,6 +102,11 @@ func _physics_process(delta: float) -> void:
 				_check_water()
 			else:
 				vel = vel.bounce(n) * 0.4
+	if _landed:
+		_bury_t -= delta
+		if _bury_t <= 0.0:
+			_bury_t = BURY_CHECK
+			_unbury()
 	if _pv != null:
 		if _landed:
 			_pv.rotation = lerp_angle(_pv.rotation, _lie, minf(1.0, delta * 14.0))
@@ -112,3 +124,22 @@ func _physics_process(delta: float) -> void:
 				if e.has_method("see_light"):
 					e.see_light(global_position)
 	queue_redraw()
+
+## Leżąca flara pod zsypem żwiru (`BURY_CHECK`): w górę do pierwszego powietrza w strefie i znów w locie — ląduje na wierzchu zsypu.
+## Bez powietrza nad sobą w strefie (zsyp do stropu) gaśnie przysypana (BURY_SMOTHER s) — poza strefą w górę nie szuka: nad nią skała
+## mapy, z której spadała z powrotem przez żwir (kolizja strefy to kontur, od środka bryły nic jej nie zatrzymywało).
+func _unbury() -> void:
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if not (z as Node2D).has_method("solid_at_px") or not z.solid_at_px(global_position + Vector2(0.0, -BURY_DEPTH)):
+			continue
+		var box: Rect2 = z.rect_px()
+		var p := global_position + Vector2(0.0, -BURY_DEPTH)
+		while p.y > box.position.y and z.solid_at_px(p):
+			p.y -= 2.0
+		if p.y <= box.position.y or z.solid_at_px(p):
+			life = minf(life, BURY_SMOTHER)
+			return
+		global_position = p + Vector2(0.0, -1.0)
+		_landed = false
+		vel = Vector2.ZERO
+		return

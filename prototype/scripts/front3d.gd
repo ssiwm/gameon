@@ -281,7 +281,7 @@ static var _gvis := PackedFloat32Array()   ## widoczność kolumny 0–1
 static var _gtop := PackedFloat32Array()   ## y wierzchu podłoża kolumny, -INF bez podłoża
 static var _gz0 := PackedFloat32Array()    ## z przodu płyty kolumny (przód bryły albo płyta przekroju)
 static var _gopen: Array = []              ## kolumna → PackedFloat32Array par (y góry, y dołu) ciągów wolnych kafli
-static var _gchunks: Array = []            ## Vector3i(c0, c1 włącznie, -) kawałków płyty; y wierzchu w `_gchunk_top`
+static var _gchunks: Array = []            ## Vector3i(c0, c1 włącznie, 1 = dno dołka przed szybem) kawałków płyty; y wierzchu w `_gchunk_top`
 static var _gchunk_top := PackedFloat32Array()
 static var _grows := false                 ## znane wiersze mapy (bez nich, w teście: cały pas gaśnie jak dawniej)
 static var _gus := 0
@@ -687,6 +687,7 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [],
 			if d.z >= int(e["r0"]) and d.z <= int(e["r1"]):
 				sk = sk + [[d.x, d.y]]
 		var e_open := bool(st.get("open", false))
+		var ug := bool(e.get("shell", false)) and Level3D.shallow_band(e)
 		for o: Dictionary in out:
 			var oc: Vector4 = o["clip"]
 			if apart(oc, bool(o["shell"]), clip, bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args()):
@@ -713,7 +714,7 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [],
 			if not _skipped(xb, sk):
 				var kb: String = st["big"][bi % (st["big"] as Array).size()]
 				bi += 1
-				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args(), "build": e.has("build")})
+				out.append({"kind": kb, "x": xb, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": true, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args(), "build": e.has("build"), "ug": ug})
 			var nx: float = xs[i + 1] if i + 1 < xs.size() else clip.y - MARGIN
 			var pair := st.has("small2")
 			for si in (2 if pair else 1):
@@ -723,8 +724,9 @@ static func layout(front: Array, skip: Array, low := false, blocked: Array = [],
 				var ks: String = st[key][rng.randi() % (st[key] as Array).size()]
 				var want := rng.randf() < 0.6
 				if want and not low and xm - xb >= SMALL_MIN and nx - xm >= SMALL_MIN and xm < clip.y - MARGIN and not _skipped(xm, sk):
-					out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args(), "build": e.has("build")})
-	return out
+					out.append({"kind": ks, "x": xm, "z": rng.randf_range(Z_RANGE.x, Z_RANGE.y), "big": false, "clip": clip, "set": e["set"], "shell": bool(e.get("shell", false)) and not "--noshell" in OS.get_cmdline_user_args(), "build": e.has("build"), "ug": ug})
+	# podziemia (`Level3D.shallow_band`, uwaga z gry 2026-11-22): bez elementów — liczone jak dotąd, żeby układ pozostałych wpisów się nie zmienił
+	return out.filter(func(it: Dictionary) -> bool: return not bool(it["ug"]) or Level3D.ug_front())
 
 
 ## Pierwsze x ≥ `x` poza przedziałami `blocked` ([Vector2(x0, x1)], m).
@@ -1616,7 +1618,10 @@ static func set_camera_y(cam_y: float, cam_x := NAN, cam_z := 20.2, dt := -1.0) 
 		var tgt := 1.0
 		if k < 0.999:
 			var top := _gchunk_top[n]
-			var hit := not local
+			# dno dołka przed szybem gaśnie z powierzchnią zawsze: kamera w pomieszczeniu pod gruntem obok szybu (1.2 „PATROL 7”)
+			# patrzy na nie z góry — nie zasłania wolnych kafli, ale leżało przed kadrem jak ziemia w zejściu i przecinało pomost
+			# szybu (uwaga z gry 2026-11-22)
+			var hit := not local or ch.z != 0
 			for c in range(ch.x, ch.y + 1):
 				hit = hit or marks[c + GMASK_PAD] != 0
 			tgt = smoothstep(top + SURF_BELOW - 0.25, top + SURF_BELOW, cam_y) * (k if hit else 1.0)
@@ -1868,10 +1873,13 @@ static func _build_ground(parent: Node3D, rows: Array, merge := false) -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mi.set_meta("gc", Vector2i(int(sub["c0"]), int(g["c0"]) + j - 1))
 			parent.add_child(mi)
-			_gchunks.append(Vector3i(int(sub["c0"]), int(g["c0"]) + j - 1, 0))
 			var top := -INF
+			var pit := 0
 			for y in (sub["ys"] as PackedFloat32Array):
 				top = maxf(top, y)
+				if y < float(g["base"]) - 0.01:
+					pit = 1                                      # dno dołka przed szybem (`_span` zszedł pod wiersz pasa)
+			_gchunks.append(Vector3i(int(sub["c0"]), int(g["c0"]) + j - 1, pit))
 			_gchunk_top.append(top)
 			i = j
 	_ground_cover(parent)
@@ -2121,6 +2129,8 @@ static func _build_floors(parent: Node3D, front: Array, rows: Array) -> void:
 	for e: Dictionary in front:
 		if not bool(e.get("shell", false)) or String(e.get("set", "")) == "bunker" or _on_surface.has(e):
 			continue
+		if Level3D.shallow_band(e) and not Level3D.ug_slab():
+			continue                                        # podziemia bez pierwszego planu (1.7.652): bez płyty podłogi przekroju płyta od SHELL_Z wisiała za ciemnym pasem
 		var nc := 0
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
 			nc += int(Level3D._ch(rows, c, int(e["r1"])) == "C")
