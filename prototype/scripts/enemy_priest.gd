@@ -1,5 +1,6 @@
 extends "res://scripts/enemy_behavior.gd"
-## Kapłan (GDD §7.2, F4b, ELITE_PLACEMENT_PLAN.md K2): elita dowodząca watahą. Idzie ku graczowi do `priest.hold` px i tam stoi, nie ucieka. Co `heal_every` s leczy rannych
+## Kapłan (GDD §7.2, F4b, ELITE_PLACEMENT_PLAN.md K2): elita dowodząca watahą. Idzie ku graczowi do `priest.hold` px i tam stoi, nie ucieka; z gotowym krzykiem
+## podchodzi do `priest.close` px, w pole zapowiedzi (gracz poza nim nie mógł dostać fali, a Kapłan tylko stał). Co `heal_every` s leczy rannych
 ## Trzosków w `heal_r` px (`heal_pct` maks. HP, tylko z czystą linią), a gdy gracz podejdzie bliżej niż `trigger` px — krzyczy: zapowiedź `tele` s z pierścieniem fali, potem wszyscy
 ## gracze w `radius` px (bez ściany na linii) dostają ogłuszenie `stun` s (`Player.deliver_stun`; strzał, skok i bicie zablokowane, chodzić można). Gdy krzyk jest w przerwie, bije
 ## w zwarciu. Trafienia go nie chwieją, więc seria nie zagłusza krzyku. Dopóki żyje i zna cel, co `summon.every` s wzywa kolejne Trzoski: gest `summon.channel` s (`summon.break` obrażeń
@@ -20,6 +21,7 @@ var bless_t := 0.0           ## s do następnego gestu leczenia
 var minions: Array = []      ## wezwani (serwer)
 
 var tele_duration := 0.0
+var holding := false         ## stoi na progu dystansu (`chase_hold`); rusza dopiero, gdy cel odejdzie o `slack` px dalej
 
 func cfg() -> Dictionary:
 	return e._def.get("priest", {}) as Dictionary
@@ -30,6 +32,7 @@ func summon_cfg() -> Dictionary:
 func reset() -> void:
 	e._sp = 0
 	scream_cd = 3.0
+	holding = false
 	heal_t = 0.0
 	tele_t = 0.0
 	summon_t = float(summon_cfg().get("first", 6.0))
@@ -184,12 +187,22 @@ func clear_minions() -> void:
 		if String(n.name).begins_with(_minion_prefix()):
 			n.queue_free()
 
-## Idzie ku graczowi do `hold` px i tam stoi; nie cofa się. Dalej zostawia pościg rdzeniowi.
+## Próg dystansu (px): `close`, gdy krzyk jest gotowy (podchodzi w pole zapowiedzi), inaczej `hold`.
+func hold_distance() -> float:
+	if scream_cd <= 0.0:
+		return float(cfg().get("close", 80.0))
+	return float(cfg().get("hold", 190.0))
+
+## Idzie ku graczowi do progu (`hold_distance`) i tam stoi; nie cofa się. Stojący rusza dopiero, gdy cel odejdzie dalej niż próg + `slack` —
+## bez zapasu przy oddalającym się graczu szedł i stawał na zmianę co tik fizyki. Dalej zostawia pościg rdzeniowi.
 func chase_hold(_target: Node2D, d: Vector2, _speed: float) -> bool:
-	if absf(d.x) <= float(cfg().get("hold", 190.0)):
+	var limit := hold_distance()
+	if holding:
+		limit += float(cfg().get("slack", 24.0))
+	holding = absf(d.x) <= limit
+	if holding:
 		e.velocity.x = 0.0
-		return true
-	return false
+	return holding
 
 ## Stoi albo szykuje krzyk: patrzy na cel, ślad lub najbliższego gracza. W marszu patrzy tam, dokąd idzie.
 func look_at_point() -> Vector2:

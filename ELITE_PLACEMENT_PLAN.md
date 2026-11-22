@@ -51,7 +51,7 @@ Kontynuacja `ENEMY_PLAN.md` F4. Elity są w kodzie od 1.7.253–1.7.261, ale gra
 Playtest autora: Kapłan wlókł nogi, był bierny, uciekał i ginął bez trudu (20,5 s od przebudzenia). Pomiar: prawa stopa przez 52% cyklu sunęła po ziemi (1,27 m), cofał się na 110 px, czyli poza zasięg krzyku, a seria M-83 blokowała krzyk.
 
 - **K1, chód:** klip `human`, cykl 0,75 s.
-- **K2, postawa:** nie cofa się (`hold` 190 px), `stun_resist`, cios łapą za 1 w przerwie krzyku, HP 350, XP 40.
+- **K2, postawa:** nie cofa się (`hold` 190 px; od 1.7.653 z gotowym krzykiem podchodzi do `close` 80 px, w pole zapowiedzi, a próg ma zapas `slack` 24 px), `stun_resist`, cios łapą za 1 w przerwie krzyku, HP 350, XP 40.
 - **K3, wzywanie:** pierwsze po 6 s, potem co 14 s × `enemy_cd`, gest 1,2 s, 2 Trzoski (od trzeciego wezwania 3) poza kadrem, limit żywych 4 × `boss_adds`. 60 obrażeń przerywa gest. Wezwani bez XP i łupu, padają razem z Kapłanem. Dziennik: `elite` scream, summon, summon_break.
 - **K4, gesty:** klipy `summon` i `bless`, oczy i obwódka widoczne w ciemności.
 
