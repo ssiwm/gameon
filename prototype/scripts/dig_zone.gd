@@ -1443,6 +1443,7 @@ func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, ring:
 		return
 	var m: Dictionary = Mats.MATS[Mats.key_of(mat)]
 	var pick := tool != Mats.Tool.BLADE
+	var claw := tool == Mats.Tool.CLAW                         # pazur Łupacza: grudki i pył jak kilof, bez iskier stali, niżej i ciszej
 	var k := 1.0 if pick else 0.55
 	var hard := String(m["hit"]) == "world"
 	var chip: Color = m["chip"]
@@ -1460,9 +1461,10 @@ func _hit_rpc(key: String, at: Vector2, out: Vector2, mat: int, tool: int, ring:
 	if Vfx.view3d != null and is_instance_valid(Vfx.view3d):    # urobek zostaje na dnie wykopu (widok 3D, kopanie P1)
 		Vfx.view3d.call("dig_spoil", self, at, out, mat, 2 if tool == Mats.Tool.PICK else 1)   # kęs to 1/3 wyrwy (P1a) — mniej bryłek
 		Vfx.view3d.call("dig_dust", self, at, mat, k)            # pył wisi w wykopie i gęstnieje z serią (P2a)
-	if pick and randf() < float(m["sparks"]):
+	if pick and not claw and randf() < float(m["sparks"]):
 		Vfx.burst(lvl, at, Color(1.0, 0.82, 0.45), randi_range(2, 4), 60.0, 170.0, out, 45.0, 380.0, 0.16, Vector2(0.5, 0.9), true)
-	Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - (3.0 if not pick else 0.0), float(snd[2]) * (1.12 if not pick else 1.0))
+	Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - (3.0 if not pick or claw else 0.0),
+		float(snd[2]) * (1.12 if not pick else 0.84 if claw else 1.0))
 	if cracked:
 		Vfx.chips(lvl, at, out, chip, maxi(3, roundi(float(m["clods"]) * k)), "chip", 70.0, Vector2(1.2, 2.4))
 		Audio.play_variant_at(String(snd[0]), 3, at, Audio.BUS_WORLD, float(snd[1]) - 2.0, float(snd[2]) * 0.7)
@@ -1557,6 +1559,37 @@ func blast_dig(pos: Vector2, radius: float) -> bool:
 		_validate_props(Vector3(pos.x, pos.y, rr + SOFT))
 	return true
 
+## Serwer: pazur Łupacza (enemy_mole.gd) — wyrwa zaokrąglonego prostokąta (środek `center`, połowy boków `half`, zaokrąglenie `round_r`),
+## gdy w niej leży skała, którą bierze pazur (dig_materials.gd Tool.CLAW). Efekt ciosu jak kilof (`out` — strona, w którą lecą grudki), ale bez
+## licznika budzenia (K3), szczelin (K2) i hałasu Uwagi: kopiący wróg dokładałby co chwilę własny hałas, który zasłania wrogom hałas graczy.
+## Odsłonięte znajdźki wypadają jak po kilofie, rdzenia taśmy pazur nie zdejmuje. True — coś wycięło.
+func claw_dig(center: Vector2, half: Vector2, round_r: float, out: Vector2) -> bool:
+	var r := claw_rect(center, half, round_r)
+	var mat := _rock_in(r, Mats.Tool.CLAW)
+	if mat < 0:
+		return false
+	var at := _rock_center(r)
+	_send(center, half, round_r, Mats.Tool.CLAW)
+	SessionLog.note_dig(String(name), "claw")
+	var top := Vector2(at.x, r.position.y + 2.0)
+	if NoiseMgr.has_network():
+		_hit_rpc.rpc(map_key, at, out, mat, Mats.Tool.CLAW, 0.0, top, -1)
+	else:
+		_hit_rpc(map_key, at, out, mat, Mats.Tool.CLAW, 0.0, top, -1)
+	return true
+
+## Czy w wyrwie pazura (jak `claw_dig`) leży skała, którą pazur bierze — bez zmian w strefie.
+func claw_rock(center: Vector2, half: Vector2, round_r: float) -> bool:
+	return _rock_in(claw_rect(center, half, round_r), Mats.Tool.CLAW) >= 0
+
+## Prostokąt wyrwy pazura (px świata) wyrównany do siatki komórek (`_rock_in` patrzy tylko na wnętrze).
+func claw_rect(center: Vector2, half: Vector2, round_r: float) -> Rect2:
+	var a := center - half - Vector2.ONE * round_r
+	var b := center + half + Vector2.ONE * round_r
+	var x0 := _snap(a.x, global_position.x)
+	var y0 := _snap(a.y, global_position.y)
+	return Rect2(x0, y0, _snap(b.x, global_position.x) - x0, _snap(b.y, global_position.y) - y0)
+
 func _send(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 	if NoiseMgr.has_network():
 		_dig_rpc.rpc(map_key, pos, half, round_r, tool)
@@ -1610,8 +1643,8 @@ func apply_dig(pos: Vector2, half: Vector2, round_r: float, tool: int) -> void:
 				continue
 			if tk >= 0 and tcore.has_point(Vector2i(i, j)):
 				core_hit = core_hit or target < ISO                     # rdzeń w kształcie wyrwy (samo pasmo brzegu obok go nie rusza)
-				if tool == Mats.Tool.PICK:
-					continue                                        # kilof nie zdejmuje rdzenia taśmy (zostaje kaseta w ścianie)
+				if tool == Mats.Tool.PICK or tool == Mats.Tool.CLAW:
+					continue                                        # kilof i pazur Łupacza nie zdejmują rdzenia taśmy (zostaje kaseta w ścianie)
 			if _m[k] == vein and int(_d[k]) >= ISO and nd < ISO:
 				ore += 1
 			_d[k] = nd
@@ -2317,7 +2350,7 @@ func _spawn_find(k: int, from: Vector2, tool: int, who: Node2D = null) -> void:
 	SessionLog.note_dig(String(name), "finds")
 	SessionLog.note_dig_first(String(name), "first_find")
 	SessionLog.event("dig_find", {"zone": String(name), "find": k, "kind": kind, "item": String(item[0]) if not item.is_empty() else "",
-		"by": "hands" if tool == TOOL_HANDS else "fall" if tool < 0 else ["pick", "blade", "blast"][clampi(tool, 0, 2)], "pos": SessionLog.xy(at), "noise": roundi(NoiseMgr.level)})
+		"by": "hands" if tool == TOOL_HANDS else "fall" if tool < 0 else ["pick", "blade", "blast", "claw"][clampi(tool, 0, 3)], "pos": SessionLog.xy(at), "noise": roundi(NoiseMgr.level)})
 
 ## [rodzaj pickup.gd, arg, rounds] albo pusta tablica (nic — Nocny Dyżur bez potrzebnej amunicji).
 func _resolve_find(kind: String) -> Array:
