@@ -6,6 +6,8 @@ extends RefCounted
 ## ściana tylna. Wszystko, co przecina płaszczyzna przekroju z = SHELL_Z, ma tam jednolity materiał przekroju (`cut`).
 ## Tylko widok: kolizja, zniszczenia i pierwszy plan zostają na kaflach mapy. Budowane w warstwie świata, w jednym węźle na budynek.
 const Level3D := preload("res://scripts/level3d.gd")
+const DigEntrance3D := preload("res://scripts/dig_entrance3d.gd")
+const DoorHint3D := preload("res://scripts/door_hint3d.gd")
 
 const SLAB := 0.25                         ## m: grubość płyty stropodachu (góra = góra kafla dachu, po której się chodzi)
 const WALL := 0.4                          ## m: ściany szczytowe
@@ -176,7 +178,8 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		if x < xb:
 			res.append([x, xb])
 		return res
-	var out := {"wall": [], "col": [], "slab": [], "beam": [], "back": [], "plinth": [], "steel": [], "leaf": [], "glass": [], "cut": [], "cutcol": []}
+	var out := {"wall": [], "col": [], "slab": [], "beam": [], "back": [], "plinth": [], "steel": [], "leaf": [], "glass": [], "cut": [], "cutcol": [],
+			"dwood": [], "dmetal": [], "dsteel": [], "dyel": [], "dblk": []}
 	var box := func(key: String, a: Vector3, b2: Vector3) -> void:
 		if absf(b2.x - a.x) < 0.001 or absf(b2.y - a.y) < 0.001 or absf(b2.z - a.z) < 0.001:
 			return
@@ -296,7 +299,9 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 			if int(o["side"]) != side:
 				continue
 			var hw: float = DOOR_HW.get(String(o["kind"]), 0.95)
-			var h := [-hw, hw, -float(int(o["rb"]) + 1) * T, minf(-float(int(o["rt"])) * T, ys), String(o["kind"])]
+			var dc := int(b["c0"]) if side < 0 else int(b["c1"])
+			var dm := String(door_cols.get(dc, "")) if String(o["kind"]) in ["door", "gate"] else ""   # drzwi do wyważenia (W1): bez skrzydeł na licu
+			var h := [-hw, hw, -float(int(o["rb"]) + 1) * T, minf(-float(int(o["rt"])) * T, ys), String(o["kind"]), dm]
 			holes.append(h)
 			if String(o["kind"]) in ["door", "gate"]:
 				doors.append(h)
@@ -349,6 +354,8 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		_wall_x(box, "wall", minf(xo, xi), maxf(xo, xi), zb, zc, yf, ys, holes)
 		for h: Array in holes:
 			_frame(box, side, xo, xi, h)
+			if h.size() > 5 and String(h[5]) != "":
+				_door_frame(box, side, xo, xi, h)
 		if buried:
 			continue                                         # w skale: lico zewnętrzne niewidoczne, bez cokołu i pilastrów
 		var xout := func(d: float) -> float: return xo + float(side) * d     # x w odległości d na zewnątrz lica
@@ -393,6 +400,8 @@ static func _hits(ivs: Array, a: float, b: float) -> bool:
 ## stronach ościeżnicy; brama — jedno skrzydło przesuwne odsunięte w stronę przekroju (na tył nie ma miejsca: skrzydło 1,4 m wystawało
 ## za ścianę tylną).
 static func _leaves(h: Array) -> Array:
+	if h.size() > 5 and String(h[5]) != "":
+		return []                                            # drzwi do wyważenia: skrzydło zamknięte w otworze (`door_leaf`), nie na licu
 	var z0: float = h[0]
 	var z1: float = h[1]
 	match String(h[4]):
@@ -402,6 +411,233 @@ static func _leaves(h: Array) -> Array:
 		"gate":
 			return [[z1 + JAMB + 0.02, z1 + JAMB + 0.02 + (z1 - z0) + 2.0 * JAMB]]
 	return []
+
+# ---------------------------------------------------------------- drzwi do wyważenia (DESTRUCTION_CONTENT_PLAN.md W0–W1)
+
+## Kolumna wejścia budynku → materiał drzwi (wood / metal / steel) z DOORS mapy; ustawia widok 3D przed `build` (`level.door_defs`).
+static var door_cols := {}
+
+const DOOR_P := 0.3                        ## m: ościeżnica wystaje za oba lica ściany (obrys budynku z kamery, spike W0)
+const DOOR_JW := 0.16                      ## m: szerokość słupka ościeżnicy (w osi z)
+const DOOR_HH := 0.18                      ## m: wysokość nadproża ościeżnicy
+const DOOR_H := 2.2                        ## m: wysokość skrzydła
+const DOOR_KEY := {"wood": "dwood", "metal": "dmetal", "steel": "dsteel"}
+static var _door_mats := {}
+
+## Materiały drzwi: drewno, blacha w kolorze minii, ciemna stal zbrojona, pasy ostrzegawcze. Wspólne dla ościeżnic (MultiMesh budynku)
+## i skrzydeł (`door_leaf`).
+static func door_mats() -> Dictionary:
+	if _door_mats.is_empty() or not is_instance_valid(_door_mats.get("dmetal")):
+		_door_mats = {
+			"dwood": _door_mat(Level3D.make_pbr("plank", 0.9, Color(0.52, 0.40, 0.28), 0.9), Color(0.95, 0.82, 0.66)),
+			"dmetal": _door_mat(Level3D.make_pbr("metal", 0.40, Color(0.36, 0.38, 0.40), 0.55, 1.0, 0.7, false, "rust"), Color(0.95, 0.42, 0.30)),   # minia
+			"dsteel": _door_mat(Level3D.make_pbr("metal", 0.40, Color(0.16, 0.17, 0.18), 0.45, 1.0, 0.9, false, ""), Color(0.42, 0.43, 0.45)),
+			"dyel": Level3D.make_mat(Color(0.78, 0.58, 0.08), 0.7, 0.06, 0.2),
+			"dblk": Level3D.make_mat(Color(0.05, 0.05, 0.05), 0.7, 0.06, 0.2),
+		}
+	return _door_mats
+
+## Zabarwiona kopia materiału PBR (`make_pbr` zwraca wspólny egzemplarz z pamięci podręcznej, a kolor zastępczy działa tylko bez tekstur).
+static func _door_mat(base: StandardMaterial3D, tint: Color) -> StandardMaterial3D:
+	var m := base.duplicate() as StandardMaterial3D
+	m.albedo_color = tint
+	return m
+
+## Wysokość skrzydła w otworze od y0 do y1 (m).
+static func _door_h(y0: float, y1: float) -> float:
+	return minf(DOOR_H, y1 - y0 - DOOR_HH - 0.02)
+
+## Ościeżnica drzwi do wyważenia w materiale drzwi: słupki, nadproże i daszek wystające DOOR_P poza oba lica ściany — widać je poza obrysem
+## budynku, a słupek od strony kamery niesie kolor materiału (spike W0: drzwi w otworze zasłania ściana szczytowa). Zostaje po wyważeniu.
+static func _door_frame(box: Callable, side: int, xo: float, xi: float, h: Array) -> void:
+	var mat := String(h[5])
+	var key := String(DOOR_KEY.get(mat, "dmetal"))
+	var z0: float = h[0]
+	var z1: float = h[1]
+	var y0: float = h[2]
+	var hd := _door_h(y0, float(h[3]))
+	var s := float(side)
+	for face: Array in [[xo, s], [xi, -s]]:                  # lico zewnętrzne (na zewnątrz) i wewnętrzne (do środka)
+		var xf: float = face[0]
+		var d: float = face[1]
+		var xa := minf(xf, xf + d * DOOR_P)
+		var xb := maxf(xf, xf + d * DOOR_P)
+		for zz: Array in [[z0 - DOOR_JW, z0], [z1, z1 + DOOR_JW]]:
+			box.call(key, Vector3(xa, y0, zz[0]), Vector3(xb, y0 + hd + DOOR_HH, zz[1]))
+		box.call(key, Vector3(xa, y0 + hd, z0 - DOOR_JW), Vector3(xb, y0 + hd + DOOR_HH, z1 + DOOR_JW))
+		var xc := minf(xf, xf + d * (DOOR_P + 0.08))          # daszek nad ościeżnicą (szkic autora 2026-11-22)
+		var xd := maxf(xf, xf + d * (DOOR_P + 0.08))
+		box.call(key, Vector3(xc, y0 + hd + DOOR_HH, z0 - DOOR_JW - 0.08), Vector3(xd, y0 + hd + DOOR_HH + 0.06, z1 + DOOR_JW + 0.08))
+		if mat == "steel":                                   # zbrojone: pasy ostrzegawcze tylko na czole nadproża (słupek zostaje pod ładunek ducha)
+			var n := int((xb - xa) / 0.1)
+			for i in n:
+				box.call("dyel" if i % 2 == 0 else "dblk", Vector3(xa + float(i) * 0.1, y0 + hd, z1 + DOOR_JW),
+					Vector3(minf(xa + float(i + 1) * 0.1, xb), y0 + hd + DOOR_HH, z1 + DOOR_JW + 0.012))
+
+## Wejście budynku 3D w kolumnie `col` z dolnym wierszem otworu `rb` (`Level3D.buildings`, po `set_shells`): {side, xo, xi, hw, y0, y1, kind};
+## {} — nie ma takiego.
+static func door_at(col: int, rb: int) -> Dictionary:
+	var T := Level3D.T
+	for b: Dictionary in Level3D.buildings:
+		for o: Dictionary in b["open"]:
+			var side := int(o["side"])
+			if int(o["rb"]) != rb or (int(b["c0"]) if side < 0 else int(b["c1"])) != col or not String(o["kind"]) in ["door", "gate"]:
+				continue
+			var xo := float(int(b["c0"])) * T if side < 0 else float(int(b["c1"]) + 1) * T
+			var ys := -float(int(b["r0"])) * T - SLAB
+			return {"side": side, "xo": xo, "xi": xo - float(side) * WALL, "hw": float(DOOR_HW.get(String(o["kind"]), 0.95)),
+				"y0": -float(rb + 1) * T, "y1": minf(-float(int(o["rt"])) * T, ys), "kind": String(o["kind"])}
+	return {}
+
+## Skrzydło drzwi (`at` z `door_at`) jako węzeł: „Closed” — zamknięte w otworze, w grubości muru tuż za licem zewnętrznym (gracz staje
+## przy licu, ościeżnica wystaje dalej); „Broken” — wyważone: drewno — resztki desek przy zawiasach i deski na ziemi, metal i stal —
+## skrzydło leży płasko przed drzwiami. Widok przełącza widoczność wg stanu przegrody.
+static func door_leaf(mat: String, at: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Door"
+	var closed := Node3D.new()
+	closed.name = "Closed"
+	var broken := Node3D.new()
+	broken.name = "Broken"
+	root.add_child(closed)
+	root.add_child(broken)
+	var mats := door_mats()
+	var key := String(DOOR_KEY.get(mat, "dmetal"))
+	var s := float(int(at["side"]))
+	var xo := float(at["xo"])
+	var z0 := -float(at["hw"])
+	var z1 := float(at["hw"])
+	var y0 := float(at["y0"])
+	var hd := _door_h(y0, float(at["y1"]))
+	var add := func(parent: Node3D, k: String, a: Vector3, b: Vector3) -> void:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = (b - a).abs()
+		mi.mesh = bm
+		mi.material_override = mats[k]
+		mi.position = (a + b) * 0.5
+		parent.add_child(mi)
+	var xa := minf(xo - s * 0.09, xo - s * 0.02)            # skrzydło w grubości muru, 2 cm za licem
+	var xb := maxf(xo - s * 0.09, xo - s * 0.02)
+	match mat:
+		"wood":                                              # deski pionowe ze szczelinami i dwie listwy od zewnątrz
+			var nb := 5
+			var w := (z1 - z0) / float(nb)
+			for i in nb:
+				add.call(closed, "dwood", Vector3(xa, y0 + 0.02, z0 + float(i) * w + 0.012), Vector3(xb, y0 + hd, z0 + float(i + 1) * w - 0.012))
+			for yy: float in [0.35, hd - 0.4]:
+				var xl := xo + s * 0.01
+				add.call(closed, "dwood", Vector3(minf(xl, xo - s * 0.02), y0 + yy, z0 + 0.06), Vector3(maxf(xl, xo - s * 0.02), y0 + yy + 0.14, z1 - 0.06))
+			add.call(broken, "dwood", Vector3(xa, y0 + 0.3, z0), Vector3(xb, y0 + hd - 0.2, z0 + 0.22))      # resztki przy zawiasach
+			add.call(broken, "dwood", Vector3(xa, y0 + hd - 0.7, z0 + 0.22), Vector3(xb, y0 + hd - 0.1, z0 + 0.4))
+			for i in 3:                                       # deski na ziemi przed drzwiami
+				var xg := xo + s * (DOOR_P + 0.2 + 0.35 * float(i))
+				var zg := z0 + 0.3 + 0.45 * float(i)
+				add.call(broken, "dwood", Vector3(minf(xg, xg + s * 1.4), y0, zg), Vector3(maxf(xg, xg + s * 1.4), y0 + 0.035, zg + w - 0.03))
+		_:
+			add.call(closed, key, Vector3(xa, y0 + 0.02, z0), Vector3(xb, y0 + hd, z1))
+			var ribs: Array = [0.5, hd - 0.5] if mat == "metal" else [0.35, hd * 0.5, hd - 0.35]
+			for yy: float in ribs:                           # przetłoczenia blachy / rygle zbrojonych na całą szerokość
+				var t := 0.03 if mat == "metal" else 0.07
+				var xr := xo + s * (0.02 if mat == "metal" else 0.05)
+				var zm := 0.1 if mat == "metal" else -0.05
+				add.call(closed, key, Vector3(minf(xr, xo - s * 0.02), y0 + yy - t, z0 + zm), Vector3(maxf(xr, xo - s * 0.02), y0 + yy + t, z1 - zm))
+			var xg0 := xo + s * (DOOR_P + 0.15)               # skrzydło leży płasko na ziemi przed drzwiami
+			var xg1 := xo + s * (DOOR_P + 0.15 + hd)
+			add.call(broken, key, Vector3(minf(xg0, xg1), y0, z0 + 0.05), Vector3(maxf(xg0, xg1), y0 + 0.07, z1 - 0.05))
+	return root
+
+const HINT_TOOL := {"wood": "res://art/char3d/gun_maczeta.glb", "metal": "res://art/char3d/gun_kilof.glb", "steel": "res://art/items3d/charge.glb"}
+const HINT_K := {"wood": 1.6, "metal": 1.3}   ## skala narzędzia (modele broni są mniejsze, bo siedzą w dłoni postaci): maczeta 0,95 m, kilof 0,95 m
+const HINT_TIP_H := {"wood": 1.35, "metal": 1.15}   ## m: czubek nad podłogą — wysokość piersi, w snopie latarki
+const HINT_TILT := {"wood": 0.42, "metal": 0.6}     ## rad: maczeta ostrzem w dół jak po ciosie, trzonek kilofa od pionu
+const HINT_EMBED := 0.07                    ## m: czubek w ościeżnicy (od jej zewnętrznego końca)
+const HINT_CHARGE_K := 0.65                 ## skala ładunku jak znajdźka (ITEM_SCALE w view3d)
+
+## „Duch” narzędzia przy drzwiach (`door_hint3d.gd`, `at` z `door_at`): drewno — maczeta wbita w koniec ościeżnicy (ostrze w drewnie,
+## rękojeść na zewnątrz), metal — kilof wbity obuchem w szczelinę (dźwignia w dół), zbrojone — ładunek na słupku od strony kamery
+## i lont po podłodze na zewnątrz. Płaszczyzna narzędzia równoległa do kadru, w osi słupka od kamery, po zewnętrznej stronie. null bez modelu.
+static func door_hint(mat: String, at: Dictionary) -> Node3D:
+	var path := String(HINT_TOOL.get(mat, ""))
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	var n := (load(path) as PackedScene).instantiate() as Node3D
+	var hint := DoorHint3D.new()
+	hint.name = "DoorHint"
+	hint.mat = mat
+	hint.tool = n
+	hint.add_child(n)
+	var s := float(int(at["side"]))
+	hint.side = s
+	var xo := float(at["xo"])
+	var y0 := float(at["y0"])
+	var zf := float(at["hw"]) + DOOR_JW                    # czoło słupka od kamery
+	if mat == "steel":
+		var k := Level3D.PX * HINT_CHARGE_K
+		var p := Vector3(xo + s * DOOR_P * 0.5, y0 + 0.95, zf + 2.35 * k)
+		hint.rest = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * k), p)
+		_hint_cord(hint, p, y0, s, zf)
+		hint.tip = p
+	else:
+		var tip := _hint_tip(n, mat)
+		var tilt := float(HINT_TILT.get(mat, 0.5))
+		var b := Basis(Vector3.BACK, (PI * 0.5 if mat == "metal" else PI) + tilt).scaled(Vector3.ONE * float(HINT_K.get(mat, 1.3)))
+		if s < 0.0:
+			b = Basis(Vector3.UP, PI) * b                    # drzwi po lewej: odbicie
+		var p := Vector3(xo + s * (DOOR_P - HINT_EMBED), y0 + float(HINT_TIP_H.get(mat, 1.2)), zf - DOOR_JW * 0.5)
+		hint.rest = Transform3D(b, p - b * tip)
+		hint.tip = p
+		hint.hand = hint.rest * _hint_end(n, mat)
+	n.transform = hint.rest
+	return hint
+
+## Czubek narzędzia w układzie modelu: kilof — czubek obucha (`DigEntrance3D.pick_parts`), maczeta — koniec ostrza (+x siatki „blade”).
+static func _hint_tip(model: Node3D, mat: String) -> Vector3:
+	if mat == "metal":
+		var pp: Dictionary = DigEntrance3D.pick_parts(model)
+		if not pp.is_empty():
+			return pp["tip"]
+	var blade := AABB()
+	var first := true
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if mat == "wood" and not String(m.name).to_lower().contains("blade"):
+			continue
+		var bb := DigEntrance3D._rel_xf(model, m) * m.get_aabb()
+		blade = bb if first else blade.merge(bb)
+		first = false
+	return Vector3(blade.end.x, blade.get_center().y, blade.get_center().z)
+
+## Koniec rękojeści (maczeta) albo trzonka (kilof) w układzie modelu — oś zamachu ducha.
+static func _hint_end(model: Node3D, mat: String) -> Vector3:
+	if mat == "metal":
+		var pp: Dictionary = DigEntrance3D.pick_parts(model)
+		if not pp.is_empty():
+			return pp["end"]
+	var all := AABB()
+	var first := true
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var bb := DigEntrance3D._rel_xf(model, m) * m.get_aabb()
+		all = bb if first else all.merge(bb)
+		first = false
+	return Vector3(all.position.x + 0.03, all.get_center().y, all.get_center().z)
+
+## Lont ładunku: z dołu ładunku do podłogi przy słupku i po podłodze 1,2 m na zewnątrz, na końcu zapalnik (materiał nadpisze duch).
+static func _hint_cord(root: Node3D, at: Vector3, y0: float, s: float, zf: float) -> void:
+	var z := zf + 0.03
+	var x0 := at.x + s * 0.12
+	var x1 := x0 + s * 1.2
+	for q: Array in [[Vector3(x0, (at.y + y0) * 0.5, z), Vector3(0.016, at.y - y0, 0.016)],
+			[Vector3((x0 + x1) * 0.5, y0 + 0.01, z), Vector3(1.2, 0.016, 0.016)],
+			[Vector3(x1 + s * 0.06, y0 + 0.05, z), Vector3(0.12, 0.1, 0.08)]]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = q[1]
+		mi.mesh = bm
+		mi.position = q[0]
+		mi.name = "Cord"
+		root.add_child(mi)
 
 ## Ściana w płaszczyźnie y-z (x od xa do xb) z prostokątnymi otworami [z0, z1, y0, y1, …]: pasy między kolejnymi krawędziami otworów w z,
 ## w każdym pasie mur pod, między i nad otworami.
@@ -473,6 +709,7 @@ static func build_one(parent: Node3D, b: Dictionary, rows: Array) -> int:
 		"glass": Level3D.make_mat(Color(0.03, 0.035, 0.04), 0.12, 0.06, 0.0),
 		"cut": _tinted(cs),   # przekrój: rzut świata — płaszczyzna cięcia jak jeden blok betonu
 	}
+	mats.merge(door_mats())
 	for k: String in ROLE:
 		mats[k] = _uv_mat(spec.get(k, spec.get(ROLE[k], spec["wall"])))
 	var unit := BoxMesh.new()

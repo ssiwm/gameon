@@ -241,7 +241,8 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   i mniej rozrzuca. Od 1.7.325 długi ogień grzeje lufę: gorąca lufa rozrzuca szerzej, rozgrzany tłumik głośnieje, a z lufy idzie dym
   i nad nią faluje powietrze; lufa stygnie ok. 45 s. Dalsza rozbudowa: `GUNSMITH_PLAN.md`.
 - Doszły później (patrz `prototype/WEAPONS.md` §7–§9 i `scripts/throwables.gd`): ulepszenia 3-poziomowe, granaty, miny, ładunki, flary
-  i zakup w kryjówce. Poza zakresem prototypu zostaje wyważanie drzwi.
+  i zakup w kryjówce. Wyważanie drzwi od 1.7.656 (`DESTRUCTION_CONTENT_PLAN.md`): drzwi budynków są przegrodą — drewniane bierze maczeta, kule
+  i pazury, metalowe kilof, granat i szarża, zbrojone tylko materiał wybuchowy (dwa granaty albo jeden ładunek burzący); na razie posterunek 1.3.
 
 ---
 

@@ -307,6 +307,7 @@ static func explode(tree: SceneTree, pos: Vector2, radius: float, damage: float,
 		var q := Vector2(clampf(pos.x, rc.position.x, rc.end.x), clampf(pos.y, rc.position.y, rc.end.y))
 		if q.distance_to(pos) <= radius:
 			var binfo := make_info(w, damage, q, (q - pos).normalized() if q.distance_to(pos) > 0.5 else Vector2.UP, shooter, "blast")
+			binfo["demolition"] = demolition                 # ładunek burzący: drzwi zbrojone od jednego (breakable.gd `charge_blasts`)
 			apply(b, binfo)
 	for wi in tree.get_nodes_in_group("windows"):
 		var rw: Rect2 = wi.hit_rect()

@@ -82,6 +82,9 @@ const FRONT := [
 	# słupów `w` hali, bez słupów w płaszczyźnie przekroju (arena bossa — nic nie zasłania kadru)
 	{"set": "station", "c0": 164, "c1": 190, "r0": 11, "r1": 26, "shell": true, "build": "shed", "bays": [173.5, 181.5], "cut_cols": false, "closed": true},
 ]
+## Drzwi budynków 3D (DESTRUCTION_CONTENT_PLAN.md W1, decyzje 2–3): kolumna wejścia → materiał; `"start": "broken"` — wyważone na starcie
+## (skrzydło leży, ślad poprzedniego patrolu). Posterunek: zachód metalowe (kilof), wschód wyważone.
+const DOORS := {18: {"mat": "metal"}, 36: {"mat": "metal", "start": "broken"}}
 const FRONT_SKIP := []
 
 ## Hala Żyły (`VEIN_PLAN.md` §6, od 1.7.552): dane areny bossa zamiast nowych liter mapy. Kafle włącznie.

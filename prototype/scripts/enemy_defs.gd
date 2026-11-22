@@ -15,7 +15,7 @@ extends RefCounted
 ##             Nowy rodzaj z własną mechaniką = nowa podklasa + wpis w `enemy_behavior.gd: BEHAVIORS` i tu, bez `if kind ==` w enemy.gd
 ##   stun_resist / throws / breaks_barricades  Rzeźnik (F4c): brak chwiania od trafień i ogłuszeń / (false) bez rzutów skrzynią i głazem / szarża rozbija każdą przegrodę,
 ##             która przyjmuje szarżę (zamurowanie, deski — nie kratkę)
-##   charge_breaks  materiały przegród (`breakable.gd`), które łamie szarża rodzaju bez `breaks_barricades` (Wołek: deski)
+##   charge_breaks  materiały przegród (`breakable.gd`), które łamie szarża rodzaju bez `breaks_barricades` (Wołek: deski i drzwi drewniane)
 ##   claw_barricade  obrażenia ciosu w barykadę (DESTRUCTION_PLAN.md D2): wróg, którego cel albo ślad jest za deskami, podchodzi i bije w nie (`enemy.gd: _barricade_tick`)
 ##   charge    parametry szarży bruisera {min, max, windup, time, mult, cd, crash_stun, damage}; brak = stałe Wołka (enemy_bruiser.gd)
 ##   elite     true = elita (GDD §7.2): pasek HP nad głową od początku spotkania, Dyrektor wypuszcza najwyżej jedną naraz (F4)
@@ -110,7 +110,7 @@ const DEFS := {
 	"wolek": {
 		"hp": 140.0, "speed": 36.0, "damage": 2, "windup": 0.6, "reach": 20.0,
 		"cooldown": 1.6, "leap": false, "hear": 150.0, "wake_near": 70.0, "sight": 200.0,
-		"behavior": "bruiser", "armor": 3.0, "charge_breaks": ["planks"], "claw_barricade": 20.0,
+		"behavior": "bruiser", "armor": 3.0, "charge_breaks": ["planks", "door_wood"], "claw_barricade": 20.0,
 		# głaz (F3.9): zawsze dostępny, gdy w pobliżu brak skrzyni; `dmg` HP (0,5 = ukryte „stłuczenie", dwa trafienia = serce), `cd` s przerwy wg trudności
 		# [EASY, NORMAL, HARD], `windup` s zapowiedzi (× `enemy_windup`), `range` px poziomo, `noise` hałas rzutu
 		"boulder": {"dmg": 0.5, "cd": [8.0, 5.0, 3.2], "windup": 0.6, "range": 220.0, "noise": 2.0},

@@ -55,6 +55,7 @@ const HIT_STAGGER := 0.7
 const STAGGER_COOLDOWN := 3.0
 const SMASH_DMG := 20.0         ## cios w barykadę: 20 z 60 HP — pas na wysokości ciosu i sąsiedni (pas = 60 / kafle otworu, S2)
 const SMASH_EVERY := 1.1        ## s między ciosami: pełna barykada ≈ 3 s plus dojście
+const SMASHES := ["planks", "door_wood", "door_metal"]   ## co rozbija na jedynej drodze do hałasu: barykady i drzwi poza zbrojonymi (DESTRUCTION_CONTENT_PLAN.md W1)
 const SMASH_FIRST := 0.45       ## s od stanięcia pod barykadą do pierwszego ciosu
 const SMASH_STAND := 7.0        ## px przed barykadą, skąd bije
 
@@ -519,7 +520,8 @@ func _smash_tick(delta: float, speed: float, nav: AStar2D) -> bool:
 	if _smash_cd <= 0.0:
 		_smash_cd = SMASH_EVERY
 		var at := Vector2(rc.position.x if _smash_side < 0.0 else rc.end.x, rc.end.y - 26.0)
-		_smash.call("take_hit", {"type": "claw", "amount": SMASH_DMG, "pos": at, "dir": Vector2(-_smash_side, 0.0), "src": "stalker"})
+		var metal := String(_smash.get("mat_id")) == "door_metal"   # drzwi metalowe: barkiem (szarża), dwa razy dłużej niż drewniane (W1)
+		_smash.call("take_hit", {"type": "charge" if metal else "claw", "amount": SMASH_DMG, "pos": at, "dir": Vector2(-_smash_side, 0.0), "src": "stalker"})
 		_seen_serial = NoiseMgr.noise_serial            # własne uderzenia (i trzask rozbitych desek) nie przestawiają mu celu
 	return true
 
@@ -530,7 +532,7 @@ func _barricade_blocking(nav: AStar2D, goal: Vector2) -> Node2D:
 	var best_cost := INF
 	for n in get_tree().get_nodes_in_group("breakables"):
 		var b := n as Node2D
-		if b == null or b.is_queued_for_deletion() or float(b.get("hp")) <= 0.0 or String(b.get("mat_id")) != "planks":
+		if b == null or b.is_queued_for_deletion() or float(b.get("hp")) <= 0.0 or not SMASHES.has(String(b.get("mat_id"))):
 			continue
 		var rc: Rect2 = b.call("hit_rect")
 		var y := rc.end.y - 2.0

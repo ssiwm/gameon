@@ -48,6 +48,10 @@ extends "res://scripts/stalker_test.gd"
 ##     pas, dołączający, migawka i wipe dostają pasy.
 ## 20. Wrogowie i bot przy ostrzale desek (S3): ostrzał ściąga Trzoska, który drapie barykadę i nie utyka (też przy szczelinie u dołu); bot
 ##     nie strzela przez deski, bez nich tak; Stalker przez barykadę z jednym pasem po jednym ciosie.
+## 21. Drzwi budynków (DESTRUCTION_CONTENT_PLAN.md W1): DOORS posterunku 1.3; drzwi wstawione w wejścia budynków 1.2 — metalowe (maczeta,
+##     kula, śrut i pazury nic, komunikat; kilof i jeden granat wyważają, szarża rani), zbrojone (tylko wybuch: dwa granaty albo jeden ładunek
+##     burzący), drewniane próbne (maczeta, kule, śrut, pazury), wyważone na starcie (wolne, bez desek), reset i punkt kontrolny bossa; szarże
+##     Wołka i Rzeźnika, Stalker na jedynej drodze.
 ## Mapa 1.2 (ma zamurowane przejście), reszta świata wyciszona jak w stalker_test.gd. Wynik: linie [DESTRUCTION-TEST] i kod wyjścia.
 
 const Breakable := preload("res://scripts/breakable.gd")
@@ -118,6 +122,7 @@ func run(m: Node2D) -> void:
 	await _shooting()
 	await _bands()
 	await _s3_enemies()
+	await _doors()
 	_session_log()
 	_finish()
 
@@ -1258,6 +1263,175 @@ func _enemy(kind: String, pos: Vector2) -> CharacterBody2D:
 	e._phys_x = pos.x
 	e._last_x = pos.x
 	return e
+
+# ---------------------------------------------------------------- 21. drzwi budynków (DESTRUCTION_CONTENT_PLAN.md W1)
+
+const StalkerScript := preload("res://scripts/stalker.gd")
+const EnemyDefs := preload("res://scripts/enemy_defs.gd")
+const LevelScript := preload("res://scripts/level.gd")
+
+func _gone(w: Variant) -> bool:
+	return not is_instance_valid(w) or (w as Node).is_queued_for_deletion() or float((w as Node).get("hp")) <= 0.0
+
+## Ciosy bronią `wid` aż do rozbicia (najwyżej `cap`); zwraca liczbę ciosów.
+func _swings(w: Node2D, wid: int, cap: int) -> int:
+	var n := 0
+	var at: Vector2 = w.call("body_center")
+	while not _gone(w) and n < cap:
+		_hit(w, wid, Weapons.def(wid).damage, "melee", at)
+		n += 1
+	return n
+
+func _doors() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	# dane: posterunek 1.3 — dwoje drzwi metalowych w ścianach szczytowych, wschodnie wyważone na starcie
+	var m3: Dictionary = (load("res://scripts/maps/z1_m3.gd") as GDScript).get_script_constant_map()
+	var dws3: Array = LevelScript.building_doorways(m3.get("FRONT", []), m3.get("MAP", []))
+	var d3: Dictionary = m3.get("DOORS", {})
+	var on3 := d3.keys().all(func(c: Variant) -> bool: return dws3.any(func(d: Dictionary) -> bool: return int(d["col"]) == int(c) and String(d["kind"]) == "door"))
+	check("1.3: DOORS w wejściach budynku (%s), materiały metal, wschodnie wyważone na starcie" % str(d3.keys()),
+		d3.size() == 2 and on3 and String(d3[18]["mat"]) == "metal" and String((d3[36] as Dictionary).get("start", "")) == "broken")
+
+	# drzwi wstawione w wejścia budynków 1.2 (stała DOORS tej mapy jest pusta do W2): metalowe, zbrojone, drewniane wyważone na starcie
+	var dws: Array = LevelScript.building_doorways(level.front, level._map)
+	check("1.2: wejścia budynków 3D do próby (%d)" % dws.size(), dws.size() >= 3)
+	if dws.size() < 3:
+		return
+	var cm := int(dws[0]["col"])
+	var cs := int(dws[1]["col"])
+	var cw := int(dws[2]["col"])
+	level.doors = {cm: {"mat": "metal"}, cs: {"mat": "steel"}, cw: {"mat": "wood", "start": "broken"}}
+	var n0: int = level._wall_defs.size()
+	level._register_doors()
+	var added: Array = (level._wall_defs as Array).slice(n0)
+	for wd: Dictionary in added:
+		if not level._opened_walls.has(String(wd["name"])):
+			level._close_wall(wd)
+	await _frames(0.1)
+	var defs: Array = level.door_defs()
+	check("drzwi: przegrody Door1–Door3 w kolumnach wejść (%s)" % ", ".join(defs.map(func(d: Dictionary) -> String: return "%s %s kol. %d" % [d["name"], d["mat"], d["col"]])),
+		defs.size() == 3 and int(defs[0]["col"]) == cm and String(defs[0]["mat"]) == "metal" and String(defs[1]["mat"]) == "steel" and String(defs[2]["mat"]) == "wood")
+	var dm: Node2D = level.get_node_or_null("Door1")
+	var ds: Node2D = level.get_node_or_null("Door2")
+	var rb_m := int(defs[0]["rb"])
+	var rb_w := int(defs[2]["rb"])
+	check("drzwi zamknięte: węzeł, kafle bryłą dla nawigacji (%s, %s)" % [str(dm.get("mat_id")) if dm else "-", str(ds.get("mat_id")) if ds else "-"],
+		dm != null and ds != null and String(dm.mat_id) == "door_metal" and level._is_solid(cm, rb_m) and level._is_solid(cs, int(defs[1]["rb"])))
+	check("drzwi wyważone na starcie: bez węzła, przejście wolne, nie da się ich zabić deskami",
+		level.get_node_or_null("Door3") == null and level._opened_walls.has("Door3") and not level._is_solid(cw, rb_w) and level.nail_reason("Door3") != "")
+	if dm == null or ds == null:
+		return
+
+	# metalowe: maczeta i kule bez ubytku, komunikat o kilofie; kilof rozbija, jeden granat też
+	var mc: Vector2 = dm.call("body_center")
+	var hp0 := float(dm.hp)
+	var rmz := _hit(dm, Weapons.MACZETA, Weapons.def(Weapons.MACZETA).damage, "melee", mc)
+	var rbl := _hit(dm, Weapons.M83, 20.0, "bullet", mc)
+	var rpl := _hit(dm, Weapons.SRUT8, 10.0, "bullet", mc)
+	var txt := String(Msg.live("barrier.Door1").get("text", ""))
+	check("metalowe: maczeta, kula i śrut bez ubytku HP (%.0f), komunikat „%s”" % [float(dm.hp), txt],
+		not bool(rmz.get("hit")) and float(dm.hp) == hp0 and hp0 == 220.0 and txt.contains("Metal door") and txt.contains("machete"))
+	Msg.withdraw("barrier.Door1")
+	check("metalowe: pazury Trzoska nic, szarża (Rzeźnik, Stalker barkiem) rani",
+		not bool(Combat.apply(dm, {"type": "claw", "amount": 4.0, "pos": mc, "dir": Vector2.RIGHT}).get("hit"))
+		and bool(Combat.apply(dm, {"type": "charge", "amount": 20.0, "pos": mc, "dir": Vector2.RIGHT, "src": "stalker"}).get("hit")))
+	level.reset_breakables()
+	await _frames(0.1)
+	dm = level.get_node_or_null("Door1")
+	var want := ceili(220.0 / Weapons.def(Weapons.KILOF).damage)
+	var sw := _swings(dm, Weapons.KILOF, 20)
+	await _frames(0.15)
+	check("metalowe: kilof wyważa (%d ciosów, oczekiwane %d), przejście otwarte" % [sw, want],
+		sw == want and level._opened_walls.has("Door1") and not level._is_solid(cm, rb_m))
+	level.reset_breakables()
+	await _frames(0.1)
+	dm = level.get_node_or_null("Door1")
+	check("reset: metalowe znów zamknięte, wyważone na starcie dalej otwarte",
+		dm != null and float(dm.hp) == 220.0 and level._is_solid(cm, rb_m) and level.get_node_or_null("Door3") == null and not level._is_solid(cw, rb_w))
+	var frag: Dictionary = Throwables.KINDS["frag"]
+	var fr := float(frag["radius"])
+	var fd := float(frag["damage"])
+	var mrc: Rect2 = dm.hit_rect()
+	Combat.explode(get_tree(), Vector2(mrc.position.x - fr + 4.0, mrc.get_center().y), fr, fd, 1, Weapons.GNIEW4)
+	await _frames(0.15)
+	check("metalowe: jeden granat na brzegu promienia je wyważa", _gone(dm) and level._opened_walls.has("Door1"))
+
+	# punkt kontrolny bossa: wyważone drzwi zostają wyważone, reset z migawki
+	level.save_breakables_checkpoint()
+	level.reset_breakables()
+	await _frames(0.1)
+	var closed_again := level.get_node_or_null("Door1") != null
+	level.reset_breakables(level.breakables_checkpoint())
+	await _frames(0.1)
+	check("punkt kontrolny: wyważone drzwi z migawki znów otwarte (po czystym resecie zamknięte: %s)" % str(closed_again),
+		closed_again and level.get_node_or_null("Door1") == null and level._opened_walls.has("Door1"))
+	level.reset_breakables()
+	await _frames(0.1)
+
+	# zbrojone: kilof, maczeta, kule — nic; granat nie, drugi tak; ładunek burzący od razu
+	ds = level.get_node_or_null("Door2")
+	var sc: Vector2 = ds.call("body_center")
+	var rpk := _hit(ds, Weapons.KILOF, Weapons.def(Weapons.KILOF).damage, "melee", sc)
+	_hit(ds, Weapons.MACZETA, Weapons.def(Weapons.MACZETA).damage, "melee", sc)
+	_hit(ds, Weapons.M83, 20.0, "bullet", sc)
+	var stxt := String(Msg.live("barrier.Door2").get("text", ""))
+	check("zbrojone: kilof, maczeta i kula bez ubytku (%.0f / 400 HP), komunikat „%s”" % [float(ds.hp), stxt],
+		not bool(rpk.get("hit")) and float(ds.hp) == 400.0 and stxt.contains("Reinforced door") and stxt.contains("pickaxe"))
+	Msg.withdraw("barrier.Door2")
+	check("zbrojone: szarża i pazury nic", not bool(Combat.apply(ds, {"type": "charge", "amount": 60.0, "pos": sc, "dir": Vector2.RIGHT}).get("hit"))
+		and not bool(Combat.apply(ds, {"type": "claw", "amount": 6.0, "pos": sc, "dir": Vector2.RIGHT}).get("hit")))
+	var src: Rect2 = ds.hit_rect()
+	var at := Vector2(src.position.x - fr + 4.0, src.get_center().y)
+	Combat.explode(get_tree(), at, fr, fd, 1, Weapons.GNIEW4)
+	await _frames(0.05)
+	var after_one := float(ds.hp) if is_instance_valid(ds) else 0.0
+	Combat.explode(get_tree(), at, fr, fd, 1, Weapons.GNIEW4)
+	await _frames(0.15)
+	check("zbrojone: po jednym granacie stoją (%.0f / 400 HP), drugi je wyważa" % after_one, after_one > 0.0 and after_one < 400.0 and _gone(ds) and level._opened_walls.has("Door2"))
+	level.reset_breakables()
+	await _frames(0.1)
+	ds = level.get_node_or_null("Door2")
+	var ch: Dictionary = Throwables.KINDS["charge"]
+	src = ds.hit_rect()
+	Combat.explode(get_tree(), Vector2(src.position.x - float(ch["radius"]) + 6.0, src.get_center().y), float(ch["radius"]), 10.0, 1, Weapons.GNIEW4, true, true)
+	await _frames(0.15)
+	check("zbrojone: jeden ładunek burzący na brzegu promienia je wyważa", _gone(ds) and level._opened_walls.has("Door2"))
+	level.reset_breakables()
+	await _frames(0.1)
+
+	# drewniane (próbne w tunelu): maczeta, kule słabo, śrut, pazury; szarża Wołka tak
+	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
+	var dw := _barrier("DDoorW1", base, "door_wood", 3)
+	await _frames(0.1)
+	var wc: Vector2 = dw.call("body_center")
+	var rk := _hit(dw, Weapons.M83, 20.0, "bullet", wc)
+	var rs := _hit(dw, Weapons.SRUT8, 10.0, "bullet", wc)
+	var rc := Combat.apply(dw, {"type": "claw", "amount": 4.0, "pos": wc, "dir": Vector2.RIGHT})
+	check("drewniane: kula, śrut i pazury ranią (HP %.1f / 90; %s %s %s)" % [float(dw.hp), str(rk.get("dealt")), str(rs.get("dealt")), str(rc.get("dealt"))], bool(rk.get("hit")) and bool(rs.get("hit")) and bool(rc.get("hit")) and float(dw.hp) < 90.0)
+	dw.queue_free()
+	dw = _barrier("DDoorW2", base, "door_wood", 3)
+	await _frames(0.1)
+	var mwant := ceili(90.0 / Weapons.def(Weapons.MACZETA).damage)
+	var msw := _swings(dw, Weapons.MACZETA, 10)
+	check("drewniane: maczeta wyważa (%d ciosów, oczekiwane %d)" % [msw, mwant], msw == mwant)
+	await _frames(0.1)
+	var wolek: Dictionary = EnemyDefs.DEFS["wolek"]
+	check("szarże: Wołek łamie drewniane (nie metalowe), Rzeźnik każdą przegrodę z „charge” (metalowe tak, zbrojone nie)",
+		(wolek["charge_breaks"] as Array).has("door_wood") and not (wolek["charge_breaks"] as Array).has("door_metal")
+		and (Breakable.MATERIALS["door_metal"]["breaks"] as Array).has("charge") and not (Breakable.MATERIALS["door_steel"]["breaks"] as Array).has("charge"))
+	check("Stalker na jedynej drodze rozbija deski, drewniane i metalowe drzwi, zbrojonych nie",
+		StalkerScript.SMASHES.has("door_wood") and StalkerScript.SMASHES.has("door_metal") and not StalkerScript.SMASHES.has("door_steel"))
+
+	# sprzątanie: 1.2 bez drzwi jak w danych mapy (dziennik sesji niżej liczy tylko swoje)
+	for wd2: Dictionary in added:
+		var nm := String(wd2["name"])
+		if not level._opened_walls.has(nm):
+			level._open_wall(nm, false)
+		level._opened_walls.erase(nm)
+	level._wall_defs = (level._wall_defs as Array).slice(0, n0)
+	level.doors = {}
+	await _frames(0.1)
 
 # ---------------------------------------------------------------- 15. dziennik sesji
 
