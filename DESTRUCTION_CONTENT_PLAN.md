@@ -4,7 +4,7 @@ Stan wyjścia planu: main 1.7.655 (203ed634, 2026-11-22). Kontynuacja `DESTRUCTI
 `SHOOT_DESTRUCTION_PLAN.md` (S0–S3, do 1.7.557) i `IMPACT_MARKS_PLAN.md` (1.7.655).
 
 **Stan (2026-11-22):** decyzje 1–10 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). Spike W0 zrobiony: ościeżnica wystająca poza obrys
-ściany + narzędzie 3D przy drzwiach (maczeta, kilof, ładunek; ikona HUD odrzucona przez autora). Sekcja „Obraz (3D)”. Następny krok: W1.
+ściany + animowany „duch” narzędzia przy drzwiach (maczeta, kilof, ładunek; ikona HUD odrzucona przez autora), znika po wyważeniu. Sekcja „Obraz (3D)”. Następny krok: W1.
 
 ## Skąd ten plan
 
@@ -165,6 +165,12 @@ napięcie, o które chodzi.
        (ten sam układ co znak strefy wydobycia, `DigEntrance3D.pick_parts`);
      - zbrojone: ładunek (`charge.glb`, skala znajdźki 0,65) na czole słupka na 0,95 m, czerwony lont w dół i 1,2 m po podłodze
        na zewnątrz, zapalnik na końcu.
+     - **Wygląd i ruch (uwaga autora 2026-11-22: „ma animować akcję i wyglądać inaczej niż przedmiot gry, po zniszczeniu znikać”):**
+       `door_hint3d.gd` — „duch” narzędzia, nie przedmiot: bez światła sceny i mgły, półprzezroczysty bursztyn z jaśniejszą
+       krawędzią i liniami, bez cienia. W pętli 2,6 s pokazuje akcję: maczeta — zamach i cios w ościeżnicę z błyskiem i drżeniem;
+       kilof — zamach, wbicie w szczelinę, podważenie skrzydła trzonkiem; ładunek — dosuwa się do słupka, mruga coraz szybciej,
+       błysk i gaśnie. Po wyważeniu rozpływa się z błyskiem w 0,35 s (`dissolve()`); spike pokazuje to flagą `--doorbreakat=S`
+       (po S s duch znika, świat przebudowany z wyważonymi drzwiami). Film: `shots_doors/mov/drzwi_podpowiedz_3d.mp4`.
    - **Wyważone:**
      - drewno — resztki desek przy zawiasach;
      - metal — skrzydło leży płasko przed drzwiami.
@@ -194,7 +200,9 @@ napięcie, o które chodzi.
   - Ładunek ginie na pasach żółto-czarnych; czyta się dzięki czerwonemu lontowi. Pasy przenieść na nadproże albo ładunek na skrzydło
     przy krawędzi ościeżnicy.
   - Strona drzwi: dziś zawsze zewnętrzna. W W1 strona, z której drużyna podchodzi na trasie misji (posterunek 1.3 i hala Żyły od środka?).
-  - Po wyważeniu narzędzie znika (stan z `breakable.gd`). Kilof i maczeta nie są do podniesienia — to znak, nie znajdźka.
+  - W W1 `dissolve()` z sygnału rozbicia przegrody (`breakable.gd`), bez przebudowy świata; u dołączającego do rozbitych drzwi ducha nie ma.
+  - Do ustalenia w W1: duch tylko z bliska (np. do 10 m) i tylko przy narzędziu w ekwipunku drużyny? Ruch w pętli zwraca uwagę —
+    pokazywać go po podejściu, a nie przez całą misję.
 
 **Docelowo (W1–W3):**
 - Zamknięte: skrzydło i ościeżnica jak wyżej. Stan z przegrody (`breakable.gd`) zamiast flagi.
