@@ -3,7 +3,8 @@
 Stan wyjścia planu: main 1.7.655 (203ed634, 2026-11-22). Kontynuacja `DESTRUCTION_PLAN.md` (D0–D5, w main do 1.7.506),
 `SHOOT_DESTRUCTION_PLAN.md` (S0–S3, do 1.7.557) i `IMPACT_MARKS_PLAN.md` (1.7.655).
 
-**Stan (2026-11-22):** decyzje 1–10 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). W trakcie: spike W0 (obraz drzwi).
+**Stan (2026-11-22):** decyzje 1–10 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). Spike W0 zrobiony: ościeżnica wystająca poza obrys
+ściany + ikona narzędzia (sekcja „Obraz (3D)”). Następny krok: W1.
 
 ## Skąd ten plan
 
@@ -137,25 +138,59 @@ Dyrektor już dziś wymaga ścieżki nawigacji do graczy, więc grupy nie wyjdą
 w środku do wyważenia. Słyszą wyważanie przez drzwi (tłumienie jak szyba), więc za drzwiami czeka komitet powitalny. To jest
 napięcie, o które chodzi.
 
-### Obraz (3D)
+### Obraz (3D) — wynik spike'u W0 (2026-11-22)
 
-- **Zamknięte:** skrzydło w ościeżnicy w pasie gry, materiał wg rodzaju:
-  - drewniane — deski z poprzeczkami (tekstura desek przegród);
-  - metalowe — blacha z przetłoczeniami (dzisiejszy `leaf`);
-  - zbrojone — gruba stal z nitami i ryglem.
-- **Wyważone:**
-  - drewniane — pasy odpadają (`_sync_barricade` z `band_mask`), drzazgi z `fracture_planks.glb`;
-  - metalowe — skrzydło wisi na jednym zawiasie albo leży, wgniecenia w masce uszkodzeń;
-  - zbrojone — skrzydło wyrwane i odrzucone od ładunku (kierunek z ziarna, bez fizyki 3D), osmalenie (`impact_marks`).
-- **Ryzyko widoczności (spike W0).** Ściana szczytowa stoi prostopadle do ekranu. Skrzydło w otworze kamera widzi ukosem albo
-  krawędzią, tak jak ślady po kulach w `IMPACT_MARKS_PLAN.md` (tam rozwiązaniem był „odprysk na czole bryły”). Do tego
-  `Level3D.shell_entry` pomija wysuniętą ścianę wejścia przy przegrodach (`ENTRY_KEEP` `"+%:q"`), żeby było je widać. Drzwi we
-  wszystkich wejściach zdjęłyby wysuniętą ścianę ze wszystkich budynków. Budynek przestałby być zamkniętą bryłą, czyli wróciłaby uwaga
-  z gry z 2026-11-09. Spike sprawdza dwa warianty:
-  - A — skrzydło w pasie gry, wysunięta ściana zostaje, drzwi powtórzone na jej boku (`shell_facades`);
-  - B — wyjątek z `ENTRY_KEEP` jak dziś.
+**Co wyszło na zrzutach** (`C:\deadair87\shots_doors`, gałąź robocza `spike/doors-w0`):
 
-  Kryterium: z kamery gry widać, które drzwi są zamknięte, z jakiego materiału i czy są wyważone. Zrzuty z nocy z latarką.
+1. Wszystkie 5 budynków to bryły `building3d.gd`. Dla nich `Level3D.set_shells` pomija wysuniętą ścianę wejścia (`level3d.gd:2580`),
+   więc ryzyko z `ENTRY_KEEP` ich nie dotyczy. Warianty A/B z pierwszej wersji planu odpadają.
+2. **Przegroda w otworze budynku jest z kamery niewidoczna.** Próba: deski `%` w zachodnim wejściu posterunku 1.3
+   (`w0_planks_out/at`). Ściana szczytowa to bryła od z = −2,4 do 5,6 m (`building3d.gd:349`), bez wygaszania, i zasłania przód
+   przegrody (z = 1,1). Postaci widać, bo rysuje je osobna kamera, drzwi już nie. Skrzydło w otworze stoi w płaszczyźnie y-z, więc
+   kamera i tak widziałaby je krawędzią.
+3. **Rozwiązanie (szkic autora 2026-11-22): ościeżnica wystająca poza obrys ściany + ikona.**
+   - Ościeżnica wystaje 0,3 m poza oba lica ściany: słupki 0,16 m, nadproże 0,18 m, daszek. Jest w materiale drzwi:
+     - drewno;
+     - blacha w kolorze minii;
+     - ciemna stal z pasami żółto-czarnymi na czole słupka i nadproża.
+   - Czoło słupka od strony kamery niesie kolor i materiał. Widać je poza obrysem budynku z zewnątrz, a ościeżnicę wewnętrzną
+     od środka hali.
+   - Skrzydło siedzi na zewnętrznym końcu ościeżnicy.
+   - **Ikona narzędzia** (`door_marks.gd`, interfejs nad obrazem jak paski życia): jasna tabliczka z ikoną z `art/hud`
+     (maczeta, kilof, ładunek), z ramką w kolorze materiału; zbrojone mają do tego żółty narożnik.
+     - Położenie: 1,35 m przed licem po stronie gracza, 1,45 m nad podłogą.
+     - Widoczność: pełna do 9 m, gaśnie do 14 m. Po wyważeniu znika.
+     - Długie narzędzia są rysowane po przekątnej (maczeta ma proporcje 768 × 91).
+   - **Wyważone:**
+     - drewno — resztki desek przy zawiasach;
+     - metal — skrzydło leży płasko przed drzwiami.
+
+   Ościeżnica zostaje, więc dalej widać, że to było wejście.
+4. Sprawdzone:
+   - dzień (`--view3dlit`): trzy materiały (`w0_p_trio.jpg`);
+   - noc z latarką: snop łapie czoło słupka, ikona czytelna (`w0_n_metal`);
+   - widok od środka (`w0_in_metal`);
+   - wyważone metal i drewno (`w0_br_*`);
+   - brama hali stacji 1.2 z furtką (`w0_gates.jpg`).
+
+   Koszt: ok. 20 skrzynek na drzwi w MultiMesh budynku, bez nowych świateł.
+
+**Do poprawy w W1** (z zrzutów):
+- Drewno: tekstura `plank` w rzucie triplanarnym 0,9/m na cienkich skrzynkach wygląda jak cegła. Brać materiał desek barykady
+  (`view3d._prop_mat("plank")`) albo UV na element ze słojami w pionie.
+- Brama: stała część nad furtką w minii dominuje kadr. Powinna zostać blachą bramy jak dziś (szyna, żebra), a kolor materiału tylko
+  na ościeżnicy furtki.
+- Furtka ma dziś szerokość całego otworu bramy (2,8 m). W W1 węższa (ok. 1,1 m) przy jednym słupku, reszta to stała brama.
+- Wyważone drewno czyta się słabiej niż metal: dodać deski leżące na ziemi (drzazgi z `fracture_planks.glb` przy rozbiciu i tak będą).
+- Ikona dostaje miejsce w regułach HUD-u: ukrywana z `Settings.dev_nohud` i zrzutami trailera, rysowana tylko dla zamkniętych drzwi
+  po stronie lokalnego gracza. Tekstu nie ma, więc bez tłumaczeń.
+
+**Docelowo (W1–W3):**
+- Zamknięte: skrzydło i ościeżnica jak wyżej. Stan z przegrody (`breakable.gd`) zamiast flagi.
+- Wyważane:
+  - drewniane — pasy odpadają (`band_mask`), drzazgi z `fracture_planks.glb`;
+  - metalowe — wgniecenia, a po rozbiciu skrzydło na ziemi;
+  - zbrojone — skrzydło odrzucone od ładunku (kierunek z ziarna, bez fizyki 3D), osmalenie (`impact_marks`).
 
 ### Dźwięk
 
@@ -199,7 +234,7 @@ i tylko jeśli drzwi i zawał się sprawdzą.
 
 | Etap | PR | Zawartość | Ryzyko |
 |---|---|---|---|
-| **W0** spike obrazu drzwi | 0 (gałąź robocza, wynik do planu) | warianty A/B, zrzuty posterunku 1.3 (drzwi 2 rz.) i hali stacji 1.2 (brama z furtką), noc + latarka, `--shotwall=Door1` | średnie (czytelność) |
+| **W0** spike obrazu drzwi — **zrobiony** | 0 (gałąź robocza `spike/doors-w0`, wynik do planu) | ościeżnica poza obrysem + ikona; zrzuty posterunku 1.3 i bramy 1.2, dzień, noc z latarką, od środka, wyważone (`--doorproto[=wood\|metal\|steel] [--doorbroken]`) | — |
 | **W1** mechanika + posterunek 1.3 | 1 | materiały `door_*`, `DOORS`, rejestracja w `level.gd`, komunikaty, pasek akcji, wrogowie i bot, `--destructiontest` sekcja drzwi, `--maptest`, sieć (`door=` w `_destruction_sig`), dziennik `break` z `door_*`, 3D wg wyniku W0 | średnie |
 | **W2** wszystkie budynki | 1 | furtki w bramach (decyzja 4), `DOORS` na 1.2 i 1.3, hala Żyły z punktem kontrolnym bossa, sprawdzenie wysokich wrogów, `--veintest`, `--funtest` | średnie (projekt map) |
 | **W3** dźwięk i wyważenie | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
@@ -248,8 +283,7 @@ Sygnały:
 |---|---|---|
 | Drzwi zbrojone na jedynej drodze | utknięcie bez granatu | zasada 1, `--maptest`, zbrojone tylko poza trasą (decyzja 5) |
 | Zbyt wiele wyważeń na trasie (do 9) | żmudna misja | decyzja 2: na trasie jedne zamknięte drzwi na budynek |
-| Skrzydło nieczytelne z kamery | gracz nie wie, czym wyważać | spike W0 przed W1, materiał w modelu i kolorze, komunikat |
-| Wysunięta ściana wejścia znika | budynki znów jak zlepek brył | wariant A w W0 |
+| Skrzydło nieczytelne z kamery | gracz nie wie, czym wyważać | W0: ościeżnica poza obrysem w materiale drzwi + ikona narzędzia, komunikat |
 | Wysocy wrogowie nie mieszczą się w furtce | Rzeźnik / Stalker utyka | W2: test nawigacji wg rodzaju ciała, w razie czego brama na całą wysokość z obrazem bramy wyrwanej |
 | Arena Żyły zamknięta przy restarcie | gracz musi ponownie wyważać | stan drzwi w punkcie kontrolnym bossa (już jest dla przegród) |
 | Metal głośny przy kilofie | Stalker zawsze przy drzwiach | pomiar, strojenie `n_hit` |
