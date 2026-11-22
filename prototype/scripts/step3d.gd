@@ -41,6 +41,8 @@ const ANT_A := 0.7                         ## m: bok kratownicy masztu anteny
 const GALLERY_Z := Vector2(-1.15, -2.05)   ## m: kratownice pomostu obsługi przy dużym maszcie
 const RADIO_EDGE_Z := preload("res://scripts/char3d.gd").MANTLE_EDGE_Z
 const GRATE_EDGE_T := 0.025                ## m: grubość przedniej listwy na stalowych podestach
+const ROCK_ROUND := 0.4                    ## część dawnego promienia zaokrąglenia głazów (`_rock`): krawędzie łamane zamiast obłych
+const LIMB_ROUGH := Vector2(0.06, 0.6)     ## konar: nierówność obwodu i bruzdy kory (`Front3D._cone` rough, ridge) — bez nich rura
 const BOUGH_CROWN := 5.5                   ## m: korona sosny z konarami zaczyna się tyle nad najwyższym niesionym pomostem (suche dolne konary, korona nad kadrem)
 
 ## Tkanka Żyły (mata i spływ narośli): ciemne mięso z grzbietami żył z szumu wartości 3D (grzbiet |2n − 1|), mokre, z poświatą tylko w żyłach,
@@ -408,12 +410,13 @@ static func _prism(st: SurfaceTool, poly: PackedVector2Array, z0: float, z1: flo
 	_part(bb, what)
 
 ## Stożek ścięty od `a` do `b` (promienie ra → rb) z nierówną korą (`Front3D._cone`).
-static func _cone(st: SurfaceTool, a: Vector3, b: Vector3, ra: float, rb: float, what: String, seg := 10, rough := 0.03, ph := 0.0) -> void:
+static func _cone(st: SurfaceTool, a: Vector3, b: Vector3, ra: float, rb: float, what: String, seg := 10, rough := 0.03, ph := 0.0, ridge := 0.0) -> void:
 	var d := b - a
 	var length := d.length()
 	if length < 0.005:
 		return
-	Front3D._cone(st, a, d, length, ra, rb, seg, maxi(1, int(ceil(length / 0.6))), Vector2(0.0, length / BARK_TILE), 1.0, rough, ph)
+	Front3D._cone(st, a, d, length, ra, rb, seg, maxi(1, int(ceil(length / 0.6))), Vector2(0.0, length / BARK_TILE), 1.0, rough, ph, Vector3.ZERO, false, ridge)
+	rough *= 1.0 + ridge
 	var ax := d / length                                    # obwiednia: okręgi końców prostopadłe do osi (konar poziomy ma wierzch równo z osią + r)
 	var ext := Vector3(sqrt(maxf(0.0, 1.0 - ax.x * ax.x)), sqrt(maxf(0.0, 1.0 - ax.y * ax.y)), sqrt(maxf(0.0, 1.0 - ax.z * ax.z))) * (1.0 + rough)
 	var bb := AABB(a - ext * ra, ext * ra * 2.0).merge(AABB(b - ext * rb, ext * rb * 2.0))
@@ -509,12 +512,93 @@ static func _rbox(st: SurfaceTool, a: Vector3, b: Vector3, rb: float, what: Stri
 	_part(bb, what)
 
 ## Kamień (granit) w pudle a–b: zaokrąglony blok, lekko przechylony, z nierównością.
-static func _rock(sts: Dictionary, a: Vector3, b: Vector3, rng: RandomNumberGenerator, what: String, round_f := Vector2(0.28, 0.42)) -> void:
+## Głazy ze skanów Poly Haven (granit, `tools/prep_items3d.py` step_rock_*): kamień `_rock` to skan dopasowany do tego samego pudła a–b
+## (skala osobno w osiach, odbicie w x, lekki obrót), na pudle zostaje obwiednia dla testu. Uwaga z gry 2026-11-22: zaokrąglone pudła
+## czytały się jak plastelina, a rzędy bloków masy ostańca — jak worki z piaskiem. `--procrocks`: bryły z kodu (porównanie A/B).
+const ROCK_SCANS := ["step_rock_a", "step_rock_b", "step_rock_c"]
+static var _models: Dictionary = {}
+
+const SCAN_BACK := 0.15                                    # płyta tła z kodu w tylnych 15% głębi pudła, głazy przed nią
+## Masa ostańca (rzędy pudeł za pasem gry): głazy muszą się stykać i nachodzić — bez prześwitów (uwaga z gry 2026-11-22).
+const SCAN_FILL := ["tor mass", "tor mound"]
+
+static func _rock_scan(sts: Dictionary, a: Vector3, b: Vector3, rng: RandomNumberGenerator, what: String) -> bool:
+	if "--procrocks" in OS.get_cmdline_user_args():
+		return false
+	var scree := what.ends_with("scree")
+	if Level3D.model_mesh("step_scree" if scree else String(ROCK_SCANS[0])).is_empty():
+		return false
+	var lo := a.min(b)
 	var size := (b - a).abs()
-	var rb := minf(size.x, minf(size.y, size.z)) * rng.randf_range(round_f.x, round_f.y)
+	_part(AABB(lo, size), what)
+	if not what in SCAN_FILL:
+		_place_scan("step_scree" if scree else String(ROCK_SCANS[rng.randi() % ROCK_SCANS.size()]), lo, size, rng, false)
+		return true
+	# masa leży cała za pasem gry: w x i y głazy wychodzą poza pudło (nachodzą na sąsiednie pudła i rzędy), w z zostają w pudle
+	var n := clampi(ceili(size.x / maxf(size.y * 0.85, 0.45)), 1, 8)    # głazy o proporcjach skanu, nie rozciągnięte
+	var w := size.x / float(n)
+	var back_a := Vector3(lo.x - 0.1, lo.y, lo.z)               # +z to strona kamery: płyta tła z kodu w tylnej części pudła
+	var back_b := Vector3(lo.x + size.x + 0.1, lo.y + size.y, lo.z + size.z * SCAN_BACK)
+	_tint = Color(0.5, 0.51, 0.54)
+	_rbox(_st(sts, "rock"), back_a, back_b, 0.1, what, Basis.IDENTITY, 0.04)
+	_tint = Color.WHITE
+	var zf := lo.z + size.z
+	var zb := lo.z + size.z * SCAN_BACK
+	for i in n:                                                 # rząd przedni: każdy głaz szerszy i wyższy od swojej części pudła
+		var sx := w * rng.randf_range(1.6, 1.9)
+		var sy := size.y * rng.randf_range(1.25, 1.4)
+		var cx := lo.x + w * (float(i) + 0.5) + rng.randf_range(-0.08, 0.08) * w
+		var y0 := lo.y - size.y * rng.randf_range(0.08, 0.2)
+		var sz := (zf - zb) * rng.randf_range(0.75, 1.0)
+		_place_scan(String(ROCK_SCANS[rng.randi() % ROCK_SCANS.size()]), Vector3(cx - sx * 0.5, y0, zf - sz), Vector3(sx, sy, sz), rng, true)
+	# rząd głębszy na spoinach (także na brzegach pudła) zatyka prześwity; lico tuż za licem rzędu przedniego — głęboko schowany leżał
+	# w długim cieniu przednich głazów i czytał się jak dziura
+	for i in n + 1:
+		var sx := w * rng.randf_range(1.3, 1.6)
+		var sy := size.y * rng.randf_range(1.1, 1.3)
+		var cx := lo.x + w * float(i)
+		var y0 := lo.y + size.y * 0.5 - sy * 0.5 + rng.randf_range(-0.08, 0.08) * size.y
+		var sz := (zf - zb) * 0.88
+		_place_scan(String(ROCK_SCANS[rng.randi() % ROCK_SCANS.size()]), Vector3(cx - sx * 0.5, y0, zb), Vector3(sx, sy, sz), rng, true)
+	return true
+
+## Skan `key` dopasowany do pudła lo–size; `fill`: wypełnia pudło dokładnie w x i y (masa ostańca), bez tego mieści się w nim (x do +25%).
+static func _place_scan(key: String, lo: Vector3, size: Vector3, rng: RandomNumberGenerator, fill: bool) -> void:
+	var mm := Level3D.model_mesh(key)
+	if mm.is_empty():
+		return
+	var bb: AABB = (mm[1] as Transform3D) * ((mm[0] as Mesh).get_aabb())
+	var flip := -1.0 if rng.randf() < 0.5 else 1.0
+	var k := Vector3(size.x / maxf(bb.size.x, 0.001), size.y / maxf(bb.size.y, 0.001), size.z / maxf(bb.size.z, 0.001))
+	# skan rozciągnięty do płaskiego pudła wyglądał jak zmięty papier: osie najwyżej 1,6 × najmniejszej skali (bryła zostaje w pudle — prześwit pasa gry)
+	# skala z lica (x, y — to widać z kamery); głębia tylko spłaszczona do pudła (od przodu niewidoczna). Dawniej z najcieńszej osi: głazy
+	# w płytkim pudle wychodziły małe i rzadkie
+	var kf := minf(k.x, k.y)
+	# w x skan może wyjść 25% poza pudło (zachodzi na sąsiada — bez szczelin w masie ostańca); w y i z zostaje w pudle (pas gry, wierzch płyty)
+	if fill:
+		k = Vector3(minf(k.x, kf * 1.5) * flip, minf(k.y, kf * 1.5), minf(k.z, kf))
+	else:
+		k = Vector3(minf(k.x * 1.25, kf * 1.6) * flip, minf(k.y, kf * 1.4), minf(k.z, kf))
+	var yaw := Basis(Vector3.UP, rng.randf_range(-0.08, 0.08))
+	var basis := yaw * Basis().scaled(k)
+	var ctr := lo + size * 0.5
+	var origin := ctr - basis * (bb.position + bb.size * 0.5)
+	if not _models.has(key):
+		_models[key] = []
+	var v := rng.randf_range(0.62, 0.74)                    # granit Namaqualand jest beżowo-pomarańczowy: ciemniej i chłodniej, jak skała lasu
+	(_models[key] as Array).append([Transform3D(basis, origin), Color(v * 0.8, v * 0.88, v)])
+
+static func _rock(sts: Dictionary, a: Vector3, b: Vector3, rng: RandomNumberGenerator, what: String, round_f := Vector2(0.28, 0.42)) -> void:
+	if _rock_scan(sts, a, b, rng, what):
+		return
+	var size := (b - a).abs()
+	# 2026-11-22 („wyglądają jak z plasteliny”): promień zaokrąglenia 28–50% najkrótszego boku dawał gładkie kluski. Krawędzie łamane
+	# (ok. 40% dawnego promienia), nierówność ta sama w metrach — na rzadkiej siatce środka ściany wychodzą płaskie ścianki jak w granicie
+	var rb0 := minf(size.x, minf(size.y, size.z)) * rng.randf_range(round_f.x, round_f.y)
+	var rb := rb0 * ROCK_ROUND
 	var basis := Basis.from_euler(Vector3(rng.randf_range(-0.04, 0.04), rng.randf_range(-0.06, 0.06), rng.randf_range(-0.04, 0.04)))
 	_tint = _granite_tint(rng)
-	_rbox(_st(sts, "rock"), a, b, rb, what, basis, 0.35, false, rng.randf() * 10.0)
+	_rbox(_st(sts, "rock"), a, b, rb, what, basis, 0.35 * rb0 / maxf(rb, 0.001) * 0.8, false, rng.randf() * 10.0)
 	_tint = Color.WHITE
 
 ## Odcień bloku granitu: jaśniejszy lub ciemniejszy, raz cieplejszy (żelaziste zacieki), raz chłodniejszy.
@@ -1132,13 +1216,23 @@ static func _limb(sts: Dictionary, rng: RandomNumberGenerator, t: float, xs: flo
 	var n := maxi(1, int(ceil(length / LIMB_STEP)))
 	var prev := c
 	var prev_r := r0
+	var over := 1.0 + LIMB_ROUGH.x * (1.0 + LIMB_ROUGH.y)    # najdalej tyle promienia sięga kora z bruzdami: wierzch zostaje na pokładzie
 	for i in range(1, n + 1):
 		var f := float(i) / float(n)
-		var rr := lerpf(r0, r_end, f)
-		var p := Vector3(xs + (xe - xs) * f, top - rr, z_run + 0.1 * f)
-		_cone(st, prev, p, prev_r, rr, "bough limb", 10, 0.02, t + float(i))
+		# zgrubienia przy sękach i lekkie falowanie w głąb — prosty walec z liniową zbieżnością czytał się jak rura (2026-11-22)
+		var rr := lerpf(r0, r_end, f) * (1.0 + 0.09 * maxf(0.0, sin(f * length * 2.1 + t * 1.3)) * float(i < n))
+		var p := Vector3(xs + (xe - xs) * f, top - rr * over, z_run + 0.1 * f + 0.06 * sin(f * length * 1.4 + t) * float(i < n))
+		_cone(st, prev, p, prev_r, rr, "bough limb", 12, LIMB_ROUGH.x, t + float(i), LIMB_ROUGH.y)
 		prev = p
 		prev_r = rr
+	for i in 2:                                             # kikuty ułamanych gałęzi z tyłu konaru, skośnie w dół i w głąb (za pasem gry)
+		var f := rng.randf_range(0.2, 0.8)
+		var rr := lerpf(r0, r_end, f)
+		var x := xs + (xe - xs) * f
+		var p0 := Vector3(x, top - rr * 1.25, -STRIP - 0.02)
+		var p1 := p0 + Vector3(dir * rng.randf_range(0.15, 0.4), -rng.randf_range(0.15, 0.4), -rng.randf_range(0.35, 0.6))
+		_cone(st, p0, p1, rr * 0.4, rr * 0.28, "bough stub", 8, 0.05, t + 7.0 * float(i))
+		_disc(_st(sts, "cut"), p1, (p1 - p0).normalized(), rr * 0.28)
 	_disc(_st(sts, "bark"), prev, Vector3(dir, 0.0, 0.0), prev_r)
 	if wear_x >= minf(xs, xe) and wear_x <= maxf(xs, xe):
 		_bough_wear(_st(sts, "bough_wear"), c, prev, r0, r_end, wear_x)
@@ -1530,6 +1624,7 @@ static func build(parent: Node3D, rows: Array, steps: Array) -> Node3D:
 		return root
 	var sts := {}
 	var models := {}
+	_models = models                                        # głazy ze skanów (`_rock_scan`) trafiają do tych samych instancji co sosny
 	var sc := cells(rows, steps)
 	for e in steps:
 		var kind := String(e.get("kind", ""))

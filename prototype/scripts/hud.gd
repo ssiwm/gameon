@@ -507,8 +507,6 @@ var _run_xp_bar: Bar                  ## pasek XP w karcie RUN
 var _xp_txt: Label
 var _squad_info: Label               ## „HOST · 1/4 +1 AI” w nagłówku karty drużyny
 var _prompt_card: PanelContainer
-var _prompt_flat: StyleBox
-var _prompt_backing: StyleBoxFlat
 var _prompt: RichTextLabel             ## pasek akcji: tekst z klawiszami jako klawisze (UiTheme.keycaps)
 var _prompt_bar: Bar
 var _controls_intro: Label
@@ -1015,10 +1013,10 @@ func _update_squad_row(p: Node, row: Dictionary, delta: float) -> void:
 	status.add_theme_color_override("font_color", col)
 
 func _build_objective_card() -> void:
-	_obj_card = _card(Vector2(MARGIN, MARGIN), false)
-	var panel := UiTheme.panel_box()
+	# bez tła (2026-11-22): ciemny prostokąt zasłaniał scenę pod minimapą; czytelność robi górny gradient i obrys napisów
+	_obj_card = _card(Vector2(MARGIN, MARGIN))
+	var panel := StyleBoxEmpty.new()
 	panel.set_content_margin_all(6)
-	panel.set_border_width_all(0)
 	_obj_card.add_theme_stylebox_override("panel", panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
@@ -1161,10 +1159,6 @@ func _build_center() -> void:
 
 func _build_prompt() -> void:
 	_prompt_card = _card(Vector2(MARGIN, MARGIN))
-	_prompt_flat = _prompt_card.get_theme_stylebox("panel")
-	_prompt_backing = UiTheme.panel_box()
-	_prompt_backing.bg_color.a = 0.92
-	_prompt_backing.set_content_margin_all(5)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	_prompt_card.add_child(box)
@@ -2598,33 +2592,11 @@ func _drive_prompt() -> void:
 		_prompt_bar.value = prog
 		_prompt_bar.fill = col
 		_prompt_bar.queue_redraw()
-		var active_station := workshop if cur.get("id") == WORKSHOP_PROMPT else null
-		var panel: StyleBox = _prompt_backing if active_station != null else _prompt_flat
-		if _prompt_card.get_theme_stylebox("panel") != panel:
-			_prompt_card.add_theme_stylebox_override("panel", panel)
-			_prompt.add_theme_font_size_override("normal_font_size", 15 if active_station != null else UiTheme.T_BODY)
+		# podpowiedź warsztatu w tym samym miejscu i stylu co pozostałe (nad bronią, bez ramki; do 2026-11-22 ramka nad ławą w świecie)
 		_prompt_card.reset_size()
 		_prompt_card.scale = Vector2.ONE * MSG_SCALE
 		var card_size := _prompt_card.size * MSG_SCALE
-		var pos := Vector2((size.x - card_size.x) * 0.5, _gear_card.position.y - card_size.y - 8.0)
-		if active_station != null:
-			pos = _station_prompt_position(active_station, card_size, pos)
-		_prompt_card.position = pos
-
-func _station_prompt_position(station: Node2D, card_size: Vector2, fallback: Vector2) -> Vector2:
-	var scene := get_tree().current_scene
-	var view := scene.get_node_or_null("View3D") if scene != null else null
-	if view == null:
-		return fallback
-	# Punkt nad blatem modelu warsztatu, przesuniętym względem znacznika z mapy.
-	var point := Level3D.px_to_m(station.global_position + Vector2(8.0, -18.0)) + Vector3(0.0, 0.0, -1.0)
-	var screen: Vector2 = view.screen_point(point)
-	var local := get_global_transform_with_canvas().affine_inverse() * screen
-	var area := Rect2(Vector2.ONE * MARGIN, size - Vector2.ONE * MARGIN * 2.0)
-	var top := local.y - card_size.y - 4.0
-	if not local.is_finite() or not area.has_point(local) or top < area.position.y or card_size.x > area.size.x:
-		return fallback
-	return Vector2(clampf(local.x - card_size.x * 0.5, area.position.x, area.end.x - card_size.x), top)
+		_prompt_card.position = Vector2((size.x - card_size.x) * 0.5, _gear_card.position.y - card_size.y - 8.0)
 
 ## Drzwi strzelnicy FPP, przy których stoi lokalny gracz (range_door.gd), albo null.
 func _near_range_door() -> Node:

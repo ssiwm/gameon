@@ -369,6 +369,8 @@ func _pick_spot(lvl: Node, near: Vector2, humans: Array) -> Vector2:
 			continue
 		if not pincer_side_ok(avoid, pt.x - near.x, _try):
 			continue
+		if not same_layer(lvl, pt, near, _try):
+			continue
 		var visible := false
 		for p in humans:
 			var q := PhysicsRayQueryParameters2D.create(p.global_position + Vector2(0, -9), pt + Vector2(0, -8), 1)
@@ -381,6 +383,15 @@ func _pick_spot(lvl: Node, near: Vector2, humans: Array) -> Vector2:
 			continue                                      # za zamkniętą drogą (zawał „^”, ściana, barykada) — grupa nie dojdzie (D3)
 		return pt
 	return Vector2.ZERO
+
+## Poziom spawnu (uwaga z gry 2026-11-22, 1.1 w 1.7.648: „z kopalni nadal wychodzą Trzoski” — dyrektor wypuścił parę z kopalni pod graczem
+## w lesie): pierwsze 3/4 prób tylko na tym samym poziomie co gracz (powierzchnia albo podziemia, granica `underground_y` mapy). Potem
+## dowolny — lepiej z drugiego poziomu niż wcale.
+static func same_layer(lvl: Node, pt: Vector2, near: Vector2, try_i: int) -> bool:
+	var uy = lvl.get("underground_y")
+	if uy == null or float(uy) <= 0.0 or try_i >= PICK_TRIES * 3 / 4:
+		return true
+	return (pt.y >= float(uy)) == (near.y >= float(uy))
 
 ## Kleszcze (F3.4): po której stronie `near` (−1 / +1) są już żywi wędrowcy z poprzedniej grupy — średnia ich pozycji w PINCER_R; 0, gdy nikogo nie ma
 ## w pobliżu albo stoją pod graczem (|średnia| ≤ PINCER_MIN_DX). Nowa grupa dostaje wtedy spawn z przeciwnej strony, czyli drużyna jest atakowana z dwóch stron
