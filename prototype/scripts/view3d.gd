@@ -8281,6 +8281,8 @@ const BLOOD_MAX_R := 0.75                   ## największy promień kałuży [m]
 ## Wołane z `Vfx.splat` (szczątki, śmierć wroga) i `BloodDecals.add` (kapanie rannych): krew zbiera się w lśniące kałuże na gruncie.
 ## Plama blisko istniejącej ją powiększa (kałuża rośnie), nowa rozlewa się przez ok. 1,5 s; z czasem krew zasycha (matowieje) i znika.
 func mirror_blood(pos: Vector2, radius: float) -> void:
+	if not _blood_supported(pos):
+		return                                                 # trafienie w ścianę wykopu albo w powietrze strefy: kałuża nie ma na czym leżeć
 	var at := Level3D.px_to_m(pos)
 	var want := clampf(radius * PX * 1.7, 0.10, BLOOD_MAX_R)
 	for b in _blood:
@@ -8305,6 +8307,7 @@ func mirror_blood(pos: Vector2, radius: float) -> void:
 	mi.position = Vector3(at.x, at.y + 0.015 + 0.0004 * float(_blood.size()), randf_range(-0.35, 0.55))
 	mi.rotation.y = randf() * TAU
 	mi.scale = Vector3(0.03, 1.0, 0.03)
+	mi.set_meta("px", pos)
 	_geo.add_child(mi)                                         # znika z geometrią mapy
 	_blood.append([mi, want, 0.03, 0.0])
 	if _blood.size() > BLOOD_MAX:
@@ -8360,7 +8363,24 @@ func _drag_smear(a: Vector2, b: Vector2) -> void:
 		if is_instance_valid(old[0]):
 			(old[0] as Node).queue_free()
 
+## Kałuża w strefie wydobycia leży na skale strefy: punkt tuż pod nią musi być lity (`DigZone.solid_at_px`). Poza strefami — zawsze
+## (kafle mapy pod kałużą się nie zmieniają). Uwaga z gry 2026-11-22: po odkopaniu gruntu plamy krwi wisiały w powietrzu wykopu.
+func _blood_supported(pos: Vector2) -> bool:
+	for z in get_tree().get_nodes_in_group("dig_zones"):
+		if not is_instance_valid(z) or not (z as Node).has_method("solid_at_px"):
+			continue
+		var below := pos + Vector2(0.0, 2.0)                    # punkt pod kałużą; pod dnem strefy leży już kafel mapy (lity)
+		if (z.rect_px() as Rect2).has_point(below):
+			return bool(z.solid_at_px(below)) or bool(z.solid_at_px(below + Vector2(0.0, 1.5)))
+	return true
+
+var _blood_check_t := 0.0
+
 func _sync_blood(delta: float) -> void:
+	_blood_check_t -= delta
+	var check := _blood_check_t <= 0.0
+	if check:
+		_blood_check_t = 0.4
 	var i := 0
 	while i < _blood.size():
 		var b: Array = _blood[i]
@@ -8374,6 +8394,10 @@ func _sync_blood(delta: float) -> void:
 		mi.scale = Vector3(float(b[2]) * st.x, 1.0, float(b[2]) * 0.8 * st.y)
 		var sm := mi.material_override as ShaderMaterial
 		sm.set_shader_parameter("wet", (1.0 - smoothstep(25.0, 70.0, float(b[3]))) * (0.3 if b.size() > 4 else 1.0))   # smuga: rozmazana, mniej lśni
+		if check and mi.has_meta("px") and not _blood_supported(mi.get_meta("px")):
+			mi.queue_free()                                    # grunt pod kałużą odkopany
+			_blood.remove_at(i)
+			continue
 		var fade := 1.0 - smoothstep(110.0, 130.0, float(b[3]))
 		sm.set_shader_parameter("fade", fade)
 		if fade <= 0.0:
@@ -8975,7 +8999,9 @@ func _sync_dig_zones() -> void:
 			var bm := BoxMesh.new()
 			bm.size = Vector3(rc.size.x * PX, rc.size.y * PX, 0.3)
 			back.mesh = bm
-			back.material_override = Level3D.make_pbr("wall", 0.7, Color(0.20, 0.20, 0.22), 0.95, 1.0, 1.0, false, "stone")
+			# tło wykopu: skała jak ściana tła podziemi (`Level3D.back_rock`), nie mur — za ogniskiem w kieszeni strefy 1.1 i za czołem
+			# strefy przy tunelu była cegła (zrzuty 2026-11-22)
+			back.material_override = Level3D.rock_material()
 			back.layers = LAYER_WORLD
 			back.position = Level3D.px_to_m(rc.get_center()) + Vector3(0.0, 0.0, -Level3D.DEPTH_BACK + 0.15)
 			_geo.add_child(back)

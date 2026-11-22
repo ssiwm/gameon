@@ -293,7 +293,7 @@ static func model_mesh(name: String) -> Array:
 			var msh := (found[0] as MeshInstance3D).mesh
 			for si in msh.get_surface_count():                    # karty igliwia / liści: wycinanie alfą (cienie i głębia działają), widoczne z obu stron
 				var bm := msh.surface_get_material(si) as BaseMaterial3D
-				if bm != null and name.begins_with("tree_"):
+				if bm != null and (name.begins_with("tree_") or name.begins_with("step_")):
 					bm.vertex_color_use_as_albedo = true              # odcień egzemplarza lasu (kolor `MultiMesh`, `_forest_chunks`)
 				if bm != null and bm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
 					bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
@@ -1127,9 +1127,11 @@ static func build_level(parent: Node3D, rows: Array, trench := {}) -> Dictionary
 				continue                                            # dach / podłoga strażnicy: `_build_roofs` (kolizja kafla bez zmian)
 			if ch == "M" and crate_cells.has(Vector2i(c, r)):
 				continue                                            # skrzynia z modelu (`_build_crates`); kolizja kafla bez zmian
-			if groups.has(ch) and bld_cells.has(Vector2i(c, r)):
+			# "R" w `groups` to klucz materiału skały (płyta nawisu, przekrój), a w mapie — znacznik radiostacji: bez tego warunku kryjówka
+			# miała w miejscu radiostacji sześcian granitu na całą wysokość kafla (zrzut 2026-11-22)
+			if groups.has(ch) and ch != "R" and bld_cells.has(Vector2i(c, r)):
 				pass                                                # dach i ściana szczytowa budynku 3D (`building3d.gd`)
-			elif groups.has(ch):
+			elif groups.has(ch) and ch != "R":
 				# bryły tylko dla odsłoniętych kafli (sąsiad z powietrzem lub tłem); wnętrza skał zamyka od frontu płaski przekrój (`caps`),
 				# bez niego pod skorupą gruntu widać było pustkę zamiast ziemi (flara czy wybuch nie miały czego oświetlić)
 				# sąsiad-skrzynia (`_build_crates`, płytsza niż kafel) nie zasłania już ścian bryły — kafel obok niej jest odsłonięty
@@ -2546,11 +2548,19 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 					shell_skip[Vector2i(c, r0)] = true
 			var r := r1
 			# fundament kończy się na strefie wydobycia (sala 1.1 nad zachodnią strefą dolnej galerii): kafle strefy przebudowuje kopanie
+			var run: Array[Vector2i] = []
 			while r <= r1 + SHELL_DOWN and r < rows.size() and _ch(rows, c, r) in SHELL_CH and not in_band.call(c, r) and not in_dig.call(c, r):
 				shell_cells[Vector2i(c, r)] = "C" if concrete else ""
-				if shallow_band(e) and r > r1 and near_dig.call(c, r):
-					shell_skip[Vector2i(c, r)] = true
+				run.append(Vector2i(c, r))
 				r += 1
+			if shallow_band(e):
+				# płytki przekrój (2026-11-22, zrzuty z 1.7.648): fundament między kondygnacjami (pod nim pas gry innego wpisu — skała między
+				# salą a dolną galerią 1.1) robił przy szybie serwisowym grube ciemne bloki do SHELL_Z; obok strefy wydobycia płyta podłogi
+				# wystawała przed jej czoło (strefa kończy się na DEPTH_FRONT) — tam bez płyty i fundamentu
+				var stacked: bool = r <= r1 + SHELL_DOWN and r < rows.size() and in_band.call(c, r)
+				for k: Vector2i in run:
+					if near_dig.call(c, k.y) or (k.y > r1 and stacked):
+						shell_skip[k] = true
 	var wall_key := func(e: Dictionary, c: int, r: int) -> String:
 		return "C" if String(e.get("set", "")) in ["station", "bunker"] else _ch(rows, c, r)
 	for e: Dictionary in bands:

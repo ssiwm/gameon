@@ -93,6 +93,12 @@ TRIPO_MODELS = {
     "shelf": ("../polyhaven/steel_frame_shelves_01.glb", "-Y", 31.8, 4400, 29.5),        # 1,93 m w skali gry 0,8 (granica 2,0 w test_proportions)
     # nowe dekoracje mapy (view3d.gd: DECO_MODELS) w naturalnej skali: szerokość w px świata = metry / 0,082
     "rock_b": ("../polyhaven/rock_moss_set_01__rock04.glb", "-Y", 14.0, 3000, 9.0),
+    # głazy pomostów z natury (step3d.gd `_rock`, 2026-11-22: zamiast zaokrąglonych pudeł „z plasteliny”): granit, szerokość 100 jednostek,
+    # gra dopasowuje bryłę do pudła a–b (skala osobno w osiach)
+    "step_rock_a": ("../polyhaven/namaqualand_boulder_03.glb", "-Y", 100.0, 3500, 1000.0),
+    "step_rock_b": ("../polyhaven/namaqualand_boulder_05.glb", "-Y", 100.0, 3000, 1000.0),
+    "step_rock_c": ("../polyhaven/boulder_01.glb", "-Y", 100.0, 3500, 1000.0),
+    "step_scree": ("../polyhaven/namaqualand_boulder_02.glb", "-Y", 100.0, 4000, 1000.0),
     "rock_c": ("../polyhaven/rock_moss_set_01__rock05.glb", "-Y", 14.0, 3000, 9.0),
     "fire_pit": ("../polyhaven/stone_fire_pit.glb", "-Y", 17.7, 3900),
     "stump": ("../polyhaven/tree_stump_01.glb", "-Y", 17.4, 5000),

@@ -229,7 +229,8 @@ func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: 
 
 ## Płytki przekrój podziemi (`Level3D.shallow_band`, przegląd 2026-11-21): w tunelach i kopalniach przed płaszczyzną gry tylko płyta podłogi
 ## z fundamentem — strop, ściany i nadproża bez skrzynki do SHELL_Z (`shell_skip`, kafle zostają w `shell_cells` / `shell_walls` dla
-## materiału skały), przód strefy wydobycia na DEPTH_FRONT, fundament bez skrzynek obok strefy wydobycia, wiersz podłogi zawsze z płytą.
+## materiału skały), przód strefy wydobycia na DEPTH_FRONT, fundament bez skrzynek obok strefy wydobycia i między kondygnacjami, wiersz podłogi
+## z płytą poza wejściem strefy wydobycia (tam bez płyty).
 func _check_shallow(map_id: String, rows: Array, digs: Array) -> void:
 	for k: Vector2i in Level3D.shell_skip:
 		_check(Level3D.shell_cells.has(k) or Level3D.shell_walls.has(k), "%s %s: pominięty kafel spoza przekroju" % [map_id, k])
@@ -240,7 +241,15 @@ func _check_shallow(map_id: String, rows: Array, digs: Array) -> void:
 			var top := Vector2i(c, int(e["r0"]))
 			_check(not Level3D.shell_cells.has(top) or Level3D.shell_skip.has(top), "%s %s: strop podziemi wysunięty do przekroju" % [map_id, top])
 			var fl := Vector2i(c, int(e["r1"]))
-			_check(not Level3D.shell_skip.has(fl), "%s %s: podłoga podziemi bez płyty przekroju" % [map_id, fl])
+			var at_dig := false                                  # obok strefy wydobycia płyta nie wystaje przed jej czoło (2026-11-22)
+			for z in digs:
+				at_dig = at_dig or (c >= int(z[0]) - Level3D.SHELL_DIG_CUT and c <= int(z[2]) + Level3D.SHELL_DIG_CUT and fl.y >= int(z[1]) - 1 and fl.y <= int(z[3]) + 1)
+			_check(at_dig or not Level3D.shell_skip.has(fl), "%s %s: podłoga podziemi bez płyty przekroju" % [map_id, fl])
+			_check(not at_dig or not Level3D.shell_cells.has(fl) or Level3D.shell_skip.has(fl), "%s %s: płyta podłogi wystaje przed strefę wydobycia" % [map_id, fl])
+			var below := Vector2i(c, int(e["r1"]) + 1)          # fundament nad pasem gry niższego wpisu (szyb serwisowy 1.1): bez skrzynki
+			for e2: Dictionary in Level3D.shell_bands:
+				if e2 != e and c >= int(e2["c0"]) and c <= int(e2["c1"]) and int(e2["r0"]) > int(e["r1"]) and int(e2["r0"]) - int(e["r1"]) <= Level3D.SHELL_DOWN:
+					_check(not Level3D.shell_cells.has(below) or Level3D.shell_skip.has(below), "%s %s: fundament między kondygnacjami do przekroju" % [map_id, below])
 			for r in range(int(e["r0"]) + 1, int(e["r1"])):
 				var k := Vector2i(c, r)
 				_check(not Level3D.shell_walls.has(k) or Level3D.shell_skip.has(k), "%s %s: ściana podziemi wysunięta do przekroju" % [map_id, k])
