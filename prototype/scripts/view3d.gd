@@ -9402,7 +9402,8 @@ func _tick_dig_drips(delta: float) -> void:
 		var z = e["zone"]
 		var top: Vector2 = e["top"]
 		e["life"] = float(e["life"]) - delta
-		var gone: bool = lp == null or not is_instance_valid(z) or (z as Node).is_queued_for_deletion() or top.distance_to(at) > DIG_DRIP_FAR 				or not z.solid_at_px(top - Vector2(0.0, 3.0)) or z.solid_at_px(top + Vector2(0.0, 3.0))
+		# kropla zwolniona razem z siatką mapy przy żywej strefie: bez tego `_drip_step` rzutował zwolniony obiekt (log gry 2026-11-22, 52×)
+		var gone: bool = lp == null or not is_instance_valid(e["mi"]) or not is_instance_valid(z) or (z as Node).is_queued_for_deletion() or top.distance_to(at) > DIG_DRIP_FAR 				or not z.solid_at_px(top - Vector2(0.0, 3.0)) or z.solid_at_px(top + Vector2(0.0, 3.0))
 		if gone or (float(e["life"]) <= 0.0 and float(e["y"]) < 0.0):
 			if is_instance_valid(e["mi"]):
 				(e["mi"] as Node).queue_free()
