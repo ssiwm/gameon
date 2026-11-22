@@ -3,6 +3,8 @@
 Stan wyjścia: main 1.7.653 (c009767f, 2026-11-22). Kontynuacja `DESTRUCTION_PLAN.md` D4 (kosmetyka walki, 1.7.500).
 Prośba autora: „zaplanuj dodanie śladów po kulach/granatach w środowisku gry”. Ten plik to analiza i plan — **nic nie jest wdrożone**.
 
+**Stan (2026-11-22):** decyzje 1–10 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). Następny krok: E0.
+
 Skala: kafel 16 px ≈ 1,31 m, 1 px ≈ 8 cm (`Level3D.PX` = 1,8 / 22 m). Kamera `FOV` 40°.
 
 ## Werdykt
@@ -181,9 +183,9 @@ krew na ścianie za celem), **E4** jakość, budżet i dokumenty. Wszystko to ko
   głębokość ≤ 0,3 m i `upper_fade`.
 - **Różne ślady u różnych peerów** (losowość pocisków klienta) — akceptowalne, to kosmetyka.
 
-## Decyzje (do przyjęcia przez autora)
+## Decyzje (przyjęte 2026-11-22 zgodnie z zaleceniami)
 
-| # | Pytanie | Zalecenie |
+| # | Pytanie | Decyzja |
 |---|---------|-----------|
 | 1 | Jak długo trwają ślady? | Do końca misji (albo restartu), limit wg jakości, najstarsze gasną przez 1 s. Bez blaknięcia z czasem. |
 | 2 | Realistyczny rozmiar czy czytelny? | Czytelny: ślad kuli ~1,5× prawdziwego (jak odpryski D4), ostatecznie po zrzutach E1. |
@@ -206,4 +208,4 @@ krew na ścianie za celem), **E4** jakość, budżet i dokumenty. Wszystko to ko
 | E3 | 1 na opcję | niskie | E2 |
 | E4 | w ostatnim PR | — | — |
 
-Następny krok: decyzje 1–10, potem E0.
+Następny krok: E0.
