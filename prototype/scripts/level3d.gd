@@ -2465,10 +2465,18 @@ static var shell_walls := {}
 ## sali, ściana do kopania), nadproża i przedłużenie strefy wydobycia do SHELL_Z w rzucie (×1,38) nachodziły na sąsiednie otwory: czoło
 ## kopania 1.1 zasłaniało snop latarki i salę obok, przód strefy 1.3 — wykop, a ściany w osobnej warstwie (`Front3D.wall_material`) miały
 ## inne światło niż skała świata. Fundament nie schodzi też obok strefy wydobycia (`SHELL_DIG_CUT` kolumn) — nachodził w rzucie na wykop.
+## Od 1.7.652 także bez płyty podłogi i fundamentu (`ug_slab`).
 ## Kafle w `shell_cells` / `shell_walls` zostają (materiał skały `shell_rock`, ściana tła); `shell_skip` to te, których skrzynka do SHELL_Z
 ## nie powstaje. Dev `--deepshell`: przekrój jak do 1.7.643 (porównanie A/B).
 static var shell_skip := {}
 const SHELL_DIG_CUT := 3
+## Pierwszy plan pod ziemią wyłączony (uwaga z gry 2026-11-22): w pasach `shallow_band` przed płaszczyzną gry nie ma płyty podłogi
+## ani elementów `Front3D` (stojaki obudowy, rury, lampy, kable) — stojak ze stropnicą bez stropu przekroju niczego nie podtrzymywał,
+## a rura sięgała w pustkę. Dev `--ugslab`: płyta podłogi jak w 1.7.648–1.7.650, `--ugfront`: elementy pierwszego planu w podziemiach.
+static func ug_slab() -> bool:
+	return "--ugslab" in OS.get_cmdline_user_args()
+static func ug_front() -> bool:
+	return "--ugfront" in OS.get_cmdline_user_args()
 static func shallow_band(e: Dictionary) -> bool:
 	return not e.has("build") and not e.has("wall") and String(e.get("set", "")) in ["tunnel", "mine"] 		and not "--deepshell" in OS.get_cmdline_user_args()
 static var shell_bands: Array = []         ## wpisy FRONT z przekrojem z ostatniego `set_shells` (strefy wydobycia obok sięgają SHELL_Z)
@@ -2557,9 +2565,11 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 				# płytki przekrój (2026-11-22, zrzuty z 1.7.648): fundament między kondygnacjami (pod nim pas gry innego wpisu — skała między
 				# salą a dolną galerią 1.1) robił przy szybie serwisowym grube ciemne bloki do SHELL_Z; obok strefy wydobycia płyta podłogi
 				# wystawała przed jej czoło (strefa kończy się na DEPTH_FRONT) — tam bez płyty i fundamentu
+				# Od 1.7.652 (uwaga z gry 2026-11-22: „pierwszy plan w podziemiach powinien być nieaktywny”) bez płyty podłogi i fundamentu
+				# w ogóle — brzeg płyty przy strefie wydobycia i szybie świecił w snopie latarki jak klin; dev `--ugslab` zostawia płytę.
 				var stacked: bool = r <= r1 + SHELL_DOWN and r < rows.size() and in_band.call(c, r)
 				for k: Vector2i in run:
-					if near_dig.call(c, k.y) or (k.y > r1 and stacked):
+					if not ug_slab() or near_dig.call(c, k.y) or (k.y > r1 and stacked):
 						shell_skip[k] = true
 	var wall_key := func(e: Dictionary, c: int, r: int) -> String:
 		return "C" if String(e.get("set", "")) in ["station", "bunker"] else _ch(rows, c, r)
@@ -2863,8 +2873,11 @@ static func _in_shell_band(c: int, r: int) -> bool:
 			return true
 	return false
 
+## Kafle pominięte (`shell_skip`, podziemia bez pierwszego planu) nie są przekrojem: woda w niecce podłogi i belka pod stropem kończą się
+## na DEPTH_FRONT jak bryła kafla (od 1.7.652 nie ma płyty podłogi, na której ciecz leżała do SHELL_Z).
 static func in_shell(c: int, r: int) -> bool:
-	return shell_cells.has(Vector2i(c, r))
+	var k := Vector2i(c, r)
+	return shell_cells.has(k) and not shell_skip.has(k)
 
 ## Przód bryły kafla (z): SHELL_Z w strefie przekroju, inaczej DEPTH_FRONT.
 static func front_z(c: int, r: int) -> float:

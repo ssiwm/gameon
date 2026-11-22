@@ -76,6 +76,7 @@ const JAG_FREQ := 1.6                  ## 1/m: częstotliwość szumu (garby co 
 const RING_U := [0.0, 0.05, 0.13, 0.21, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]   ## plastry czoła od przodu (0) do tyłu (1)
 const RING_JAG := 0.4                  ## m: największy garb czoła w stronę powietrza
 const RING_PLANE := [0.25, 0.75]       ## m: |z| — do pierwszej wartości płasko (płaszczyzna gry), od drugiej pełny garb
+const RING_EDGE_PROBE := 1.0          ## px: brzeg czoła przy stropie i podłodze — kierunek z punktu tyle w pionie (`_ring_out`)
 const RING_FREQ_K := 1.0               ## częstotliwość szumu czoła względem JAG_FREQ (grudy co ok. 0,6 m)
 const RING_SHADE := 0.2                ## jasność koloru wierzchołków w najgłębszym zagłębieniu czoła (na garbie 1)
 const RING_DIM := 0.45                 ## całe czoło ciemniejsze: latarka pada na nie prawie prostopadle, a ściany korytarza łapią ją pod kątem
@@ -2644,6 +2645,7 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 				if _fixed[k] == 1 and _d[k] != 0:
 					air = false
 			if not air:
+				_ring_edge_wall(i, j, verts, norms, cols, gp, px, front, back)
 				continue
 			poly.clear()
 			segs.clear()
@@ -2671,6 +2673,38 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 	arr[Mesh.ARRAY_TEX_UV2] = uv2
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return mesh
+
+## Skrajna komórka czoła (pierścień w kolumnie z boku strefy) przy stropie albo podłodze korytarza: narożnik na samej linii stropu / podłogi
+## należy do kafla skały mapy, więc komórka nie jest „powietrzem” i pętla pierścienia ją pomijała — ściana czoła kończyła się komórkę
+## (4 px, ok. 0,33 m) pod stropem i nad podłogą, a przez szparę widać było wnętrze bryły (uwaga z gry 2026-11-22, 1.1: „dziura” przy stropie
+## i „na dole ten sam problem”). Cała komórka leży w powietrzu mapy (granica kafli jest na jej brzegu), więc ściana idzie pionowo na całą
+## wysokość komórki, w tym samym x co kontur w wierszu powietrza — styk z sąsiednią komórką czoła bez progu.
+func _ring_edge_wall(i: int, j: int, verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, gp: Vector2, px: float, front: float, back: float) -> void:
+	if (i != 0 and i != _w - 2) or j == 0 or j == _h - 2:
+		return
+	var right := i == _w - 2                                   # powietrze mapy po prawej stronie strefy
+	var k0 := j * _w + i
+	var ring_top := k0 + 1 if right else k0                    # narożniki pierścienia (poza strefą): górny i dolny
+	var ring_bot := ring_top + _w
+	var zone_top := k0 if right else k0 + 1
+	var zone_bot := zone_top + _w
+	var top_air := _fixed[ring_top] == 1 and _d[ring_top] == 0
+	var bot_air := _fixed[ring_bot] == 1 and _d[ring_bot] == 0
+	if top_air == bot_air:                                     # oba w skale mapy (zwykła mapa) albo oba w powietrzu (zwykła komórka czoła)
+		return
+	var ka := ring_top if top_air else ring_bot                # wiersz powietrza: tam kontur przecina poziomą krawędź komórki
+	var kz := zone_top if top_air else zone_bot
+	var vz := int(_d[kz])
+	var va := int(_d[ka])
+	if vz < ISO or va >= ISO:                                  # brzeg strefy wykopany — nie czoło
+		return
+	var t := clampf(float(ISO - vz) / float(va - vz), 0.0, 1.0)
+	var base := _corner_px(i, j)
+	var x := base.x + (t * CELL if right else CELL - t * CELL)
+	var side := 1.0 if right else -1.0
+	var segs := PackedVector2Array([Vector2(x, base.y), Vector2(x, base.y + CELL)])
+	var cm := _cell_mat(i, j)
+	_walls(verts, norms, cols, segs, Vector2(x - side * CELL, base.y + CELL * 0.5), gp, px, front, back, Mats.tint(cm), Mats.tint(cm).darkened(0.65), RING_U)
 
 ## Ściany konturu (odcinki `segs` komórki) od przodu do tyłu strefy, w plastrach JAG_U; normalna od środka skały `cen` na zewnątrz
 ## (w płaszczyźnie xy — po przesunięciu wierzchołków `_jag_mesh` liczy ją od nowa z trójkąta, z tym samym zwrotem).
@@ -2749,13 +2783,17 @@ func _jag(v: Vector3, gp: Vector2, px: float, front: float, back: float) -> Vect
 
 ## Kierunek (±1 w osi x) od czoła strefy do powietrza mapy dla punktu `g` (px świata) na pionowej ścianie przy brzegu strefy: z jednej
 ## strony powietrze, z drugiej skała strefy. 0 — to nie czoło (przód, strop, podłoga, wykop w głębi, skała mapy w pierścieniu).
+## Górny i dolny brzeg czoła (styk ze stropem i podłogą korytarza) liczy się z punktu tuż obok w pionie: na samej linii stropu powietrze
+## korytarza czytało się jako skała, wierzchołki brzegu zostawały bez garbu, a sąsiednie (komórkę dalej) miały pełny — skośny pas między nimi
+## stał tyłem do kamery i przez niego widać było pustkę (uwaga z gry 2026-11-22, 1.1: „dziura” przy stropie i podłodze nad osypiskiem).
 func _ring_out(g: Vector2) -> float:
 	var l := g - global_position
 	if minf(minf(l.x, nx * CELL - l.x), minf(l.y, ny * CELL - l.y)) / CELL > 0.75:
 		return 0.0
-	for s: float in [-1.0, 1.0]:
-		if not solid_at_px(g + Vector2(s * 3.0, 0.0)) and solid_at_px(g - Vector2(s * 3.0, 0.0)):
-			return s
+	for dy: float in [0.0, RING_EDGE_PROBE, -RING_EDGE_PROBE]:
+		for s: float in [-1.0, 1.0]:
+			if not solid_at_px(g + Vector2(s * 3.0, dy)) and solid_at_px(g - Vector2(s * 3.0, -dy)):
+				return s
 	return 0.0
 
 ## Wierzchołek czoła (E1): garb tylko w stronę powietrza (`so`), zero na przodzie i z tyłu bryły (styk z przodem mapy i tylną ścianą)

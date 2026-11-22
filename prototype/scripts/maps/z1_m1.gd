@@ -124,7 +124,7 @@ const NICHES := [
 ]
 
 ## Pomosty pod gołym niebem z natury i z historii miejsca (`step3d.gd`, STEPS_PLAN.md S1): bród — podmyta skarpa (Wołek śpi na górze)
-## i wykrot nad błotem; polana — ostaniec ze skrytką `H` pod nawisem i liną patrolu; obóz — konary dwóch sosen ze słupów `w` (i trzeciej na skale)
+## i wykrot nad błotem; polana — ostaniec ze skrytką `H` na szczycie i liną patrolu; obóz — konary dwóch sosen ze słupów `w` (i trzeciej na skale)
 ## oraz półki skalne przy przyczółkach zerwanego mostu.
 const STEPS := [
 	{"kind": "bank", "decks": [[19, 31]], "posts": [30, 37]},

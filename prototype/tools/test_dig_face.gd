@@ -2,7 +2,7 @@ extends SceneTree
 ## Czoło strefy wydobycia (DIG_ENTRANCE_PLAN.md E1, `dig_zone.gd` `_ring_out` / `_ring_jag` / `_mat_weights`): strefa żwiru 6 × 4 kafle,
 ## z prawej korytarz (powietrze mapy), wokół skała. Ściana strefy od strony korytarza nie jest płaską płytą: garby tylko w stronę
 ## powietrza (nic nie cofa się za brzeg — bez szczeliny na tło), przód i płaszczyzna gry na brzegu (styk z przodem mapy, postać przy
-## ścianie), bez ruchu w pionie, materiał strefy (żwir) zamiast gruntu mapy, `face_bulge` zgodny z siatką. Ściany od strony skały mapy
+## ścianie), bez ruchu w pionie, od stropu do podłogi korytarza (skrajne komórki, `_ring_edge_wall`), materiał strefy (żwir) zamiast gruntu mapy, `face_bulge` zgodny z siatką. Ściany od strony skały mapy
 ## się nie zmieniają. E2 (`dig_entrance3d.gd`): osypisko u stopy czoła (na podłodze, wierzch przy czole, przydeptana ścieżka przy płaszczyźnie
 ## gry, niżej przed nią, zero przy przodzie, normalne w górę, bryłki poza czołem) i odrzwia (tylko przy obudowie; stojak na podłodze przy
 ## czole, nie w garbie; stropnica pod stropem korytarza). Uruchom: godot --headless --path prototype -s tools/test_dig_face.gd — ma wypisać [DIG-FACE] PASS.
@@ -52,6 +52,9 @@ func _run() -> void:
 	var mat_bad := 0
 	var rmin := 9.0
 	var rmax := 0.0
+	var face_top := -INF                                           # m: najwyżej / najniżej położony wierzchołek czoła
+	var face_bot := INF
+	var y_ceil := -float((R0 + 1) * 16) * px                      # strop korytarza (wiersz R0 to skała nad nim)
 	z.chunk_mesh(0, px, front, back)                              # rozgrzewka: pierwsza siatka liczy też szum i pamięć podręczną (raz 6,8 ms)
 	var t0 := Time.get_ticks_usec()
 	var arrs: Array = []
@@ -70,6 +73,8 @@ func _run() -> void:
 			if absf(v.x - wall) > 0.6 or absf(ns[k].z) > 0.9 or ns[k].x < 0.3:
 				continue                                          # tylko ściana z normalną w stronę korytarza (+x)
 			face += 1
+			face_top = maxf(face_top, v.y)
+			face_bot = minf(face_bot, v.y)
 			var d := v.x - wall
 			if d < -0.002:
 				inward += 1
@@ -94,6 +99,8 @@ func _run() -> void:
 	_check("przód na brzegu (styk z przodem mapy)", front_off < 0.002)
 	_check("płaszczyzna gry na brzegu (postać przy ścianie nie wchodzi w bryłę)", plane_off < 0.01)
 	_check("bez ruchu w pionie poza wiersze strefy", outside_y == 0)
+	_check("czoło od stropu do podłogi korytarza, bez szpary na wnętrze bryły (%.3f / %.3f m)" % [y_ceil - face_top, face_bot - y_bot],
+		absf(face_top - y_ceil) < 0.01 and absf(face_bot - y_bot) < 0.01)
 	_check("czoło w materiale strefy (żwir, alfa 1)", mat_bad == 0)
 	_check("zagłębienia czoła ciemniejsze od garbów (rozrzut jasności > 0,2)", rmax - rmin > 0.2)
 	var fb_plane: float = z.face_bulge(Vector2(wall / px, float(R1 * 16)), 0.0, px, front, back)

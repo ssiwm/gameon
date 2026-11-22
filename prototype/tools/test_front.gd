@@ -227,10 +227,9 @@ func _check_shell(map_id: String, rows: Array, front: Array, skip: Array, digs: 
 	Level3D.set_shells([], rows)
 
 
-## Płytki przekrój podziemi (`Level3D.shallow_band`, przegląd 2026-11-21): w tunelach i kopalniach przed płaszczyzną gry tylko płyta podłogi
-## z fundamentem — strop, ściany i nadproża bez skrzynki do SHELL_Z (`shell_skip`, kafle zostają w `shell_cells` / `shell_walls` dla
-## materiału skały), przód strefy wydobycia na DEPTH_FRONT, fundament bez skrzynek obok strefy wydobycia i między kondygnacjami, wiersz podłogi
-## z płytą poza wejściem strefy wydobycia (tam bez płyty).
+## Płytki przekrój podziemi (`Level3D.shallow_band`, przegląd 2026-11-21; od 1.7.652 pierwszy plan pod ziemią wyłączony): w tunelach
+## i kopalniach przed płaszczyzną gry nic — strop, ściany, nadproża, płyta podłogi i fundament bez skrzynki do SHELL_Z (`shell_skip`, kafle
+## zostają w `shell_cells` / `shell_walls` dla materiału skały), przód strefy wydobycia na DEPTH_FRONT.
 func _check_shallow(map_id: String, rows: Array, digs: Array) -> void:
 	for k: Vector2i in Level3D.shell_skip:
 		_check(Level3D.shell_cells.has(k) or Level3D.shell_walls.has(k), "%s %s: pominięty kafel spoza przekroju" % [map_id, k])
@@ -240,12 +239,10 @@ func _check_shallow(map_id: String, rows: Array, digs: Array) -> void:
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
 			var top := Vector2i(c, int(e["r0"]))
 			_check(not Level3D.shell_cells.has(top) or Level3D.shell_skip.has(top), "%s %s: strop podziemi wysunięty do przekroju" % [map_id, top])
-			var fl := Vector2i(c, int(e["r1"]))
-			var at_dig := false                                  # obok strefy wydobycia płyta nie wystaje przed jej czoło (2026-11-22)
-			for z in digs:
-				at_dig = at_dig or (c >= int(z[0]) - Level3D.SHELL_DIG_CUT and c <= int(z[2]) + Level3D.SHELL_DIG_CUT and fl.y >= int(z[1]) - 1 and fl.y <= int(z[3]) + 1)
-			_check(at_dig or not Level3D.shell_skip.has(fl), "%s %s: podłoga podziemi bez płyty przekroju" % [map_id, fl])
-			_check(not at_dig or not Level3D.shell_cells.has(fl) or Level3D.shell_skip.has(fl), "%s %s: płyta podłogi wystaje przed strefę wydobycia" % [map_id, fl])
+			var fl := Vector2i(c, int(e["r1"]))                 # od 1.7.652 bez płyty podłogi i fundamentu (pierwszy plan pod ziemią wyłączony)
+			for r in range(fl.y, fl.y + Level3D.SHELL_DOWN + 1):
+				var k := Vector2i(c, r)
+				_check(not Level3D.shell_cells.has(k) or Level3D.shell_skip.has(k), "%s %s: płyta podłogi albo fundament podziemi wysunięte do przekroju" % [map_id, k])
 			var below := Vector2i(c, int(e["r1"]) + 1)          # fundament nad pasem gry niższego wpisu (szyb serwisowy 1.1): bez skrzynki
 			for e2: Dictionary in Level3D.shell_bands:
 				if e2 != e and c >= int(e2["c0"]) and c <= int(e2["c1"]) and int(e2["r0"]) > int(e["r1"]) and int(e2["r0"]) - int(e["r1"]) <= Level3D.SHELL_DOWN:
@@ -269,6 +266,18 @@ func _check_shallow(map_id: String, rows: Array, digs: Array) -> void:
 				floor = floor or (inc and k.y == int(e["r1"]))
 			under = under and not floor
 			_check(not (near and under), "%s %s: fundament przekroju nachodzi w rzucie na strefę wydobycia %s" % [map_id, k, z])
+
+
+## Wpis z przekrojem, pod którego podłogą w każdej kolumnie zaczyna się (do SHELL_DOWN) pas innego wpisu — piwniczka 1.3 nad tunelem:
+## bez podłogi przed przekrojem (`Front3D._build_floors`).
+func _stacked(e: Dictionary, front: Array) -> bool:
+	for c in range(int(e["c0"]), int(e["c1"]) + 1):
+		var hit := false
+		for o: Dictionary in front:
+			hit = hit or (o != e and bool(o.get("shell", false)) and c >= int(o["c0"]) and c <= int(o["c1"]) and int(o["r0"]) > int(e["r1"]) and int(o["r0"]) <= int(e["r1"]) + Level3D.SHELL_DOWN)
+		if not hit:
+			return false
+	return true
 
 
 ## Ściany przekroju (`Level3D.shell_walls`): lite ściany w pasie wpisu i nadproża między przekrojami o różnym stropie, wysunięte do
@@ -1097,12 +1106,15 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 	if front.any(func(e: Dictionary) -> bool: return bool((Front3D.SETS[e["set"]] as Dictionary).get("open", false))):
 		_check(n > 0, "%s: las bez elementów na podłożu" % map_id)
 	# podłoga tuneli i sal pod ziemią przed płytą przekroju: od SHELL_Z, płaska, nie wyżej niż najwyższa podłoga przekroju
-	var tun: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)) and String(e["set"]) != "bunker")
-	if not tun.is_empty():
+	# od 1.7.652 tylko pasy z budynkiem (`station`): w tunelach i kopalniach (`shallow_band`) przed płaszczyzną gry nic, także tej podłogi
+	var tun: Array = front.filter(func(e: Dictionary) -> bool: return bool(e.get("shell", false)) and String(e["set"]) != "bunker" and not Level3D.shallow_band(e) and not Front3D._on_surface.has(e) and not _stacked(e, front))
+	var floors: Array = root.get_children().filter(func(c: Node) -> bool: return String(c.name).begins_with("FrontFloor"))
+	if tun.is_empty():
+		_check(floors.is_empty(), "%s: podłoga przed przekrojem w podziemiach bez pierwszego planu" % map_id)
+	else:
 		var ytop := -INF
 		for e: Dictionary in tun:
 			ytop = maxf(ytop, -float(e["r1"]) * T)
-		var floors: Array = root.get_children().filter(func(c: Node) -> bool: return String(c.name).begins_with("FrontFloor"))
 		_check(not floors.is_empty(), "%s: brak podłogi tunelu przed przekrojem" % map_id)
 		for c: Node in floors:
 			var bb := ((c as MeshInstance3D).mesh as ArrayMesh).get_aabb()
@@ -1117,13 +1129,13 @@ func _check_map_ground(map_id: String, rows: Array, front: Array, items: Array) 
 
 
 ## Torowisko drezyny w strefie przekroju (`Level3D.in_trench`): płyta leży na wysokości dna koryta (pełna płyta zasłoniłaby szyny i koła),
-## więc element nad torowiskiem stoi na podsypce — dolna granica `ywin` o `TRENCH_D` niżej niż obok torowiska.
+## więc element nad torowiskiem stoi na podsypce — dolna granica `ywin` o `TRENCH_D` niżej niż obok torowiska. Wpis `station` (tunele od 1.7.652 bez pierwszego planu).
 func _check_trench() -> void:
 	var root := Node3D.new()
 	get_root().add_child(root)
 	var T := Level3D.T
 	Level3D.rail_trench = {"row": 10, "c0": 0, "c1": 60}
-	Front3D.build(root, [{"set": "tunnel", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}], [], false)
+	Front3D.build(root, [{"set": "station", "c0": 0, "c1": 120, "r0": 2, "r1": 10, "shell": true}], [], false)
 	Level3D.rail_trench = {}
 	var fr := root.get_node_or_null("Front")
 	var seen := [0, 0]
@@ -1763,9 +1775,10 @@ func _check_terrain_cut() -> void:
 	_check(used, "grunt: bryła gruntu 1.2 bez materiału z przekrojem ziemi")
 	root.queue_free()
 
-## Kopalnia 1.1 (UNDERGROUND_PLAN.md U4): wpisy z przekrojem w zestawie `mine` (wschodni koniec pod betonem bunkra — `tunnel`), w nich
-## tylko obudowa drewniana jako duże elementy — stojak z kory albo deski, bez stalowej płytki pod stropem, stropnica w głąb kończy się
-## przed przodem przekroju, a cała obudowa mieści się między płytą podłogi i stropu.
+## Kopalnia 1.1 (UNDERGROUND_PLAN.md U4): wpisy z przekrojem w zestawie `mine` (wschodni koniec pod betonem bunkra — `tunnel`) — z nich
+## skała tła pasa. Od 1.7.652 pierwszy plan pod ziemią wyłączony (uwaga z gry 2026-11-22: stojak ze stropnicą bez stropu przekroju niczego
+## nie podtrzymywał): wpisy `tunnel` / `mine` bez budynku 3D nie dają żadnego elementu na żadnej mapie, a pozostałe wpisy mają ten sam układ
+## co z elementami podziemi (`--ugfront`).
 func _check_mine() -> void:
 	var consts: Dictionary = (load("res://scripts/maps/z1_m1.gd") as Script).get_script_constant_map()
 	var rows: Array = consts["MAP"]
@@ -1777,27 +1790,15 @@ func _check_mine() -> void:
 	get_root().add_child(root)
 	Front3D.build(root, mine, [], false, rows)
 	var fr := root.get_node_or_null("Front")
-	var n := 0
-	if fr != null:
-		for c in fr.get_children():
-			var mi := c as MeshInstance3D
-			var kind := String(mi.name).get_slice("_", 0)
-			_check(not kind in ["pipe", "pipes2"], "1.1 %s: rura w kopalni" % mi.name)
-			if not kind in Front3D.TIMBER_KINDS:
-				continue
-			n += 1
-			_check(mi.get_node_or_null("Plate") == null, "%s: stalowa płytka pod stropnicą" % mi.name)
-			var keys := []
-			for si in mi.mesh.get_surface_count():
-				keys.append(mi.get_surface_override_material(si))
-			_check(keys.has(Front3D.materials()["beam"]) and (kind == "prop2" or keys.has(Front3D.materials()["bark"])), "%s: obudowa bez kory albo desek" % mi.name)
-			var a := mi.mesh.get_aabb()
-			var yw: Vector2 = mi.get_instance_shader_parameter("ywin")
-			_check(mi.position.z + a.end.z < Level3D.SHELL_Z - 0.05, "%s: stropnica wychodzi przed przekrój (z %.2f)" % [mi.name, mi.position.z + a.end.z])
-			_check(a.position.y >= yw.x - 0.01 and a.end.y <= yw.y + 0.01, "%s: obudowa poza pasem (%.2f–%.2f, pas %s)" % [mi.name, a.position.y, a.end.y, yw])
-	_check(n >= 6, "1.1: %d elementów obudowy" % n)
+	_check(fr == null or fr.get_child_count() == 0, "1.1: elementy pierwszego planu w kopalni (%d)" % (0 if fr == null else fr.get_child_count()))
 	Level3D.set_shells([], rows)
 	root.queue_free()
+	for f in ["z1_m1.gd", "z1_m2.gd", "z1_m3.gd"]:
+		var c: Dictionary = (load("res://scripts/maps/" + f) as Script).get_script_constant_map()
+		var fe: Array = c.get("FRONT", [])
+		var bl := Front3D.blocked_x(fe, c["MAP"])
+		for it: Dictionary in Front3D.layout(fe, c.get("FRONT_SKIP", []), false, bl):
+			_check(not bool(it["ug"]), "%s: element pierwszego planu pod ziemią %s x=%.1f" % [f, it["kind"], float(it["x"])])
 
 ## Hala stacji 1.2 jako budynek 3D (`building3d.gd`, od 1.7.529; wcześniej dach z blachy na płatwiach): nad pasem nie ma dachu z blachy
 ## (`Level3D.roof_purlins` puste), a element pierwszego planu dochodzi do spodu płyty stropu (`Building3D.SLAB` pod górą kafla dachu), nie do

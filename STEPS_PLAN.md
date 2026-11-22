@@ -37,7 +37,7 @@ Pomosty z wpisu nie mają modelu desek ani nóg (`Level3D.step_cells`).
 |---|---|---|
 | `bank` — podmyta skarpa | 1.1 bród (Wołek śpi na górze) | Bryła ziemi za pasem gry, płaski wierzch z darnią, nawis darni na korzeniach do z ≈ +0,7. Korzenie zwisają nie niżej niż 2,15 m nad ścieżką w pasie gry. |
 | `windfall` — wykrot | 1.1 bród, schodek nad błotem | Dwupienny świerk wyrwany z talerzem korzeniowym (z ≈ −3,5), pnie leżą w poprzek ścieżki na głazie za pasem gry (z ≈ −1,5). Czubki odpiłowane przez patrol (z ≈ +0,85), jasne przekroje. |
-| `tor` — ostaniec granitowy | 1.1 polana, półki przy przyczółkach mostu | Płyty granitu jak materace wystają nad ścieżką (z −1,05 … +0,8), masa skały za pasem gry. Opcja `cache`: nisza ze skrytką pod nawisem na szczycie, lina patrolu na haku i czerwona strzałka. |
+| `tor` — ostaniec granitowy | 1.1 polana, półki przy przyczółkach mostu | Płyty granitu jak materace wystają nad ścieżką (z −1,05 … +0,8), masa skały za pasem gry. Opcja `cache`: skrytka na szczycie (do 1.7.650 w niszy pod nawisem — usunięta po uwadze z gry 2026-11-22), lina patrolu na haku i czerwona strzałka. |
 | `boughs` — konary sosen | 1.1 obóz pod zerwanym mostem | Dwie stare sosny w miejscu słupów `w`, poziome konary (⌀ 0,68 → 0,26 m) niosą pomosty. Most zostaje mostem; belka przybita do pnia trzyma koniec przęsła. |
 
 ## Etapy
