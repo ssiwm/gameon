@@ -213,6 +213,19 @@ ATTACK_BRACE_PAW = [
     (32, (   0,    0,    0,   0,   0)),
 ]
 
+DIG_FRAMES = 16
+# Kopanie w pościgu (enemy_mole.gd): pętla dwóch pociągnięć — przednie łapy na zmianę sięgają w przód na wysokość piersi
+# i grabią skałę w dół i pod siebie. Faza łapy, potem pozycja (przód, góra) i pochylenie pazurów w stopniach.
+DIG_PAW = [(0, (-.06, .02, 4)), (.30, (.36, .25, -32)), (.42, (.40, .21, -24)), (.70, (.06, .03, 16)), (1, (-.06, .02, 4))]
+
+def dig_paw(f):
+    f %= 1.0
+    for (start, pose_a), (end, pose_b) in zip(DIG_PAW, DIG_PAW[1:]):
+        if f <= end:
+            blend = ramp(f, start, end)
+            return tuple(a + (b-a)*blend for a, b in zip(pose_a, pose_b))
+    return DIG_PAW[-1][1]
+
 def attack_pose(frame, keys):
     for (start, pose_a), (end, pose_b) in zip(keys, keys[1:]):
         if frame <= end:
@@ -247,6 +260,16 @@ def build_pose(action,t):
         (dx, dy, dz, pelvis_pitch, chest_pitch, chest_yaw, chest_roll,
          head_pitch, head_yaw) = attack_pose(attack_frame, ATTACK_BODY)
         tail_yaw = -.65 * chest_yaw
+    elif action=='dig':
+        stroke=math.sin(2*TAU*t)
+        dx=.035+.025*stroke
+        dz=-.045+.012*stroke
+        pelvis_pitch=-3
+        chest_pitch=11+3.5*stroke
+        chest_roll=6*math.sin(TAU*t)
+        head_pitch=15+4*stroke
+        head_yaw=-5*math.sin(TAU*t)
+        tail_yaw=7*math.sin(TAU*t+.6)
     elif action=='emerge':
         dx=curve(t,[(0,-1.64),(.12,-1.52),(.27,-1.34),(.40,-1.16),(.55,-.78),(.77,-.38),(.92,-.06),(1,0)])
         dz=curve(t,[(0,-.19),(.32,-.19),(.46,-.11),(.62,-.022),(.76,-.065),(.92,.022),(1,0)])
@@ -285,6 +308,12 @@ def build_pose(action,t):
                 fx, fy, fz, toe, toe_yaw = attack_pose(attack_frame, keys)
             # Tylne łapy odpychają ciało, a przeciwległy nadgarstek łapie ciężar przed ciosem.
             fx -= dx
+        elif action=='dig':
+            if front:
+                fx, fz, toe = dig_paw(t + (0.0 if sign < 0 else .5))
+                fy = .03 * (1 - fz / .25)
+            # Tylne łapy stoją, a przednia w podporze trzyma ciężar pochylonego ciała.
+            fx -= dx
         elif action=='emerge':
             offset=(.01 if sign<0 else .43) if front else (.56 if sign<0 else .08)
             if front and sign<0 and t < .58:
@@ -304,7 +333,7 @@ def build_pose(action,t):
 scene=bpy.context.scene
 scene.render.fps=FPS
 arm.animation_data_create()
-for clip, duration in [('idle',72),('walk',24),('emerge',48),('attack',ATTACK_FRAMES)]:
+for clip, duration in [('idle',72),('walk',24),('emerge',48),('attack',ATTACK_FRAMES),('dig',DIG_FRAMES)]:
     action=bpy.data.actions.new(clip)
     arm.animation_data.action=action
     last={}

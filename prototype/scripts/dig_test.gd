@@ -28,6 +28,9 @@ extends "res://scripts/stalker_test.gd"
 ##    deskę i odwołuje ostrzeżenie, bez desek i złomu — „nomat”; wybuch przewraca stempel; wipe czyści stemple.
 ## 13. wykop pod skałą (kopanie P2c): strop nad głową w tunelu, na wierzchu nie; tło jak w podziemiach (level.gd `dig_cover_at`); miejsca
 ##    kapania na stropie w skale (dig_zone.gd `drip_spot`), w ziemi nie; pogłos wg ścian — w skale jaśniejszy, w ziemi głuchy.
+## 15. Łupacz w pościgu (K3c, enemy_mole.gd `drive`): kierunek kopania, pazur (ziemia 1 pociągnięcie, skała 2, efekt bez bijącego), Łupacz
+##    zamknięty w komorze na dnie skały przekopuje się na wierzch do gracza i go uderza; w oknie zrzuty `k3c_dig_1`, `k3c_dig_2`, `k3c_claw`;
+##    `--digonly=claw` — sam ten punkt.
 ## Wynik: linie [DIG-TEST] (PASS / FAIL / INFO) i kod wyjścia.
 
 const Weapons := preload("res://scripts/weapons.gd")
@@ -91,6 +94,10 @@ func run(m: Node2D) -> void:
 		await _slope()
 		_finish()
 		return
+	if "--digonly=claw" in OS.get_cmdline_user_args():      # sam Łupacz przekopujący się do gracza (strojenie kopania i klipu `dig`)
+		await _claw_k3c()
+		_finish()
+		return
 	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48 + 16 — komora DigZone4 to powietrze)" % dig0, dig0 == 192 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
@@ -106,6 +113,7 @@ func run(m: Node2D) -> void:
 	await _loot_k1()
 	await _signals_k2()
 	await _wake_k3()
+	await _claw_k3c()
 	await _minimap_k5()
 	await _chamber_k5b()
 	await _signals()
@@ -113,6 +121,74 @@ func run(m: Node2D) -> void:
 	await _slope()
 	_timings()
 	_finish()
+
+## K3c: Łupacz przekopuje się do gracza (enemy_mole.gd `drive`, pazur dig_materials.gd Tool.CLAW, dig_zone.gd `claw_dig`).
+func _claw_k3c() -> void:
+	var Mole := preload("res://scripts/enemy_mole.gd")
+	check("K3c: kierunek kopania — płasko przy skale, w górę i w dół do celu, szyb pod sobą, wspinaczka pod celem, bez skały i bez zablokowania zwykły pościg",
+		Mole.dig_dir(Vector2(40, 0), true, false) == Mole.Dig.FLAT and Mole.dig_dir(Vector2(40, 0), false, false) == Mole.Dig.NONE
+		and Mole.dig_dir(Vector2(40, -30), true, false) == Mole.Dig.UP and Mole.dig_dir(Vector2(40, -30), false, true) == Mole.Dig.UP
+		and Mole.dig_dir(Vector2(40, -30), false, false) == Mole.Dig.NONE and Mole.dig_dir(Vector2(40, 30), true, false) == Mole.Dig.DOWN
+		and Mole.dig_dir(Vector2(4, 40), false, false) == Mole.Dig.SHAFT and Mole.dig_dir(Vector2(4, -40), false, false) == Mole.Dig.CLIMB)
+	zone.reset_to(PackedByteArray())
+	rock.reset_to(PackedByteArray())
+	await _frames(0.1)
+	var zr: Rect2 = zone.rect_px()
+	var rr: Rect2 = rock.rect_px()
+	var fx0: int = rock.fx_hits
+	var n1 := 0
+	var c1 := Vector2(zr.get_center().x, TOP + 40.0)
+	while zone.claw_rock(c1, Mole.DIG_HALF, Mole.DIG_ROUND) and n1 < 5:
+		zone.claw_dig(c1, Mole.DIG_HALF, Mole.DIG_ROUND, Vector2.LEFT)
+		n1 += 1
+	var n2 := 0
+	var c2 := Vector2(rr.get_center().x, TOP + 40.0)
+	while rock.claw_rock(c2, Mole.DIG_HALF, Mole.DIG_ROUND) and n2 < 5:
+		rock.claw_dig(c2, Mole.DIG_HALF, Mole.DIG_ROUND, Vector2.LEFT)
+		n2 += 1
+	await _frames(0.05)
+	check("K3c: pazur bierze ziemię jednym pociągnięciem (%d), skałę dwoma (%d), efekt ciosu bez bijącego" % [n1, n2],
+		n1 == 1 and n2 == 2 and rock.fx_hits > fx0 and int(rock.fx_last.get("tool", -1)) == DigMats.Tool.CLAW and int(rock.fx_last.get("by", 0)) == -1)
+	zone.reset_to(PackedByteArray())
+	rock.reset_to(PackedByteArray())
+	await _frames(0.1)
+	# komora na dnie skały, gracz na wierzchu strefy po drugiej stronie — skała dookoła, żadnej drogi poza kopaniem
+	var cell := Vector2(rr.position.x + 24.0, rr.end.y - 14.0)
+	rock.apply_dig(cell, Vector2(12.0, 7.0), 2.0, DigMats.Tool.BLAST)
+	var goal := Vector2(rr.end.x - 24.0, TOP - 0.5)
+	_place_player(goal)
+	player.hp = player.MAX_HP
+	var hp0: int = player.hp
+	var solid0 := _solid_count(rock)
+	var names: Array = Director.spawn_at(["lupacz"], Vector2(cell.x, cell.y + 8.0), goal)
+	await _frames(0.1)
+	var mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	check("K3c: Łupacz w zamkniętej komorze %.0f px pod graczem" % (cell.y - goal.y), mole != null and bool(mole.active))
+	if mole == null:
+		return
+	var t := 0.0
+	var dug_seen := false
+	var max_up := 0.0
+	var shots := ["k3c_dig_1", "k3c_dig_2"]
+	while t < 40.0 and player.hp >= hp0 and is_instance_valid(mole) and bool(mole.alive):
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		dug_seen = dug_seen or int(mole._sp) < 0
+		if not shots.is_empty() and int(mole._sp) < 0 and t > 1.0 + 1.4 * float(2 - shots.size()):
+			await _shot(String(shots.pop_front()), Callable(), 0.05)       # w oknie: pętla `dig` w trakcie kopania
+		max_up = maxf(max_up, cell.y + 8.0 - mole.global_position.y)
+	info("K3c: po %.1f s — Łupacz %s, wyrw %d, w górę %.0f px, HP gracza %d → %d" % [t, str(mole.global_position.round()), int(mole._beh.digs), max_up, hp0, player.hp])
+	check("K3c: przekopał się (wyrw %d, skały mniej o %d narożników, kopanie widać w `_sp`)" % [int(mole._beh.digs), solid0 - _solid_count(rock)],
+		int(mole._beh.digs) >= 6 and _solid_count(rock) < solid0 and dug_seen)
+	check("K3c: dotarł do gracza na wierzchu i uderzył w %.1f s (bez porzucenia celu)" % t, player.hp < hp0 and t < 40.0)
+	check("K3c: nie stoi w skale", not rock.solid_at_px(mole.global_position + Vector2(0, -5)))
+	await _shot("k3c_claw", Callable(), 0.2)
+	mole.queue_free()
+	rock.reset_to(PackedByteArray())
+	zone.reset_to(PackedByteArray())
+	player.hp = player.MAX_HP
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	await _frames(0.2)
 
 func _on_noise(amount: float, pos: Vector2, tag: String) -> void:
 	if tag == "dig":

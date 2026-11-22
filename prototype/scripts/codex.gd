@@ -25,7 +25,7 @@ const PORTRAITS := "res://art/portraits/"
 ## [klucz w Enemy.KINDS, arkusz, animacja, nazwa, etykieta, opis, wskazówka]; elity (bez arkusza 2D) mają ósmy element — ścieżkę portretu z konceptu modelu 3D.
 const ENEMIES := [
 	["lupacz", "", "idle", "SHALEBREAKER", "Mine burrower",
-		"Scratching behind the rock warns you that a Shalebreaker is digging toward you. Its pale claws come through first. It rears up on its hind legs before striking.",
+		"Scratching behind the rock warns you that a Shalebreaker is digging toward you. Its pale claws come through first. A pit won't hold it — it claws through earth and rock to reach you. It rears up on its hind legs before striking.",
 		"Back away when the front paw rises. Step back in while it gathers its feet.", "res://art/portraits/lupacz.png"],
 	["trzosek", "trzosek", "idle", "CUTPURSE", "Pack hunter",
 		"Fast and cowardly alone, vicious in a pack of three to six. Sleeps until a shot or a close step wakes it. The oldest of the pack leads — when it dies, the rest panic. Flares make them curious.",

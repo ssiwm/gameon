@@ -1525,12 +1525,18 @@ func _mix_quad(sample: Array, w: float) -> void:
 		_sk.set_bone_pose_rotation(bi, _sk.get_bone_pose_rotation(bi).slerp(rs[bi], w))
 		_sk.set_bone_pose_position(bi, _sk.get_bone_pose_position(bi).lerp(ps[bi], w))
 
+## Pochylenie Łupacza przy kopaniu wg kierunku wyrwy (−`_sp`, enemy_mole.gd Dig): płasko, rampa w górę, stopień w dół, szyb pod sobą,
+## wspinaczka w szybie (przodem w górę).
+const BURROW_DIG_TILT := [0.0, 0.0, 0.24, -0.22, -0.42, 0.75]
+
 ## Klipy z własnego szkieletu. W animacji wyjścia Root zawiera już przesunięcie
 ## ciała, więc odejmujemy drogę przebytą przez kolizję. Trafienie otwiera klatkę 19.
+## Kopanie w pościgu (ujemne `_sp`) to pętla `dig` z ciałem pochylonym w stronę wyrwy.
 func _pose_burrower(anim: String) -> void:
 	var clip := "idle"
 	var t := fmod(_t, _qlen("idle"))
 	_tilt.position = Vector3.ZERO
+	_tilt.basis = Basis.IDENTITY
 	_pivot.basis = Basis.from_scale(Vector3.ONE * _scale)
 	if _burrow_time >= 0.0:
 		clip = "emerge"
@@ -1543,6 +1549,10 @@ func _pose_burrower(anim: String) -> void:
 		clip = "attack"
 		# Nawet gdy kolejny pakiet spóźni się o klatkę, kontakt zaczyna dopiero zdarzenie serwera.
 		t = EnemyDefs.Mole.CONTACT * clampf(1.0 - _motion_remaining / _motion_duration, 0.0, 0.999)
+	elif _sp < 0 and _qhas("dig"):
+		clip = "dig"
+		t = fmod(_t, _qlen(clip))
+		_tilt.basis = Basis(Vector3.BACK, float(BURROW_DIG_TILT[clampi(-_sp, 0, BURROW_DIG_TILT.size() - 1)]))
 	elif anim == "walk" or anim == "run":
 		clip = "walk"
 		t = fposmod(_phase / TAU, 1.0) * _qlen(clip)

@@ -1904,8 +1904,14 @@ func _test_mole_swipe() -> void:
 	var model := preload("res://scripts/enemy3d.gd").new()
 	level.add_child(model)
 	var built := model.setup("lupacz")
-	check("Łupacz: model i cztery klipy z GLB", built and model._qhas("emerge") and model._qhas("idle")
-		and model._qhas("walk") and model._qhas("attack") and is_equal_approx(model._qlen("attack"), 32.0 / 24.0))
+	check("Łupacz: model i pięć klipów z GLB (z pętlą kopania)", built and model._qhas("emerge") and model._qhas("idle")
+		and model._qhas("walk") and model._qhas("attack") and model._qhas("dig") and is_equal_approx(model._qlen("attack"), 32.0 / 24.0))
+	if built:
+		model.pose(1.0 / 60.0, "special", false, Color.WHITE, 0.0, 1, true, 0.0, -EnemyDefs.Mole.Dig.UP)
+		var dig_ok: bool = model._ap.assigned_animation == "dig" and model._tilt.basis.get_euler().z > 0.1
+		model.pose(1.0 / 60.0, "idle", false, Color.WHITE)
+		check("Łupacz: kopanie (ujemne `_sp`) gra pętlę `dig` z ciałem pochylonym ku rampie, potem wraca do spoczynku",
+			dig_ok and model._ap.assigned_animation == "idle" and model._tilt.basis.is_equal_approx(Basis.IDENTITY))
 	var saved_pos := player.global_position
 	var saved_hp := int(player.hp)
 	player.set_physics_process(false)
