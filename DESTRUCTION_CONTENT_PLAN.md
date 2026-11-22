@@ -3,7 +3,7 @@
 Stan wyjścia planu: main 1.7.655 (203ed634, 2026-11-22). Kontynuacja `DESTRUCTION_PLAN.md` (D0–D5, w main do 1.7.506),
 `SHOOT_DESTRUCTION_PLAN.md` (S0–S3, do 1.7.557) i `IMPACT_MARKS_PLAN.md` (1.7.655).
 
-**Stan (2026-11-22):** plan; nic nie wdrożone. Decyzje 1–10 czekają na autora (sekcja „Decyzje”).
+**Stan (2026-11-22):** decyzje 1–10 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). W trakcie: spike W0 (obraz drzwi).
 
 ## Skąd ten plan
 
@@ -255,6 +255,8 @@ Sygnały:
 | Metal głośny przy kilofie | Stalker zawsze przy drzwiach | pomiar, strojenie `n_hit` |
 
 ## Decyzje
+
+Wszystkie przyjęte 2026-11-22 zgodnie z zaleceniami (warianty odrzucone).
 
 1. **Zakres:** wszystkie budynki 3D na misjach — 1.2: hala stacji, pompownia; 1.3: posterunek, Skład, hala Żyły (9 wejść).
    Kryjówka, B1 (bez otworów) i 1.1 (bez budynków) poza zakresem. *Zalecam:* tak. Wariant: drewniane tamy wentylacyjne w kopalni 1.1
