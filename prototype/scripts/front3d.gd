@@ -1008,13 +1008,16 @@ static func _st(sts: Dictionary, key: String) -> SurfaceTool:
 ## `flat_up`: normalne bez składowej w górę (nasada pnia na podłożu) — kontra postaci pada z góry zza sceny i rozświetlała wierzch szyi
 ## i korzeni, a grunt obok (warstwa świata) jej nie dostaje.
 ## `ridge`: udział drobnych pionowych bruzd kory w nierówności zarysu (sylwetka pnia nie jest gładką rurą; potrzeba ok. 24 segmentów).
-static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0: float, r1: float, seg: int, rings: int, v: Vector2, u_rep: float, rough: float, ph: float, bend := Vector3.ZERO, flat_up := false, ridge := 0.0) -> void:
+static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0: float, r1: float, seg: int, rings: int, v: Vector2, u_rep: float, rough: float, ph: float, bend := Vector3.ZERO, flat_up := false, ridge := 0.0, true_nrm := false, up_ref := Vector3.ZERO, s0 := 0.0) -> void:
 	var ax := axis.normalized()
 	var side := ax.cross(Vector3.BACK)
 	if side.length() < 0.1:
 		side = ax.cross(Vector3.RIGHT)
 	side = side.normalized()
 	var up := side.cross(ax).normalized()
+	if up_ref != Vector3.ZERO:                               # ta sama orientacja obwodu w kolejnych odcinkach jednego pnia (bez szwów)
+		up = (up_ref - ax * ax.dot(up_ref)).normalized()
+		side = ax.cross(up).normalized()
 	var grid := []
 	for j in rings + 1:
 		var t := float(j) / float(rings)
@@ -1024,14 +1027,27 @@ static func _cone(st: SurfaceTool, a: Vector3, axis: Vector3, length: float, r0:
 		for i in seg + 1:
 			var ang := TAU * float(i) / float(seg)
 			var nrm := side * cos(ang) + up * sin(ang)
-			var wob := 1.0 + rough * (sin(3.0 * ang + t * length * 0.9 + ph) * 0.6 + sin(7.0 * ang - t * length * 1.7 + ph * 2.3) * 0.4
-					+ ridge * (absf(sin(5.5 * ang + sin(t * length * 0.6 + ph) * 0.8 + ph * 1.7)) - 0.5) * 2.0)
+			var sl := s0 + t * length                             # położenie wzdłuż pnia (ciągłe między odcinkami przy podanym s0)
+			var wob := 1.0 + rough * (sin(3.0 * ang + sl * 0.9 + ph) * 0.6 + sin(7.0 * ang - sl * 1.7 + ph * 2.3) * 0.4
+					+ ridge * (absf(sin(5.5 * ang + sin(sl * 0.6 + ph) * 0.8 + ph * 1.7)) - 0.5) * 2.0)
 			var sn := nrm
 			if flat_up:
 				sn = Vector3(nrm.x, minf(nrm.y, 0.0), nrm.z) + Vector3(0.0, 0.0, 0.3)
 				sn = sn.normalized() if sn.length() > 0.01 else Vector3.BACK
 			row.append([c + nrm * r * wob, sn, Vector2(u_rep * float(i) / float(seg), lerpf(v.x, v.y, t))])
 		grid.append(row)
+	if true_nrm and not flat_up:                            # normalne z siatki: bruzdy kory łapią światło (gładki okrąg dawał rurę)
+		for j in rings + 1:
+			for i in seg + 1:
+				var pl: Vector3 = grid[j][(i - 1 + seg) % seg][0]
+				var pr: Vector3 = grid[j][(i + 1) % seg][0]
+				var pd: Vector3 = grid[maxi(j - 1, 0)][i][0]
+				var pu: Vector3 = grid[mini(j + 1, rings)][i][0]
+				var n: Vector3 = (pr - pl).cross(pu - pd)
+				if n.dot(grid[j][i][1]) < 0.0:
+					n = -n
+				if n.length() > 1e-6:
+					grid[j][i][1] = (n.normalized() * 0.8 + (grid[j][i][1] as Vector3) * 0.2).normalized()
 	for j in rings:
 		for i in seg:
 			var q: Array = [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]]
@@ -2099,7 +2115,7 @@ static func _plate_mesh(spans: Array) -> ArrayMesh:
 ## 2026-11-09: „przebuduj też sceny z tunelami”): płaska, materiał kafli podłogi (beton albo skała), bez runa i bez wygaszania — spod
 ## powierzchni widać ją zamiast pustki, a z kamery nad powierzchnią zasłania ją płyta podłoża lasu. Bez kryjówki (piętra jedno nad drugim).
 static func _build_floors(parent: Node3D, front: Array, rows: Array) -> void:
-	if rows.is_empty() or "--nofrontground" in OS.get_cmdline_user_args() or "--noshell" in OS.get_cmdline_user_args():
+	if rows.is_empty() or "--nofrontground" in OS.get_cmdline_user_args() or "--noshell" in OS.get_cmdline_user_args() or "--nofrontfloor" in OS.get_cmdline_user_args():
 		return
 	var by_mat := {}
 	for e: Dictionary in front:
@@ -2109,12 +2125,29 @@ static func _build_floors(parent: Node3D, front: Array, rows: Array) -> void:
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
 			nc += int(Level3D._ch(rows, c, int(e["r1"])) == "C")
 		var key := "C" if nc * 2 > int(e["c1"]) - int(e["c0"]) + 1 else "#"
-		# brzegi płyty schodzą tylko o kafel: boki podłogi piwnicy wisiały 6 m w dół nad tunelem pod nią (uwaga z gry 2026-11-09)
-		var g := _span(rows, int(e["c0"]), int(e["c1"]), int(e["r1"]), Level3D.SHELL_Z - 0.04, Level3D.T)
-		g["zb"] = INF                                    # płasko
-		if not by_mat.has(key):
-			by_mat[key] = []
-		(by_mat[key] as Array).append(g)
+		# bez płyty nad innym pasem przekroju tuż pod spodem (szyb 1.1 do dolnej sztolni): z dolnego pasu płyta wyższej podłogi
+		# przed przekrojem zasłaniała pół kadru ciemnym blokiem (uwaga z gry 2026-11-22)
+		var r1 := int(e["r1"])
+		var below := func(c: int) -> bool:
+			for o: Dictionary in front:
+				if o != e and bool(o.get("shell", false)) and c >= int(o["c0"]) and c <= int(o["c1"]) 						and int(o["r0"]) > r1 and int(o["r0"]) <= r1 + Level3D.SHELL_DOWN:
+					return true
+			return false
+		var c := int(e["c0"])
+		while c <= int(e["c1"]):
+			if below.call(c):
+				c += 1
+				continue
+			var c1 := c
+			while c1 + 1 <= int(e["c1"]) and not below.call(c1 + 1):
+				c1 += 1
+			# brzegi płyty schodzą tylko o kafel: boki podłogi piwnicy wisiały 6 m w dół nad tunelem pod nią (uwaga z gry 2026-11-09)
+			var g := _span(rows, c, c1, r1, Level3D.SHELL_Z - 0.04, Level3D.T)
+			g["zb"] = INF                                    # płasko
+			if not by_mat.has(key):
+				by_mat[key] = []
+			(by_mat[key] as Array).append(g)
+			c = c1 + 1
 	for key: String in by_mat:
 		var mi := MeshInstance3D.new()
 		mi.name = "FrontFloor"

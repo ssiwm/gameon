@@ -19,7 +19,7 @@ const ROOT_CLEAR := 2.15                   ## m: korzenie spod nawisu skarpy ko�
 const TOP_TOL := 0.03                      ## m: wierzch elementu najwyżej tyle nad pokładem
 const BOUGH_REACH := 3.5                   ## kafli: sosna niesie pomost, gdy stoi najdalej tyle od jego końca
 const BOUGH_RUN := 6                       ## kafli: najkrótszy ciąg słupa `w`, który staje się sosną z konarami
-const BOUGH_R := Vector2(0.30, 0.13)       ## m: promień konaru u nasady (przy pomoście) i na końcu
+const BOUGH_R := Vector2(0.16, 0.08)       ## m: promień konaru u nasady (przy pomoście) i na końcu; wyraźnie cieńszy od pnia (`Level3D.BOUGH_TRUNK_W`)
 const LIMB_STEP := 0.4                     ## m: odcinki konaru (wierzch płaski z dokładnością zmiany promienia na odcinek)
 const BARK_TEX := "res://art/world3d/forest/pine_bark_%s_2k.jpg"
 const BARK_TILE := 1.3                     ## m kory na powtórzenie tekstury (jak `Front3D.BARK_TILE`)
@@ -190,12 +190,38 @@ static func crown_y(rows: Array, entry: Dictionary, trunk_col: int) -> float:
 
 # --- materiały -------------------------------------------------------------------------------------------------------------
 
+## Przekrój kłody odpiłowanej przez patrol: UV biegunowe z `_cut_disc` (środek 0,5; brzeg 1 w odległości 0,5). Słoje z falowaniem,
+## twardziel ciemniejsza, kilka pęknięć promienistych, przy brzegu obrączka łyka i kory; drewno lekko zszarzałe od deszczu.
+const LOG_CUT_SHADER := """shader_type spatial;
+void fragment() {
+	vec2 p = UV * 2.0 - 1.0;
+	float d = length(p);
+	float a = atan(p.y, p.x);
+	float w = (sin(a * 3.0 + d * 5.0) * 0.02 + sin(a * 7.0 + 1.3) * 0.008) * smoothstep(0.0, 0.4, d);
+	float dd = d + w + 0.08 * d * d;                       // słoje gęstsze ku brzegowi (wolniejszy przyrost starego drzewa)
+	float ring = 0.5 + 0.5 * sin(dd * 26.0 * 6.2831 + sin(dd * 9.0) * 1.5);
+	float late = smoothstep(0.7, 0.98, ring);
+	float grain = fract(sin(dot(floor(p * 90.0), vec2(12.9898, 78.233))) * 43758.5453);
+	vec3 col = mix(vec3(0.70, 0.56, 0.38), vec3(0.52, 0.38, 0.24), late * 0.55);
+	col *= 0.93 + 0.07 * grain;
+	col *= mix(0.80, 1.0, smoothstep(0.3, 0.6, d));         // twardziel
+	float crack = smoothstep(0.996, 1.0, abs(sin(a * 2.5 + 1.7))) * smoothstep(0.15, 0.85, d) * (0.6 + 0.4 * sin(d * 30.0));
+	col *= 1.0 - 0.55 * crack;
+	col = mix(col, vec3(0.45, 0.41, 0.36), 0.3);
+	col = mix(col, vec3(0.62, 0.46, 0.30), smoothstep(0.80, 0.86, d) * 0.6);
+	col = mix(col, vec3(0.16, 0.12, 0.09), smoothstep(0.87, 0.93, d));
+	ALBEDO = pow(col, vec3(2.2));                           // barwy wyżej w sRGB
+
+	ROUGHNESS = 0.85;
+}
+"""
+
 static func _mat(key: String) -> Material:
 	if _mats.has(key):
 		return _mats[key]
 	var m: Material
 	match key:
-		"bark", "root":
+		"bark", "root", "bark_uv":
 			var sm := StandardMaterial3D.new()
 			if ResourceLoader.exists(BARK_TEX % "diff") and not "--noworldpbr" in OS.get_cmdline_user_args():
 				sm.albedo_texture = load(BARK_TEX % "diff")
@@ -208,13 +234,18 @@ static func _mat(key: String) -> Material:
 				sm.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
 				sm.normal_enabled = true
 				sm.normal_texture = load(BARK_TEX % "nor_gl")
-				sm.uv1_triplanar = true
-				sm.uv1_world_triplanar = true
-				sm.uv1_scale = Vector3.ONE / BARK_TILE
+				if key == "bark_uv":                       # kłody i konary: kora wzdłuż pnia z UV `_cone` (rzut trójpłaszczyznowy rozmazywał ją na walcu)
+					sm.uv1_scale = Vector3.ONE
+					# dwustronnie: na zgięciach wzór bruzd zmienia fazę, więc brzeg grubszego odcinka odsłaniał wnętrze rury (szczelina z niebem)
+					sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+				else:
+					sm.uv1_triplanar = true
+					sm.uv1_world_triplanar = true
+					sm.uv1_scale = Vector3.ONE / BARK_TILE
 				sm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 			else:
 				sm.roughness = 0.95
-			sm.albedo_color = Color(0.62, 0.58, 0.54) if key == "bark" else Color(0.40, 0.34, 0.30)   # kora jak pnie lasu; korzenie ciemniejsze, ziemiste
+			sm.albedo_color = Color(0.40, 0.34, 0.30) if key == "root" else Color(0.62, 0.58, 0.54)   # kora jak pnie lasu; korzenie ciemniejsze, ziemiste
 			m = sm
 		"cut", "porch_edge", "bough_wear":
 			var cm := Level3D.make_pbr("plank", 0.8, Color(0.50, 0.40, 0.28), 0.9).duplicate() as StandardMaterial3D
@@ -224,9 +255,16 @@ static func _mat(key: String) -> Material:
 				cm.emission = Color(0.80, 0.68, 0.50)
 				cm.emission_energy_multiplier = 0.065 if key == "bough_wear" else 0.035
 				if key == "bough_wear" and cm.albedo_texture != null:
+					cm.albedo_color = Color(0.80, 0.66, 0.48)   # wytarte butami, przybrudzone (świeży jasny przekrój czytał się jak naklejka)
 					cm.emission_texture = cm.albedo_texture    # poza snopem dalej widać włókna w odsłoniętym drewnie
 					cm.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
-					cm.emission_energy_multiplier = 0.48
+					cm.emission_energy_multiplier = 0.32
+			m = cm
+		"log_cut":                                  # przekrój piłą: słoje, ciemniejsza twardziel, pęknięcia promieniste, obrączka kory (`_cut_disc`)
+			var cm := ShaderMaterial.new()
+			var csh := Shader.new()
+			csh.code = LOG_CUT_SHADER
+			cm.shader = csh
 			m = cm
 		"soil":
 			m = Level3D.terrain_cut_material()
@@ -415,7 +453,13 @@ static func _cone(st: SurfaceTool, a: Vector3, b: Vector3, ra: float, rb: float,
 	var length := d.length()
 	if length < 0.005:
 		return
-	Front3D._cone(st, a, d, length, ra, rb, seg, maxi(1, int(ceil(length / 0.6))), Vector2(0.0, length / BARK_TILE), 1.0, rough, ph, Vector3.ZERO, false, ridge)
+	var up_ref := Vector3.UP if absf(d.y / length) < 0.9 else Vector3.BACK   # pień pionowy: odniesienie obwodu w głąb
+	# kora wzdłuż pnia (materiał „bark_uv”): obwód w metrach tekstury, ciągłość v między odcinkami z położenia wzdłuż osi
+	var v0 := (a.dot(d / length)) / BARK_TILE
+	var u_rep := maxf(1.0, round(TAU * (ra + rb) * 0.5 / BARK_TILE * 2.0) * 0.5)
+	# z bruzdami (kłody, konary): wzór i orientacja obwodu ciągłe między odcinkami — położenie wzdłuż osi zamiast od początku odcinka
+	Front3D._cone(st, a, d, length, ra, rb, seg, maxi(1, int(ceil(length / (0.15 if ridge > 0.0 else 0.6)))), Vector2(v0, v0 + length / BARK_TILE), u_rep, rough, ph,
+		Vector3.ZERO, false, ridge, ridge > 0.0, up_ref if ridge > 0.0 else Vector3.ZERO, v0 * BARK_TILE if ridge > 0.0 else 0.0)
 	rough *= 1.0 + ridge
 	var ax := d / length                                    # obwiednia: okręgi końców prostopadłe do osi (konar poziomy ma wierzch równo z osią + r)
 	var ext := Vector3(sqrt(maxf(0.0, 1.0 - ax.x * ax.x)), sqrt(maxf(0.0, 1.0 - ax.y * ax.y)), sqrt(maxf(0.0, 1.0 - ax.z * ax.z))) * (1.0 + rough)
@@ -640,16 +684,12 @@ static func _bank(sts: Dictionary, models: Dictionary, rows: Array, d: Dictionar
 	var poly := PackedVector2Array([Vector2(x0 - 3.0, yg - 0.4), Vector2(x1 + 3.0, yg - 0.4), Vector2(x1 + 3.0, yg + 0.05), Vector2(x1 + 1.6, yg + h * 0.45),
 		Vector2(x1 + 0.5, top - 0.4), Vector2(x1 - 0.3, top - 0.04), Vector2(x0 + 0.3, top - 0.04), Vector2(x0 - 0.5, top - 0.3),
 		Vector2(x0 - 1.5, yg + h * 0.5), Vector2(x0 - 3.0, yg + 0.05)])
-	_prism(_st(sts, "soil"), poly, -6.5, z_face, "bank")
+	# lico skarpy: gęsta siatka wg obrysu z rzeźbą (garby, warstwy ziemi, rynny po spływie) przed bryłą z kodu (uwaga z gry 2026-11-22:
+	# płaska bryła czytała się jak nasyp z kartonu; płaty skanu korzeni dawały ciemne odłamki u podstawy)
+	_earth_face(_st(sts, "soil"), poly, z_face, int(d["c0"]))
+	_prism(_st(sts, "soil"), poly, -6.5, z_face - 0.1, "bank")
 	_box(_st(sts, "turf"), Vector3(x0 - 0.2, top - 0.16, -6.5), Vector3(x1 + 0.2, top, z_face + 0.02), "bank turf")
-	var n := int(ceil((x1 - x0) / 0.55))
-	for i in n:                                             # nawis: darń na wierzchu, pod nią warstwa ziemi przerośnięta korzeniami
-		var a := x0 + float(i) * (x1 - x0) / float(n)
-		var b := a + (x1 - x0) / float(n)
-		var zf := rng.randf_range(0.62, 0.78)
-		var th := rng.randf_range(0.28, 0.55)
-		_box(_st(sts, "turf"), Vector3(a, top - 0.16, z_face - 0.05), Vector3(b, top, zf), "bank lip")
-		_box(_st(sts, "soil"), Vector3(a + 0.03, top - 0.16 - th, z_face - 0.05), Vector3(b - 0.03, top - 0.16, zf - 0.15 - rng.randf() * 0.25), "bank lip soil")
+	_bank_lip(sts, x0, x1, top, z_face, int(d["c0"]) * 3 + 7)
 	for i in 34:                                            # korzenie spod nawisu
 		var x := rng.randf_range(x0 + 0.1, x1 - 0.1)
 		var z := rng.randf_range(z_face + 0.05, 0.7)
@@ -669,12 +709,149 @@ static func _bank(sts: Dictionary, models: Dictionary, rows: Array, d: Dictionar
 		var fy := floor_y(rows, int(x / T), int(d["r"]), false)
 		_tube(_st(sts, "root"), _crom([Vector3(x, top - 0.45, z_face - 0.02), Vector3(x + rng.randf_range(-0.5, 0.5), (top + fy) * 0.5, z_face - 0.08 - rng.randf() * 0.25),
 			Vector3(x + rng.randf_range(-0.8, 0.8), fy + 0.05, z_face - 0.4 - rng.randf())], 4), rng.randf_range(0.05, 0.09), 0.02, "bank face root")
-	for i in 7:                                             # kamienie w licu
-		var x := rng.randf_range(x0 - 1.0, x1 + 1.0)
-		var y := yg + rng.randf_range(0.3, maxf(0.4, h - 1.2))
-		_rock(sts, Vector3(x, y, z_face - 0.3), Vector3(x + rng.randf_range(0.3, 0.7), y + rng.randf_range(0.25, 0.5), z_face + 0.08), rng, "bank stone")
+	for i in 11:                                            # kamienie wypłukane z lica (skany granitu), do połowy w ziemi
+		var x := rng.randf_range(x0 - 1.5, x1 + 1.5)
+		var w := rng.randf_range(0.35, 0.9)
+		var y := yg + rng.randf_range(-0.15, maxf(0.0, minf(_poly_top(poly, x + w * 0.5) - 0.3, top - 0.5) - w * 0.6 - yg))
+		_rock(sts, Vector3(x, y, z_face - 0.35), Vector3(x + w, y + w * rng.randf_range(0.5, 0.75), z_face + rng.randf_range(0.08, 0.2)), rng, "bank stone")
 	_pine(models, Vector3((x0 + x1) * 0.5 + 0.8, top, -3.6), 15.0, int(d["c0"]) * 7 + 1)
 	_pine(models, Vector3(x0 - 0.3, yg + h * 0.62, -4.8), 13.0, int(d["c0"]) * 7 + 2)
+
+## Nawis skarpy nad ścieżką: ciągła darń (wierzch na pokładzie, poszarpany przód do z ≈ 0,7) i pod nią ziemia przerośnięta korzeniami,
+## cofnięta i o zmiennej grubości, z garbami na licu. Profil co LIP_DX z szumu — rząd skrzynek czytał się jak klocki (uwaga z gry 2026-11-22).
+const LIP_DX := 0.12
+static func _bank_lip(sts: Dictionary, x0: float, x1: float, top: float, z_face: float, seed: int) -> void:
+	var nz := FastNoiseLite.new()
+	nz.seed = seed
+	nz.frequency = 1.4
+	nz.fractal_octaves = 3
+	var turf := _st(sts, "turf")
+	var soil := _st(sts, "soil")
+	var yt := top - 0.16                                     # spód darni
+	var zb := z_face - 0.05
+	var n := maxi(2, int(ceil((x1 - x0) / LIP_DX)))
+	var prof: Array = []                                     # [x, z przodu darni, z lica ziemi, y spodu ziemi]
+	for i in n + 1:
+		var x := lerpf(x0, x1, float(i) / float(n))
+		var zf := 0.70 + 0.08 * nz.get_noise_2d(x, 0.0)
+		var zs := zf - 0.15 - 0.13 * (nz.get_noise_2d(x, 30.0) + 1.0)
+		var th := 0.28 + 0.14 * (nz.get_noise_2d(x * 0.7, 60.0) + 1.0)
+		prof.append([x, zf, zs, yt - th])
+	var nrm_of := func(a: Vector3, b: Vector3, c: Vector3, out: Vector3) -> Vector3:
+		var nn := (b - a).cross(c - a)
+		if nn.length() < 1e-6:
+			return out
+		nn = nn.normalized()
+		return -nn if nn.dot(out) < 0.0 else nn
+	for i in n:
+		var p: Array = prof[i]
+		var q: Array = prof[i + 1]
+		var xa: float = p[0]
+		var xb: float = q[0]
+		# darń: wierzch, przód, spód przed licem ziemi
+		_quad(turf, Vector3(xa, top, zb), Vector3(xb, top, zb), Vector3(xb, top, q[1]), Vector3(xa, top, p[1]), Vector3.UP)
+		var fa := Vector3(xa, top, p[1])
+		var fb := Vector3(xb, top, q[1])
+		var fn: Vector3 = nrm_of.call(fa, fb, Vector3(xb, yt, q[1]), Vector3.BACK)
+		_quad(turf, fa, fb, Vector3(xb, yt, q[1] - 0.03), Vector3(xa, yt, p[1] - 0.03), fn)
+		_quad(turf, Vector3(xa, yt, p[1] - 0.03), Vector3(xb, yt, q[1] - 0.03), Vector3(xb, yt, q[2]), Vector3(xa, yt, p[2]), Vector3.DOWN)
+		# ziemia pod darnią: lico z garbami w dwóch rzędach, spód do skarpy
+		var ya: float = p[3]
+		var yb: float = q[3]
+		var ma := Vector3(xa, (yt + ya) * 0.5, float(p[2]) + 0.06 * nz.get_noise_2d(xa * 2.0, 90.0))
+		var mb := Vector3(xb, (yt + yb) * 0.5, float(q[2]) + 0.06 * nz.get_noise_2d(xb * 2.0, 90.0))
+		var ta := Vector3(xa, yt, p[2])
+		var tb := Vector3(xb, yt, q[2])
+		var ba := Vector3(xa, ya, float(p[2]) - 0.08)
+		var bb := Vector3(xb, yb, float(q[2]) - 0.08)
+		_quad(soil, ta, tb, mb, ma, nrm_of.call(ta, tb, mb, Vector3.BACK))
+		_quad(soil, ma, mb, bb, ba, nrm_of.call(ma, mb, bb, Vector3.BACK))
+		_quad(soil, ba, bb, Vector3(xb, yb, zb), Vector3(xa, ya, zb), Vector3.DOWN)
+	for e in [[prof[0], -1.0], [prof[n], 1.0]]:              # boki nawisu
+		var p: Array = e[0]
+		var sx := Vector3(float(e[1]), 0.0, 0.0)
+		var x: float = p[0]
+		_quad(turf, Vector3(x, top, zb), Vector3(x, top, p[1]), Vector3(x, yt, p[1]), Vector3(x, yt, zb), sx)
+		_quad(soil, Vector3(x, yt, zb), Vector3(x, yt, p[2]), Vector3(x, p[3], float(p[2]) - 0.08), Vector3(x, p[3], zb), sx)
+	_part(AABB(Vector3(x0, top - 0.6, zb), Vector3(x1 - x0, 0.6, 0.83)), "bank lip")
+	var ymax := -INF
+	for p: Array in prof:
+		ymax = maxf(ymax, float(p[3]))
+	for p: Array in prof:                                    # obwiednia spodu ziemi nad ścieżką dla testu wolnego pasa
+		_part(AABB(Vector3(float(p[0]) - LIP_DX * 0.5, float(p[3]), zb), Vector3(LIP_DX, yt - float(p[3]), float(p[2]) - zb)), "bank lip soil")
+
+## Lico skarpy: siatka kolumn co EARTH_DX od spodu obrysu `poly` do jego wierzchu nad x, wysunięta z płaszczyzny z_face o rzeźbę:
+## garby z szumu (do 0,22 m), poziome warstwy ziemi i pionowe rynny po spływie deszczu. Przy wierzchu i bokach rzeźba schodzi do zera
+## (styk z darnią i bryłą). Lico nigdy nie wchodzi w pas gry (najwyżej z_face + 0,3).
+const EARTH_DX := 0.16
+static func _earth_face(st: SurfaceTool, poly: PackedVector2Array, z_face: float, seed: int) -> void:
+	var nz := FastNoiseLite.new()
+	nz.seed = seed
+	nz.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	nz.fractal_type = FastNoiseLite.FRACTAL_FBM
+	nz.fractal_octaves = 4
+	nz.frequency = 0.55
+	var xmin := INF
+	var xmax := -INF
+	var ybot := INF
+	for p in poly:
+		xmin = minf(xmin, p.x)
+		xmax = maxf(xmax, p.x)
+		ybot = minf(ybot, p.y)
+	var disp := func(x: float, y: float, yt: float) -> float:
+		var edge := clampf((yt - y) / 0.35, 0.0, 1.0) * clampf((x - xmin) / 0.8, 0.0, 1.0) * clampf((xmax - x) / 0.8, 0.0, 1.0)
+		var bump := nz.get_noise_2d(x, y) * 0.22
+		var strata := 0.05 * sin(y * 9.0 + nz.get_noise_2d(x * 0.3, 40.0) * 6.0)       # warstwy ziemi, lekko pofalowane
+		var gully := -0.07 * pow(maxf(0.0, sin(x * 2.3 + nz.get_noise_2d(x, 80.0) * 3.0)), 6.0)   # rynny po spływie
+		return clampf((bump + strata + gully + 0.08) * edge, -0.06, 0.3)
+	var nx := int(ceil((xmax - xmin) / EARTH_DX))
+	var ny := 16
+	var grid: Array = []                                     # [kolumna][wiersz] → Vector3
+	for i in nx + 1:
+		var x := minf(xmin + float(i) * EARTH_DX, xmax)
+		var yt := _poly_top(poly, x)
+		if yt == -INF:
+			yt = ybot
+		var col: Array = []
+		for j in ny + 1:
+			var y := lerpf(ybot, yt, float(j) / float(ny))
+			col.append(Vector3(x, y, z_face + float(disp.call(x, y, yt))))
+		grid.append(col)
+	var nrm := func(i: int, j: int) -> Vector3:
+		var l: Vector3 = grid[maxi(i - 1, 0)][j]
+		var r: Vector3 = grid[mini(i + 1, nx)][j]
+		var dn: Vector3 = grid[i][maxi(j - 1, 0)]
+		var up: Vector3 = grid[i][mini(j + 1, ny)]
+		var n := (r - l).cross(up - dn)
+		return n.normalized() if n.length() > 1e-6 and n.z > 0.0 else Vector3.BACK
+	for i in nx:
+		for j in ny:
+			var a: Vector3 = grid[i][j]
+			var b: Vector3 = grid[i + 1][j]
+			var c: Vector3 = grid[i + 1][j + 1]
+			var d: Vector3 = grid[i][j + 1]
+			if absf(c.y - b.y) < 1e-4 and absf(d.y - a.y) < 1e-4:
+				continue
+			var na: Vector3 = nrm.call(i, j)
+			var nb: Vector3 = nrm.call(i + 1, j)
+			var nc: Vector3 = nrm.call(i + 1, j + 1)
+			var nd: Vector3 = nrm.call(i, j + 1)
+			_tri(st, [a, b, c], [na, nb, nc], Vector3.BACK)
+			_tri(st, [a, c, d], [na, nc, nd], Vector3.BACK)
+	var ytop := -INF
+	for p in poly:
+		ytop = maxf(ytop, p.y)
+	_part(AABB(Vector3(xmin, ybot, z_face - 0.06), Vector3(xmax - xmin, ytop - ybot, 0.36)), "bank face")
+
+## Najwyższy punkt wielokąta `poly` nad x (krawędzie, które przecinają pion x), −INF poza nim.
+static func _poly_top(poly: PackedVector2Array, x: float) -> float:
+	var best := -INF
+	for i in poly.size():
+		var pa := poly[i]
+		var pb := poly[(i + 1) % poly.size()]
+		if (pa.x - x) * (pb.x - x) <= 0.0 and absf(pb.x - pa.x) > 0.001:
+			best = maxf(best, lerpf(pa.y, pb.y, (x - pa.x) / (pb.x - pa.x)))
+	return best
 
 ## Wykrot: dwupienny świerk wyrwany z talerzem korzeniowym (w głębi, z ≈ −3,5), pnie leżą w poprzek ścieżki na głazie za pasem gry,
 ## czubki odpiłowane przez patrol tuż przed przodem pokładu. Wierzch pni na wysokości pokładu, spód w pasie gry nad CLEAR.
@@ -700,15 +877,19 @@ static func _windfall(sts: Dictionary, models: Dictionary, rows: Array, d: Dicti
 		var r_s := rr * 1.05
 		var yb := top - rr * 1.15 + 0.1
 		ybmax = maxf(ybmax, yb)
-		_cone(_st(sts, "bark"), Vector3(x - 0.1 * s, yb, zb), Vector3(x, top - r_s, zs), rr * 1.15, r_s, "windfall log", 12)
-		var prev := Vector3(x, top - r_s, zs)
-		for k in range(1, 5):                               # od głazu do przekroju: wierzch równo z pokładem (oś niżej o promień)
-			var f := float(k) / 4.0
+		# pień z bruzdami kory (normalne z siatki, kora wzdłuż pnia), lekko ugięty; wierzch równo z pokładem mimo bruzd (uwaga z gry
+		# 2026-11-22: gładka rura; skan kłody od czoła był ciemną bryłą bez przekroju piłą)
+		var over := 1.0 + LOG_ROUGH.x * (1.0 + LOG_ROUGH.y)
+		var bark := _st(sts, "bark_uv")
+		_cone(bark, Vector3(x - 0.1 * s, yb, zb), Vector3(x, top - r_s * over, zs), rr * 1.15, r_s, "windfall log", 16, LOG_ROUGH.x, x, LOG_ROUGH.y)
+		var prev := Vector3(x, top - r_s * over, zs)
+		for k in range(1, 7):                               # od głazu do przekroju: wierzch równo z pokładem (oś niżej o promień z korą)
+			var f := float(k) / 6.0
 			var rk := lerpf(r_s, rr * 0.95, f)
-			var p := Vector3(x, top - rk, lerpf(zs, zf, f))
-			_cone(_st(sts, "bark"), prev, p, lerpf(r_s, rr * 0.95, float(k - 1) / 4.0), rk, "windfall log", 12)
+			var p := Vector3(x + 0.03 * s * sin(f * PI), top - rk * over, lerpf(zs, zf, f))
+			_cone(bark, _lap(prev, p, true), p, lerpf(r_s, rr * 0.95, float(k - 1) / 6.0), rk, "windfall log", 16, LOG_ROUGH.x, x, LOG_ROUGH.y)
 			prev = p
-		_disc(_st(sts, "cut"), prev, Vector3.BACK, rr * 0.95)
+		_cut_disc(_st(sts, "log_cut"), prev, rr * 0.95 * over, x)
 		for i in 3:                                         # sęki i kikuty gałęzi w głębi
 			var z := rng.randf_range(zb + 0.4, zs - 0.3)
 			var y := lerpf(yb, top - r_s, (z - zb) / (zs - zb))
@@ -717,17 +898,106 @@ static func _windfall(sts: Dictionary, models: Dictionary, rows: Array, d: Dicti
 	var rp := clampf((top - yg) * 0.75, 1.3, 2.3)                  # talerz korzeniowy: spód w ziemi, pnie wychodzą z jego lica
 	var pc := Vector3(xm, yg + rp - 0.45, zb - 0.35)
 	_cone(_st(sts, "soil"), pc + Vector3(0.0, 0.0, -0.3), Vector3.BACK * 0.6 + pc + Vector3(0.0, 0.0, -0.3), rp * 0.92, rp, "windfall plate", 18, 0.1, 1.7)
-	_disc(_st(sts, "soil"), pc + Vector3(0.0, 0.0, 0.3), Vector3.BACK, rp, 18, 0.06)
-	for i in 16:
-		var a := TAU * float(i) / 16.0 + rng.randf_range(-0.1, 0.1)
-		var c := pc + Vector3(cos(a) * rp, sin(a) * rp, 0.25)
-		if c.y < yg + 0.1:
-			continue
-		var e := c + Vector3(cos(a) * rng.randf_range(0.5, 1.2), sin(a) * rng.randf_range(0.4, 0.9), rng.randf_range(-0.3, 0.2))
-		e.y = maxf(e.y, yg + 0.05)
-		_tube(_st(sts, "root"), _crom([c, c.lerp(e, 0.5) + Vector3(0.0, 0.12, 0.08), e], 2), rng.randf_range(0.03, 0.06), 0.01, "windfall root")
+	_root_plate(sts, pc + Vector3(0.0, 0.0, 0.28), rp, yg, rng)
 	var y_rest := top - 2.0 * r * 1.05 * 1.03                      # głaz pod pniami za pasem gry
 	_rock(sts, Vector3(x0 - 0.15, yg - 0.25, -2.25), Vector3(x1 + 0.15, y_rest, -STRIP - 0.55), rng, "windfall rock")
+
+## Początek odcinka pnia cofnięty o 3 cm wstecz (`on`): kolejne odcinki krzywej zachodzą na siebie — przy zgięciu styk prostopadły do osi
+## zostawiał jasny klin. Pierwszy odcinek bez cofnięcia (wszedłby za koniec pomostu w pas gry).
+static func _lap(a: Vector3, b: Vector3, on: bool) -> Vector3:
+	var d := b - a
+	return a - d.normalized() * minf(0.03, d.length() * 0.15) if on and d.length() > 0.001 else a
+
+const LOG_ROUGH := Vector2(0.05, 0.7)      ## kłoda wykrotu: nierówność obwodu i bruzdy kory (`Front3D._cone` rough, ridge)
+
+## Przekrój piłą w `c` (oś kłody wzdłuż z, lico ku kamerze) o promieniu `r`, UV biegunowe dla LOG_CUT_SHADER. Promień do najdalszej bruzdy
+## kory: brzeg przekroju (ciemna obrączka) zakrywa wnętrze rury także tam, gdzie kora odstaje.
+static func _cut_disc(st: SurfaceTool, c: Vector3, r: float, ph: float) -> void:
+	var seg := 24
+	var n := Vector3.BACK
+	for i in seg:
+		var a0 := TAU * float(i) / float(seg)
+		var a1 := TAU * float(i + 1) / float(seg)
+		var k0 := 1.0 + 0.03 * sin(a0 * 3.0 + ph)
+		var k1 := 1.0 + 0.03 * sin(a1 * 3.0 + ph)
+		var p0 := c + Vector3(cos(a0), sin(a0), 0.0) * r * k0
+		var p1 := c + Vector3(cos(a1), sin(a1), 0.0) * r * k1
+		var uv0 := Vector2(cos(a0) * k0, sin(a0) * k0) * 0.5 / 1.03 + Vector2(0.5, 0.5)
+		var uv1 := Vector2(cos(a1) * k1, sin(a1) * k1) * 0.5 / 1.03 + Vector2(0.5, 0.5)
+		var pts := [c, p0, p1]
+		var uvs := [Vector2(0.5, 0.5), uv0, uv1]
+		var order := [0, 2, 1] if (p0 - c).cross(p1 - c).dot(n) > 0.0 else [0, 1, 2]
+		for k in order:
+			st.set_normal(n)
+			st.set_uv(uvs[k])
+			st.add_vertex(pts[k])
+	_part(AABB(c - Vector3(r, r, 0.01) * 1.03, Vector3(r, r, 0.01) * 2.06), "windfall cut")
+
+## Talerz korzeniowy wyrwanego świerka, lico ku kamerze w `pc`: kopuła ziemi z garbami (siatka biegunowa, brzeg postrzępiony), spód
+## ucięty na gruncie; kamienie wyrwane razem z korzeniami i gęsta szczotka korzeni — urwanych z lica ku kamerze i promieniście z brzegu.
+static func _root_plate(sts: Dictionary, pc: Vector3, rp: float, yg: float, rng: RandomNumberGenerator) -> void:
+	var nz := FastNoiseLite.new()
+	nz.seed = int(pc.x * 10.0)
+	nz.frequency = 1.1
+	nz.fractal_octaves = 3
+	var nr := 10
+	var na := 36
+	var grid: Array = []
+	for j in nr + 1:
+		var row: Array = []
+		for i in na + 1:
+			var a := TAU * float(i % na) / float(na)
+			var f := float(j) / float(nr)
+			var edge := 1.0 + 0.16 * nz.get_noise_2d(cos(a) * 3.0, sin(a) * 3.0)
+			var p := pc + Vector3(cos(a), sin(a), 0.0) * rp * f * edge
+			p.z += 0.35 * (1.0 - f * f) + 0.18 * nz.get_noise_2d(p.x * 1.7, p.y * 1.7) * f
+			p.y = maxf(p.y, yg - 0.05)
+			row.append(p)
+		grid.append(row)
+	var st := _st(sts, "soil")
+	for j in nr:
+		for i in na:
+			var q := [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]]
+			var nn := ((q[2] as Vector3) - (q[0] as Vector3)).cross((q[3] as Vector3) - (q[1] as Vector3))
+			if nn.length() < 1e-6:
+				continue
+			nn = nn.normalized()
+			if nn.z < 0.0:
+				nn = -nn
+			_tri(st, [q[0], q[1], q[2]], [nn, nn, nn], nn)
+			_tri(st, [q[0], q[2], q[3]], [nn, nn, nn], nn)
+	_part(AABB(pc - Vector3(rp * 1.16, rp * 1.16, 0.0), Vector3(rp * 2.32, rp * 2.32, 0.55)), "windfall plate face")
+	for i in 5:                                              # kamienie wyrwane z gruntu, do połowy w ziemi talerza
+		var a := rng.randf_range(0.0, TAU)
+		var f := rng.randf_range(0.25, 0.8)
+		var c := pc + Vector3(cos(a), sin(a), 0.0) * rp * f
+		if c.y < yg + 0.25:
+			continue
+		var w := rng.randf_range(0.18, 0.4)
+		var z := pc.z + 0.35 * (1.0 - f * f) - 0.1
+		_rock(sts, Vector3(c.x - w * 0.5, c.y - w * 0.35, z - w * 0.4), Vector3(c.x + w * 0.5, c.y + w * 0.35, z + w * 0.35), rng, "windfall plate stone")
+	var roots := _st(sts, "root")
+	for i in 30:                                             # z brzegu promieniście, wygięte i urwane
+		var a := TAU * float(i) / 30.0 + rng.randf_range(-0.08, 0.08)
+		var c := pc + Vector3(cos(a), sin(a), 0.0) * rp * rng.randf_range(0.8, 1.0) + Vector3(0.0, 0.0, rng.randf_range(-0.1, 0.15))
+		if c.y < yg + 0.1:
+			continue
+		var e := c + Vector3(cos(a) * rng.randf_range(0.35, 1.3), sin(a) * rng.randf_range(0.3, 1.0), rng.randf_range(-0.4, 0.3))
+		e.y = maxf(e.y, yg + 0.05)
+		var m := c.lerp(e, 0.5) + Vector3(rng.randf_range(-0.12, 0.12), rng.randf_range(-0.05, 0.18), rng.randf_range(-0.1, 0.1))
+		_tube(roots, _crom([c, m, e], 3), rng.randf_range(0.025, 0.07), 0.008, "windfall root")
+	for i in 22:                                             # urwane z lica ku kamerze (za pasem gry), cieńsze
+		var a := rng.randf_range(0.0, TAU)
+		var f := rng.randf_range(0.15, 0.85)
+		var c := pc + Vector3(cos(a), sin(a), 0.0) * rp * f
+		if c.y < yg + 0.15:
+			continue
+		c.z += 0.35 * (1.0 - f * f) - 0.05
+		var e := c + Vector3(cos(a) * rng.randf_range(0.05, 0.3), sin(a) * rng.randf_range(0.0, 0.25) - 0.1, rng.randf_range(0.2, 0.55))
+		e.z = minf(e.z, -STRIP - 0.25)
+		if e.z <= c.z + 0.05:
+			continue
+		_tube(roots, _crom([c, c.lerp(e, 0.5) + Vector3(0.0, -0.05, 0.0), e], 2), rng.randf_range(0.015, 0.04), 0.004, "windfall root")
 
 ## Wschodnia krawędź niecki: ukośny trzon wrasta w brzeg, a u stóp przechodzi w ziemię i malejący rumosz.
 static func _tor_scree(sts: Dictionary, rows: Array, lo: Dictionary, hi: Dictionary, rng: RandomNumberGenerator) -> void:
@@ -1154,6 +1424,7 @@ static func _boughs(sts: Dictionary, models: Dictionary, rows: Array, e: Diction
 	var trunks: Array = []                                  # x osi pnia
 	for t in bough_trunks(rows, e):
 		trunks.append((float(t["c"]) + 0.5) * T)
+		_trunk_sleeve(sts, Level3D.cell_pos(int(t["c"]), int(t["r1"]) - 1) + Vector3(0.0, -T * 0.5 - 0.15, Level3D.TRUNK_Z), ds, crown_y(rows, e, int(t["c"])))
 		for k in range(int(t["r0"]), int(t["r1"])):         # przęsło mostu przez pień: belka w poprzek i zastrzał za pasem gry
 			var ch := Level3D._ch(rows, int(t["c"]), k)
 			if Level3D.is_platform_ch(ch) and not step_cells.has(Vector2i(int(t["c"]), k)):
@@ -1169,6 +1440,7 @@ static func _boughs(sts: Dictionary, models: Dictionary, rows: Array, e: Diction
 		var foot := Vector3((float(c) + 0.5) * T, -float(rf) * T, Level3D.TRUNK_Z)
 		_pine(models, foot, 17.0, c * 13 + rf, crown_y(rows, e, c))
 		trunks.append(foot.x)
+		_trunk_sleeve(sts, foot, ds, crown_y(rows, e, c))
 	for d in ds:
 		var x0: float = d["x0"]
 		var x1: float = d["x1"]
@@ -1188,43 +1460,99 @@ static func _boughs(sts: Dictionary, models: Dictionary, rows: Array, e: Diction
 			_limb(sts, rng, inside[0], inside[0], x0, top, BOUGH_R.y, wear_x)
 			_limb(sts, rng, inside[0], inside[0], x1, top, BOUGH_R.y, wear_x)
 		elif not left.is_empty() and not right.is_empty() and left.max() >= x0 - 2.5 * T and right.min() <= x1 + 2.5 * T:
-			_limb(sts, rng, left.max(), x0, mid + 0.4, top, 0.18, wear_x)
-			_limb(sts, rng, right.min(), x1, mid - 0.4, top, 0.18, wear_x)
+			_limb(sts, rng, left.max(), x0, mid + 0.4, top, 0.11, wear_x)
+			_limb(sts, rng, right.min(), x1, mid - 0.4, top, 0.11, wear_x)
 		else:
 			near.sort_custom(func(a, b): return absf(a - mid) < absf(b - mid))
 			var t: float = near[0]
 			_limb(sts, rng, t, x1 if t > mid else x0, x0 if t > mid else x1, top, BOUGH_R.y, wear_x)
 
+## Pień starej sosny niosącej konary: model lasu ma pień o promieniu ok. 2% wysokości (przy pomoście 0,1 m — cieńszy od konaru, uwaga
+## z gry 2026-11-22), a poszerzenie modelu rozdęłoby koronę. Kora z kodu wokół pnia modelu od stopy (odziomek z nabiegami) przez
+## najwyższy pomost do początku korony, gdzie zwęża się do pnia modelu.
+const SLEEVE_R := Vector3(0.40, 0.29, 0.13)   ## m: promień przy stopie, przy najwyższym pomoście i pod koroną
+static func _trunk_sleeve(sts: Dictionary, foot: Vector3, ds: Array, y_crown: float) -> void:
+	var y_deck := foot.y + 2.0
+	for d in ds:
+		y_deck = maxf(y_deck, float(d["top"]))
+	if y_crown <= y_deck + 0.5:
+		y_crown = y_deck + 0.5
+	var st := _st(sts, "bark_uv")
+	var pts: Array = []                                        # [y, promień]
+	pts.append([foot.y, SLEEVE_R.x * 1.35])                    # nabiegi korzeniowe
+	pts.append([foot.y + 0.7, SLEEVE_R.x])
+	var n := maxi(2, int(ceil((y_deck - foot.y - 0.7) / 1.2)))
+	for i in range(1, n + 1):
+		var f := float(i) / float(n)
+		pts.append([lerpf(foot.y + 0.7, y_deck, f), lerpf(SLEEVE_R.x, SLEEVE_R.y, f)])
+	var m := maxi(2, int(ceil((y_crown - y_deck) / 1.2)))
+	for i in range(1, m + 1):
+		var f := float(i) / float(m)
+		pts.append([lerpf(y_deck, y_crown, f), lerpf(SLEEVE_R.y, SLEEVE_R.z, f)])
+	for i in pts.size() - 1:
+		var a := Vector3(foot.x, float(pts[i][0]), foot.z)
+		var b := Vector3(foot.x + 0.03 * sin(float(pts[i + 1][0]) * 0.7 + foot.x), float(pts[i + 1][0]), foot.z)
+		_cone(st, _lap(a, b, i > 0), b, float(pts[i][1]), float(pts[i + 1][1]), "bough trunk", 16, LIMB_ROUGH.x, foot.x, LIMB_ROUGH.y)
+
 ## Konar z pnia w `t` (oś w głębi na TRUNK_Z): ukośnie ku pasowi gry do `xs` (koniec pomostu przy pniu), dalej wzdłuż pomostu do `xe`;
 ## promień BOUGH_R.x → `r_end`, oś na wysokości pokładu minus promień (płaski wierzch). Suche gałązki z tyłu, za pasem gry.
 static func _limb(sts: Dictionary, rng: RandomNumberGenerator, t: float, xs: float, xe: float, top: float, r_end: float, wear_x: float) -> void:
-	var st := _st(sts, "bark")
+	var st := _st(sts, "bark_uv")
 	var dir := signf(xe - t) if absf(xe - t) > 0.01 else 1.0
 	var zt := Level3D.TRUNK_Z
 	var r0 := BOUGH_R.x
-	var root_r := r0 * 1.25
+	var root_r := r0 * 1.3
 	var z_run := -0.12
+	var over := 1.0 + LIMB_ROUGH.x * (1.0 + LIMB_ROUGH.y)    # najdalej tyle promienia sięga kora z bruzdami: wierzch zostaje na pokładzie
+	# zgięcie od pnia łukiem, który przy pomoście biegnie już wzdłuż konaru (styk pod kątem zostawiał szczeliny z niebem): prosty konar
+	# zaczyna się 0,6 m za początkiem pomostu, a łuk przechodzi z głębi w bok nad pokładem
+	var dl := signf(xe - xs) if absf(xe - xs) > 0.01 else dir
+	var x_c := xs + dl * 0.6                                  # łuk kończy się nad pokładem (przed końcem pomostu wszedłby w pas gry)
 	var a := Vector3(t, top - root_r - 0.55, zt)
-	var b := Vector3(lerpf(t, xs, 0.55) + dir * 0.2, top - r0 - 0.12, lerpf(zt, z_run, 0.6))
-	var c := Vector3(xs, top - r0, z_run)
-	var bend := _crom([a, b, c], 4)
-	for i in bend.size() - 1:
-		var f0 := float(i) / float(bend.size() - 1)
-		var f1 := float(i + 1) / float(bend.size() - 1)
-		_cone(st, bend[i], bend[i + 1], lerpf(root_r, r0, f0), lerpf(root_r, r0, f1), "bough limb root", 12, 0.02, t)
+	var b := Vector3(x_c - dl * 0.35, top - r0 * over - 0.04, lerpf(zt, z_run, 0.75))
+	var c := Vector3(x_c, top - r0 * over, z_run)
+	var bend := _crom([a, b, c, c + Vector3(dl * 0.5, 0.0, 0.0)], 5).slice(0, 11)
+	for i in bend.size():                                   # spline przestrzeliwuje w górę: wierzch kory łuku nie wyżej niż pokład
+		var fr := float(i) / float(bend.size() - 1)
+		var p: Vector3 = bend[i]
+		p.y = minf(p.y, top - lerpf(root_r, r0, fr) * over)
+		bend[i] = p
+	# odcinki łuku zachodzą na sąsiadów o r·tg(kąt/2): przy stałych 3 cm zewnętrzna strona zgięcia otwierała klin z niebem
+	var nb := bend.size() - 1
+	var dirs: Array[Vector3] = []
+	for i in nb:
+		dirs.append(((bend[i + 1] as Vector3) - (bend[i] as Vector3)).normalized())
+	dirs.append(Vector3(dl, 0.0, 0.0))                       # prosty konar za łukiem
+	for i in nb:
+		var f0 := float(i) / float(nb)
+		var f1 := float(i + 1) / float(nb)
+		var ra := lerpf(root_r, r0, f0)
+		var rb := lerpf(root_r, r0, f1)
+		var s: Vector3 = bend[i]
+		var e: Vector3 = bend[i + 1]
+		var seg_l := s.distance_to(e)
+		var d: Vector3 = dirs[i]
+		if i > 0:
+			s -= d * minf(seg_l * 0.5, ra * over * tan(0.5 * d.angle_to(dirs[i - 1])) + 0.015)
+		e += d * minf(seg_l * 0.5, rb * over * tan(0.5 * d.angle_to(dirs[i + 1])) + (0.03 if i == nb - 1 else 0.015))
+		_cone(st, s, e, ra, rb, "bough limb root", 12, LIMB_ROUGH.x, t, LIMB_ROUGH.y)
+	xs = x_c
 	var length := absf(xe - xs)
 	var n := maxi(1, int(ceil(length / LIMB_STEP)))
 	var prev := c
 	var prev_r := r0
-	var over := 1.0 + LIMB_ROUGH.x * (1.0 + LIMB_ROUGH.y)    # najdalej tyle promienia sięga kora z bruzdami: wierzch zostaje na pokładzie
 	for i in range(1, n + 1):
 		var f := float(i) / float(n)
 		# zgrubienia przy sękach i lekkie falowanie w głąb — prosty walec z liniową zbieżnością czytał się jak rura (2026-11-22)
 		var rr := lerpf(r0, r_end, f) * (1.0 + 0.09 * maxf(0.0, sin(f * length * 2.1 + t * 1.3)) * float(i < n))
 		var p := Vector3(xs + (xe - xs) * f, top - rr * over, z_run + 0.1 * f + 0.06 * sin(f * length * 1.4 + t) * float(i < n))
-		_cone(st, prev, p, prev_r, rr, "bough limb", 12, LIMB_ROUGH.x, t + float(i), LIMB_ROUGH.y)
+		var p_s := _lap(prev, p, i > 1)
+		if i == 1:                                          # pierwszy odcinek wchodzi w koniec łuku (klin na styku pod kątem)
+			p_s = prev - (p - prev).normalized() * r0 * over * 0.6
+		_cone(st, p_s, p, prev_r, rr, "bough limb", 12, LIMB_ROUGH.x, t, LIMB_ROUGH.y)
 		prev = p
 		prev_r = rr
+	_disc(st, prev, Vector3(signf(xe - xs) if absf(xe - xs) > 0.01 else dir, 0.0, 0.0), prev_r * over, 12)   # koniec konaru zamknięty (od czoła była otwarta rura)
 	for i in 2:                                             # kikuty ułamanych gałęzi z tyłu konaru, skośnie w dół i w głąb (za pasem gry)
 		var f := rng.randf_range(0.2, 0.8)
 		var rr := lerpf(r0, r_end, f)
@@ -1233,7 +1561,6 @@ static func _limb(sts: Dictionary, rng: RandomNumberGenerator, t: float, xs: flo
 		var p1 := p0 + Vector3(dir * rng.randf_range(0.15, 0.4), -rng.randf_range(0.15, 0.4), -rng.randf_range(0.35, 0.6))
 		_cone(st, p0, p1, rr * 0.4, rr * 0.28, "bough stub", 8, 0.05, t + 7.0 * float(i))
 		_disc(_st(sts, "cut"), p1, (p1 - p0).normalized(), rr * 0.28)
-	_disc(_st(sts, "bark"), prev, Vector3(dir, 0.0, 0.0), prev_r)
 	if wear_x >= minf(xs, xe) and wear_x <= maxf(xs, xe):
 		_bough_wear(_st(sts, "bough_wear"), c, prev, r0, r_end, wear_x)
 	for i in 4:                                             # suche gałązki dolnych konarów (w tył i w górę, za pasem gry)
@@ -1262,7 +1589,7 @@ static func _bough_wear(st: SurfaceTool, a: Vector3, b: Vector3, ra: float, rb: 
 		var u := float(i) / 6.0
 		var f := inverse_lerp(a.x, b.x, lerpf(left, right, u))
 		var axis := a.lerp(b, f)
-		var radius := lerpf(ra, rb, f) + 0.009
+		var radius := lerpf(ra, rb, f) * (1.0 + LIMB_ROUGH.x * (1.0 + LIMB_ROUGH.y) * 0.55) + 0.006   # nad bruzdami kory, nie w nich
 		var spread := sin(PI * u) * (0.68 + 0.18 * sin(18.0 * u + x))
 		var angle := 0.70 + 0.14 * sin(9.0 * u + x)
 		var upper := axis + Vector3(0, cos(angle - spread), sin(angle - spread)) * radius

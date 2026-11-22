@@ -533,15 +533,6 @@ static func _build_shell(parent: Node3D, rows: Array, box: BoxMesh, mats: Dictio
 				out[key] = []
 			(out[key] as Array).append(Transform3D(sc, Vector3(ctr.x, ctr.y - (TRENCH_D * 0.5 if low else 0.0), DEPTH_FRONT + d * 0.5)))
 			i = j + 1
-	if not shell_lids.is_empty() and mats.has("R" if rock else "#"):
-		var z0 := DEPTH_FRONT + SHAFT_LID_GAP
-		var lids: Array = []
-		for k: Vector2i in shell_lids:
-			var p := cell_pos(k.x, k.y)
-			lids.append(Transform3D(Basis().scaled(Vector3(1.0, 1.0, (SHELL_Z - z0) / (DEPTH_FRONT + DEPTH_BACK))), Vector3(p.x, p.y, (z0 + SHELL_Z) * 0.5)))
-		if not out.has("R" if rock else "#"):
-			out["R" if rock else "#"] = []
-		(out["R" if rock else "#"] as Array).append_array(lids)
 	for k in out:
 		_multimesh(parent, box, out[k], mats[k], false)
 
@@ -2478,11 +2469,6 @@ static var shell_walls := {}
 ## nie powstaje. Dev `--deepshell`: przekrój jak do 1.7.643 (porównanie A/B).
 static var shell_skip := {}
 const SHELL_DIG_CUT := 3
-## Pokrywa szybu między kondygnacjami (2026-11-22): otwór w podłodze płytkiego pasa nad innym pasem (szyb serwisowy sali 1.1 do dolnej
-## galerii) był rowem w płycie aż do SHELL_Z — z kamery w szybie dwie ciemne ściany płyty po bokach. Przed otworem płyta biegnie dalej od
-## DEPTH_FRONT + SHAFT_LID_GAP: szyb to otwór przy tylnej ścianie, a pokrywa rzutuje się poniżej linii podłogi (nie wchodzi w pas gry).
-static var shell_lids := {}
-const SHAFT_LID_GAP := 1.2
 static func shallow_band(e: Dictionary) -> bool:
 	return not e.has("build") and not e.has("wall") and String(e.get("set", "")) in ["tunnel", "mine"] 		and not "--deepshell" in OS.get_cmdline_user_args()
 static var shell_bands: Array = []         ## wpisy FRONT z przekrojem z ostatniego `set_shells` (strefy wydobycia obok sięgają SHELL_Z)
@@ -2514,7 +2500,6 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 	shell_cells = {}
 	shell_walls = {}
 	shell_skip = {}
-	shell_lids = {}
 	shell_bands = []
 	shell_entry_cells = {}
 	shell_facades = []
@@ -2561,12 +2546,6 @@ static func set_shells(front: Array, rows: Array, digs: Array = []) -> void:
 				shell_cells[Vector2i(c, r0)] = "C" if concrete else ""
 				if shallow_band(e):
 					shell_skip[Vector2i(c, r0)] = true
-			if shallow_band(e) and not (_ch(rows, c, r1) in SHELL_CH):
-				var rr := r1 + 1
-				while rr <= r1 + SHELL_DOWN and rr < rows.size() and not in_band.call(c, rr):
-					rr += 1
-				if rr <= r1 + SHELL_DOWN and rr < rows.size() and not near_dig.call(c, r1):
-					shell_lids[Vector2i(c, r1)] = true
 			var r := r1
 			# fundament kończy się na strefie wydobycia (sala 1.1 nad zachodnią strefą dolnej galerii): kafle strefy przebudowuje kopanie
 			var run: Array[Vector2i] = []
