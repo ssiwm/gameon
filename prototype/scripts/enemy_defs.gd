@@ -117,14 +117,16 @@ const DEFS := {
 		"color": Color(0.36, 0.27, 0.34), "size": Vector2(20, 26), "hurt_h": 32.0, "knock": 14.0, "knock_mult": 0.2, "head": 0.28,
 		"xp": 12, "scrap": 6, "supply": 0.35, "battery": 0.12, "ammo": 0.6, "health": 0.75, "hear_error": 96.0, "voice": {"attack": ["wolek_attack", 2, -3.0, 1.0], "death": ["wolek_death", 2, -2.0, 1.0], "sleep": ["wolek_sleep", 3, -3.0, 1.0]},
 	},
-	# Kapłan (GDD §7.2, F4b, ELITE_PLACEMENT_PLAN.md K2): dowódca watahy. Idzie ku graczowi i stoi, leczy Trzoski, z bliska krzyczy falą ogłuszającą, a gdy krzyk jest w przerwie, bije.
+	# Kapłan (GDD §7.2, F4b, ELITE_PLACEMENT_PLAN.md K2): dowódca watahy. Idzie ku graczowi i stoi (z gotowym krzykiem podchodzi w pole zapowiedzi), leczy Trzoski, z bliska krzyczy falą ogłuszającą, a gdy krzyk jest w przerwie, bije.
 	# `priest`: radius px fali, trigger px (gracz bliżej niż to → zapowiedź), stun s, tele s zapowiedzi, scream_cd s przerwy krzyku, heal_r px zasięgu leczenia, heal_pct maks. HP na tik,
-	# heal_every s, hold px (tak blisko podchodzi i staje), noise hałas krzyku; po śmierci Trzoski w pobliżu tracą morale jak po śmierci kolegi (pack). `ring_r` skala pierścienia 3D.
+	# heal_every s, hold px (tak blisko podchodzi i staje, gdy krzyk jest w przerwie), close px (tak blisko podchodzi, gdy krzyk jest gotowy — w pole `trigger`),
+	# slack px zapasu: stojący rusza dopiero, gdy cel odejdzie dalej niż próg + slack (bez kroku i postoju na zmianę co tik), noise hałas krzyku; po śmierci Trzoski w pobliżu tracą morale jak po śmierci kolegi (pack). `ring_r` skala pierścienia 3D.
+	# `sheet`: zegar animacji Ślepca, bo ma `walk` — arkusz Podsłuchacza (stoi w miejscu) nie ma chodu, więc `Sprites.play` dawał „idle” i model 3D sunął w pozie spoczynku.
 	"kaplan": {
 		"hp": 350.0, "speed": 42.0, "damage": 1, "windup": 0.5, "reach": 16.0,
 		"cooldown": 1.8, "leap": false, "hear": 220.0, "wake_near": 80.0, "sight": 260.0,
-		"behavior": "priest", "elite": true, "armor": 2.0, "stun_resist": true, "sheet": "podsluchacz", "ring_r": 102.0, "alert": 0.5,
-		"priest": {"radius": 110.0, "trigger": 110.0, "stun": 0.8, "tele": 0.7, "scream_cd": 8.0, "heal_r": 112.0, "heal_pct": 0.10, "heal_every": 1.0, "bless_every": 3.0, "hold": 190.0, "noise": 8.0,
+		"behavior": "priest", "elite": true, "armor": 2.0, "stun_resist": true, "sheet": "slepiec", "ring_r": 102.0, "alert": 0.5,
+		"priest": {"radius": 110.0, "trigger": 110.0, "stun": 0.8, "tele": 0.7, "scream_cd": 8.0, "heal_r": 112.0, "heal_pct": 0.10, "heal_every": 1.0, "bless_every": 3.0, "hold": 190.0, "close": 80.0, "slack": 24.0, "noise": 8.0,
 			# wzywanie (K3): first s od przebudzenia, every s × `enemy_cd`, channel s gestu × `enemy_windup`, break obrażeń przerywa gest, break_cd s po przerwaniu, cap żywych wezwanych × `boss_adds`,
 			# count Trzosków na wezwanie, late od wezwania numer late_from + 1, retry s, gdy nie ma miejsca albo celu, noise hałas
 			"summon": {"first": 6.0, "every": 14.0, "channel": 1.2, "break": 60.0, "break_cd": 6.0, "cap": 4, "count": 2, "late": 3, "late_from": 2, "retry": 3.0, "noise": 6.0}},

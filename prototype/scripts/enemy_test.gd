@@ -11,6 +11,7 @@ const Enemy := preload("res://scripts/enemy.gd")
 const Player := preload("res://scripts/player.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Sprites := preload("res://scripts/sprites.gd")
 const Combat := preload("res://scripts/combat.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const Bruiser := preload("res://scripts/enemy_bruiser.gd")
@@ -953,6 +954,27 @@ func _test_priest() -> void:
 	var mid_v: float = k.velocity.x
 	var far_hold: bool = k._beh.chase_hold(player, Vector2(260.0, 0.0), 42.0)
 	check("Kapłan/dystans: gracz 60 i 150 px → stoi, nie cofa się, 260 px → pościg rdzenia", near_hold and near_v == 0.0 and mid_hold and mid_v == 0.0 and not far_hold, "%s %.0f / %s %.0f / %s" % [near_hold, near_v, mid_hold, mid_v, far_hold])
+	# zapas progu: stojący na 190 px rusza dopiero za 190 + 24 px (bez kroku i postoju na zmianę co tik przy oddalającym się graczu)
+	k._beh.holding = false
+	var at_hold: bool = k._beh.chase_hold(player, Vector2(188.0, 0.0), 42.0)
+	var in_slack: bool = k._beh.chase_hold(player, Vector2(205.0, 0.0), 42.0)
+	var past_slack: bool = k._beh.chase_hold(player, Vector2(220.0, 0.0), 42.0)
+	var back_in: bool = k._beh.chase_hold(player, Vector2(200.0, 0.0), 42.0)
+	check("Kapłan/dystans: zapas progu — staje na 188 px, stoi dalej na 205 px, rusza za 214 px i idący nie staje na 200 px", at_hold and in_slack and not past_slack and not back_in, "%s %s %s %s" % [at_hold, in_slack, past_slack, back_in])
+	# gotowy krzyk: podchodzi w pole zapowiedzi (`close` 80 px < `trigger` 110 px), gracz 110–190 px nie stoi już poza zasięgiem fali
+	k._beh.scream_cd = 0.0
+	k._beh.holding = true
+	var ready_mid: bool = k._beh.chase_hold(player, Vector2(150.0, 0.0), 42.0)
+	var ready_close: bool = k._beh.chase_hold(player, Vector2(78.0, 0.0), 42.0)
+	k._beh.scream_cd = 5.0
+	var cd_back: bool = k._beh.chase_hold(player, Vector2(78.0, 0.0), 42.0)
+	check("Kapłan/dystans: z gotowym krzykiem idzie na gracza ze 150 px (także stojąc na progu) i staje na 80 px w polu zapowiedzi; w przerwie krzyku nie cofa się",
+		not ready_mid and ready_close and cd_back and float(Defs.DEFS["kaplan"]["priest"]["close"]) < float(Defs.DEFS["kaplan"]["priest"]["trigger"]), "%s %s %s" % [ready_mid, ready_close, cd_back])
+	check("Kapłan/chód: arkusz z animacją `walk` — w ruchu widok 3D dostaje chód, nie pozę spoczynku",
+		(func():
+			var sheet := Sprites.enemy_sheet(String(Defs.DEFS["kaplan"].get("sheet", "kaplan")))
+			var body := k.get_node_or_null("Body") as AnimatedSprite2D
+			return Sprites.has(sheet) and body != null and body.sprite_frames != null and body.sprite_frames.has_animation("walk")).call())
 
 	# leczenie Trzosków: tylko ranni, tylko Trzoski (pack), tylko w zasięgu, nie ponad maks.
 	player.global_position = Vector2(x0 + 400.0, y)
