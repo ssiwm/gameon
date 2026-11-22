@@ -80,6 +80,8 @@ const RING_EDGE_PROBE := 1.0          ## px: brzeg czoła przy stropie i podłod
 const RING_FREQ_K := 1.0               ## częstotliwość szumu czoła względem JAG_FREQ (grudy co ok. 0,6 m)
 const RING_SHADE := 0.2                ## jasność koloru wierzchołków w najgłębszym zagłębieniu czoła (na garbie 1)
 const RING_DIM := 0.45                 ## całe czoło ciemniejsze: latarka pada na nie prawie prostopadle, a ściany korytarza łapią ją pod kątem
+const WALL_FRONT_DIM := 0.48           ## przyciemnienie bocznych ścian przy licu przekroju, żeby w snopie latarki było widać ziarno
+const WALL_FRONT_FADE := Vector2(0.45, 2.3)  ## m od lica przekroju: zakres wygaszania dodatkowego przyciemnienia
 const N_DIG := 1.5                    ## hałas ciosu kilofem w grunt (jak w ścianę, breakable.gd); materiał mnoży (dig_materials.gd `noise`)
 const BLADE_NOISE := 0.5              ## broń biała w ziemi: wolniej, ale ciszej
 const BLAST_DIG := 0.5                ## promień wyrwy po wybuchu = połowa promienia fali
@@ -2617,24 +2619,13 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 			if poly.size() < 3:
 				continue
 			var tint := Mats.tint(cm)
-			var deep := tint.darkened(0.65)
 			var cen := Vector2.ZERO
 			for q in poly:
 				cen += q
 			cen /= float(poly.size())
-			var p0 := (gp + poly[0]) * px
-			for k in range(1, poly.size() - 1):
-				var p1 := (gp + poly[k]) * px
-				var p2 := (gp + poly[k + 1]) * px
-				verts.append(Vector3(p0.x, -p0.y, front))      # Godot: przód = zgodnie z ruchem wskazówek; odbicie osi y tego nie zmienia
-				verts.append(Vector3(p1.x, -p1.y, front))      # (wielokąt z ekranu idzie zgodnie z ruchem wskazówek i tak zostaje w 3D)
-				verts.append(Vector3(p2.x, -p2.y, front))
-				for _q in 3:
-					norms.append(Vector3(0, 0, 1))
-					cols.append(tint)
-			_walls(verts, norms, cols, segs, cen, gp, px, front, back, tint, deep)
-	# komórki pierścienia przy powietrzu mapy (strefa na końcu sali, nie w litej skale): kontur leży dokładnie na brzegu strefy, w komórce
-	# pierścienia, której nie wypełniamy (tam jest zwykła mapa) — bez tej ściany przez bok strefy widać tło (uwaga z gry 2026-11-08)
+			_front_polygon(verts, norms, cols, poly, gp, px, front, tint)
+			_walls(verts, norms, cols, segs, cen, gp, px, front, back, tint, tint.darkened(0.65))
+	# Przy powietrzu mapy osypany materiał może przesunąć kontur poza granicę strefy. Przód i ściana muszą sięgać tego samego konturu.
 	for j in range(jy, mini(jy + CHUNK, _h - 1)):
 		for i in range(ix, mini(ix + CHUNK, _w - 1)):
 			if i != 0 and j != 0 and i != _w - 2 and j != _h - 2:
@@ -2652,18 +2643,19 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 			var mask := _cell(i, j, poly, segs)
 			if mask == 0 or mask == 15 or segs.is_empty():
 				continue
-			var cm := _cell_mat(i, j)
+			var tint := Mats.tint(_cell_mat(i, j))
+			_front_polygon(verts, norms, cols, poly, gp, px, front, tint)
 			var cen := Vector2.ZERO
 			for q in poly:
 				cen += q
 			cen /= float(poly.size())
-			# kontur na samym brzegu: wielokąt bez pola — środek skały leży po stronie strefy
+			# Gdy kontur trafia w sam brzeg, wielokąt ma zerowe pole. Przesuń środek w stronę skały dla zwrotu normalnej.
 			cen = cen.lerp(_corner_px(nx / 2 + 1, ny / 2 + 1), 0.01)
-			_walls(verts, norms, cols, segs, cen, gp, px, front, back, Mats.tint(cm), Mats.tint(cm).darkened(0.65), RING_U)
+			_walls(verts, norms, cols, segs, cen, gp, px, front, back, tint, tint.darkened(0.65), RING_U)
 	var mesh := ArrayMesh.new()
 	if verts.is_empty():
 		return mesh
-	var uv2 := _mat_weights(verts, cols, gp, px, front)
+	var uv2 := _mat_weights(verts, norms, cols, gp, px, front)
 	_jag_mesh(verts, norms, gp, px, front, back)
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
@@ -2673,6 +2665,20 @@ func chunk_mesh(ci: int, px: float, front: float, back: float) -> ArrayMesh:
 	arr[Mesh.ARRAY_TEX_UV2] = uv2
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return mesh
+
+## Płaski przód komórki, z tymi samymi wierzchołkami konturu co ściana. Na krawędzi strefy kontur może mieć zerowe pole.
+static func _front_polygon(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, poly: PackedVector2Array, gp: Vector2, px: float, front: float, tint: Color) -> void:
+	var p0 := poly[0]
+	var a := (gp + p0) * px
+	for k in range(1, poly.size() - 1):
+		if is_zero_approx((poly[k] - p0).cross(poly[k + 1] - p0)):
+			continue
+		var b := (gp + poly[k]) * px
+		var c := (gp + poly[k + 1]) * px
+		for p in [a, b, c]:
+			verts.append(Vector3(p.x, -p.y, front))
+			norms.append(Vector3.BACK)
+			cols.append(tint)
 
 ## Skrajna komórka czoła (pierścień w kolumnie z boku strefy) przy stropie albo podłodze korytarza: narożnik na samej linii stropu / podłogi
 ## należy do kafla skały mapy, więc komórka nie jest „powietrzem” i pętla pierścienia ją pomijała — ściana czoła kończyła się komórkę
@@ -2703,8 +2709,13 @@ func _ring_edge_wall(i: int, j: int, verts: PackedVector3Array, norms: PackedVec
 	var x := base.x + (t * CELL if right else CELL - t * CELL)
 	var side := 1.0 if right else -1.0
 	var segs := PackedVector2Array([Vector2(x, base.y), Vector2(x, base.y + CELL)])
-	var cm := _cell_mat(i, j)
-	_walls(verts, norms, cols, segs, Vector2(x - side * CELL, base.y + CELL * 0.5), gp, px, front, back, Mats.tint(cm), Mats.tint(cm).darkened(0.65), RING_U)
+	var tint := Mats.tint(_cell_mat(i, j))
+	if t > 0.0:
+		var edge_x := base.x if right else base.x + CELL
+		var a := (gp + Vector2(minf(edge_x, x), base.y)) * px
+		var b := (gp + Vector2(maxf(edge_x, x), base.y + CELL)) * px
+		_quad(verts, norms, cols, tint, Vector3(a.x, -a.y, front), Vector3(b.x, -a.y, front), Vector3(b.x, -b.y, front), Vector3(a.x, -b.y, front))
+	_walls(verts, norms, cols, segs, Vector2(x - side * CELL, base.y + CELL * 0.5), gp, px, front, back, tint, tint.darkened(0.65), RING_U)
 
 ## Ściany konturu (odcinki `segs` komórki) od przodu do tyłu strefy, w plastrach JAG_U; normalna od środka skały `cen` na zewnątrz
 ## (w płaszczyźnie xy — po przesunięciu wierzchołków `_jag_mesh` liczy ją od nowa z trójkąta, z tym samym zwrotem).
@@ -2830,33 +2841,37 @@ func _ring_lump(v: Vector3) -> float:
 	return clampf(0.55 + 0.9 * _jag_noise.get_noise_3d(q.x, q.y, q.z), 0.0, 1.0)
 
 ## Wagi materiału wierzchołków dla shadera stref (dig_ground.gd): UV2 = (żwir, skała; reszta — ziemia, żyła liczy się jako skała), alfa koloru =
-## udział materiału strefy względem gruntu mapy: 1 tylko na powierzchni wykopanej (w danych mapy było tu pełno skały), 0 na przodzie i na
-## pierwotnej powierzchni strefy — nietknięta strefa wygląda jak zwykła mapa, materiał widać w wykopie; wyjątek: czoło przy powietrzu mapy
-## (`_ring_out`, E1) od razu w materiale strefy. Z położenia przed `_jag`.
-func _mat_weights(verts: PackedVector3Array, cols: PackedColorArray, gp: Vector2, px: float, front: float) -> PackedVector2Array:
+## udział materiału strefy względem gruntu mapy: 1 na powierzchni wykopanej i na czole przy powietrzu mapy (`_ring_out`, E1).
+## Przekrój i ściany mają osobne wierzchołki na styku. Normalne sprzed `_jag` rozróżniają płaski przekrój od ściany wykopu.
+func _mat_weights(verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, gp: Vector2, px: float, front: float) -> PackedVector2Array:
 	var uv2 := PackedVector2Array()
 	uv2.resize(verts.size())
 	var memo := {}
 	for k in verts.size():
+		var c := cols[k]
+		if norms[k].z > 0.99:
+			cols[k] = Color(c, 0.0)
+			continue
 		var v := verts[k]
 		if not memo.has(v):
-			if v.z >= front - 0.001:                           # przód: zawsze grunt mapy (wagi bez znaczenia)
-				memo[v] = Vector4(0.0, 0.0, 0.0, 1.0)
-			else:
-				var g := Vector2(v.x, -v.y) / px
-				var f := _dug_at(g)
-				var key := material_at_px(g) if f > 0.0 else ""
-				var so := _ring_out(g) if f <= 0.0 else 0.0
-				var shade := 1.0
-				if so != 0.0:                                  # czoło strefy przy powietrzu mapy (E1): od razu materiał strefy, nie grunt mapy
-					f = 1.0
-					key = material_at_px(g - Vector2(so * CELL, 0.0))
-					shade = RING_DIM * lerpf(RING_SHADE, 1.0, _ring_lump(v))   # zagłębienia ciemniejsze — jak cień między grudami
-				memo[v] = Vector4(1.0 if key == "gravel" else 0.0, 1.0 if key == "rock" or key == "vein" else 0.0, f, shade)
+			var g := Vector2(v.x, -v.y) / px
+			var f := _dug_at(g)
+			var key := material_at_px(g) if f > 0.0 else ""
+			var so := _ring_out(g) if f <= 0.0 else 0.0
+			var base_shade := 1.0
+			if so != 0.0:
+				f = 1.0
+				key = material_at_px(g - Vector2(so * CELL, 0.0))
+				base_shade = RING_DIM * lerpf(RING_SHADE, 1.0, _ring_lump(v))
+			memo[v] = Vector4(1.0 if key == "gravel" else 0.0, 1.0 if key == "rock" or key == "vein" else 0.0, f, base_shade)
 		var w: Vector4 = memo[v]
 		uv2[k] = Vector2(w.x, w.y)
-		var c := cols[k]
-		cols[k] = Color(c.r * w.w, c.g * w.w, c.b * w.w, w.z)
+		var shade := w.w
+		var side := absf(norms[k].x) * w.z
+		if side > 0.0:
+			var fade := smoothstep(WALL_FRONT_FADE.x, WALL_FRONT_FADE.y, front - v.z)
+			shade *= lerpf(1.0, lerpf(WALL_FRONT_DIM, 1.0, fade), side)
+		cols[k] = Color(c.r * shade, c.g * shade, c.b * shade, w.z)
 	return uv2
 
 ## 1 — punkt świata leży w miejscu, które w danych mapy było pełną skałą (najbliższy narożnik i jego sąsiedzi), czyli na powierzchni wykopanej;

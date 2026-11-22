@@ -239,7 +239,11 @@ func _check_shallow(map_id: String, rows: Array, digs: Array) -> void:
 		for c in range(int(e["c0"]), int(e["c1"]) + 1):
 			var top := Vector2i(c, int(e["r0"]))
 			_check(not Level3D.shell_cells.has(top) or Level3D.shell_skip.has(top), "%s %s: strop podziemi wysunięty do przekroju" % [map_id, top])
+			if String(rows[top.y])[c] == "=":
+				_check(not Level3D._in_shell_band(c, top.y), "%s %s: krata stropu podziemi wysunięta do przekroju" % [map_id, top])
 			var fl := Vector2i(c, int(e["r1"]))                 # od 1.7.652 bez płyty podłogi i fundamentu (pierwszy plan pod ziemią wyłączony)
+			if String(rows[fl.y])[c] == "=" and not Level3D.ug_slab():
+				_check(not Level3D._in_shell_band(c, fl.y), "%s %s: krata podłogi podziemi wysunięta do przekroju" % [map_id, fl])
 			for r in range(fl.y, fl.y + Level3D.SHELL_DOWN + 1):
 				var k := Vector2i(c, r)
 				_check(not Level3D.shell_cells.has(k) or Level3D.shell_skip.has(k), "%s %s: płyta podłogi albo fundament podziemi wysunięte do przekroju" % [map_id, k])

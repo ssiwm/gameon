@@ -9,6 +9,7 @@ extends SceneTree
 
 var DigZone: GDScript                  ## load w _run: dig_zone.gd potrzebuje autoloadów (Scrap)
 const Level3D := preload("res://scripts/level3d.gd")
+const DigMats := preload("res://scripts/dig_materials.gd")
 
 const C0 := 10
 const R0 := 10
@@ -78,14 +79,14 @@ func _run() -> void:
 			var d := v.x - wall
 			if d < -0.002:
 				inward += 1
+			if cs[k].a < 0.99 or uv2[k].x < 0.99:
+				mat_bad += 1
 			if v.z >= front - 0.001:
 				front_off = maxf(front_off, absf(d))
 			elif absf(v.z) < 0.2:
 				plane_off = maxf(plane_off, absf(d))
 			else:
 				max_out = maxf(max_out, d)
-				if cs[k].a < 0.99 or uv2[k].x < 0.99:
-					mat_bad += 1
 				rmin = minf(rmin, cs[k].r)
 				rmax = maxf(rmax, cs[k].r)
 			if v.y > y_top + 0.002 or v.y < y_bot - 0.002:
@@ -101,7 +102,7 @@ func _run() -> void:
 	_check("bez ruchu w pionie poza wiersze strefy", outside_y == 0)
 	_check("czoło od stropu do podłogi korytarza, bez szpary na wnętrze bryły (%.3f / %.3f m)" % [y_ceil - face_top, face_bot - y_bot],
 		absf(face_top - y_ceil) < 0.01 and absf(face_bot - y_bot) < 0.01)
-	_check("czoło w materiale strefy (żwir, alfa 1)", mat_bad == 0)
+	_check("czoło w materiale strefy aż do krawędzi przekroju (żwir, alfa 1)", mat_bad == 0)
 	_check("zagłębienia czoła ciemniejsze od garbów (rozrzut jasności > 0,2)", rmax - rmin > 0.2)
 	var fb_plane: float = z.face_bulge(Vector2(wall / px, float(R1 * 16)), 0.0, px, front, back)
 	var fb_max := 0.0
@@ -351,8 +352,36 @@ func _maps(px: float) -> void:
 				var h := ps.y + (cap["size"] as Vector3).y
 				_check("%s: odrzwia na podłodze, stojak poza czołem, wysokość korytarza %.2f m" % [tag, h],
 					absf(pp.y - ps.y * 0.5 - floor_m) < 0.01 and (pp.x - wall) * out - ps.x * 0.5 > 0.0 and h > 2.0 and h < 8.0)
+			if map_id == "z1_m2" and z.mat_key == "gravel":
+				_dig_ring(z, e, px, front, back)
 			z.free()
 	print("[DIG-FACE] mapy: stref %d, odrzwia na %s" % [n, framed])
 	_check("strefy na mapach gry sprawdzone (po dwie na 1.1, 1.2, 1.3 — DIG_LOOT_PLAN.md K5)", n >= 6)
 	_check("odrzwia tylko w niskich korytarzach z obudową (1.1: bunkier na końcu dolnej galerii, 1.2: obie strefy), nie w salach 1.1 i 1.3",
 		framed == ["z1_m1", "z1_m2", "z1_m2"])
+
+
+func _dig_ring(z: Node2D, entrance: Dictionary, px: float, front: float, back: float) -> void:
+	var wall_x := float(entrance["wall_x"])
+	var origin := Vector2(wall_x + 11.0, float(entrance["floor_y"]) - 9.0)
+	var hit: Dictionary = z.melee_dig(z.get_world_2d().direct_space_state, origin, Vector2.LEFT, 24.0, DigMats.Tool.PICK)
+	for _step in 30:
+		if z.is_settled():
+			break
+		z._step()
+	var caps := {}
+	var walls := {}
+	for ci in int(z.chunk_count()):
+		var mesh: ArrayMesh = z.chunk_mesh(ci, px, front, back)
+		if mesh.get_surface_count() == 0:
+			continue
+		var verts: PackedVector3Array = mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		for i in range(0, verts.size(), 3):
+			var cap := is_equal_approx(verts[i].z, front) and is_equal_approx(verts[i + 1].z, front) and is_equal_approx(verts[i + 2].z, front)
+			var points := caps if cap else walls
+			for k in range(i, i + 3):
+				var v := verts[k]
+				if is_equal_approx(v.z, front) and v.x > wall_x * px + 0.001:
+					points[v] = true
+	_check("1.2: po uderzeniu i osypaniu żwir wysuwa ścianę do korytarza", not hit.is_empty() and not walls.is_empty())
+	_check("1.2: przednia powierzchnia sięga wysuniętej ściany żwiru", walls.keys().all(func(v: Vector3) -> bool: return caps.has(v)))
