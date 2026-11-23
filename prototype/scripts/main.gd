@@ -2758,6 +2758,11 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 					Combat.apply(bw2, Combat.make_info(Weapons.KILOF, Weapons.def(Weapons.KILOF).damage, rc2.get_center(), Vector2.RIGHT, 1, "melee"))
 				for k in 5:
 					Combat.apply(bw2, Combat.make_info(Weapons.GNIEW4, 1.0, rc2.position + Vector2(rc2.size.x * randf(), rc2.size.y * randf()), Vector2.RIGHT, 1, "blast")))
+	for sa in OS.get_cmdline_user_args():
+		if sa.begins_with("--shotdoor="):                # dev: `--shotdoor=Door3:pick:-1,Door1:blast:1` — po 1 s wyważa drzwi wg przyczyny i strony (obraz W3)
+			for it in sa.substr("--shotdoor=".length()).split(","):
+				var dp := it.split(":")
+				get_tree().create_timer(1.0).timeout.connect(level.break_wall.bind(dp[0], dp[1] if dp.size() > 1 else "", int(dp[2]) if dp.size() > 2 else 0))
 	if _has_arg_prefix("--shotcrate"):              # dev: gracz 1 przy pierwszej skrzyni `k`, po 1,5 s pięć pocisków pistoletu ją rozbija (podgląd drzazg, D1); `=2` — po 4 s skrzynia wraca jak po wipe'ie
 		var cr: Node2D = null
 		for p in get_tree().get_nodes_in_group("props"):

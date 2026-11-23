@@ -179,6 +179,7 @@ var niches: Array = []                    ## NICHES z danych mapy: wnęki ze św
 var _step_deck := {}                      ## Vector2i(c, r) → true: kafle pomostów z STEPS (`mantle_deck`, liczone przy pierwszym pytaniu)
 var steps: Array = []                     ## STEPS z danych mapy: pomosty z natury i z historii miejsca (`step3d.gd`, STEPS_PLAN.md); czysta kosmetyka
 var front: Array = []                     ## FRONT z danych mapy: zakresy pierwszego planu przed płaszczyzną gry (`front3d.gd`); czysta kosmetyka
+var break_how := {}                        ## nazwa rozbitej przegrody → [czym (`breakable.hit_kind`), znak x kierunku] — obraz wyważonych drzwi (W3)
 var doors := {}                            ## DOORS z danych mapy (DESTRUCTION_CONTENT_PLAN.md W1): kolumna wejścia budynku 3D → {"mat": wood/metal/steel, "start": "broken"?}
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
 var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
@@ -312,6 +313,7 @@ func _load(id: String) -> void:
 	_wall_cells.clear()
 	_window_cells.clear()
 	_opened_walls.clear()
+	break_how.clear()
 	plank_stock = 0
 	_nail_ms.clear()
 	_supports_down.clear()
@@ -1683,19 +1685,22 @@ func _spawn_wall(wd: Dictionary, b := PackedFloat32Array()) -> Node2D:
 	add_child(w)
 	return w
 
-## Serwer: ściana rozbita — znika u wszystkich peerów, kafle odblokowują nawigację.
-func break_wall(wall_name: String) -> void:
+## Serwer: ściana rozbita — znika u wszystkich peerów, kafle odblokowują nawigację. `how` / `dir` — czym i w którą stronę (znak x
+## kierunku ciosu, wybuchu albo szarży; 0 — nieznany): widok 3D drzwi wybiera po nich obraz wyważonych (W3).
+func break_wall(wall_name: String, how := "", dir := 0) -> void:
 	if not NoiseMgr.is_server() or _opened_walls.has(wall_name):
 		return
 	if NoiseMgr.has_network():
-		_break_wall_rpc.rpc(map_id, wall_name)
+		_break_wall_rpc.rpc(map_id, wall_name, how, dir)
 	else:
-		_break_wall_rpc(map_id, wall_name)
+		_break_wall_rpc(map_id, wall_name, how, dir)
 
 @rpc("authority", "call_local", "reliable")
-func _break_wall_rpc(id: String, wall_name: String) -> void:
+func _break_wall_rpc(id: String, wall_name: String, how := "", dir := 0) -> void:
 	if id != map_id or _opened_walls.has(wall_name):
 		return
+	if how != "":
+		break_how[wall_name] = [how, dir]
 	_open_wall(wall_name, true)
 
 func _open_wall(wall_name: String, with_fx: bool) -> void:
@@ -1745,7 +1750,8 @@ func breakables_state() -> Dictionary:
 		var st: PackedByteArray = z.state()
 		if not st.is_empty():
 			dig[String(z.name)] = st                          # strefy wydobycia (D5): skompresowana gęstość, tylko ruszone
-	return {"opened": PackedStringArray(_opened_walls), "damage": dmg, "planks": plank_stock, "supports": PackedStringArray(_supports_down), "dig": dig}
+	return {"opened": PackedStringArray(_opened_walls), "damage": dmg, "planks": plank_stock, "supports": PackedStringArray(_supports_down), "dig": dig,
+		"how": break_how.duplicate(true)}
 
 ## Serwer, przebudzenie bossa (mission._save_checkpoint): wipe w tej walce wróci do zniszczeń z tej chwili — jak łup od 1.7.424.
 func save_breakables_checkpoint() -> void:
@@ -1771,16 +1777,17 @@ func reset_breakables(state := {}) -> void:
 	var stock := int(state.get("planks", 0))
 	var down: PackedStringArray = state.get("supports", PackedStringArray())
 	var clean := not state.has("opened")
+	var how: Dictionary = state.get("how", {})               # czym wyważone drzwi z migawki — ten sam obraz po wipe'ie w walce z bossem (W3)
 	if NoiseMgr.has_network():
-		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock, down, clean)
+		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock, down, clean, how)
 	else:
-		_reset_breakables_rpc(map_id, opened, dmg, stock, down, clean)
+		_reset_breakables_rpc(map_id, opened, dmg, stock, down, clean, how)
 	var dig: Dictionary = state.get("dig", {})
 	for z in dig_zones():
 		z.reset_to(dig.get(String(z.name), PackedByteArray()))   # strefy wydobycia (D5): wykopy wracają do stanu z mapy albo z migawki
 
 @rpc("authority", "call_local", "reliable")
-func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0, down := PackedStringArray(), clean := false) -> void:
+func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0, down := PackedStringArray(), clean := false, how := {}) -> void:
 	if id != map_id:
 		return
 	if clean:
@@ -1806,6 +1813,8 @@ func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionar
 		if _opened_walls.has(n) and not want_open:
 			_close_wall(wd)
 		elif not _opened_walls.has(n) and want_open:
+			if how.has(n):
+				break_how[n] = how[n]
 			_open_wall(n, false)
 		if not want_open:
 			var w := get_node_or_null(n)
@@ -1818,6 +1827,7 @@ func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionar
 func _close_wall(wd: Dictionary, b := PackedFloat32Array()) -> void:
 	var n := String(wd["name"])
 	_opened_walls.erase(n)
+	break_how.erase(n)
 	var rc := Rect2i()
 	var first := true
 	for cell in wd["cells"]:
@@ -1836,7 +1846,8 @@ func send_walls_to(peer_id: int) -> void:
 	if NoiseMgr.is_server() and NoiseMgr.has_network():
 		_planks_rpc.rpc_id(peer_id, plank_stock, 0)
 		for n in _opened_walls:
-			_break_wall_rpc.rpc_id(peer_id, map_id, n)
+			var bh: Array = break_how.get(n, ["", 0])
+			_break_wall_rpc.rpc_id(peer_id, map_id, n, String(bh[0]), int(bh[1]))     # czym wyważone drzwi — ten sam obraz u dołączającego (W3)
 		for wd in _wall_defs:
 			var wn := String(wd["name"])
 			var w := get_node_or_null(wn)

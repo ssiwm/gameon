@@ -42,12 +42,20 @@ var _dying := false
 var _play_t := -1.0                         ## s od początku pokazu; −1 — ukryta
 var _armed := true                          ## może ruszyć przy następnym podejściu
 
+static var _shader: Shader
+
+## Wspólny shader ducha: nowy `Shader` na każde drzwi kompilował potok przy każdym pojawieniu (W3, --hitchtest --hitchdoor: ok. 70–230 ms
+## po odbudowie drzwi); jeden egzemplarz — widok 3D rozgrzewa go pod planszą (`_warm_destruction("door_*")`).
+static func shader() -> Shader:
+	if _shader == null:
+		_shader = Shader.new()
+		_shader.code = SHADER
+	return _shader
+
 func _ready() -> void:
 	visible = false                               # do pierwszego podejścia
-	var sh := Shader.new()
-	sh.code = SHADER
 	_sm = ShaderMaterial.new()
-	_sm.shader = sh
+	_sm.shader = shader()
 	_sm.set_shader_parameter("tint", TINT)
 	for mi in find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D

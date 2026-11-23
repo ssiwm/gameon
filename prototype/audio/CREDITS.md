@@ -49,6 +49,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | creature_step_damp | nagranie | Sonniss GDC 2020 — Cave Creature Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0272_creature_footstep_damp_015.wav |
 | creature_step_mud | nagranie | Sonniss GDC 2020 — Mountain Dweller - Orc Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0261_mountain_dweller_creature_orc_footstep_mud_texture_003.wav |
 | creature_step_wood | nagranie | Sonniss GDC 2020 — Forest Creature Sound Effects | Bluezone | sonniss-gdc-2.0 | Bluezone_BC0269_creature_wood_footstep_medium_004.wav |
+| creepy_door_metal_impact_01 | nagranie | Sonniss GDC 2018 — The Creepy Door | RZ Post | sonniss-gdc-2.0 | Creepy Door, Metal,Door,Medium,Impact_01.wav |
 | crossbow_functions | nagranie | Sonniss GDC 2019 — Nocked | Eiravaein Works | sonniss-gdc-2.0 | Nocked,archery,crossbow1,composite,string,functions,bolt,slideintorest,set,drag,nock,remove,clatter,alt.wav |
 | crossbow_loose | nagranie | Sonniss GDC 2019 — Nocked | Eiravaein Works | sonniss-gdc-2.0 | Nocked,archery,firing,loose,crossbow1,carbonbolt,atbow,snap,buzz,airy,bright,alt.wav |
 | crushed_rock_drop | nagranie | Sonniss GDC 2023 — The Stone & Sand Library | Pole Position Production | sonniss-gdc-2.0 | Small Crushed Rock - DROP - Thick - Stereo.wav |
@@ -94,7 +95,9 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | male_grunt_shout_317 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Humans | SoundBits | sonniss-gdc-2.0 | Male_Grunt-Shout_317.wav |
 | male_shout_pain_132 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Humans | SoundBits | sonniss-gdc-2.0 | Male_Shout-of-Pain_132.wav |
 | metal_creak_13 | nagranie | Sonniss GDC 2017 — Unsettling Creaks and Squeaks | SoundBits | sonniss-gdc-2.0 | Metal_Creak_13.wav |
+| metal_drop_scrap_06 | nagranie | Sonniss GDC 2024 — Torturing Metal | Mechanical Wave | sonniss-gdc-2.0 | METLCrsh_Drop Fall Metal Rattle Scrap Debris_06_MWSFX_TM.wav |
 | metal_rattle_shudder | nagranie | Sonniss GDC 2024 — The Stormbat Hull Interaction Library | Pole Position | sonniss-gdc-2.0 | Metal - RATTLE - Shudder Constant - Geofon.wav |
+| metal_sheets_sledge_02 | nagranie | Sonniss GDC 2019 — Metal Hits, Scrapes and Squeaks | Sound Spark LLC | sonniss-gdc-2.0 | Metal_Sheets_Sledgehammer_Hit_02.wav |
 | monster1_breathing3 | nagranie | Sonniss GDC 2020 — Monster Sound FX Pack 1 | David Dumais Audio | sonniss-gdc-2.0 | Monster1_Breathing3.wav |
 | monster_growls_4 | nagranie | Sonniss GDC 2018 — Monsters | Olivier Girardot | sonniss-gdc-2.0 | Monster Growls 4.wav |
 | monster_roar_growl_009 | nagranie | Sonniss GDC 2016 — Screams & Shouts 2 - Monsters | SoundBits | sonniss-gdc-2.0 | Monster_Roar_Growl_009.wav |
@@ -127,6 +130,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | rock_hit_dirt_07 | nagranie | Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02 | Mechanical Wave | sonniss-gdc-2.0 | Multiple Rock Hit Dirt_RBDII 07.wav |
 | rock_into_gravel_06 | nagranie | Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02 | Mechanical Wave | sonniss-gdc-2.0 | Hit Rock into Gravel_RBDII 06.wav |
 | rockslide_02 | nagranie | Sonniss GDC 2018 — Foley Elements Rocks, Dirt And Stone | Soundrangers | sonniss-gdc-2.0 | rockslide_02.wav |
+| rusty_metal_collapse_08 | nagranie | Sonniss GDC 2016 — Black Metal | Alexander Kopeikin | sonniss-gdc-2.0 | dry rusty metal impact with collapse 08.wav |
 | saiga12_close_1m | nagranie | Sonniss GDC 2016 — Saiga-12 12g solid slug | Pole Position Production | sonniss-gdc-2.0 | SAIGA-12_12g_solid_slug_1m_left_off_axis_MKH416_clean_Single_shots_x_5.wav |
 | saiga12_cocking | nagranie | Sonniss GDC 2016 — Various Gun Foley & Handling | Pole Position Production | sonniss-gdc-2.0 | SAIGA-12_12g_solid_slug_foley_close_up_RSM191_R_cocking.wav |
 | scrap_pile_03 | nagranie | Sonniss GDC 2017 — Junk and Debris | Double Trouble Audio | sonniss-gdc-2.0 | Pile of Scrap Metal - Metal Scrap Pile, Rustle, Drop, Long Tail 03.wav |

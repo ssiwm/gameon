@@ -836,6 +836,34 @@ def build_world() -> None:
         x = d.mix([(tick(r, 3200, 1.2, 10, .002), 1.0), (clink, .45), (knock, .8), (thump(.12, 160, 80, .015, .03), .6)], n)
         finalize("hammer_nail_%d" % (i + 1), d.reverb(x, ir("room"), wet=.12), lufs=-20.4)
 
+    # Drzwi metalowe i zbrojone (DESTRUCTION_CONTENT_PLAN.md W3): do 1.7.657 grały ogólnym `impact_hard`. Cios kilofem w blachę skrzydła:
+    # brzęk płyty (mody niesharmoniczne, dłuższe niż deska), ostry styk stali i głuchy korpus ościeżnicy. Głośność jak wersji z nagrań.
+    for i in range(3):
+        r = Rng(0xD300 + i * 1301)
+        n = ms(700)
+        f0 = vary(r, 175.0 + 30 * i, .05)
+        plate = ring(r, [f0, f0 * 2.76, f0 * 5.40, f0 * 8.93, f0 * 13.3], [.55, .4, .28, .18, .1], [1.0, .7, .5, .3, .2], dur=.7, jitter=.015)
+        clash = burst(ms(60), r, 9000.0, 2500.0, .006, color=.1)
+        x = d.mix([(plate, 1.0), (clash, .7), (thump(.2, vary(r, 110, .1), 55, .02, .05), .8)], n)
+        finalize("door_metal_hit_%d" % (i + 1), d.limiter(d.reverb(x / (d.peak(x) + 1e-9), ir("room"), wet=.18), -6.0), lufs=-17.0)
+
+    # Wyważenie drzwi metalowych: zawias puszcza (zgrzyt i trzask), skrzydło pada na ziemię (ciężki brzęk), potem grzechot i drgająca blacha.
+    for i in range(3):
+        r = Rng(0xD400 + i * 1777)
+        n = ms(1800)
+        snap = d.mix([(burst(ms(120), r, 7000.0, 1200.0, .02, color=.2), 1.0), (tick(r, 2800, 1.5, 20, .004), .8)])
+        grind = d.filt(d.colored(ms(260), r, .4), "bp", vary(r, 1400, .1), 3.0) * d.env_pts(ms(260), [(0, 0), (.03, 1), (.26, 0)])
+        f0 = vary(r, 95.0 + 12 * i, .06)
+        slam = d.mix([(ring(r, [f0, f0 * 2.4, f0 * 4.7, f0 * 7.9, f0 * 12.1], [1.1, .8, .5, .3, .15], [1.0, .7, .5, .35, .2], dur=1.4, jitter=.02), 1.0),
+                      (thump(.45, 80, 40, .04, .12), 1.0), (burst(ms(90), r, 6000.0, 900.0, .015, color=.3), .6)])
+        rattle = np.zeros(n)
+        for _ in range(10):                                    # odbicia i grzechot blachy po upadku
+            k = ms(r.uniform(420, 1300))
+            tap = d.mix([(tick(r, r.uniform(1500, 4200), 2.0, 24, .005), 1.0), (thump(.05, r.uniform(200, 320), 120, .01, .02), .4)])
+            rattle[k:k + len(tap)] += tap[:n - k] * r.uniform(.1, .35)
+        x = d.mix([(snap, .8, 0.0), (grind, .5, .02), (slam, 1.0, .28), (rattle, .7)], n)
+        finalize("door_metal_break_%d" % (i + 1), d.limiter(d.reverb(x / (d.peak(x) + 1e-9), ir("room"), wet=.22), -4.0), lufs=-13.5, fade_out_ms=200)
+
     # Kopanie w strefach wydobycia (DESTRUCTION_PLAN.md D5): do 1.7.557 cios w grunt grał tylko świst kilofa. Każdy wariant ma dwie
     # warstwy — uderzenie wg materiału i ogon urobku (grudki, okruchy, kamyki opadające 0,1–0,7 s po ciosie), bo to ogon mówi, że coś odpadło.
     def _crumbs(r: Rng, n: int, count: int, t0: float, t1: float, f_lo: float, f_hi: float, soft: float) -> np.ndarray:
