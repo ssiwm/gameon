@@ -25,6 +25,8 @@ z zewnątrz. `--maptest`: wejście bez wpisu w `DOORS` na mapie kampanii to bł�
 Do W2b (decyzja 5): drzwi zbrojone do małych pomieszczeń pobocznych z łupem, po jednym na 1.2 i 1.3 — wymagają nowych budynków 3D na mapach.
 Następny krok: W2b albo W3 (dźwięk i wyważenie).
 
+**Stan (2026-11-23, W3):** W3 zrobiony w 1.7.658 (gałąź `feat/doors-w3`, stos na W2). Przyczyna i strona rozbicia idą do wszystkich peerów (`level.break_wall(nazwa, how, dir)`, `break_how`; dołączający i migawka bossa też), a widok 3D buduje wg nich wyważone skrzydło: metalowe drzwi podważone kilofem — otwarte na tylnym zawiasie z wyrwanym górnym (przodem do kamery, za pasem gry); wybite szarżą — płasko po stronie upadku; wysadzone i zawsze zbrojone — dalej, skręcone, osmalone (`*_burnt`, ten sam shader); brama kilofem wisi na szynie, wysadzona leży; drewno wysadzone — osmalone deski dalej. Kierunek z wektora ciosu / wybuchu / szarży zamiast ziarna. Dźwięk: `door_metal_hit` (Sound Spark „Metal Sheets Sledgehammer Hit 02” + RZ Post „Creepy Door, Metal Door Medium Impact 01”) i `door_metal_break` (Kopeikin „dry rusty metal impact with collapse 08” + Mechanical Wave „Drop Fall Metal Rattle Scrap Debris 06”), synteza w repo; **wybór nagrań czeka na odsłuch A/B autora** (`C:\deadair87\odsluch\drzwi_w3.html`, `audio_ab.py --licensed --only door_metal`). Przycięcie: wspólny shader ducha narzędzia (każde drzwi kompilowały własny — 232 ms po odbudowie drzwi na 1.2), rozgrzewany pod planszą z osmalonymi materiałami; `--hitchtest --hitchdoor`. Wgniecenia od kul w metalu bez obrazu (kula w metal daje iskrę i ślad trafienia jak dotąd). Zrzuty: `C:\deadair87\shots_doors\w3`.
+
 ## Skąd ten plan
 
 Analiza 2026-11-22 („zweryfikuj możliwość dodania destrukcji środowiska”): niszczenie otoczenia już jest i jest używane. Brakuje go
@@ -277,7 +279,7 @@ i tylko jeśli drzwi i zawał się sprawdzą.
 | **W0** spike obrazu drzwi — **zrobiony** | 0 (gałąź robocza `spike/doors-w0`, wynik do planu) | ościeżnica poza obrysem + narzędzie 3D (ikona HUD odrzucona); zrzuty posterunku 1.3 i bramy 1.2, dzień, noc z latarką, od środka, wyważone (`--doorproto[=wood\|metal\|steel] [--doorbroken]`) | — |
 | **W1** mechanika + posterunek 1.3 | 1 | materiały `door_*`, `DOORS`, rejestracja w `level.gd`, komunikaty, pasek akcji, wrogowie i bot, `--destructiontest` sekcja drzwi, `--maptest`, sieć (`door=` w `_destruction_sig`), dziennik `break` z `door_*`, 3D wg wyniku W0 | średnie |
 | **W2** wszystkie budynki — **zrobiony** (1.7.657) | 1 | bramy na całą wysokość (decyzja 4 zmieniona: Rzeźnik nie mieści się w furtce), `DOORS` na 1.2 i 1.3, hala Żyły z punktem kontrolnym bossa, sprawdzenie wysokich wrogów, `--veintest`, `--funtest` | średnie (projekt map) |
-| **W3** dźwięk i wyważenie | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
+| **W3** dźwięk i wyważenie — **zrobiony** (1.7.658, odsłuch A/B do potwierdzenia) | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
 | **W4** barykady przy drzwiach | 1 | miejsca barykad przy budynkach z generatorami, przegląd barykad na trasie | niskie |
 | **W5** zawał 1.1 | 1 | stempel i strefa w galerii, modele 2–3 rz. | średnie |
 | **W6** B1 osłony | 0–1 | najpierw sprawdzenie mechaniki bossa, potem decyzja | średnie |
