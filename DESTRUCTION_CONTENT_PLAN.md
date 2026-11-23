@@ -47,7 +47,8 @@ nie pomoże w ucieczce — `--finaletest` (zawał przed finałem, gruz rozsypany
 `rubble_pile_{mine,concrete}_r3_{0,1}.glb` (`tools/rubble_pile_gen.py`, `ROWS = (3, 4, 5)`; do W5 3-rzędowe przejście dostawało ściśnięty
 model 4 rzędów). Test B0 „kampania bez `^`” zastąpiony: strefy kampanii tylko ≤ 3 rzędy pod `#`, stempli tyle co stref. Zrzuty:
 `C:\deadair87\shots_doors\w5` (`w5_prop`, `w5_cave`, `w5_dug`).
-Do decyzji: porada przy stemplu (jak „adit” przy otworze) — dziś gracz musi sam zauważyć belkę. Następny krok: W2b albo W6 (osłony na B1).
+Do decyzji: porada przy stemplu (jak „adit” przy otworze) — dziś gracz musi sam zauważyć belkę. **Zrobione w 1.7.666:** porada „prop”
+(`hints.gd`) raz przy całym stemplu, do 120 px w poziomie. Następny krok: W2b albo W6 (osłony na B1).
 
 **Stan (2026-11-23, W2b):** W2b zrobiony w 1.7.661 (gałąź `feat/doors-w2b`, stos na W5), plan przyjęty zgodnie z zaleceniami (sekcja „Drzwi
 zbrojone do pomieszczeń z łupem”). Spike W2b-0 potwierdził oba miejsca; zmiany wobec szkicu: bunkier 1.2 w kol. 280–285 (nie 278 — drzwi

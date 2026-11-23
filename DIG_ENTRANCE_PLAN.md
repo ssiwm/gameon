@@ -98,6 +98,8 @@ siatki `*head*`) i koniec trzonka, `pick_xf` obraca go w płaszczyźnie kadru �
 Inaczej niż w szkicu: obuch, nie ostrze wzdłuż trzonka — w modelu ostrze jest w poprzek trzonka, więc wbity kilof wisi trzonkiem w dół.
 Odłamki `rock_b`/`rock_c` zniknęły z wejścia z boku (osobne modele w obcym materiale); zamiast nich dwie większe bryły urobku za stopą
 osypiska (`TALUS_STRAY`), w materiale strefy. Wejście od góry (bez czoła) bez zmian.
+**Od 1.7.666** kilof znaku to „duch” narzędzia jak przy drzwiach (`door_hint3d.gd`, tryb „dig”, poza spoczynkowa z `pick_xf`): po podejściu
+(10 m) 3 pętle zamachu, ciosu w czoło z błyskiem i wyłamania bryły; gaśnie, gdy w strefie ktoś kopał (`digs` > 0), wraca po resecie strefy.
 
 Szkic:
 
