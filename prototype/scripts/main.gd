@@ -4854,9 +4854,16 @@ func _map_test() -> void:
 			# wszystko całe: cele misji, wyjścia i stanowiska osiągalne bez rozbijania (zamurowane przejście to skrót albo skrytka, nie warunek);
 			# potem wszystko rozbite — każdy punkt mapy osiągalny, graf po lokalnych przebudowach równy pełnej budowie
 			var must: Array = points.filter(func(p: Array) -> bool: return not (String(p[0]).begins_with("przedmiot") or String(p[0]).begins_with("Skrytka")) and not _is_enemy_point(String(p[0])))
+			var dopen: Array = level.open_doors_for_check()     # drzwi drewniane i metalowe wyważone, zbrojone zamknięte (W1, zasada 1)
 			var intact := _reach_errors(must, false)
+			level.close_doors_after_check(dopen)
 			for b in intact:
-				bad.append("przy całych ścianach: %s" % b)
+				bad.append("przy całych ścianach (drzwi poza zbrojonymi wyważone): %s" % b)
+			var dc: Array = level.doors_checked()
+			bad.append_array(dc[0])
+			if not level.doors.is_empty() or not (dc[1] as Array).is_empty():
+				print("[MAPTEST] %s: drzwi %d (wyważane na trasie: %s), wejścia budynków bez drzwi: %s" % [id, level.doors.size(), ", ".join(dopen) if not dopen.is_empty() else "—",
+					", ".join(dc[1]) if not (dc[1] as Array).is_empty() else "brak"])
 			var behind: Array = []
 			for p in points:
 				if not must.has(p) and not _reach_errors([points[0], p], false).is_empty():

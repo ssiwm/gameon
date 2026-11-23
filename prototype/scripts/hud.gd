@@ -2320,6 +2320,29 @@ func _dig_prompt() -> String:
 		return Actions.fmt(tr("[{melee}]  Dig  (pickaxe · loud)")) if bool(need[1]) else Actions.fmt(tr("[{melee}]  Dig"))
 	return ""
 
+const DOOR_PROMPT_PX := 30.0     ## od krawędzi drzwi: podpowiedź „Wyważ” w pasku akcji
+
+## Zamknięte drzwi budynku (DESTRUCTION_CONTENT_PLAN.md W1, `breakable.gd` `door_*`) tuż przed lokalnym graczem, na jego poziomie:
+## [tekst, kolor] — czym je wyważyć (maczeta albo kilof wyjmuje się sam, `melee_for_target`); zbrojone — tylko wybuch. [] — nic.
+func _door_prompt() -> Array:
+	if _player == null or _player.dead:
+		return []
+	var p: Vector2 = _player.global_position
+	for n in get_tree().get_nodes_in_group("breakables"):
+		var mat := String(n.get("mat_id"))
+		if not mat.begins_with("door_") or n.is_queued_for_deletion() or float(n.get("hp")) <= 0.0:
+			continue
+		var rc: Rect2 = n.call("hit_rect")
+		if absf(rc.end.y - p.y) > 6.0 or p.x < rc.position.x - DOOR_PROMPT_PX or p.x > rc.end.x + DOOR_PROMPT_PX:
+			continue
+		match mat:
+			"door_wood":
+				return [Actions.fmt(tr("[{melee}]  Force the door  (machete)")), UiTheme.ACCENT]
+			"door_metal":
+				return [Actions.fmt(tr("[{melee}]  Force the door  (pickaxe · loud)")), UiTheme.ACCENT]
+		return [tr("Reinforced door  ·  explosives only"), UiTheme.MUTED]
+	return []
+
 func _on_dig_swing(_w: int) -> void:
 	if _dig_hint_key != "":
 		_dig_learned[_dig_hint_key] = int(_dig_learned.get(_dig_hint_key, 0)) + 1
@@ -2509,6 +2532,9 @@ func _prompt_candidates() -> Array:
 	var dig := _dig_prompt()
 	if dig != "":
 		add.call(dig, -1.0, UiTheme.ACCENT)
+	var door: Array = _door_prompt()
+	if not door.is_empty():
+		add.call(String(door[0]), -1.0, door[1])
 	if m != null and m.phase == Mission.Phase.EXTRACT:
 		var st: Dictionary = m.local_extract_state()
 		if st.get("inside", false):

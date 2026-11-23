@@ -620,6 +620,7 @@ func _tick(delta: float) -> void:
 		return
 	_build_rails()
 	_sync_drawn()
+	_sync_doors()
 	tp = _tp("drawn", tp)
 	_sync_launch_doors()
 	tp = _tp("launch_doors", tp)
@@ -1133,6 +1134,7 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 			Level3D.set_niches(Niches3D.cells(niches), Niches3D.forest_holes(niches) + Cave3D.forest_holes(caves))
 			Level3D.rock_rects = Cave3D.rock_rects(caves)
 			Level3D.set_shells(front, rows)
+			Building3D.door_cols = _door_cols()                    # ościeżnice drzwi do wyważenia (DESTRUCTION_CONTENT_PLAN.md W1)
 			Level3D.set_steps(Step3D.cells(rows, nat_steps), Step3D.hidden_posts(rows, nat_steps), Step3D.trunk_cells(rows, nat_steps))
 			Level3D.build_level(root, rows, trench)
 			Building3D.build(root, rows)],
@@ -3202,6 +3204,9 @@ func _sync_drawn() -> void:
 	for n in get_tree().get_nodes_in_group("breakables"):
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D) or n.get("rows") == null:
 			continue
+		if String(n.get("mat_id")).begins_with("door_"):
+			(n as CanvasItem).modulate = Color(1, 1, 1, 0)
+			continue                                              # drzwi budynku: skrzydło i duch w `_sync_doors`
 		var h := float(n.get("rows")) * Level3D.T
 		var mat_id := String(n.get("mat_id"))
 		var thin := mat_id in ["planks", "grate"]                  # deski i kratka: konstrukcja w poprzek korytarza na przezroczystej bryle (B2)
@@ -3289,6 +3294,54 @@ func _sync_drawn() -> void:
 			(pr[1] as Node3D).visible = (pr[0] as CanvasItem).is_visible_in_tree() and (pr.size() < 3 or String(pr[2]) != "flare" or pr[0].get("_active") == true)
 			if pr.size() > 2 and String(pr[2]) == "flare":        # flara jest przenoszona na miejsce wyjścia dopiero przy otwarciu ewakuacji
 				(pr[1] as Node3D).position = Level3D.px_to_m((pr[0] as Node2D).global_position) + Vector3(0.0, -0.03, 0.05)
+
+# ---------------------------------------------------------------- drzwi budynków (DESTRUCTION_CONTENT_PLAN.md W1)
+
+var _doors3d := {}                          ## nazwa przegrody drzwi → {"root": skrzydło (`Building3D.door_leaf`), "hint": duch albo null, "closed"}
+
+## Kolumna wejścia → materiał drzwi tej mapy (`level.door_defs`) dla ościeżnic w `Building3D.build`.
+func _door_cols() -> Dictionary:
+	var out := {}
+	if _level != null and _level.has_method("door_defs"):
+		for d: Dictionary in _level.door_defs():
+			out[int(d["col"])] = String(d["mat"])
+	return out
+
+## Drzwi budynków: skrzydło zamknięte, póki stoi przegroda `door_*` (level.gd `Door1…`), po wyważeniu — resztki; duch narzędzia
+## (`door_hint3d.gd`) tylko przy zamkniętych i rozpływa się przy wyważeniu. Węzły w `_geo` — przebudowa świata je zabiera, budujemy od nowa.
+func _sync_doors() -> void:
+	if _level == null or not _level.has_method("door_defs"):
+		return
+	for d: Dictionary in _level.door_defs():
+		var nm := String(d["name"])
+		var node: Node = _level.get_node_or_null(nm)
+		var closed := node != null and not node.is_queued_for_deletion() and float(node.get("hp")) > 0.0
+		var e: Dictionary = _doors3d.get(nm, {})
+		if e.is_empty() or not is_instance_valid(e["root"]) or String(e.get("map", "")) != String(_level.get("map_id")):
+			var at := Building3D.door_at(int(d["col"]), int(d["rb"]))
+			if at.is_empty():
+				continue
+			var root := Building3D.door_leaf(String(d["mat"]), at)
+			root.name = "Door_%s" % nm
+			_geo.add_child(root)
+			e = {"root": root, "hint": null, "closed": not closed, "at": at, "mat": String(d["mat"]), "map": String(_level.get("map_id"))}
+			_doors3d[nm] = e
+		if closed == bool(e["closed"]):
+			continue
+		e["closed"] = closed
+		var root3: Node3D = e["root"]
+		(root3.get_node("Closed") as Node3D).visible = closed
+		(root3.get_node("Broken") as Node3D).visible = not closed
+		var h: Variant = e["hint"]
+		if closed:
+			if h == null or not is_instance_valid(h):
+				var hn := Building3D.door_hint(String(e["mat"]), e["at"])
+				if hn != null:
+					_geo.add_child(hn)
+				e["hint"] = hn
+		elif h != null and is_instance_valid(h):
+			(h as Node).call("dissolve")
+			e["hint"] = null
 
 # ---------------------------------------------------------------- broń na ziemi i na stojakach
 
@@ -4697,6 +4750,8 @@ var _rubble := {}                           ## "zestaw:kształt" → [MultiMeshI
 ## Bryły pre-fraktury materiału `mat_id` (`art/items3d/fracture_<mat_id>.glb`) z materiałami gry: zewnątrz tekstura materiału, w przekroju
 ## świeży przełom. Tekstura triplanarna w przestrzeni bryły (świat „pływałby” po lecącym odłamku). Pusta lista = brak zestawu.
 func _fracture_meshes(mat_id: String) -> Array:
+	if mat_id == "door_wood":
+		mat_id = "planks"                                     # drzwi drewniane (DESTRUCTION_CONTENT_PLAN.md W1): drzazgi jak z barykady
 	if _frac_cache.has(mat_id):
 		return _frac_cache[mat_id]
 	var out: Array = []

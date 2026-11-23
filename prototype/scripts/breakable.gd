@@ -43,12 +43,14 @@ const TILE := 16.0
 ##   surface  powierzchnia trafienia kulą (Vfx.impact: odpryski i dźwięk)
 ##   blasts   ile wybuchów w zasięgu rozbija element (BARRIER_FIX_PLAN.md B0): wybuch zadaje co najmniej max_hp / blasts, nawet na brzegu
 ##            promienia — kratka pada od jednego granatu, gruz od dwóch (brak pola — zwykłe obrażenia wybuchu)
+##   charge_blasts  to samo dla ładunku burzącego (`placed.gd`, Combat.explode z `demolition`); brak pola — jak `blasts`
 ##   label    nazwa dla gracza w komunikacie o złym narzędziu (tłumaczona `tr`)
 ##   shot     wpływ pocisków (SHOOT_DESTRUCTION_PLAN.md S1): rodzaj trafienia → mnożnik obrażeń (0 — tylko wyszczerbienie, bez HP
 ##            i bez komunikatu); `pen_ref` — przebicie broni (WeaponDef.pen), przy którym kula i Brenneke ranią × 1 (mnożnik
 ##            clamp(pen / pen_ref, 0,25, 2)); `pen_cost` — ile energii przebicia zabiera przegroda (projectile.gd, brak — kula zostaje);
 ##            `hole_r` — promień przestrzeliny kuli i Brenneke (px), zamiast wyrwy wg siły trafienia
-## Na mapach są `brick`, `planks`, `grate` i `rubble` (gruz zawału, D3); `support` ma stempel (`support_beam.gd`), `sheet` i `glass` to wartości wstępne.
+## Na mapach są `brick`, `planks`, `grate`, `rubble` (gruz zawału, D3) i drzwi `door_*` (stała DOORS mapy); `support` ma stempel (`support_beam.gd`),
+## `sheet` i `glass` to wartości wstępne.
 const MATERIALS := {
 	"brick": {"hp": 120.0, "breaks": ["pick", "blast", "charge"], "n_hit": 1.5, "n_break": 6.0, "surface": "concrete", "label": "Bricked-up passage",
 		"hit_snd": ["amb_thud", 2, -4.0, 1.4], "break_snd": ["amb_thud", 2, 0.0, 0.7],
@@ -70,6 +72,20 @@ const MATERIALS := {
 	"rubble": {"hp": 200.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.0, "n_break": 6.0, "surface": "concrete", "blasts": 2, "label": "Rubble",
 		"hit_snd": ["amb_thud", 2, -3.0, 1.1], "break_snd": ["amb_thud", 2, 1.0, 0.6],
 		"debris": Color(0.42, 0.36, 0.3), "chips": 12, "chunks": 10, "dust": [1.5, 3.0], "mat": Mat.WORLD, "chip": [Color(1.5, 1.35, 1.2), Color(0.3, 0.26, 0.22)]},
+	# drzwi budynków 3D (DESTRUCTION_CONTENT_PLAN.md W1, stała DOORS mapy): drewniane jak deski (maczeta, kule, pazury Trzosków), metalowe — kilof,
+	# granat, szarża Rzeźnika, kule tylko wgniatają; zbrojone — tylko wybuch (2 granaty albo 1 ładunek burzący, `charge_blasts`)
+	"door_wood": {"hp": 90.0, "breaks": ["pick", "blade", "bullet", "pellet", "slug", "rail", "blast", "charge", "claw"], "n_hit": 1.2, "n_break": 4.0, "holes": 1.5, "bands": true, "surface": "wood", "label": "Wooden door",
+		"shot": {"bullet": 0.5, "slug": 1.0, "pellet": 1.0, "rail": 1.0, "pen_ref": 1.0, "pen_cost": 0.8, "hole_r": 0.45},
+		"hit_snd": ["wood_hit", 3, -7.0, 0.9], "break_snd": ["wood_break", 3, -1.0, 0.85],
+		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
+	"door_metal": {"hp": 220.0, "breaks": ["pick", "blast", "charge"], "n_hit": 3.0, "n_break": 6.0, "surface": "metal", "blasts": 1, "label": "Metal door",
+		"shot": {"bullet": 0.0, "slug": 0.0, "pellet": 0.0, "rail": 0.0},
+		"hit_snd": ["impact_hard", 3, -2.0, 0.75], "break_snd": ["impact_hard", 3, 3.0, 0.5],
+		"debris": Color(0.38, 0.27, 0.2), "chips": 5, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
+	"door_steel": {"hp": 400.0, "breaks": ["blast"], "n_hit": 2.0, "n_break": 8.0, "surface": "metal", "blasts": 2, "charge_blasts": 1, "label": "Reinforced door",
+		"shot": {"bullet": 0.0, "slug": 0.0, "pellet": 0.0, "rail": 0.0},
+		"hit_snd": ["impact_hard", 3, -2.0, 0.6], "break_snd": ["impact_hard", 3, 4.0, 0.4],
+		"debris": Color(0.3, 0.3, 0.32), "chips": 6, "dust": [0.3, 1.5], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
 	"support": {"hp": 80.0, "breaks": ["pick", "bullet", "pellet", "slug", "blast", "charge"], "n_hit": 1.2, "n_break": 5.0,
 		"hit_snd": ["amb_creak", 3, -6.0, 1.0], "break_snd": ["amb_creak", 3, 2.0, 0.6],
 		"debris": Color(0.4, 0.29, 0.17), "chips": 8, "dust": [0.5, 2.0], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
@@ -205,7 +221,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 		return {"hit": false, "dealt": 0.0, "killed": false, "mat": 0}
 	if kind == "blast" and m.has("blasts"):
 		info = info.duplicate()                   # słownik należy do wołającego (Combat.explode)
-		info["amount"] = maxf(float(info["amount"]), max_hp() / float(m["blasts"]) + 0.01)
+		var nb := float(m.get("charge_blasts", m["blasts"])) if bool(info.get("demolition", false)) else float(m["blasts"])
+		info["amount"] = maxf(float(info["amount"]), max_hp() / nb + 0.01)
 	_take_damage(float(info["amount"]), kind, info.get("pos", body_center()))
 	_batch_noise_add(float(m["n_hit"]) * float(N_KIND.get(kind, 1.0)))
 	var broken := hp <= 0.0

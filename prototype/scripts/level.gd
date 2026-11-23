@@ -179,6 +179,7 @@ var niches: Array = []                    ## NICHES z danych mapy: wnęki ze św
 var _step_deck := {}                      ## Vector2i(c, r) → true: kafle pomostów z STEPS (`mantle_deck`, liczone przy pierwszym pytaniu)
 var steps: Array = []                     ## STEPS z danych mapy: pomosty z natury i z historii miejsca (`step3d.gd`, STEPS_PLAN.md); czysta kosmetyka
 var front: Array = []                     ## FRONT z danych mapy: zakresy pierwszego planu przed płaszczyzną gry (`front3d.gd`); czysta kosmetyka
+var doors := {}                            ## DOORS z danych mapy (DESTRUCTION_CONTENT_PLAN.md W1): kolumna wejścia budynku 3D → {"mat": wood/metal/steel, "start": "broken"?}
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
 var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
 var _power_crates: Array = []             ## POWER_CRATES z danych mapy: [kolumna, rząd, broń, naboje] — skrzynie mocy (FUN_PLAN.md P1.3, pickup „power”)
@@ -302,6 +303,7 @@ func _load(id: String) -> void:
 	caves = ((m as GDScript).get_script_constant_map().get("CAVES", []) as Array).duplicate()
 	front = ((m as GDScript).get_script_constant_map().get("FRONT", []) as Array).duplicate()
 	front_skip = ((m as GDScript).get_script_constant_map().get("FRONT_SKIP", []) as Array).duplicate()
+	doors = ((m as GDScript).get_script_constant_map().get("DOORS", {}) as Dictionary).duplicate(true)
 	streams = ((m as GDScript).get_script_constant_map().get("STREAMS", []) as Array).duplicate()
 	_power_crates = ((m as GDScript).get_script_constant_map().get("POWER_CRATES", []) as Array).duplicate()
 	_strongboxes = ((m as GDScript).get_script_constant_map().get("STRONGBOXES", []) as Array).duplicate()
@@ -401,9 +403,9 @@ func _wall_rain_mat(wall_name: String) -> String:
 	for d in _wall_defs:
 		if String(d["name"]) == wall_name:
 			match String(d.get("material", "")):
-				"planks":
+				"planks", "door_wood":
 					return "wood"
-				"grate":
+				"grate", "door_metal", "door_steel":
 					return "metal"
 			return "concrete"
 	return "concrete"
@@ -1439,7 +1441,102 @@ func _register_walls() -> void:
 			if open:
 				_opened_walls.append(n)                      # pusty otwór: dla nawigacji przejście, węzła przegrody nie ma
 			_wall_defs.append({"name": n, "pos": Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE), "rows": rows, "cells": cells, "material": WALL_MARKS[mark][1], "start_open": open})
+	_register_doors()
 	_register_supports()
+
+## Drzwi budynków 3D (DESTRUCTION_CONTENT_PLAN.md W1): wejście budynku (`building_doorways`) z wpisem w DOORS mapy to przegroda `door_<mat>`
+## na kaflach otworu (Door1… od lewej); `"start": "broken"` — wyważone na starcie, jak pusty otwór „:” (skrzydło leży, przejście wolne).
+func _register_doors() -> void:
+	var i := 0
+	for dw: Dictionary in building_doorways(front, _map):
+		var d: Variant = doors.get(int(dw["col"]))
+		if not d is Dictionary:
+			continue
+		i += 1
+		var n := "Door%d" % i
+		var open := String((d as Dictionary).get("start", "")) == "broken"
+		var cells: Array = []
+		for r in range(int(dw["rb"]), int(dw["rt"]) - 1, -1):
+			cells.append(Vector2i(int(dw["col"]), r))
+			if not open:
+				_wall_cells[Vector2i(int(dw["col"]), r)] = n
+		if open:
+			_opened_walls.append(n)
+		_wall_defs.append({"name": n, "pos": Vector2(int(dw["col"]) * TILE + TILE * 0.5, (int(dw["rb"]) + 1) * TILE), "rows": cells.size(), "cells": cells,
+			"material": "door_" + String((d as Dictionary).get("mat", "metal")), "start_open": open, "door": true, "side": int(dw["side"])})
+
+const BLD_SOLID := "#CM"           ## znaki muru budynku 3D (jak Level3D.BLD_CH)
+
+## Wejścia budynków 3D (wpisy FRONT z kluczem "build"): w kolumnach ścian szczytowych c0 i c1 ciąg wierszy bez muru i bez okna `|`, który
+## schodzi do podłogi (r1) — drzwi (do 2 wierszy) albo brama. Ta sama reguła co otwory widoku 3D (Level3D._plan_building).
+## [{col, side (−1 zachód / 1 wschód), rt, rb, kind, c0, c1}] od lewej.
+static func building_doorways(fr: Array, rows: Array) -> Array:
+	var out: Array = []
+	var ch := func(c: int, r: int) -> String:
+		if r < 0 or r >= rows.size() or c < 0 or c >= (rows[r] as String).length():
+			return "#"
+		return (rows[r] as String)[c]
+	for e in fr:
+		if not (e is Dictionary) or not (e as Dictionary).has("build"):
+			continue
+		var r0 := int(e["r0"])
+		var r1 := int(e["r1"])
+		for side in [-1, 1]:
+			var c := int(e["c0"]) if side < 0 else int(e["c1"])
+			var r := r0 + 1
+			while r < r1:
+				if BLD_SOLID.contains(String(ch.call(c, r))) or String(ch.call(c, r)) == "|":
+					r += 1
+					continue
+				var rt := r
+				while r < r1 and not BLD_SOLID.contains(String(ch.call(c, r))) and String(ch.call(c, r)) != "|":
+					r += 1
+				if r == r1:
+					out.append({"col": c, "side": side, "rt": rt, "rb": r - 1, "kind": "door" if r - rt <= 2 else "gate", "c0": int(e["c0"]), "c1": int(e["c1"])})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["col"]) < int(b["col"]))
+	return out
+
+## Test map (zasada 1 planu drzwi): drzwi drewniane i metalowe otwarte jak po wyważeniu (maczetą albo kilofem, które ma każdy) — cele
+## muszą być osiągalne bez materiałów wybuchowych, więc zamknięte zostają tylko zbrojone. Zwraca nazwy otwartych (do `close_doors_after_check`).
+func open_doors_for_check() -> Array:
+	var out: Array = []
+	for wd: Dictionary in _wall_defs:
+		var n := String(wd["name"])
+		if bool(wd.get("door", false)) and String(wd["material"]) != "door_steel" and not _opened_walls.has(n):
+			_open_wall(n, false)
+			out.append(n)
+	return out
+
+func close_doors_after_check(names: Array) -> void:
+	for wd: Dictionary in _wall_defs:
+		if names.has(String(wd["name"])):
+			_close_wall(wd)
+
+## Test map: wpisy DOORS bez wejścia budynku (literówka w kolumnie) — błędy; wejścia budynków bez wpisu — lista (W2 domknie wszystkie).
+func doors_checked() -> Array:
+	var bad: Array = []
+	var free: Array = []
+	var cols := {}
+	for dw: Dictionary in building_doorways(front, _map):
+		cols[int(dw["col"])] = true
+		if not doors.has(int(dw["col"])):
+			free.append("kol. %d (%s)" % [int(dw["col"]), String(dw["kind"])])
+	for c in doors:
+		if not cols.has(int(c)):
+			bad.append("DOORS: kolumna %d to nie wejście budynku 3D" % int(c))
+		elif not ["wood", "metal", "steel"].has(String((doors[c] as Dictionary).get("mat", ""))):
+			bad.append("DOORS: kolumna %d — nieznany materiał %s" % [int(c), str((doors[c] as Dictionary).get("mat"))])
+	return [bad, free]
+
+## Drzwi tej mapy dla widoku 3D: [{name, col, rb, rows, mat (wood/metal/steel), side}].
+func door_defs() -> Array:
+	var out: Array = []
+	for wd: Dictionary in _wall_defs:
+		if bool(wd.get("door", false)):
+			var cell: Vector2i = (wd["cells"] as Array)[0]
+			out.append({"name": String(wd["name"]), "col": cell.x, "rb": cell.y, "rows": int(wd["rows"]),
+				"mat": String(wd["material"]).trim_prefix("door_"), "side": int(wd["side"])})
+	return out
 
 ## Stemple „!” (D3): od znacznika w górę do stropu; każdy trzyma najbliższą strefę zawału „^” w zasięgu SUPPORT_LINK (`wall`, pusty —
 ## stempel bez strefy, maptest to zgłasza). Nazwy od lewej: Support1…
