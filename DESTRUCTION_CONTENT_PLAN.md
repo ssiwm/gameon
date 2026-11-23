@@ -323,11 +323,41 @@ kopalni 1.1 (wiersze 31–33) go spełnia.
 - Modele zawału 2–3 rzędy z `tools/rubble_pile_gen.py` (dziś są tylko 4–5).
 - `--maptest` (`cave_checked`), `--finaletest` (zawał finału 1.1 otwiera wszystkie strefy).
 
-### B1 — osłony na arenie Pijawki
+### B1 — osłony na arenie Pijawki (W6) — plan przyjęty 2026-11-23
 
-Dziś na B1 nic się nie niszczy. Pomysł: osłony (deski, blacha), które boss rozbija, więc kryjówki znikają z czasem walki. Najpierw
-trzeba sprawdzić ataki Pijawki (`--leechtest`: zasadzka, plucie, QTE), czy osłona w ogóle coś zmienia. Wtedy osobny mini-plan
-w tym pliku. Zalecam po drzwiach.
+Dziś na B1 nic się nie niszczy. Pomysł: osłony, które boss rozbija, więc kryjówki znikają z czasem walki.
+
+**Sprawdzenie mechaniki (2026-11-23):**
+- Kwas Pijawki (faza 2+, `acid_spit.gd`) leci łukiem po promieniu z maską brył (1) i znika na pierwszej bryle — przegroda go zatrzymuje.
+  Przegląd 2026-11-01 (`leech.gd`): kwas to 15 z 19 upadków na B1.
+- Geometria (tor ze wzoru `leech.gd _spit`: wylot 40 px nad wodą, lot `dist / 250` w 0,35–1,2 s, grawitacja 520): płyta 2 rzędów tuż przy graczu
+  na wysokiej kładce (w. 27), od strony Pijawki, zatrzymuje **16 z 16** łuków z 40–340 px; 1 rząd — 13 z 16 (dalekie łuki spadają za nią);
+  z kaflem odstępu — 13 z 16. Ta sama płyta zatrzymuje kule gracza strzelającego w dół do wody: za osłoną bezpiecznie, ale bez obrażeń.
+- Brzeg i woda: osłona nic nie daje (zasadzka gryzie od dołu, fala przypływu zalewa niskie kładki i brzeg).
+- B1 nie ma punktu kontrolnego bossa (`mission._start_boss`: `kind == "boss"`) — wipe to restart walki, osłony wracają z resetem przegród.
+- `--leechtest` PASS. **Danych z gry brak:** ostatnie podejścia do B1 w dzienniku są z 13–21 października (1.7.211–1.7.340), sprzed HP 1300,
+  znacznika plucia i rozróżnienia kwasu w dzienniku — `tools/leech_report.py` liczy tam 19 z 23 upadków jako `leech` i 0 jako `acid`.
+
+**Decyzje (przyjęte zgodnie z zaleceniami):**
+1. **Najpierw pomiar (W6-0):** 2–3 podejścia autora do B1 na 1.7.661 z dziennikiem; `python tools/leech_report.py --since 2026-11-23` — upadki
+   wg źródła (`acid` / `leech` / przyzwane), czas, wynik, HP i faza bossa na końcu, flary. W6-1 ma sens, gdy kwas dalej jest głównym źródłem.
+2. **6 płyt z blachy** (`sheet`, dziś na mapach 0) **2 rzędy** na wysokich kładkach, po dwie na kładkę. Miejsca z symulacji (gracz w każdej kolumnie
+   kładki, Pijawka w każdej kolumnie basenu w zasięgu plucia 340 px; miara — ile kafli do najbliższego miejsca, w którym płyta zatrzymuje łuk):
+   kładka 31–47 → kol. **37 i 46** (śr. 2,6 kafla), 57–75 → **58 i 74** (3,8), 85–110 → **86 i 99** (3,8). Jedna płyta na kładkę dawała 11–20 kafli.
+3. **Płyta nie blokuje ruchu** (jak stempel: gracz przechodzi przed nią, w 3D stoi tuż za płaszczyzną gry), zatrzymuje kwas i kule. Wysokie kładki
+   to droga ucieczki przed falą; pełna przegroda 2 rzędów (32 px) to granica skoku (ok. 42 px).
+4. **Kwas przeżera płytę w 3 trafieniach** (maska uszkodzeń: blacha z dziurami, potem resztka) — osłony znikają w tempie plucia, od fazy 2 coraz
+   szybciej. Wariant na później (po pomiarze): w fazie 3 Pijawka przepływa na stronę bez osłony, zanim plunie.
+5. **Bez zmian balansu bossa** (HP, czasy) w W6-1; rytm walki: chowasz się na zapowiedź plucia (znacznik), wychodzisz strzelać w oknie wynurzenia
+   po pluciu (1,1 s).
+
+**Etapy:**
+- **W6-0** (bez zmian w grze): pomiar z podejść autora (`tools/leech_report.py`), symulacja miejsc (wyżej) — **czeka na podejścia autora**.
+- **W6-1** (1 PR): `COVERS` w danych B1 (kolumna, rząd, rzędy, materiał); płyta jako przegroda bez kolizji ruchu, która zatrzymuje kwas
+  (`acid_spit.gd`) i kule; rodzaj trafienia `acid` rani `sheet`; obraz 3D blachy na podporach z przeżarciem, syk i plama przy trafieniu;
+  reset przy wipe, dołączający, dziennik (`break` z `src: leech`); testy: `--leechtest` (płyta zatrzymuje kwas, 3 trafienia ją niszczą,
+  kula gracza przez nią nie przechodzi, ruch tak, wipe przywraca), `--maptest`, `test_front.gd` (przekrój hali B1), `test_net_session.sh`;
+  po wdrożeniu pomiar — odsetek upadków od kwasu i czas walki.
 
 ### Spadająca kładka (zaległe z D3)
 
@@ -346,7 +376,7 @@ i tylko jeśli drzwi i zawał się sprawdzą.
 | **W3** dźwięk i wyważenie — **zrobiony** (1.7.658, odsłuch A/B do potwierdzenia) | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
 | **W4** barykady przy drzwiach — **zrobiony** (1.7.659) | 1 | miejsca barykad przy budynkach z generatorami, przegląd barykad na trasie | niskie |
 | **W5** zawał 1.1 — **zrobiony** (1.7.660) | 1 | stempel i strefa w galerii, modele 2–3 rz. | średnie |
-| **W6** B1 osłony | 0–1 | najpierw sprawdzenie mechaniki bossa, potem decyzja | średnie |
+| **W6** B1 osłony — plan przyjęty, W6-0 czeka na podejścia autora | 0–1 | pomiar z podejść (`tools/leech_report.py`), potem 6 płyt z blachy na wysokich kładkach przeciw kwasowi | średnie |
 | **W7** spadająca kładka | 1–2 | osobny węzeł, nawigacja, dyrektor | wysokie |
 
 Każdy PR zmieniający grę podbija `config/version` i dopisuje wiersz do `CHANGELOG.md`. README i GDD tylko tam, gdzie opisują
