@@ -869,6 +869,13 @@ func _destruction_sig() -> String:
 	if pl != null:
 		var hl: PackedFloat32Array = pl.holes
 		st += " pl=%d/%d/%s" % [roundi(float(pl.hp)), hl.size() / 3, str(hl).md5_text().substr(0, 8)]   # ostrzał desek (S1): HP i dziury
+	var drs := PackedStringArray()
+	for d: Dictionary in level.door_defs():                      # drzwi (W4): c — zamknięte, o — wyważone, pN — zabite N deskami; i czym wyważone
+		var dn := String(d["name"])
+		var ds := "o" if level._opened_walls.has(dn) else ("p%d" % level.boards_of(dn) if level.door_planks.has(dn) else "c")
+		drs.append("%s:%s%s" % [dn, ds, String((level.break_how.get(dn, [""]) as Array)[0])])
+	if not drs.is_empty():
+		st += " dr=%s" % ",".join(drs)
 	return st
 
 ## Deski schowka na 1.2 (kol. 158) — cel kul w teście sieci zniszczeń (SHOOT_DESTRUCTION_PLAN.md S1); null na innych mapach.
@@ -897,6 +904,12 @@ func _destruction_net_host() -> void:
 	level.add_planks(2)
 	for i in 2:
 		level.nail_board("Opening1")                                  # …i pusty otwór zabity dwiema deskami (wipe go otwiera, migawka zostawia)
+	if not level.wall_def("Door1").is_empty():                        # W4: brama hali stacji wyważona kilofem i zabita jedną deską, wschodnia (wyważona
+		level.add_planks(3)                                           # na starcie) dwiema — dołączający dostaje wyważenie, przyczynę i barykadę
+		level.break_wall("Door1", "pick", 1)
+		level.nail_board("Door1")
+		for i in 2:
+			level.nail_board("Door2")
 	await get_tree().create_timer(1.0).timeout
 	var pick: RefCounted = Weapons.def(Weapons.KILOF)
 	for i in 2:
@@ -2610,6 +2623,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				var wn := a.substr("--shotwall=".length())
 				for b in OS.get_cmdline_user_args():                    # --shotboards=N: najpierw N desek przybitych w tej przegrodzie (pusty otwór `:`, D2b)
 					if b.begins_with("--shotboards="):
+						if bool(level.wall_def(wn).get("door", false)) and not level._opened_walls.has(wn):
+							level.break_wall(wn, "pick", 1)                 # zamknięte drzwi: najpierw wyważone kilofem, potem barykada (W4)
 						level.plank_stock = int(b.substr("--shotboards=".length()))
 						for k in int(b.substr("--shotboards=".length())):
 							level.nail_board(wn)

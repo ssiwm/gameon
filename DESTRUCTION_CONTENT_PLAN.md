@@ -27,6 +27,16 @@ Następny krok: W2b albo W3 (dźwięk i wyważenie).
 
 **Stan (2026-11-23, W3):** W3 zrobiony w 1.7.658 (gałąź `feat/doors-w3`, stos na W2). Przyczyna i strona rozbicia idą do wszystkich peerów (`level.break_wall(nazwa, how, dir)`, `break_how`; dołączający i migawka bossa też), a widok 3D buduje wg nich wyważone skrzydło: metalowe drzwi podważone kilofem — otwarte na tylnym zawiasie z wyrwanym górnym (przodem do kamery, za pasem gry); wybite szarżą — płasko po stronie upadku; wysadzone i zawsze zbrojone — dalej, skręcone, osmalone (`*_burnt`, ten sam shader); brama kilofem wisi na szynie, wysadzona leży; drewno wysadzone — osmalone deski dalej. Kierunek z wektora ciosu / wybuchu / szarży zamiast ziarna. Dźwięk: `door_metal_hit` (Sound Spark „Metal Sheets Sledgehammer Hit 02” + RZ Post „Creepy Door, Metal Door Medium Impact 01”) i `door_metal_break` (Kopeikin „dry rusty metal impact with collapse 08” + Mechanical Wave „Drop Fall Metal Rattle Scrap Debris 06”), synteza w repo; **wybór nagrań czeka na odsłuch A/B autora** (`C:\deadair87\odsluch\drzwi_w3.html`, `audio_ab.py --licensed --only door_metal`). Przycięcie: wspólny shader ducha narzędzia (każde drzwi kompilowały własny — 232 ms po odbudowie drzwi na 1.2), rozgrzewany pod planszą z osmalonymi materiałami; `--hitchtest --hitchdoor`. Wgniecenia od kul w metalu bez obrazu (kula w metal daje iskrę i ślad trafienia jak dotąd). Zrzuty: `C:\deadair87\shots_doors\w3`.
 
+**Stan (2026-11-23, W4):** W4 zrobiony w 1.7.659 (gałąź `feat/doors-w4`). Wyważone drzwi każdego materiału (także wyważone na starcie, decyzja 2)
+to miejsce barykady jak pusty otwór `:` (`barricade_spot.gd` przy każdych drzwiach): w otworze staje przegroda `planks` z pasami (deska na kafel,
+brama 4, drzwi 2), `level.door_planks` pamięta, że to barykada, a nie drzwi — rozbita nie zmienia przyczyny wyważenia (`break_how`, obraz skrzydła),
+wipe stawia z powrotem drzwi, punkt kontrolny bossa — barykadę (`breakables_state.door_planks`), dołączający dostaje wyważenie z przyczyną i potem
+barykadę. Obraz: `Building3D.door_boards` — po dwie deski na pas w poprzek otworu przed licem, między słupkami ościeżnicy, krzywo; pas znika z drzazgą
+jak pas drewnianej bramy. Tym samym hala stacji i pompownia 1.2 (generatory) mają miejsce barykady w obu wejściach. Przegląd barykad na trasie
+(`_shortcut_report`): `%` i `:` na 1.1–1.3 to skrytki albo ślepe zaułki (objazd „brak”, trasa misji bez zmian) — bez zmian w mapach, pomiar w sesjach
+(`barricade` w dzienniku ma nazwę przegrody, `Door*` = barykada w drzwiach). Zrzuty: `C:\deadair87\shots_doors\w4`.
+Następny krok: W5 (zawał 1.1) albo W2b (zbrojone drzwi do nowych pomieszczeń z łupem).
+
 ## Skąd ten plan
 
 Analiza 2026-11-22 („zweryfikuj możliwość dodania destrukcji środowiska”): niszczenie otoczenia już jest i jest używane. Brakuje go
@@ -280,7 +290,7 @@ i tylko jeśli drzwi i zawał się sprawdzą.
 | **W1** mechanika + posterunek 1.3 | 1 | materiały `door_*`, `DOORS`, rejestracja w `level.gd`, komunikaty, pasek akcji, wrogowie i bot, `--destructiontest` sekcja drzwi, `--maptest`, sieć (`door=` w `_destruction_sig`), dziennik `break` z `door_*`, 3D wg wyniku W0 | średnie |
 | **W2** wszystkie budynki — **zrobiony** (1.7.657) | 1 | bramy na całą wysokość (decyzja 4 zmieniona: Rzeźnik nie mieści się w furtce), `DOORS` na 1.2 i 1.3, hala Żyły z punktem kontrolnym bossa, sprawdzenie wysokich wrogów, `--veintest`, `--funtest` | średnie (projekt map) |
 | **W3** dźwięk i wyważenie — **zrobiony** (1.7.658, odsłuch A/B do potwierdzenia) | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
-| **W4** barykady przy drzwiach | 1 | miejsca barykad przy budynkach z generatorami, przegląd barykad na trasie | niskie |
+| **W4** barykady przy drzwiach — **zrobiony** (1.7.659) | 1 | miejsca barykad przy budynkach z generatorami, przegląd barykad na trasie | niskie |
 | **W5** zawał 1.1 | 1 | stempel i strefa w galerii, modele 2–3 rz. | średnie |
 | **W6** B1 osłony | 0–1 | najpierw sprawdzenie mechaniki bossa, potem decyzja | średnie |
 | **W7** spadająca kładka | 1–2 | osobny węzeł, nawigacja, dyrektor | wysokie |

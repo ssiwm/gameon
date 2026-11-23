@@ -168,8 +168,9 @@ wait $CB $CA $HOST
 # strefa wydobycia 1.2 (D5 część 3) nie należy do tej sekcji — skrót stref („ dig1=…” na końcu stanu) odcięty, strefy sprawdza sekcja t_dig
 # deski schowka ostrzelane kulami (` pl=HP/dziur/suma`, SHOOT_DESTRUCTION_PLAN.md S1) sprawdza osobno `pnet` — w `dnet` odcięte, a powtórzone
 # po odcięciu stany zlane (`uniq`)
-dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //; s/ dig[0-9]*=.*$//; s/ pl=[^ ]*//" | uniq | tr '\n' ';'; }
+dnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | sed "s/.*\] $1 map=z1_m2 //; s/ dig[0-9]*=.*$//; s/ pl=[^ ]*//; s/ dr=[^ ]*//" | uniq | tr '\n' ';'; }
 pnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | grep -a -o " pl=[^ ]*" | uniq | tr '\n' ';'; }
+drnet() { grep -a "\[DESTRUCTION-NET\] $1 map=z1_m2 " "$2" | grep -a -o " dr=[^ ]*" | uniq | tr '\n' ';'; }
 H=$(dnet host "$LOG/dnet_host.log")
 IFS=';' read -r S0 SC S1 S2 S3 S4 _ <<<"$H"
 S0X="${S0% bar=0:0 crate=ok lamp=lit win=ok}"        # stan bez desek, skrzyni, lampy i okna (`bar=desek:maska pasów`, S2)
@@ -198,6 +199,19 @@ else
 	[ "$PA" = "$PH" ] && ok "klient od początku: te same HP i przestrzeliny desek co host" || fail "klient A deski: $PA (host: $PH)"
 	PB=$(pnet client "$LOG/dnet_b.log")
 	[ "$PB" = "$P1;$P2;" ] && ok "dołączający: przestrzeliny desek z synchronizacji (osobno od plam), potem wipe jak u hosta" || fail "klient B deski: $PB (host: $PH)"
+fi
+# drzwi budynków (W4): hala stacji — zachodnia brama wyważona kilofem i zabita deską, wschodnia (wyważona na starcie) dwiema → migawka je trzyma
+# → wipe: zachodnia znów zamknięta, wschodnia wolna; u klienta to samo na żywo, u dołączającego wyważenie z przyczyną i barykady z `send_walls_to`
+DH=$(drnet host "$LOG/dnet_host.log")
+IFS=';' read -r D0 D1 D2 _ <<<"$DH"
+if [ "$D0" != " dr=Door1:c,Door2:o,Door3:c,Door4:o" ] || [ "$D1" != " dr=Door1:p1pick,Door2:p2,Door3:c,Door4:o" ] || [ "$DH" != "$D0;$D1;$D0;" ]; then
+	fail "host: drzwi — zły przebieg ($DH)"
+else
+	ok "host: brama wyważona kilofem i zabita deską, wyważona na starcie dwiema → migawka → wipe ($DH)"
+	DA=$(drnet client "$LOG/dnet_a.log")
+	[ "$DA" = "$DH" ] && ok "klient od początku: te same drzwi i barykady w nich co host" || fail "klient A drzwi: $DA (host: $DH)"
+	DB=$(drnet client "$LOG/dnet_b.log")
+	[ "$DB" = "$D1;$D0;" ] && ok "dołączający: wyważone drzwi z przyczyną i barykady w nich z synchronizacji, potem wipe jak u hosta" || fail "klient B drzwi: $DB (host: $DH)"
 fi
 
 echo "== zawał (t_mine) =="
