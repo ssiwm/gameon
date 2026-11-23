@@ -269,15 +269,18 @@ func _movement() -> void:
 func _turn() -> void:
 	_calm()
 	var cd := Difficulty.m("boss_cd")
+	var bot := _bot()
+	if bot != null:
+		_place(bot, Vector2(-4000, -4000))
+	# kule bota jeszcze w locie trafiają Żyłę i robią z bota „najgroźniejszego” — obrażenia czyścimy dopiero po nich (W2:
+	# z drzwiami hali bot stoi inaczej i strzelał tuż przed tym punktem)
+	await get_tree().create_timer(0.5).timeout
 	boss._up_t = 0.0
 	boss._burst_n = 0
 	boss._pain.clear()
 	boss._dmg_by.clear()
 	boss.face = 0.0
 	boss._face_goal = 0.0
-	var bot := _bot()
-	if bot != null:
-		_place(bot, Vector2(-4000, -4000))
 	_place(player, boss.global_position + Vector2(-40, 0))
 	await get_tree().create_timer(boss.TURN_T * cd * 0.5 + 0.15).timeout
 	check("między atakami obraca się do najbliższego człowieka (lewo, face %.2f)" % boss.face, is_equal_approx(float(boss.face), -1.0))

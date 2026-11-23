@@ -85,6 +85,13 @@ const STEPS := [
 	{"kind": "pole", "decks": [[24, 158], [22, 160], [20, 162]], "posts": [164, 175]},
 	{"kind": "antenna", "decks": [[24, 252], [22, 254], [20, 256], [18, 258]], "legs": [259]},
 ]
+## Drzwi budynków 3D (DESTRUCTION_CONTENT_PLAN.md W2, decyzje 2–4): kolumna wejścia → materiał; `"start": "broken"` — wyważone na starcie.
+## Na trasie po jednych zamkniętych na budynek, od zachodu. Hala stacji (cegła): brama drewniana (maczeta), wschodnia wyważona.
+## Pompownia: brama metalowa (kilof, granat, szarża Rzeźnika z parteru), wschodnia wyważona. Bramy na całą wysokość otworu (bez furtki).
+const DOORS := {
+	66: {"mat": "wood"}, 100: {"mat": "wood", "start": "broken"},
+	216: {"mat": "metal"}, 246: {"mat": "metal", "start": "broken"},
+}
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od
 ## podziemnej hali — wchodzi się tylko przez rozbite przejście, z boku drogi do generatorów.

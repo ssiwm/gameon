@@ -309,7 +309,7 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 		# (do 1.7.593 skrzydło wchodziło w pilaster i cokół, a skrzydło bramy hali wystawało 0,5 m za ścianę tylną; przegląd budynków 2026-11-17)
 		var taken: Array = []                                 # [z0, z1] zajęte na licu zewnętrznym
 		for h: Array in doors:
-			for lf: Array in _leaves(h):
+			for lf: Array in _room(h):
 				taken.append([float(lf[0]), float(lf[1])])
 		var pil: Array = []
 		if not buried:
@@ -317,7 +317,7 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 			for h: Array in doors:
 				var lo := float(h[0]) - JAMB - 0.35            # bez skrzydła z tej strony: pilaster tuż przy ościeżnicy
 				var hi := float(h[1]) + JAMB + 0.35
-				for lf: Array in _leaves(h):
+				for lf: Array in _room(h):
 					if float(lf[1]) <= float(h[0]):
 						lo = minf(lo, float(lf[0]) - PIL_GAP - PILASTER[0] * 0.5)
 					else:
@@ -412,7 +412,17 @@ static func _leaves(h: Array) -> Array:
 			return [[z1 + JAMB + 0.02, z1 + JAMB + 0.02 + (z1 - z0) + 2.0 * JAMB]]
 	return []
 
-# ---------------------------------------------------------------- drzwi do wyważenia (DESTRUCTION_CONTENT_PLAN.md W0–W1)
+## Miejsce zajęte na licu zewnętrznym przez skrzydła otworu h (pilastry i okno je omijają): jak `_leaves`, a przy bramie do wyważenia
+## z metalu albo stali — pas obok otworu, gdzie wisi wyrwane skrzydło i biegnie szyna (`door_leaf` „Torn”, W2).
+static func _room(h: Array) -> Array:
+	if h.size() > 5 and String(h[5]) != "":
+		if String(h[4]) == "gate" and String(h[5]) != "wood":
+			var z1: float = h[1]
+			return [[z1 + DOOR_JW, z1 + DOOR_JW + 0.22 + (z1 - float(h[0]))]]
+		return []
+	return _leaves(h)
+
+# ---------------------------------------------------------------- drzwi do wyważenia (DESTRUCTION_CONTENT_PLAN.md W0–W2)
 
 ## Kolumna wejścia budynku → materiał drzwi (wood / metal / steel) z DOORS mapy; ustawia widok 3D przed `build` (`level.door_defs`).
 static var door_cols := {}
@@ -429,7 +439,8 @@ static var _door_mats := {}
 static func door_mats() -> Dictionary:
 	if _door_mats.is_empty() or not is_instance_valid(_door_mats.get("dmetal")):
 		_door_mats = {
-			"dwood": _door_mat(Level3D.make_pbr("plank", 0.9, Color(0.52, 0.40, 0.28), 0.9), Color(0.95, 0.82, 0.66)),
+			# drewno: tekstura słupów (słoje pionowe, bez styków desek) — `plank` w rzucie 0,9/m na cienkich skrzynkach wyglądała jak cegła (W0)
+			"dwood": _door_mat(Level3D.make_pbr("post", 1.2, Color(0.52, 0.40, 0.28), 0.9), Color(0.92, 0.80, 0.66)),
 			"dmetal": _door_mat(Level3D.make_pbr("metal", 0.40, Color(0.36, 0.38, 0.40), 0.55, 1.0, 0.7, false, "rust"), Color(0.95, 0.42, 0.30)),   # minia
 			"dsteel": _door_mat(Level3D.make_pbr("metal", 0.40, Color(0.16, 0.17, 0.18), 0.45, 1.0, 0.9, false, ""), Color(0.42, 0.43, 0.45)),
 			"dyel": Level3D.make_mat(Color(0.78, 0.58, 0.08), 0.7, 0.06, 0.2),
@@ -443,8 +454,10 @@ static func _door_mat(base: StandardMaterial3D, tint: Color) -> StandardMaterial
 	m.albedo_color = tint
 	return m
 
-## Wysokość skrzydła w otworze od y0 do y1 (m).
-static func _door_h(y0: float, y1: float) -> float:
+## Wysokość skrzydła w otworze od y0 do y1 (m): drzwi do DOOR_H, brama na całą wysokość otworu (W2, bez furtki).
+static func _door_h(y0: float, y1: float, kind := "door") -> float:
+	if kind == "gate":
+		return y1 - y0 - DOOR_HH - 0.02
 	return minf(DOOR_H, y1 - y0 - DOOR_HH - 0.02)
 
 ## Ościeżnica drzwi do wyważenia w materiale drzwi: słupki, nadproże i daszek wystające DOOR_P poza oba lica ściany — widać je poza obrysem
@@ -455,8 +468,12 @@ static func _door_frame(box: Callable, side: int, xo: float, xi: float, h: Array
 	var z0: float = h[0]
 	var z1: float = h[1]
 	var y0: float = h[2]
-	var hd := _door_h(y0, float(h[3]))
+	var hd := _door_h(y0, float(h[3]), String(h[4]))
 	var s := float(side)
+	if String(h[4]) == "gate" and mat != "wood":            # brama przesuwna: szyna nad miejscem, gdzie wisi wyrwane skrzydło (`door_leaf` „Torn”)
+		var xr0 := xo + s * RAIL_X[0]
+		var xr1 := xo + s * RAIL_X[1]
+		box.call("steel", Vector3(minf(xr0, xr1), y0 + hd + 0.02, z1 + DOOR_JW), Vector3(maxf(xr0, xr1), y0 + hd + 0.14, z1 + DOOR_JW + 0.2 + (z1 - z0)))
 	for face: Array in [[xo, s], [xi, -s]]:                  # lico zewnętrzne (na zewnątrz) i wewnętrzne (do środka)
 		var xf: float = face[0]
 		var d: float = face[1]
@@ -486,12 +503,15 @@ static func door_at(col: int, rb: int) -> Dictionary:
 			var xo := float(int(b["c0"])) * T if side < 0 else float(int(b["c1"]) + 1) * T
 			var ys := -float(int(b["r0"])) * T - SLAB
 			return {"side": side, "xo": xo, "xi": xo - float(side) * WALL, "hw": float(DOOR_HW.get(String(o["kind"]), 0.95)),
-				"y0": -float(rb + 1) * T, "y1": minf(-float(int(o["rt"])) * T, ys), "kind": String(o["kind"])}
+				"y0": -float(rb + 1) * T, "y1": minf(-float(int(o["rt"])) * T, ys), "kind": String(o["kind"]), "rows": rb - int(o["rt"]) + 1}
 	return {}
 
 ## Skrzydło drzwi (`at` z `door_at`) jako węzeł: „Closed” — zamknięte w otworze, w grubości muru tuż za licem zewnętrznym (gracz staje
-## przy licu, ościeżnica wystaje dalej); „Broken” — wyważone: drewno — resztki desek przy zawiasach i deski na ziemi, metal i stal —
-## skrzydło leży płasko przed drzwiami. Widok przełącza widoczność wg stanu przegrody.
+## przy licu, ościeżnica wystaje dalej); „Broken” — wyważone. Brama (`kind` "gate", W2) — skrzydło na całą wysokość otworu, bez furtki
+## (Rzeźnik nie mieści się w 2 rzędach). Drewno: deski pionowe pocięte na pasy przegrody (`Band<i>`, pas = kafel od góry, jak
+## `breakable.band_mask`) i zastrzał `Brace` (odpada z pierwszym pasem); wyważone — resztki desek przy zawiasach i deski na ziemi.
+## Metal i stal: drzwi — skrzydło leży płasko przed drzwiami; brama — wyrwana z prowadnicy, wisi krzywo na szynie obok otworu, dołem
+## odepchnięta od ściany. Widok przełącza widoczność wg stanu przegrody.
 static func door_leaf(mat: String, at: Dictionary) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Door"
@@ -503,13 +523,17 @@ static func door_leaf(mat: String, at: Dictionary) -> Node3D:
 	root.add_child(broken)
 	var mats := door_mats()
 	var key := String(DOOR_KEY.get(mat, "dmetal"))
+	var kind := String(at.get("kind", "door"))
+	var gate := kind == "gate"
 	var s := float(int(at["side"]))
 	var xo := float(at["xo"])
 	var z0 := -float(at["hw"])
 	var z1 := float(at["hw"])
 	var y0 := float(at["y0"])
-	var hd := _door_h(y0, float(at["y1"]))
-	var add := func(parent: Node3D, k: String, a: Vector3, b: Vector3) -> void:
+	var hd := _door_h(y0, float(at["y1"]), kind)
+	var rows := maxi(int(at.get("rows", 2)), 1)
+	var T := Level3D.T
+	var add := func(parent: Node3D, k: String, a: Vector3, b: Vector3) -> MeshInstance3D:
 		var mi := MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = (b - a).abs()
@@ -517,35 +541,112 @@ static func door_leaf(mat: String, at: Dictionary) -> Node3D:
 		mi.material_override = mats[k]
 		mi.position = (a + b) * 0.5
 		parent.add_child(mi)
+		return mi
 	var xa := minf(xo - s * 0.09, xo - s * 0.02)            # skrzydło w grubości muru, 2 cm za licem
 	var xb := maxf(xo - s * 0.09, xo - s * 0.02)
+	var xl := xo + s * 0.01                                  # listwy od zewnątrz: do 1 cm przed lico
+	var xla := minf(xl, xo - s * 0.02)
+	var xlb := maxf(xl, xo - s * 0.02)
 	match mat:
-		"wood":                                              # deski pionowe ze szczelinami i dwie listwy od zewnątrz
-			var nb := 5
+		"wood":
+			var bands: Array[Node3D] = []
+			for i in rows:
+				var bn := Node3D.new()
+				bn.name = "Band%d" % i
+				closed.add_child(bn)
+				bands.append(bn)
+			var band_of := func(y: float) -> Node3D:          # pas przegrody na wysokości y (0 — górny kafel)
+				return bands[clampi(rows - 1 - int(floor((y - y0) / T)), 0, rows - 1)]
+			var nb := maxi(4, int(round((z1 - z0) / 0.3)))
+			if gate and nb % 2 == 1:
+				nb += 1                                      # brama dwuskrzydłowa: styk skrzydeł na osi
 			var w := (z1 - z0) / float(nb)
-			for i in nb:
-				add.call(closed, "dwood", Vector3(xa, y0 + 0.02, z0 + float(i) * w + 0.012), Vector3(xb, y0 + hd, z0 + float(i + 1) * w - 0.012))
-			for yy: float in [0.35, hd - 0.4]:
-				var xl := xo + s * 0.01
-				add.call(closed, "dwood", Vector3(minf(xl, xo - s * 0.02), y0 + yy, z0 + 0.06), Vector3(maxf(xl, xo - s * 0.02), y0 + yy + 0.14, z1 - 0.06))
-			add.call(broken, "dwood", Vector3(xa, y0 + 0.3, z0), Vector3(xb, y0 + hd - 0.2, z0 + 0.22))      # resztki przy zawiasach
-			add.call(broken, "dwood", Vector3(xa, y0 + hd - 0.7, z0 + 0.22), Vector3(xb, y0 + hd - 0.1, z0 + 0.4))
-			for i in 3:                                       # deski na ziemi przed drzwiami
-				var xg := xo + s * (DOOR_P + 0.2 + 0.35 * float(i))
-				var zg := z0 + 0.3 + 0.45 * float(i)
-				add.call(broken, "dwood", Vector3(minf(xg, xg + s * 1.4), y0, zg), Vector3(maxf(xg, xg + s * 1.4), y0 + 0.035, zg + w - 0.03))
+			for i in nb:                                     # deski pionowe ze szczelinami, pocięte na granicach pasów
+				for r in rows:
+					var lo := maxf(y0 + 0.02, y0 + float(r) * T)
+					var hi := minf(y0 + hd, y0 + float(r + 1) * T)
+					if hi - lo > 0.01:
+						add.call(band_of.call((lo + hi) * 0.5), "dwood", Vector3(xa, lo, z0 + float(i) * w + 0.012), Vector3(xb, hi, z0 + float(i + 1) * w - 0.012))
+			var wings: Array = [[z0, 0.0], [0.0, z1]] if gate else [[z0, z1]]
+			var battens: Array = [0.45, hd * 0.5, hd - 0.55] if gate else [0.35, hd - 0.4]
+			var brace := Node3D.new()
+			brace.name = "Brace"
+			closed.add_child(brace)
+			for wg: Array in wings:
+				var wa := float(wg[0]) + 0.06
+				var wb := float(wg[1]) - 0.06
+				for yy: float in battens:                    # listwy poziome od zewnątrz
+					add.call(band_of.call(y0 + yy + 0.07), "dwood", Vector3(xla, y0 + yy, wa), Vector3(xlb, y0 + yy + 0.14, wb))
+				var hinge_lo := float(wg[0]) < -0.01           # zawias skrzydła przy z0 (lewe skrzydło bramy, drzwi)
+				for k in battens.size() - 1:                 # zastrzał „Z” między listwami: od dołu przy zawiasie do góry przy styku
+					var za := wa + 0.08 if hinge_lo else wb - 0.08
+					var zb := wb - 0.08 if hinge_lo else wa + 0.08
+					var pa := Vector3(xl, y0 + float(battens[k]) + 0.14, za)
+					var pb := Vector3(xl, y0 + float(battens[k + 1]), zb)
+					var dv := pb - pa
+					var mi: MeshInstance3D = add.call(brace, "dwood", Vector3.ZERO, Vector3(0.03, 0.12, dv.length()))
+					mi.position = Vector3(xo + s * 0.005, (pa.y + pb.y) * 0.5, (pa.z + pb.z) * 0.5)
+					mi.basis = Basis(Vector3.RIGHT, -atan2(dv.y, dv.z))
+			# wyważone: resztki desek przy zawiasach (brama — przy obu słupkach) i deski na ziemi przed drzwiami
+			for zh: float in ([z0, z1] if gate else [z0]):
+				var d := 1.0 if zh < 0.0 else -1.0
+				var zb := zh + d * 0.22
+				add.call(broken, "dwood", Vector3(xa, y0 + 0.3, minf(zh, zb)), Vector3(xb, y0 + hd * (0.45 if gate else 0.9) - 0.2, maxf(zh, zb)))
+				var zc := zh + d * 0.4
+				add.call(broken, "dwood", Vector3(xa, y0 + hd - (hd * 0.35 if gate else 0.7), minf(zb, zc)), Vector3(xb, y0 + hd - 0.1, maxf(zb, zc)))
+			var ng := 5 if gate else 3
+			var ln := 1.8 if gate else 1.4
+			for i in ng:
+				var xg := xo + s * (DOOR_P + 0.2 + 0.3 * float(i % 3))
+				var zg := z0 + 0.3 + (z1 - z0 - 0.6 - w) * float(i) / float(maxi(ng - 1, 1))
+				add.call(broken, "dwood", Vector3(minf(xg, xg + s * ln), y0 + 0.035 * float(i % 2), zg), Vector3(maxf(xg, xg + s * ln), y0 + 0.035 * float(i % 2 + 1), zg + w - 0.03))
+			if gate:                                         # pół skrzydła z listwą leży płasko na ziemi
+				var xg0 := xo + s * (DOOR_P + 0.15)
+				var xg1 := xo + s * (DOOR_P + 1.55)
+				add.call(broken, "dwood", Vector3(minf(xg0, xg1), y0 + 0.075, -0.35), Vector3(maxf(xg0, xg1), y0 + 0.12, 1.0))
+				add.call(broken, "dwood", Vector3(minf(xg0, xg1), y0 + 0.12, 0.2), Vector3(maxf(xg0, xg1), y0 + 0.15, 0.34))
 		_:
 			add.call(closed, key, Vector3(xa, y0 + 0.02, z0), Vector3(xb, y0 + hd, z1))
-			var ribs: Array = [0.5, hd - 0.5] if mat == "metal" else [0.35, hd * 0.5, hd - 0.35]
+			var ribs := _door_ribs(mat, hd, gate)
+			var t := 0.03 if mat == "metal" else 0.07
+			var xr := xo + s * (0.02 if mat == "metal" else 0.05)
+			var zm := 0.1 if mat == "metal" else -0.05
 			for yy: float in ribs:                           # przetłoczenia blachy / rygle zbrojonych na całą szerokość
-				var t := 0.03 if mat == "metal" else 0.07
-				var xr := xo + s * (0.02 if mat == "metal" else 0.05)
-				var zm := 0.1 if mat == "metal" else -0.05
 				add.call(closed, key, Vector3(minf(xr, xo - s * 0.02), y0 + yy - t, z0 + zm), Vector3(maxf(xr, xo - s * 0.02), y0 + yy + t, z1 - zm))
-			var xg0 := xo + s * (DOOR_P + 0.15)               # skrzydło leży płasko na ziemi przed drzwiami
-			var xg1 := xo + s * (DOOR_P + 0.15 + hd)
-			add.call(broken, key, Vector3(minf(xg0, xg1), y0, z0 + 0.05), Vector3(maxf(xg0, xg1), y0 + 0.07, z1 - 0.05))
+			if gate:                                         # brama: dwa pionowe usztywnienia
+				for zz: float in [z0 * 0.5, z1 * 0.5]:
+					add.call(closed, key, Vector3(minf(xr, xo - s * 0.02), y0 + 0.1, zz - 0.05), Vector3(maxf(xr, xo - s * 0.02), y0 + hd - 0.1, zz + 0.05))
+				# wyrwana z prowadnicy: wisi na szynie obok otworu (przed ścianą szczytową, poza pasem gry), dołem odepchnięta od ściany
+				var wd := z1 - z0
+				var a := asin(clampf(GATE_KICK / hd, 0.0, 0.9))
+				var drop := hd * (1.0 - cos(a)) - 0.03
+				var piv := Node3D.new()
+				piv.name = "Torn"
+				piv.position = Vector3(xo + s * (LEAF_X + 0.02), y0 + hd - drop, z1 + DOOR_JW + 0.1 + wd * 0.5)
+				piv.basis = Basis(Vector3.UP, 0.05 * s) * Basis(Vector3.BACK, s * a)
+				broken.add_child(piv)
+				add.call(piv, key, Vector3(-LEAF_T * 0.5, -hd, -wd * 0.5), Vector3(LEAF_T * 0.5, 0.0, wd * 0.5))
+				var ra := s * LEAF_T * 0.5
+				var rb := s * (LEAF_T * 0.5 + t)
+				for yy: float in ribs:
+					add.call(piv, key, Vector3(minf(ra, rb), yy - hd - t, -wd * 0.5 + 0.1), Vector3(maxf(ra, rb), yy - hd + t, wd * 0.5 - 0.1))
+			else:
+				var xg0 := xo + s * (DOOR_P + 0.15)           # skrzydło leży płasko na ziemi przed drzwiami
+				var xg1 := xo + s * (DOOR_P + 0.15 + hd)
+				add.call(broken, key, Vector3(minf(xg0, xg1), y0, z0 + 0.05), Vector3(maxf(xg0, xg1), y0 + 0.07, z1 - 0.05))
 	return root
+
+const GATE_KICK := 1.0                     ## m: dół wyrwanej bramy odepchnięty od ściany
+
+## Wysokości przetłoczeń blachy / rygli zbrojonych od dołu skrzydła (m): drzwi — 2 / 3, brama — co ok. 1,1 m.
+static func _door_ribs(mat: String, hd: float, gate: bool) -> Array:
+	if gate:
+		var n := maxi(3, int(round((hd - 1.0) / 1.1)) + 1)
+		var out: Array = []
+		for i in n:
+			out.append(0.5 + (hd - 1.0) * float(i) / float(n - 1))
+		return out
+	return [0.5, hd - 0.5] if mat == "metal" else [0.35, hd * 0.5, hd - 0.35]
 
 const HINT_TOOL := {"wood": "res://art/char3d/gun_maczeta.glb", "metal": "res://art/char3d/gun_kilof.glb", "steel": "res://art/items3d/charge.glb"}
 const HINT_K := {"wood": 1.6, "metal": 1.3}   ## skala narzędzia (modele broni są mniejsze, bo siedzą w dłoni postaci): maczeta 0,95 m, kilof 0,95 m
@@ -553,6 +654,7 @@ const HINT_TIP_H := {"wood": 1.35, "metal": 1.15}   ## m: czubek nad podłogą �
 const HINT_TILT := {"wood": 0.42, "metal": 0.6}     ## rad: maczeta ostrzem w dół jak po ciosie, trzonek kilofa od pionu
 const HINT_EMBED := 0.07                    ## m: czubek w ościeżnicy (od jej zewnętrznego końca)
 const HINT_CHARGE_K := 0.65                 ## skala ładunku jak znajdźka (ITEM_SCALE w view3d)
+const HINT_BLADE_W := 1.8                   ## maczeta ducha: ostrze szersze (oś szerokości ostrza w modelu), czytelne z kamery gry (W2)
 
 ## „Duch” narzędzia przy drzwiach (`door_hint3d.gd`, `at` z `door_at`): drewno — maczeta wbita w koniec ościeżnicy (ostrze w drewnie,
 ## rękojeść na zewnątrz), metal — kilof wbity obuchem w szczelinę (dźwignia w dół), zbrojone — ładunek na słupku od strony kamery
@@ -581,7 +683,14 @@ static func door_hint(mat: String, at: Dictionary) -> Node3D:
 	else:
 		var tip := _hint_tip(n, mat)
 		var tilt := float(HINT_TILT.get(mat, 0.5))
-		var b := Basis(Vector3.BACK, (PI * 0.5 if mat == "metal" else PI) + tilt).scaled(Vector3.ONE * float(HINT_K.get(mat, 1.3)))
+		var sv := Vector3.ONE * float(HINT_K.get(mat, 1.3))
+		if mat == "wood":                                    # maczeta: ostrze 5 cm ginęło w kadrze jako kreska — w duchu szersze (W2)
+			var bs := _blade_size(n)
+			if bs.y >= bs.z:
+				sv.y *= HINT_BLADE_W
+			else:
+				sv.z *= HINT_BLADE_W
+		var b := Basis(Vector3.BACK, (PI * 0.5 if mat == "metal" else PI) + tilt) * Basis.from_scale(sv)
 		if s < 0.0:
 			b = Basis(Vector3.UP, PI) * b                    # drzwi po lewej: odbicie
 		var p := Vector3(xo + s * (DOOR_P - HINT_EMBED), y0 + float(HINT_TIP_H.get(mat, 1.2)), zf - DOOR_JW * 0.5)
@@ -607,6 +716,19 @@ static func _hint_tip(model: Node3D, mat: String) -> Vector3:
 		blade = bb if first else blade.merge(bb)
 		first = false
 	return Vector3(blade.end.x, blade.get_center().y, blade.get_center().z)
+
+## Rozmiar ostrza maczety (siatki „blade”) w układzie modelu; zero bez takiej siatki.
+static func _blade_size(model: Node3D) -> Vector3:
+	var out := AABB()
+	var first := true
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if not String(m.name).to_lower().contains("blade"):
+			continue
+		var bb := DigEntrance3D._rel_xf(model, m) * m.get_aabb()
+		out = bb if first else out.merge(bb)
+		first = false
+	return out.size
 
 ## Koniec rękojeści (maczeta) albo trzonka (kilof) w układzie modelu — oś zamachu ducha.
 static func _hint_end(model: Node3D, mat: String) -> Vector3:

@@ -785,9 +785,13 @@ func _test_director_composition() -> void:
 	var keep_pos: Vector2 = player.global_position
 	var nav_ids: Array = level.nav.get_point_ids()
 	player.global_position = level.nav.get_point_position(nav_ids[nav_ids.size() / 2]) + Vector2(0.0, -4.0)
+	# punkt środka siatki na 1.3 leży w hali Żyły — człowiek jest w niej dopiero po wyważeniu bramy (DESTRUCTION_CONTENT_PLAN.md W2), więc drzwi
+	# drewniane i metalowe wyważone jak w `--maptest`; przy zamkniętej bramie dyrektor słusznie nie ma skąd dojść
+	var dopen: Array = level.open_doors_for_check()
 	D._spawn_group([player])
 	await get_tree().physics_frame
-	check("skład/spawn: `_spawn_group` z kontekstem stawia grupę wędrowców (na punkcie siatki 380–640 px od gracza)", D._roamers.size() > spawned_before, str(D._roamers.size() - spawned_before))
+	level.close_doors_after_check(dopen)
+	check("skład/spawn: `_spawn_group` z kontekstem stawia grupę wędrowców (na punkcie siatki 380–640 px od gracza)", D._roamers.size() > spawned_before, "%d, gracz kol. %d r. %d" % [D._roamers.size() - spawned_before, int(player.global_position.x / 16.0), int(player.global_position.y / 16.0)])
 	player.global_position = keep_pos
 	for n in D._roamers.duplicate():
 		D._despawn(n)
