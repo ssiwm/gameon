@@ -106,7 +106,8 @@ static func build_frames(parent: Node3D, rows: Array) -> void:
 			"mast":
 				masts[int(run["c"])] = run
 			"tower":
-				legs.append(run)
+				if not Level3D.tower_skip.has_point(Vector2i(int(run["c"]), int(run["r0"]))):
+					legs.append(run)
 	var wv := PackedVector3Array()
 	var wn := PackedVector3Array()
 	for leg in legs:

@@ -38,6 +38,7 @@ const HubSigns := preload("res://scripts/hub_signs.gd")
 const Weather := preload("res://scripts/weather.gd")
 const WeatherClock := preload("res://scripts/weather_clock.gd")
 const Backdrop3D := preload("res://scripts/backdrop3d.gd")
+const Watchtower3D := preload("res://scripts/watchtower3d.gd")
 const Niches3D := preload("res://scripts/niches3d.gd")
 const Step3D := preload("res://scripts/step3d.gd")
 const Cave3D := preload("res://scripts/cave3d.gd")
@@ -1136,11 +1137,19 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 			Level3D.set_shells(front, rows)
 			Building3D.door_cols = _door_cols()                    # ościeżnice drzwi do wyważenia (DESTRUCTION_CONTENT_PLAN.md W1)
 			Level3D.set_steps(Step3D.cells(rows, nat_steps), Step3D.hidden_posts(rows, nat_steps), Step3D.trunk_cells(rows, nat_steps))
+			var wt0: Dictionary = _level.get("watchtower") if _level != null and _level.get("watchtower") != null else {}
+			Level3D.tower_skip = Watchtower3D.rect(wt0) if Watchtower3D.enabled() and not wt0.is_empty() else Rect2i()
 			Level3D.build_level(root, rows, trench)
 			Building3D.build(root, rows)],
 		["niches", func() -> void: Niches3D.build(root, rows, niches, Settings.quality_idx)],
 		["caves", func() -> void: Cave3D.build(root, caves)],
-		["frames", func() -> void: Backdrop3D.build_frames(root, rows)],
+		["frames", func() -> void:
+			var wt: Dictionary = _level.get("watchtower") if _level != null and _level.get("watchtower") != null else {}
+			if Watchtower3D.enabled() and not wt.is_empty():
+				Watchtower3D.build(root, rows, wt)
+			if "--towerlit" in OS.get_cmdline_user_args() and not wt.is_empty():
+				Watchtower3D.preview_lights(root, wt)
+			Backdrop3D.build_frames(root, rows)],
 		["steps", func() -> void: Step3D.build(root, rows, nat_steps)],
 		["liquids", func() -> void:
 			Level3D.set_streams(_level.get("streams") if _level.get("streams") != null else [])

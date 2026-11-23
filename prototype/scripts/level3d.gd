@@ -761,13 +761,17 @@ static func roof_purlins(rows: Array, c: int, r: int) -> Array:
 		return [-float(r) * T - ROOF_SHEET - (0.16 if bool(run["steel"]) else 0.18), zs]
 	return []
 
+static var tower_skip := Rect2i()          ## SPIKE TOWER_PLAN.md (`--towerv2`): kafle strażnicy rysowanej przez `watchtower3d.gd`
+
 static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel_mat: Material, wood_mat: Material, wall_mat: Material) -> void:
 	var sheets: Array = []
 	var boards: Array = []
 	var walls: Array = []
 	var frame := {true: [], false: []}
 	var runs: Array = roof_runs(rows)
-	for s in tower_slabs(rows):                                 # dach i podłoga strażnicy: ta sama konstrukcja, drewniana, podłoga z desek
+	for s in tower_slabs(rows):
+		if tower_skip.has_point(Vector2i(int(s["c0"]), int(s["r"]))):
+			continue                                 # dach i podłoga strażnicy: ta sama konstrukcja, drewniana, podłoga z desek
 		runs.append({"r": s["r"], "c0": s["c0"], "c1": s["c1"], "steel": false, "posts": [], "boards": not bool(s["roof"])})
 	for run in runs:
 		var r: int = run["r"]
@@ -1372,6 +1376,8 @@ static func deck_supports(rows: Array) -> Array:
 static func _build_deck_supports(parent: Node3D, rows: Array, wood: Material, steel: Material) -> void:
 	var parts := {"-": [], "=": []}
 	for d in deck_supports(rows):
+		if tower_skip.has_point(Vector2i(int(d["c0"]), int(d["r"]))):
+			continue
 		var ch: String = d["ch"]
 		var r: int = d["r"]
 		var dh := deck_half(ch)
