@@ -1354,9 +1354,9 @@ func _doors() -> void:
 		return true
 	check("bramy na całą wysokość (bez furtki): drewniana i metalowa zamknięte na wszystkich %d kaflach otworu" % rows_m,
 		dw != null and dm != null and rows_m == 4 and int(defs[0]["rows"]) == 4 and gate_solid.call(cw, rb_w, 4) and gate_solid.call(cm, rb_m, 4))
-	check("wyważone na starcie: bez węzła, przejście wolne, nie da się ich zabić deskami",
+	check("wyważone na starcie: bez węzła, przejście wolne, miejsce barykady (W4: %s, komplet %d desek)" % [level.nail_reason("Door2"), level.board_total("Door2")],
 		level.get_node_or_null("Door2") == null and level._opened_walls.has("Door2") and not level._is_solid(int(defs[1]["col"]), int(defs[1]["rb"]))
-		and level.nail_reason("Door2") != "" and level.get_node_or_null("Door4") == null)
+		and level.nail_reason("Door2") in ["ok", "nomat"] and level.board_total("Door2") == 4 and level.get_node_or_null("Door4") == null)
 	if dw == null or dm == null:
 		return
 	# wysocy wrogowie: najwyższe ciało (Rzeźnik) mieści się w wyważonej bramie, w zamkniętej nie
@@ -1493,6 +1493,7 @@ func _doors() -> void:
 	await _frames(0.1)
 	check("1.2 z powrotem wg danych mapy: Door2 wyważone, Door1 i Door3 zamknięte",
 		level.get_node_or_null("Door2") == null and level.get_node_or_null("Door1") != null and level.get_node_or_null("Door3") != null)
+	await _door_barricade(defs)
 
 	# drewniane (próbne w tunelu): kule słabo, śrut, pazury ranią; szarża Wołka tak
 	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
@@ -1511,6 +1512,64 @@ func _doors() -> void:
 		and (Breakable.MATERIALS["door_metal"]["breaks"] as Array).has("charge") and not (Breakable.MATERIALS["door_steel"]["breaks"] as Array).has("charge"))
 	check("Stalker na jedynej drodze rozbija deski, drewniane i metalowe drzwi, zbrojonych nie",
 		StalkerScript.SMASHES.has("door_wood") and StalkerScript.SMASHES.has("door_metal") and not StalkerScript.SMASHES.has("door_steel"))
+
+## W4: barykada w wyważonych drzwiach — brama wyważona na starcie (Door2) i metalowa wyważona kilofem (Door3): deski jak w pustym otworze,
+## skrzydło leży dalej tak, jak je wyważono, wipe stawia drzwi z powrotem, punkt kontrolny bossa — barykadę.
+func _door_barricade(defs: Array) -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	level.plank_stock = 12
+	var c2 := int(defs[1]["col"])
+	var rb2 := int(defs[1]["rb"])
+	var r1 := String(level.nail_board("Door2"))
+	await _frames(0.05)
+	var b2: Node2D = level.get_node_or_null("Door2")
+	check("W4: wyważona brama zabita pierwszą deską (%s): przegroda `%s` w otworze, najniższy pas (maska %s), przejście i nawigacja zamknięte, miejsce barykady przy drzwiach" % [r1,
+		str(b2.get("mat_id")) if b2 else "-", String.num_int64(int(b2.call("band_mask")), 2) if b2 else "-"],
+		r1 == "ok" and b2 != null and String(b2.get("mat_id")) == "planks" and b2.has_meta("door") and int(b2.call("band_mask")) == 1 << 3
+		and level._is_solid(c2, rb2) and level._wall_cells.has(Vector2i(c2, rb2)) and level.door_planks.has("Door2")
+		and level.get_node_or_null("Nail_Door2") != null)
+	for k in 3:
+		level.nail_board("Door2")
+	check("W4: komplet 4 desek w bramie (%d/%d, %s), drzwi w widoku dalej wyważone (bez przyczyny: %s)" % [level.boards_of("Door2"), level.board_total("Door2"), level.nail_reason("Door2"), str(level.break_how.get("Door2", []))],
+		level.boards_of("Door2") == 4 and level.nail_reason("Door2") == "full" and not level.break_how.has("Door2"))
+	var msw := _swings(b2, Weapons.MACZETA, 12)
+	await _frames(0.15)
+	check("W4: maczeta rozbija barykadę w bramie (%d ciosów), otwór znów wolny i dalej miejscem barykady (%s)" % [msw, level.nail_reason("Door2")],
+		level._opened_walls.has("Door2") and not level.door_planks.has("Door2") and not level._is_solid(c2, rb2) and level.nail_reason("Door2") == "ok"
+		and not level.break_how.has("Door2"))
+	# metalowe wyważone kilofem, zabite deskami: rozbita barykada nie zmienia obrazu skrzydła (nadal podważone kilofem)
+	var dm: Node2D = level.get_node_or_null("Door3")
+	_swings(dm, Weapons.KILOF, 20)
+	await _frames(0.15)
+	var bh0: Array = level.break_how.get("Door3", [])
+	check("W4: zamknięte drzwi to nie miejsce barykady, wyważone tak", level._opened_walls.has("Door3") and level.nail_reason("Door3") == "ok" and bh0.size() == 2)
+	level.nail_board("Door3")
+	level.nail_board("Door3")
+	await _frames(0.05)
+	var b3: Node2D = level.get_node_or_null("Door3")
+	check("W4: metalowe wyważone zabite 2 deskami (%d, `%s`), przyczyna wyważenia zostaje (%s)" % [level.boards_of("Door3"), str(b3.get("mat_id")) if b3 else "-", str(level.break_how.get("Door3", []))],
+		b3 != null and String(b3.get("mat_id")) == "planks" and level.boards_of("Door3") == 2 and str(level.break_how.get("Door3", [])) == str(bh0))
+	level.save_breakables_checkpoint()
+	level.reset_breakables()
+	await _frames(0.1)
+	var dm2: Node2D = level.get_node_or_null("Door3")
+	check("W4: wipe — znów zamknięte metalowe drzwi (%s, %.0f HP), bez barykady i przyczyny" % [str(dm2.get("mat_id")) if dm2 else "-", float(dm2.hp) if dm2 else 0.0],
+		dm2 != null and String(dm2.get("mat_id")) == "door_metal" and float(dm2.hp) == 220.0 and level.door_planks.is_empty() and not level.break_how.has("Door3")
+		and level.nail_reason("Door3") == "invalid")
+	level.reset_breakables(level.breakables_checkpoint())
+	await _frames(0.1)
+	b3 = level.get_node_or_null("Door3")
+	check("W4: punkt kontrolny bossa — barykada z 2 deskami w wyważonych drzwiach wraca (%s, %d desek, przyczyna %s)" % [str(b3.get("mat_id")) if b3 else "-", level.boards_of("Door3"), str(level.break_how.get("Door3", []))],
+		b3 != null and String(b3.get("mat_id")) == "planks" and level.boards_of("Door3") == 2 and level.door_planks.has("Door3")
+		and str(level.break_how.get("Door3", [])) == str(bh0) and level._is_solid(int(defs[2]["col"]), int(defs[2]["rb"])))
+	_swings(b3, Weapons.MACZETA, 12)
+	await _frames(0.15)
+	check("W4: barykada rozbita maczetą — skrzydło dalej podważone kilofem (%s), nie „maczetą”" % str(level.break_how.get("Door3", [])),
+		level._opened_walls.has("Door3") and str(level.break_how.get("Door3", [])) == str(bh0))
+	level.reset_breakables()
+	await _frames(0.1)
+	level.plank_stock = 0
 
 # ---------------------------------------------------------------- 15. dziennik sesji
 

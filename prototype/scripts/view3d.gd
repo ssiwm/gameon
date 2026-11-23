@@ -3204,9 +3204,9 @@ func _sync_drawn() -> void:
 	for n in get_tree().get_nodes_in_group("breakables"):
 		if _drawn.has(n.get_instance_id()) or not (n is Node2D) or n.get("rows") == null:
 			continue
-		if String(n.get("mat_id")).begins_with("door_"):
+		if String(n.get("mat_id")).begins_with("door_") or n.has_meta("door"):
 			(n as CanvasItem).modulate = Color(1, 1, 1, 0)
-			continue                                              # drzwi budynku: skrzydło i duch w `_sync_doors`
+			continue                                              # drzwi budynku i barykada w nich (W4): skrzydło, deski i duch w `_sync_doors`
 		var h := float(n.get("rows")) * Level3D.T
 		var mat_id := String(n.get("mat_id"))
 		var thin := mat_id in ["planks", "grate"]                  # deski i kratka: konstrukcja w poprzek korytarza na przezroczystej bryle (B2)
@@ -3315,7 +3315,9 @@ func _sync_doors() -> void:
 	for d: Dictionary in _level.door_defs():
 		var nm := String(d["name"])
 		var node: Node = _level.get_node_or_null(nm)
-		var closed := node != null and not node.is_queued_for_deletion() and float(node.get("hp")) > 0.0
+		var stands := node != null and not node.is_queued_for_deletion() and float(node.get("hp")) > 0.0
+		var closed := stands and String(node.get("mat_id")).begins_with("door_")
+		var nailed := stands and not closed                    # wyważone i zabite deskami (W4, `level.door_planks`)
 		var how: Array = [] if closed else (_level.get("break_how") as Dictionary).get(nm, [])      # czym i w którą stronę wyważone (W3)
 		var e: Dictionary = _doors3d.get(nm, {})
 		if not e.is_empty() and is_instance_valid(e["root"]) and not closed and str(how) != String(e.get("how", "[]")):
@@ -3330,10 +3332,13 @@ func _sync_doors() -> void:
 			_geo.add_child(root)
 			_warm_destruction("door_" + String(d["mat"]))       # drzazgi i gruz wyważenia pod planszą, nie przy pierwszym ciosie (W3, --hitchtest --hitchdoor)
 			var hint0: Variant = e.get("hint") if not e.is_empty() and String(e.get("map", "")) == String(_level.get("map_id")) else null   # duch zostaje przy przebudowie skrzydła
-			e = {"root": root, "hint": hint0, "closed": not closed, "at": at, "mat": String(d["mat"]), "map": String(_level.get("map_id")), "bands": -1, "how": str(how)}
+			var boards0: Variant = e.get("boards") if not e.is_empty() and String(e.get("map", "")) == String(_level.get("map_id")) else null   # deski barykady (W4) też
+			e = {"root": root, "hint": hint0, "closed": not closed, "at": at, "mat": String(d["mat"]), "map": String(_level.get("map_id")), "bands": -1, "how": str(how),
+				"boards": boards0, "pbands": -1}
 			_doors3d[nm] = e
 		if closed and String(e["mat"]) == "wood":
-			_sync_door_bands(node as Node2D, e)
+			_sync_door_bands(node as Node2D, e, (e["root"] as Node3D).get_node("Closed"), "bands")
+		_sync_door_boards(node as Node2D if nailed else null, e)
 		if closed == bool(e["closed"]):
 			continue
 		e["closed"] = closed
@@ -3351,21 +3356,37 @@ func _sync_doors() -> void:
 			(h as Node).call("dissolve")
 			e["hint"] = null
 
+## Barykada w wyważonych drzwiach (W4): deski (`Building3D.door_boards`) stoją pasami jak pasy przegrody `planks` w otworze; bez barykady
+## (`n` null) — ukryte. Węzeł w `_geo` (przebudowa świata go zabiera — budujemy od nowa przy następnej barykadzie).
+func _sync_door_boards(n: Node2D, e: Dictionary) -> void:
+	var bd: Variant = e.get("boards")
+	if n == null:
+		if bd != null and is_instance_valid(bd):
+			(bd as Node3D).visible = false                   # rozbita (drzazgi sypie sama przegroda) albo wipe
+		e["pbands"] = -1
+		return
+	if bd == null or not is_instance_valid(bd):
+		bd = Building3D.door_boards(e["at"])
+		_geo.add_child(bd)
+		e["boards"] = bd
+		e["pbands"] = -1
+	(bd as Node3D).visible = true
+	_sync_door_bands(n, e, bd as Node3D, "pbands")
+
 ## Drzwi drewniane (W2): pas skrzydła (`Band<i>` z `Building3D.door_leaf`) stoi, póki stoi pas przegrody na jego wysokości (`band_mask`, jak
 ## deski barykady) — obraz = symulacja, w szczelinie po pasie w 2D przechodzi wzrok, kule i dźwięk. Zastrzał odpada z pierwszym pasem.
-## Odpadnięty pas sypie drzazgą (nie przy pierwszym przeglądzie ani po odbudowie przy wipe).
-func _sync_door_bands(n: Node2D, e: Dictionary) -> void:
+## Odpadnięty pas sypie drzazgą (nie przy pierwszym przeglądzie ani po odbudowie przy wipe). To samo dla desek barykady (W4, `holder`).
+func _sync_door_bands(n: Node2D, e: Dictionary, holder: Node3D, key: String) -> void:
 	if n == null or not n.has_method("band_mask"):
 		return
 	var want := int(n.call("band_mask"))
-	var had := int(e.get("bands", -1))
+	var had := int(e.get(key, -1))
 	if want == had:
 		return
-	e["bands"] = want
-	var closed3: Node3D = (e["root"] as Node3D).get_node("Closed")
+	e[key] = want
 	var rows := maxi(int(n.get("rows")), 1)
 	for i in rows:
-		var bn := closed3.get_node_or_null("Band%d" % i) as Node3D
+		var bn := holder.get_node_or_null("Band%d" % i) as Node3D
 		if bn == null:
 			continue
 		var up := (want & (1 << i)) != 0
@@ -3376,7 +3397,7 @@ func _sync_door_bands(n: Node2D, e: Dictionary) -> void:
 				if b != null:
 					mirror_chunk(b, "planks", 6.0, randi())
 		bn.visible = up
-	var br := closed3.get_node_or_null("Brace") as Node3D
+	var br := holder.get_node_or_null("Brace") as Node3D
 	if br != null:
 		br.visible = want == (1 << rows) - 1
 

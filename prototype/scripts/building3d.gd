@@ -443,6 +443,7 @@ static func door_mats() -> Dictionary:
 			"dwood": _door_mat(Level3D.make_pbr("post", 1.2, Color(0.52, 0.40, 0.28), 0.9), Color(0.92, 0.80, 0.66)),
 			"dmetal": _door_mat(Level3D.make_pbr("metal", 0.40, Color(0.36, 0.38, 0.40), 0.55, 1.0, 0.7, false, "rust"), Color(0.95, 0.42, 0.30)),   # minia
 			"dsteel": _door_mat(Level3D.make_pbr("metal", 0.40, Color(0.16, 0.17, 0.18), 0.45, 1.0, 0.9, false, ""), Color(0.42, 0.43, 0.45)),
+			"dplank": _door_mat(Level3D.make_pbr("post", 1.2, Color(0.52, 0.40, 0.28), 0.9), Color(1.12, 0.98, 0.80)),   # świeże deski barykady (W4)
 			"dyel": Level3D.make_mat(Color(0.78, 0.58, 0.08), 0.7, 0.06, 0.2),
 			"dblk": Level3D.make_mat(Color(0.05, 0.05, 0.05), 0.7, 0.06, 0.2),
 		}
@@ -669,6 +670,46 @@ static func door_leaf(mat: String, at: Dictionary, how := "", dir := 0) -> Node3
 	return root
 
 const GATE_KICK := 1.0                     ## m: dół wyrwanej bramy odepchnięty od ściany
+const BOARD_X := [0.12, 0.165]             ## m: deski barykady w wyważonych drzwiach od lica zewnętrznego (przed pilastrem, w obrębie ościeżnicy)
+const BOARD_H := 0.2                       ## m: szerokość deski barykady
+
+## Barykada w wyważonych drzwiach (W4, `level.door_planks`): deski w poprzek otworu między słupkami ościeżnicy, przed licem zewnętrznym —
+## po dwie na pas przegrody (`Band<i>`, pas = kafel od góry, jak `breakable.band_mask`), lekko krzywo, z ziarna kolumny. Pierwsza deska
+## (`level._one_board`) to najniższy pas. Ten sam materiał drewna co skrzydło, jaśniejszy (świeże deski).
+static func door_boards(at: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Boards"
+	var mats := door_mats()
+	var s := float(int(at["side"]))
+	var xo := float(at["xo"])
+	var z0 := -float(at["hw"])
+	var z1 := float(at["hw"])
+	var y0 := float(at["y0"])
+	var rows := maxi(int(at.get("rows", 2)), 1)
+	var hd := _door_h(y0, float(at["y1"]), String(at.get("kind", "door")))
+	var T := Level3D.T
+	var xa := minf(xo + s * BOARD_X[0], xo + s * BOARD_X[1])
+	var xb := maxf(xo + s * BOARD_X[0], xo + s * BOARD_X[1])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(Vector2i(roundi(xo * 100.0), roundi(y0 * 100.0)))
+	var ln := z1 - z0 + 0.1                                   # końce desek na słupkach ościeżnicy
+	for i in rows:
+		var bn := Node3D.new()
+		bn.name = "Band%d" % i
+		root.add_child(bn)
+		var lo := y0 + float(rows - 1 - i) * T                 # pas i: kafel od góry
+		var hi := minf(lo + T, y0 + hd)
+		for k in 2:
+			var yy := lo + (hi - lo) * (0.3 if k == 0 else 0.72) + rng.randf_range(-0.06, 0.06)
+			var mi := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(xb - xa, BOARD_H, ln + rng.randf_range(-0.05, 0.12))
+			mi.mesh = bm
+			mi.material_override = mats["dplank"]
+			mi.position = Vector3((xa + xb) * 0.5 + s * 0.012 * float(k), yy, rng.randf_range(-0.06, 0.06))
+			mi.basis = Basis(Vector3.RIGHT, rng.randf_range(0.07, 0.2) * (1.0 if (i + k) % 2 == 0 else -1.0))
+			bn.add_child(mi)
+	return root
 
 ## Wysokości przetłoczeń blachy / rygli zbrojonych od dołu skrzydła (m): drzwi — 2 / 3, brama — co ok. 1,1 m.
 static func _door_ribs(mat: String, hd: float, gate: bool) -> Array:

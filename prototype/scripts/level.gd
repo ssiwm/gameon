@@ -180,6 +180,7 @@ var _step_deck := {}                      ## Vector2i(c, r) → true: kafle pomo
 var steps: Array = []                     ## STEPS z danych mapy: pomosty z natury i z historii miejsca (`step3d.gd`, STEPS_PLAN.md); czysta kosmetyka
 var front: Array = []                     ## FRONT z danych mapy: zakresy pierwszego planu przed płaszczyzną gry (`front3d.gd`); czysta kosmetyka
 var break_how := {}                        ## nazwa rozbitej przegrody → [czym (`breakable.hit_kind`), znak x kierunku] — obraz wyważonych drzwi (W3)
+var door_planks := {}                      ## drzwi wyważone i zabite deskami (W4): nazwa → true, póki w otworze stoi barykada `planks` zamiast drzwi
 var doors := {}                            ## DOORS z danych mapy (DESTRUCTION_CONTENT_PLAN.md W1): kolumna wejścia budynku 3D → {"mat": wood/metal/steel, "start": "broken"?}
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
 var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
@@ -314,6 +315,7 @@ func _load(id: String) -> void:
 	_window_cells.clear()
 	_opened_walls.clear()
 	break_how.clear()
+	door_planks.clear()
 	plank_stock = 0
 	_nail_ms.clear()
 	_supports_down.clear()
@@ -1648,8 +1650,8 @@ func dig_zones() -> Array:
 
 func _spawn_walls() -> void:
 	for wd in _wall_defs:
-		if String(wd["material"]) == "planks":
-			var spot: Node2D = BARRICADE_SPOT.new()          # miejsce przybijania desek (rozbite `%` i pusty otwór `:`)
+		if String(wd["material"]) == "planks" or bool(wd.get("door", false)):
+			var spot: Node2D = BARRICADE_SPOT.new()          # miejsce przybijania desek (rozbite `%`, pusty otwór `:` i wyważone drzwi, W4)
 			spot.name = "Nail_%s" % wd["name"]
 			spot.position = wd["pos"]
 			spot.wall_name = String(wd["name"])
@@ -1679,7 +1681,9 @@ func _spawn_wall(wd: Dictionary, b := PackedFloat32Array()) -> Node2D:
 	w.name = String(wd["name"])
 	w.position = wd["pos"]
 	w.rows = int(wd["rows"])
-	w.mat_id = String(wd.get("material", "brick"))
+	w.mat_id = wall_mat(wd)
+	if bool(wd.get("door", false)):
+		w.set_meta("door", true)                   # widok 3D: drzwi i barykada w otworze budynku rysuje `_sync_doors`, nie ogólna przegroda
 	if not b.is_empty():
 		w.bands = b.duplicate()                    # barykada z jednej albo kilku desek (`_ready` liczy z pasów `hp`)
 	add_child(w)
@@ -1699,7 +1703,9 @@ func break_wall(wall_name: String, how := "", dir := 0) -> void:
 func _break_wall_rpc(id: String, wall_name: String, how := "", dir := 0) -> void:
 	if id != map_id or _opened_walls.has(wall_name):
 		return
-	if how != "":
+	if door_planks.has(wall_name):
+		door_planks.erase(wall_name)                   # rozbita barykada w wyważonych drzwiach: skrzydło dalej leży tak, jak je wyważono (W4)
+	elif how != "":
 		break_how[wall_name] = [how, dir]
 	_open_wall(wall_name, true)
 
@@ -1751,7 +1757,7 @@ func breakables_state() -> Dictionary:
 		if not st.is_empty():
 			dig[String(z.name)] = st                          # strefy wydobycia (D5): skompresowana gęstość, tylko ruszone
 	return {"opened": PackedStringArray(_opened_walls), "damage": dmg, "planks": plank_stock, "supports": PackedStringArray(_supports_down), "dig": dig,
-		"how": break_how.duplicate(true)}
+		"how": break_how.duplicate(true), "door_planks": PackedStringArray(door_planks.keys())}
 
 ## Serwer, przebudzenie bossa (mission._save_checkpoint): wipe w tej walce wróci do zniszczeń z tej chwili — jak łup od 1.7.424.
 func save_breakables_checkpoint() -> void:
@@ -1778,16 +1784,18 @@ func reset_breakables(state := {}) -> void:
 	var down: PackedStringArray = state.get("supports", PackedStringArray())
 	var clean := not state.has("opened")
 	var how: Dictionary = state.get("how", {})               # czym wyważone drzwi z migawki — ten sam obraz po wipe'ie w walce z bossem (W3)
+	var dpl: PackedStringArray = state.get("door_planks", PackedStringArray())   # drzwi zabite deskami w migawce (W4)
 	if NoiseMgr.has_network():
-		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock, down, clean, how)
+		_reset_breakables_rpc.rpc(map_id, opened, dmg, stock, down, clean, how, dpl)
 	else:
-		_reset_breakables_rpc(map_id, opened, dmg, stock, down, clean, how)
+		_reset_breakables_rpc(map_id, opened, dmg, stock, down, clean, how, dpl)
 	var dig: Dictionary = state.get("dig", {})
 	for z in dig_zones():
 		z.reset_to(dig.get(String(z.name), PackedByteArray()))   # strefy wydobycia (D5): wykopy wracają do stanu z mapy albo z migawki
 
 @rpc("authority", "call_local", "reliable")
-func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0, down := PackedStringArray(), clean := false, how := {}) -> void:
+func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionary, stock := 0, down := PackedStringArray(), clean := false, how := {},
+		dpl := PackedStringArray()) -> void:
 	if id != map_id:
 		return
 	if clean:
@@ -1807,15 +1815,25 @@ func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionar
 		ml.relight()                                         # lampy misji świecą od nowa (także w punkcie kontrolnym bossa)
 	for win in get_tree().get_nodes_in_group("windows"):
 		win.restore()                                        # okna znów całe
+	for wd in _wall_defs:                                    # W4: w otworze drzwi stoi nie to, co trzeba (drzwi zamiast barykady albo odwrotnie) — zdjąć
+		var dn := String(wd["name"])
+		if bool(wd.get("door", false)) and not _opened_walls.has(dn) and door_planks.has(dn) != dpl.has(dn):
+			_open_wall(dn, false)
+	door_planks.clear()
+	for dn in dpl:
+		door_planks[String(dn)] = true
 	for wd in _wall_defs:
 		var n := String(wd["name"])
 		var want_open := opened.has(n)
 		if _opened_walls.has(n) and not want_open:
 			_close_wall(wd)
 		elif not _opened_walls.has(n) and want_open:
-			if how.has(n):
-				break_how[n] = how[n]
 			_open_wall(n, false)
+		if want_open or door_planks.has(n):
+			if how.has(n):
+				break_how[n] = how[n]                        # wyważone (także zabite deskami, W4) leży tak, jak je wyważono przed migawką
+			else:
+				break_how.erase(n)                           # czysty stan: drzwi wyważone na starcie bez przyczyny
 		if not want_open:
 			var w := get_node_or_null(n)
 			var d: Array = dmg.get(n, [])
@@ -1827,7 +1845,8 @@ func _reset_breakables_rpc(id: String, opened: PackedStringArray, dmg: Dictionar
 func _close_wall(wd: Dictionary, b := PackedFloat32Array()) -> void:
 	var n := String(wd["name"])
 	_opened_walls.erase(n)
-	break_how.erase(n)
+	if not door_planks.has(n):
+		break_how.erase(n)                             # barykada w wyważonych drzwiach (W4) zostawia obraz wyważonego skrzydła
 	var rc := Rect2i()
 	var first := true
 	for cell in wd["cells"]:
@@ -1851,7 +1870,11 @@ func send_walls_to(peer_id: int) -> void:
 		for wd in _wall_defs:
 			var wn := String(wd["name"])
 			var w := get_node_or_null(wn)
-			if bool(wd.get("start_open", false)) and not _opened_walls.has(wn) and w != null:
+			if door_planks.has(wn) and not bool(wd.get("start_open", false)) and not _opened_walls.has(wn) and w != null:
+				var dh: Array = break_how.get(wn, ["", 0])
+				_break_wall_rpc.rpc_id(peer_id, map_id, wn, String(dh[0]), int(dh[1]))   # drzwi wyważone, potem zabite deskami (W4)
+				_nail_rpc.rpc_id(peer_id, map_id, wn, w.bands, plank_stock, false)
+			elif bool(wd.get("start_open", false)) and not _opened_walls.has(wn) and w != null:
 				if String(wd["material"]) == "rubble":
 					_cave_rpc.rpc_id(peer_id, map_id, wn, false)      # zawalona strefa (u dołączającego wolna); plamy i HP gruzu niżej
 				else:
@@ -1893,9 +1916,22 @@ func boards_of(wall_name: String) -> int:
 ## Komplet desek przegrody: tyle, ile ma pasów (kafli wysokości); przegroda bez pasów — BOARDS.
 func board_total(wall_name: String) -> int:
 	var wd := wall_def(wall_name)
-	if wd.is_empty() or String(wd["material"]) != "planks":
+	if wd.is_empty() or not _nailable(wd):
 		return BOARDS
 	return maxi(int(wd["rows"]), 1)
+
+## Przegroda, którą zabija się deskami: deski `%`, pusty otwór `:` i drzwi budynku — wyważone albo już zabite (W4).
+func _nailable(wd: Dictionary) -> bool:
+	if String(wd["material"]) == "planks":
+		return true
+	var n := String(wd["name"])
+	return bool(wd.get("door", false)) and (_opened_walls.has(n) or door_planks.has(n))
+
+## Materiał przegrody, która stoi (albo stanie) w miejscu `wd`: drzwi zabite deskami — deski (W4), reszta — z danych mapy.
+func wall_mat(wd: Dictionary) -> String:
+	if door_planks.has(String(wd["name"])):
+		return "planks"
+	return String(wd.get("material", "brick"))
 
 ## Pasy otworu zabitego pierwszą deską: najniższy pas cały, reszta zero.
 func _one_board(wd: Dictionary) -> PackedFloat32Array:
@@ -1909,7 +1945,7 @@ func _one_board(wd: Dictionary) -> PackedFloat32Array:
 ## "nomat" (brak desek w zapasie i złomu w łupie), "invalid".
 func nail_reason(wall_name: String) -> String:
 	var wd := wall_def(wall_name)
-	if wd.is_empty() or String(wd["material"]) != "planks":
+	if wd.is_empty() or not _nailable(wd):
 		return "invalid"
 	if boards_of(wall_name) >= board_total(wall_name):
 		return "full"
@@ -1974,6 +2010,8 @@ func _nail_rpc(id: String, wall_name: String, b: PackedFloat32Array, stock: int,
 	if wd.is_empty():
 		return
 	if _opened_walls.has(wall_name):
+		if bool(wd.get("door", false)):
+			door_planks[wall_name] = true                # wyważone drzwi: w otworze staje barykada z desek, nie drzwi (W4)
 		_close_wall(wd, b)
 	else:
 		var w := get_node_or_null(wall_name)
