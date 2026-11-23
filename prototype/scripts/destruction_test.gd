@@ -1392,13 +1392,15 @@ func _doors() -> void:
 	var blk_open := _body_blocked(feet_m, tall)
 	check("metalowe: kilof wyważa (%d ciosów, oczekiwane %d), przejście otwarte" % [sw, want],
 		sw == want and level._opened_walls.has("Door3") and not level._is_solid(cm, rb_m))
+	var bh: Array = level.break_how.get("Door3", [])
+	check("W3: przyczyna wyważenia u wszystkich — kilof i strona ciosu (%s)" % str(bh), bh.size() == 2 and String(bh[0]) == "pick" and int(bh[1]) != 0)
 	check("wysocy: %s (%.0f px) w zamkniętej bramie zablokowany, w wyważonej (%d px) się mieści" % [tall_id, tall.y, rows_m * 16],
 		tall_id == "rzeznik" and blk_closed and not blk_open and tall.y <= float(rows_m * 16))
 	level.reset_breakables()
 	await _frames(0.1)
 	dm = level.get_node_or_null("Door3")
-	check("reset: metalowe znów zamknięte, wyważone na starcie dalej otwarte",
-		dm != null and float(dm.hp) == 220.0 and level._is_solid(cm, rb_m) and level.get_node_or_null("Door2") == null)
+	check("reset: metalowe znów zamknięte (bez przyczyny wyważenia), wyważone na starcie dalej otwarte",
+		dm != null and float(dm.hp) == 220.0 and level._is_solid(cm, rb_m) and level.get_node_or_null("Door2") == null and not level.break_how.has("Door3"))
 	var frag: Dictionary = Throwables.KINDS["frag"]
 	var fr := float(frag["radius"])
 	var fd := float(frag["damage"])
@@ -1406,6 +1408,16 @@ func _doors() -> void:
 	Combat.explode(get_tree(), Vector2(mrc.position.x - fr + 4.0, mrc.get_center().y), fr, fd, 1, Weapons.GNIEW4)
 	await _frames(0.15)
 	check("metalowe: jeden granat na brzegu promienia wyważa bramę", _gone(dm) and level._opened_walls.has("Door3"))
+	bh = level.break_how.get("Door3", [])
+	check("W3: wysadzone — przyczyna `blast`, strona od wybuchu (%s)" % str(bh),
+		bh.size() == 2 and String(bh[0]) == "blast" and int(bh[1]) == 1)
+	var paths: Dictionary = (load("res://scripts/audio_manifest.gd") as GDScript).get_script_constant_map()["PATHS"]
+	var dmd: Dictionary = Breakable.MATERIALS["door_metal"]
+	var dsd: Dictionary = Breakable.MATERIALS["door_steel"]
+	check("W3: dźwięki drzwi metalowych (blacha i wyważenie, po 3 warianty) w banku; zbrojone tymi samymi niżej",
+		[1, 2, 3].all(func(k: int) -> bool: return paths.has("door_metal_hit_%d" % k) and paths.has("door_metal_break_%d" % k))
+		and String((dmd["hit_snd"] as Array)[0]) == "door_metal_hit" and String((dmd["break_snd"] as Array)[0]) == "door_metal_break"
+		and String((dsd["break_snd"] as Array)[0]) == "door_metal_break" and float((dsd["break_snd"] as Array)[3]) < float((dmd["break_snd"] as Array)[3]))
 
 	# punkt kontrolny bossa: wyważone drzwi zostają wyważone, reset z migawki
 	level.save_breakables_checkpoint()
@@ -1416,6 +1428,8 @@ func _doors() -> void:
 	await _frames(0.1)
 	check("punkt kontrolny: wyważone drzwi z migawki znów otwarte (po czystym resecie zamknięte: %s)" % str(closed_again),
 		closed_again and level.get_node_or_null("Door3") == null and level._opened_walls.has("Door3"))
+	check("W3: migawka pamięta przyczynę (wysadzone zostają wysadzone: %s)" % str(level.break_how.get("Door3", [])),
+		String((level.break_how.get("Door3", ["", 0]) as Array)[0]) == "blast")
 	level.reset_breakables()
 	await _frames(0.1)
 

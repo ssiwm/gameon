@@ -80,11 +80,11 @@ const MATERIALS := {
 		"debris": Color(0.42, 0.3, 0.18), "chips": 8, "chunks": 6, "dust": [0.5, 1.5], "mat": Mat.WOOD, "chip": [Color(1.6, 1.45, 1.2), Color(0.3, 0.22, 0.16)]},
 	"door_metal": {"hp": 220.0, "breaks": ["pick", "blast", "charge"], "n_hit": 3.0, "n_break": 6.0, "surface": "metal", "blasts": 1, "label": "Metal door",
 		"shot": {"bullet": 0.0, "slug": 0.0, "pellet": 0.0, "rail": 0.0},
-		"hit_snd": ["impact_hard", 3, -2.0, 0.75], "break_snd": ["impact_hard", 3, 3.0, 0.5],
+		"hit_snd": ["door_metal_hit", 3, -6.0, 1.0], "break_snd": ["door_metal_break", 3, 0.0, 1.0],     # W3: blacha drzwi, zawias i upadek skrzydła
 		"debris": Color(0.38, 0.27, 0.2), "chips": 5, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
 	"door_steel": {"hp": 400.0, "breaks": ["blast"], "n_hit": 2.0, "n_break": 8.0, "surface": "metal", "blasts": 2, "charge_blasts": 1, "label": "Reinforced door",
 		"shot": {"bullet": 0.0, "slug": 0.0, "pellet": 0.0, "rail": 0.0},
-		"hit_snd": ["impact_hard", 3, -2.0, 0.6], "break_snd": ["impact_hard", 3, 4.0, 0.4],
+		"hit_snd": ["door_metal_hit", 3, -5.0, 0.8], "break_snd": ["door_metal_break", 3, 1.0, 0.8],     # zbrojone: te same, niżej (grubsza płyta)
 		"debris": Color(0.3, 0.3, 0.32), "chips": 6, "dust": [0.3, 1.5], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
 	"support": {"hp": 80.0, "breaks": ["pick", "bullet", "pellet", "slug", "blast", "charge"], "n_hit": 1.2, "n_break": 5.0,
 		"hit_snd": ["amb_creak", 3, -6.0, 1.0], "break_snd": ["amb_creak", 3, 2.0, 0.6],
@@ -233,7 +233,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 		var lvl := get_tree().get_first_node_in_group("level")
 		SessionLog.event("break", break_row(info, kind, lvl))
 		if lvl != null:
-			lvl.break_wall(String(name))
+			var dv: Vector2 = info.get("dir", Vector2.ZERO)
+			lvl.break_wall(String(name), kind, signi(roundi(signf(dv.x))) if absf(dv.x) > 0.05 else 0)
 	return {"hit": true, "dealt": float(info["amount"]), "killed": broken, "mat": int(m["mat"])}
 
 ## Mnożnik obrażeń kuli i Brenneke w przegrodę wg przebicia broni z naboju (WeaponDef.pen): twardy rdzeń łupie mocniej niż miękka kula

@@ -3316,15 +3316,21 @@ func _sync_doors() -> void:
 		var nm := String(d["name"])
 		var node: Node = _level.get_node_or_null(nm)
 		var closed := node != null and not node.is_queued_for_deletion() and float(node.get("hp")) > 0.0
+		var how: Array = [] if closed else (_level.get("break_how") as Dictionary).get(nm, [])      # czym i w którą stronę wyważone (W3)
 		var e: Dictionary = _doors3d.get(nm, {})
-		if e.is_empty() or not is_instance_valid(e["root"]) or String(e.get("map", "")) != String(_level.get("map_id")):
+		if not e.is_empty() and is_instance_valid(e["root"]) and not closed and str(how) != String(e.get("how", "[]")):
+			(e["root"] as Node).queue_free()                    # przyszła przyczyna rozbicia: wyważone skrzydło wg niej (podważone, wybite, wysadzone)
+			e["root"] = null
+		if e.is_empty() or e["root"] == null or not is_instance_valid(e["root"]) or String(e.get("map", "")) != String(_level.get("map_id")):
 			var at := Building3D.door_at(int(d["col"]), int(d["rb"]))
 			if at.is_empty():
 				continue
-			var root := Building3D.door_leaf(String(d["mat"]), at)
+			var root := Building3D.door_leaf(String(d["mat"]), at, String(how[0]) if how.size() >= 2 else "", int(how[1]) if how.size() >= 2 else 0)
 			root.name = "Door_%s" % nm
 			_geo.add_child(root)
-			e = {"root": root, "hint": null, "closed": not closed, "at": at, "mat": String(d["mat"]), "map": String(_level.get("map_id")), "bands": -1}
+			_warm_destruction("door_" + String(d["mat"]))       # drzazgi i gruz wyważenia pod planszą, nie przy pierwszym ciosie (W3, --hitchtest --hitchdoor)
+			var hint0: Variant = e.get("hint") if not e.is_empty() and String(e.get("map", "")) == String(_level.get("map_id")) else null   # duch zostaje przy przebudowie skrzydła
+			e = {"root": root, "hint": hint0, "closed": not closed, "at": at, "mat": String(d["mat"]), "map": String(_level.get("map_id")), "bands": -1, "how": str(how)}
 			_doors3d[nm] = e
 		if closed and String(e["mat"]) == "wood":
 			_sync_door_bands(node as Node2D, e)
@@ -4951,6 +4957,21 @@ func _warm_destruction(mat_id: String) -> void:
 		bx.layers = LAYER_WORLD
 		_destr_warm.add_child(bx)
 		return
+	if mat_id.begins_with("door_"):
+		# W3: duch narzędzia (wspólny shader z przezroczystością) i osmalone skrzydło po wybuchu — potoki pod planszą, nie przy pierwszym
+		# podejściu, odbudowie drzwi ani wysadzeniu
+		var hm := ShaderMaterial.new()
+		hm.shader = Building3D.DoorHint3D.shader()
+		hm.set_shader_parameter("fade", 0.01)
+		var mats := Building3D.door_mats()
+		for k: int in 2:
+			var bx := MeshInstance3D.new()
+			bx.mesh = BoxMesh.new()
+			bx.material_override = hm if k == 0 else mats[String(Building3D.DOOR_KEY.get(mat_id.trim_prefix("door_"), "dmetal")) + "_burnt"]
+			bx.transform = Transform3D(tiny, Vector3(0.02 * float(k + 1), 0.01, 0.0))
+			bx.layers = LAYER_WORLD
+			bx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_destr_warm.add_child(bx)
 	var rb := _item_model("rubble")
 	if rb != null:
 		rb.scale = Vector3.ONE * PX * 0.004

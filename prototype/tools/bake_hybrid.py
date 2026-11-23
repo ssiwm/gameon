@@ -1181,11 +1181,39 @@ def _dig_rock_bake() -> None:
         _dig_fin("dig_rock_%d" % (i + 1), d.mix([(hit, 1.0), (chips, 0.3, .05)], ms(650)), DIG_ROCK_LUFS, 70.0)
 
 
+# --- Drzwi metalowe (DESTRUCTION_CONTENT_PLAN.md W3). Cios kilofem w blachę: Sound Spark „Metal Sheets Sledgehammer Hit 02” (stal o blachy)
+# z korpusem drzwi z RZ Post „Creepy Door, Metal Door Medium Impact 01” (trzy uderzenia w nagraniu — po jednym na wariant).
+# Wyważenie: Alexander Kopeikin „dry rusty metal impact with collapse 08” (zawias puszcza, skrzydło pada) i Mechanical Wave
+# „Drop Fall Metal Rattle Scrap Debris 06” (grzechot po upadku). Wybór do potwierdzenia odsłuchem A/B autora (`audio_ab.py --licensed
+# --only door_metal`); poziom w grze: trafienie −6 dB, wyważenie 0 dB w wywołaniach (`breakable.gd`).
+DOOR_METAL_HIT_NEEDS = ["metal_sheets_sledge_02", "creepy_door_metal_impact_01"]
+DOOR_METAL_BREAK_NEEDS = ["rusty_metal_collapse_08", "metal_drop_scrap_06"]
+_DOOR_IMPACTS = (0.17, 3.47, 6.51)                                   # uderzenia w creepy_door_metal_impact_01 [s]
+
+
+def _door_metal_hit_bake() -> None:
+    for i, semis in enumerate(_WOOD_SEMIS):
+        clang = _clip("metal_sheets_sledge_02", 0.0, 0.9, semis, 0.8, tail=.35)
+        body = _clip("creepy_door_metal_impact_01", _DOOR_IMPACTS[i] - 0.02, 0.9, semis - 2.0, 0.8, tail=.35)
+        x = d.mix([(clang, 0.8), (body, 1.0)], ms(800))
+        finalize("door_metal_hit_%d" % (i + 1), d.filt(_unit(x), "hp", 60.0, order=2), lufs=-19.0)
+
+
+def _door_metal_break_bake() -> None:
+    for i, semis in enumerate(_WOOD_SEMIS):
+        crash = _clip("rusty_metal_collapse_08", 0.0, 2.0, semis, 1.8, tail=.6)
+        rattle = _clip("metal_drop_scrap_06", 0.0, 0.75, semis + 1.0, 0.72, tail=.3)
+        x = d.mix([(crash, 1.0), (rattle, 0.55, 0.32 + 0.04 * i)], ms(1800))
+        finalize("door_metal_break_%d" % (i + 1), d.filt(_unit(x), "hp", 45.0, order=2), lufs=-15.0, fade_out_ms=200)
+
+
 def world() -> None:
     """Wersje z nagrań dla dźwięków świata — wołane na końcu bake_sfx.build_world()."""
     bc.hybrid(_keys("wood_hit", 3), _wood_hit_bake, WOOD_HIT_NEEDS)
     bc.hybrid(_keys("wood_break", 3), _wood_break_bake, WOOD_BREAK_NEEDS)
     bc.hybrid(_keys("hammer_nail", 3), _hammer_bake, HAMMER_NEEDS)
+    bc.hybrid(_keys("door_metal_hit", 3), _door_metal_hit_bake, DOOR_METAL_HIT_NEEDS)
+    bc.hybrid(_keys("door_metal_break", 3), _door_metal_break_bake, DOOR_METAL_BREAK_NEEDS)
     bc.hybrid(["tape_stop"], _tape_stop_bake, TAPE_NEEDS)
     bc.hybrid(["quake"], _quake_bake, QUAKE_NEEDS)
     bc.hybrid(["collapse"], _collapse_bake, COLLAPSE_NEEDS)

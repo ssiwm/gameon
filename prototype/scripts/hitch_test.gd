@@ -138,6 +138,10 @@ func _go() -> void:
 		await _wall()
 		_summary()
 		return
+	if "--hitchdoor" in OS.get_cmdline_user_args():
+		await _doors()
+		_summary()
+		return
 	for round_i in 2:
 		for k in KINDS:
 			await _pickup(k, round_i)
@@ -268,6 +272,44 @@ func _wall() -> void:
 			for k in (2 if st == "wall_break_again" else 1):          # kilof 55 z 120 HP: trzeci cios rozbija
 				Combat.apply(w, Combat.make_info(Weapons.KILOF, Weapons.def(Weapons.KILOF).damage, w.call("body_center"), Vector2.RIGHT, 1, "melee"))
 		await _wait(3.0)
+
+## `--hitchdoor` (z `--mission=z1_m2` albo `z1_m3`; DESTRUCTION_CONTENT_PLAN.md W3): każde zamknięte drzwi mapy — pierwszy cios (drewno
+## maczetą, metal kilofem), wyważenie (drzazgi, skrzydło wyważone wg przyczyny, rozpływ ducha), odbudowa (wipe) i wysadzenie granatem
+## (skrzydło osmalone) — po każdym kroku 3 s pomiaru.
+func _doors() -> void:
+	var p := _player()
+	if p == null or not main.level.has_method("door_defs"):
+		print("[HITCH] brak drzwi na mapie")
+		return
+	for d: Dictionary in main.level.door_defs():
+		var dn := String(d["name"])
+		var w := main.level.get_node_or_null(dn) as Node2D
+		if w == null or String(w.get("mat_id")) == "door_steel":
+			continue
+		var tool := Weapons.MACZETA if String(w.get("mat_id")) == "door_wood" else Weapons.KILOF
+		p.global_position = w.global_position + Vector2(-40.0 * float(d["side"]), -4.0)
+		p.velocity = Vector2.ZERO
+		await _wait(2.0)
+		_mark("%s_hit1" % dn)
+		Combat.apply(w, Combat.make_info(tool, Weapons.def(tool).damage, w.call("body_center"), Vector2(float(d["side"]) * -1.0, 0.0), 1, "melee"))
+		await _wait(3.0)
+		_mark("%s_break" % dn)
+		for k in 12:
+			w = main.level.get_node_or_null(dn) as Node2D
+			if w == null or w.is_queued_for_deletion() or float(w.get("hp")) <= 0.0:
+				break
+			Combat.apply(w, Combat.make_info(tool, Weapons.def(tool).damage, w.call("body_center"), Vector2(float(d["side"]) * -1.0, 0.0), 1, "melee"))
+		await _wait(3.0)
+		_mark("%s_rebuild" % dn)
+		main.level.reset_breakables()
+		await _wait(3.0)
+		_mark("%s_blast" % dn)
+		w = main.level.get_node_or_null(dn) as Node2D
+		if w != null:
+			Combat.explode(get_tree(), w.call("body_center") + Vector2(-12.0 * float(d["side"]), 0.0), 48.0, 30.0, 1, Weapons.KILOF, true)   # granat (jak w --destructiontest)
+		await _wait(3.0)
+		main.level.reset_breakables()
+		await _wait(1.0)
 
 func _summary() -> void:
 	for ln in _lines:

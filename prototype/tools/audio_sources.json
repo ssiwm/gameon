@@ -273,6 +273,14 @@
    "supplier": "Bluezone",
    "license": "sonniss-gdc-2.0"
   },
+  "creepy_door_metal_impact_01": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/RZ Post - The Creepy Door/Creepy Door, Metal,Door,Medium,Impact_01.wav",
+   "sha256": "9237857e3753c558c114ef45e5716594c4d96090bcea1425222b784a09a41bdd",
+   "pack": "Sonniss GDC 2018 — The Creepy Door",
+   "supplier": "RZ Post",
+   "license": "sonniss-gdc-2.0"
+  },
   "crossbow_functions": {
    "kind": "lib",
    "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Eiravaein Works - Nocked/Nocked,archery,crossbow1,composite,string,functions,bolt,slideintorest,set,drag,nock,remove,clatter,alt.wav",
@@ -633,12 +641,28 @@
    "supplier": "SoundBits",
    "license": "sonniss-gdc-2.0"
   },
+  "metal_drop_scrap_06": {
+   "kind": "lib",
+   "file": "sonniss/2024/Mechanical Wave - Torturing Metal/METLCrsh_Drop Fall Metal Rattle Scrap Debris_06_MWSFX_TM.wav",
+   "sha256": "4ea3ccf72861b5166780a21f011b3240b26c2c6a0c79ea1f5f36ee80b7f3f7ed",
+   "pack": "Sonniss GDC 2024 — Torturing Metal",
+   "supplier": "Mechanical Wave",
+   "license": "sonniss-gdc-2.0"
+  },
   "metal_rattle_shudder": {
    "kind": "lib",
    "file": "sonniss/2024/Pole Position - The Stormbat Hull Interaction Library/Metal - RATTLE - Shudder Constant - Geofon.wav",
    "sha256": "eba66252b0ef1589fbee0009458efe6fda60985c3da8be0bb09a89ce45264571",
    "pack": "Sonniss GDC 2024 — The Stormbat Hull Interaction Library",
    "supplier": "Pole Position",
+   "license": "sonniss-gdc-2.0"
+  },
+  "metal_sheets_sledge_02": {
+   "kind": "lib",
+   "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 5of8/Sound Spark LLC – Metal Hits, Scrapes and Squeaks/Metal_Sheets_Sledgehammer_Hit_02.wav",
+   "sha256": "9c7e469e2a9282b1a77672c603c03169e1964e8ac832a5ef8548808c65ecf9bf",
+   "pack": "Sonniss GDC 2019 — Metal Hits, Scrapes and Squeaks",
+   "supplier": "Sound Spark LLC",
    "license": "sonniss-gdc-2.0"
   },
   "monster1_breathing3": {
@@ -895,6 +919,14 @@
    "sha256": "31b1560355a80574c437f12a2fdb4a17c5f7c53233a7e2a3c169e9d380b79b78",
    "pack": "Sonniss GDC 2018 — Foley Elements Rocks, Dirt And Stone",
    "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rusty_metal_collapse_08": {
+   "kind": "lib",
+   "file": "sonniss/2016/Alexander Kopeikin - Black Metal/dry rusty metal impact with collapse 08.wav",
+   "sha256": "e14e5eb291eff016b2dd7ced6e12028ae4aee6e399ad39d57ed455830a2fe15f",
+   "pack": "Sonniss GDC 2016 — Black Metal",
+   "supplier": "Alexander Kopeikin",
    "license": "sonniss-gdc-2.0"
   },
   "saiga12_close_1m": {
