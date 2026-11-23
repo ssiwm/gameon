@@ -178,6 +178,7 @@ var backdrop: Array = []                  ## BACKDROP z danych mapy: dalekie pun
 var caves: Array = []                     ## CAVES z danych mapy: skalne nawisy widoku 3D (`cave3d.gd`); czysta kosmetyka
 var niches: Array = []                    ## NICHES z danych mapy: wnęki ze światłem w tylnej ścianie wnętrz (`niches3d.gd`); czysta kosmetyka
 var _step_deck := {}                      ## Vector2i(c, r) → true: kafle pomostów z STEPS (`mantle_deck`, liczone przy pierwszym pytaniu)
+var watchtower: Dictionary = {}            ## WATCHTOWER z danych mapy: strażnica jako jedna konstrukcja 3D (`watchtower3d.gd`, TOWER_PLAN.md); czysta kosmetyka
 var steps: Array = []                     ## STEPS z danych mapy: pomosty z natury i z historii miejsca (`step3d.gd`, STEPS_PLAN.md); czysta kosmetyka
 var front: Array = []                     ## FRONT z danych mapy: zakresy pierwszego planu przed płaszczyzną gry (`front3d.gd`); czysta kosmetyka
 var break_how := {}                        ## nazwa rozbitej przegrody → [czym (`breakable.hit_kind`), znak x kierunku] — obraz wyważonych drzwi (W3)
@@ -310,6 +311,7 @@ func _load(id: String) -> void:
 	backdrop = ((m as GDScript).get_script_constant_map().get("BACKDROP", []) as Array).duplicate()
 	niches = ((m as GDScript).get_script_constant_map().get("NICHES", []) as Array).duplicate()
 	steps = ((m as GDScript).get_script_constant_map().get("STEPS", []) as Array).duplicate()
+	watchtower = ((m as GDScript).get_script_constant_map().get("WATCHTOWER", {}) as Dictionary).duplicate()
 	caves = ((m as GDScript).get_script_constant_map().get("CAVES", []) as Array).duplicate()
 	front = ((m as GDScript).get_script_constant_map().get("FRONT", []) as Array).duplicate()
 	front_skip = ((m as GDScript).get_script_constant_map().get("FRONT_SKIP", []) as Array).duplicate()

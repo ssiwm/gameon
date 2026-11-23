@@ -195,6 +195,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_structures.gd 2>&1 | tee structures.log
           grep -a "^PASS" structures.log
+      - name: Strażnica 1.1 (test_watchtower.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_watchtower.gd 2>&1 | tee watchtower.log
+          grep -a "\[WATCHTOWER\] PASS$" watchtower.log
       - name: Wnęki w ścianie tła (test_niches.gd)
         run: |
           godot --headless --path prototype -s tools/test_niches.gd 2>&1 | tee niches.log
