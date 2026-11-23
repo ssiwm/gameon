@@ -4626,6 +4626,39 @@ func _shortcut_report(id: String, nav: AStar2D, points: Array) -> void:
 			txt += ", trasa misji %.0f → %.0f px (%+.0f%%)" % [route0, route1, (route1 - route0) / route0 * 100.0]
 		print(txt)
 
+## Test map (DESTRUCTION_CONTENT_PLAN.md W2b): łup VAULT_LOOT leży za drzwiami zbrojonymi swojej kolumny — przy zamkniętych drzwiach poza
+## zasięgiem ze startu, po ich wysadzeniu osiągalny (na podłodze, z drogą powrotną); drzwi drewniane i metalowe wyważone jak w teście celów.
+## Zwraca błędy.
+func _vault_report(id: String, start: Array) -> Array:
+	var bad: Array = []
+	var dopen: Array = level.open_doors_for_check()
+	for vc in level.vault_loot:
+		var wd: Dictionary = {}
+		for d: Dictionary in level._wall_defs:
+			if bool(d.get("door", false)) and ((d["cells"] as Array)[0] as Vector2i).x == int(vc):
+				wd = d
+		if wd.is_empty() or String(wd["material"]) != "door_steel":
+			bad.append("%s: VAULT_LOOT kol. %d — nie ma tam drzwi zbrojonych" % [id, int(vc)])
+			continue
+		var pts: Array = []
+		for v: Array in level.vault_loot[vc]:
+			pts.append(["łup %s kol. %d" % [String(v[2]), int(v[0])], Vector2(int(v[0]) * 16.0 + 8.0, (int(v[1]) + 1) * 16.0)])
+		var shut := 0
+		for p in pts:
+			if not _reach_errors([start, p], false).is_empty():
+				shut += 1
+		var wn := String(wd["name"])
+		level._open_wall(wn, false)
+		for p in pts:
+			for e in _reach_errors([start, p], false):
+				bad.append("%s: po wysadzeniu %s: %s" % [id, wn, e])
+		level._close_wall(wd)
+		if shut != pts.size():
+			bad.append("%s: łup za %s osiągalny przy zamkniętych drzwiach (%d z %d)" % [id, wn, pts.size() - shut, pts.size()])
+		print("[MAPTEST] %s: pomieszczenie za %s (kol. %d): łup %d, za zamkniętymi drzwiami %d, po wysadzeniu osiągalny" % [id, wn, int(vc), pts.size(), shut])
+	level.close_doors_after_check(dopen)
+	return bad
+
 ## Test map (DESTRUCTION_CONTENT_PLAN.md W5): zawał ma odcinać pościg — objazd między bokami strefy „^” po jej zawaleniu (wydruk) i na mapach
 ## kampanii błąd, gdy jest krótszy niż CAVE_MIN_DETOUR (zawał niczego nie odcina; brak objazdu sprawdza już `cave_checked` przez cele).
 const CAVE_MIN_DETOUR := 800.0
@@ -4937,6 +4970,7 @@ func _map_test() -> void:
 			if not level.doors.is_empty() or not (dc[1] as Array).is_empty():
 				print("[MAPTEST] %s: drzwi %d (wyważane na trasie: %s), wejścia budynków bez drzwi: %s" % [id, level.doors.size(), ", ".join(dopen) if not dopen.is_empty() else "—",
 					", ".join(dc[1]) if not (dc[1] as Array).is_empty() else "brak"])
+			bad.append_array(_vault_report(id, points[0]))       # W2b: łup za drzwiami zbrojonymi
 			var behind: Array = []
 			for p in points:
 				if not must.has(p) and not _reach_errors([points[0], p], false).is_empty():

@@ -3329,6 +3329,8 @@ func _sync_doors() -> void:
 				continue
 			var root := Building3D.door_leaf(String(d["mat"]), at, String(how[0]) if how.size() >= 2 else "", int(how[1]) if how.size() >= 2 else 0)
 			root.name = "Door_%s" % nm
+			if (_level.get("vault_loot") as Dictionary).has(int(d["col"])):
+				_vault_marks(root, at, String((_level.get("vault_sign") as Dictionary).get(int(d["col"]), "")), int(d["col"]))
 			_geo.add_child(root)
 			_warm_destruction("door_" + String(d["mat"]))       # drzazgi i gruz wyważenia pod planszą, nie przy pierwszym ciosie (W3, --hitchtest --hitchdoor)
 			var hint0: Variant = e.get("hint") if not e.is_empty() and String(e.get("map", "")) == String(_level.get("map_id")) else null   # duch zostaje przy przebudowie skrzydła
@@ -3355,6 +3357,56 @@ func _sync_doors() -> void:
 		elif h != null and is_instance_valid(h):
 			(h as Node).call("dissolve")
 			e["hint"] = null
+
+const VAULT_LAMP := Color(1.0, 0.16, 0.08)    ## czerwona lampa nad drzwiami zbrojonymi z łupem (W2b)
+
+## Pomieszczenie z łupem za drzwiami zbrojonymi (DESTRUCTION_CONTENT_PLAN.md W2b): czerwona lampa w koszu nad ościeżnicą od strony kamery
+## (świeci słabo, bez cienia — widać ją z daleka i w ciemności) i napis szablonem na tylnej ścianie pomieszczenia, widoczny w przekroju.
+func _vault_marks(root: Node3D, at: Dictionary, sign_key: String, col: int) -> void:
+	var s := float(int(at["side"]))
+	var y0 := float(at["y0"])
+	var top := y0 + Building3D._door_h(y0, float(at["y1"]), String(at.get("kind", "door"))) + Building3D.DOOR_HH
+	var lamp_at := Vector3(float(at["xo"]) + s * (Building3D.DOOR_P * 0.5), top + 0.32, float(at["hw"]) + Building3D.DOOR_JW * 0.5)
+	var lm := StandardMaterial3D.new()
+	lm.albedo_color = VAULT_LAMP
+	lm.emission_enabled = true
+	lm.emission = VAULT_LAMP
+	lm.emission_energy_multiplier = 3.0
+	var bulb := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.16, 0.2, 0.16)
+	bulb.mesh = bm
+	bulb.material_override = lm
+	bulb.layers = LAYER_WORLD
+	bulb.position = lamp_at
+	bulb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(bulb)
+	var light := OmniLight3D.new()
+	light.light_color = VAULT_LAMP
+	light.light_energy = 1.0
+	light.omni_range = 1.7                                     # bez cienia: większy zasięg przenika przez ścianę i barwi wnętrze
+	light.shadow_enabled = false
+	light.layers = LAYER_WORLD | LAYER_ACTORS
+	light.position = lamp_at + Vector3(s * 0.45, -0.1, 0.0)
+	root.add_child(light)
+	if sign_key == "":
+		return
+	var lbl := Label3D.new()
+	lbl.text = tr(sign_key)
+	lbl.font_size = 96
+	lbl.pixel_size = 0.007
+	lbl.shaded = true
+	lbl.modulate = Color(0.78, 0.74, 0.66, 0.8)
+	lbl.layers = LAYER_WORLD
+	var cx := float(at["xo"]) - s * 2.0
+	for b: Dictionary in Level3D.buildings:                    # środek wnętrza pomieszczenia (między ścianami szczytowymi)
+		if int(b["c0"]) == col or int(b["c1"]) == col:
+			cx = (float(int(b["c0"])) + float(int(b["c1"])) + 1.0) * 0.5 * Level3D.T
+	lbl.position = Vector3(cx, y0 + 1.9, -2.08)
+	var font := UiTheme.heading_font()
+	if font != null:
+		lbl.font = font
+	root.add_child(lbl)
 
 ## Barykada w wyważonych drzwiach (W4): deski (`Building3D.door_boards`) stoją pasami jak pasy przegrody `planks` w otworze; bez barykady
 ## (`n` null) — ukryte. Węzeł w `_geo` (przebudowa świata go zabiera — budujemy od nowa przy następnej barykadzie).

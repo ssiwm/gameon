@@ -1081,7 +1081,8 @@ func _t_economy() -> void:
 	Arsenal.stock["scanner"] = int(Throwables.KINDS["scanner"]["max"])
 	_drop_still("supply", Throwables.ORDER.find("scanner"), player.global_position + Vector2(0, -4))     # pod nogami: zostaje przez pełny zapas, nie przez znos
 	await wait(1.4)
-	var left := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "supply").size()
+	var at_feet := player.global_position
+	var left := get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "supply" and (n as Node2D).global_position.distance_to(at_feet) < 48.0).size()   # bez łupu mapy (granat w bunkrze 1.2, W2b)
 	check("skrzynka zaopatrzenia: przy pełnym zapasie zostaje na ziemi (%d)" % left, left == 1 and Arsenal.get_throwable("scanner") == int(Throwables.KINDS["scanner"]["max"]))
 	for n in get_tree().get_nodes_in_group("pickups"):
 		if n.kind == "supply":

@@ -35,6 +35,7 @@ const TIPS := [
 	["battery_low", "The flashlight battery is running low. Flat 4.5 V batteries lie around the map, drop from enemies and from smashed moth nests — and the light slowly recharges while switched off"],
 	["moths", "Moths nest under the watchtower roof and swarm any light they can see — your flashlight, even muzzle flashes. Bullets and fire do not touch them: throw a flare ({flare}) away from you to draw the swarm off, or cut them down with your blade ({melee})"],
 	["adit", "An old drainage adit runs west under the camp and comes up through a hatch in its hollow. Board this opening up behind you (hold {interact}) — whatever hunts you will have to smash through"],
+	["vault", "A reinforced door — only explosives open it: two grenades or a demolition charge ({throw}). Shoot the barrel beside it from a distance first and one grenade will do. Whatever is locked inside was worth the steel"],
 	["moths_on", "Moths are smothering your flashlight: the beam dims, the battery drains and their fluttering is loud. Swing your blade ({melee}) through them or switch the light off ({flashlight}) to shake them — killed at your face, they raise dust that makes you cough"],
 	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
 	["scream", "{scream} screams: a burst of NOISE that pulls every enemy nearby — and HIM. Turn on the microphone in the lobby and the game hears your real scream"],
@@ -199,6 +200,16 @@ func _collect(p: Node) -> void:
 				adit_open = true
 				break
 	_queue("adit", adit_open, false)
+	# drzwi zbrojone z łupem za nimi (DESTRUCTION_CONTENT_PLAN.md W2b): raz, przy bunkrze łączności 1.2 — czym je otworzyć i po co beczka
+	var vault_near := false
+	if lvl_n != null and String(lvl_n.get("map_id")) == "z1_m2" and lvl_n.has_method("door_defs"):
+		for d: Dictionary in lvl_n.door_defs():
+			if String(d["mat"]) != "steel" or not (lvl_n.get("vault_loot") as Dictionary).has(int(d["col"])):
+				continue
+			var dn: Node2D = lvl_n.get_node_or_null(String(d["name"]))
+			if dn != null and not dn.is_queued_for_deletion() and absf(dn.global_position.x - p.global_position.x) < 140.0 					and absf(dn.global_position.y - p.global_position.y) < 64.0:
+				vault_near = true
+	_queue("vault", vault_near, false)
 	_queue("moths_on", int(p.get("moth_cover")) > 0, false)        # rój na latarce: jak go strząsnąć
 	_queue("quiet", NoiseMgr.level >= 22.0 and NoiseMgr.level < NoiseMgr.AWAKE_THRESHOLD and not threat_near, false)
 	var friend_down := false

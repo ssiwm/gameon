@@ -1325,20 +1325,20 @@ func _doors() -> void:
 	for d: Dictionary in dws3:
 		kind3[int(d["col"])] = String(d["kind"])
 	var vg: Array = (m3.get("VEIN_ARENA", {}) as Dictionary).get("gate", [])
-	check("1.3: DOORS w każdym wejściu (%s): posterunek metal + wyważone, Skład brama drewniana + wyważona, hala Żyły metalowa brama w otworze bramy z korzeni" % str(d3.keys()),
-		d3.size() == 5 and all3 and String(d3[18]["mat"]) == "metal" and kind3.get(18) == "door" and String((d3[36] as Dictionary).get("start", "")) == "broken"
+	check("1.3: DOORS w każdym wejściu (%s): posterunek metal + wyważone, Skład brama drewniana + wyważona, hala Żyły metalowa brama w otworze bramy z korzeni, skład saperów zbrojone (W2b)" % str(d3.keys()),
+		d3.size() == 6 and String(d3[170]["mat"]) == "steel" and all3 and String(d3[18]["mat"]) == "metal" and kind3.get(18) == "door" and String((d3[36] as Dictionary).get("start", "")) == "broken"
 		and String(d3[112]["mat"]) == "wood" and kind3.get(112) == "gate" and String((d3[142] as Dictionary).get("start", "")) == "broken"
 		and String(d3[164]["mat"]) == "metal" and kind3.get(164) == "gate" and vg.size() == 3 and int(vg[0]) == 164 and not (d3[164] as Dictionary).has("start"))
 	var dws: Array = LevelScript.building_doorways(level.front, level._map)
 	var orig: Dictionary = level.doors.duplicate(true)
 	var all2 := dws.all(func(d: Dictionary) -> bool: return orig.has(int(d["col"])))
-	check("1.2: DOORS w każdym wejściu (%s): hala stacji brama drewniana, pompownia metalowa, wschodnie wyważone" % str(orig.keys()),
-		orig.size() == 4 and all2 and String(orig[66]["mat"]) == "wood" and String(orig[216]["mat"]) == "metal"
+	check("1.2: DOORS w każdym wejściu (%s): hala stacji brama drewniana, pompownia metalowa, wschodnie wyważone, bunkier łączności zbrojone (W2b)" % str(orig.keys()),
+		orig.size() == 5 and String(orig[280]["mat"]) == "steel" and all2 and String(orig[66]["mat"]) == "wood" and String(orig[216]["mat"]) == "metal"
 		and String((orig[100] as Dictionary).get("start", "")) == "broken" and String((orig[246] as Dictionary).get("start", "")) == "broken")
 	var defs: Array = level.door_defs()
-	check("1.2: przegrody Door1–Door4 od lewej (%s)" % ", ".join(defs.map(func(d: Dictionary) -> String: return "%s %s kol. %d, %d rz." % [d["name"], d["mat"], d["col"], d["rows"]])),
-		defs.size() == 4 and int(defs[0]["col"]) == 66 and int(defs[2]["col"]) == 216 and String(defs[0]["mat"]) == "wood" and String(defs[2]["mat"]) == "metal")
-	if defs.size() != 4:
+	check("1.2: przegrody Door1–Door5 od lewej (%s)" % ", ".join(defs.map(func(d: Dictionary) -> String: return "%s %s kol. %d, %d rz." % [d["name"], d["mat"], d["col"], d["rows"]])),
+		defs.size() == 5 and int(defs[0]["col"]) == 66 and int(defs[2]["col"]) == 216 and String(defs[0]["mat"]) == "wood" and String(defs[2]["mat"]) == "metal")
+	if defs.size() != 5:
 		return
 	var dw: Node2D = level.get_node_or_null("Door1")
 	var dm: Node2D = level.get_node_or_null("Door3")
@@ -1494,6 +1494,7 @@ func _doors() -> void:
 	check("1.2 z powrotem wg danych mapy: Door2 wyważone, Door1 i Door3 zamknięte",
 		level.get_node_or_null("Door2") == null and level.get_node_or_null("Door1") != null and level.get_node_or_null("Door3") != null)
 	await _door_barricade(defs)
+	await _vault()
 
 	# drewniane (próbne w tunelu): kule słabo, śrut, pazury ranią; szarża Wołka tak
 	var base := Vector2(BASE_C * 16.0 + 8.0, BASE_FEET)
@@ -1512,6 +1513,74 @@ func _doors() -> void:
 		and (Breakable.MATERIALS["door_metal"]["breaks"] as Array).has("charge") and not (Breakable.MATERIALS["door_steel"]["breaks"] as Array).has("charge"))
 	check("Stalker na jedynej drodze rozbija deski, drewniane i metalowe drzwi, zbrojonych nie",
 		StalkerScript.SMASHES.has("door_wood") and StalkerScript.SMASHES.has("door_metal") and not StalkerScript.SMASHES.has("door_steel"))
+
+## Przedmioty wypadłe w grze (węzły „Item…”) przy kolumnie `col`.
+func _shelf_items(col: int) -> Array:
+	var out: Array = []
+	for n in level.get_children():
+		if String(n.name).begins_with("Item") and not n.is_queued_for_deletion() and absf((n as Node2D).global_position.x - (float(col) * 16.0 + 8.0)) < 12.0:
+			out.append(n)
+	return out
+
+## W2b: pomieszczenia z łupem za drzwiami zbrojonymi — dane 1.2 i 1.3, beczka przy drzwiach rani tylko zbrojone (jeden wybuch z dwóch), beczka
+## i granat je otwierają, przy wysadzeniu wypada część broni (raz na próbę), łup leży w środku od początku.
+func _vault() -> void:
+	level.reset_breakables()
+	await _frames(0.1)
+	var m3: Dictionary = (load("res://scripts/maps/z1_m3.gd") as GDScript).get_script_constant_map()
+	var vl3: Dictionary = m3.get("VAULT_LOOT", {})
+	var pc3: Array = m3.get("POWER_CRATES", [])
+	check("W2b dane: 1.3 skład saperów — drzwi zbrojone w kol. 170, łup (%d), skrzynia mocy SPECTER-1 w środku" % (vl3.get(170, []) as Array).size(),
+		String(((m3.get("DOORS", {}) as Dictionary).get(170, {}) as Dictionary).get("mat", "")) == "steel" and (vl3.get(170, []) as Array).size() == 3
+		and pc3.size() == 1 and int(pc3[0][2]) == Weapons.WIDMO1 and int(pc3[0][0]) > 159 and int(pc3[0][0]) < 170)
+	var only_barrel := Breakable.MATERIALS.keys().filter(func(k: Variant) -> bool: return bool((Breakable.MATERIALS[k] as Dictionary).get("barrel", false)))
+	check("W2b: wybuch beczki rusza tylko drzwi zbrojone (%s)" % str(only_barrel), only_barrel == ["door_steel"])
+	var vd: Dictionary = {}
+	for d: Dictionary in level.door_defs():
+		if int(d["col"]) == 280:
+			vd = d
+	var dv: Node2D = level.get_node_or_null(String(vd.get("name", "")))
+	var loot := level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with("MapVault280_") and not n.is_queued_for_deletion())
+	var crate := level.get_children().filter(func(n: Node) -> bool: return String(n.name).begins_with("MapPower") and n.get("arg") == Weapons.GNIEW4)
+	check("W2b: 1.2 bunkier łączności — %s zbrojone w kol. 280, w środku złom i granat (%d), skrzynia mocy WRATH-4 (%d)" % [String(vd.get("name", "-")), loot.size(), crate.size()],
+		dv != null and String(dv.get("mat_id")) == "door_steel" and loot.size() == 2 and crate.size() == 1)
+	if dv == null:
+		return
+	var m2: Dictionary = (load("res://scripts/maps/z1_m2.gd") as GDScript).get_script_constant_map()
+	var brow := String((m2["MAP"] as Array)[25])
+	check("W2b: na mapie beczka `o` tuż przed drzwiami (kol. 279: %s)" % brow[279], brow[279] == "o")
+	var barrel := _crate(Vector2(279.0 * 16.0 + 8.0, 26.0 * 16.0), "barrel")   # beczki mapy zdjęte przy izolacji testu — ta sama w tym samym miejscu
+	barrel.explode()
+	await _frames(0.3)
+	var after := float(dv.hp) if is_instance_valid(dv) and not dv.is_queued_for_deletion() else 0.0
+	check("W2b: sama beczka — drzwi stoją, połowa wytrzymałości (%.0f / 400)" % after, after > 0.0 and after <= 200.0 and not level._opened_walls.has(String(vd["name"])))
+	var frag: Dictionary = Throwables.KINDS["frag"]
+	var rc: Rect2 = dv.hit_rect()
+	Combat.explode(get_tree(), Vector2(rc.position.x - float(frag["radius"]) + 4.0, rc.get_center().y), float(frag["radius"]), float(frag["damage"]), 1, Weapons.GNIEW4)
+	await _frames(0.3)
+	var items := _shelf_items(284)
+	var ik := items.map(func(n: Node) -> String: return "%s %d" % [String(n.get("kind")), int(n.get("rounds"))])
+	check("W2b: beczka + granat wyważają drzwi zbrojone (przyczyna %s), z półki wypada część albo złom (%s)" % [str(level.break_how.get(String(vd["name"]), [])), str(ik)],
+		level._opened_walls.has(String(vd["name"])) and String((level.break_how.get(String(vd["name"]), [""]) as Array)[0]) == "blast"
+		and items.size() == 1 and String(items[0].get("kind")) in ["part", "scrap"])
+	level.reset_breakables()
+	await _frames(0.1)
+	dv = level.get_node_or_null(String(vd["name"]))
+	var serial0 := int(level._pickup_serial)
+	var ch: Dictionary = Throwables.KINDS["charge"]
+	rc = dv.hit_rect()
+	Combat.explode(get_tree(), Vector2(rc.position.x - float(ch["radius"]) + 6.0, rc.get_center().y), float(ch["radius"]), 10.0, 1, Weapons.GNIEW4, true, true)
+	await _frames(0.3)
+	check("W2b: drugie wysadzenie w tej samej próbie (ładunek) — część nie wypada drugi raz (nowych przedmiotów: %d)" % (int(level._pickup_serial) - serial0),
+		level._opened_walls.has(String(vd["name"])) and int(level._pickup_serial) == serial0)
+	for it in items:
+		if is_instance_valid(it):
+			it.queue_free()
+	barrel.queue_free()
+	level.reset_breakables()
+	await _frames(0.1)
+	check("W2b: wipe — drzwi zbrojone znów stoją", level.get_node_or_null(String(vd["name"])) != null)
+	level._vaults_opened.clear()
 
 ## W4: barykada w wyważonych drzwiach — brama wyważona na starcie (Door2) i metalowa wyważona kilofem (Door3): deski jak w pustym otworze,
 ## skrzydło leży dalej tak, jak je wyważono, wipe stawia drzwi z powrotem, punkt kontrolny bossa — barykadę.

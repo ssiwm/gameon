@@ -23,6 +23,11 @@ const OBJECTIVE := "nests"                ## nests = gniazda + boss; generators 
 const UNDERGROUND_ROW := 31               ## od tego rzędu postać jest w podziemiach (ambient, straszaki)
 ## Broń na ziemi („g") w kolejności od lewej (rosnąca moc).
 const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6, Weapons.HKM9, Weapons.GNIEW4]
+## Skrzynia mocy (FUN_PLAN.md P1.3) w składzie saperów nad tunelem za drzwiami zbrojonymi (DESTRUCTION_CONTENT_PLAN.md W2b): SPECTER-1 przed Żyłą.
+const POWER_CRATES := [[164, 34, Weapons.WIDMO1, 10]]
+## Łup składu saperów (kolumna drzwi → [kolumna, rząd podłogi, rodzaj, …]): złom, granat odłamkowy i część broni wypadająca przy wysadzeniu.
+const VAULT_LOOT := {170: [[167, 34, "scrap", 60], [168, 34, "supply", "frag"], [161, 34, "part"]]}
+const VAULT_SIGN := {170: "SAPPERS"}
 ## Ręczne akcenty dekoracji: [pozycja stóp, indeks z art/props.png] — kłody w tartaku, regały i beczki w Składzie.
 ## (8+) Poly Haven: koksownik wartowników przed posterunkiem. Start w lesie bez płotu i zapory (porządek po playteście F3).
 const ACCENTS := [[Vector2(1432, 416), 7], [Vector2(584, 416), 11], [Vector2(1864, 416), 15], [Vector2(1928, 416), 20], [Vector2(1960, 416), 16], [Vector2(2024, 416), 19], [Vector2(2072, 416), 15], [Vector2(2120, 416), 20], [Vector2(2184, 416), 16], [Vector2(2216, 416), 15], [Vector2(1880, 353), 15], [Vector2(2008, 353), 20], [Vector2(2056, 353), 16], [Vector2(2136, 353), 15], [Vector2(2200, 353), 20], [Vector2(2088, 416), 21], [Vector2(1896, 405), 22]]
@@ -64,6 +69,7 @@ const NICHES := [
 ## razem z szybami — pod otworem szybu element nie staje): jeden wpis na cały poziom wysunąłby strop sal nad skałą tuneli jak balkon.
 const FRONT := [
 	{"set": "station", "c0": 18, "c1": 36, "r0": 21, "r1": 26, "shell": true, "build": "bunker"},     # posterunek (budynek 3D, `building3d.gd`)
+	{"set": "station", "c0": 159, "c1": 170, "r0": 31, "r1": 35, "shell": true, "build": "bunker"},  # skład saperów nad tunelem: drzwi zbrojone, łup (W2b)
 	{"set": "station", "c0": 32, "c1": 37, "r0": 26, "r1": 30, "shell": true, "wall": "bunker"},     # piwniczka pod posterunkiem (kratka do szybu); ściana tylna, podłoga i ściana zachodnia z betonu jak posterunek
 	{"set": "station", "c0": 112, "c1": 142, "r0": 18, "r1": 26, "shell": true, "build": "hall"},   # Skład (antresola, niecka oleju; budynek 3D: szkielet z cegłą)
 	{"set": "tunnel", "c0": 0, "c1": 30, "r0": 30, "r1": 40, "shell": true},       # zachodnia sala podziemi (gniazda) ze ścianą do kopania
@@ -90,7 +96,7 @@ const FRONT := [
 const DOORS := {
 	18: {"mat": "metal"}, 36: {"mat": "metal", "start": "broken"},
 	112: {"mat": "wood"}, 142: {"mat": "wood", "start": "broken"},
-	164: {"mat": "metal"},
+	164: {"mat": "metal"}, 170: {"mat": "steel"},
 }
 const FRONT_SKIP := []
 
@@ -144,10 +150,10 @@ const MAP := [
 	"###############################Cbybub+bbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC~~CbbbbbbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCbbbbbbCC~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##",
 	"###############################CCCCCCC====bb################CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC====bbCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC##",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbb#####",
-	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bb====################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbb====CCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbb====CCCCCCCCCCCCCbbbbbbbbbbbbbbbb#####",
-	"######bbbbZbbbbbbbbgbbbbbbZbbbb#######bbbbbb################CCCbbbZbZbbbbbbbNbbbbbbbbbbbZbbCCCCbbbbbbCCCCCCCCbbbZbbbbbbbbbbbbbNbbbbbbbbbbbbbZbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbHbb#####",
-	"######bbbbbbbbb=========bbbbbbb#######====bb################CCCbbbbbbbbb=========bbbbbbbbbbCCCC====bbCCCCCCCCbbbbbbbbb=================bbbbbbbbbCCCCCCCC====bbCCCCCCCCCCCCCbbbbbbbbb======b#####",
-	"######bbbbbbbPbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCCbbbbbbbbbbbbbbbb#####",
+	"######bbbbbbbbbbbbbbbbbbbbbbbbb#######bb====################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbb====CCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbb====CCbbbbbbbbbbCbbbbbbbbbbbbbbbb#####",
+	"######bbbbZbbbbbbbbgbbbbbbZbbbb#######bbbbbb################CCCbbbZbZbbbbbbbNbbbbbbbbbbbZbbCCCCbbbbbbCCCCCCCCbbbZbbbbbbbbbbbbbNbbbbbbbbbbbbbZbbbCCCCCCCCbbbbbbCCbbbbbbbbbbbbbbbbbbbbbbbbHbb#####",
+	"######bbbbbbbbb=========bbbbbbb#######====bb################CCCbbbbbbbbb=========bbbbbbbbbbCCCC====bbCCCCCCCCbbbbbbbbb=================bbbbbbbbbCCCCCCCC====bbCCbbbbbbbbbbbbobbbbbbb======b#####",
+	"######bbbbbbbPbbbbbbbbbbbbbbbbb#######bbbbbb################CCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCbbbbbbCCCCCCCCbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbCCCCCCCCbbbbbbCCCCCCCCCCCCC====bbbbbbbbbbbb#####",
 	"######bbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbbbbbbbbbbbbb=======bbbbb=======bbbbbbbbbbb====bbbbbbbbbbbb=======bbbbbbbbbbbbb=======bbbbbbbbbbbbbb====bbbbbbbbbbbbbbbbb=======bbbbb#####",
 	"######bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbJbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#####",
 	"######bb===bbbbbbMMbbbbbbbbb===bbbbbbb====bbbbbbbbJbbbbbbbbbbbbbb===bbbbbbbMMbbbbbbbb===bbbbbbb====bbbbbJbbbbbb===bbbbbbbbbbMMbbbbbbbbbbbbb===bbbbbbbbbb====bbbbbbbbbbbbbbbbb===MMbbbbbbbbb#####",
