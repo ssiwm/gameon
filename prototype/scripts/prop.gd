@@ -17,6 +17,8 @@ const Vfx := preload("res://scripts/vfx.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const Combat := preload("res://scripts/combat.gd")
+const Breakable := preload("res://scripts/breakable.gd")
 
 const LAYER := 32
 const IMPACT_SPEED := 150.0       ## px/s — szybciej = łoskot (hałas)
@@ -267,6 +269,16 @@ func explode() -> void:
 				e.shatter(pos)                                    # skrzynia tuż przy beczce pęka, dalsza tylko odlatuje
 		elif e.has_method("take_bullet"):
 			e.take_bullet(pos, BLAST_DMG * (1.0 - 0.5 * d / BLAST_R))
+	for b in get_tree().get_nodes_in_group("breakables"):       # W2b: tylko przegrody z `barrel` w materiale (drzwi zbrojone) — jak jeden wybuch
+		var bn := b as Node2D
+		if bn == null or bn.is_queued_for_deletion() or not bool((Breakable.MATERIALS.get(String(bn.get("mat_id")), {}) as Dictionary).get("barrel", false)):
+			continue
+		var rc: Rect2 = bn.call("hit_rect")
+		var q := Vector2(clampf(pos.x, rc.position.x, rc.end.x), clampf(pos.y, rc.position.y, rc.end.y))
+		if q.distance_to(pos) <= BLAST_R:
+			var info := Combat.make_info(-1, BLAST_DMG, q, (q - pos).normalized() if q.distance_to(pos) > 0.5 else Vector2.UP, -1, "blast")
+			info["src"] = "barrel"                                 # dziennik `break`: wysadzone beczką
+			Combat.apply(bn, info)
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.dead and p.hurt_point(pos).distance_to(pos) <= BLAST_R:
 			p.deliver_hit(1, pos, "prop")

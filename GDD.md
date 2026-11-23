@@ -243,7 +243,9 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
 - Doszły później (patrz `prototype/WEAPONS.md` §7–§9 i `scripts/throwables.gd`): ulepszenia 3-poziomowe, granaty, miny, ładunki, flary
   i zakup w kryjówce. Wyważanie drzwi od 1.7.656 (`DESTRUCTION_CONTENT_PLAN.md`): drzwi budynków są przegrodą — drewniane bierze maczeta, kule
   i pazury, metalowe kilof, granat i szarża, zbrojone tylko materiał wybuchowy (dwa granaty albo jeden ładunek burzący); od 1.7.657 każde wejście
-  budynku na 1.2 i 1.3, na trasie po jednych zamkniętych drzwiach na budynek (bramy na całą wysokość otworu).
+  budynku na 1.2 i 1.3, na trasie po jednych zamkniętych drzwiach na budynek (bramy na całą wysokość otworu). Od 1.7.661 zbrojone zamykają
+  dwa małe pomieszczenia poza trasą z łupem (1.2 bunkier łączności za szybem do drezyny, 1.3 skład saperów nad tunelem): przy drzwiach stoi beczka,
+  której wybuch liczy się jak jeden z dwóch potrzebnych — wydany granat i beczka otwierają je bez zakupów.
 
 ---
 

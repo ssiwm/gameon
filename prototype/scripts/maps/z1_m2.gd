@@ -35,7 +35,11 @@ const COLLAPSE := [[67, 36, 70, 40]]
 ## (B1: ma go każdy) — zamurowane przejście „q" w lewej ścianie podziemnej hali (skrytka ze złomem i amunicją; wejście 3 kafle, wiersze 37-39) bierze każdy.
 const WEAPONS := [Weapons.SRUT8, Weapons.CIEGNO6]
 ## Skrzynie mocy (FUN_PLAN.md P1.3): [kolumna, rząd, broń, naboje] — FALCON-6 w podziemnym korytarzu (obok skrzynki amunicji).
-const POWER_CRATES := [[149, 39, Weapons.SOKOL6, 60]]
+const POWER_CRATES := [[149, 39, Weapons.SOKOL6, 60], [283, 25, Weapons.GNIEW4, 8]]
+## Łup bunkra łączności za drzwiami zbrojonymi (DESTRUCTION_CONTENT_PLAN.md W2b, kolumna drzwi → [kolumna, rząd podłogi, rodzaj, …]): obok
+## skrzyni mocy z WRATH-4 złom, granat odłamkowy (zwrot wydanego na drzwi) i część broni, która wypada przy wysadzeniu. Beczka przed drzwiami.
+const VAULT_LOOT := {280: [[282, 25, "scrap", 60], [281, 25, "supply", "frag"], [284, 25, "part"]]}
+const VAULT_SIGN := {280: "SIGNALS"}
 ## Sejfy (FUN_PLAN.md P2.2): [kolumna, rząd, złom] — wyważanie trzymanym [E] jest głośne; tuż obok Podsłuchacza przy generatorze.
 ## Kolumna 103, nie 100: w kolumnie 100 stoi słup budynku stacji, który w widoku 3D zasłaniał skrzynię (skrytka „u” jest w kolumnie 101).
 const STRONGBOXES := [[103, 25, 40]]
@@ -66,6 +70,7 @@ const NICHES := [
 const FRONT := [
 	{"set": "station", "c0": 66, "c1": 100, "r0": 18, "r1": 26, "shell": true, "build": "hall"},     # hala stacji (budynek 3D: szkielet z cegłą)
 	{"set": "station", "c0": 216, "c1": 246, "r0": 16, "r1": 26, "shell": true, "build": "hall", "floors": [22]},   # pompownia (budynek 3D: szkielet z cegłą, strop piętra z otworem)
+	{"set": "station", "c0": 280, "c1": 285, "r0": 22, "r1": 26, "shell": true, "build": "bunker"},     # bunkier łączności za szybem do drezyny: drzwi zbrojone, łup (W2b)
 	{"set": "tunnel", "c0": 8, "c1": 282, "r0": 44, "r1": 51, "shell": true},      # tunel drezyny
 	# dolna hala z betonu między powierzchnią a tunelem (UNDERGROUND_PLAN.md U3, od 1.7.622): przekrój jak tunel — strop w wierszu 30
 	# z otworami szybów (kol. 152–157 i 207–212, bez przekroju szybów: D5), pomosty w pasie gry; osobne wpisy dla niższych pomieszczeń obok:
@@ -76,7 +81,7 @@ const FRONT := [
 	{"set": "forest", "c0": 2, "c1": 62, "r0": 0, "r1": 26, "skip": [[38, 43], [55, 62]]},   # las od startu do hali stacji (F3, pilot lasu); bez drzew nad włazami przepustu i studni (pień widać w przekroju); od 2026-11-22 ani przed schodami na dach (kol. 56–65; pień sosny z kol. 56 usunięty z mapy — stał w pierwszym biegu)
 	# las za halą stacji do masztu; bez pni przed szopą na bagnie (wnętrze bez przekroju) i pompownią (przekrój budynku), podłoże ciągłe (dołki przed szybami)
 	{"set": "forest", "c0": 101, "c1": 215, "r0": 0, "r1": 26, "skip": [[112, 132], [154, 180]]},   # STEPS_PLAN.md S4: bez pni przed stacją słupową (korona zasłaniała podest 7,9 m)
-	{"set": "forest", "c0": 247, "c1": 285, "r0": 0, "r1": 26, "skip": [[250, 271]]},   # S4: ani przed polem antenowym i pomostem z generatorem 4
+	{"set": "forest", "c0": 247, "c1": 279, "r0": 0, "r1": 26, "skip": [[250, 271]]},   # S4: ani przed polem antenowym i pomostem z generatorem 4; do bunkra łączności (W2b, kol. 280)
 ]
 ## Pomosty pod gołym niebem z historii miejsca (`step3d.gd`, STEPS_PLAN.md S4): przy radiostacji drewniane schody na dach, wieża nad halą
 ## to stacja słupowa (martwa linia — stąd generatory), przy maszcie pole antenowe ze spocznikami i pomost obsługi z generatorem 4.
@@ -91,6 +96,7 @@ const STEPS := [
 const DOORS := {
 	66: {"mat": "wood"}, 100: {"mat": "wood", "start": "broken"},
 	216: {"mat": "metal"}, 246: {"mat": "metal", "start": "broken"},
+	280: {"mat": "steel"},
 }
 const FRONT_SKIP := []                     ## [c0, c1] bez pierwszego planu
 ## Strefa wydobycia (DESTRUCTION_PLAN.md D5 część 3, od 1.7.505): zasypana piwnica ze żwirem za zamurowaną skrytką „q” na zachód od
@@ -120,11 +126,11 @@ const MAP := [
 	"##........w...w.......................w...............w...........|bbbbbbbbbbbbbbbIbbbbbbbbbbbbbbbbb|...w.....................................w...w.w.......................P.....w.....................................CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC...................ww............w.....##",
 	"##........w...w.......................w...............w.......----|bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|...w.......CCCCCCCCCCCCCCCCCCCCC.........w...w.w.............===============.w.....................................CbbbbbbbbbbbbbbbbbbbbbbbbbbbbbC.........----......ww............w.....##",
 	"##........w...w.......................w...............w...........CbbbbbbbbbbbbbgbbbbbbbbbbbbbbbbbbbC...w.......w...................w.........w...w.w...............w..........w..w.....................................CbbbbbbbbbbbbbbbJbbbGbybbbPbbbC...................ww............w.....##",
-	"##........w...w.......................w...............w.....----...bbb=====================bbbbbbbbb....w.......w...................w.........w...w.w...........----w..........w..w......................................bbbbbbCCCCCCCCCCCCCCCCCCCCCCC........----........ww............w.....##",
-	"##........w...w.......................w...............w............bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb....w.......w...................w.........w...w.w...............w..........w..w......................................bbbbbbbbbbbbbbbbbIbbbbbbbbbbb....................ww............w.....##",
-	"##........w...w.......####............w...............w...----.....b====bbbbbbbbbbbbbbbbbbbbbbbbbbbb....w.......w...................w.........w...w.w.........----..w..........w..w......................................b----bbbbbbbbbbbbbbbbbbbbbbbb......----..........ww............w.....##",
-	"##...S..S.w...w.....########.....ag.kkw.......T.TWT.Tkwo...........bbbbbbbbbLbbbbbbLbbbbbbbbkbGbbPab.u..w...T..Tw.T...J..ok.Z...J...w.........Y...W.w...............w..........w..w................k.....................bbbbbbbobbbUbbbbobbTbbbTbb:kb................T...Twa.T.........W.P...##",
-	"#######################################----#################------CCCCCCCCCCCCCCCCCCOOOOCCCCCCCCCCCCC#####mmmmmmmmmmmmm#######~~~~~~~~~~~~~#############bbbbbb#################################################bbbbbb###CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#########################bbbbbb##########",
+	"##........w...w.......................w...............w.....----...bbb=====================bbbbbbbbb....w.......w...................w.........w...w.w...........----w..........w..w......................................bbbbbbCCCCCCCCCCCCCCCCCCCCCCC........----........ww............CCCCCC##",
+	"##........w...w.......................w...............w............bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb....w.......w...................w.........w...w.w...............w..........w..w......................................bbbbbbbbbbbbbbbbbIbbbbbbbbbbb....................ww............CbbbbC##",
+	"##........w...w.......####............w...............w...----.....b====bbbbbbbbbbbbbbbbbbbbbbbbbbbb....w.......w...................w.........w...w.w.........----..w..........w..w......................................b----bbbbbbbbbbbbbbbbbbbbbbbb......----..........ww.............bbbbC##",
+	"##...S..S.w...w.....########.....ag.kkw.......T.TWT.Tkwo...........bbbbbbbbbLbbbbbbLbbbbbbbbkbGbbPab.u..w...T..Tw.T...J..ok.Z...J...w.........Y...W.w...............w..........w..w................k.....................bbbbbbbobbbUbbbbobbTbbbTbb:kb................T...Twa.P.......Wo.bbbbC##",
+	"#######################################----#################------CCCCCCCCCCCCCCCCCCOOOOCCCCCCCCCCCCC#####mmmmmmmmmmmmm#######~~~~~~~~~~~~~#############bbbbbb#################################################bbbbbb###CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC#########################bbbbbb##CCCCCC##",
 	"#######################################bbbb#################bbbbbb############################################################~~~~~~~~~~~~~#############bbbbbbbbbIbbb##########################################bbbbbb###########################################################bbbbbb##########",
 	"#######################################--bbbbbbbbbbbbbbbbbbbbb====######################################################################################======bbbbbbb##########################################======###########################################################======##########",
 	"#######################################bbbbbbbbbbbbbbbbbbbbbbbbbbb######################################################################################bbbbbb%bbubab##########################################bbbbbb###########################################################bbbbbb##########",

@@ -41,6 +41,7 @@ const LAYER_SOLID := 1
 const LAYER_PLATFORM := 16
 
 const Lights := preload("res://scripts/lights.gd")
+const Throwables := preload("res://scripts/throwables.gd")
 const Nav := preload("res://scripts/nav.gd")
 const SoundGrid := preload("res://scripts/sound_grid.gd")
 const Sprites := preload("res://scripts/sprites.gd")
@@ -185,6 +186,13 @@ var doors := {}                            ## DOORS z danych mapy (DESTRUCTION_C
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
 var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
 var _power_crates: Array = []             ## POWER_CRATES z danych mapy: [kolumna, rząd, broń, naboje] — skrzynie mocy (FUN_PLAN.md P1.3, pickup „power”)
+## VAULT_LOOT z danych mapy (DESTRUCTION_CONTENT_PLAN.md W2b): kolumna drzwi zbrojonych → łup pomieszczenia za nimi, [kolumna, rząd podłogi, rodzaj, …]:
+## "scrap" + wartość, "supply" + przedmiot z Throwables.ORDER — leżą od początku (widać je w przekroju); "part" — część broni, którą serwer
+## losuje dopiero przy wysadzeniu drzwi (`Scrap.pick_find`, bez brakujących — złom VAULT_PART_SCRAP).
+var vault_loot := {}
+var vault_sign := {}                       ## VAULT_SIGN z danych mapy: kolumna drzwi zbrojonych → napis szablonem na tylnej ścianie pomieszczenia (tr)
+var _vaults_opened := {}                   ## serwer: kolumny drzwi zbrojonych, których łup „part” już wypadł w tej próbie
+const VAULT_PART_SCRAP := 20
 var streams: Array = []                   ## STREAMS z danych mapy: [kolumna od, kolumna do] — strumień z lasu przez ciąg wody (`Level3D.build_streams`); kosmetyka
 var _finale_on := false
 var exits_alt: Array[Vector2] = []
@@ -308,6 +316,9 @@ func _load(id: String) -> void:
 	doors = ((m as GDScript).get_script_constant_map().get("DOORS", {}) as Dictionary).duplicate(true)
 	streams = ((m as GDScript).get_script_constant_map().get("STREAMS", []) as Array).duplicate()
 	_power_crates = ((m as GDScript).get_script_constant_map().get("POWER_CRATES", []) as Array).duplicate()
+	vault_loot = ((m as GDScript).get_script_constant_map().get("VAULT_LOOT", {}) as Dictionary).duplicate(true)
+	vault_sign = ((m as GDScript).get_script_constant_map().get("VAULT_SIGN", {}) as Dictionary).duplicate()
+	_vaults_opened.clear()
 	_strongboxes = ((m as GDScript).get_script_constant_map().get("STRONGBOXES", []) as Array).duplicate()
 	_finale_on = false
 	_blocks.clear()
@@ -1323,6 +1334,17 @@ func _spawn_map_items() -> void:
 		var pc: Array = _power_crates[i]
 		# punkt na podłodze jak przy znacznikach mapy: środek kafla w poziomie, dół kafla w pionie
 		_add_map_item("MapPower%d" % i, "power", int(pc[2]), Vector2(int(pc[0]) * TILE + TILE * 0.5, (int(pc[1]) + 1) * TILE), int(pc[3]))
+	for vc in vault_loot:                                     # łup pomieszczeń za drzwiami zbrojonymi (W2b): złom i przedmioty leżą od początku
+		var vl: Array = vault_loot[vc]
+		for i in vl.size():
+			var v: Array = vl[i]
+			var at := Vector2(int(v[0]) * TILE + TILE * 0.5, (int(v[1]) + 1) * TILE)
+			match String(v[2]):
+				"scrap":
+					if Scrap.enabled():
+						_add_map_item("MapVault%d_%d" % [int(vc), i], "scrap", 0, at, int(v[3]))
+				"supply":
+					_add_map_item("MapVault%d_%d" % [int(vc), i], "supply", Throwables.ORDER.find(String(v[3])), at)
 	var flare_boxes: Array = _map_items.get("f", [])
 	for i in flare_boxes.size():
 		_add_map_item("MapFlares%d" % i, "flares", 0, flare_boxes[i], 2)
@@ -1689,11 +1711,32 @@ func _spawn_wall(wd: Dictionary, b := PackedFloat32Array()) -> Node2D:
 	add_child(w)
 	return w
 
+## Serwer: wysadzone drzwi zbrojone z łupem w VAULT_LOOT (W2b) — z półki pomieszczenia wypada część broni, której drużyna jeszcze nie ma
+## (bez brakujących i poza złomem — trochę złomu). Raz na próbę; restart misji (`_clear_pickups_rpc`) zeruje.
+func _vault_breach(wd: Dictionary) -> void:
+	if wd.is_empty() or not bool(wd.get("door", false)):
+		return
+	var col := ((wd["cells"] as Array)[0] as Vector2i).x
+	if not vault_loot.has(col) or _vaults_opened.has(col):
+		return
+	_vaults_opened[col] = true
+	for v: Array in vault_loot[col]:
+		if String(v[2]) != "part" or not Scrap.enabled():
+			continue
+		var at := Vector2(int(v[0]) * TILE + TILE * 0.5, (int(v[1]) + 1) * TILE - 2.0)
+		var pid := String(Scrap.pick_find())
+		if pid != "":
+			spawn_item("part", Scrap.part_index(pid), at)
+		else:
+			spawn_item("scrap", 0, at, VAULT_PART_SCRAP)
+
 ## Serwer: ściana rozbita — znika u wszystkich peerów, kafle odblokowują nawigację. `how` / `dir` — czym i w którą stronę (znak x
 ## kierunku ciosu, wybuchu albo szarży; 0 — nieznany): widok 3D drzwi wybiera po nich obraz wyważonych (W3).
 func break_wall(wall_name: String, how := "", dir := 0) -> void:
 	if not NoiseMgr.is_server() or _opened_walls.has(wall_name):
 		return
+	if not door_planks.has(wall_name):
+		_vault_breach(wall_def(wall_name))
 	if NoiseMgr.has_network():
 		_break_wall_rpc.rpc(map_id, wall_name, how, dir)
 	else:
@@ -2628,6 +2671,7 @@ func clear_pickups(keep_stashes := false) -> void:
 func _clear_pickups_rpc(keep_stashes := false) -> void:
 	if not keep_stashes:
 		_stashes_taken.clear()
+	_vaults_opened.clear()                                  # W2b: część z pomieszczenia za drzwiami zbrojonymi wypada znowu po ponownym wysadzeniu
 	_cabinet_issued.clear()
 	_cabinet_owner.clear()
 	for cabinet in get_tree().get_nodes_in_group("cabinets"):

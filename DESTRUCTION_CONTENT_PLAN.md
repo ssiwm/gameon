@@ -49,6 +49,18 @@ model 4 rzędów). Test B0 „kampania bez `^`” zastąpiony: strefy kampanii t
 `C:\deadair87\shots_doors\w5` (`w5_prop`, `w5_cave`, `w5_dug`).
 Do decyzji: porada przy stemplu (jak „adit” przy otworze) — dziś gracz musi sam zauważyć belkę. Następny krok: W2b albo W6 (osłony na B1).
 
+**Stan (2026-11-23, W2b):** W2b zrobiony w 1.7.661 (gałąź `feat/doors-w2b`, stos na W5), plan przyjęty zgodnie z zaleceniami (sekcja „Drzwi
+zbrojone do pomieszczeń z łupem”). Spike W2b-0 potwierdził oba miejsca; zmiany wobec szkicu: bunkier 1.2 w kol. 280–285 (nie 278 — drzwi
+otwierałyby się nad szybem 272–277), kafle otworu drzwi `.` zamiast `b` (znaczniki beczki i Wołka przed drzwiami ciągnęłyby ścianę tła pod
+gołe niebo, `test_structures.gd`), las 1.2 kończy się w kol. 279 (`test_front.gd`: podłoże lasu w przekroju bunkra). Skład 1.3: kol. 159–170,
+strop w. 31, wnętrze 32–34, drzwi kol. 170 w. 33–34, półka `=` w. 35 kol. 171–174, beczka na półce. Wybuch beczki rani przegrody z polem
+`barrel` w materiale (dziś tylko `door_steel`) jak jeden wybuch: sama beczka — 200 / 400, beczka + granat wyważają. Łup (`VAULT_LOOT`): złom 60 i granat
+leżą od początku (widać je w przekroju razem z poświatą skrzyni mocy), część broni losuje serwer przy wysadzeniu (`level._vault_breach`, raz na
+próbę, bez brakujących — 20 złomu). Czerwona lampa nad ościeżnicą (światło 1,7 m, bez cienia — większy zasięg przenikał przez ścianę), napis
+„SIGNALS” / „SAPPERS” (`VAULT_SIGN`, PL: ŁĄCZNOŚĆ / SAPERZY) na tylnej ścianie, porada „vault” raz na 1.2. Dziennik `break` ma `src: barrel`.
+`--maptest` (`_vault_report`): łup za zamkniętymi drzwiami nieosiągalny, po wysadzeniu osiągalny. Zrzuty: `C:\deadair87\shots_doors\w2b`
+(`b0_*` spike, `b1_*` z lampą, napisem i łupem). Następny krok: W6 (osłony na B1, najpierw sprawdzenie bossa).
+
 ## Skąd ten plan
 
 Analiza 2026-11-22 („zweryfikuj możliwość dodania destrukcji środowiska”): niszczenie otoczenia już jest i jest używane. Brakuje go
@@ -261,6 +273,35 @@ napięcie, o które chodzi.
 Drewno z odsłuchu B3 (`wood_hit`, `wood_break`). Nowe nagrania z biblioteki Sonniss (`audio_lib`): kilof w blachę drzwi, wyrwanie
 zawiasu, upadek skrzydła i wybuch drzwi. Odsłuch A/B jak w B3. Wybrane pliki idą przez generator i manifest, bez ręcznych kopii.
 
+### Drzwi zbrojone do pomieszczeń z łupem (W2b) — plan przyjęty 2026-11-23
+
+Decyzja 5 w szczegółach. Punkt wyjścia: drzwi zbrojone wymagają 2 wybuchów albo 1 ładunku burzącego, a drużyna ma na misję 1 granat
+(ładunek 250 złomu, nie jest wydawany). Wybuch beczki `o` (`prop.gd explode`) rani wrogów, graczy i skrzynie, ale nie przegrody — bez zmian
+pomieszczenie byłoby otwarte tylko u tych, którzy kupili ładunek.
+
+**Decyzje (przyjęte zgodnie z zaleceniami):**
+1. **Otwarcie — beczka przy drzwiach.** Przy każdych drzwiach zbrojonych stoi beczka; jej wybuch rani drzwi zbrojone jak jeden wybuch
+   (`blasts`), tylko te (pole materiału, reszta przegród bez zmian). Wydany granat + beczka otwierają pokój bez zakupów; dalej też 2 granaty
+   albo ładunek. Beczkę trzeba zestrzelić z dystansu (promień 64 px), da się ją pchać.
+2. **Łup na pokój:** skrzynia mocy (1.2 WRATH-4, 8 granatów; 1.3 SPECTER-1), ok. 60 złomu, część broni (`Scrap.pick_find`, bez brakujących —
+   próbka), skrzynka z granatem odłamkowym (zwrot wydanego). Taśm K4 nie ruszamy.
+3. **Sygnał:** czerwona lampa nad drzwiami, napis szablonem na ścianie w 3D, duch ładunku jak od W1; porada raz, tylko na 1.2.
+4. **Bot** bez zmian (decyzja 8): nie rzuca i nie strzela w beczki.
+
+**Miejsca (kandydaci z przeglądu map, współrzędne potwierdza W2b-0):**
+- 1.2 — **bunkier łączności** na powierzchni w ślepym końcu mapy za szybem do drezyny: kol. 280–285, strop w. 22, wnętrze w. 23–25, drzwi
+  w ścianie zachodniej (kol. 280, w. 24–25), wschodnia przy krawędzi mapy. Przed drzwiami 2 kolumny gruntu (szyb 272–277 tuż obok —
+  beczkę zestrzeli się zza szybu). Wołek i Podsłuchacz z kol. 280 / 282 przed drzwi i przy szybie: wysadzenie przy Podsłuchaczu to krzyk i horda.
+- 1.3 — **skład saperów** w bloku betonu nad tunelem pod halą Żyły: kol. 159–170, strop w. 31, wnętrze w. 32–34, podłoga w. 35, drzwi
+  we wschodniej ścianie (kol. 170, w. 33–34) do hali ze skrytką `H`; półka `=` w w. 35 (kol. 171–174) przy drzwiach, krok w górę z kładki
+  w. 36. Wariant: blok pod posterunkiem (kol. 31–37) — wcześnie w misji, mniej wybuchów pod ręką.
+
+**Etapy:** W2b-0 spike (kafle i wpis budynku na gałęzi, zrzuty 3D dzień / noc / od środka, skan nawigacji, ostateczne współrzędne) →
+W2b-1 (1 PR): pokoje, `DOORS` steel, beczka i obrażenia od beczki dla zbrojonych, łup (`VAULT_LOOT` mapy), lampa i napis, porada,
+dziennik `break` z przyczyną `barrel`, testy (`--destructiontest`: granat sam nie, granat + beczka tak, ładunek tak, beczka nie rusza muru
+ani kratki, migawka i wipe; `--maptest`: cele przy zamkniętych zbrojonych, dojście do drzwi; `test_front.gd`; `test_net_session.sh`;
+regresje `--enemytest`, `--veintest`, `--funtest`).
+
 ## Pozostałe punkty z analizy
 
 ### Barykady przy drzwiach (S4 w części barykad)
@@ -300,6 +341,7 @@ i tylko jeśli drzwi i zawał się sprawdzą.
 |---|---|---|---|
 | **W0** spike obrazu drzwi — **zrobiony** | 0 (gałąź robocza `spike/doors-w0`, wynik do planu) | ościeżnica poza obrysem + narzędzie 3D (ikona HUD odrzucona); zrzuty posterunku 1.3 i bramy 1.2, dzień, noc z latarką, od środka, wyważone (`--doorproto[=wood\|metal\|steel] [--doorbroken]`) | — |
 | **W1** mechanika + posterunek 1.3 | 1 | materiały `door_*`, `DOORS`, rejestracja w `level.gd`, komunikaty, pasek akcji, wrogowie i bot, `--destructiontest` sekcja drzwi, `--maptest`, sieć (`door=` w `_destruction_sig`), dziennik `break` z `door_*`, 3D wg wyniku W0 | średnie |
+| **W2b** drzwi zbrojone do pomieszczeń z łupem — **zrobiony** (1.7.661) | 1 | bunkier łączności 1.2, skład saperów 1.3, beczka przy drzwiach, łup, lampa i napis | średnie |
 | **W2** wszystkie budynki — **zrobiony** (1.7.657) | 1 | bramy na całą wysokość (decyzja 4 zmieniona: Rzeźnik nie mieści się w furtce), `DOORS` na 1.2 i 1.3, hala Żyły z punktem kontrolnym bossa, sprawdzenie wysokich wrogów, `--veintest`, `--funtest` | średnie (projekt map) |
 | **W3** dźwięk i wyważenie — **zrobiony** (1.7.658, odsłuch A/B do potwierdzenia) | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
 | **W4** barykady przy drzwiach — **zrobiony** (1.7.659) | 1 | miejsca barykad przy budynkach z generatorami, przegląd barykad na trasie | niskie |

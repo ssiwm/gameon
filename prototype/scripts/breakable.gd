@@ -43,6 +43,8 @@ const TILE := 16.0
 ##   surface  powierzchnia trafienia kulą (Vfx.impact: odpryski i dźwięk)
 ##   blasts   ile wybuchów w zasięgu rozbija element (BARRIER_FIX_PLAN.md B0): wybuch zadaje co najmniej max_hp / blasts, nawet na brzegu
 ##            promienia — kratka pada od jednego granatu, gruz od dwóch (brak pola — zwykłe obrażenia wybuchu)
+##   barrel   true: wybuch beczki `o` (prop.gd `explode`) rani element jak jeden wybuch z `blasts` (W2b: beczka przy drzwiach zbrojonych + granat);
+##            bez pola wybuch beczki przegród nie rusza
 ##   charge_blasts  to samo dla ładunku burzącego (`placed.gd`, Combat.explode z `demolition`); brak pola — jak `blasts`
 ##   label    nazwa dla gracza w komunikacie o złym narzędziu (tłumaczona `tr`)
 ##   shot     wpływ pocisków (SHOOT_DESTRUCTION_PLAN.md S1): rodzaj trafienia → mnożnik obrażeń (0 — tylko wyszczerbienie, bez HP
@@ -82,7 +84,7 @@ const MATERIALS := {
 		"shot": {"bullet": 0.0, "slug": 0.0, "pellet": 0.0, "rail": 0.0},
 		"hit_snd": ["door_metal_hit", 3, -6.0, 1.0], "break_snd": ["door_metal_break", 3, 0.0, 1.0],     # W3: blacha drzwi, zawias i upadek skrzydła
 		"debris": Color(0.38, 0.27, 0.2), "chips": 5, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
-	"door_steel": {"hp": 400.0, "breaks": ["blast"], "n_hit": 2.0, "n_break": 8.0, "surface": "metal", "blasts": 2, "charge_blasts": 1, "label": "Reinforced door",
+	"door_steel": {"hp": 400.0, "breaks": ["blast"], "n_hit": 2.0, "n_break": 8.0, "surface": "metal", "blasts": 2, "charge_blasts": 1, "barrel": true, "label": "Reinforced door",
 		"shot": {"bullet": 0.0, "slug": 0.0, "pellet": 0.0, "rail": 0.0},
 		"hit_snd": ["door_metal_hit", 3, -5.0, 0.8], "break_snd": ["door_metal_break", 3, 1.0, 0.8],     # zbrojone: te same, niżej (grubsza płyta)
 		"debris": Color(0.3, 0.3, 0.32), "chips": 6, "dust": [0.3, 1.5], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},

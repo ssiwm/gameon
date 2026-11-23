@@ -204,7 +204,7 @@ fi
 # → wipe: zachodnia znów zamknięta, wschodnia wolna; u klienta to samo na żywo, u dołączającego wyważenie z przyczyną i barykady z `send_walls_to`
 DH=$(drnet host "$LOG/dnet_host.log")
 IFS=';' read -r D0 D1 D2 _ <<<"$DH"
-if [ "$D0" != " dr=Door1:c,Door2:o,Door3:c,Door4:o" ] || [ "$D1" != " dr=Door1:p1pick,Door2:p2,Door3:c,Door4:o" ] || [ "$DH" != "$D0;$D1;$D0;" ]; then
+if [ "$D0" != " dr=Door1:c,Door2:o,Door3:c,Door4:o,Door5:c" ] || [ "$D1" != " dr=Door1:p1pick,Door2:p2,Door3:c,Door4:o,Door5:c" ] || [ "$DH" != "$D0;$D1;$D0;" ]; then
 	fail "host: drzwi — zły przebieg ($DH)"
 else
 	ok "host: brama wyważona kilofem i zabita deską, wyważona na starcie dwiema → migawka → wipe ($DH)"
