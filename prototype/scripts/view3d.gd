@@ -1138,14 +1138,14 @@ func _build_steps(root: Node3D, rows: Array, hub: bool) -> Array:
 			Building3D.door_cols = _door_cols()                    # ościeżnice drzwi do wyważenia (DESTRUCTION_CONTENT_PLAN.md W1)
 			Level3D.set_steps(Step3D.cells(rows, nat_steps), Step3D.hidden_posts(rows, nat_steps), Step3D.trunk_cells(rows, nat_steps))
 			var wt0: Dictionary = _level.get("watchtower") if _level != null and _level.get("watchtower") != null else {}
-			Level3D.tower_skip = Watchtower3D.rect(wt0) if Watchtower3D.enabled() and not wt0.is_empty() else Rect2i()
+			Level3D.tower_skip = Watchtower3D.rect(wt0) if not Watchtower3D.disabled() and not wt0.is_empty() else Rect2i()   # strażnica (TOWER_PLAN.md) zamiast ogólnych reguł
 			Level3D.build_level(root, rows, trench)
 			Building3D.build(root, rows)],
 		["niches", func() -> void: Niches3D.build(root, rows, niches, Settings.quality_idx)],
 		["caves", func() -> void: Cave3D.build(root, caves)],
 		["frames", func() -> void:
 			var wt: Dictionary = _level.get("watchtower") if _level != null and _level.get("watchtower") != null else {}
-			if Watchtower3D.enabled() and not wt.is_empty():
+			if not Watchtower3D.disabled() and not wt.is_empty():
 				Watchtower3D.build(root, rows, wt)
 			if "--towerlit" in OS.get_cmdline_user_args() and not wt.is_empty():
 				Watchtower3D.preview_lights(root, wt)

@@ -1,7 +1,7 @@
 # Strażnica 1.1 w 3D — plan przebudowy (TOWER_PLAN.md)
 
-Stan: **szkic do akceptacji (2026-11-23)**. Prototyp w gałęzi `spike/watchtower` (worktree `gameon-tower`), dev `--towerv2`;
-porównanie: `C:\deadair87\shots_tower\porownanie.jpg`.
+Stan: **T0 i T1 zrobione (1.7.664)**; plan przyjęty 2026-11-23 zgodnie z zaleceniami. Porównanie przed / po:
+`C:\deadair87\shots_tower\porownanie_t1.jpg` (prototyp: `porownanie.jpg`).
 
 Strażnica przed rampą kopalni na 1.1 (kol. 210–223, wiersze 7–23; nieśmiertelnik 4, Ćmy i Skoczek pod dachem, lekcja flary) nie ma
 własnego modelu. Składa się z trzech ogólnych reguł widoku 3D:
@@ -39,7 +39,7 @@ kabina z desek z pasem okien i okiennicami, dach czterospadowy z papy. Nocą czy
 
 ## Prototyp T0 (zrobiony, do akceptacji)
 
-`scripts/watchtower3d.gd`, dev `--towerv2`, światło podglądowe do zrzutów `--towerlit` (także dla starej wersji).
+`scripts/watchtower3d.gd` (w prototypie pod `--towerv2`; od T1 domyślnie, stara wersja pod `--oldtower`), światło podglądowe do zrzutów `--towerlit`.
 Elementy: nogi z rozstawem (1 m w bok, 0,7 m w głąb u gruntu) na betonowych stopach; oczepy z tyłu i z boków pod każdym podestem
 i pod podłogą kabiny; krzyże stężeń co dwa poziomy (tył w dwóch przęsłach, boki); podesty na legarach z obrzeżem i poręczą z tyłu;
 strome drabiny schodowe od gruntu przez wszystkie podesty do włazu; kabina z desek z pasem okien, słupkami i okiennicami (część
@@ -53,14 +53,15 @@ w grze, `full` — cała wieża, `orb` — z ukosu.
 | Etap | PR | Zawartość |
 |---|---|---|
 | **T0** prototyp — **zrobiony** | — (gałąź `spike/watchtower`) | `watchtower3d.gd` pod `--towerv2`, zrzuty przed / po |
-| **T1** wdrożenie | 1 | `WATCHTOWER` w `z1_m1.gd` na stałe (bez flagi), pominięcie starej geometrii w kaflach wpisu, poprawki z akceptacji; test `tools/test_watchtower.gd` (nogi na gruncie, legary pod każdym podestem, drabiny i poręcze za płaszczyzną gry, przed nią tylko nogi i podwalina, belki stropu na spodzie kafla dachu, dach nad belkami); `test_structures.gd`, `test_front.gd`, `--maptest`; wersja + CHANGELOG |
+| **T1** wdrożenie — **zrobiony** (1.7.664) | 1 | `WATCHTOWER` w `z1_m1.gd` na stałe (bez flagi), pominięcie starej geometrii w kaflach wpisu, poprawki z akceptacji; test `tools/test_watchtower.gd` (nogi na gruncie, legary pod każdym podestem, drabiny i poręcze za płaszczyzną gry, przed nią tylko nogi i podwalina, belki stropu na spodzie kafla dachu, dach nad belkami); `test_structures.gd`, `test_front.gd`, `--maptest`; wersja + CHANGELOG |
 | **T2** detal | 1 | tabliczka „STRAŻNICA PPOŻ.” (dekal z `world_decals_gen.py`, PL/EN), latarnia sztormowa pod stropem (bez światła), zerwana papa i wybite okiennice z ziarna, zużycie drewna przy gruncie |
 | **T3** dźwięk (opcjonalnie) | 0–1 | skrzypienie desek i wiatr na wysokości kabiny (warstwa `amb_creak` w strefie wieży) |
 
-## Do decyzji (zalecenia)
+## Decyzje (przyjęte zgodnie z zaleceniami 2026-11-23)
 
 1. **Dach czterospadowy z papy** (prototyp) czy płaski z blachy jak dziś? *Zalecam* czterospadowy — tylko on daje sylwetkę strażnicy.
 2. **Ciemny pas nad oknami.** W kadrze z gry (kamera pod okapem) dach od spodu i ściana nad oknami tworzą ciemny pas przez pół kabiny.
-   *Zalecam* wyższe okna (parapet 1,0 m, nadproże 2,6 m zamiast 2,15 m) i niższy okap — Ćmy pod stropem zostają widoczne.
+   *Zalecam* wyższe okna (parapet 1,0 m, nadproże 2,6 m zamiast 2,15 m) i mniejszy okap (0,5 m zamiast 0,75 m) — Ćmy pod stropem zostają widoczne.
+   W T1 dodatkowo: podwalina z przodu tuż pod deskami podłogi (na spodzie kafla podłogi przecinała głowę postaci na najwyższym podeście).
 3. **Drabiny między podestami** są tylko obrazem (gracz dalej skacze). *Zalecam* zostawić — tłumaczą, czemu podesty idą zygzakiem.
 4. **Model proceduralny czy GLB z Blendera?** *Zalecam* proceduralny (jak `building3d.gd`): wymiary z danych mapy, zero assetów, łatwe poprawki.

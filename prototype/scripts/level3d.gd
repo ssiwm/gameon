@@ -761,7 +761,7 @@ static func roof_purlins(rows: Array, c: int, r: int) -> Array:
 		return [-float(r) * T - ROOF_SHEET - (0.16 if bool(run["steel"]) else 0.18), zs]
 	return []
 
-static var tower_skip := Rect2i()          ## SPIKE TOWER_PLAN.md (`--towerv2`): kafle strażnicy rysowanej przez `watchtower3d.gd`
+static var tower_skip := Rect2i()          ## Kafle strażnicy z `WATCHTOWER` (TOWER_PLAN.md): rysuje ją `watchtower3d.gd`, więc dach, podłoga, nogi i nogi podestów stąd ją pomijają
 
 static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel_mat: Material, wood_mat: Material, wall_mat: Material) -> void:
 	var sheets: Array = []

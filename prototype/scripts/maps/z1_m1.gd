@@ -138,7 +138,7 @@ const STEPS := [
 	{"kind": "tor", "decks": [[19, 123], [21, 123]], "scree": true},
 ]
 
-## SPIKE TOWER_PLAN.md: strażnica jako jedna konstrukcja 3D (`watchtower3d.gd`, dev `--towerv2`) — kolumny nóg, wiersz dachu, podłogi kabiny, gruntu.
+## Strażnica jako jedna konstrukcja 3D (TOWER_PLAN.md, `watchtower3d.gd`): kolumny nóg, wiersz dachu, podłogi kabiny i gruntu. Tylko widok — kafle bez zmian.
 const WATCHTOWER := {"c0": 211, "c1": 222, "roof": 7, "floor": 11, "ground": 23}
 const MAP := [
 	"##..................................................................................................................................................................................................................................................................##",
