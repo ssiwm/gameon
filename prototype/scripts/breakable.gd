@@ -45,6 +45,8 @@ const TILE := 16.0
 ##            promienia — kratka pada od jednego granatu, gruz od dwóch (brak pola — zwykłe obrażenia wybuchu)
 ##   barrel   true: wybuch beczki `o` (prop.gd `explode`) rani element jak jeden wybuch z `blasts` (W2b: beczka przy drzwiach zbrojonych + granat);
 ##            bez pola wybuch beczki przegród nie rusza
+##   acid     ile trafień kwasem Pijawki rozbija element (W6: osłona z blachy przeżarta w 3 trafieniach; trafienie zadaje max_hp / acid)
+##   quiet    bez komunikatu o złym narzędziu (osłona B1: granat czy kula obok niej to nie próba jej rozbicia)
 ##   charge_blasts  to samo dla ładunku burzącego (`placed.gd`, Combat.explode z `demolition`); brak pola — jak `blasts`
 ##   label    nazwa dla gracza w komunikacie o złym narzędziu (tłumaczona `tr`)
 ##   shot     wpływ pocisków (SHOOT_DESTRUCTION_PLAN.md S1): rodzaj trafienia → mnożnik obrażeń (0 — tylko wyszczerbienie, bez HP
@@ -65,6 +67,12 @@ const MATERIALS := {
 	"sheet": {"hp": 150.0, "breaks": ["pick", "blast", "charge"], "n_hit": 2.5, "n_break": 6.0,
 		"hit_snd": ["impact_hard", 3, -3.0, 0.9], "break_snd": ["impact_hard", 3, 2.0, 0.6],
 		"debris": Color(0.38, 0.27, 0.2), "chips": 5, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
+	# osłona z blachy na arenie Pijawki (DESTRUCTION_CONTENT_PLAN.md W6, stała COVERS mapy): bez kafli i bez kolizji ruchu, na warstwie osłon
+	# (Combat.LAYER_COVER = 2048) — zatrzymuje kule (tylko wgniecenia) i kwas, który przeżera ją w 3 trafieniach; kilof ją zbija
+	"cover": {"hp": 90.0, "breaks": ["acid", "pick", "charge"], "acid": 3, "n_hit": 1.5, "n_break": 5.0, "layer": 2048, "quiet": true, "surface": "metal", "label": "Steel plate",
+		"shot": {"bullet": 0.0, "slug": 0.0, "pellet": 0.0, "rail": 0.0},
+		"hit_snd": ["impact_hard", 3, -6.0, 1.25], "break_snd": ["impact_hard", 3, 0.0, 0.7],
+		"debris": Color(0.3, 0.32, 0.22), "chips": 5, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(0.85, 1.3, 0.45), Color(0.1, 0.14, 0.05)]},
 	"grate": {"hp": 90.0, "breaks": ["pick", "blast"], "n_hit": 2.0, "n_break": 5.0, "layer": 128, "blasts": 1, "label": "Vent grate",
 		"hit_snd": ["impact_hard", 3, -4.0, 1.1], "break_snd": ["impact_hard", 3, 0.0, 0.7],
 		"debris": Color(0.36, 0.25, 0.18), "chips": 6, "dust": [0.3, 1.0], "mat": Mat.METAL, "chip": [Color(1.7, 1.65, 1.6), Color(0.3, 0.25, 0.22)]},
@@ -97,7 +105,7 @@ const MATERIALS := {
 const TOOL_LABELS := {"pick": "a pickaxe", "blade": "a machete", "bullet": "bullets", "pellet": "a shotgun", "slug": "a shotgun", "blast": "explosives"}
 
 ## Promień plamy w masce uszkodzeń wg rodzaju trafienia (px świata; 16 px = kafel).
-const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "slug": 1.2, "blast": 6.0, "charge": 8.0, "claw": 2.5}
+const SPLAT_R := {"pick": 4.0, "blade": 3.0, "bullet": 1.5, "pellet": 1.2, "slug": 1.2, "blast": 6.0, "charge": 8.0, "claw": 2.5, "acid": 5.0}
 ## Mnożnik hałasu uderzenia (`n_hit`) wg rodzaju trafienia; brak wpisu = 1. Kula stuka ciszej niż cios — sam wystrzał i tak liczy broń.
 const N_KIND := {"bullet": 0.3, "rail": 0.5}
 ## Rodzaje trafień, których obrażenia w przegrodę zależą od przebicia broni i które zostawiają przestrzelinę (pole `shot`).
@@ -157,6 +165,8 @@ static func hit_kind(info: Dictionary) -> String:
 			return "rail"
 		"beam":
 			return "beam"
+		"acid":
+			return "acid"                          # kwas Pijawki (acid_spit.gd) w osłonę B1 (W6)
 	return ""
 
 ## Wpis materiału (nieznana nazwa → `brick`).
@@ -225,6 +235,9 @@ func take_hit(info: Dictionary) -> Dictionary:
 		info = info.duplicate()                   # słownik należy do wołającego (Combat.explode)
 		var nb := float(m.get("charge_blasts", m["blasts"])) if bool(info.get("demolition", false)) else float(m["blasts"])
 		info["amount"] = maxf(float(info["amount"]), max_hp() / nb + 0.01)
+	if kind == "acid" and m.has("acid"):
+		info = info.duplicate()
+		info["amount"] = max_hp() / float(m["acid"]) + 0.01    # osłona B1: każde trafienie kwasem to jedna trzecia płyty (W6)
 	_take_damage(float(info["amount"]), kind, info.get("pos", body_center()))
 	_batch_noise_add(float(m["n_hit"]) * float(N_KIND.get(kind, 1.0)))
 	var broken := hp <= 0.0
@@ -375,7 +388,7 @@ func _chip(info: Dictionary, kind: String) -> void:
 ## Serwer: trafienie, które się odbiło — strzelec (człowiek) dostaje komunikat, czym ten element ruszyć (BARRIER_FIX_PLAN.md B0).
 ## Raz na element u każdego gracza (`_bounce_told` liczy się u odbiorcy); bot i wrogowie nic nie dostają.
 func _tell_bounce(shooter: int, kind: String) -> void:
-	if shooter <= 0 or not TOOL_LABELS.has(kind):
+	if shooter <= 0 or not TOOL_LABELS.has(kind) or bool(mat_def().get("quiet", false)):
 		return
 	if not NoiseMgr.has_network() or shooter == NoiseMgr.local_id():
 		_bounce_rpc(kind)

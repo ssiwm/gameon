@@ -22,6 +22,10 @@ const UNDERGROUND_ROW := 99
 const WEAPONS := []
 const ACCENTS := [[Vector2(136, 496), 15], [Vector2(200, 496), 20], [Vector2(264, 496), 12], [Vector2(344, 496), 18], [Vector2(392, 496), 20], [Vector2(1816, 496), 20], [Vector2(1928, 496), 19], [Vector2(1992, 496), 15], [Vector2(2056, 496), 20], [Vector2(2104, 496), 12], [Vector2(2024, 496), 21], [Vector2(296, 485), 22]]
 const POOL := [28, 110]                    ## kolumny basenu (od, do włącznie): zakres ruchu Pijawki
+## Osłony z blachy przeciw kwasowi (DESTRUCTION_CONTENT_PLAN.md W6): [kolumna, rząd podłoża, strona Pijawki (1 — z prawej, −1 — z lewej)] — po dwie na każdej wysokiej kładce (rząd 27),
+## przy jej końcach, żeby gracz stał za płytą od strony Pijawki (symulacja toru kwasu: do najbliższej osłony średnio 2,6–3,8 kafla), i jedna
+## na lewym brzegu (rząd 31, przed słupem hali) 4 kafle od wody — tam padły 2 z 5 upadków od kwasu w pomiarze W6-0 (2026-11-23).
+const COVERS := [[23, 31, 1], [37, 27, 1], [46, 27, -1], [58, 27, 1], [74, 27, -1], [86, 27, 1], [99, 27, -1]]
 ## Wnęki w tylnej ścianie hali (`niches3d.gd`, `DEPTH_PLAN.md` N3). Czysta oprawa: bez kolizji i bez światła na planie gry.
 ## Tylko na suchych brzegach (pod otworem musi być lita podłoga) i poza zasięgiem fali przypływu (basen ± `SURGE_PAD`):
 ## zachodni brzeg — zaplecze z żarówką między miejscami startu; wschodni — magazyn za kratą i regał bez światła przy ewakuacji.
