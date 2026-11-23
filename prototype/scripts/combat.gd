@@ -24,8 +24,7 @@ const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Sight := preload("res://scripts/sight.gd")
 const LAYER_WORLD := 1
 const LAYER_PLAYER := 2
-const LAYER_COVER := 2048         ## osłony z blachy (DESTRUCTION_CONTENT_PLAN.md W6, materiał `cover`): zatrzymują kule i kwas, ruchu nie (maska postaci 177 jej nie ma)
-const LAYER_TARGET := 4 | 32 | LAYER_COVER   ## wrogowie, gniazda, boss, Stalker (4), obiekty (32) i osłony (2048)
+const LAYER_TARGET := 4 | 32      ## wrogowie, gniazda, boss, Stalker (4) i obiekty (32)
 
 ## Obrażenia wybuchu rosną do środka: na brzegu zostaje ta część.
 const BLAST_EDGE := 0.5
@@ -168,8 +167,8 @@ static func trace(space: PhysicsDirectSpaceState2D, from: Vector2, dir: Vector2,
 			if bw != null:
 				# przegroda na drodze (SHOOT_DESTRUCTION_PLAN.md S1): szyna ją rani (weapon_controller `_server_rail`), wiązka nie
 				(out["barriers"] as Array).append({"node": bw, "pos": p, "rid": hit["rid"]})
-			# ściana: przebij cienką warstwę, jeśli broń pozwala (osłona z blachy nie leży w bryle świata — `_wall_depth` jej nie zmierzy)
-			if wall_budget > 0.0 and not (bw != null and bool((bw.call("mat_def") as Dictionary).get("quiet", false))):
+			# ściana: przebij cienką warstwę, jeśli broń pozwala
+			if wall_budget > 0.0:
 				var depth := _wall_depth(space, p, dir, wall_budget)
 				if depth > 0.0:
 					wall_budget -= depth

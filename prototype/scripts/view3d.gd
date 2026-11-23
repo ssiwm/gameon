@@ -3207,9 +3207,6 @@ func _sync_drawn() -> void:
 		if String(n.get("mat_id")).begins_with("door_") or n.has_meta("door"):
 			(n as CanvasItem).modulate = Color(1, 1, 1, 0)
 			continue                                              # drzwi budynku i barykada w nich (W4): skrzydło, deski i duch w `_sync_doors`
-		if String(n.get("mat_id")) == "cover":
-			_cover_model(n as Node2D)                             # osłona z blachy na B1 (DESTRUCTION_CONTENT_PLAN.md W6)
-			continue
 		var h := float(n.get("rows")) * Level3D.T
 		var mat_id := String(n.get("mat_id"))
 		var thin := mat_id in ["planks", "grate"]                  # deski i kratka: konstrukcja w poprzek korytarza na przezroczystej bryle (B2)
@@ -3287,8 +3284,6 @@ func _sync_drawn() -> void:
 					_spawn_board_remains(pr[1] as MeshInstance3D, float(pr[4]))     # rozbita barykada: słupki i wiszące deski zostają (B2)
 				elif pr.size() > 3 and String(pr[2]) == "barrier" and (pr[1] as Node).has_meta("grate_size") and String(pr[3]) == String(_level.get("map_id")):
 					_spawn_grate_remains(pr[1] as MeshInstance3D, float(pr[4]), pr[0] if is_instance_valid(pr[0]) else null)   # rama w otworze, skrzydło na podłodze (B2)
-				elif pr.size() > 3 and String(pr[2]) == "cover" and String(pr[3]) == String(_level.get("map_id")):
-					_cover_remains(pr[1] as Node3D, float(pr[4]))         # przeżarta osłona: kikut blachy przy podstawie (W6)
 				elif pr.size() > 3 and String(pr[2]) == "cave" and String(pr[3]) == String(_level.get("map_id")):
 					var cp := (pr[1] as Node3D).position
 					_spawn_cave_remains(Vector3(cp.x, cp.y - float(pr[4]) * 0.5, 0.0), float(pr[4]), _cave_seed(cp.x),
@@ -3299,90 +3294,6 @@ func _sync_drawn() -> void:
 			(pr[1] as Node3D).visible = (pr[0] as CanvasItem).is_visible_in_tree() and (pr.size() < 3 or String(pr[2]) != "flare" or pr[0].get("_active") == true)
 			if pr.size() > 2 and String(pr[2]) == "flare":        # flara jest przenoszona na miejsce wyjścia dopiero przy otwarciu ewakuacji
 				(pr[1] as Node3D).position = Level3D.px_to_m((pr[0] as Node2D).global_position) + Vector3(0.0, -0.03, 0.05)
-
-# ---------------------------------------------------------------- osłony z blachy na B1 (DESTRUCTION_CONTENT_PLAN.md W6)
-
-const COVER_W := 1.1                        ## m: szerokość arkusza blachy
-const COVER_YAW := 0.95                     ## rad (ok. 55°): lico w stronę Pijawki, a jeszcze widoczne z kamery
-const COVER_Z := -0.55                      ## m: środek arkusza za płaszczyzną gry — gracz przechodzi przed płytą (bez kolizji ruchu)
-const COVER_LEAN := 0.3                     ## m: o tyle stopa zastrzału wychodzi za arkusz
-
-var _cover_mats := {}                       ## "steel" / "eaten" → materiał blachy osłony
-
-func _cover_mat(kind: String) -> StandardMaterial3D:
-	if not _cover_mats.has(kind):
-		var m := Level3D.make_pbr("metal", 0.40, Color(0.36, 0.38, 0.40), 0.5, 1.0, 0.85, false, "rust" if kind == "eaten" else "").duplicate() as StandardMaterial3D
-		match kind:
-			"steel":
-				m.albedo_color = Color(0.58, 0.62, 0.66)         # arkusz: chłodna szara stal (z rdzą wyglądał jak sklejka)
-			"frame":
-				m.albedo_color = Color(0.3, 0.32, 0.34)          # rama z kątownika i żebra: ciemniejsze, odcinają arkusz od muru
-			_:
-				m.albedo_color = Color(0.34, 0.36, 0.22)         # przeżarta: ciemna, zielonkawa od kwasu
-		_cover_mats[kind] = m
-	return _cover_mats[kind]
-
-func _cover_box(parent: Node3D, nm: String, size: Vector3, pos: Vector3, mat: Material, rot_x := 0.0) -> MeshInstance3D:
-	var bm := BoxMesh.new()
-	bm.size = size
-	var mi := MeshInstance3D.new()
-	mi.name = nm
-	mi.mesh = bm
-	mi.material_override = mat
-	mi.layers = LAYER_WORLD
-	mi.position = pos
-	mi.rotation.x = rot_x
-	parent.add_child(mi)
-	return mi
-
-## Osłona z blachy (`breakable.gd` „cover”, level.gd `cover_defs`): arkusz na wysokość przegrody, za płaszczyzną gry, obrócony licem do
-## Pijawki (`face`), z żebrami i dwoma zastrzałami z tyłu. Przeżarcia kwasem i wgniecenia od kul w masce uszkodzeń na licu arkusza.
-func _cover_model(n: Node2D) -> void:
-	var h := float(n.get("rows")) * Level3D.T
-	var face := 1.0
-	for d: Dictionary in _level.cover_defs():
-		if String(d["name"]) == String(n.name):
-			face = float(d["face"])
-	for old in _geo.get_children():
-		if String(old.name) == "CoverRemains_%s" % n.name:
-			old.queue_free()                                      # odbudowana po wipe'ie: kikut po poprzedniej znika
-	var root := Node3D.new()
-	root.name = "Cover_%s" % n.name
-	root.position = Level3D.px_to_m(n.global_position) + Vector3(0.0, 0.0, COVER_Z)
-	root.rotation.y = face * COVER_YAW
-	_world.add_child(root)
-	var steel := _cover_mat("steel")
-	var ph := h - 0.06
-	var plate := _cover_box(root, "Plate", Vector3(COVER_W, ph, 0.025), Vector3(0.0, 0.06 + ph * 0.5, 0.0), steel)
-	var frame := _cover_mat("frame")
-	for fy in [0.22, 0.5, 0.8]:                                  # żebra z płaskownika z tyłu arkusza
-		_cover_box(root, "Rib", Vector3(COVER_W - 0.06, 0.05, 0.03), Vector3(0.0, 0.06 + ph * fy, -0.028), frame)
-	for sx in [-1.0, 1.0]:                                       # rama z kątownika na licu: boki, góra i spawane żebro w połowie
-		_cover_box(root, "Edge", Vector3(0.05, ph, 0.03), Vector3(sx * (COVER_W * 0.5 - 0.025), 0.06 + ph * 0.5, 0.025), frame)
-	_cover_box(root, "Top", Vector3(COVER_W, 0.05, 0.03), Vector3(0.0, 0.06 + ph - 0.025, 0.025), frame)
-	_cover_box(root, "Weld", Vector3(COVER_W - 0.1, 0.035, 0.02), Vector3(0.0, 0.06 + ph * 0.55, 0.02), frame)
-	_cover_box(root, "Foot", Vector3(COVER_W + 0.08, 0.06, 0.16), Vector3(0.0, 0.03, -0.02), frame)
-	var top := ph * 0.72
-	var ang := atan2(COVER_LEAN, top)
-	var length := sqrt(top * top + COVER_LEAN * COVER_LEAN)
-	for sx in [-0.38, 0.38]:                                     # zastrzały z kątownika: od żebra do podłoża za arkuszem
-		_cover_box(root, "Strut", Vector3(0.05, length, 0.05), Vector3(sx, 0.06 + top * 0.5, -0.04 - COVER_LEAN * 0.5), frame, ang)
-	var dmg := _damage_overlay(n, plate, COVER_W, ph)
-	(n as CanvasItem).modulate = Color(1, 1, 1, 0)
-	_drawn[n.get_instance_id()] = [n, root, "cover", String(_level.get("map_id")), h, dmg]
-
-## Przeżarta osłona: przy podstawie zostaje postrzępiony kikut arkusza i leżący kawał blachy (w `_geo` — do przebudowy świata albo wipe'u).
-func _cover_remains(root: Node3D, h: float) -> void:
-	var rem := Node3D.new()
-	rem.name = "CoverRemains_%s" % String(root.name).trim_prefix("Cover_")
-	rem.position = root.position
-	rem.rotation = root.rotation
-	_geo.add_child(rem)
-	var eaten := _cover_mat("eaten")
-	_cover_box(rem, "Stub", Vector3(COVER_W * 0.8, 0.32, 0.025), Vector3(-0.08, 0.22, 0.0), eaten)
-	_cover_box(rem, "Foot", Vector3(COVER_W + 0.08, 0.06, 0.16), Vector3(0.0, 0.03, -0.02), _cover_mat("frame"))
-	var sheet := _cover_box(rem, "Sheet", Vector3(COVER_W * 0.7, minf(h * 0.4, 0.9), 0.025), Vector3(0.1, 0.03, -0.45), eaten)
-	sheet.rotation = Vector3(-PI * 0.5, 0.0, 0.35)              # kawał arkusza płasko na podłożu za stopą
 
 # ---------------------------------------------------------------- drzwi budynków (DESTRUCTION_CONTENT_PLAN.md W1)
 

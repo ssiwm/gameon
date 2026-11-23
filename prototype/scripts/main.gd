@@ -2778,16 +2778,6 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 			for it in sa.substr("--shotdoor=".length()).split(","):
 				var dp := it.split(":")
 				get_tree().create_timer(1.0).timeout.connect(level.break_wall.bind(dp[0], dp[1] if dp.size() > 1 else "", int(dp[2]) if dp.size() > 2 else 0))
-		if sa.begins_with("--shotcover="):               # dev: `--shotcover=Cover2:2` — po 1 s N trafień kwasem w osłonę B1 (obraz przeżarć i kikuta, W6)
-			var cq := sa.substr("--shotcover=".length()).split(":")
-			var cn: Node = level.get_node_or_null(cq[0])
-			if cn != null:
-				get_tree().create_timer(1.0).timeout.connect(func() -> void:
-					for k in (int(cq[1]) if cq.size() > 1 else 1):
-						if is_instance_valid(cn) and not cn.is_queued_for_deletion():
-							var crc: Rect2 = cn.call("hit_rect")
-							cn.call("take_hit", {"type": "acid", "amount": 1.0, "pos": crc.position + Vector2(crc.size.x * 0.5, crc.size.y * (0.3 + 0.3 * k)),
-								"dir": Vector2.LEFT, "shooter": -1, "src": "leech"}))
 	if _has_arg_prefix("--shotcrate"):              # dev: gracz 1 przy pierwszej skrzyni `k`, po 1,5 s pięć pocisków pistoletu ją rozbija (podgląd drzazg, D1); `=2` — po 4 s skrzynia wraca jak po wipe'ie
 		var cr: Node2D = null
 		for p in get_tree().get_nodes_in_group("props"):
@@ -3668,93 +3658,6 @@ func _leech_test() -> void:
 	lc._fury_on = false
 	p.dead = false
 	p.hp = 3
-	for ac in get_tree().get_nodes_in_group("acid"):
-		ac.queue_free()
-	# osłony z blachy (DESTRUCTION_CONTENT_PLAN.md W6): płyty z COVERS bez kolizji ruchu i nawigacji, zatrzymują kule i kwas, 3 trafienia kwasem je przeżerają
-	lc.mode = lc.Mode.SUB
-	lc._cd = 99999.0                                        # Pijawka nie pluje sama w czasie pomiaru
-	var cdefs: Array = level.cover_defs()
-	var cnodes: Array = cdefs.map(func(d: Dictionary) -> Node: return level.get_node_or_null(String(d["name"])))
-	check.call("osłony W6: %d płyt z COVERS (%s), materiał cover, 2 rzędy" % [cdefs.size(), ", ".join(cdefs.map(func(d: Dictionary) -> String: return "%d/%d%s" % [d["col"], d["row"], "→" if int(d["face"]) > 0 else "←"]))],
-		cdefs.size() == 7 and cnodes.all(func(n: Node) -> bool: return n != null and String(n.get("mat_id")) == "cover" and int(n.get("rows")) == 2))
-	var cspace := level.get_world_2d().direct_space_state
-	var free_ok := true
-	for d: Dictionary in cdefs:
-		var pq := PhysicsPointQueryParameters2D.new()
-		pq.position = Vector2(int(d["col"]) * 16.0 + 8.0, int(d["row"]) * 16.0 - 10.0)
-		pq.collision_mask = 177                              # maska postaci (gracz, bot, wróg)
-		if not cspace.intersect_point(pq).is_empty() or level._is_solid(int(d["col"]), int(d["row"]) - 1) or level._is_solid(int(d["col"]), int(d["row"]) - 2):
-			free_ok = false
-	check.call("osłony: ruch postaci (maska 177) i nawigacja przez płytę wolne", free_ok)
-	var cv: Node2D = cnodes[1]                              # Cover2: kol. 37 na wysokiej kładce, Pijawka z prawej
-	var cmid: Vector2 = cv.call("body_center")
-	var bray := cspace.intersect_ray(PhysicsRayQueryParameters2D.create(cmid + Vector2(-40.0, 0.0), cmid + Vector2(40.0, 0.0), Combat.LAYER_WORLD | Combat.LAYER_PLAYER | Combat.LAYER_TARGET))
-	var bres := Combat.apply(cv, Combat.make_info(Weapons.M83, 20.0, cmid, Vector2.RIGHT, 1, "bullet"))
-	check.call("osłony: kula (maska pocisku) staje na płycie, tylko ją wgniata (HP %.0f)" % float(cv.hp),
-		not bray.is_empty() and (bray["collider"] as Node).get_parent() == cv and not bool(bres.get("hit")) and float(cv.hp) == 90.0)
-	# tory kwasu jak w leech.gd `_spit` / acid_spit.gd: gracz kafel za płytą, Pijawka po stronie lica 48–340 px dalej
-	var sim_ok := true
-	var sim_txt: Array = []
-	for i in cdefs.size():
-		var d: Dictionary = cdefs[i]
-		var f := int(d["face"])
-		var feet := Vector2((int(d["col"]) - f) * 16.0 + 8.0, int(d["row"]) * 16.0)
-		var stopped := 0
-		var total := 0
-		for dx in range(48, 341, 16):
-			var lx: float = int(d["col"]) * 16.0 + 8.0 + f * float(dx)
-			if lx < lc.pool_x0 or lx > lc.pool_x1:
-				continue
-			var from := Vector2(lx, lc.global_position.y - 34.0)
-			var aim := feet + Vector2(0.0, 1.0)
-			var flight := clampf(from.distance_to(aim) / lc.SPIT_SPEED, 0.35, 1.2)
-			var v := Vector2((aim.x - from.x) / flight, (aim.y - from.y - 0.5 * 520.0 * flight * flight) / flight)
-			var pos := from
-			var res := ""
-			for k in 240:
-				v.y += 520.0 / 60.0
-				var to := pos + v / 60.0
-				var hit := cspace.intersect_ray(PhysicsRayQueryParameters2D.create(pos, to, 1 | Combat.LAYER_COVER))
-				if not hit.is_empty():
-					res = "cover" if cnodes.has((hit["collider"] as Node).get_parent()) else "wall"   # także druga płyta tej kładki
-					break
-				pos = to
-				if absf(pos.x - feet.x) <= 9.0 and pos.y > feet.y - 30.0 and pos.y < feet.y + 3.0:
-					res = "player"                               # sylwetka gracza (acid_spit.gd: HIT_R wokół punktu trafienia)
-					break
-			total += 1
-			stopped += 1 if res == "cover" else 0
-		sim_txt.append("%s %d/%d" % [d["name"], stopped, total])
-		sim_ok = sim_ok and total > 0 and float(stopped) / float(total) >= 0.8   # przechodzą tylko strome strzały spod kładki z 3–5 kafli
-	check.call("osłony: tory kwasu na gracza kafel za płytą zatrzymane, Pijawka 3–21 kafli od płyty (%s; ≥ 80%%)" % ", ".join(sim_txt), sim_ok)
-	# prawdziwy kwas: gracz za Cover2, Pijawka 7 kafli w prawo — trzy trafienia przeżerają płytę, czwarte trafia gracza
-	p.dead = false
-	p.hp = 3
-	p._invuln = 0.0
-	p.global_position = Vector2(36.0 * 16.0 + 8.0, 27.0 * 16.0 - 1.0)
-	p.velocity = Vector2.ZERO
-	var acid_from := Vector2(44.0 * 16.0 + 8.0, lc.global_position.y - 34.0)
-	var acid_at := Vector2(p.global_position.x, 27.0 * 16.0 + 1.0)
-	var acid_fl := clampf(acid_from.distance_to(acid_at) / lc.SPIT_SPEED, 0.35, 1.2)
-	var acid_v := Vector2((acid_at.x - acid_from.x) / acid_fl, (acid_at.y - acid_from.y - 0.5 * 520.0 * acid_fl * acid_fl) / acid_fl)
-	var hps: Array = []
-	for shot in 3:
-		level.spawn_acid(acid_from, acid_v)
-		await get_tree().create_timer(1.6).timeout
-		hps.append(roundi(float(cv.hp)) if is_instance_valid(cv) and not cv.is_queued_for_deletion() else 0)
-	check.call("osłony: kwas staje na płycie, gracz za nią cały (HP %d), płyta %s → przeżarta, przejście bez zmian" % [p.hp, str(hps)],
-		p.hp == 3 and hps == [60, 30, 0] and level._opened_walls.has("Cover2") and not level._is_solid(37, 26))
-	p._invuln = 0.0
-	level.spawn_acid(acid_from, acid_v)
-	await get_tree().create_timer(1.6).timeout
-	check.call("osłony: bez płyty kwas trafia gracza (HP %d)" % p.hp, p.hp < 3)
-	level.reset_breakables()
-	await get_tree().create_timer(0.2).timeout
-	var cv2: Node = level.get_node_or_null("Cover2")
-	check.call("osłony: wipe stawia przeżartą płytę z powrotem (HP %.0f)" % (float(cv2.hp) if cv2 != null else -1.0), cv2 != null and float(cv2.hp) == 90.0 and not level._opened_walls.has("Cover2"))
-	p.dead = false
-	p.hp = 3
-	lc._cd = 0.0
 	for ac in get_tree().get_nodes_in_group("acid"):
 		ac.queue_free()
 	# faza 3: podwójna zasadzka — drugi punkt zapowiedzi (kręgi) w innym miejscu basenu
@@ -4706,8 +4609,8 @@ func _shortcut_report(id: String, nav: AStar2D, points: Array) -> void:
 	var route0: float = _route_len(nav, goals) if route_ok else 0.0
 	for wd in (level._wall_defs as Array).duplicate():
 		var wn := String(wd["name"])
-		if bool(wd.get("start_open", false)) or level._opened_walls.has(wn) or bool(wd.get("cover", false)):
-			continue                                   # osłona B1 (W6) nie zamyka przejścia — nie ma czego skracać
+		if bool(wd.get("start_open", false)) or level._opened_walls.has(wn):
+			continue
 		var foot: Vector2 = wd["pos"] + Vector2(0.0, -2.0)
 		var left := foot + Vector2(-16.0, 0.0)
 		var right := foot + Vector2(16.0, 0.0)
