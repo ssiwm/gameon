@@ -242,7 +242,8 @@ względem tabel powyżej — **wartości z kodu są nadrzędne** (`scripts/weapo
   i nad nią faluje powietrze; lufa stygnie ok. 45 s. Dalsza rozbudowa: `GUNSMITH_PLAN.md`.
 - Doszły później (patrz `prototype/WEAPONS.md` §7–§9 i `scripts/throwables.gd`): ulepszenia 3-poziomowe, granaty, miny, ładunki, flary
   i zakup w kryjówce. Wyważanie drzwi od 1.7.656 (`DESTRUCTION_CONTENT_PLAN.md`): drzwi budynków są przegrodą — drewniane bierze maczeta, kule
-  i pazury, metalowe kilof, granat i szarża, zbrojone tylko materiał wybuchowy (dwa granaty albo jeden ładunek burzący); na razie posterunek 1.3.
+  i pazury, metalowe kilof, granat i szarża, zbrojone tylko materiał wybuchowy (dwa granaty albo jeden ładunek burzący); od 1.7.657 każde wejście
+  budynku na 1.2 i 1.3, na trasie po jednych zamkniętych drzwiach na budynek (bramy na całą wysokość otworu).
 
 ---
 

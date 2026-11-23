@@ -1512,7 +1512,7 @@ func close_doors_after_check(names: Array) -> void:
 		if names.has(String(wd["name"])):
 			_close_wall(wd)
 
-## Test map: wpisy DOORS bez wejścia budynku (literówka w kolumnie) — błędy; wejścia budynków bez wpisu — lista (W2 domknie wszystkie).
+## Test map: wpisy DOORS bez wejścia budynku (literówka w kolumnie) — błędy; wejścia budynków bez wpisu — lista (na mapach kampanii błąd w `--maptest`, W2).
 func doors_checked() -> Array:
 	var bad: Array = []
 	var free: Array = []

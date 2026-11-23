@@ -82,9 +82,16 @@ const FRONT := [
 	# słupów `w` hali, bez słupów w płaszczyźnie przekroju (arena bossa — nic nie zasłania kadru)
 	{"set": "station", "c0": 164, "c1": 190, "r0": 11, "r1": 26, "shell": true, "build": "shed", "bays": [173.5, 181.5], "cut_cols": false, "closed": true},
 ]
-## Drzwi budynków 3D (DESTRUCTION_CONTENT_PLAN.md W1, decyzje 2–3): kolumna wejścia → materiał; `"start": "broken"` — wyważone na starcie
-## (skrzydło leży, ślad poprzedniego patrolu). Posterunek: zachód metalowe (kilof), wschód wyważone.
-const DOORS := {18: {"mat": "metal"}, 36: {"mat": "metal", "start": "broken"}}
+## Drzwi budynków 3D (DESTRUCTION_CONTENT_PLAN.md W1–W2, decyzje 2–4): kolumna wejścia → materiał; `"start": "broken"` — wyważone na starcie
+## (skrzydło leży, ślad poprzedniego patrolu). Na trasie po jednych zamkniętych na budynek, od zachodu (stąd drużyna podchodzi).
+## Posterunek: zachód metalowe (kilof), wschód wyważone. Skład: brama drewniana (maczeta), wschodnia wyważona. Hala Żyły: metalowa brama
+## w otworze bramy z korzeni (`VEIN_ARENA.gate`); wyważona zostaje wyważona po restarcie walki (punkt kontrolny bossa).
+## Bramy na całą wysokość otworu, bez furtki: Rzeźnik (36 px) nie mieści się w otworze 2 rzędów (32 px), W2.
+const DOORS := {
+	18: {"mat": "metal"}, 36: {"mat": "metal", "start": "broken"},
+	112: {"mat": "wood"}, 142: {"mat": "wood", "start": "broken"},
+	164: {"mat": "metal"},
+}
 const FRONT_SKIP := []
 
 ## Hala Żyły (`VEIN_PLAN.md` §6, od 1.7.552): dane areny bossa zamiast nowych liter mapy. Kafle włącznie.

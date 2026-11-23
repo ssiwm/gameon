@@ -832,7 +832,12 @@ func _destruction_net(n: float, want := "z1_m2") -> void:
 		await get_tree().create_timer(0.25).timeout
 
 func _destruction_sig() -> String:
-	var st := "map=%s opened=[%s]" % [level.map_id, ",".join(PackedStringArray(level._opened_walls))]
+	var opened := PackedStringArray()
+	for n: String in level._opened_walls:
+		var wd: Dictionary = level.wall_def(n)
+		if not (bool(wd.get("door", false)) and bool(wd.get("start_open", false))):     # drzwi wyważone na starcie (W2) — nie krok testu
+			opened.append(n)
+	var st := "map=%s opened=[%s]" % [level.map_id, ",".join(opened)]
 	var w: Node = level.get_node_or_null("BrickWall1")
 	if w != null and not w.is_queued_for_deletion():
 		var sp: PackedFloat32Array = w.splats
@@ -4861,6 +4866,9 @@ func _map_test() -> void:
 				bad.append("przy całych ścianach (drzwi poza zbrojonymi wyważone): %s" % b)
 			var dc: Array = level.doors_checked()
 			bad.append_array(dc[0])
+			if level.CAMPAIGN.has(id):                          # W2: każde wejście budynku 3D na misji kampanii ma drzwi (decyzja 1)
+				for f in dc[1]:
+					bad.append("wejście budynku bez wpisu w DOORS: %s" % f)
 			if not level.doors.is_empty() or not (dc[1] as Array).is_empty():
 				print("[MAPTEST] %s: drzwi %d (wyważane na trasie: %s), wejścia budynków bez drzwi: %s" % [id, level.doors.size(), ", ".join(dopen) if not dopen.is_empty() else "—",
 					", ".join(dc[1]) if not (dc[1] as Array).is_empty() else "brak"])

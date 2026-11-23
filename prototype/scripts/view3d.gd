@@ -3324,8 +3324,10 @@ func _sync_doors() -> void:
 			var root := Building3D.door_leaf(String(d["mat"]), at)
 			root.name = "Door_%s" % nm
 			_geo.add_child(root)
-			e = {"root": root, "hint": null, "closed": not closed, "at": at, "mat": String(d["mat"]), "map": String(_level.get("map_id"))}
+			e = {"root": root, "hint": null, "closed": not closed, "at": at, "mat": String(d["mat"]), "map": String(_level.get("map_id")), "bands": -1}
 			_doors3d[nm] = e
+		if closed and String(e["mat"]) == "wood":
+			_sync_door_bands(node as Node2D, e)
 		if closed == bool(e["closed"]):
 			continue
 		e["closed"] = closed
@@ -3342,6 +3344,35 @@ func _sync_doors() -> void:
 		elif h != null and is_instance_valid(h):
 			(h as Node).call("dissolve")
 			e["hint"] = null
+
+## Drzwi drewniane (W2): pas skrzydła (`Band<i>` z `Building3D.door_leaf`) stoi, póki stoi pas przegrody na jego wysokości (`band_mask`, jak
+## deski barykady) — obraz = symulacja, w szczelinie po pasie w 2D przechodzi wzrok, kule i dźwięk. Zastrzał odpada z pierwszym pasem.
+## Odpadnięty pas sypie drzazgą (nie przy pierwszym przeglądzie ani po odbudowie przy wipe).
+func _sync_door_bands(n: Node2D, e: Dictionary) -> void:
+	if n == null or not n.has_method("band_mask"):
+		return
+	var want := int(n.call("band_mask"))
+	var had := int(e.get("bands", -1))
+	if want == had:
+		return
+	e["bands"] = want
+	var closed3: Node3D = (e["root"] as Node3D).get_node("Closed")
+	var rows := maxi(int(n.get("rows")), 1)
+	for i in rows:
+		var bn := closed3.get_node_or_null("Band%d" % i) as Node3D
+		if bn == null:
+			continue
+		var up := (want & (1 << i)) != 0
+		if bn.visible and not up and had >= 0:
+			for k in 2:
+				var at := Vector2(n.global_position.x + randf_range(-4.0, 4.0), n.global_position.y - (float(rows - i) - 0.5) * Level3D.TILE)
+				var b := Vfx.debris(_level, at, Vector2(randf_range(-40.0, 40.0), randf_range(-60.0, -10.0)), Vector2(6, 4), Color(0.42, 0.3, 0.18), 0.1, 3.0)
+				if b != null:
+					mirror_chunk(b, "planks", 6.0, randi())
+		bn.visible = up
+	var br := closed3.get_node_or_null("Brace") as Node3D
+	if br != null:
+		br.visible = want == (1 << rows) - 1
 
 # ---------------------------------------------------------------- broń na ziemi i na stojakach
 
