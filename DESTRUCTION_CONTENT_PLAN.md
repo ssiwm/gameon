@@ -37,6 +37,18 @@ jak pas drewnianej bramy. Tym samym hala stacji i pompownia 1.2 (generatory) maj
 (`barricade` w dzienniku ma nazwę przegrody, `Door*` = barykada w drzwiach). Zrzuty: `C:\deadair87\shots_doors\w4`.
 Następny krok: W5 (zawał 1.1) albo W2b (zbrojone drzwi do nowych pomieszczeń z łupem).
 
+**Stan (2026-11-23, W5):** W5 zrobiony w 1.7.660 (gałąź `feat/cave-w5`, stos na W4). „Galeria 1.1, wiersze 31–33” z analizy to sztolnia odwadniająca
+(druga droga powrotu po finale). Miejsce ze skanu nawigacji: niski chodnik pod skałą między wnęką z baterią (kol. 137–141) a zalanym odcinkiem
+z gniazdem ciem (150–175) — stempel `!` w kol. 144, strefa `^` w kol. 146 (3 rzędy, strop `#`). Drużyna idąca sztolnią na zachód łamie stempel
+za sobą (kula przelatuje i łamie, śrut, kilof, wybuch) i zasypuje chodnik między sobą a pościgiem z sali: objazd 2900 px górą (`--maptest`,
+`_cave_report`: na mapach kampanii objazd ≥ 800 px, inaczej zawał nic nie odcina), cele i wyjścia osiągalne przy zawalonej strefie
+(`cave_checked`). Wnęka z baterią zostaje po stronie drużyny. Wstrząs finału rozsypuje gruz (jak od D3), więc stempel złamany przed finałem już
+nie pomoże w ucieczce — `--finaletest` (zawał przed finałem, gruz rozsypany, restart stawia stempel). Modele zawału 3 rzędów:
+`rubble_pile_{mine,concrete}_r3_{0,1}.glb` (`tools/rubble_pile_gen.py`, `ROWS = (3, 4, 5)`; do W5 3-rzędowe przejście dostawało ściśnięty
+model 4 rzędów). Test B0 „kampania bez `^`” zastąpiony: strefy kampanii tylko ≤ 3 rzędy pod `#`, stempli tyle co stref. Zrzuty:
+`C:\deadair87\shots_doors\w5` (`w5_prop`, `w5_cave`, `w5_dug`).
+Do decyzji: porada przy stemplu (jak „adit” przy otworze) — dziś gracz musi sam zauważyć belkę. Następny krok: W2b albo W6 (osłony na B1).
+
 ## Skąd ten plan
 
 Analiza 2026-11-22 („zweryfikuj możliwość dodania destrukcji środowiska”): niszczenie otoczenia już jest i jest używane. Brakuje go
@@ -291,7 +303,7 @@ i tylko jeśli drzwi i zawał się sprawdzą.
 | **W2** wszystkie budynki — **zrobiony** (1.7.657) | 1 | bramy na całą wysokość (decyzja 4 zmieniona: Rzeźnik nie mieści się w furtce), `DOORS` na 1.2 i 1.3, hala Żyły z punktem kontrolnym bossa, sprawdzenie wysokich wrogów, `--veintest`, `--funtest` | średnie (projekt map) |
 | **W3** dźwięk i wyważenie — **zrobiony** (1.7.658, odsłuch A/B do potwierdzenia) | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
 | **W4** barykady przy drzwiach — **zrobiony** (1.7.659) | 1 | miejsca barykad przy budynkach z generatorami, przegląd barykad na trasie | niskie |
-| **W5** zawał 1.1 | 1 | stempel i strefa w galerii, modele 2–3 rz. | średnie |
+| **W5** zawał 1.1 — **zrobiony** (1.7.660) | 1 | stempel i strefa w galerii, modele 2–3 rz. | średnie |
 | **W6** B1 osłony | 0–1 | najpierw sprawdzenie mechaniki bossa, potem decyzja | średnie |
 | **W7** spadająca kładka | 1–2 | osobny węzeł, nawigacja, dyrektor | wysokie |
 

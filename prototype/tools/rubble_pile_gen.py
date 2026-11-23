@@ -39,7 +39,7 @@ from mathutils.bvhtree import BVHTree
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "art", "items3d")
 
 T = 16.0 * 1.8 / 22.0          # kafel gry [m] (Level3D.T)
-ROWS = (4, 5)                  # wysokości przejść z zawałem na mapach (z1_m3: 4, z1_m1 i z1_m2: 5)
+ROWS = (3, 4, 5)               # wysokości przejść z zawałem: 3 — sztolnia 1.1 i t_mine (DESTRUCTION_CONTENT_PLAN.md W5); 4–5 — dawne hale (do B0)
 VARIANTS = 2
 SETS = ("concrete", "mine")
 EDGE = 0.55 * T                # brzeg kafla przegrody z zapasem
