@@ -351,11 +351,12 @@ static func parts(b: Dictionary, rows: Array) -> Dictionary:
 			if fl >= WIN[2] + 0.8 and yw + WIN[1] < ys - 0.3:
 				var wz := f0 + fl * 0.5
 				holes.append([wz - WIN[2] * 0.5, wz + WIN[2] * 0.5, yw + WIN[0], yw + WIN[1], "deco"])
-		_wall_x(box, "wall", minf(xo, xi), maxf(xo, xi), zb, zc, yf, ys, holes)
+		_wall_x(box, "wall", minf(xo, xi), maxf(xo, xi), zb, zc, yf, ys, holes.map(_door_hole))
 		for h: Array in holes:
-			_frame(box, side, xo, xi, h)
 			if h.size() > 5 and String(h[5]) != "":
-				_door_frame(box, side, xo, xi, h)
+				_door_frame(box, side, xo, xi, h)         # drzwi do wyważenia: ościeżnica w materiale drzwi zamiast stalowej
+			else:
+				_frame(box, side, xo, xi, h)
 		if buried:
 			continue                                         # w skale: lico zewnętrzne niewidoczne, bez cokołu i pilastrów
 		var xout := func(d: float) -> float: return xo + float(side) * d     # x w odległości d na zewnątrz lica
@@ -430,7 +431,6 @@ static var door_cols := {}
 const DOOR_P := 0.3                        ## m: ościeżnica wystaje za oba lica ściany (obrys budynku z kamery, spike W0)
 const DOOR_JW := 0.16                      ## m: szerokość słupka ościeżnicy (w osi z)
 const DOOR_HH := 0.18                      ## m: wysokość nadproża ościeżnicy
-const DOOR_H := 2.2                        ## m: wysokość skrzydła
 const DOOR_KEY := {"wood": "dwood", "metal": "dmetal", "steel": "dsteel"}
 static var _door_mats := {}
 
@@ -459,11 +459,18 @@ static func _door_mat(base: StandardMaterial3D, tint: Color) -> StandardMaterial
 	m.albedo_color = tint
 	return m
 
-## Wysokość skrzydła w otworze od y0 do y1 (m): drzwi do DOOR_H, brama na całą wysokość otworu (W2, bez furtki).
-static func _door_h(y0: float, y1: float, kind := "door") -> float:
-	if kind == "gate":
-		return y1 - y0 - DOOR_HH - 0.02
-	return minf(DOOR_H, y1 - y0 - DOOR_HH - 0.02)
+## Wysokość skrzydła w otworze od y0 do y1 (m): drzwi i brama na całą wysokość otworu pod nadprożem ościeżnicy (W2, bez furtki).
+## Do 1.7.664 drzwi miały 2,2 m, a otwór w murze 2 rzędy (2,62 m): nad ościeżnicą widać było pas otworu ze stalową ościeżnicą (uwaga z gry 2026-11-23).
+static func _door_h(y0: float, y1: float, _kind := "door") -> float:
+	return y1 - y0 - DOOR_HH - 0.02
+
+## Otwór w murze ściany szczytowej (`_wall_x`) dla otworu h: drzwi do wyważenia — dokładnie światło ościeżnicy (do spodu nadproża), nadproże
+## i słupki siedzą w murze i wystają DOOR_P poza lica; pozostałe otwory bez zmian.
+static func _door_hole(h: Array) -> Array:
+	if h.size() <= 5 or String(h[5]) == "":
+		return h
+	var y0: float = h[2]
+	return [h[0], h[1], y0, y0 + _door_h(y0, float(h[3]), String(h[4])), h[4]]
 
 ## Ościeżnica drzwi do wyważenia w materiale drzwi: słupki, nadproże i daszek wystające DOOR_P poza oba lica ściany — widać je poza obrysem
 ## budynku, a słupek od strony kamery niesie kolor materiału (spike W0: drzwi w otworze zasłania ściana szczytowa). Zostaje po wyważeniu.

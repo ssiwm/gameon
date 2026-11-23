@@ -836,8 +836,9 @@ static func _build_roofs(parent: Node3D, rows: Array, sheet_mat: Material, steel
 	_multimesh(parent, box, frame[true], steel_mat)
 	_multimesh(parent, box, frame[false], wood_mat)
 
-## Stopy ścian: ściana `C` (co najmniej dwa kafle w pionie), która kończy się nad otwartym parterem (wejście do chaty radiowej, pompowni, Składu),
-## wisiała w powietrzu. Od jej dołu do gruntu stoi filar z betonu w głębi (od tyłu bryły do WALL_FOOT_Z, za drogą postaci) — wejście zostaje otwarte.
+## Stopy ścian: ściana `C` (co najmniej dwa kafle w pionie), która kończy się nad otwartym parterem (wejście do chaty radiowej), wisiała
+## w powietrzu. Od jej dołu do gruntu stoi filar z betonu w głębi (od tyłu bryły do WALL_FOOT_Z, za drogą postaci) — wejście zostaje otwarte.
+## Ściany budynków 3D (`bld_cells`, `building3d.gd`) mają własny otwór z ościeżnicą i filara nie dostają.
 ## [{"c", "r" — pierwszy wiersz pod ścianą, "g" — wiersz gruntu}].
 const WALL_FOOT_Z := -0.9
 const WALL_FOOT_W := 0.6
@@ -849,6 +850,8 @@ static func wall_feet(rows: Array) -> Array:
 		for r in range(1, nrows - 1):
 			if _ch(rows, c, r) != "C" or _ch(rows, c, r - 1) != "C" or is_solid_ch(_ch(rows, c, r + 1)) or is_roof_cell(rows, c, r):
 				continue
+			if bld_cells.has(Vector2i(c, r)):
+				continue                                            # ściana budynku 3D (`building3d.gd`): otwór z ościeżnicą, bez filara w wejściu (1.3 posterunek, 2026-11-23)
 			if _ch(rows, c - 1, r) == "C" and _ch(rows, c + 1, r) == "C":
 				continue                                            # strop (poziomy pas betonu), nie ściana
 			var g := r + 1
