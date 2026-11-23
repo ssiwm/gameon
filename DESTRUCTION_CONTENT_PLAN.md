@@ -4,7 +4,26 @@ Stan wyjścia planu: main 1.7.655 (203ed634, 2026-11-22). Kontynuacja `DESTRUCTI
 `SHOOT_DESTRUCTION_PLAN.md` (S0–S3, do 1.7.557) i `IMPACT_MARKS_PLAN.md` (1.7.655).
 
 **Stan (2026-11-22):** decyzje 1–10 przyjęte zgodnie z zaleceniami (sekcja „Decyzje”). Spike W0 zrobiony: ościeżnica wystająca poza obrys
-ściany + animowany „duch” narzędzia przy drzwiach (maczeta, kilof, ładunek; ikona HUD odrzucona przez autora), znika po wyważeniu. Sekcja „Obraz (3D)”. Następny krok: W1.
+ściany + animowany „duch” narzędzia przy drzwiach (maczeta, kilof, ładunek; ikona HUD odrzucona przez autora), znika po wyważeniu. Sekcja „Obraz (3D)”.
+
+**Stan (2026-11-23):** W1 zrobiony w 1.7.656 (gałąź `feat/doors-w1`): materiały `door_wood` / `door_metal` / `door_steel`, stała `DOORS`,
+rejestracja w `level.gd`, posterunek 1.3 (dwoje metalowych, wschodnie wyważone na starcie), komunikaty i pasek akcji, Stalker, Wołek,
+Rzeźnik i bot, `--maptest`, `--destructiontest` sekcja 21, widok 3D (ościeżnica, skrzydło zamknięte i leżące, duch 10 m / 3 pętle,
+rozpływa się przy wyważeniu bez przebudowy świata). Sieć bez osobnego `door=` w `_destruction_sig`: drzwi to zwykłe przegrody
+(`opened` w sygnaturze, ta sama ścieżka RPC co deski i kratka). Z listy „Do poprawy w W1” przechodzą do W2, bo w W1 na mapach są tylko
+metalowe drzwi: wygląd drewna i pasy skrzydła drewnianego w 3D, furtka w bramie, widoczność maczety i ładunku ducha, strona drzwi.
+
+**Stan (2026-11-23, W2):** W2 zrobiony w 1.7.657 (gałąź `feat/doors-w2`). `DOORS` w każdym wejściu budynku 3D na 1.2 i 1.3 (decyzje 2–3):
+1.2 — hala stacji brama drewniana, pompownia brama metalowa, wschodnie wyważone; 1.3 — Skład brama drewniana, wschodnia wyważona, hala Żyły
+metalowa brama w otworze bramy z korzeni (punkt kontrolny bossa pamięta wyważoną). **Decyzja 4 zmieniona (autor 2026-11-23):** bramy na całą
+wysokość otworu, bez furtki — pomiar w W2: Rzeźnik ma 36 px, otwór 2 rzędów 32 px (Kapłan 32 px na styk), więc furtka zamknęłaby go w pompowni
+i odcięła elitę dyrektora. Obraz: brama metalowa na całą wysokość, wyważona wisi krzywo na szynie obok otworu (poza pasem gry); drewniana
+dwuskrzydłowa z listwami i zastrzałami, pasy skrzydła = pasy przegrody (odpadają z drzazgą), wyważona — resztki przy zawiasach i deski na ziemi.
+Z listy „Do poprawy w W1”: drewno w teksturze `post` (słoje pionowe; `plank` dawała cegłę), duch maczety z ostrzem ×1,8, ładunek ducha
+na słupku bez pasów (pasy tylko na nadprożu od W1), strona drzwi bez zmian — wszystkie zamknięte drzwi są od zachodu i drużyna podchodzi do nich
+z zewnątrz. `--maptest`: wejście bez wpisu w `DOORS` na mapie kampanii to błąd. Zrzuty: `C:\deadair87\shots_doors\w2`.
+Do W2b (decyzja 5): drzwi zbrojone do małych pomieszczeń pobocznych z łupem, po jednym na 1.2 i 1.3 — wymagają nowych budynków 3D na mapach.
+Następny krok: W2b albo W3 (dźwięk i wyważenie).
 
 ## Skąd ten plan
 
@@ -257,7 +276,7 @@ i tylko jeśli drzwi i zawał się sprawdzą.
 |---|---|---|---|
 | **W0** spike obrazu drzwi — **zrobiony** | 0 (gałąź robocza `spike/doors-w0`, wynik do planu) | ościeżnica poza obrysem + narzędzie 3D (ikona HUD odrzucona); zrzuty posterunku 1.3 i bramy 1.2, dzień, noc z latarką, od środka, wyważone (`--doorproto[=wood\|metal\|steel] [--doorbroken]`) | — |
 | **W1** mechanika + posterunek 1.3 | 1 | materiały `door_*`, `DOORS`, rejestracja w `level.gd`, komunikaty, pasek akcji, wrogowie i bot, `--destructiontest` sekcja drzwi, `--maptest`, sieć (`door=` w `_destruction_sig`), dziennik `break` z `door_*`, 3D wg wyniku W0 | średnie |
-| **W2** wszystkie budynki | 1 | furtki w bramach (decyzja 4), `DOORS` na 1.2 i 1.3, hala Żyły z punktem kontrolnym bossa, sprawdzenie wysokich wrogów, `--veintest`, `--funtest` | średnie (projekt map) |
+| **W2** wszystkie budynki — **zrobiony** (1.7.657) | 1 | bramy na całą wysokość (decyzja 4 zmieniona: Rzeźnik nie mieści się w furtce), `DOORS` na 1.2 i 1.3, hala Żyły z punktem kontrolnym bossa, sprawdzenie wysokich wrogów, `--veintest`, `--funtest` | średnie (projekt map) |
 | **W3** dźwięk i wyważenie | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
 | **W4** barykady przy drzwiach | 1 | miejsca barykad przy budynkach z generatorami, przegląd barykad na trasie | niskie |
 | **W5** zawał 1.1 | 1 | stempel i strefa w galerii, modele 2–3 rz. | średnie |
@@ -328,7 +347,7 @@ Wszystkie przyjęte 2026-11-22 zgodnie z zaleceniami (warianty odrzucone).
 
    Przy wariancie z decyzji 2 „wszystkie zamknięte” wschodnie wejścia jako metalowe.
 4. **Bramy 4 rzędy:** *Zalecam:* furtka 2 rzędy, górna część bramy stała (obraz bramy z furtką). Wariant: cała brama jako przegroda
-   na 4 rzędy.
+   na 4 rzędy. **Zmiana 2026-11-23 (W2): cała brama** — Rzeźnik (36 px) nie mieści się w furtce 2 rzędów (32 px).
 5. **Drzwi zbrojone:** na trasie byłyby pułapką (granat 1 na misję). *Zalecam:* tylko do nowych, małych pomieszczeń pobocznych
    z łupem (sejf, skrzynia mocy, taśma) — po jednym na 1.2 i 1.3, miejsca wybrane w W2 skanem nawigacji. Wysadzenie to decyzja:
    granat albo ładunek za łup i hałas. Wariant: zbrojone także na trasie, z objazdem (dach, szyb).
