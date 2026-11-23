@@ -887,6 +887,54 @@ func _check_building(rows: Array, name: String, c0: int, c1: int, r0: int, r1: i
 	_check(free * 2 >= c1 - c0 - 1, "%s: za słupami zablokowana większość tła dla dekali (wolnych %d z %d kafli)" % [name, free, c1 - c0 - 1])
 	var wm: Variant = Niches3D._building_wall({"c0": cm, "c1": cm + 1, "r0": r0 + 1, "r1": r1 - 1})
 	_check(wm != null, "%s: wnęka w budynku bez materiału ściany budynku" % name)
+	_check_door_fit(rows, name, b)
+
+## Drzwi do wyważenia w budynku 3D (uwaga z gry 2026-11-23, posterunek 1.3): otwór w murze to dokładnie światło ościeżnicy — mur zaczyna się
+## nad nim na spodzie nadproża (bez pasa otworu nad ościeżnicą), w otworze nie ma stalowej ościeżnicy otworu ani muru, skrzydło sięga
+## nadproża; w kolumnie wejścia nie stoi filar „stopy ściany” (`Level3D.wall_feet`, betonowy blok za drzwiami).
+func _check_door_fit(rows: Array, name: String, b: Dictionary) -> void:
+	for f: Dictionary in Level3D.wall_feet(rows):
+		_check(not Level3D.bld_cells.has(Vector2i(int(f["c"]), int(f["r"]) - 1)), "%s: filar stopy ściany w ścianie budynku 3D (kol. %d)" % [name, int(f["c"])])
+	var saved := Building3D.door_cols
+	Building3D.door_cols = {}
+	for o: Dictionary in b["open"]:
+		if String(o["kind"]) in ["door", "gate"]:
+			Building3D.door_cols[int(b["c0"]) if int(o["side"]) < 0 else int(b["c1"])] = "metal"
+	var p := Building3D.parts(b, rows)
+	var n := 0
+	for col: int in Building3D.door_cols:
+		for o: Dictionary in b["open"]:
+			if (int(b["c0"]) if int(o["side"]) < 0 else int(b["c1"])) != col:
+				continue
+			var at := Building3D.door_at(col, int(o["rb"]))
+			if at.is_empty():
+				continue
+			n += 1
+			var hw := float(at["hw"])
+			var y0 := float(at["y0"])
+			var top := y0 + Building3D._door_h(y0, float(at["y1"]), String(at["kind"]))
+			var xa := minf(float(at["xo"]), float(at["xi"]))
+			var xb := maxf(float(at["xo"]), float(at["xi"]))
+			var hole := AABB(Vector3(xa + 0.01, y0 + 0.01, -hw + 0.01), Vector3(xb - xa - 0.02, top - y0 - 0.02, 2.0 * hw - 0.02))
+			var cover := 0.0                                   # mur od spodu nadproża w poprzek otworu (odcinki w z między oknami pięter)
+			for xf: Transform3D in p["wall"]:
+				var a := _box_aabb(xf)
+				_check(not a.intersects(hole), "%s kol. %d: mur w świetle ościeżnicy (%s)" % [name, col, a])
+				if absf(a.position.y - top) < 0.002 and a.position.x <= xa + 0.002 and a.end.x >= xb - 0.002:
+					cover += maxf(0.0, minf(a.end.z, hw) - maxf(a.position.z, -hw))
+			_check(cover >= 2.0 * hw - 0.01, "%s kol. %d: nad ościeżnicą pas otworu (mur nie zaczyna się na spodzie nadproża %.2f m)" % [name, col, top - y0])
+			var jamb := AABB(Vector3(xa - 0.1, y0 + 0.01, -hw - Building3D.JAMB - 0.05), Vector3(xb - xa + 0.2, float(at["y1"]) - y0 + Building3D.JAMB + 0.1, 2.0 * (hw + Building3D.JAMB + 0.05)))
+			for xf: Transform3D in p["steel"]:
+				var a := _box_aabb(xf)
+				_check(not a.intersects(jamb) or a.position.y >= y0 + top - y0 + Building3D.DOOR_HH - 0.01, "%s kol. %d: stalowa ościeżnica otworu przy drzwiach do wyważenia (%s)" % [name, col, a])
+			var leaf := Building3D.door_leaf("metal", at)
+			var lt := -INF
+			for mi: MeshInstance3D in (leaf.get_node("Closed") as Node3D).find_children("*", "MeshInstance3D", true, false):
+				lt = maxf(lt, mi.position.y + (mi.mesh as BoxMesh).size.y * 0.5)
+			leaf.free()
+			_check(absf(lt - top) < 0.002, "%s kol. %d: skrzydło nie sięga nadproża (%.2f zamiast %.2f m)" % [name, col, lt - y0, top - y0])
+	_check(n > 0 or Building3D.door_cols.is_empty(), "%s: drzwi bez `door_at`" % name)
+	Building3D.door_cols = saved
 
 ## Hala z blachy (`building3d.gd` "shed", hala Żyły 1.3; przegląd budynków 2026-11-17: w 3D otwarta na las, dach z bloków z czopami,
 ## słupy jako nogi wieży z krzyżami): ściana tylna na całej wysokości mimo wnętrza bez tła `b`, kafle `M` dachu i ścian bez bloków
