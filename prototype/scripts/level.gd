@@ -182,6 +182,7 @@ var steps: Array = []                     ## STEPS z danych mapy: pomosty z natu
 var front: Array = []                     ## FRONT z danych mapy: zakresy pierwszego planu przed płaszczyzną gry (`front3d.gd`); czysta kosmetyka
 var break_how := {}                        ## nazwa rozbitej przegrody → [czym (`breakable.hit_kind`), znak x kierunku] — obraz wyważonych drzwi (W3)
 var door_planks := {}                      ## drzwi wyważone i zabite deskami (W4): nazwa → true, póki w otworze stoi barykada `planks` zamiast drzwi
+var covers: Array = []                    ## COVERS z danych mapy (DESTRUCTION_CONTENT_PLAN.md W6): [kolumna, rząd podłoża, strona Pijawki ±1, rzędy?] — osłony z blachy przeciw kwasowi Pijawki
 var doors := {}                            ## DOORS z danych mapy (DESTRUCTION_CONTENT_PLAN.md W1): kolumna wejścia budynku 3D → {"mat": wood/metal/steel, "start": "broken"?}
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
 var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
@@ -314,6 +315,7 @@ func _load(id: String) -> void:
 	front = ((m as GDScript).get_script_constant_map().get("FRONT", []) as Array).duplicate()
 	front_skip = ((m as GDScript).get_script_constant_map().get("FRONT_SKIP", []) as Array).duplicate()
 	doors = ((m as GDScript).get_script_constant_map().get("DOORS", {}) as Dictionary).duplicate(true)
+	covers = ((m as GDScript).get_script_constant_map().get("COVERS", []) as Array).duplicate(true)
 	streams = ((m as GDScript).get_script_constant_map().get("STREAMS", []) as Array).duplicate()
 	_power_crates = ((m as GDScript).get_script_constant_map().get("POWER_CRATES", []) as Array).duplicate()
 	vault_loot = ((m as GDScript).get_script_constant_map().get("VAULT_LOOT", {}) as Dictionary).duplicate(true)
@@ -1468,7 +1470,31 @@ func _register_walls() -> void:
 				_opened_walls.append(n)                      # pusty otwór: dla nawigacji przejście, węzła przegrody nie ma
 			_wall_defs.append({"name": n, "pos": Vector2(cell.x * TILE + TILE * 0.5, (cell.y + 1) * TILE), "rows": rows, "cells": cells, "material": WALL_MARKS[mark][1], "start_open": open})
 	_register_doors()
+	_register_covers()
 	_register_supports()
+
+const COVER_ROWS := 2               ## domyślna wysokość osłony (kafle): zatrzymuje 16 z 16 łuków kwasu w symulacji W6
+
+## Osłony z blachy (DESTRUCTION_CONTENT_PLAN.md W6): wpis COVERS [kolumna, rząd podłoża, strona Pijawki ±1, rzędy?] to przegroda `cover`
+## stojąca na tym rzędzie (stopy na jego górnej krawędzi), Cover1… od lewej; gracz chowa się po drugiej stronie (`face` — lico płyty w 3D). Bez kafli (`cells` puste): nawigacja, ruch i wzrok jej nie widzą, kule i kwas tak
+## (warstwa Combat.LAYER_COVER). Reset, migawka bossa i dołączający jak przy każdej przegrodzie.
+func _register_covers() -> void:
+	var list: Array = covers.duplicate()
+	list.sort_custom(func(a: Array, b: Array) -> bool: return int(a[0]) < int(b[0]))
+	for i in list.size():
+		var c: Array = list[i]
+		_wall_defs.append({"name": "Cover%d" % (i + 1), "pos": Vector2(int(c[0]) * TILE + TILE * 0.5, int(c[1]) * TILE),
+			"rows": int(c[3]) if c.size() > 3 else COVER_ROWS, "cells": [], "material": "cover", "start_open": false, "cover": true,
+			"face": int(c[2]) if c.size() > 2 else 1})
+
+## Osłony tej mapy: [{name, col, row (podłoże), rows, face (strona Pijawki ±1)}] (test, widok).
+func cover_defs() -> Array:
+	var out: Array = []
+	for wd: Dictionary in _wall_defs:
+		if bool(wd.get("cover", false)):
+			var p: Vector2 = wd["pos"]
+			out.append({"name": String(wd["name"]), "col": int(p.x / TILE), "row": int(p.y / TILE), "rows": int(wd["rows"]), "face": int(wd.get("face", 1))})
+	return out
 
 ## Drzwi budynków 3D (DESTRUCTION_CONTENT_PLAN.md W1): wejście budynku (`building_doorways`) z wpisem w DOORS mapy to przegroda `door_<mat>`
 ## na kaflach otworu (Door1… od lewej); `"start": "broken"` — wyważone na starcie, jak pusty otwór „:” (skrzydło leży, przejście wolne).

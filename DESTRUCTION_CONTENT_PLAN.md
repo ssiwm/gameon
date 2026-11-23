@@ -352,8 +352,11 @@ Dziś na B1 nic się nie niszczy. Pomysł: osłony, które boss rozbija, więc k
    po pluciu (1,1 s).
 
 **Etapy:**
-- **W6-0** (bez zmian w grze): pomiar z podejść autora (`tools/leech_report.py`), symulacja miejsc (wyżej) — **czeka na podejścia autora**.
-- **W6-1** (1 PR): `COVERS` w danych B1 (kolumna, rząd, rzędy, materiał); płyta jako przegroda bez kolizji ruchu, która zatrzymuje kwas
+- **W6-0** (bez zmian w grze) — **zrobiony 2026-11-23**: 7 prób autora na 1.7.661 (EASY, solo), 1 wygrana; upadków 12: kwas 5 (42%),
+  Trzoski 4, Pijawka 3. Kwas 3× na wysokiej kładce 31–47 (kol. 36, 39, 42), 2× na lewym brzegu (kol. 22–23) — stąd **7. płyta na brzegu**
+  (kol. 23, przed słupem hali, 4 kafle od wody; decyzja 2 rozszerzona).
+- **W6-1** (1 PR) — **zrobiony (1.7.662)**: zamiast `sheet` osobny materiał `cover` (HP 90, kwas 3 trafienia, kule 0, kilof, ładunek;
+  warstwa 2048 — w masce pocisków i kwasu, poza maską postaci); kolejno: `COVERS` w danych B1 (kolumna, rząd, rzędy, materiał); płyta jako przegroda bez kolizji ruchu, która zatrzymuje kwas
   (`acid_spit.gd`) i kule; rodzaj trafienia `acid` rani `sheet`; obraz 3D blachy na podporach z przeżarciem, syk i plama przy trafieniu;
   reset przy wipe, dołączający, dziennik (`break` z `src: leech`); testy: `--leechtest` (płyta zatrzymuje kwas, 3 trafienia ją niszczą,
   kula gracza przez nią nie przechodzi, ruch tak, wipe przywraca), `--maptest`, `test_front.gd` (przekrój hali B1), `test_net_session.sh`;
@@ -376,7 +379,7 @@ i tylko jeśli drzwi i zawał się sprawdzą.
 | **W3** dźwięk i wyważenie — **zrobiony** (1.7.658, odsłuch A/B 2026-11-23: nagrania) | 1 | nagrania A/B, skrzydło na zawiasie / wyrwane / osmalone, rozgrzanie (`_warm_destruction("door_*")`) bez przycięcia (`--hitchtest`) | niskie |
 | **W4** barykady przy drzwiach — **zrobiony** (1.7.659) | 1 | miejsca barykad przy budynkach z generatorami, przegląd barykad na trasie | niskie |
 | **W5** zawał 1.1 — **zrobiony** (1.7.660) | 1 | stempel i strefa w galerii, modele 2–3 rz. | średnie |
-| **W6** B1 osłony — plan przyjęty, W6-0 czeka na podejścia autora | 0–1 | pomiar z podejść (`tools/leech_report.py`), potem 6 płyt z blachy na wysokich kładkach przeciw kwasowi | średnie |
+| **W6** B1 osłony — **zrobiony** (1.7.662; W6-0: kwas 42% upadków) | 1 | pomiar z podejść (`tools/leech_report.py`), 7 płyt z blachy (6 na wysokich kładkach, 1 na lewym brzegu) przeciw kwasowi; dalej pomiar po wdrożeniu | średnie |
 | **W7** spadająca kładka | 1–2 | osobny węzeł, nawigacja, dyrektor | wysokie |
 
 Każdy PR zmieniający grę podbija `config/version` i dopisuje wiersz do `CHANGELOG.md`. README i GDD tylko tam, gdzie opisują
