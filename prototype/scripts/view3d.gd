@@ -4072,7 +4072,7 @@ func _barrier_mat(mat_id: String) -> Material:
 
 const RUBBLE_GRAVEL := 30                  ## drobnego gruzu przy podstawie (MultiMesh)
 const RUBBLE_CORE_BACK := 0.6              ## m: początek układu zawału (`tools/rubble_pile_gen.py`) za płaszczyzną przegrody
-const RUBBLE_PILE_ROWS := [4, 5]           ## wysokości przejść (rzędy kafli) z gotowym zawałem z symulacji (`tools/rubble_pile_gen.py`)
+const RUBBLE_PILE_ROWS := [3, 4, 5]        ## wysokości przejść (rzędy kafli) z gotowym zawałem z symulacji (`tools/rubble_pile_gen.py`; 3 — W5)
 const RUBBLE_PILE_VARIANTS := 2            ## wariantów na wysokość
 const CAVE_CRACKS_M := 7.0                 ## m: bok dekala pęknięć tylnej ściany nad zawałem (`d_crack_cave.png`)
 ## Odcienie gruzu (mnożnik barwy): czysty beton, ciemny zawilgocony, zażółcony zaciekiem, szary brudny — kawałki nie są jednym płaskim szarym.

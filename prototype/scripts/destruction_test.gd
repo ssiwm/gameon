@@ -1737,14 +1737,30 @@ func _barrier_fixes() -> void:
 	b.queue_free()
 	Msg.withdraw("barrier.FixBrick")
 
-	# mapy kampanii bez stref zawału `^` i stempli `!` (1.7.494: zawał tylko w niskich przejściach przyszłych map w podziemiach)
+	# strefy zawału `^` na mapach kampanii (1.7.494 zdjęte z hal 4–5 rzędów; od 1.7.660, DESTRUCTION_CONTENT_PLAN.md W5, wracają tylko w niskich
+	# przejściach pod skałą): każda strefa najwyżej 3 rzędy pod stropem `#`, stempli tyle co stref; dziś jedna para w sztolni 1.1
 	var caves := []
+	var bad_caves := []
 	for id in level.CAMPAIGN:
-		for row in ((level.MAPS[id] as GDScript).get_script_constant_map().get("MAP", []) as Array):
-			if String(row).contains("^") or String(row).contains("!"):
-				caves.append(id)
-				break
-	check("mapy kampanii bez stref zawału `^` i stempli `!` (%s)" % (", ".join(caves) if not caves.is_empty() else "żadna"), caves.is_empty())
+		var rows: Array = (level.MAPS[id] as GDScript).get_script_constant_map().get("MAP", [])
+		var props := 0
+		for ri in rows.size():
+			var row := String(rows[ri])
+			for c in row.length():
+				if row[c] == "!":
+					props += 1
+				if row[c] != "^":
+					continue
+				var h := 1
+				while ri - h >= 0 and not "#CM".contains(String(rows[ri - h])[c]):
+					h += 1
+				caves.append("%s kol. %d (%d rz.)" % [id, c, h])
+				if h > 3 or ri - h < 0 or String(rows[ri - h])[c] != "#":
+					bad_caves.append("%s kol. %d" % [id, c])
+		if props != rows.reduce(func(n: int, row: Variant) -> int: return n + String(row).count("^"), 0):
+			bad_caves.append("%s: stempli %d" % [id, props])
+	check("W5: zawał na mapach kampanii tylko w niskim przejściu pod skałą (%s; źle: %s)" % [", ".join(caves), ", ".join(bad_caves) if not bad_caves.is_empty() else "nic"],
+		bad_caves.is_empty() and caves.size() == 1 and String(caves[0]).begins_with("z1_m1 kol. 146 (3 rz.)"))
 
 	# mapa 1.1: bez kratki i bez otworów bez celu (BARRIER_FIX_PLAN decyzja 3); jedyny otwór `:` to wejście do sztolni z sali (MAPS_PLAN.md §1.6 L2) —
 	# zabity deskami za sobą zatrzymuje pościg na drodze powrotu, czyli ten cel, dla którego decyzja 3 dopuszcza otwory

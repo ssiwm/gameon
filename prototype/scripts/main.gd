@@ -4102,6 +4102,21 @@ func _finale_test() -> void:
 		return false
 	check.call("przed zawałem: rampa wolna (%s), droga z sali w górę rampy biegnie przez nią" % level._ch(237, 30),
 		not level._is_solid(237, 30) and through.call(level.nav.find_path(hall, ramp_pre)))
+	# W5: stempel w sztolni złamany przed finałem — chodnik zasypany (wstrząs finału ma go rozsypać, droga powrotna sztolnią wolna)
+	var adit_e := Vector2(150.0 * 16.0 + 8.0, 34.0 * 16.0)
+	var adit_w := Vector2(140.0 * 16.0 + 8.0, 34.0 * 16.0)
+	var adit_len := func() -> float:
+		var ap: Array = level.nav.find_path(adit_e, adit_w)
+		var d := 0.0
+		for k in range(1, ap.size()):
+			d += (ap[k].pos as Vector2).distance_to(ap[k - 1].pos as Vector2)
+		return d if not ap.is_empty() else -1.0
+	var open_len: float = adit_len.call()
+	level.support_broken("Support1")
+	await get_tree().create_timer(level.CAVE_DELAY + 0.4).timeout
+	var shut_len: float = adit_len.call()
+	check.call("W5: stempel sztolni złamany — Rubble1 zawalony (kafel %s), chodnik %.0f px → objazd %.0f px" % [str(level._is_solid(146, 33)), open_len, shut_len],
+		level.supports_total() == 1 and not level._opened_walls.has("Rubble1") and level._is_solid(146, 33) and open_len > 0.0 and open_len < 300.0 and shut_len > 800.0)
 	var tags_now := func() -> Array: return get_tree().get_nodes_in_group("pickups").filter(func(n: Node) -> bool: return n.kind == "tag" and not n.is_queued_for_deletion())
 	for i in 6:
 		var near: Array = tags_now.call()
@@ -4130,6 +4145,9 @@ func _finale_test() -> void:
 		prepared != null and level.nav == prepared and p_now.size() == p_fresh.size() and not p_now.is_empty())
 	check.call("po zawale: rampa to skała (%s), trasa grafu z sali na rampę nie przechodzi przez zawał (idzie szybem i górą), gracz za skałą (x=%.0f)" % [level._ch(237, 30), p.global_position.x],
 		level._is_solid(237, 30) and not through.call(level.nav.find_path(hall, ramp_pre)) and p.global_position.x < 232.0 * 16.0)
+	check.call("W5: wstrząs finału rozsypał gruz w sztolni (Rubble1 wolny: %s), chodnik znów krótki (%.0f px), stempel dalej złamany" % [str(level._opened_walls.has("Rubble1")), adit_len.call()],
+		level._opened_walls.has("Rubble1") and not level._is_solid(146, 33) and float(adit_len.call()) < 300.0 and float(adit_len.call()) > 0.0
+		and level.get_node_or_null("Support1") != null and not bool(level.get_node("Support1").get("intact")))
 	var pit := Rect2(240.0 * 16.0, 23.0 * 16.0, 14.0 * 16.0, 8.0 * 16.0)
 	var foe_ok: bool = not is_instance_valid(pit_foe) or pit_foe.get("dead") == true or pit_foe.get("alive") == false or not pit.has_point(pit_foe.global_position + Vector2(0, -4))
 	check.call("po zawale: wykop zasypany do gruntu (%s / %s), po wierzchu ścieżka na wschód i z powrotem, wróg z dna wykopu nie stoi w skale (%s)" % [level._ch(248, 25), level._ch(250, 23), str(foe_ok)],
@@ -4158,6 +4176,8 @@ func _finale_test() -> void:
 	check.call("restart: rampa znów wolna, droga wraca, finał zresetowany (finale=%s)" % str(mission.finale),
 		not level._is_solid(237, 30) and through.call(level.nav.find_path(hall, ramp_pre)) and not mission.finale and mission.phase == MISSION_SCRIPT.Phase.OBJECTIVE)
 	check.call("restart: graf „po zawale” przygotowany znowu (następny zawał też bez przestoju)", level._nav_after != null)
+	check.call("W5 restart: stempel sztolni znów stoi, chodnik wolny", level.get_node_or_null("Support1") != null and bool(level.get_node("Support1").get("intact"))
+		and level._opened_walls.has("Rubble1") and float(adit_len.call()) > 0.0 and float(adit_len.call()) < 300.0)
 	print("[FINALE-TEST] %s (%d błędów)" % ["PASS" if fails[0] == 0 else "FAIL", fails[0]])
 
 ## Test misji 1.2 (--host --mission=z1_m2 --gentest): cztery generatory (przytrzymanie E), skok Uwagi po ostatnim, ekstrakcja,
@@ -4606,6 +4626,31 @@ func _shortcut_report(id: String, nav: AStar2D, points: Array) -> void:
 			txt += ", trasa misji %.0f → %.0f px (%+.0f%%)" % [route0, route1, (route1 - route0) / route0 * 100.0]
 		print(txt)
 
+## Test map (DESTRUCTION_CONTENT_PLAN.md W5): zawał ma odcinać pościg — objazd między bokami strefy „^” po jej zawaleniu (wydruk) i na mapach
+## kampanii błąd, gdy jest krótszy niż CAVE_MIN_DETOUR (zawał niczego nie odcina; brak objazdu sprawdza już `cave_checked` przez cele).
+const CAVE_MIN_DETOUR := 800.0
+func _cave_report(id: String, nav: AStar2D) -> Array:
+	var bad: Array = []
+	for wd in (level._wall_defs as Array).duplicate():
+		if String(wd["material"]) != "rubble":
+			continue
+		var wn := String(wd["name"])
+		var foot: Vector2 = wd["pos"] + Vector2(0.0, -2.0)
+		var left := foot + Vector2(-16.0, 0.0)
+		var right := foot + Vector2(16.0, 0.0)
+		var was_open: bool = level._opened_walls.has(wn)
+		if was_open:
+			level._close_wall(wd)
+		var detour: float = _nav_len_or_none(nav, left, right)
+		if was_open:
+			level._open_wall(wn, false)
+		var cell := Vector2i(int(floor(float(wd["pos"].x) / 16.0)), int(round(float(wd["pos"].y) / 16.0)) - 1)
+		print("[MAPTEST] %s: zawał %s (kol. %d r. %d, %d rz.): objazd po zawaleniu %s" % [id, wn, cell.x, cell.y, int(wd["rows"]),
+			"brak" if detour < 0.0 else "%.0f px" % detour])
+		if level.CAMPAIGN.has(id) and detour >= 0.0 and detour < CAVE_MIN_DETOUR:
+			bad.append("%s: zawał %s nic nie odcina — objazd %.0f px (< %.0f)" % [id, wn, detour, CAVE_MIN_DETOUR])
+	return bad
+
 ## Dev (--shotride, z1_m2): drezyna zasilona, gracz 1 na pokładzie pompuje przez cały podgląd (nagranie jazdy tunelem — FOREGROUND_PLAN.md).
 func _dev_ride() -> void:
 	var car := get_tree().get_first_node_in_group("handcar")
@@ -4905,6 +4950,7 @@ func _map_test() -> void:
 			bad.append_array(cv[0])
 			if int(cv[1]) > 0:
 				print("[MAPTEST] %s: strefy zawału: %d, stempli %d (wszystkie zawalone — cele, wyjścia i stanowiska dalej osiągalne)" % [id, int(cv[1]), level.supports_total()])
+				bad.append_array(_cave_report(id, nav))
 			_shortcut_report(id, nav, points)       # o ile każda przegroda skraca drogę (SHOOT_DESTRUCTION_PLAN.md S0) — tylko wydruk
 			bad.append_array(level.open_walls_checked())
 		bad.append_array(_reach_errors(points, true))
