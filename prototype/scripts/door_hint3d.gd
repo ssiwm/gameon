@@ -5,6 +5,8 @@ extends Node3D
 ## i delikatnymi liniami, błysk przy uderzeniu. Po wyważeniu drzwi rozpływa się (`dissolve`) i znika z drzewa. Ruch tylko w płaszczyźnie
 ## kadru (oś z). Pokazuje się dopiero, gdy lokalny gracz podejdzie (NEAR_M), i gra najwyżej LOOPS pętli; znowu dopiero po odejściu dalej
 ## niż REARM_M (decyzja autora 2026-11-22). Buduje ją `Building3D.door_hint`, stan drzwi przekazuje widok 3D (`view3d._sync_doors`).
+## Od 1.7.666 ten sam duch zastępuje statyczny kilof znaku strefy wydobycia (`mat` = "dig", `view3d._build_dig_sign`): kilof rąbie czoło
+## i wyłamuje bryłę urobku; gaśnie, gdy ktoś w strefie kopał (`done`), i wraca po resecie strefy (wipe, punkt kontrolny).
 
 const Level3D := preload("res://scripts/level3d.gd")
 
@@ -14,6 +16,7 @@ const FADE_OUT := 0.35                      ## s: rozpływanie po wyważeniu
 const NEAR_M := 10.0                        ## m: gracz bliżej drzwi — podpowiedź rusza (decyzja autora 2026-11-22)
 const REARM_M := 14.0                       ## m: po odejściu dalej podpowiedź może ruszyć jeszcze raz przy następnym podejściu
 const LOOPS := 3                            ## najwyżej tyle pętli na jedno podejście (decyzja autora 2026-11-22)
+const DIG_LEVER := 0.22                     ## rad: kilof w czole — trzonek od czoła przy wyłamaniu bryły (mniej niż przy podważaniu drzwi)
 const FADE_IN := 0.3                        ## s: pojawienie się i zgaśnięcie po ostatniej pętli
 const SHADER := """
 shader_type spatial;
@@ -29,12 +32,13 @@ void fragment() {
 }
 """
 
-var mat := "metal"                          ## wood / metal / steel
+var mat := "metal"                          ## wood / metal / steel / dig (kilof w czoło strefy wydobycia)
 var side := 1.0                             ## strona zewnętrzna drzwi (+1 prawo, −1 lewo)
 var tool: Node3D                            ## model narzędzia (dziecko)
 var rest := Transform3D()                   ## poza narzędzia wbitego / przyklejonego
 var hand := Vector3.ZERO                    ## punkt obrotu zamachu (koniec rękojeści / trzonka)
 var tip := Vector3.ZERO                     ## czubek w ościeżnicy (oś dźwigni kilofa)
+var done := Callable()                      ## () -> bool: podpowiedź już niepotrzebna (strefa wydobycia ruszona); znika i nie rusza, póki zwraca true
 
 var _sm: ShaderMaterial
 var _fade := 1.0
@@ -75,7 +79,10 @@ func _process(delta: float) -> void:
 			queue_free()
 			return
 	var d := _player_dist()
-	if _play_t < 0.0:
+	if not _dying and done.is_valid() and bool(done.call()):
+		_play_t = -1.0                            # ktoś już kopie: bez pokazu (wraca po resecie strefy i odejściu jak po pętlach)
+		_armed = false
+	elif _play_t < 0.0:
 		if _armed and d <= NEAR_M:
 			_play_t = 0.0
 			_armed = false
@@ -99,6 +106,8 @@ func _process(delta: float) -> void:
 			var r: Vector2 = _plant(p)
 			fl = r.x
 			show = r.y
+		"dig":
+			fl = _dig(p)
 		_:
 			fl = _pry(p)
 	if _dying:
@@ -164,6 +173,33 @@ func _pry(p: float) -> float:
 			lever = 0.38 * side
 		else:
 			lever = 0.38 * side * (1.0 - smoothstep(2.1, 2.5, p))
+	tool.transform = _rot(tip, lever) * _rot(hand, swing) * rest
+	return fl
+
+## Kilof w czoło strefy wydobycia: zamach, cios obuchem w czoło, drgnięcie, wyłamanie bryły (trzonek odciągnięty od czoła jak dźwignia) i powrót
+## do pozy wbitego kilofa. Zwraca błysk.
+func _dig(p: float) -> float:
+	var back := -1.25 * side                    # głowica od czoła
+	var swing := 0.0
+	var lever := 0.0
+	var fl := 0.0
+	if p < 0.6:
+		swing = back * smoothstep(0.0, 0.6, p)
+	elif p < 0.75:
+		swing = back
+	elif p < 0.87:
+		swing = back * (1.0 - _ease_in((p - 0.75) / 0.12))
+	else:
+		var k := p - 0.87
+		swing = 0.03 * side * sin(k * 60.0) * exp(-k * 10.0)   # drży wbity
+		fl = exp(-k * 9.0)
+		if p >= 1.25 and p < 1.6:
+			lever = DIG_LEVER * side * smoothstep(1.25, 1.6, p)
+			fl = maxf(fl, 0.3 * smoothstep(1.45, 1.6, p))      # bryła puszcza
+		elif p >= 1.6 and p < 1.8:
+			lever = DIG_LEVER * side
+		elif p >= 1.8:
+			lever = DIG_LEVER * side * (1.0 - smoothstep(1.8, 2.2, p))
 	tool.transform = _rot(tip, lever) * _rot(hand, swing) * rest
 	return fl
 

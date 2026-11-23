@@ -5039,6 +5039,19 @@ func _warm_destruction(mat_id: String) -> void:
 		bx.layers = LAYER_WORLD
 		_destr_warm.add_child(bx)
 		return
+	if mat_id == "hint":
+		# duch kilofa przy wejściu strefy wydobycia (1.7.666): sam shader ducha, bez modeli gruzu
+		var gm := ShaderMaterial.new()
+		gm.shader = Building3D.DoorHint3D.shader()
+		gm.set_shader_parameter("fade", 0.01)
+		var gb := MeshInstance3D.new()
+		gb.mesh = BoxMesh.new()
+		gb.material_override = gm
+		gb.transform = Transform3D(tiny, Vector3(0.05, 0.01, 0.0))
+		gb.layers = LAYER_WORLD
+		gb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_destr_warm.add_child(gb)
+		return
 	if mat_id.begins_with("door_"):
 		# W3: duch narzędzia (wspólny shader z przezroczystością) i osmalone skrzydło po wybuchu — potoki pod planszą, nie przy pierwszym
 		# podejściu, odbudowie drzwi ani wysadzeniu
@@ -10004,7 +10017,7 @@ func _drip_step(e: Dictionary, delta: float) -> void:
 		e["v"] = 0.0
 
 ## Znak strefy wydobycia przy jej wejściu (dig_zone.gd `entrance`, po pytaniu z 2026-11-06 „czy sygnalizujemy możliwość kopania”):
-## kilof wbity obuchem w czoło na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień;
+## od 1.7.666 kilof jako duch narzędzia z drzwi (door_hint3d.gd „dig”: po podejściu rąbie czoło), do 1.7.665 kilof wbity obuchem w czoło na wysokości piersi przy przedniej krawędzi (łapie snop latarki; niżej i głębiej zasłania go gracz i cień;
 ## położenie z modelu — dig_entrance3d.gd `pick_xf`, DIG_ENTRANCE_PLAN.md E3), osypisko urobku z bryłami w materiale strefy (E2) i odrzwia
 ## na końcu obudowy — w świetle latarki widać, że ktoś tu kopał. Wejście od góry (bez czoła): kilof wbity w grunt i dwa odłamki.
 ## Bez własnego światła: strefy celowo leżą w ciemności, metal kilofa łapie snop jak każda bryła.
@@ -10033,7 +10046,23 @@ func _build_dig_sign(z: Node2D, zf: float) -> void:
 				at + Vector3(-float(dir) * (0.55 + float(bulge.call(1.0, 0.75))), 1.0, 0.75))   # model bez siatki głowicy: oparty przy czole
 		else:
 			pick.transform = Transform3D(Basis(Vector3.BACK, -1.15).scaled(Vector3.ONE * DIG_SIGN_PICK_K), at + Vector3(0.0, 0.42, -0.35))   # skała pod stopami: wbity w grunt
-		root.add_child(pick)
+		if pp.is_empty():
+			root.add_child(pick)                                  # model bez siatki głowicy: bez osi zamachu — zostaje statyczny
+		else:
+			# od 1.7.666 kilof znaku to duch narzędzia jak przy drzwiach (door_hint3d.gd, DESTRUCTION_CONTENT_PLAN.md W0): rąbie czoło
+			# po podejściu, 3 pętle; gaśnie, gdy w strefie ktoś kopał, i wraca po resecie strefy
+			var hint := Building3D.DoorHint3D.new()
+			hint.name = "DigHint"
+			hint.mat = "dig"
+			hint.side = out
+			hint.tool = pick
+			hint.rest = pick.transform
+			hint.tip = pick.transform * (pp["tip"] as Vector3)
+			hint.hand = pick.transform * (pp["end"] as Vector3)
+			hint.done = func() -> bool: return is_instance_valid(z) and int(z.get("digs")) > 0
+			hint.add_child(pick)
+			root.add_child(hint)
+			_warm_destruction("hint")                              # wspólny shader ducha pod planszą (1.1 nie ma drzwi)
 	_build_dig_entrance(root, z, zf, bulge)
 	var parts: Array = [] if dir != 0 else [["rock_b", 0.25, 1.1, 0.25, 1.3], ["rock_c", 0.18, 0.8, -0.2, 2.4]]   # przy czole: osypisko i bryły w materiale strefy (E2, E3)
 	for q in parts:

@@ -1123,6 +1123,15 @@ func _cave_body() -> void:
 	_place_player(feet + Vector2(-260.0, 0.0))
 	await _frames(0.1)
 	check("przed zawałem droga wiedzie przez strefę", _cave_path_through(a, b, rc))
+	# porada „prop” (hints.gd, 1.7.666): przy całym stemplu tak, daleko nie; po złamaniu nie (niżej)
+	var tips: RefCounted = load("res://scripts/hints.gd").new()
+	Settings.seen_tips.erase("prop")
+	tips._collect(player)
+	var tip_far := bool(tips._queued.has("prop"))
+	_place_player(Vector2(sb.global_position.x - 60.0, sb.global_position.y))
+	tips._collect(player)
+	check("porada przy stemplu: z bliska tak (%s), 260 px dalej nie (%s)" % [str(tips._queued.has("prop")), str(tip_far)], tips._queued.has("prop") and not tip_far)
+	_place_player(feet + Vector2(-260.0, 0.0))
 
 	# trafienia: maczeta odbija się, kula i śrut ranią (pocisk leci dalej), wybuch rani, cios w stożku sięga belki
 	var r_blade: Dictionary = _hit(sb, Weapons.MACZETA, 30.0, "melee", c)
@@ -1149,6 +1158,10 @@ func _cave_body() -> void:
 		picks += 1
 	check("kilof łamie stempel (%d ciosy): kula przez niego przelatuje, złamany u wszystkich (%s), strefa jeszcze wolna (trzeszczy)" % [picks, str(level._supports_down)],
 		not sb.intact and level._supports_down.has("Support1") and level._opened_walls.has(zn) and int(sb.get_node("Beam").collision_layer) == 0)
+	_place_player(Vector2(sb.global_position.x - 60.0, sb.global_position.y))
+	tips._collect(player)
+	check("porada przy stemplu: złamany — już nie (%s)" % str(tips._queued.has("prop")), not tips._queued.has("prop"))
+	_place_player(feet + Vector2(-260.0, 0.0))
 	var tz := _enemy("trzosek", feet + Vector2(-2.0, -1.0))
 	tz.set_physics_process(false)
 	var st: CharacterBody2D = level.STALKER_SCENE.instantiate()

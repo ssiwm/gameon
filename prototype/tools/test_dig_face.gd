@@ -241,7 +241,63 @@ func _pick(z: Node2D, px: float, wall: float, floor_m: float, bulge: Callable) -
 	_check("trzonek w dół i od ściany, nad podłogą", end.y < axis.y - 0.3 and end.x - wall > 0.3 and end.y - floor_m > 0.15)
 	_check("trzonek poza czołem", inside == 0)
 	_check("drugi koniec obucha poza czołem", back_tip.x - wall > float(bulge.call(back_tip.y - floor_m, back_tip.z)) + 0.05)
+	_pick_ghost(z, model, xf, parts, wall, floor_m, bulge)
 	model.free()
+
+## Od 1.7.666 kilof znaku to duch narzędzia z drzwi (door_hint3d.gd „dig”, budowany jak w view3d `_build_dig_sign`): poza spoczynkowa = `pick_xf`,
+## zamach odsuwa obuch od czoła, cios wraca do wbicia, dźwignia kręci wokół czubka (czubek w miejscu), przez całą pętlę trzonek poza czołem
+## i nad podłogą, koniec pętli = spoczynek.
+func _pick_ghost(z: Node2D, model: Node3D, xf: Transform3D, parts: Dictionary, wall: float, floor_m: float, bulge: Callable) -> void:
+	var Hint: GDScript = load("res://scripts/door_hint3d.gd")
+	var out := float(-int((z.entrance() as Dictionary)["dir"]))
+	var g: Node3D = Hint.new()
+	g.set("mat", "dig")
+	g.set("side", out)
+	g.set("tool", model)
+	g.set("rest", xf)
+	g.set("tip", xf * (parts["tip"] as Vector3))
+	g.set("hand", xf * (parts["end"] as Vector3))
+	var tip0: Vector3 = g.get("tip")
+	var period := float(Hint.PERIOD)
+	var axis_m := Vector3((parts["tip"] as Vector3).x, (parts["head"] as AABB).get_center().y, (parts["head"] as AABB).get_center().z)
+	var swing_out := 0.0
+	var strike_err := 0.0
+	var lever_tip := 0.0
+	var lever_move := 0.0
+	var shaft_in := 0
+	var low := 0
+	var t := 0.0
+	while t <= period:
+		g.call("_dig", t)
+		var m: Transform3D = model.transform
+		var tp := m * (parts["tip"] as Vector3)
+		var ax := m * axis_m
+		var en := m * (parts["end"] as Vector3)
+		if t > 0.55 and t < 0.75:
+			swing_out = maxf(swing_out, (tp.x - tip0.x) * out)
+		if t > 0.9 and t < 1.2:
+			strike_err = maxf(strike_err, tp.distance_to(tip0))
+		if t > 1.6 and t < 1.8:
+			lever_tip = maxf(lever_tip, tp.distance_to(tip0))
+			lever_move = maxf(lever_move, en.distance_to(xf * (parts["end"] as Vector3)))
+		for k in 10:
+			var q := ax.lerp(en, 0.2 + 0.8 * float(k) / 9.0)
+			if (q.x - wall) * out <= float(bulge.call(q.y - floor_m, q.z)) + 0.01:
+				shaft_in += 1
+			if q.y - floor_m < 0.1:
+				low += 1
+		t += 0.05
+	g.call("_dig", 0.0)
+	var start_err: float = (model.transform.origin - xf.origin).length()
+	g.call("_dig", period - 0.01)
+	var end_err: float = (model.transform.origin - xf.origin).length()
+	print("[DIG-FACE] duch kilofa: zamach %.2f m od czoła, po ciosie czubek %.3f m od wbicia, dźwignia: czubek %.3f m, koniec trzonka %.2f m" % [swing_out, strike_err, lever_tip, lever_move])
+	_check("duch kilofa: początek i koniec pętli w pozie wbitego kilofa", start_err < 0.001 and end_err < 0.01)
+	_check("duch kilofa: zamach odsuwa obuch od czoła (> 0,3 m)", swing_out > 0.3)
+	_check("duch kilofa: po ciosie czubek z powrotem w czole (≤ 3 cm)", strike_err <= 0.03)
+	_check("duch kilofa: dźwignia wokół czubka (czubek ≤ 1 cm, koniec trzonka > 0,1 m)", lever_tip <= 0.01 and lever_move > 0.1)
+	_check("duch kilofa: trzonek przez całą pętlę poza czołem i nad podłogą", shaft_in == 0 and low == 0)
+	g.free()
 
 
 ## E5: wejścia stref na mapach gry.
