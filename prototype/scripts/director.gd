@@ -432,7 +432,7 @@ func _spawn_roamer(n: String, kind: String, pos: Vector2, hunt_at: Vector2, entr
 	if NoiseMgr.is_server():
 		_roamers.append(n)
 		e._lead_at(hunt_at)        # rusza na ostatnią znaną pozycję drużyny
-		e.wake()
+		e.wake("director")
 	elif not state.is_empty():
 		e.hp = state.hp             # pierwsza migawka wędrowca: istniejąca rana nie odtwarza trafienia
 		e._sync(pos, state.hp, state.active, true, state.winding, state.sp, state.ai, state.face,

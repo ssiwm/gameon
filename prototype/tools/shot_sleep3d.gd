@@ -6,6 +6,7 @@ extends SceneTree
 ## --seeds: ziarna egzemplarzy śpiących (po kolumnie na ziarno; wariant pozy z `IdleLife.pick`, np. drzemiący i węszący Trzosek).
 ## --wake=0.1,0.25: dodatkowe kolumny — wróg śpi przez --t, potem budzi się (czuwanie) na tyle sekund: wstawanie mieści się w ~0,25 s.
 ## --heed=-150,-20: śpiący „prawie usłyszał” hałas w tym miejscu względem siebie (px, IDLE_PLAN.md A5) — głowa w stronę źródła.
+## --disguise=0,1: dodatkowe kolumny — Mimik w przebraniu (MIMIC_PLAN.md M1–M2: broń w dłoniach) przy danym snopie latarki (0 ciemno, 1 w snopie).
 ## Okno (render), override.cfg z custom_user_dir jak przy innych zrzutach.
 const Enemy3D := preload("res://scripts/enemy3d.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
@@ -19,6 +20,7 @@ var _frames := 0
 var _live: Array = []                        ## [wróg, animacja, rodzaj]
 var _seeds: Array = [11]
 var _wake: Array = []
+var _disguise: Array = []
 var _heed := Vector3.ZERO
 var _vp: SubViewport
 var _labels: Array = []
@@ -34,7 +36,8 @@ func _initialize() -> void:
 		elif a.begins_with("--heed="):
 			var hv := a.substr(7).split(",")
 			_heed = Vector3(float(hv[0]), float(hv[1]), 1.0)
-	var cols := 1 + _seeds.size() + _wake.size()  # czuwa, śpi (po ziarnie), budzi się (po czasie)
+		elif a.begins_with("--disguise="): _disguise = Array(a.substr(11).split(",")).map(func(x): return float(x))
+	var cols := 1 + _seeds.size() + _wake.size() + _disguise.size()  # czuwa, śpi (po ziarnie), budzi się (po czasie), przebrany (po świetle)
 	_vp = SubViewport.new()
 	_vp.size = Vector2i(_px * cols, _px * _kinds.size())
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -66,7 +69,9 @@ func _initialize() -> void:
 			var e: Node3D = (Enemy3D as Script).new()
 			_vp.add_child(e)
 			var asleep := c > 0 and c <= _seeds.size()
-			var waking := c > _seeds.size()
+			var waking := c > _seeds.size() and c <= _seeds.size() + _wake.size()
+			var disg := c > _seeds.size() + _wake.size()
+			var lit: float = float(_disguise[c - 1 - _seeds.size() - _wake.size()]) if disg else -1.0
 			e.set("life_seed", int(_seeds[c - 1]) if asleep else 11)
 			if not e.setup(k):
 				push_error("setup: %s" % k)
@@ -74,12 +79,12 @@ func _initialize() -> void:
 			e.position = Vector3((c - (cols - 1) * 0.5) * CELL, -CELL * r, 0.0)
 			if asleep and _heed.z > 0.0:
 				e.set("heed", _heed)
-			_live.append([e, "sleep" if asleep else "idle", k, float(_wake[c - 1 - _seeds.size()]) if waking else -1.0])
+			_live.append([e, "sleep" if asleep else "idle", k, float(_wake[c - 1 - _seeds.size()]) if waking else -1.0, lit])
 			_box(k, e.position)
 			var l := Label.new()
 			l.position = Vector2(_px * c + 6, _px * (r + 1) - 40)
 			l.add_theme_font_size_override("font_size", 13)
-			l.text = "%s — %s" % [k, ("śpi (ziarno %d)%s" % [int(_seeds[c - 1]), " — nasłuch" if _heed.z > 0.0 else ""]) if asleep else (("budzi się +%.2f s" % float(_wake[c - 1 - _seeds.size()])) if waking else "czuwa")]
+			l.text = "%s — %s" % [k, ("śpi (ziarno %d)%s" % [int(_seeds[c - 1]), " — nasłuch" if _heed.z > 0.0 else ""]) if asleep else (("budzi się +%.2f s" % float(_wake[c - 1 - _seeds.size()])) if waking else (("przebrany, snop %.0f" % lit) if disg else "czuwa"))]
 			_vp.add_child(l)
 			_labels.append([l, e, asleep])
 
@@ -125,6 +130,8 @@ func _process(_delta: float) -> bool:
 			var an := String(m[1])
 			if float(m[3]) >= 0.0:                       # budzi się: śpi do chwili (koniec − czas wstawania), potem czuwa
 				an = "idle" if _frames >= 3 + n - int(float(m[3]) * 60.0) else "sleep"
+			if float(m[4]) >= 0.0:
+				(m[0] as Node3D).call("motion_context", {"disguised": true, "lit": float(m[4]), "grounded": true})
 			(m[0] as Node3D).call("pose", 1.0 / 60.0, an, false, Color.WHITE)
 		return false
 	if _frames == 3 + n:

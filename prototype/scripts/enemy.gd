@@ -164,6 +164,7 @@ var _net_face := 0.0          ## kierunek patrzenia z serwera (u klientów; `_sy
 var _hanging := false         ## Skoczek / ćma wiszą pod sufitem, dopóki ich nic nie obudzi
 var _patrolled := false       ## wracając do domu sprawdził już jedno gorące miejsce
 var _last_attacker := 0               ## player_id ostatniego trafiającego (XP za zabójstwo, profile.gd)
+var wake_cause := ""                  ## przyczyna ostatniego przebudzenia (`wake`), serwer
 var _wake_ms := 0                     ## elita: zegar pierwszego przebudzenia w tej próbie (dziennik, `elite`), 0 = jeszcze śpi
 var _elite_dmg := {}                  ## elita: źródło → obrażenia w tej próbie (dziennik, `elite`)
 var _elite_last := ""                  ## elita: źródło ostatnich obrażeń (dziennik, `elite`)
@@ -227,10 +228,13 @@ func _ready() -> void:
 func is_threat() -> bool:
 	return alive and active and _beh.threat_ok()
 
-func wake() -> void:
+## `cause` — co obudziło (dziennik demaskacji Mimika, MIMIC_PLAN.md M0): noise, near, light, hit, scream, flare, alarm, pack, dig,
+## director, other.
+func wake(cause := "other") -> void:
 	if not NoiseMgr.is_server() or not alive or active:
 		return
 	active = true
+	wake_cause = cause
 	if _wake_ms == 0:
 		_wake_ms = Time.get_ticks_msec()
 	_log_elite("wake", {"noise": roundi(NoiseMgr.level)})
@@ -243,7 +247,7 @@ func wake() -> void:
 	# cała wataha budzi się razem
 	for e in _near(global_position, SIBLING_WAKE_RADIUS):
 		if is_instance_valid(e) and e != self and e.has_method("wake") and e.global_position.distance_to(global_position) < SIBLING_WAKE_RADIUS 				and _beh.sibling_wake_ok(e) and (e.get("_beh") == null or e._beh.sibling_wake_ok(self)):
-			e.wake()
+			e.wake("pack")
 
 ## Skąd ta elita się wzięła (dziennik, ELITE_PLACEMENT_PLAN.md E0).
 func elite_source() -> String:
@@ -653,7 +657,7 @@ func hear_scream(pos: Vector2) -> void:
 	if heard > lim:
 		return
 	_lead_at(_heard_pos(pos, heard, lim, NoiseMgr.N_SCREAM))        # krzyk jest głośny (mały błąd), ale też nie wskazuje punktu co do piksela
-	wake()
+	wake("scream")
 
 ## --- kompensacja opóźnienia (lag_comp.gd) ----------------------------------
 
@@ -705,13 +709,16 @@ func see_light(pos: Vector2) -> void:
 		return
 	_lead_at(pos)
 	if not active:
-		wake()
+		wake("flare")
 
 ## --- Mimik ----------------------------------------------------------------
 
+## Wołanie przebranego Mimika (enemy_mimic.gd): ten sam dźwięk co krzyk gracza [G] (player.gd `_scream_fx`), trochę ciszej, z miejsca `at`
+## (rozmyty kierunek) i z trzaskiem radia — „kolega woła przez radio” (MIMIC_PLAN.md M2).
 @rpc("authority", "call_local", "unreliable")
-func _mimic_call() -> void:
-	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_WORLD, -5.0, randf_range(0.95, 1.1))
+func _mimic_call(at: Vector2) -> void:
+	Audio.play_variant_at("player_hurt", 2, at, Audio.BUS_WORLD, -2.0, 0.8 * randf_range(0.97, 1.03))
+	Audio.play_at("radio_beep", at, Audio.BUS_WORLD, -14.0, randf_range(0.9, 1.05))
 
 ## Efekt uderzenia Wołka o ścianę (RPC musi żyć w węźle wroga; woła go `enemy_bruiser.gd` i lądowanie Skoczka).
 @rpc("authority", "call_local", "reliable")
@@ -741,7 +748,7 @@ func _hear_alarm(lead: Vector2) -> void:
 	if not alive:
 		return
 	_lead_at(lead)
-	wake()
+	wake("alarm")
 
 ## Wezwany Kapłana na każdym peerze (RPC musi żyć w węźle wroga); listę wezwanych prowadzi zachowanie na serwerze.
 @rpc("authority", "call_local", "reliable")
@@ -1258,7 +1265,7 @@ func _check_wake() -> void:
 			var heard := _sound_distance(NoiseMgr.last_noise_pos, reach) if reach > 0.0 else INF
 			if reach > 0.0 and heard < reach:
 				_lead_at(_heard_pos(NoiseMgr.last_noise_pos, heard, reach, NoiseMgr.last_noise_amount))     # idzie w okolice źródła hałasu (z błędem), nie wprost do gracza
-				wake()
+				wake("noise")
 				return
 			_maybe_heed(NoiseMgr.last_noise_pos, NoiseMgr.last_noise_amount, heard if reach > 0.0 else -1.0)
 	for p in get_tree().get_nodes_in_group("players"):
@@ -1266,9 +1273,9 @@ func _check_wake() -> void:
 		if pp == null or pp.dead:
 			continue
 		# kucający gracz musi podejść bliżej — skradanie się opłaca się
-		var near: float = float(_def["wake_near"]) * Difficulty.m("enemy_hear") * (0.5 if pp.crouching else 1.0)
+		var near: float = float(_def["wake_near"]) * Difficulty.m("enemy_hear") * (0.5 if pp.crouching else 1.0) * _beh.near_mult()
 		if global_position.distance_to(pp.global_position) < near:
-			wake()
+			wake("near")
 			return
 	# „Światło przyciąga wzrok Trzosków" (GDD §8.3): snop latarki na
 	# śpiącym wrogu go budzi — świecenie po pokoju ma cenę.
@@ -1276,9 +1283,11 @@ func _check_wake() -> void:
 	var now_ms := Time.get_ticks_msec()
 	if now_ms >= _flash_check_ms:
 		_flash_check_ms = now_ms + int(PERCEIVE_DT * 1000.0) + randi() % 40
-		if not _def.get("blind", false) \
-				and Lights.flashlight_on(global_position + Vector2(0, -6), get_tree(), get_world_2d().direct_space_state) != null:
-			wake()
+		# zachowanie może wymagać dłuższego światła (Mimik w przebraniu, MIMIC_PLAN.md M2) — dostaje też „ciemno”, żeby zerować licznik
+		var lit: bool = not _def.get("blind", false) \
+				and Lights.flashlight_on(global_position + Vector2(0, -6), get_tree(), get_world_2d().direct_space_state) != null
+		if _beh.light_wakes(lit):
+			wake("light")
 
 func _nearest_player() -> Node2D:
 	var best: Node2D = null
@@ -1473,7 +1482,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	if fire > 0.0:
 		_ignite(fire)
 	if not active and not silent:
-		wake()
+		wake("hit")
 	var dead := hp <= 0.0
 	if dead:
 		_die()
@@ -1525,7 +1534,7 @@ func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	var knock: float = _def["knock"] * (float(_def["knock_mult"]) if bool(_def.get("stun_resist", false)) else 1.0)        # elita odporna na zatrzymywanie (Rzeźnik, Żerca) prawie nie jest odrzucana
 	velocity.x += signf(global_position.x - from_pos.x) * knock
 	if not active:
-		wake()
+		wake("hit")
 	if hp <= 0.0:
 		_die()
 	else:
@@ -1786,4 +1795,4 @@ func _update_sprite(delta: float) -> void:
 func bar_state() -> Dictionary:
 	var size: Vector2 = _def["size"]
 	return {"frac": clampf(hp / maxf(_max_hp, 0.001), 0.0, 1.0), "alive": alive and is_visible_in_tree(), "elite": bool(_def.get("elite", false)),
-		"w": size.x + 4.0, "h": size.y + 7.0, "label": _beh.disguise_label(), "kind": kind, "armor": float(_def.get("armor", 0.0))}
+		"w": size.x + 4.0, "h": size.y + 7.0, "label": _beh.disguise_label(), "label_col": _beh.disguise_color(), "kind": kind, "armor": float(_def.get("armor", 0.0))}

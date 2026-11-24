@@ -200,6 +200,18 @@ func is_hidden() -> bool:
 func sibling_wake_ok(_other) -> bool:
 	return true
 
+## Czy snop latarki na śpiącym go budzi (serwer, co ok. 0,12 s, także z `lit` = false). Mimik w przebraniu wytrzymuje dłuższe światło.
+func light_wakes(lit: bool) -> bool:
+	return lit
+
+## Mnożnik `wake_near` rodzaju (podejście budzi z bliska).
+func near_mult() -> float:
+	return 1.0
+
+## Kolor etykiety przebrania (`disguise_label`) — jak imię udawanego gracza.
+func disguise_color() -> Color:
+	return Color.WHITE
+
 ## Efekt zachowania na każdym peerze (`enemy.gd: behavior_fx` → RPC), np. pył zabitej ćmy.
 func fx(_event: String) -> void:
 	pass

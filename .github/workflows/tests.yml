@@ -271,6 +271,10 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_idle_life.gd 2>&1 | tee idle_life.log
           grep -a "\[IDLE-LIFE\] PASS (0" idle_life.log
+      - name: Mimik w przebraniu — broń w dłoniach, połysk oczu, oddech w snopie (test_mimic3d.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_mimic3d.gd 2>&1 | tee mimic3d.log
+          grep -a "\[MIMIC-3D\] PASS (0" mimic3d.log
       - name: Postacie — magazyn i migracja zapisu (test_characters.gd)
         run: |
           godot --headless --path prototype -s tools/test_characters.gd 2>&1 | tee characters.log

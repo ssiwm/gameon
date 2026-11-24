@@ -14,6 +14,8 @@ const CharClips := preload("res://scripts/char_clips.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const Motion := preload("res://scripts/enemy_motion.gd")
 const IdleLife := preload("res://scripts/idle_life.gd")
+const GunModel := preload("res://scripts/gun_model.gd")
+const Char3D := preload("res://scripts/char3d.gd")
 const DIR := "res://art/enemy3d/"
 const PRE := "mixamorig_"
 const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Level3D.PX)
@@ -75,9 +77,12 @@ const SPEC := {
 	"trzosek": {"fit": ["length", 21.0], "frame_h": 22.0, "cycle": 0.55, "quad": true, "yaw": -90.0, "clips": true, "idle_t": 0.0, "death_dur": 1.0},
 	# Mimik to model gracza z kolorem „kolegi” i świecącymi oczami; pozostałe poniżej to modele statyczne animowane deformacją wierzchołków w shaderze
 	# (`DEFORM`), tak jak wypiek `concept/static_tripo_bake.py` — poza z numeru klatki sprite'a 2D (animacja idzie w tempie gry).
+	# Przebranie (MIMIC_PLAN.md M1–M2): `carry` — broń opuszczona lufą w dół w obu dłoniach, dopóki udaje; `eye_shine` — oczy tylko połyskują
+	# w snopie latarki (oddech też tylko w świetle), po demaskacji świecą stale; w świetle odwraca twarz od kamery.
 	"mimik": {"no_heed": true, "model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
+		"carry": "m83", "eye_shine": true,
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
-		"idle": {"tics": ["look", "twitch"], "rate": [3.0, 7.0]},
+		"idle": {"tics": ["look"], "rate": [3.0, 7.0]},
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
 	# Ćma: naturalna rozpiętość ok. 14 cm (1,7 px; było 18 px = 1,5 m); skrzydła machają z własnego zegara (WING_HZ), nie w tempie klatek sprite'a
 	"cma": {"fit": ["width", 1.7], "frame_h": 2.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9, "no_shadow": true},
@@ -324,6 +329,8 @@ func motion_context(info: Dictionary) -> void:
 		_burrow_time = float(info.get("burrow_time", -1.0))
 		_swipe_recovery = float(info.get("swipe_recovery", 0.0))
 	_vein_face = float(info.get("face", 0.0))
+	_disguised = bool(info.get("disguised", false))
+	_lit_target = float(info.get("lit", 0.0)) if _disguised else 0.0
 	_grounded_hint = int(bool(info["grounded"])) if info.has("grounded") else -1
 	_target_world_y = -float(info.get("target_y", NAN)) * PX
 	_motion_remaining = float(info.get("windup_remaining", NAN)) if bool(info.get("winding", false)) else NAN
@@ -748,6 +755,17 @@ static func _transform_under(node: Node3D, ancestor: Node3D) -> Transform3D:
 		current = current.get_parent() as Node3D
 	return result
 var _eyes: Array = []
+## Przebranie Mimika (MIMIC_PLAN.md M1–M2; `view_info` „disguised” i „lit” przez `motion_context`).
+const CARRY_R := Vector3(0.05, 1.12, 0.14)   ## m (szkielet, od `_x0`): dłoń na chwycie broni opuszczonej lufą w dół, przy pasie
+const CARRY_L := Vector3(0.30, 1.00, 0.00)   ## m: dłoń na łożu, przed biodrem — lufa ok. 25° w dół, nie celuje
+const PALM := 0.075                          ## m: od nadgarstka (początek kości dłoni) do środka dłoni
+const AVERT_YAW := 55.0                      ## °: w świetle twarz odwrócona od kamery
+const AVERT_PITCH := 18.0                    ## °: …i opuszczona
+var _disguised := false
+var _disguise_w := 0.0                       ## 0..1 waga przebrania (broń w dłoniach, bez oddechu, oczy tylko w świetle)
+var _lit_target := 0.0
+var _lit_w := 0.0                            ## 0..1 snop latarki na przebranym (odwraca twarz, połysk oczu, oddech)
+var _carry_gun: Node3D                       ## SPEC `carry`: broń w dłoniach przebranego; po demaskacji spada na ziemię
 var _eye_light: OmniLight3D                  ## SPEC `eye_lamp`: ciepłe światło z pyska w zapowiedzi ciosu
 const EYE_LIGHT_RANGE := 2.6                 ## m: pysk, ręce i grunt pod Wołkiem
 const EYE_LIGHT_ENERGY := 2.2
@@ -920,6 +938,8 @@ func setup(k: String, translucent := false) -> bool:
 			else:
 				em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 				em.albedo_color = Color(1.0, 0.8, 0.25)
+				if _spec.get("eye_shine", false):
+					em.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA      # połysk w snopie narasta i gaśnie (`_place_eyes`)
 			mi.material_override = em
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mi.set_meta("side", sd)
@@ -934,6 +954,7 @@ func setup(k: String, translucent := false) -> bool:
 			_eye_light.shadow_enabled = false
 			_eye_light.visible = false
 			add_child(_eye_light)                     # pod węzłem bez skali: zasięg w metrach świata
+	_build_carry()
 	return true
 
 func _rest_dist(a: String, b: String) -> float:
@@ -1038,6 +1059,9 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		_life = IdleLife.new(life_seed if life_seed >= 0 else (hash(kind) ^ (_life_count * 7919)) & 0x7fffffff, _spec.get("idle", {}))
 	_life.step(delta, anim == "sleep", not _dead and not alert and anim != "windup" and _clip == "" and _sp == 0 and not _airborne)
 	_heed_step(delta, anim == "sleep" or anim == "idle")
+	if _spec.get("eye_shine", false) or _spec.has("carry"):
+		_disguise_w = move_toward(_disguise_w, 1.0 if _disguised and not _dead else 0.0, delta / 0.25)
+		_lit_w = move_toward(_lit_w, _lit_target, delta / (0.3 if _lit_target > _lit_w else 0.6))
 	if flip != _last_flip or anim != _prev_anim or global_position.distance_to(_last_position) > 0.8:
 		_foot_locks.clear()
 	_last_flip = flip
@@ -1217,6 +1241,12 @@ func _place_eyes() -> void:
 		var p := rest.origin + Vector3(float(off[0]), float(off[1]), float(off[2]) * float(mi.get_meta("side")))
 		mi.position = rel * (hp * (rest.affine_inverse() * p))
 		mi.visible = not _dead or _dead_t < 0.35                  # zgaszone oczy nie sterczą z leżącego ciała
+		if _spec.get("eye_shine", false):
+			# przebrany: tylko połysk w snopie latarki (blady, zielonkawy — jak oczy zwierzęcia); zdemaskowany: stały żółty żar
+			var shine := maxf(_lit_w, 1.0 - _disguise_w)
+			var em := mi.material_override as StandardMaterial3D
+			em.albedo_color = Color(Color(0.78, 1.0, 0.82).lerp(Color(1.0, 0.8, 0.25), 1.0 - _disguise_w), shine)
+			mi.visible = mi.visible and shine > 0.02
 	if _eye_light != null:
 		_eye_light.visible = _lamp_w > 0.01
 		_eye_light.light_energy = EYE_LIGHT_ENERGY * _lamp_w * (0.85 + 0.15 * sin(_t * 24.0))
@@ -2182,6 +2212,10 @@ func _idle_post(w: float) -> void:
 		return
 	var b: float = _life.breath()
 	var chest := 1.8
+	if _spec.get("eye_shine", false):
+		# przebrany Mimik nie oddycha, chyba że trzyma go snop latarki — wtedy klatka unosi się głęboko („przyłapany”, MIMIC_PLAN.md M1)
+		var bk := lerpf(1.0, 2.2 * _lit_w, _disguise_w)
+		b = 0.5 + (b - 0.5) * bk
 	var tk: float = _life.tic_k * w
 	var tic: String = _life.tic
 	var sg: float = _life.tic_sign
@@ -2216,6 +2250,99 @@ func _idle_post(w: float) -> void:
 			_rot_world(head, Vector3.BACK, deg_to_rad(4.0) * tk)
 		"nod":                                        # głowa opada w drzemce, potem się podrywa
 			_rot_world(head, Vector3.BACK, deg_to_rad(-14.0) * tk)
+
+## Broń przebranego Mimika (SPEC `carry`, MIMIC_PLAN.md M1): model broni gracza, widoczny od pierwszej pozy.
+func _build_carry() -> void:
+	if not _spec.has("carry") or _sk == null or _carry_gun != null:
+		return
+	var gk := String(_spec["carry"])
+	_carry_gun = GunModel.build(gk, [], Char3D.gun_info(gk)["muzzle"])
+	_carry_gun.visible = false                     # do pierwszej pozy (`_place_carry`)
+	_model.add_child(_carry_gun)
+	for mi in _carry_gun.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).layers = _mesh.layers   # warstwa jak ciało (view3d `_set_layer` przy budowie; przy restarcie broń powstaje na nowo)
+
+## Środek dłoni w przestrzeni szkieletu: od nadgarstka dalej w kierunku przedramię → dłoń.
+func _palm(side: String) -> Vector3:
+	var h := _gp(_b[side + "Hand"]).origin
+	var f := _gp(_b[side + "ForeArm"]).origin
+	return h + (h - f).normalized() * PALM
+
+## Broń w dłoniach przebranego (po IK rąk): chwyt w prawej dłoni, lufa ku lewej. Po demaskacji wypada z rąk (`_drop_carry`).
+func _place_carry() -> void:
+	if _carry_gun == null:
+		if _spec.has("carry") and not _dead and _disguise_w >= 0.5:
+			_build_carry()                             # restart misji: Mimik znów udaje, a poprzednia broń leży (albo już znikła)
+		if _carry_gun == null:
+			return
+	if _dead or _disguise_w < 0.5:
+		if _carry_gun.visible and not _dead and is_inside_tree():
+			_drop_carry()
+		elif _carry_gun != null:
+			_carry_gun.visible = false
+		return
+	var gx := _sk.global_transform
+	var pr := gx * _palm("Right")
+	var pl := gx * _palm("Left")
+	var x := pl - pr
+	if x.length() < 0.01:
+		return
+	x = x.normalized()
+	var up := Vector3.UP - x * x.dot(Vector3.UP)
+	if up.length() < 0.01:
+		up = Vector3.BACK
+	up = up.normalized()
+	var b := Basis(x, up, x.cross(up)).scaled(Vector3.ONE * _scale)
+	var rear: Vector3 = Char3D.gun_info(String(_spec["carry"]))["rear"]
+	_carry_gun.global_transform = Transform3D(b, pr - b * rear)
+	_carry_gun.visible = true
+
+## Demaskacja: broń wypada z rąk i ląduje płasko na ziemi pod stopami; znika po CARRY_DROP_S. Model wroga dostaje nową przy wskrzeszeniu (restart).
+const CARRY_DROP_S := 20.0
+func _drop_carry() -> void:
+	var g := _carry_gun
+	_carry_gun = null
+	var parent := get_parent()
+	if g == null or parent == null:
+		return
+	var gt := g.global_transform
+	g.get_parent().remove_child(g)
+	parent.add_child(g)
+	g.global_transform = gt
+	var xh := Vector3(gt.basis.x.x, 0.0, gt.basis.x.z)
+	xh = xh.normalized() if xh.length() > 0.01 else Vector3.RIGHT
+	var yh := Vector3.UP.cross(xh).normalized()                 # broń leży na boku: „góra” modelu poziomo
+	var lying := Basis(xh, yh, xh.cross(yh)).scaled(Vector3.ONE * _scale)
+	var floor_at := Vector3(gt.origin.x + xh.x * 0.25, global_position.y + 0.03, gt.origin.z)
+	var tw := g.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(g, "global_position", floor_at, 0.42).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(g, "global_basis", lying, 0.42)
+	tw.chain().tween_interval(CARRY_DROP_S)
+	tw.chain().tween_callback(g.queue_free)
+
+## W świetle latarki przebrany Mimik odwraca twarz od kamery i opuszcza głowę (MIMIC_PLAN.md M2) — „kolega” nie patrzy w snop.
+func _avert(w: float) -> void:
+	if w < 0.001 or not _b.has("Head"):
+		return
+	var f := global_transform.basis * Vector3.RIGHT
+	f.y = 0.0
+	if f.length() < 0.01:
+		return
+	f = f.normalized()
+	var a := deg_to_rad(AVERT_YAW)
+	var pt := deg_to_rad(AVERT_PITCH)
+	var want := (f * cos(a) - Vector3.BACK * sin(a)).normalized() * cos(pt) - Vector3.UP * sin(pt)
+	var inv := _sk.global_transform.basis.inverse()
+	var f_sk := (inv * f).normalized()
+	var d_sk := (inv * want).normalized()
+	var axis := f_sk.cross(d_sk)
+	if axis.length() < 0.0001:
+		return
+	axis = axis.normalized()
+	var ang := f_sk.angle_to(d_sk) * w
+	_rot_world(_b["Neck"], axis, ang * 0.4)
+	_rot_world(_b["Head"], axis, ang * 0.6)
 
 ## Nasłuch (IDLE_PLAN.md A5, I4): waga obrotu głowy rośnie w ~0,35 s, gdy wróg w spoczynku „prawie usłyszał" hałas, i opada w ~0,8 s.
 ## Bez Mimika (przebranie: SPEC `no_heed`), pełzaczy (śpią pod sufitem) i modeli deformowanych (bez głowy).
@@ -2488,11 +2615,18 @@ func _pose_biped(anim: String, delta: float) -> void:
 		_sink_y = 0.0
 	_tilt.basis = Basis(Vector3.BACK, tilt)
 	_tilt.position = Vector3(0.0, lift, 0.0)
+	if _carry_gun != null and _disguise_w > 0.001 and not _dead:
+		# przebrany Mimik (MIMIC_PLAN.md M1): obie dłonie na broni opuszczonej lufą w dół — jak gracz, ale nigdy nie celuje
+		var cw := _disguise_w * (1.0 - _air_w)
+		p["hR"] = (p["hR"] as Vector3).lerp(Vector3(_x0 + CARRY_R.x, CARRY_R.y, CARRY_R.z), cw)
+		p["hL"] = (p["hL"] as Vector3).lerp(Vector3(_x0 + CARRY_L.x, CARRY_L.y, CARRY_L.z), cw)
 	_apply_biped(p)
 	if not _dead:
 		var rest_w := (float(_w["idle"]) + float(_w["sleep"])) / maxf(sum, 0.0001)
 		_idle_post(rest_w * (1.0 - w_att) * (1.0 - _air_w) * (1.0 - _motion_weight) * (0.0 if _clip == "hit" else 1.0))
 		_apply_heed(_heed_w * rest_w * (1.0 - w_att) * (1.0 - _air_w) * (1.0 - _motion_weight) * (0.0 if _clip == "hit" else 1.0))
+		_avert(_lit_w * _disguise_w * rest_w)
+	_place_carry()
 	if _dead:
 		_lay_blade(smoothstep(0.3, 0.85, clampf(_dead_t / _death_dur(), 0.0, 1.0)))
 		# Przewrót wokół stóp wbijał dwunożnych głową, rogami i barkami w podłogę: ciało (SPEC `death_floor`) opiera się na najniższym
