@@ -2,9 +2,9 @@ extends SceneTree
 ## Test strażnicy 1.1 (TOWER_PLAN.md, `watchtower3d.gd`) na każdej mapie z `WATCHTOWER`:
 ## (1) dane: nogi w kolumnach c0 i c1 to ciągi `w` od podłogi kabiny do gruntu, dach i podłoga to `M` (właz `-`), pod nogami grunt,
 ## (2) nogi sięgają pod grunt i stoją na betonowych stopach, górą do dachu,
-## (3) pod każdym podestem zygzaka są legary górą pod deskami, a między kolejnymi podestami (i od gruntu) drabina,
-## (4) drabiny i poręcze podestów stoją za płaszczyzną gry (z ≤ −0,05),
-## (5) przed płaszczyzną gry nic szerokiego (> 0,5 m w x) nie wchodzi w pas postaci (0,3–1,85 m nad gruntem, podestem albo podłogą kabiny),
+## (3) legary pod podestami, biegi na wysokości pokładów i rozdzielone na wspólnych podestach, ostatni dochodzi do otworu w kabinie,
+## (4) przednie biegi opierają się na ryglach przy krawędzi podestów, tylne biegi i poręcze stoją za płaszczyzną gry (z ≤ −0,05),
+## (5) poza biegami schodów przed płaszczyzną gry nic szerokiego (> 0,5 m w x) nie wchodzi w pas postaci (0,3–1,85 m nad pokładem),
 ## (6) belki stropu górą na spodzie kafla dachu (tam wiszą Ćmy i Skoczek), dach od tej wysokości w górę, kalenica wyżej,
 ## (7) stara geometria wieży (`tower_slabs`, nogi `frame_role` „tower”, nogi podestów `deck_supports`) leży cała w prostokącie `rect`,
 ##     który `Level3D.tower_skip` pomija — bez podwójnych dachów i nóg.
@@ -26,6 +26,83 @@ static func _aabb(xf: Transform3D) -> Array:
 		lo = lo.min(p)
 		hi = hi.max(p)
 	return [lo, hi]
+
+## Próbka wewnątrz końca policzka musi też leżeć wewnątrz oparcia, również przy ukośnym cięciu.
+static func _seated(xf: Transform3D, end: float, joists: Array[AABB]) -> bool:
+	for x in [-0.44, 0.44]:
+		for z in [-0.44, 0.44]:
+			var point := xf * Vector3(x, end * 0.498, z)
+			if joists.any(func(joist: AABB) -> bool: return joist.has_point(point)):
+				return true
+	return false
+
+func _test_stairs(id: String, p: Dictionary, heights: Array[float], deck_half: float) -> void:
+	var aligned := true
+	var separated := true
+	var front_fit := true
+	var front_seated := true
+	var rear_clear := true
+	var previous := AABB()
+	var foot := Vector3.ZERO
+	var exit := Vector3.ZERO
+	var joists: Array[AABB] = []
+	for xf: Transform3D in p["joists"]:
+		var corners := _aabb(xf)
+		joists.append(AABB(corners[0], corners[1] - corners[0]))
+	for i in heights.size() - 1:
+		var lower := heights[i]
+		var upper := heights[i + 1]
+		var front := (heights.size() - 1 - i) % 2 == 0
+		var flight := AABB()
+		var stringers := 0
+		var treads := 0
+		var front_z := -INF
+		var back_z := INF
+		var previous_exit_x := exit.x
+		foot = Vector3.ZERO
+		exit = Vector3.ZERO
+		for xf: Transform3D in p["ladders"]:
+			if xf.origin.y <= lower or xf.origin.y >= upper:
+				continue
+			var corners := _aabb(xf)
+			var box := AABB(corners[0], corners[1] - corners[0])
+			flight = box if not flight.has_volume() else flight.merge(box)
+			if xf.basis.y.length() > 1.0:
+				var bottom := xf * Vector3(0, -0.5, 0)
+				var top := xf * Vector3(0, 0.5, 0)
+				aligned = aligned and absf(bottom.y - lower) < 0.01 and absf(top.y - upper) < 0.01
+				if front:
+					front_seated = front_seated and _seated(xf, 1.0, joists) and (i == 0 or _seated(xf, -1.0, joists))
+				front_z = maxf(front_z, top.z)
+				back_z = minf(back_z, top.z)
+				foot += bottom * 0.5
+				exit += top * 0.5
+				stringers += 1
+			else:
+				treads += 1
+		aligned = aligned and stringers == 2 and treads > 0
+		if i > 0:
+			separated = separated and not previous.intersects(flight) and absf(previous_exit_x - foot.x) > 0.2
+		if front:
+			front_fit = front_fit and front_z >= deck_half - 0.09 and flight.end.z <= deck_half + 0.005 and front_z - back_z >= 0.85
+		else:
+			rear_clear = rear_clear and flight.end.z <= -0.05
+		if i == 0:
+			_check(absf(exit.x - foot.x) >= 0.8 * (upper - lower), "%s: dolny bieg ma łagodniejszy skos od gruntu" % id)
+		previous = flight
+	_check(aligned, "%s: wszystkie %d biegów mają stopnie i policzki zakończone na wysokości pokładów" % [id, heights.size() - 1])
+	_check(separated, "%s: sąsiednie biegi są rozdzielone, a wejścia na podesty przesunięte względem siebie w osi x" % id)
+	_check(front_fit, "%s: szersze biegi dochodzą do przedniej krawędzi podestów i mieszczą się w ich głębokości" % id)
+	_check(front_seated, "%s: oba policzki przednich biegów mają oparcie na ryglach podestów" % id)
+	_check(rear_clear, "%s: tylne biegi są za płaszczyzną gry" % id)
+
+	var opening := AABB(Vector3(minf(foot.x, exit.x) + 0.025, heights[-1] - 0.43, previous.position.z),
+		Vector3(absf(exit.x - foot.x) - 0.05, 0.43, previous.size.z))
+	var hatch_clear := opening.has_volume() and opening.end.z < -deck_half
+	for xf: Transform3D in p["floor"]:
+		var corners := _aabb(xf)
+		hatch_clear = hatch_clear and not opening.intersects(AABB(corners[0], corners[1] - corners[0]))
+	_check(hatch_clear, "%s: ostatni bieg dochodzi przez otwór w deskach i belkach za kładką graczy" % id)
 
 func _process(_dt: float) -> bool:
 	_frames += 1
@@ -81,30 +158,30 @@ func _process(_dt: float) -> bool:
 		var lands: Array = W3.landings(rows, d)
 		var deck_h: float = float(L3.DECK_H["-"]) * T
 		var joist_ok := lands.size() >= 2
+		var heights: Array[float] = [y_g]
 		for l in lands:
-			var y_un := -float(int(l["r"])) * T - deck_h
+			var y_top := -float(int(l["r"])) * T
+			heights.append(y_top)
+			var y_un := y_top - deck_h
 			var x0 := float(int(l["c0"])) * T
 			var x1 := float(int(l["c1"]) + 1) * T
 			var n := (p["joists"] as Array).filter(func(x: Transform3D) -> bool:
 				var b := _aabb(x)
 				return absf((b[1] as Vector3).y - y_un) < 0.02 and (b[0] as Vector3).x >= x0 - 0.01 and (b[1] as Vector3).x <= x1 + 0.01).size()
 			joist_ok = joist_ok and n >= 3
-		var rungs := (p["ladders"] as Array).size()
-		_check(joist_ok and rungs > lands.size() * 8, "%s: %d podestów, każdy na ≥ 3 legarach pod deskami; drabiny: %d elementów" % [id, lands.size(), rungs])
-		# (4) za płaszczyzną gry
-		var behind := true
-		for k in ["ladders", "rails"]:
-			for x in p[k]:
-				behind = behind and (_aabb(x)[1] as Vector3).z <= -0.05
-		_check(behind, "%s: drabiny i poręcze podestów za płaszczyzną gry (z ≤ −0,05)" % id)
+		_check(joist_ok, "%s: %d podestów, każdy na ≥ 3 legarach pod deskami" % [id, lands.size()])
+		heights.append(y_f)
+		_test_stairs(id, p, heights, L3.deck_half("-"))
+		var rails_behind := (p["rails"] as Array).all(func(x: Transform3D) -> bool: return (_aabb(x)[1] as Vector3).z <= -0.05)
+		_check(rails_behind, "%s: poręcze podestów za płaszczyzną gry (z ≤ −0,05)" % id)
 		# (5) pas postaci przed płaszczyzną gry
 		var surfs: Array = [[y_g, float(c0 - 2) * T, float(c1 + 3) * T], [y_f, float(c0) * T, float(c1 + 1) * T]]
 		for l in lands:
 			surfs.append([-float(int(l["r"])) * T, float(int(l["c0"])) * T, float(int(l["c1"]) + 1) * T])
 		var bad: Array = []
 		for k in p:
-			if k in ["roof", "legs", "footings"]:
-				continue                                         # nogi są wąskie (szerokość w x z samego rozstawu u dołu)
+			if k in ["roof", "ladders", "legs", "footings"]:
+				continue                     # biegi sprawdzone osobno, nogi są wąskie (zakres w x wynika z rozstawu u dołu)
 			for x in p[k]:
 				var b := _aabb(x)
 				var lo: Vector3 = b[0]
