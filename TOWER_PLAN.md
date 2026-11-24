@@ -3,6 +3,8 @@
 Stan: **T0 i T1 zrobione (1.7.664)**; plan przyjęty 2026-11-23 zgodnie z zaleceniami. Porównanie przed / po:
 `C:\deadair87\shots_tower\porownanie_t1.jpg` (prototyp: `porownanie.jpg`).
 
+Korekta schodów przyjęta 2026-11-24 (1.7.675). Przednie biegi dochodzą do rygli przy krawędziach podestów, a ostatni tylny bieg do otworu w podłodze kabiny.
+
 Strażnica przed rampą kopalni na 1.1 (kol. 210–223, wiersze 7–23; nieśmiertelnik 4, Ćmy i Skoczek pod dachem, lekcja flary) nie ma
 własnego modelu. Składa się z trzech ogólnych reguł widoku 3D:
 - nogi — `Backdrop3D.build_frames` dla ciągów `w` z blachą `M` nad sobą (`Level3D.frame_role` „tower”): dwie proste płaszczyzny nóg
@@ -30,9 +32,8 @@ kabina z desek z pasem okien i okiennicami, dach czterospadowy z papy. Nocą czy
 
 ## Zasady
 
-- Przed płaszczyzną gry (z > 0) stoją tylko przednie nogi (z = 0,85, jak dziś) i podwalina kabiny pod podłogą. Żadnych stężeń ani poręczy
-  przed postaciami. Przód kabiny zostaje otwarty jak przekrój budynku (oczep pod dachem, podwalina).
-- Drabiny między podestami i poręcze podestów stoją za postaciami (z ≤ −0,05).
+- Przed płaszczyzną gry (z > 0) stoją przednie nogi (z = 0,85), podwalina kabiny i szersze biegi schodów przy przedniej krawędzi podestów.
+  Stężenia, tylne biegi i poręcze stoją za postaciami. Przód kabiny zostaje otwarty jak przekrój budynku (oczep pod dachem, podwalina).
 - Belki stropu leżą na spodzie kafla dachu, czyli tam, gdzie dziś wiszą Ćmy i Skoczek.
 - Jeden wpis `WATCHTOWER` w danych mapy zamiast reguł zgadujących konstrukcję z kafli. Ogólne `frame_role` „tower” i `tower_slabs` pomijają
   kafle wpisu (dziś używa ich tylko 1.1).
