@@ -145,6 +145,10 @@ func shield_up() -> bool:
 func disguise_label() -> String:
 	return ""
 
+## Plakietka powalonego kolegi, gdy wróg go udaje (Mimik, M9; world_bars.gd `_draw_down`); pusta = brak.
+func down_state() -> Dictionary:
+	return {}
+
 ## Wstęp tiku serwera (liczniki zachowania: cooldowny watahy, rzutu na dźwięk).
 func tick_prelude(_delta: float) -> void:
 	pass

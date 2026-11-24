@@ -82,6 +82,7 @@ func run(m: Node2D) -> void:
 	await _test_mimic_grab()
 	await _test_mimic_morph()
 	await _test_mimic_echo()
+	await _test_mimic_downed()
 	await _test_devourer()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
@@ -2032,6 +2033,108 @@ func _test_mimic_echo() -> void:
 	DirAccess.remove_absolute(LOG_DIR)
 	for e in [m, t]:
 		e.queue_free()
+	await get_tree().process_frame
+
+## Powalony kolega (MIMIC_PLAN.md M9): solo bez wymuszenia stoi (co-op dopiero od 2 ludzi); wymuszony leży — `_sp` = SP_DOWNED, niskie ciało,
+## grupa celów podnoszenia, widok `as_downed` bez etykiety, plakietka powalonego z kryptonimem i odliczaniem, które rusza przy podejściu;
+## przebranie nie zmienia się przy człowieku obok; dłuższe światło, stłumione echo; podpowiedź „revive”, podnoszenie — po 0,3 s demaskacja
+## (`revive`) i chwyt podnoszącego, bot go nie podnosi; dziennik `mimic_disguise` i `mimic_reveal` z `downed`.
+func _test_mimic_downed() -> void:
+	const LOG_DIR := "user://test_mimic_downed_log"
+	const MIMIC := preload("res://scripts/enemy_mimic.gd")
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "mimic_downed"})
+	var pos := Vector2(FAR_X + 36000.0, 0.0)
+	var m := _spawn("mimik", pos)
+	m.set_physics_process(false)
+	await get_tree().process_frame
+	var b = m._beh
+	MIMIC.set_forced(-1)
+	check("Mimik/powalony: sam (1 człowiek) bez wymuszenia stoi — co-op dopiero od 2 ludzi", not b.want_downed() and b._humans() == 1)
+	MIMIC.set_forced(1)
+	var p0: Vector2 = player.global_position
+	player.global_position = pos + Vector2(120.0, 0.0)                    # człowiek blisko: przebranie się nie zmienia
+	b._mode_t = 0.0
+	b._tick_mode(0.1)
+	var kept: bool = not b.downed
+	player.global_position = p0
+	b._mode_t = 0.0
+	b._tick_mode(0.1)
+	var hurt: RectangleShape2D = m._hit_shape
+	check("Mimik/powalony: przy człowieku bliżej niż 300 px się nie kładzie, z dala tak (`_sp` = %d, strefa trafień %.0f px)" % [m._sp, hurt.size.y],
+			kept and b.downed and m._sp == MIMIC.SP_DOWNED and is_equal_approx(hurt.size.y, MIMIC.LYING.y) and b.lying())
+	m.global_position = player.global_position + Vector2(18.0, 0.0)
+	b.present(0.1)
+	var vi: Dictionary = m.view_info()
+	var ds: Dictionary = m.bar_state().get("down", {})
+	check("Mimik/powalony: widok `as_downed` z modelem postaci, bez etykiety, w grupie celów podnoszenia", vi.get("as_downed") == true
+			and String(vi.get("outfit_model", "")).begins_with("res://art/char3d/mpfb/") and m.bar_state().get("label") == "" and m.is_in_group(MIMIC.DOWNED_GROUP), str(vi.get("outfit_model")))
+	var full: float = Player.BLEED_TIME * Difficulty.m("bleed")
+	for _i in 10:
+		b.present(0.1)
+	var t1: float = b.down_timer
+	check("Mimik/powalony: plakietka powalonego z kryptonimem i odliczaniem od %.0f s przy podejściu (%.1f s)" % [full, t1], bool(ds.get("dead", false))
+			and String(ds.get("name", "")) != "" and int(ds.get("timer", 0)) >= int(full) - 1 and absf(t1 - (full - 1.1)) < 0.05, str(ds))
+	for _i in 200:
+		b.present(0.1)
+	check("Mimik/powalony: odliczanie staje na 0 s (prawdziwy by się odrodził)", is_zero_approx(b.down_timer) and int(m.bar_state()["down"]["timer"]) == 0)
+	check("Mimik/powalony: światło jak u leżącego (2,5 s), przejście tuż nad nim, nie obok", is_equal_approx(b.near_mult(), b.OVER_PX / float(m._def["wake_near"])))
+	# podnoszenie
+	var bot: Node = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot:
+			bot = p
+	var bot_ok := true
+	if bot != null:
+		var bp: Vector2 = bot.global_position
+		bot.global_position = m.global_position + Vector2(-18.0, 0.0)
+		bot_ok = bot._revive_target() == null
+		bot.global_position = bp
+	var hint: String = player.revive_hint()
+	check("Mimik/powalony: podpowiedź podnoszenia z kryptonimem udawanego, bot go nie podnosi", player._revive_target() == m and hint.contains(b.down_name()) and bot_ok, hint)
+	player.full_reset(true, true)
+	player.global_position = m.global_position + Vector2(-18.0, 0.0)
+	player._handle_revive(0.2, true)
+	var early: bool = not m.active and b.fake_revive > 0.0
+	player._handle_revive(0.15, true)
+	check("Mimik/powalony: po 0,2 s podnoszenia jeszcze leży (pasek nad nim), po 0,35 s demaskacja `revive`", early and m.active and m.wake_cause == "revive"
+			and m._sp == 0 and not b.downed and not b.lying(), "%s %s" % [m.active, m.wake_cause])
+	b.present(0.1)
+	var vi2: Dictionary = m.view_info()
+	check("Mimik/powalony: wstaje z pozy powalonego (`rise`), poza grupą, bez plakietki", float(vi2.get("rise", -1.0)) >= 0.0 and vi2.get("from_corpse") == true
+			and not m.is_in_group(MIMIC.DOWNED_GROUP) and (m.bar_state()["down"] as Dictionary).is_empty() and player._revive_target() == null)
+	var grabbed: bool = b.strike(null)
+	check("Mimik/powalony: przemiana chwyta podnoszącego", grabbed and b.grab_victim == player and bool(player.grabbed))
+	b._release("", false)
+	player.full_reset(true, true)
+	player.global_position = p0
+	# restart: znów leży (wymuszenie), bez wymuszenia wstaje do stojącego
+	m.reset_enemy()
+	check("Mimik/powalony: restart kładzie go z powrotem", not m.active and b.downed and m._sp == MIMIC.SP_DOWNED)
+	MIMIC.set_forced(0)
+	b._mode_t = 0.0
+	m.global_position = pos
+	b._tick_mode(0.1)
+	b.present(0.1)
+	check("Mimik/powalony: koniec co-op — wraca do przebrania stojącego, z etykietą", not b.downed and m._sp == 0 and m.view_info().get("as_downed") == false
+			and String(m.bar_state().get("label", "")) != "" and is_equal_approx((m._hit_shape as RectangleShape2D).size.y, b._stand_hurt.y))
+	MIMIC.set_forced(-1)
+	var rows: Array = []
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("\n"):
+		if line != "":
+			rows.append(JSON.parse_string(line))
+	var dis: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mimic_disguise")
+	var rev: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mimic_reveal" and r.get("cause") == "revive")
+	check("dziennik Mimika: `mimic_disguise` (downed, stand) i `mimic_reveal` z `revive` / `downed`", dis.size() == 2 and dis[0].get("disguise") == "downed"
+			and dis[1].get("disguise") == "stand" and rev.size() == 1 and rev[0].get("disguise") == "downed", "%s / %s" % [str(dis), str(rev)])
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	SessionLog.dir = SessionLog.DIR
+	for f in DirAccess.get_files_at(LOG_DIR):
+		DirAccess.remove_absolute("%s/%s" % [LOG_DIR, f])
+	DirAccess.remove_absolute(LOG_DIR)
+	m.queue_free()
 	await get_tree().process_frame
 
 func _test_mimic_morph() -> void:

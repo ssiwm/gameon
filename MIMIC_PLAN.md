@@ -1,6 +1,6 @@
 # Mimik — plan
 
-Status: **plan z 2026-11-23 (main 1.7.666, c20b205a); wdrożone M0–M8 (1.7.672); M9 czeka na sesje co-op.** Decyzje D1–D6 (§6) przyjęte 2026-11-24 — wszystkie warianty zalecane.
+Status: **plan z 2026-11-23 (main 1.7.666, c20b205a); wdrożone M0–M9 (1.7.673). Dalej: ocena wg §7 na dziennikach gry.** Decyzje D1–D6 (§6) przyjęte 2026-11-24 — wszystkie warianty zalecane.
 **M0–M2 wdrożone w 1.7.667** (odstępstwa: przebrany stojący nie oddycha tylko w ciemności — w snopie latarki oddycha głęboko, jako
 sygnał obok połysku oczu; solo bez innych postaci i bez bota etykieta to kryptonim spoza drużyny z `FALLBACK_NAMES`).
 **M3–M4 wdrożone w 1.7.668** (odstępstwa: stroje to istniejące modele MPFB — mundur polowy `male_scav` dla patrolu, kombinezon
@@ -40,6 +40,19 @@ tylko głos. Krzyki w czasie oczekiwania łączą się w jedno echo; krzyk spoza
 echo; obudzony słyszy krzyk jak każdy wróg. **Dodatek:** przebrany Mimik nie budzi się z watahą (`sibling_wake_ok`) — krzyk budził Trzoska
 obok, a ten w promieniu 140 px budził Mimika (`pack`), co psuło test przy innych wrogach; obudzony dalej budzi sąsiadów. Dziennik `mimic_echo`
 (`disguise`, `dist` — droga dźwięku, `from`, `pos`, `n`) — do pomiaru, czy gracze zaczęli krzyczeć.)
+**M9 wdrożone w 1.7.673** — na prośbę użytkownika przed sesjami co-op (dzienniki do 23.11 bez co-op i bez zdarzeń Mimika). Odstępstwa i
+szczegóły: udaje go Mimik stojący z mapy (`Y`), nie Mimik-zwłoki — w co-op (≥ 2 ludzi, bot się nie liczy) z szansą 50% (`DOWNED_CHANCE`, ziarno
+mapy i nazwa — stałe na mapę). Przebranie przełącza tylko serwer i tylko gdy żaden człowiek nie stoi bliżej niż 300 px (koniec co-op wraca
+do stojącego); stan idzie do klientów w replikowanym `_sp` = 2, bez nowego RPC. Wygląd: model postaci kolegi, którego kryptonim nosi (u każdego
+peera inny — jak etykieta M1), w czystym końcu klipu upadku (jak powalony gracz), świeży strój, bez plamy; plakietka powalonego (kryptonim,
+odliczanie, pasek podnoszenia) z world_bars.gd. Odliczanie rusza od pełnego wykrwawiania (10 s × trudność), gdy lokalny gracz podejdzie na
+300 px, i staje na 0 s — prawdziwy kolega by się wtedy odrodził (sygnał obok karty drużyny). Podnoszenie: zwykłe [E] (player.gd
+`_handle_revive`), podpowiedź „Hold [E] to revive …”; po 0,3 s (jak D6) prośba do serwera (`mimic_revive_request`, zasięg ×1,4 na opóźnienie
+klienta) → demaskacja `revive`, przemiana chwyta podnoszącego (zasięg chwytu 26 px = zasięg podnoszenia). Bot go nie podnosi. Leży jak
+Mimik-zwłoki: niskie ciało, przejście tuż nad nim, 2,5 s snopu, stłumione echo z drgnięciem, wstawanie „wstecz” — potem model wroga w stroju
+kolegi. Dziennik: `mimic_disguise` (przełączenie, liczba ludzi), `mimic_reveal` / `mimic_echo` z `disguise` = downed. `--mimicdowned=0/1`
+wymusza (testy). **Poprawka przy okazji:** model `female_scav` (także bot) miał 2 wierzchołki kamizelki na kości bez rodzica (`neutral_bone`) —
+w leżeniu ciągnęły trójkąt na wysokość stojącej głowy; char3d.gd `pin_stray_roots` przepina takie kości pod Spine2 (u graczy i wrogów).
 Kolejność wg rekomendacji z analizy: najpierw M0–M2
 (pomiar i przebranie, które trzyma się na ekranie), potem rdzeń M3–M6 (zwłoki w świecie i Mimik udający zwłoki — główna zmiana
 rozgrywki, działa w solo), dalej M7 (przemiana i ruch) i M8 (echo krzyku). M9 (powalony kolega) czeka na sesje co-op.
@@ -230,7 +243,7 @@ Dziś w grze nie ma ani jednych zwłok. Mimik leżący jako jedyne ciało na map
 
 - W co-op Mimik może udawać **powalonego kolegę**: leży ze znacznikiem powalenia i kryptonimem naśladowanego; demaskuje się przy
   próbie podniesienia. Sygnał: prawdziwy kolega jest też w HUD drużyny (stan, strzałka przy krawędzi ekranu) — wystarczy sprawdzić.
-- Wchodzi dopiero, gdy dzienniki pokażą sesje co-op (dziś 0).
+- Wchodzi dopiero, gdy dzienniki pokażą sesje co-op (dziś 0). *(Wdrożone wcześniej, w 1.7.673, na prośbę użytkownika — zob. status.)*
 
 ## 6. Decyzje
 

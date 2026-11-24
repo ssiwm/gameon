@@ -8,6 +8,7 @@ extends SceneTree
 ## - Mimik-zwłoki (M5): ta sama poza co prawdziwe ciało w tym miejscu; w ciemności bez oczu i oddechu, w snopie połysk oczu przy głowie
 ##   od razu, oddech dopiero po ~1 s (klatka piersiowa się rusza), po zgaszeniu znów nieruchomy; prawdziwe zwłoki bez oczu i bez `_process`.
 ## - echo krzyku (M8, `mimic_echo`): klatka i głowa drgają kilka razy (zmiana kierunku), potem ciało wraca dokładnie do pozy zwłok.
+## - powalony kolega (M9, poza „downed”): każdy model gracza leży na gruncie w pozie upadku, z oczami Mimika; brak pliku → mundur patrolu.
 ## - wstawanie Mimika-zwłok (M7, `rise`): zaczyna z pozy zwłok, wstaje płynnie (bez skoków wysokości), kończy stojąc przodem do stóp
 ##   (+x węzła), w miejscu stóp, ze świecącymi oczami, dłuższymi przedramionami i nakładką przemiany; `end_rise` znów kładzie ciało.
 ##   godot --headless --path prototype -s tools/test_corpses.gd
@@ -141,8 +142,32 @@ func _go() -> void:
 	var diff := (a._gp(head).basis.get_euler() - b._gp(head).basis.get_euler()).length()
 	_ok(diff > deg_to_rad(5.0), "dwa ciała w tym samym ułożeniu różnią się głową (%.1f°)" % rad_to_deg(diff))
 	await _mimic_view()
+	await _downed_view()
 	print("[CORPSES] %s" % ("PASS" if _fails == 0 else "FAIL (%d)" % _fails))
 	quit(1 if _fails > 0 else 0)
+
+## Mimik jako powalony kolega (M9): model postaci gracza (każdy plik zestawu mpfb), poza „downed” = koniec klipu upadku bez wariantu — leży na
+## gruncie jak zwłoki, nie wyżej niż ~0,9 m; strój nie wyblakły; oczy i drgnięcie jak u Mimika-zwłok; brak pliku → mundur patrolu.
+func _downed_view() -> void:
+	var bad: Array = []
+	for g in ["male", "female"]:
+		for o in ["scav", "hazmat", "medic"]:
+			var path := "res://art/char3d/mpfb/%s_%s.glb" % [g, o]
+			var c := Corpse3D.new()
+			root.add_child(c)
+			var ok: bool = c.build(path, "downed", 7, 1.0, true, false)
+			await process_frame
+			var bb: AABB = c.skin_bounds() if ok else AABB()
+			if not ok or c.model_path != path or bb.size.y > 0.9 or absf(bb.position.y) > 0.05 or c._mimic_eyes.size() != 2:
+				bad.append("%s_%s %s %.2f/%.2f" % [g, o, ok, bb.position.y, bb.size.y])
+			c.queue_free()
+	_ok(bad.is_empty(), "powalony kolega (M9): 6 modeli graczy leży na gruncie w pozie upadku, z oczami Mimika %s" % str(bad))
+	var x := Corpse3D.new()
+	root.add_child(x)
+	var fb: bool = x.build("res://art/char3d/mpfb/nie_ma.glb", "downed", 7, 1.0, true, false)
+	_ok(fb and x.model_path == String(Corpse3D.OUTFITS["patrol"]), "powalony kolega: brak pliku modelu → mundur patrolu (%s)" % x.model_path)
+	x.queue_free()
+	await process_frame
 
 ## Mimik-zwłoki w widoku (M5): poza jak prawdziwe ciało, oczy i oddech tylko w snopie.
 func _mimic_view() -> void:

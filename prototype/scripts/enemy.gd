@@ -732,6 +732,19 @@ func _mimic_echo(lying: bool) -> void:
 			_beh.ECHO_DB_LYING if lying else _beh.ECHO_DB, pitch, 0.02)
 	_beh.echo_fx(pitch, lying)
 
+## Podnoszenie Mimika udającego powalonego kolegę (MIMIC_PLAN.md M9, player.gd `_handle_revive`): lokalny gracz trzyma [E] dłużej niż
+## enemy_mimic.gd REVIVE_GRAB_S — prośba do serwera, który sprawdza zasięg i demaskuje (`revive`); przemiana chwyta podnoszącego.
+func mimic_revive_request() -> void:
+	if NoiseMgr.is_server():
+		_beh.revive_by(NoiseMgr.local_id())
+	else:
+		_mimic_revive_rpc.rpc_id(1)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _mimic_revive_rpc() -> void:
+	if multiplayer.is_server() and _beh.has_method("revive_by"):
+		_beh.revive_by(multiplayer.get_remote_sender_id())
+
 ## Efekt uderzenia Wołka o ścianę (RPC musi żyć w węźle wroga; woła go `enemy_bruiser.gd` i lądowanie Skoczka).
 @rpc("authority", "call_local", "reliable")
 func _crash_fx() -> void:
@@ -1812,4 +1825,5 @@ func _update_sprite(delta: float) -> void:
 func bar_state() -> Dictionary:
 	var size: Vector2 = _def["size"]
 	return {"frac": clampf(hp / maxf(_max_hp, 0.001), 0.0, 1.0), "alive": alive and is_visible_in_tree(), "elite": bool(_def.get("elite", false)),
-		"w": size.x + 4.0, "h": size.y + 7.0, "label": _beh.disguise_label(), "label_col": _beh.disguise_color(), "kind": kind, "armor": float(_def.get("armor", 0.0))}
+		"w": size.x + 4.0, "h": size.y + 7.0, "label": _beh.disguise_label(), "label_col": _beh.disguise_color(), "kind": kind, "armor": float(_def.get("armor", 0.0)),
+		"down": _beh.down_state()}

@@ -22,6 +22,13 @@ extends "res://scripts/enemy_behavior.gd"
 ## Echo krzyku (M8): krzyk gracza (G albo mikrofon) nie demaskuje przebranego Mimika — po ECHO_DELAY odpowiada tym samym krzykiem, odrobinę
 ## za nisko (ECHO_PITCH), z miejsca, w którym stoi albo leży (leżący ciszej i stłumiony, a ciało drga — corpse3d.gd `echo`). Prawdziwi
 ## koledzy, bot i zwłoki milczą, więc krzyk to test „kto to?”. Jedno echo na krzyk; krzyki w czasie oczekiwania łączą się w nie.
+##
+## Powalony kolega (M9): w co-op (≥ 2 ludzi) Mimik `Y` z szansą DOWNED_CHANCE (ziarno mapy) zamiast stać leży jak powalony gracz — model
+## postaci kolegi w pozie upadku, nad nim jego kryptonim i odliczanie wykrwawiania (`down_state`), woła o pomoc. Serwer przełącza przebranie
+## tylko, gdy nikt nie stoi bliżej niż DOWNED_CLEAR_PX; stan idzie do klientów w replikowanym `e._sp` (SP_DOWNED). Podnoszenie [E] (player.gd
+## `_handle_revive`, grupa DOWNED_GROUP) po REVIVE_GRAB_S prosi serwer o demaskację (`revive`) — przemiana chwyta podnoszącego. Sygnały:
+## prawdziwy kolega stoi w HUD drużyny (karta, strzałka przy krawędzi), odliczanie staje na 0 s, oczy w snopie, echo krzyku; leży jak zwłoki
+## (niskie ciało, OVER_PX, CORPSE_LIGHT_S), wstaje „wstecz” jak Mimik-zwłoki — w modelu kolegi.
 
 const Lights := preload("res://scripts/lights.gd")
 const Player := preload("res://scripts/player.gd")
@@ -56,6 +63,14 @@ const ECHO_PITCH := 0.9              ## wysokość echa względem krzyku gracza 
 const ECHO_DB := -1.0                ## dB echa stojącego
 const ECHO_DB_LYING := -7.0          ## dB echa leżącego (stłumiony głos spod ciała)
 const ECHO_VIEW_S := 0.6             ## s drgnięcia ciała leżącego w widoku
+const SP_DOWNED := 2                 ## `e._sp` przebranego za powalonego kolegę (M9; replikowany w `_sync` — klienci i dołączający wiedzą bez RPC)
+const DOWNED_CHANCE := 0.5           ## szansa, że Mimik `Y` w co-op leży jako powalony kolega (z ziarna mapy i nazwy — stała na całą mapę)
+const DOWNED_CLEAR_PX := 300.0       ## px: przebranie zmienia się tylko, gdy żaden człowiek nie stoi bliżej (nikt nie widzi, jak się kładzie)
+const MODE_EVERY := 2.0              ## s między sprawdzeniami przebrania (serwer)
+const REVIVE_GRAB_S := 0.3           ## s podnoszenia do chwytu (jak przeszukiwanie Mimika-zwłok, D6)
+const REVIVE_SLACK := 1.4            ## serwer: zapas zasięgu podnoszenia (pozycja klienta dochodzi z opóźnieniem)
+const DOWNED_GROUP := "downed_mimics" ## Mimiki widziane jako powaleni koledzy (każdy peer) — cele podnoszenia w player.gd
+const DOWNED_MODEL := "res://art/char3d/mpfb/%s.glb"   ## model postaci gracza (char3d.gd `set_look`, zestaw „mpfb”)
 ## Kryptonimy, gdy nie ma kogo udawać (sam, bez innych postaci i bez bota) — brzmią jak operatorzy, ale nikt ich nie nosi.
 const FALLBACK_NAMES := ["Kret", "Wiór", "Sowa", "Łoś"]
 
@@ -90,6 +105,14 @@ var _echo_from := Vector2.ZERO  ## skąd krzyknięto (dziennik `mimic_echo`)
 var _echo_heard := 0.0       ## px drogi dźwięku krzyku
 var _echo_view := 0.0        ## s drgnięcia w widoku (każdy peer, z `_mimic_echo`)
 var last_echo := {}          ## ostatnie echo u tego peera: `pitch`, `lying` (testy)
+var downed := false          ## serwer: leży jako powalony kolega (M9)
+var _mode_t := 0.0           ## s do sprawdzenia przebrania (serwer)
+var _down_flip := 1.0        ## kierunek twarzy przy kładzeniu się (serwer; po demaskacji wstaje w tę stronę)
+var _view_downed := false    ## widok (każdy peer): leży albo wstaje jako powalony kolega
+var down_timer := 0.0        ## widok: fałszywe odliczanie wykrwawiania — rusza, gdy lokalny gracz podejdzie, i staje na 0 s (prawdziwy by się odrodził)
+var fake_revive := 0.0       ## widok: postęp podnoszenia lokalnego gracza (pasek nad nim)
+var _label_model := ""       ## widok: model postaci udawanego kolegi
+static var _forced := -2     ## --mimicdowned=0/1 (testy, zrzuty): wymusza przebranie bez co-op; -1 = co-op i losowanie
 
 ## Mimik-zwłoki (M5): leży w miejscu zwłok `cp` (level.gd przy budowie mapy, u każdego peera tak samo).
 func become_corpse(cp: Node2D) -> void:
@@ -138,6 +161,10 @@ func reset() -> void:
 	echo_t = -1.0
 	echoes = 0
 	_echo_view = 0.0
+	if NoiseMgr.is_server() and corpse == null and e.is_inside_tree():
+		downed = false                         # `e._sp` wyzerował reset wroga — przebranie od nowa (gracze po wipe'ie stoją na starcie)
+		_set_downed(want_downed(), false)
+	_mode_t = MODE_EVERY
 
 ## Demaskacja: wpis w dzienniku (M0), krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg.
 func on_wake() -> void:
@@ -146,6 +173,11 @@ func on_wake() -> void:
 	if corpse != null:
 		_lie(false)
 		e._facing = -1.0 if bool(corpse.flip) else 1.0      # zwłoki leżą głową za plecami: wstaje przodem do stóp (corpse3d.gd `rise`)
+	elif downed:
+		downed = false
+		_lie(false)
+		e._sp = 0
+		e._facing = _down_flip                 # widok położył go z tym kierunkiem (view3d `_sync_downed`) — wstaje przodem do stóp
 	NoiseMgr.add_noise(6.0, e.global_position, "enemy")
 	if NoiseMgr.has_network():
 		e._scream_fx.rpc()
@@ -166,7 +198,111 @@ func _log_reveal(cause: String) -> void:
 			continue
 		best = minf(best, (p as Node2D).global_position.distance_to(e.global_position))
 	SessionLog.event("mimic_reveal", {"cause": cause, "dist": roundi(best) if is_finite(best) else -1, "calls": calls,
-		"disguise": "corpse" if corpse != null else "stand", "lit": snappedf(lit_s, 0.1), "pos": SessionLog.xy(e.global_position)})
+		"disguise": _disguise_id(), "lit": snappedf(lit_s, 0.1), "pos": SessionLog.xy(e.global_position)})
+
+## Rodzaj przebrania do dziennika: corpse, downed (M9), stand.
+func _disguise_id() -> String:
+	return "corpse" if corpse != null else ("downed" if downed else "stand")
+
+## Leży (zwłoki albo powalony kolega): niskie ciało, demaskacja z bliska tylko tuż nad nim, dłuższe światło, stłumione echo.
+func lying() -> bool:
+	return corpse != null or downed
+
+# ---------------------------------------------------------------- powalony kolega (M9)
+
+## Wymuszenie z wiersza poleceń (`--mimicdowned=0/1`); -1 = bez wymuszenia.
+static func forced() -> int:
+	if _forced == -2:
+		_forced = -1
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--mimicdowned="):
+				_forced = clampi(int(a.substr("--mimicdowned=".length())), 0, 1)
+	return _forced
+
+static func set_forced(v: int) -> void:
+	_forced = v
+
+func _humans() -> int:
+	var n := 0
+	for p in e.get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and not p.is_queued_for_deletion():
+			n += 1
+	return n
+
+## Czy Mimik `Y` ma teraz leżeć jako powalony kolega: tylko w co-op, z ziarna mapy (to samo przez całą mapę) albo z wymuszenia.
+func want_downed() -> bool:
+	if corpse != null or not e.is_inside_tree():
+		return false
+	if forced() >= 0:
+		return forced() == 1
+	if _humans() < 2:
+		return false
+	var lvl: Node = e.get_tree().get_first_node_in_group("level")
+	var sd: int = int(lvl.get("mimic_seed")) if lvl != null and lvl.get("mimic_seed") != null else 0
+	return float(hash([sd, String(e.name)]) & 0xffff) / 65536.0 < DOWNED_CHANCE
+
+func _human_near(px: float) -> bool:
+	for p in e.get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and (p as Node2D).global_position.distance_to(e.global_position) < px:
+			return true
+	return false
+
+## Serwer: kładzie się jako powalony kolega albo wstaje do przebrania stojącego.
+func _set_downed(on: bool, log_it := true) -> void:
+	if on == downed or e.active:
+		return
+	downed = on
+	_lie(on)
+	e._sp = SP_DOWNED if on else 0
+	if on:
+		_down_flip = e._facing if e._facing != 0.0 else 1.0
+	if log_it:
+		SessionLog.event("mimic_disguise", {"disguise": _disguise_id(), "humans": _humans(), "pos": SessionLog.xy(e.global_position)})
+
+## Co MODE_EVERY: co-op się zaczął albo skończył — zmiana przebrania, gdy nikt nie patrzy z bliska.
+func _tick_mode(delta: float) -> void:
+	if corpse != null:
+		return
+	_mode_t -= delta
+	if _mode_t > 0.0:
+		return
+	_mode_t = MODE_EVERY
+	var want := want_downed()
+	if want != downed and not _human_near(DOWNED_CLEAR_PX):
+		_set_downed(want)
+
+## Serwer: gracz `peer_id` podnosi powalonego kolegę dłużej niż REVIVE_GRAB_S (player.gd → enemy.gd `mimic_revive_request`) — demaskacja.
+func revive_by(peer_id: int) -> bool:
+	if e.active or not downed or not e.alive:
+		return false
+	for p in e.get_tree().get_nodes_in_group("players"):
+		if String(p.name) != str(peer_id) or p.is_bot or p.dead:
+			continue
+		var d: Vector2 = (p as Node2D).global_position - e.global_position
+		if absf(d.x) < Player.REVIVE_RANGE * REVIVE_SLACK and absf(d.y) < 30.0:
+			e.wake("revive")
+			return true
+	return false
+
+## Widok (każdy peer): leży jako powalony kolega i jeszcze się nie zdemaskował.
+func downed_view() -> bool:
+	return _view_downed and not e.active and e.alive
+
+## Kryptonim udawanego kolegi w podpowiedzi podnoszenia (HUD) — udając bota, tak jak przy prawdziwym botem („the bot”).
+func down_name() -> String:
+	_refresh_label()
+	return "the bot" if _label_col == Player.BOT_COLOR else _label
+
+## Plakietka powalonego (world_bars.gd `_draw_down`, jak player.gd `plate_state`): kryptonim, odliczanie, pasek podnoszenia; pusta = brak.
+func down_state() -> Dictionary:
+	if not downed_view():
+		return {}
+	_refresh_label()
+	return {"dead": true, "name": _label, "col": _label_col, "taken": false, "timer": ceili(down_timer), "revive": fake_revive}
+
+## Lokalny gracz podnosi go (player.gd): postęp 0..1 na pasku nad nim.
+func set_revive_progress(v: float) -> void:
+	fake_revive = clampf(v, 0.0, 1.0)
 
 func scream_pitch() -> float:
 	return 0.85
@@ -195,12 +331,12 @@ func _tick_echo(delta: float) -> void:
 		return
 	echo_t = -1.0
 	echoes += 1
-	var lying := corpse != null
+	var low := lying()
 	if NoiseMgr.has_network():
-		e._mimic_echo.rpc(lying)
+		e._mimic_echo.rpc(low)
 	else:
-		e._mimic_echo(lying)
-	SessionLog.event("mimic_echo", {"disguise": "corpse" if lying else "stand", "dist": roundi(_echo_heard), "n": echoes,
+		e._mimic_echo(low)
+	SessionLog.event("mimic_echo", {"disguise": _disguise_id(), "dist": roundi(_echo_heard), "n": echoes,
 		"from": SessionLog.xy(_echo_from), "pos": SessionLog.xy(e.global_position)})
 
 ## Echo na każdym peerze (enemy.gd `_mimic_echo`): drgnięcie leżącego w widoku.
@@ -228,11 +364,11 @@ func light_wakes(lit: bool) -> bool:
 		_dark_s += dt
 		if _dark_s >= DARK_RESET_S:
 			lit_s = 0.0
-	return lit_s >= (CORPSE_LIGHT_S if corpse != null else LIGHT_REVEAL_S)
+	return lit_s >= (CORPSE_LIGHT_S if lying() else LIGHT_REVEAL_S)
 
 ## Leżący budzi się dopiero, gdy ktoś przejdzie tuż nad nim (OVER_PX); stojący — przy zwykłym `wake_near`.
 func near_mult() -> float:
-	return OVER_PX / maxf(float(e._def["wake_near"]), 1.0) if corpse != null else 1.0
+	return OVER_PX / maxf(float(e._def["wake_near"]), 1.0) if lying() else 1.0
 
 ## Okno kontry: w czasie przemiany obrażenia × MORPH_DMG.
 func damage_mult() -> float:
@@ -262,6 +398,23 @@ func present(delta: float) -> void:
 	elif _view_since >= 0.0:
 		_view_since += delta
 	_seen_active = act
+	var dn: bool = act == 0 and e.alive and e._sp == SP_DOWNED
+	if dn and not _view_downed:
+		down_timer = Player.BLEED_TIME * Difficulty.m("bleed")       # jak prawdziwy powalony: odliczanie od pełnego wykrwawiania
+	if act == 0:
+		_view_downed = dn                      # po demaskacji zostaje do wstania (`rise`), restart liczy od nowa
+	if not e.alive:
+		_view_downed = false
+	if dn:
+		if e._local_player_pos().distance_to(e.global_position) > DOWNED_CLEAR_PX:
+			down_timer = Player.BLEED_TIME * Difficulty.m("bleed")   # nikt nie patrzy: przy podejściu odliczanie rusza od pełnego (jak świeżo powalony)
+		else:
+			down_timer = maxf(0.0, down_timer - delta)       # staje na 0 s — prawdziwy kolega by się wtedy odrodził (sygnał)
+		if not e.is_in_group(DOWNED_GROUP):
+			e.add_to_group(DOWNED_GROUP)
+	elif e.is_in_group(DOWNED_GROUP):
+		e.remove_from_group(DOWNED_GROUP)
+		fake_revive = 0.0
 	_view_grab = maxf(0.0, _view_grab - delta)
 	_echo_view = maxf(0.0, _echo_view - delta)
 	_lit_t -= delta
@@ -279,17 +432,21 @@ func view_extra(d: Dictionary) -> void:
 	elif (grab_ready if NoiseMgr.is_server() else _view_grab) > 0.0 and e.winding:
 		d["motion_action"] = "grab_hold"            # zapowiedź chwytu; klient liczy okno od demaskacji, którą widzi (`present`)
 	d["since_reveal"] = _view_since if e.alive else -1.0
-	d["rise"] = _view_since / RISE_S if corpse != null and e.alive and _view_since >= 0.0 and _view_since < RISE_S else -1.0
-	d["from_corpse"] = corpse != null
-	d["outfit_model"] = String(corpse.outfit) if corpse != null else ""
+	var low := corpse != null or _view_downed
+	d["rise"] = _view_since / RISE_S if low and e.alive and _view_since >= 0.0 and _view_since < RISE_S else -1.0
+	d["from_corpse"] = low
+	if _view_downed and _label_model == "":
+		_refresh_label()
+	d["outfit_model"] = String(corpse.outfit) if corpse != null else (_label_model if _view_downed else "")
+	d["as_downed"] = downed_view()            # widok rysuje go jako powalonego kolegę (view3d `_sync_downed`), nie jako wroga (M9)
 	d["disguised"] = not e.active
 	d["lit"] = _lit
 	d["echo"] = _echo_view / ECHO_VIEW_S if not e.active else 0.0      # 1 → 0: drgnięcie leżącego przy echu (M8)
 	d["as_corpse"] = corpse != null and not e.active and e.alive          # widok rysuje go jako zwłoki (view3d `_sync_corpses`), nie jako wroga
 
 func disguise_label() -> String:
-	if e.active or corpse != null:
-		return ""
+	if e.active or corpse != null or _view_downed:
+		return ""                              # powalony: kryptonim rysuje plakietka powalonego (`down_state`)
 	_refresh_label()
 	return _label
 
@@ -319,6 +476,7 @@ func _refresh_label() -> void:
 		var m: Node = mates[pick % mates.size()]
 		_label = String(m.label())
 		_label_col = m._body_color()
+		_label_model = _model_of(m)
 		return
 	var others: Array = []
 	if Characters.persist:
@@ -327,15 +485,23 @@ func _refresh_label() -> void:
 			if String(c["id"]) != Characters.active_id and n != "":
 				others.append(n)
 	var col: Color = Player.BODY_COLORS[1 + pick % (Player.BODY_COLORS.size() - 1)]
+	_label_model = DOWNED_MODEL % "male_scav"
 	if not others.is_empty():
 		_label = String(others[pick % others.size()])
 		_label_col = col
 	elif bot != null:
 		_label = String(bot.label())
 		_label_col = Player.BOT_COLOR
+		_label_model = _model_of(bot)
+		return
 	else:
 		_label = String(FALLBACK_NAMES[pick % FALLBACK_NAMES.size()])
 		_label_col = col
+
+## Plik modelu postaci gracza (jak player.gd `_char3d_name` → char3d.gd `set_look`); brak pliku — mundur patrolu.
+static func _model_of(p: Node) -> String:
+	var path := DOWNED_MODEL % String(p._char3d_name())
+	return path if ResourceLoader.exists(path) else DOWNED_MODEL % "male_scav"
 
 ## Zamaskowany Mimik woła o pomoc krzykiem kolegi (ten sam dźwięk co krzyk gracza [G]) z rozmytym kierunkiem i trzaskiem radia,
 ## gdy ktoś jest w zasięgu słuchu, ale jeszcze nie przy nim — wabi do zasadzki.
@@ -344,6 +510,7 @@ func asleep_lod() -> bool:
 
 func tick_asleep(delta: float) -> void:
 	_tick_echo(delta)
+	_tick_mode(delta)
 	if corpse != null:
 		return                                  # zwłoki nie wołają
 	lure_t -= delta

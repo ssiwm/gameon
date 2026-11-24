@@ -183,6 +183,7 @@ var _spr_bg: Sprite2D
 var _spr_fg: Sprite2D
 var _rigs := {}                          ## Node gracza → {actor, model, gun, root}
 var _corpses := {}                       ## id węzła zwłok 2D (corpse.gd) → [węzeł, Corpse3D, plama] (MIMIC_PLAN.md M3)
+var _downed := {}                        ## id Mimika udającego powalonego kolegę → [węzeł, Corpse3D, model] (MIMIC_PLAN.md M9)
 var _enemies := {}                       ## id węzła wroga 2D → [węzeł, Enemy3D] (modele 3D wrogów; null w drugim polu = brak modelu)
 var _enemy_scan := true                  ## trzeba przejrzeć grupy wrogów (`_on_node_added`, model czekający na kolejkę, zapas co ENEMY_RESCAN_EVERY)
 var _no_model := {}                      ## id węzłów z grup wrogów bez modelu (rekwizyty w „enemies”) — przegląd ich pomija
@@ -604,6 +605,7 @@ func _tick(delta: float) -> void:
 	tp = _tp("rigs", tp)
 	_sync_enemies(delta)
 	_sync_corpses()
+	_sync_downed()
 	tp = _tp("enemies", tp)
 	if warm == 0:
 		return
@@ -1370,6 +1372,10 @@ func _sync_enemies(delta: float) -> void:
 			if Corpse3D.OUTFITS.has(outfit):
 				e.model_path = String(Corpse3D.OUTFITS[outfit])     # Mimik-zwłoki wstaje w stroju ciała, które udawał (MIMIC_PLAN.md M7)
 				e.fit_body_h = Corpse3D.BODY_H
+			elif outfit.begins_with("res://") and ResourceLoader.exists(outfit):
+				e.model_path = outfit                               # Mimik jako powalony kolega wstaje w modelu kolegi (M9)
+				e.fit_body_h = Corpse3D.BODY_H
+			e.set_meta("outfit", outfit)
 			if not e.setup(k, k == "stalker"):
 				e.free()
 				_enemies[id] = [n, null]                  # bez modelu nic nie widać (wszystkie rodzaje mają modele)
@@ -1409,6 +1415,12 @@ func _sync_enemies(delta: float) -> void:
 		var st: Dictionary = _estate.get(id, {"alive": true, "flash": false, "wind": false, "py": NAN, "vy": 0.0})
 		st["off_dt"] = 0.0
 		var info: Dictionary = src.call("view_info")                          # kontrakt widoku (enemy.gd: view_info) — wszystkie rodzaje z modelem go mają
+		if bool(info.get("as_downed", false)) and String(info.get("outfit_model", "")) != String(e.get_meta("outfit", "")):
+			e.queue_free()                                                     # Mimik położył się jako powalony kolega (M9): model wroga od nowa w jego stroju
+			_enemies.erase(id)
+			_estate.erase(id)
+			_enemy_scan = true
+			continue
 		var alive: bool = bool(info["alive"])
 		var winding: bool = bool(info["winding"])
 		if bool(st["alive"]) and not alive:
@@ -1428,7 +1440,7 @@ func _sync_enemies(delta: float) -> void:
 		st["wind"] = winding
 		st["attack_seq"] = int(info.get("attack_seq", 0))
 		_estate[id] = st
-		var show: bool = (src.is_visible_in_tree() or dying) and body != null and not bool(info.get("as_corpse", false)) 				and float(info.get("rise", -1.0)) < 0.0                  # Mimik-zwłoki (także wstający, M7): rysuje go `_sync_corpses`
+		var show: bool = (src.is_visible_in_tree() or dying) and body != null and not bool(info.get("as_corpse", false)) 				and not bool(info.get("as_downed", false)) and float(info.get("rise", -1.0)) < 0.0     # Mimik-zwłoki i powalony (także wstający, M7, M9): `_sync_corpses`, `_sync_downed`
 		var near: bool = absf(pos.x - cam_x) < 90.0
 		if dying and not near:
 			e.set("finished", true)
@@ -8864,6 +8876,57 @@ func _sync_corpses() -> void:
 			elif rise < 0.0 and float(c.get("rise_u")) >= 0.0:
 				c.call("end_rise")
 				c.position.z = CORPSE_Z
+
+## Mimik jako powalony kolega (MIMIC_PLAN.md M9): leży w modelu postaci kolegi (corpse3d.gd poza „downed”, świeży strój, bez plamy krwi),
+## z sygnałami Mimika-zwłok (oczy i oddech w snopie, drgnięcie przy echu) i wstaje „wstecz”; potem widać model wroga w tym samym stroju.
+func _sync_downed() -> void:
+	for n in get_tree().get_nodes_in_group("downed_mimics"):
+		var nid: int = n.get_instance_id()
+		if not _downed.has(nid) and not n.is_queued_for_deletion():
+			_downed[nid] = [n, null, ""]
+	var cam_x := _cam_a.global_position.x
+	for id in _downed.keys():
+		var pr: Array = _downed[id]
+		var n = pr[0]
+		if not is_instance_valid(n) or (n as Node).is_queued_for_deletion():
+			if pr[1] != null and is_instance_valid(pr[1]):
+				(pr[1] as Node).queue_free()
+			_downed.erase(id)
+			continue
+		var vi: Dictionary = n.view_info()
+		var rise := float(vi.get("rise", -1.0))
+		var lying := bool(vi.get("as_downed", false))
+		var model := String(vi.get("outfit_model", ""))
+		if not lying and rise < 0.0:
+			if pr[1] != null and is_instance_valid(pr[1]):
+				(pr[1] as Node).queue_free()
+			_downed.erase(id)                                   # wstał albo wrócił do przebrania stojącego (koniec co-op)
+			continue
+		var c: Node3D = pr[1] if pr[1] != null and is_instance_valid(pr[1]) else null
+		if lying and (c == null or model != String(pr[2])) and String(pr[2]) != "!" + model:
+			if c != null:
+				c.queue_free()
+			c = Corpse3D.new()
+			var fl := -1.0 if float(n.get("_facing")) < 0.0 else 1.0         # serwer po demaskacji obraca go w tę stronę (enemy_mimic.gd `_down_flip`)
+			if not c.call("build", model, "downed", hash(String(n.name)) & 0x7fffffff, fl, true, false):
+				c.free()
+				pr[1] = null
+				pr[2] = "!" + model                               # bez pliku modelu nie budujemy co klatkę
+				continue
+			var at := Level3D.px_to_m(n.global_position)
+			c.position = Vector3(at.x, at.y, CORPSE_Z)
+			_set_layer(c, LAYER_WORLD)
+			_world.add_child(c)
+			pr[1] = c
+			pr[2] = model
+		if c == null:
+			continue
+		c.visible = absf(c.position.x - cam_x) < CORPSE_CULL_M
+		c.set("mimic_lit", float(vi.get("lit", 0.0)) if c.visible else 0.0)
+		c.set("mimic_echo", float(vi.get("echo", 0.0)) if c.visible else 0.0)
+		if rise >= 0.0 and c.visible:
+			c.call("rise", rise, float(vi.get("since_reveal", 0.0)))
+			c.position.z = lerpf(CORPSE_Z, 0.0, smoothstep(0.0, 1.0, rise))
 
 ## Zaschnięta krew pod tułowiem (shader kałuży, `wet` = 0: matowa i ciemna). W geometrii mapy, jak kałuże — znika z mapą.
 func _corpse_stain(at: Vector3, flip: float) -> MeshInstance3D:

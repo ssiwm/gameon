@@ -247,6 +247,8 @@ var _at_checkpoint := false
 var _is_remote := true
 var _revive_hold := 0.0
 var _revive_target_ref: Node2D = null
+var _fake_asked := false        ## prośba o „podniesienie” Mimika-powalonego już wysłana (MIMIC_PLAN.md M9)
+const DOWNED_MIMICS := "downed_mimics"   ## grupa Mimików udających powalonego kolegę (enemy_mimic.gd DOWNED_GROUP; bez preloadu — cykl)
 var _revive_sent_ms := 0
 ## Kroki liczymy z przebytej drogi, nie z czasu — inaczej krok „leci" w miejscu
 ## po stopniowaniu w dół albo lata w powietrzu.
@@ -1515,13 +1517,19 @@ func _go_down() -> void:
 		_breath_on = false
 		Audio.stop_loop("breath_loop")
 
-## Najbliższy leżący towarzysz w zasięgu podnoszenia (poza sobą).
+## Najbliższy leżący towarzysz w zasięgu podnoszenia (poza sobą). Człowiek widzi też Mimika udającego powalonego kolegę (MIMIC_PLAN.md M9) —
+## dla niego to zwykły leżący; bot podnosi tylko prawdziwych.
 func _revive_target() -> Node2D:
 	var best: Node2D = null
 	var best_d := REVIVE_RANGE
-	for p in get_tree().get_nodes_in_group("players"):
+	var cands: Array = get_tree().get_nodes_in_group("players")
+	if not is_bot:
+		cands = cands + get_tree().get_nodes_in_group(DOWNED_MIMICS)
+	for p in cands:
 		var pp := p as Node2D
-		if pp == null or pp == self or not pp.dead or pp.taken:
+		if pp == null or pp == self:
+			continue
+		if not pp.is_in_group(DOWNED_MIMICS) and (not pp.dead or pp.taken):
 			continue
 		var dx := absf(pp.global_position.x - global_position.x)
 		var dy := absf(pp.global_position.y - global_position.y)
@@ -1532,19 +1540,33 @@ func _revive_target() -> Node2D:
 			best = pp
 	return best
 
+## Postęp podnoszenia na plakietce celu (gracz albo Mimik-powalony — także już zdemaskowany, gdy pasek wraca do zera po zmianie celu).
+static func _show_revive(t: Node2D, v: float) -> void:
+	if t.has_method("set_revive_progress"):
+		t.set_revive_progress(v)
+	elif t.get("_beh") != null and t._beh.has_method("set_revive_progress"):
+		t._beh.set_revive_progress(v)
+
 ## Trzymanie przycisku przy leżącym koledze. Zwraca true, gdy postać jest
 ## „zajęta" podnoszeniem (stoi w miejscu i nie strzela).
 func _handle_revive(delta: float, holding: bool) -> bool:
 	var t: Node2D = _revive_target() if holding else null
 	if t != _revive_target_ref:
 		if _revive_target_ref != null and is_instance_valid(_revive_target_ref):
-			_revive_target_ref.set_revive_progress(0.0)
+			_show_revive(_revive_target_ref, 0.0)
 		_revive_hold = 0.0
 		_revive_target_ref = t
+		_fake_asked = false
 	if t == null:
 		return false
 	_revive_hold += delta
-	t.set_revive_progress(clampf(_revive_hold / _revive_time(), 0.0, 1.0))
+	_show_revive(t, clampf(_revive_hold / _revive_time(), 0.0, 1.0))
+	if t.is_in_group(DOWNED_MIMICS):
+		# Mimik (M9): po chwili podnoszenia serwer go demaskuje, a przemiana chwyta podnoszącego; postać stoi jak przy prawdziwym
+		if not _fake_asked and _revive_hold >= float(t._beh.REVIVE_GRAB_S):
+			_fake_asked = true
+			t.mimic_revive_request()
+		return true
 	if _revive_hold >= _revive_time():
 		_revive_hold = 0.0
 		t.set_revive_progress(0.0)
@@ -1578,6 +1600,8 @@ func revive_hint() -> String:
 	var t := _revive_target()
 	if t == null:
 		return ""
+	if t.is_in_group(DOWNED_MIMICS):
+		return tr("Hold [%s] to revive %s") % [Actions.key("interact"), t._beh.down_name()]      # Mimik (M9): jak prawdziwy kolega
 	return tr("Hold [%s] to revive %s") % [Actions.key("interact"), "the bot" if t.is_bot else t.label()]
 
 ## Prośba o podniesienie — rozstrzyga właściciel leżącej postaci.
@@ -1650,6 +1674,7 @@ func full_reset(keep_loadout := false, quiet := false) -> void:
 	_kick = 0.0
 	_revive_hold = 0.0
 	_revive_target_ref = null
+	_fake_asked = false
 
 ## Punkt odrodzenia (serwer → właściciel postaci, FUN_PLAN.md P0.3): skończona pozycja = punkt kontrolny walki z bossem (tam odradza
 ## wykrwawienie i restart od punktu kontrolnego), `Vector2.INF` = z powrotem start mapy. Serwer wysyła to przed `request_full_reset`.
