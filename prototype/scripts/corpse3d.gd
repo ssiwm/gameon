@@ -8,6 +8,10 @@ extends "res://scripts/enemy3d.gd"
 ## Mimik-zwłoki (M5, `build(…, mimic = true)`): ta sama poza, strój i materiał; różnią go sygnały: brak plamy pod ciałem (view3d), oczy
 ## otwarte — w snopie latarki łapią połysk (`mimic_lit` z widoku, jak u stojącego Mimika), a po BREATH_AFTER s ciągłego światła klatka
 ## piersiowa zaczyna się unosić. Tylko on liczy coś w klatce (`_process`); prawdziwe zwłoki stoją wypieczone.
+##
+## Demaskacja Mimika-zwłok (M7, `rise`): ciało wstaje „wstecz” — klip upadku od końca do początku, bez podparcia rąk, z łukiem pleców;
+## ułożenie (przetoczenie, podkulone nogi) gaśnie w pierwszej części ruchu. W tym czasie przemiana jak u stojącego (przedramiona, nakładka
+## materiału, żółte oczy). Po RISE_S widok przechodzi na model wroga, który stoi w miejscu stóp zwłok.
 
 ## Strój → plik modelu MPFB (te same, co operatorzy — w ciemności i z daleka czytelne jako „człowiek z drużyny”).
 const OUTFITS := {
@@ -37,6 +41,13 @@ var searched := false
 var seed_v := 0
 var mimic := false                               ## Mimik-zwłoki (M5)
 var mimic_lit := 0.0                             ## 0..1 snop latarki na nim (view3d z `view_info` Mimika)
+var rise_u := -1.0                               ## 0..1 postęp wstawania (M7); < 0 = leży
+const RISE_ARCH := 24.0                          ## °: łuk pleców w połowie wstawania
+const RISE_VARIANT := 0.3                        ## ułamek wstawania, w którym gaśnie ułożenie (przetoczenie, nogi)
+var _lie_rot := {}                               ## kość → obrót w wypieczonej pozie (początek wstawania)
+var _rise_arc := PackedFloat32Array()            ## droga głowy i bioder od końca klipu upadku (0..1) w RISE_SAMPLES krokach — równe tempo wstawania
+const RISE_SAMPLES := 48
+var _lie_pos := {}
 var lit_w := 0.0                                 ## wygładzone `lit` (połysk oczu)
 var breath_w := 0.0                              ## 0..1 waga oddechu (rośnie po BREATH_AFTER s światła)
 var _lit_s := 0.0
@@ -86,6 +97,9 @@ func build(out: String, pose: String, s: int, flip := 1.0, is_mimic := false) ->
 			mi.set_meta("side", sd)
 			_model.add_child(mi)
 			_mimic_eyes.append(mi)
+	if mimic:
+		_prepare_rise()
+		_bake()
 	set_process(mimic)
 	return true
 
@@ -94,7 +108,7 @@ func _process(delta: float) -> void:
 	step_mimic(delta)
 
 func step_mimic(delta: float) -> void:
-	if not mimic or _sk == null:
+	if not mimic or _sk == null or rise_u >= 0.0:
 		return
 	lit_w = move_toward(lit_w, mimic_lit, delta / (0.3 if mimic_lit > lit_w else 0.6))
 	_lit_s = _lit_s + delta if mimic_lit > 0.5 else 0.0
@@ -108,7 +122,7 @@ func step_mimic(delta: float) -> void:
 	_place_mimic_eyes()
 
 ## Oczy przy kości głowy (przestrzeń szkieletu → węzeł modelu), widoczne tylko z połyskiem.
-func _place_mimic_eyes() -> void:
+func _place_mimic_eyes(shine := true) -> void:
 	var hp := _gp(_b["Head"])
 	var rest := _sk.get_bone_global_rest(_b["Head"])
 	var rel := _transform_under(_sk, _model)
@@ -116,8 +130,9 @@ func _place_mimic_eyes() -> void:
 		var mi := e as MeshInstance3D
 		var p := rest.origin + Vector3(EYE_OFF.x, EYE_OFF.y, EYE_OFF.z * float(mi.get_meta("side")))
 		mi.position = rel * (hp * (rest.affine_inverse() * p))
-		(mi.material_override as StandardMaterial3D).albedo_color = Color(SHINE, lit_w)
-		mi.visible = lit_w > 0.02
+		if shine:
+			(mi.material_override as StandardMaterial3D).albedo_color = Color(SHINE, lit_w)
+			mi.visible = lit_w > 0.02
 
 ## Przeszukane (M4): ułożenie zmienia się o szczegół, który widać z kamery gry.
 func set_searched(on: bool) -> void:
@@ -128,22 +143,99 @@ func set_searched(on: bool) -> void:
 
 ## Poza: koniec klipu upadku → wariant → oparcie na gruncie.
 func _bake() -> void:
+	rise_u = -1.0
 	_sk.reset_bone_poses()
-	var anim := CharClips.clip("down", _sk)
-	if anim != null:
-		for t in anim.get_track_count():
-			var bone := _sk.find_bone(String(anim.track_get_path(t).get_concatenated_subnames()))
-			if bone < 0:
-				continue
-			match anim.track_get_type(t):
-				Animation.TYPE_ROTATION_3D:
-					_sk.set_bone_pose_rotation(bone, anim.rotation_track_interpolate(t, DOWN_T))
-				Animation.TYPE_POSITION_3D:
-					_sk.set_bone_pose_position(bone, anim.position_track_interpolate(t, DOWN_T))
+	_down_at(DOWN_T)
 	_variant()
 	_settle()
 	_sk.force_update_all_bone_transforms()
 	_chest_rest = _sk.get_bone_pose_rotation(_b["Spine2"])
+	for i in _sk.get_bone_count():
+		_lie_rot[i] = _sk.get_bone_pose_rotation(i)
+		_lie_pos[i] = _sk.get_bone_pose_position(i)
+
+## Poza z klipu upadku gracza w chwili `t` (od zresetowanej pozy).
+func _down_at(t: float) -> void:
+	var anim := CharClips.clip("down", _sk)
+	if anim == null:
+		return
+	for k in anim.get_track_count():
+		var bone := _sk.find_bone(String(anim.track_get_path(k).get_concatenated_subnames()))
+		if bone < 0:
+			continue
+		match anim.track_get_type(k):
+			Animation.TYPE_ROTATION_3D:
+				_sk.set_bone_pose_rotation(bone, anim.rotation_track_interpolate(k, t))
+			Animation.TYPE_POSITION_3D:
+				_sk.set_bone_pose_position(bone, anim.position_track_interpolate(k, t))
+
+## Klip upadku ma szybkie odcinki (sam upadek), więc wstawanie w równym czasie klipu szarpało: postęp `rise` idzie po drodze, jaką
+## w klipie od końca przebywają głowa i biodra (po oparciu na gruncie), a nie po czasie.
+func _prepare_rise() -> void:
+	_rise_arc.clear()
+	var prev: Array = []
+	var acc := 0.0
+	for i in RISE_SAMPLES + 1:
+		_sk.reset_bone_poses()
+		_down_at(DOWN_T * (1.0 - float(i) / RISE_SAMPLES))
+		_settle()
+		_sk.force_update_all_bone_transforms()
+		var pts := [_node_pt(_b["Head"]), _node_pt(_b["Hips"])]
+		if not prev.is_empty():
+			acc += (pts[0] as Vector3).distance_to(prev[0]) + (pts[1] as Vector3).distance_to(prev[1])
+		prev = pts
+		_rise_arc.append(acc)
+	if acc > 0.0:
+		for i in _rise_arc.size():
+			_rise_arc[i] /= acc
+
+## Czas klipu upadku dla postępu drogi `k` (0 = koniec klipu, leży; 1 = początek, stoi).
+func _rise_time(k: float) -> float:
+	var n := _rise_arc.size()
+	if n < 2:
+		return DOWN_T * (1.0 - k)
+	for i in n - 1:
+		if k <= _rise_arc[i + 1] or i == n - 2:
+			var span := maxf(_rise_arc[i + 1] - _rise_arc[i], 0.0001)
+			var f := clampf((k - _rise_arc[i]) / span, 0.0, 1.0)
+			return DOWN_T * (1.0 - (float(i) + f) / (n - 1))
+	return 0.0
+
+## Wstawanie Mimika-zwłok (M7): `u` 0..1 → klip upadku od końca, ułożenie gaśnie do RISE_VARIANT, łuk pleców, przemiana `since` s od demaskacji.
+func rise(u: float, since: float) -> void:
+	if _sk == null:
+		return
+	rise_u = clampf(u, 0.0, 1.0)
+	var k := smoothstep(0.0, 1.0, rise_u)
+	_sk.reset_bone_poses()
+	_down_at(_rise_time(k))
+	var lw := 1.0 - smoothstep(0.0, RISE_VARIANT, rise_u)
+	if lw > 0.0 and not _lie_rot.is_empty():
+		for i in _lie_rot:
+			_sk.set_bone_pose_rotation(i, _sk.get_bone_pose_rotation(i).slerp(_lie_rot[i], lw))
+			_sk.set_bone_pose_position(i, _sk.get_bone_pose_position(i).lerp(_lie_pos[i], lw))
+	var lr := (_gp(_b["RightArm"]).origin - _gp(_b["LeftArm"]).origin).normalized()
+	var arch := deg_to_rad(RISE_ARCH) * sin(PI * rise_u)
+	_rot_world(_b["Spine1"], lr, -arch * 0.5)                # pierś wypchnięta, głowa w tył — ciało ciągnie się w górę od mostka
+	_rot_world(_b["Spine2"], lr, -arch * 0.5)
+	_rot_world(_b["Head"], lr, -arch * 0.6)
+	var w := morph_weight(since)
+	_morph_bones(w)
+	morph_overlay(w)
+	_settle()
+	_sk.force_update_all_bone_transforms()
+	for e in _mimic_eyes:
+		(e.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.8, 0.25).lerp(Color(1.0, 0.96, 0.62), w)
+		e.scale = Vector3.ONE * (1.0 + MORPH_EYE * w)
+		e.visible = true
+	_place_mimic_eyes(false)
+
+## Koniec wstawania (widok przeszedł na model wroga) albo restart: znów leży bez przemiany.
+func end_rise() -> void:
+	morph_overlay(0.0)
+	for e in _mimic_eyes:
+		e.scale = Vector3.ONE
+	_bake()
 
 ## Zbudowane przed wejściem do drzewa: skóra nie dostała zmiany pozy (szkielet odświeża ją dopiero w drzewie) — wypiekamy jeszcze raz.
 func _ready() -> void:

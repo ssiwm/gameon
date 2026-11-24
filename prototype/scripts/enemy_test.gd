@@ -80,6 +80,7 @@ func run(m: Node2D) -> void:
 	await _test_elite_log()
 	await _test_mimic()
 	await _test_mimic_grab()
+	await _test_mimic_morph()
 	await _test_devourer()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
@@ -1898,10 +1899,11 @@ func _test_mimic_grab() -> void:
 	var ready_clip: String = b.attack_action()
 	var ready_view: String = String(m.view_info().get("motion_action", ""))
 	m._resolve_attack()
-	check("Mimik/chwyt: przemiana chwyta stojącego przy nim (klip `grab_hold`, `_sp` chwytu w widoku, obrażenia na początku)",
-			player.grabbed and b.grab_victim == player and b.grabs == 1 and player.hp == 5 - dmg and ready_clip == "grab_hold"
-			and ready_view == "grab_hold" and m.visual_attack_action == "grab_hold" and int(m.view_info()["sp"]) == b.SP_HOLD,
+	check("Mimik/chwyt: przemiana chwyta stojącego przy nim (klip przemiany `morph`, `_sp` chwytu w widoku, obrażenia na początku)",
+			player.grabbed and b.grab_victim == player and b.grabs == 1 and player.hp == 5 - dmg and ready_clip == "morph"
+			and ready_view == "morph" and m.visual_attack_action == "morph" and int(m.view_info()["sp"]) == b.SP_HOLD,
 			"grabbed %s hp %d klip %s/%s/%s sp %d" % [player.grabbed, player.hp, ready_clip, ready_view, m.visual_attack_action, int(m.view_info()["sp"])])
+	b.morph_t = 0.0                                  # przemiana minęła (tik serwera wyłączony) — obrażenia bez mnożnika M7
 	var ticks := 0
 	while b.grab_victim != null and ticks < 40:
 		b.tick_phase(0.05, player)
@@ -1909,6 +1911,10 @@ func _test_mimic_grab() -> void:
 	check("Mimik/chwyt: trzyma ok. 1,5 s, na końcu drugi cios i puszcza", not player.grabbed and player.hp == 5 - 2 * dmg and m._sp == 0
 			and absf(ticks * 0.05 - b.GRAB_S) < 0.06 and m._cd >= b.GRAB_AFTER_CD - 0.001, "%d tików, hp %d" % [ticks, player.hp])
 	m._cd = 0.0
+	b.grab_ready = 1.0
+	var hold_clip: String = b.attack_action()
+	b.grab_ready = 0.0
+	check("Mimik/chwyt: chwyt po przemianie klipem `grab_hold`", hold_clip == "grab_hold", hold_clip)
 	check("Mimik/chwyt: tylko pierwszy cios — kolejny zwykły (klip `jab`)", not b.strike(player) and b.attack_action() == ""
 			and EnemyMotion.action("mimik") == "jab" and not player.grabbed)
 	var grab := func() -> void:
@@ -1964,6 +1970,47 @@ func _test_mimic_grab() -> void:
 	player._invuln = 0.0
 	player.velocity = Vector2.ZERO
 	player.set_physics_process(true)
+	await get_tree().process_frame
+
+## Przemiana (MIMIC_PLAN.md M7): demaskacja to MORPH_S zapowiedzi z klipem `morph`, w tym czasie obrażenia × MORPH_DMG; potem zryw LOPE_S
+## z prędkością LOPE_SPEED i powrót do zwykłej. Widok dostaje czas od demaskacji; dołączający widzi Mimika już po przemianie.
+func _test_mimic_morph() -> void:
+	var pos := Vector2(FAR_X + 34000.0, 0.0)
+	var m := _spawn("mimik", pos)
+	var joiner := _spawn("mimik", pos + Vector2(600.0, 0.0))
+	joiner.active = true                               # zdemaskowany, zanim widok go zobaczył (dołączający do sesji)
+	for e in [m, joiner]:
+		e.set_physics_process(false)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var b = m._beh
+	var hit := func(amount: float) -> float:
+		var hp0: float = m.hp
+		m.take_hit({"amount": amount, "dir": Vector2.RIGHT, "pos": m.global_position, "shooter": 1, "type": "bullet", "w": Weapons.M83})
+		return hp0 - float(m.hp)
+	var plain: float = hit.call(8.0)
+	m.wake("light")
+	await get_tree().process_frame
+	var vi: Dictionary = m.view_info()
+	check("Mimik/przemiana: zapowiedź 0,9 s bez celu, klip `morph` w symulacji i widoku", is_equal_approx(m._windup_duration, b.MORPH_S)
+			and m.winding and b.attack_action() == "morph" and vi.get("motion_action") == "morph", "%.2f s, %s/%s" % [m._windup_duration, b.attack_action(), vi.get("motion_action")])
+	var morphing: float = hit.call(8.0)
+	check("Mimik/przemiana: obrażenia ×1,25 w czasie przemiany", plain > 0.0 and is_equal_approx(morphing, plain * b.MORPH_DMG), "%.2f / %.2f" % [morphing, plain])
+	check("Mimik/przemiana: widok dostaje czas od demaskacji, stojący nie wstaje ze zwłok", float(vi.get("since_reveal", -1.0)) >= 0.0
+			and float(vi.get("since_reveal", 9.0)) < 0.2 and float(vi.get("rise", 0.0)) < 0.0 and vi.get("from_corpse") == false, str(vi.get("since_reveal")))
+	check("Mimik/przemiana: dołączający widzi go już po przemianie", float(joiner.view_info().get("since_reveal", -1.0)) > 10.0)
+	var slow: float = b.speed_mult()
+	b.tick_prelude(b.MORPH_S + 0.05)
+	var lope: float = b.speed_mult()
+	var after: float = hit.call(8.0)
+	check("Mimik/przemiana: po przemianie zryw 110 px/s i zwykłe obrażenia", is_equal_approx(slow, 1.0) and is_equal_approx(lope * float(m._def["speed"]), b.LOPE_SPEED)
+			and is_equal_approx(after, plain) and is_equal_approx(b.lope_t, b.LOPE_S), "%.2f / %.2f" % [lope, after])
+	b.tick_prelude(b.LOPE_S + 0.05)
+	check("Mimik/przemiana: po 1,5 s zrywu zwykła prędkość", is_equal_approx(b.speed_mult(), 1.0))
+	b.reset()
+	check("Mimik/przemiana: restart zeruje przemianę i zryw", b.morph_t == 0.0 and b.lope_t == 0.0 and is_equal_approx(b.damage_mult(), 1.0))
+	for e in [m, joiner]:
+		e.queue_free()
 	await get_tree().process_frame
 
 ## Wołek rozpędza się tylko tam, gdzie ma podłogę pod całym rozbiegiem (i ścianę sprawdzoną na pełnym dystansie).

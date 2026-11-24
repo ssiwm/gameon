@@ -60,7 +60,11 @@ func asleep_free() -> bool:
 func tick_special(_delta: float) -> bool:
 	return false
 
-## Mnożnik obrażeń (pole ochronne Podsłuchacza); 1 = bez zmian.
+## Mnożnik prędkości pościgu (zryw Mimika po przemianie); 1 = bez zmian.
+func speed_mult() -> float:
+	return 1.0
+
+## Mnożnik obrażeń (pole ochronne Podsłuchacza < 1, przemiana Mimika > 1); 1 = bez zmian.
 func damage_mult() -> float:
 	return 1.0
 

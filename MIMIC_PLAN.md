@@ -1,6 +1,6 @@
 # Mimik — plan
 
-Status: **plan z 2026-11-23 (main 1.7.666, c20b205a).** Decyzje D1–D6 (§6) przyjęte 2026-11-24 — wszystkie warianty zalecane.
+Status: **plan z 2026-11-23 (main 1.7.666, c20b205a); wdrożone M0–M7 (1.7.671), dalej M8.** Decyzje D1–D6 (§6) przyjęte 2026-11-24 — wszystkie warianty zalecane.
 **M0–M2 wdrożone w 1.7.667** (odstępstwa: przebrany stojący nie oddycha tylko w ciemności — w snopie latarki oddycha głęboko, jako
 sygnał obok połysku oczu; solo bez innych postaci i bez bota etykieta to kryptonim spoza drużyny z `FALLBACK_NAMES`).
 **M3–M4 wdrożone w 1.7.668** (odstępstwa: stroje to istniejące modele MPFB — mundur polowy `male_scav` dla patrolu, kombinezon
@@ -21,6 +21,18 @@ omijają chwilową niewrażliwość po trafieniu. Lżejszy klip nazywa się `jab
 zapowiedź, a widok trzyma pozę tuż po kontakcie, póki serwer trzyma ofiarę (`_sp` = 1, enemy3d.gd `hold_sp`). Bot pomaga dotychczasowym
 zachowaniem — podskakuje dla czystej linii nad kolegą i strzela; test sprawdza, że jego obrażenia zrywają chwyt. Pasek akcji bez licznika
 — 1,5 s to za mało na odczyt. Sieć: test `test_net_session.sh` — dołączający przeszukuje Mimika i dostaje `grabbed`.)
+**M7 wdrożone w 1.7.671** (odstępstwa: przemiana to zapowiedź 0,9 s z klipem `morph` (szarpnięcie w tył z odrzuconą głową, potem
+nisko zgarbiony z rękami przy ziemi, kontakt jak chwyt); głowa skręca się za daleko (~80°) w pierwszych 0,6 s. Przedramiona ×1,42
+(skala kości, dłoń bez rozciągnięcia) i zostają długie do restartu. Plecak spada jako sztywna kopia siatki w pozie klatki piersiowej
+(nie wypiek skóry — headless nie ma szkieletu w serwerze renderowania) razem z toborem / butlą kombinezonu / torbą górnika i leży 60 s.
+Materiał to nakładka `next_pass` na siatkach stroju i ciała: mundur szarzeje (kamuflaż przebija), skóra blednie z ciemnymi żyłami
+z szumu na UV — nie parametr istniejącego shadera, bo model MPFB ma kilkanaście siatek z własnymi materiałami. Oczy ×1,8 i jaśniejsze.
+Wstawanie z leżenia to klip upadku gracza (`down`) od końca do początku — poza startowa jest dokładnie pozą zwłok; tempo po drodze głowy
+i bioder (klip ma szybki odcinek upadku), ułożenie gaśnie w pierwszych 30%, łuk pleców w połowie; trwa 0,75 s w modelu zwłok, potem widok
+przechodzi na model wroga **w stroju udawanych zwłok** (technik, górnik — wcześniej stał zawsze w mundurze patrolu). Serwer obraca leżącego
+przodem do stóp zwłok. `lope` to postawa z profilu (pochylenie +20°, biodra niżej, dłonie przy kolanach), nogi dalej z klipu `human` —
+dłuższy krok rozjeżdżał stopy z klipem. Obrażenia ×1,25 tylko przez 0,9 s przemiany, także od ognia i wybuchu; zryw 110 px/s przez 1,5 s
+po niej. Dołączający w trakcie widzi Mimika już po przemianie. Stykówka: `tools/shot_mimic_morph.gd`.)
 Kolejność wg rekomendacji z analizy: najpierw M0–M2
 (pomiar i przebranie, które trzyma się na ekranie), potem rdzeń M3–M6 (zwłoki w świecie i Mimik udający zwłoki — główna zmiana
 rozgrywki, działa w solo), dalej M7 (przemiana i ruch) i M8 (echo krzyku). M9 (powalony kolega) czeka na sesje co-op.

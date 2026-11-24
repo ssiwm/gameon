@@ -81,7 +81,7 @@ const SPEC := {
 	# w snopie latarki (oddech też tylko w świetle), po demaskacji świecą stale; w świetle odwraca twarz od kamery.
 	"mimik": {"no_heed": true, "model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"carry": "m83", "eye_shine": true,
-		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human", "hold_sp": 1,
+		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human", "hold_sp": 1, "morph": true,
 		"idle": {"tics": ["look"], "rate": [3.0, 7.0]},
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
 	# Ćma: naturalna rozpiętość ok. 14 cm (1,7 px; było 18 px = 1,5 m); skrzydła machają z własnego zegara (WING_HZ), nie w tempie klatek sprite'a
@@ -330,6 +330,7 @@ func motion_context(info: Dictionary) -> void:
 		_swipe_recovery = float(info.get("swipe_recovery", 0.0))
 	_vein_face = float(info.get("face", 0.0))
 	_disguised = bool(info.get("disguised", false))
+	_since_reveal = float(info.get("since_reveal", -1.0))
 	_lit_target = float(info.get("lit", 0.0)) if _disguised else 0.0
 	_grounded_hint = int(bool(info["grounded"])) if info.has("grounded") else -1
 	_target_world_y = -float(info.get("target_y", NAN)) * PX
@@ -778,6 +779,49 @@ const EYE_LIGHT_ENERGY := 2.2
 const FLARE_LEAD := 0.25                     ## s przed ciosem: narasta obwódka (SPEC `flare`)
 var _lamp_w := 0.0                           ## 0..1 waga światła z pyska (tylko zapowiedź, nie „zauważył")
 var _flare := 0.0                            ## bieżąca siła obwódki (testy, zrzuty)
+## Przemiana Mimika po demaskacji (MIMIC_PLAN.md M7, SPEC `morph`): czas od demaskacji z symulacji (`since_reveal`) → waga przemiany.
+## Przedramiona wydłużają się (skala kości), głowa skręca się za daleko w szarpnięciu, plecak spada i zostaje na ziemi, mundur szarzeje,
+## skóra blednie z żyłami (nakładka `MORPH_SHADER` na siatkach stroju i ciała), oczy rosną i jaśnieją; chód `lope` — pochylony, ręce nisko.
+const MORPH_AT := Vector2(0.10, 0.85)        ## s od demaskacji: początek i koniec przemiany wyglądu
+const MORPH_ARM := 0.42                      ## przyrost długości przedramion (×1,42)
+const MORPH_HEAD := Vector3(0.04, 0.62, 78.0) ## s: początek i koniec skrętu głowy, ° skrętu w szczycie
+const MORPH_EYE := 0.8                       ## przyrost średnicy oczu
+const GEAR_DROP_AT := 0.18                   ## s od demaskacji: plecak spada z pleców
+const GEAR_DROP_S := 60.0                    ## s leżenia plecaka na ziemi
+const DROP_GEAR := ["backpack", "gear", "medbag"]   ## sprzęt na plecach, który spada (plecak, tobół i stelaż albo butla kombinezonu, torba górnika)
+const MORPH_KEEP := ["backpack", "gear", "canteen", "medbag", "pouch_L", "pouch_R", "low-poly", "eyebrow001"]   ## bez nakładki przemiany
+const MORPH_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_back;
+uniform float amount = 0.0;
+uniform float skin = 0.0;
+uniform vec3 tint = vec3(0.26, 0.27, 0.25);
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void fragment() {
+	float v = 0.0;
+	if (skin > 0.5) {
+		vec2 q = UV * 26.0;
+		float n = vn(q) * 0.6 + vn(q * 2.3 + 7.0) * 0.3 + vn(q * 5.1 + 3.0) * 0.1;
+		v = 1.0 - smoothstep(0.0, 0.035, abs(n - 0.5));
+	}
+	ALBEDO = mix(tint, vec3(0.22, 0.10, 0.20), v);
+	ROUGHNESS = 0.85;
+	ALPHA = amount * (skin > 0.5 ? mix(0.45, 0.85, v) : 0.38);
+}
+"""
+static var _morph_shader: Shader
+var _since_reveal := -1.0                    ## s od demaskacji (view_info `since_reveal`); < 0 = udaje
+var _morph_w := 0.0                          ## 0..1 waga przemiany (wygląd i chód)
+var _morph_mats: Array = []                  ## nakładki przemiany (next_pass siatek stroju i ciała)
+var _gear_drop: Node3D                       ## plecak leżący na ziemi po przemianie
+var _gear_dropped := false
+var fit_body_h := 0.0                        ## > 0: skala z tej wysokości siatki ciała zamiast `fit_mesh` (strój zwłok u Mimika-zwłok, corpse3d.gd BODY_H)
 
 ## Klipy jednorazowe i śmierć (modele z `"clips": true` w SPEC): trafienie, atak, śmierć; poza bazowa przechodzi płynnie (wagi), klip leży na wierzchu.
 const CLIP_DUR := {"hit": 0.32, "attack": 0.42}
@@ -887,6 +931,8 @@ func setup(k: String, translucent := false) -> bool:
 		ext = bb.size.x
 	_model_h = bb.size.y
 	_scale = float(fit[1]) * PX / maxf(ext, 0.001)
+	if fit_body_h > 0.0:
+		_scale = float(fit[1]) * PX / fit_body_h          # strój z uciętą siatką ciała (kombinezon) — skala jak model z pełnym ciałem
 	_pivot.scale = Vector3.ONE * _scale
 	var yaw := deg_to_rad(float(_spec.get("yaw", 0.0)))
 	_pivot.rotation.y = yaw
@@ -1079,6 +1125,10 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	if _spec.get("eye_shine", false) or _spec.has("carry"):
 		_disguise_w = move_toward(_disguise_w, 1.0 if _disguised and not _dead else 0.0, delta / 0.25)
 		_lit_w = move_toward(_lit_w, _lit_target, delta / (0.3 if _lit_target > _lit_w else 0.6))
+	if _spec.get("morph", false):
+		if _since_reveal < 0.0 and _gear_dropped:
+			_morph_reset()                         # restart misji bez śmierci: znów udaje
+		_morph_w = morph_weight(_since_reveal)
 	if flip != _last_flip or anim != _prev_anim or global_position.distance_to(_last_position) > 0.8:
 		_foot_locks.clear()
 	_last_flip = flip
@@ -1246,6 +1296,8 @@ func revive() -> void:
 	finished = false
 	_tilt.basis = Basis.IDENTITY
 	_tilt.position = Vector3.ZERO
+	if _spec.get("morph", false):
+		_morph_reset()
 
 ## Oczy Mimika: dwie świecące kulki przy głowie (model gracza nie ma świecących pikseli w teksturze).
 func _place_eyes() -> void:
@@ -1264,7 +1316,8 @@ func _place_eyes() -> void:
 			# przebrany: tylko połysk w snopie latarki (blady, zielonkawy — jak oczy zwierzęcia); zdemaskowany: stały żółty żar
 			var shine := maxf(_lit_w, 1.0 - _disguise_w)
 			var em := mi.material_override as StandardMaterial3D
-			em.albedo_color = Color(Color(0.78, 1.0, 0.82).lerp(Color(1.0, 0.8, 0.25), 1.0 - _disguise_w), shine)
+			em.albedo_color = Color(Color(0.78, 1.0, 0.82).lerp(Color(1.0, 0.8, 0.25), 1.0 - _disguise_w).lerp(Color(1.0, 0.96, 0.62), _morph_w), shine)
+			mi.scale = Vector3.ONE * (1.0 + MORPH_EYE * _morph_w)          # po przemianie oczy większe i jaśniejsze (M7)
 			mi.visible = mi.visible and shine > 0.02
 	if _eye_light != null:
 		_eye_light.visible = _lamp_w > 0.01
@@ -2149,7 +2202,22 @@ func _biped_params(anim: String) -> Dictionary:
 			_heavy_gait(p, ph)
 	if (anim == "idle" or anim == "sleep") and _life != null:
 		_idle_shift(p)
+	if _morph_w > 0.001 and anim in ["idle", "walk", "run"]:
+		_lope(p, anim != "idle", ph)
 	return p
+
+## Chód `lope` i postawa po przemianie (MIMIC_PLAN.md M7): tułów pochylony, biodra niżej, ręce nisko i szeroko przed udami — z wydłużonymi
+## przedramionami (`_morph_bones`) dłonie wiszą przy kolanach i kołyszą się szerzej niż u człowieka.
+func _lope(p: Dictionary, moving: bool, ph: float) -> void:
+	var w := _morph_w
+	p["lean"] = float(p["lean"]) + (20.0 if moving else 13.0) * w
+	p["drop"] = float(p["drop"]) + (0.08 if moving else 0.05) * w
+	p["hk"] = lerpf(float(p["hk"]), 1.25, w)                          # głowa wysunięta do przodu
+	var sw := (0.12 * sin(ph)) if moving else 0.0
+	for k in ["hR", "hL"]:
+		var sg := 1.0 if k == "hR" else -1.0
+		var h: Vector3 = p[k]
+		p[k] = h.lerp(Vector3(h.x + 0.12 + sw * sg, 0.58 + 0.05 * absf(sw) * 8.0, 0.38 * sg), w)
 
 ## Poza snu według rodzaju (IDLE_PLAN.md I2, warstwa B; SPEC `sleep_pose`): śpiący jest niski — kuca albo klęczy — więc sylwetką
 ## różni się od czuwającego, a mieści się w hitboxie stojącego (D1: serwer nic nie zmienia). Ciało zostaje zwrócone tam, gdzie `_facing`.
@@ -2362,6 +2430,128 @@ func _avert(w: float) -> void:
 	var ang := f_sk.angle_to(d_sk) * w
 	_rot_world(_b["Neck"], axis, ang * 0.4)
 	_rot_world(_b["Head"], axis, ang * 0.6)
+
+## Waga przemiany z czasu od demaskacji: 0 przed MORPH_AT.x, 1 od MORPH_AT.y (wygląd zostaje do restartu).
+static func morph_weight(since: float) -> float:
+	return 0.0 if since < 0.0 else smoothstep(MORPH_AT.x, MORPH_AT.y, since)
+
+## Po IK: przedramiona, skręt głowy w szarpnięciu, nakładka materiału, plecak (MIMIC_PLAN.md M7).
+func _morph_post() -> void:
+	_morph_bones(_morph_w)
+	if _since_reveal >= MORPH_HEAD.x and _since_reveal < MORPH_HEAD.y and _b.has("Head"):
+		var u := (_since_reveal - MORPH_HEAD.x) / (MORPH_HEAD.y - MORPH_HEAD.x)
+		var k := sin(PI * minf(u * 1.6, 1.0)) * (1.0 - smoothstep(0.7, 1.0, u))     # szybko za daleko, wolniej z powrotem
+		var up := (_sk.global_transform.basis.inverse() * Vector3.UP).normalized()
+		_rot_world(_b["Head"], up, deg_to_rad(MORPH_HEAD.z) * k)
+		_rot_world(_b["Neck"], up, deg_to_rad(MORPH_HEAD.z) * 0.35 * k)
+	morph_overlay(_morph_w)
+	if _since_reveal >= GEAR_DROP_AT and not _gear_dropped and not _dead and is_inside_tree():
+		_gear_dropped = true
+		_drop_gear()
+
+## Przedramiona dłuższe o MORPH_ARM × `w` (skala kości wzdłuż osi Y — do dłoni); dłoń bez rozciągnięcia.
+func _morph_bones(w: float) -> void:
+	if w < 0.001 or _sk == null:
+		return
+	var s := 1.0 + MORPH_ARM * w
+	for side in ["Left", "Right"]:
+		_sk.set_bone_pose_scale(_b[side + "ForeArm"], Vector3(1.0, s, 1.0))
+		_sk.set_bone_pose_scale(_b[side + "Hand"], Vector3(1.0, 1.0 / s, 1.0))
+
+## Nakładka przemiany na siatkach stroju i ciała (next_pass): mundur szarzeje, skóra blednie, na skórze żyły. Budowana przy pierwszym użyciu.
+func morph_overlay(w: float) -> void:
+	if _morph_mats.is_empty():
+		if w < 0.001 or _model == null:
+			return
+		if _morph_shader == null:
+			_morph_shader = Shader.new()
+			_morph_shader.code = MORPH_SHADER
+		for m in _model.find_children("*", "MeshInstance3D", true, false):
+			var mi := m as MeshInstance3D
+			if mi.mesh == null or String(mi.name) in MORPH_KEEP or mi in _eyes:
+				continue
+			var skin := String(mi.name) == "body"
+			for i in mi.mesh.get_surface_count():
+				var base := mi.get_active_material(i)
+				if base == null:
+					continue
+				var top := base.duplicate() as Material
+				var ov := ShaderMaterial.new()
+				ov.shader = _morph_shader
+				ov.set_shader_parameter("skin", 1.0 if skin else 0.0)
+				ov.set_shader_parameter("tint", Vector3(0.78, 0.78, 0.74) if skin else Vector3(0.26, 0.27, 0.25))
+				top.next_pass = ov
+				mi.set_surface_override_material(i, top)
+				_morph_mats.append(ov)
+	for ov in _morph_mats:
+		(ov as ShaderMaterial).set_shader_parameter("amount", w)
+
+## Plecak spada z pleców i zostaje na ziemi za Mimikiem: kopia siatki w pozie klatki piersiowej (sztywna bryła — bez wypieku skóry).
+func _drop_gear() -> void:
+	var parent := get_parent()
+	if parent == null or _model == null:
+		return
+	var bb := AABB()
+	var parts: Array = []
+	var chest: int = _b["Spine2"]
+	var carry := _sk.get_bone_global_pose(chest) * _sk.get_bone_global_rest(chest).affine_inverse()   # plecak jest sztywny: jedzie z klatką piersiową
+	for m in _model.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		if not String(mi.name) in DROP_GEAR or not mi.visible:
+			continue
+		var copy := MeshInstance3D.new()
+		copy.mesh = mi.mesh
+		for i in mi.mesh.get_surface_count():
+			var mat := mi.mesh.surface_get_material(i)
+			if mat != null:
+				copy.set_surface_override_material(i, mat)
+		copy.layers = mi.layers
+		var xf := _sk.global_transform * carry * mi.transform
+		parts.append([copy, xf])
+		var wb: AABB = xf * copy.mesh.get_aabb()
+		bb = wb if parts.size() == 1 else bb.merge(wb)
+		mi.visible = false
+	if parts.is_empty():
+		return
+	_gear_drop = Node3D.new()
+	parent.add_child(_gear_drop)
+	var c := bb.get_center()
+	_gear_drop.global_position = c
+	for pr in parts:
+		var copy: MeshInstance3D = pr[0]
+		_gear_drop.add_child(copy)
+		copy.global_transform = pr[1]
+	var back := -signf(_face) if absf(_face) > 0.01 else -1.0         # za plecami
+	var lying := Basis(Vector3.BACK, deg_to_rad(80.0) * -back)
+	var low := INF                                                       # najniższy wierzchołek po obrocie (względem środka) — leży na gruncie
+	for pr in parts:
+		var xf: Transform3D = pr[1]
+		var mesh: Mesh = (pr[0] as MeshInstance3D).mesh
+		for si in mesh.get_surface_count():
+			for v in mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]:
+				low = minf(low, (lying * (xf * (v as Vector3) - c)).y)
+	if not is_finite(low):
+		low = -minf(bb.size.x, bb.size.y) * 0.45
+	var floor_at := Vector3(c.x + back * 0.30, global_position.y + 0.01 - low, c.z)
+	var tw := _gear_drop.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(_gear_drop, "global_position", floor_at, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(_gear_drop, "global_basis", lying, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_interval(GEAR_DROP_S)
+	tw.chain().tween_callback(_gear_drop.queue_free)
+
+## Restart misji: Mimik znów udaje — sprzęt na plecach, bez nakładki; leżący plecak znika.
+func _morph_reset() -> void:
+	_morph_w = 0.0
+	morph_overlay(0.0)
+	if _gear_drop != null and is_instance_valid(_gear_drop):
+		_gear_drop.queue_free()
+	_gear_drop = null
+	_gear_dropped = false
+	if _model != null:
+		for m in _model.find_children("*", "MeshInstance3D", true, false):
+			if String(m.name) in DROP_GEAR:
+				(m as MeshInstance3D).visible = true
 
 ## Nasłuch (IDLE_PLAN.md A5, I4): waga obrotu głowy rośnie w ~0,35 s, gdy wróg w spoczynku „prawie usłyszał" hałas, i opada w ~0,8 s.
 ## Bez Mimika (przebranie: SPEC `no_heed`), pełzaczy (śpią pod sufitem) i modeli deformowanych (bez głowy).
@@ -2645,6 +2835,8 @@ func _pose_biped(anim: String, delta: float) -> void:
 		_idle_post(rest_w * (1.0 - w_att) * (1.0 - _air_w) * (1.0 - _motion_weight) * (0.0 if _clip == "hit" else 1.0))
 		_apply_heed(_heed_w * rest_w * (1.0 - w_att) * (1.0 - _air_w) * (1.0 - _motion_weight) * (0.0 if _clip == "hit" else 1.0))
 		_avert(_lit_w * _disguise_w * rest_w)
+		if _spec.get("morph", false):
+			_morph_post()
 	_place_carry()
 	if _dead:
 		_lay_blade(smoothstep(0.3, 0.85, clampf(_dead_t / _death_dur(), 0.0, 1.0)))
