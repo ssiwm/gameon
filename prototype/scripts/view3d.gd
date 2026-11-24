@@ -24,6 +24,7 @@ const DigGround := preload("res://scripts/dig_ground.gd")
 const DigEntrance3D := preload("res://scripts/dig_entrance3d.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
+const Corpse3D := preload("res://scripts/corpse3d.gd")
 const GaitSpeed := preload("res://scripts/gait_speed.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const HubProp := preload("res://scripts/hub_prop.gd")
@@ -181,6 +182,7 @@ var _old_torch := false                       ## dev `--oldtorch`: dawna latarka
 var _spr_bg: Sprite2D
 var _spr_fg: Sprite2D
 var _rigs := {}                          ## Node gracza → {actor, model, gun, root}
+var _corpses := {}                       ## id węzła zwłok 2D (corpse.gd) → [węzeł, Corpse3D, plama] (MIMIC_PLAN.md M3)
 var _enemies := {}                       ## id węzła wroga 2D → [węzeł, Enemy3D] (modele 3D wrogów; null w drugim polu = brak modelu)
 var _enemy_scan := true                  ## trzeba przejrzeć grupy wrogów (`_on_node_added`, model czekający na kolejkę, zapas co ENEMY_RESCAN_EVERY)
 var _no_model := {}                      ## id węzłów z grup wrogów bez modelu (rekwizyty w „enemies”) — przegląd ich pomija
@@ -516,6 +518,7 @@ func release() -> void:
 			(pr[1] as Node).queue_free()
 	_enemies.clear()
 	_estate.clear()
+	_corpses.clear()
 	queue_free()
 
 ## Dev (--perf): łączny czas `_process` widoku 3D w µs — synchronizacja świata 3D z symulacją 2D to praca wątku głównego, której nie ma
@@ -600,6 +603,7 @@ func _tick(delta: float) -> void:
 	_sync_rigs()
 	tp = _tp("rigs", tp)
 	_sync_enemies(delta)
+	_sync_corpses()
 	tp = _tp("enemies", tp)
 	if warm == 0:
 		return
@@ -8801,6 +8805,71 @@ void fragment() {
 const BLOOD_MAX := 110                      ## limit kałuż i smug ciągnięcia (najstarsze znikają)
 const BLOOD_MERGE_M := 0.45                 ## bliższe plamy zlewają się w jedną, większą kałużę
 const BLOOD_MAX_R := 0.75                   ## największy promień kałuży [m]
+
+## Zwłoki w świecie (MIMIC_PLAN.md M3–M4): model Corpse3D (strój i ułożenie z węzła corpse.gd, poza wypiekana raz) i zaschnięta plama
+## pod tułowiem. Budowa jak modele wrogów: przy budowie mapy wszystkie, potem ENEMY_MODELS_PER_FRAME na klatkę. Ciało stoi, więc co klatkę
+## tylko widoczność wg odległości od kamery i stan „przeszukane” (ręka odsunięta).
+const CORPSE_Z := -0.3                      ## m: za płaszczyzną gry — gracz, który przeszukuje, stoi przed ciałem
+const CORPSE_CULL_M := 40.0                 ## m od kamery w poziomie: dalej model ukryty
+const CORPSE_STAIN_R := 0.42                ## m: promień zaschniętej plamy
+
+func _sync_corpses() -> void:
+	var budget := 1000 if _life < _spawn_burst_until else ENEMY_MODELS_PER_FRAME
+	if Engine.get_process_frames() % ENEMY_RESCAN_EVERY == 0 or _life < _spawn_burst_until:
+		for n in get_tree().get_nodes_in_group("corpses"):
+			if n.is_queued_for_deletion() or _corpses.has(n.get_instance_id()) or budget <= 0:
+				continue
+			budget -= 1
+			var c := Corpse3D.new()
+			var fl := -1.0 if bool(n.flip) else 1.0
+			if not c.build(String(n.outfit), String(n.pose), hash(String(n.name)) & 0x7fffffff, fl):
+				c.free()
+				_corpses[n.get_instance_id()] = [n, null, null]
+				continue
+			var at := Level3D.px_to_m(n.global_position)
+			c.position = Vector3(at.x, at.y, CORPSE_Z)
+			c.set_searched(bool(n.searched))
+			_set_layer(c, LAYER_WORLD)
+			_world.add_child(c)
+			_corpses[n.get_instance_id()] = [n, c, _corpse_stain(at, fl)]
+	var cam_x := _cam_a.global_position.x
+	for id in _corpses.keys():
+		var pr: Array = _corpses[id]
+		if not is_instance_valid(pr[0]) or (pr[0] as Node).is_queued_for_deletion():
+			for k in [1, 2]:
+				if pr[k] != null and is_instance_valid(pr[k]):
+					(pr[k] as Node).queue_free()
+			_corpses.erase(id)
+			continue
+		if pr[1] == null or not is_instance_valid(pr[1]):
+			continue
+		var c: Node3D = pr[1]
+		c.visible = absf(c.position.x - cam_x) < CORPSE_CULL_M
+		if c.visible and bool(pr[0].searched) != bool(c.searched):
+			c.set_searched(bool(pr[0].searched))
+
+## Zaschnięta krew pod tułowiem (shader kałuży, `wet` = 0: matowa i ciemna). W geometrii mapy, jak kałuże — znika z mapą.
+func _corpse_stain(at: Vector3, flip: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(2.0, 2.0)
+	mi.mesh = pm
+	if _blood_shader == null:
+		_blood_shader = Shader.new()
+		_blood_shader.code = BLOOD_SHADER.replace("//COMMON", Level3D.PROP_COMMON)
+	var sm := ShaderMaterial.new()
+	sm.shader = _blood_shader
+	sm.set_shader_parameter("seed", fmod(at.x * 7.31, 40.0))
+	sm.set_shader_parameter("wet", 0.0)
+	sm.set_shader_parameter("fade", 0.8)
+	mi.material_override = sm
+	mi.layers = LAYER_WORLD
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position = Vector3(at.x - 0.25 * flip, at.y + 0.008, CORPSE_Z + 0.1)      # pod klatką piersiową (głowa w stronę −x · flip)
+	mi.rotation.y = fmod(at.x, TAU)
+	mi.scale = Vector3(CORPSE_STAIN_R * 1.4, 1.0, CORPSE_STAIN_R)
+	_geo.add_child(mi)
+	return mi
 
 ## Wołane z `Vfx.splat` (szczątki, śmierć wroga) i `BloodDecals.add` (kapanie rannych): krew zbiera się w lśniące kałuże na gruncie.
 ## Plama blisko istniejącej ją powiększa (kałuża rośnie), nowa rozlewa się przez ok. 1,5 s; z czasem krew zasycha (matowieje) i znika.

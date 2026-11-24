@@ -602,8 +602,9 @@ func _sole_flat(key: String) -> Array:
 ## Otoczka całej skóry: dla każdej kości skrajne punkty jej wierzchołków w 26 kierunkach (rogi, pięści, garb), jak próbki podeszwy.
 ## Liczona raz na rodzaj przy budowie modelu (SPEC `death_floor`, ok. 40 ms); koszt w klatce upadku to kilkaset punktów, nie cała siatka.
 func _prepare_hull() -> void:
-	if _hull_cache.has(kind):
-		_hull = _hull_cache[kind]
+	var cache_key := kind + model_path + ",".join(hull_skip)
+	if _hull_cache.has(cache_key):
+		_hull = _hull_cache[cache_key]
 		return
 	var directions: Array[Vector3] = []
 	for x in [-1.0, 0.0, 1.0]:
@@ -615,7 +616,7 @@ func _prepare_hull() -> void:
 	var meshes := []
 	for node in _model.find_children("*", "MeshInstance3D", true, false):
 		var mi := node as MeshInstance3D
-		if mi.skin == null or mi.mesh == null: continue
+		if mi.skin == null or mi.mesh == null or hull_skip.has(String(mi.name)): continue
 		var xf := _transform_under(_sk, _model).affine_inverse() * _transform_under(mi, _model)
 		var bind_bone := PackedInt32Array()
 		var bind_rest: Array[Transform3D] = []
@@ -683,7 +684,7 @@ func _prepare_hull() -> void:
 				sample.append([bind_bone[bones[index]], mi.skin.get_bind_pose(bones[index]) * ((meshes[at.x][1] as Transform3D) * vertices[at.z]), weights[index]])
 			hull.append(sample)
 	_hull = hull
-	_hull_cache[kind] = hull
+	_hull_cache[cache_key] = hull
 
 ## Broń przypięta do dłoni (SPEC `death_blade`): oś od rękojeści do czubka i szerokość ostrza (oś x siatki) w przestrzeni kości dłoni.
 func _prepare_blade() -> void:
@@ -731,6 +732,12 @@ func _pivot_on_foot() -> void:
 
 ## O ile (m) najniższy punkt otoczki skóry jest pod gruntem pod stopami; 0, gdy nic nie wchodzi w podłogę.
 func _hull_penetration() -> float:
+	var lowest := _hull_lowest()
+	if not is_finite(lowest): return 0.0
+	return maxf(global_position.y + 0.004 - lowest, 0.0)
+
+## Najniższy punkt otoczki skóry w bieżącej pozie (y w przestrzeni rodzica węzła modelu; INF bez otoczki).
+func _hull_lowest() -> float:
 	if _hull.is_empty():
 		_prepare_hull()
 	var lowest := INF
@@ -743,8 +750,7 @@ func _hull_penetration() -> float:
 			if not poses.has(bone): poses[bone] = _gp(bone)
 			point += (poses[bone] as Transform3D) * (influence[1] as Vector3) * float(influence[2])
 		lowest = minf(lowest, (transform * point).y)
-	if not is_finite(lowest): return 0.0
-	return maxf(global_position.y + 0.004 - lowest, 0.0)
+	return lowest
 
 ## Działa również podczas setup() przed wejściem modelu do drzewa.
 static func _transform_under(node: Node3D, ancestor: Node3D) -> Transform3D:
@@ -804,6 +810,8 @@ var _model_h := 1.0                        ## wysokość modelu w spoczynku (m, 
 ## Klipy animacji (char_clips.gd): chód dwunożnych — biodra i nogi z klipu, postawa i ręce dalej z profilu rodzaju.
 var clips_on := true                       ## false = same pozy z kodu (porównania w tools/shot_enemy_clip3d.gd)
 var walk_set := ""                         ## zestaw klipów wymuszony przed setup() (porównania); pusty = `walk_clip` ze SPEC
+var model_path := ""                       ## plik modelu wymuszony przed setup() (strój zwłok, corpse3d.gd); pusty = `model` ze SPEC
+var hull_skip: PackedStringArray = []      ## siatki pominięte w otoczce skóry (zwłoki opierają się ciałem, nie plecakiem — corpse3d.gd)
 var _cset := ""                            ## zestaw klipów tego wroga
 var _tree: AnimationTree
 var _ck := 0.0                             ## 0..1 udział klipów w stanach, które je mają (gaśnie po śmierci)
@@ -819,16 +827,24 @@ var _cknee := {}                           ## strona → kierunek kolana w klipi
 var _crise := 0.0                          ## o tyle biodra stoją wyżej niż w klipie (jednostki modelu)
 var _chips := Vector3.ZERO                 ## przesunięcie bioder z klipu względem spoczynku — ręce idą za ciałem
 
+## Rekwizyty na szkielecie wroga, które nie są rodzajem wroga (narzędzia i testy iterują po SPEC — tu ich nie widzą); setup() czyta oba.
+## Zwłoki w świecie (corpse3d.gd, MIMIC_PLAN.md M3): ten sam model i dopasowanie co Mimik (strój wybiera `model_path`), bez oczu, broni i klipów —
+## poza leżenia wypiekana raz przy budowie. Mimik udający zwłoki (M5) używa tej samej pozy i materiału.
+const PROP_SPEC := {
+	"corpse": {"no_heed": true, "model": "res://art/char3d/mpfb/male_scav.glb", "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8,
+		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "sleep_lean": 3.0}},
+}
+
 static func has_model(k: String) -> bool:
 	return SPEC.has(k) and ResourceLoader.exists(String((SPEC[k] as Dictionary).get("model", DIR + k + ".glb")))
 
 ## Buduje model. translucent: materiał z przezroczystością (Stalker znika bez światła).
 func setup(k: String, translucent := false) -> bool:
 	kind = k
-	_spec = SPEC.get(k, {})
+	_spec = SPEC.get(k, PROP_SPEC.get(k, {}))
 	if _spec.is_empty():
 		return false
-	var mp := String(_spec.get("model", DIR + k + ".glb"))
+	var mp := model_path if model_path != "" else String(_spec.get("model", DIR + k + ".glb"))
 	if not _scene_cache.has(mp):
 		_scene_cache[mp] = load(mp) as PackedScene
 	var ps: PackedScene = _scene_cache[mp]

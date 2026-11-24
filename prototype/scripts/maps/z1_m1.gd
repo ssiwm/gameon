@@ -48,6 +48,12 @@ const WEAPONS := []
 const POWER_CRATES := [[231, 22, Weapons.GNIEW4, 8]]
 ## Sejfy (FUN_PLAN.md P2.2): [kolumna, rząd, złom] — wyważanie trzymanym [E] jest głośne; przy strażnicy, pod ćmami.
 const STRONGBOXES := [[206, 22, 40]]
+## Zwłoki (MIMIC_PLAN.md M3–M4, corpse.gd): [kolumna, rząd, ułożenie (back/side/curl), strój (patrol/tech/miner), flagi] — Patrol Siedem
+## leży tam, gdzie zgubił nieśmiertelniki (`tag`: ciało kolumnę obok znacznika F, nieśmiertelnik dalej się podnosi), plus jeden przy strażnicy.
+## Przeszukanie trzymanym [E] daje drobny łup (D3); `flip` — głową w drugą stronę.
+const CORPSES := [[220, 10, "side", "patrol", {"tag": true, "flip": true}], [119, 17, "back", "patrol", {"tag": true}], [63, 22, "curl", "patrol", {"tag": true}],
+	[190, 22, "back", "patrol", {"tag": true}], [205, 33, "side", "patrol", {"tag": true}], [242, 42, "curl", "patrol", {"tag": true}],
+	[150, 22, "back", "patrol", {"flip": true}]]
 ## Akcenty dekoracji 3D [stopy, indeks z view3d.DECO_MODELS]: porzucony obóz patrolu — skrzynia, pniak, wygasłe ognisko przy Trzoskach, powalony pień; w obozie (M1a) ognisko w niecce, pień przed zboczem, skrzynia na płaskowyżu.
 const ACCENTS := [[Vector2(248, 368), 12], [Vector2(536, 368), 9], [Vector2(936, 368), 8], [Vector2(2312, 368), 10], [Vector2(268, 368), 21], [Vector2(968, 368), 21], [Vector2(1872, 368), 8], [Vector2(1304, 368), 10], [Vector2(2040, 288), 12]]
 ## Szósty nieśmiertelnik leży na wschodnim końcu dolnej galerii (za dwoma Trzoskami, obok skrzynki i skrytki) — powód, żeby zejść szybem serwisowym.

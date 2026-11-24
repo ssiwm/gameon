@@ -474,7 +474,7 @@ Inny wymiar: organiczne korytarze, grawitacja się zmienia, radio mówi głosami
 ### 10.1 Waluty
 | Waluta | Źródło | Wydatki |
 |--------|--------|---------|
-| **Złom** | Trupy wrogów, skrytki, sejfy (od 1.7.403: wyważane trzymanym [E], głośno — 40 złomu), premia za misję (ukończenie, cel poboczny, bez upadków, od 1.7.403 cichy cel: Uwaga < 60 przez cały cel, +30) | Bronie, części broni, zaopatrzenie, prasa, serwis, połowa badań, tokarka |
+| **Złom** | Trupy wrogów, skrytki, sejfy (od 1.7.403: wyważane trzymanym [E], głośno — 40 złomu), zwłoki Patrolu Siedem, obsługi radiostacji i górników (od 1.7.668: przeszukiwane trzymanym [E] 1,2 s, cicho; w ok. 60% drobny łup — złom 3–6, naboje albo bateria 4,5 V; przeszukane zostaje po wipe'ie), premia za misję (ukończenie, cel poboczny, bez upadków, od 1.7.403 cichy cel: Uwaga < 60 przez cały cel, +30) | Bronie, części broni, zaopatrzenie, prasa, serwis, połowa badań, tokarka |
 | **XP — poziom profilu** | Zabójstwa, wynik misji (cel poboczny, bez upadków, boss, pierwsze ukończenie), podniesienie kolegi | Poziomy gracza → sloty perków, perki, stroje i palety (do L6) |
 | **Próbki** | Cele poboczne, elity, bossowie | Badania części broni specjalnych w pracowni |
 
