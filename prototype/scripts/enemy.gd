@@ -1346,6 +1346,8 @@ func _resolve_attack() -> void:
 			var at := Vector2(rc.position.x if side > 0.0 else rc.end.x, global_position.y - (_def["size"] as Vector2).y * 0.6)
 			bw.call("take_hit", {"type": "claw", "amount": float(_def["claw_barricade"]), "pos": at, "dir": Vector2(side, 0.0), "src": kind})
 		return
+	if _beh.strike(pp):
+		return
 	if pp != null and is_instance_valid(pp) and not pp.dead and _in_reach(pp, 6.0) and not _wall_between(pp):
 		if _def.get("frontal", false) and (pp.global_position.x - global_position.x) * _facing < -1.0:
 			return
@@ -1466,6 +1468,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 		dmg *= shield_mult
 		mat = 1                          # pole ochronne: iskry i szary hitmarker jak przy pancerzu
 	hp -= dmg
+	_beh.took_hit(info, dmg)
 	if bool(_def.get("elite", false)):
 		var w_hit := int(info.get("w", -1))
 		_note_elite_dmg(dmg, String(Weapons.base_def(w_hit).key) if Weapons.is_valid(w_hit) else String(info.get("type", "other")))

@@ -845,6 +845,7 @@ func _corpse_net_step() -> void:
 ## Test sieci Mimika-zwłok (--mimicnet=N, tools/test_net_session.sh, MIMIC_PLAN.md M5): host po N s przechodzi z kryjówki na 1.2
 ## (`_restart_mission` → `_set_map`: ziarno w RPC wczytania mapy), klient czeka na 1.2 z Mimikiem-zwłokami. Każdy wypisuje gniazdo (ciało
 ## z `mimic`), ziarno i to, czy Mimik leży jako zwłoki; dołączający później dostaje ziarno w RPC dołączenia. Klient kończy sam.
+## Klient z `--mimicgrab` (M6) potem przeszukuje Mimika i czeka, aż serwer go chwyci (`grabbed` u klienta); host wypisuje liczbę chwytów.
 func _mimic_net_step() -> void:
 	var host := "--host" in OS.get_cmdline_user_args()
 	if host:
@@ -861,8 +862,32 @@ func _mimic_net_step() -> void:
 	var mm: Node = level.get_node_or_null("MimikCorpse1")
 	var lying: bool = mm != null and bool(mm.view_info().get("as_corpse", false))
 	print("[MIMIC-NET] %s map=%s slot=%s seed=%d lying=%s" % ["host" if host else "client", level.map_id, slot, int(level.mimic_seed), str(lying)])
-	if not host:
-		get_tree().quit()
+	if host:
+		for _i in 240:                                 # do 60 s: chwyt klienta z `--mimicgrab` (M6)
+			if mm != null and int(mm._beh.grabs) > 0:
+				print("[MIMIC-NET] host grabs=%d" % int(mm._beh.grabs))
+				break
+			await get_tree().create_timer(0.25).timeout
+		return
+	if "--mimicgrab" in OS.get_cmdline_user_args() and slot != "-":
+		# M6: klient przeszukuje Mimika-zwłoki — serwer demaskuje i chwyta go, `grabbed` dochodzi do właściciela postaci przez RPC
+		var me: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
+		var cp: Node2D = level.get_node_or_null(slot)
+		var got := false
+		if me != null and cp != null:
+			me.global_position = cp.global_position + Vector2(-8.0, -1.0)
+			me.velocity = Vector2.ZERO
+			await get_tree().physics_frame
+			Input.action_press("interact")
+			for _i in 40:
+				got = got or bool(me.grabbed)
+				if got:
+					break
+				await get_tree().create_timer(0.1).timeout
+			Input.action_release("interact")
+		print("[MIMIC-NET] client grabbed=%s" % str(got))
+		await get_tree().create_timer(1.0).timeout
+	get_tree().quit()
 
 ## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
 ## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną), deski w pustym otworze Opening1 (D2b), skrzyni

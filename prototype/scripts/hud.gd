@@ -2286,6 +2286,15 @@ func _tide_boss() -> Node:
 		return b
 	return null
 
+## Gracz przypięty chwytem (bez Pijawki — Mimik); najpierw własna postać.
+func _grabbed_player() -> Node:
+	if _player != null and _player.grabbed:
+		return _player
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.grabbed and not p.dead:
+			return p
+	return null
+
 func _grab_boss() -> Node:
 	var b := get_tree().get_first_node_in_group("boss")
 	if b != null and b.get("grab_victim_id") != null and int(b.grab_victim_id) != 0:
@@ -2408,6 +2417,13 @@ func _prompt_candidates() -> Array:
 		# chwyt Pijawki (QTE drużyny): ofiara i koledzy widzą ten sam pasek — ile obrażeń jeszcze brakuje do uwolnienia
 		var mine: bool = int(grab_boss.grab_victim_id) == int(_player.player_id)
 		add.call((tr("GRABBED — shoot the leech to break free  ·  %.0fs") if mine else tr("Teammate grabbed — shoot the leech!  ·  %.0fs")) % float(grab_boss.grab_time_left), float(grab_boss.grab_progress), UiTheme.DANGER)
+	elif alive:
+		# chwyt Mimika (MIMIC_PLAN.md M6): bez Pijawki `grabbed` daje tylko on — chwycony bije wręcz, koledzy strzelają albo ogłuszają
+		var held := _grabbed_player()
+		if held == _player:
+			add.call(Actions.fmt(tr("GRABBED — hit it ({melee}) to break free")), -1.0, UiTheme.DANGER)
+		elif held != null:
+			add.call(tr("Teammate grabbed — shoot the mimic!"), -1.0, UiTheme.DANGER)
 	if tide_boss != null and alive:
 		if String(tide_boss.surge_state) == "warn":
 			add.call(tr("THE TIDE IS RISING — climb to the high catwalks!"), clampf(float(tide_boss._surge_t) / (float(tide_boss.SURGE_WARN) * Difficulty.m("boss_tide")), 0.0, 1.0), UiTheme.ACCENT)

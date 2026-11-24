@@ -81,7 +81,7 @@ const SPEC := {
 	# w snopie latarki (oddech też tylko w świetle), po demaskacji świecą stale; w świetle odwraca twarz od kamery.
 	"mimik": {"no_heed": true, "model": "res://art/char3d/mpfb/male_scav.glb", "eye_off": [0.12, 0.095, 0.033], "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8, "eyes": true, "turn": true,
 		"carry": "m83", "eye_shine": true,
-		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
+		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human", "hold_sp": 1,
 		"idle": {"tics": ["look"], "rate": [3.0, 7.0]},
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
 	# Ćma: naturalna rozpiętość ok. 14 cm (1,7 px; było 18 px = 1,5 m); skrzydła machają z własnego zegara (WING_HZ), nie w tempie klatek sprite'a
@@ -782,6 +782,7 @@ var _flare := 0.0                            ## bieżąca siła obwódki (testy,
 ## Klipy jednorazowe i śmierć (modele z `"clips": true` w SPEC): trafienie, atak, śmierć; poza bazowa przechodzi płynnie (wagi), klip leży na wierzchu.
 const CLIP_DUR := {"hit": 0.32, "attack": 0.42}
 const DEATH_DUR := {"biped": 1.15, "quad": 0.85}
+const HOLD_AT := 0.12                      ## s po kontakcie, w których zastyga poza trzymania (`hold_sp`: chwyt Mimika)
 const CORPSE_HOLD := 0.35                  ## s leżenia po upadku
 const CORPSE_SINK := 0.45                  ## s zapadania się w ziemię, potem model znika
 const BLEND_RATE := 9.0                    ## 1/s: tempo przechodzenia między pozami bazowymi
@@ -1113,6 +1114,8 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	if _clip != "":
 		if _clip == "attack" and _contact_frame:
 			_contact_frame = false
+		elif _clip == "attack" and sp != 0 and sp == int(_spec.get("hold_sp", -1)) and _clip_t >= HOLD_AT:
+			pass                                   # chwyt Mimika (MIMIC_PLAN.md M6): poza zastyga tuż po kontakcie, póki serwer trzyma ofiarę
 		else:
 			_clip_t += delta
 		if _clip_t >= clip_duration(_clip):

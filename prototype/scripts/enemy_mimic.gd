@@ -8,6 +8,12 @@ extends "res://scripts/enemy_behavior.gd"
 ## widok rysuje go jako zwłoki (corpse3d.gd), bez plamy krwi pod ciałem. Nie woła i nie ma etykiety. Demaskuje go: przeszukiwanie
 ## (po corpse.gd MIMIC_GRAB_S), przejście tuż nad nim (OVER_PX, także bot), trafienie, CORPSE_LIGHT_S ciągłego snopu, krzyk G (do M8).
 ## Leżąc ma niskie ciało i strefę trafień (LYING), po demaskacji wraca do stojących.
+##
+## Chwyt z przebrania (M6): pierwszy cios w ciągu GRAB_READY_S po demaskacji to chwyt (`strike`) — przemiana bez celu chwyta tego, kto stoi
+## przy nim (przeszukujący zwłoki), zwykła zapowiedź swój cel. Chwycony jest przypięty jak u Pijawki (`player.grabbed`: może strzelać i bić),
+## dostaje GRAB_DMG na początku i na końcu GRAB_S; Mimik trzyma go w miejscu (`tick_phase`, `_sp` = SP_HOLD dla widoku) i potem odskakuje.
+## Wcześniej puszcza (`took_hit`): cios wręcz chwyconego, ogłuszenie (strzelba, harpun, kilof), GRAB_FREE_DMG od innych, śmierć.
+## Kolejne ciosy są zwykłe, lżejszym klipem `jab`. Każdy chwyt to wpis `mimic_grab` w dzienniku sesji.
 
 const Lights := preload("res://scripts/lights.gd")
 const Player := preload("res://scripts/player.gd")
@@ -23,6 +29,14 @@ const LABEL_EVERY := 2.0             ## s między przeliczeniem etykiety (lista 
 const CORPSE_LIGHT_S := 2.5          ## s ciągłego snopu do demaskacji leżącego (dłużej niż stojący — „wytrzymuje” światło)
 const OVER_PX := 10.0                ## px: przejście tuż nad leżącym (ok. 0,6 m) go budzi
 const LYING := Vector2(26.0, 5.0)    ## px: ciało ruchu i strefa trafień leżącego (zwłoki mają ok. 26 px długości)
+const GRAB_READY_S := 2.5            ## s po demaskacji, w których cios jest chwytem (potem tylko zwykłe ciosy)
+const GRAB_S := 1.5                  ## s trzymania chwyconego
+const GRAB_DMG := 1                  ## obrażenia na początku i na końcu chwytu (× trudność)
+const GRAB_FREE_DMG := 20.0          ## obrażenia od innych (kolega, bot) w trakcie chwytu, które go zrywają
+const GRAB_SLACK := 12.0             ## px ponad zasięg ciosu: przemiana chwyta przeszukującego zwłoki (corpse.gd REACH_X 24 px)
+const GRAB_AFTER_CD := 0.9           ## s do następnego ciosu po puszczeniu
+const GRAB_RECOIL := 110.0           ## px/s odskoku Mimika po puszczeniu
+const SP_HOLD := 1                   ## `e._sp` w trakcie chwytu (replikowany — widok 3D trzyma pozę chwytu, enemy3d.gd `hold_sp`)
 ## Kryptonimy, gdy nie ma kogo udawać (sam, bez innych postaci i bez bota) — brzmią jak operatorzy, ale nikt ich nie nosi.
 const FALLBACK_NAMES := ["Kret", "Wiór", "Sowa", "Łoś"]
 
@@ -39,6 +53,14 @@ var _label_t := 0.0
 var corpse: Node2D = null    ## zwłoki, które udaje (M5); null = przebranie stojące
 var _stand_body := Vector2.ZERO
 var _stand_hurt := Vector2.ZERO
+var grab_ready := 0.0        ## s okna, w którym cios jest chwytem (serwer)
+var grab_victim: Node2D = null  ## chwycony gracz albo bot (serwer)
+var grab_t := 0.0            ## s do końca chwytu
+var grabs := 0               ## chwyty od początku misji (testy)
+var _grab_team := 0.0        ## obrażenia od innych w trakcie chwytu
+var _grab_dealt := 0         ## obrażenia zadane chwyconemu
+var _view_grab := 0.0        ## s okna chwytu wg widoku (klient nie zna `grab_ready`: liczy od demaskacji, którą widzi)
+var _seen_active := false
 
 ## Mimik-zwłoki (M5): leży w miejscu zwłok `cp` (level.gd przy budowie mapy, u każdego peera tak samo).
 func become_corpse(cp: Node2D) -> void:
@@ -69,6 +91,10 @@ func _lie(on: bool) -> void:
 			(hn as CollisionShape2D).position = Vector2(0.0, -hs.y * 0.5)
 
 func reset() -> void:
+	if grab_victim != null:
+		_release("", false)
+	grab_ready = 0.0
+	grabs = 0
 	if corpse != null:
 		_lie(true)
 	lure_t = 4.0
@@ -91,6 +117,7 @@ func on_wake() -> void:
 	e._windup = 0.35
 	e._windup_duration = e._windup
 	e.winding = true
+	grab_ready = GRAB_READY_S
 
 ## `mimic_reveal` (MIMIC_PLAN.md M0): przyczyna, odległość do najbliższego człowieka, wołania przed demaskacją, rodzaj przebrania, czas światła.
 func _log_reveal(cause: String) -> void:
@@ -133,11 +160,17 @@ func near_mult() -> float:
 
 ## Zabity Mimik-zwłoki zostawia łup ciała, które udawał.
 func on_death() -> void:
+	if grab_victim != null:
+		_release("death")
 	if corpse != null and is_instance_valid(corpse) and corpse.has_method("drop_mimic_loot"):
 		corpse.drop_mimic_loot()
 
 ## Widok (każdy peer): czy jeszcze udaje, i snop na nim — odwraca twarz, połysk oczu, oddech.
 func present(delta: float) -> void:
+	if e.active and not _seen_active:
+		_view_grab = GRAB_READY_S
+	_seen_active = e.active
+	_view_grab = maxf(0.0, _view_grab - delta)
 	_lit_t -= delta
 	if _lit_t > 0.0:
 		return
@@ -147,6 +180,8 @@ func present(delta: float) -> void:
 	_lit = 1.0 if on else 0.0
 
 func view_extra(d: Dictionary) -> void:
+	if (grab_ready if NoiseMgr.is_server() else _view_grab) > 0.0 and e.winding:
+		d["motion_action"] = "grab_hold"            # zapowiedź chwytu; klient liczy okno od demaskacji, którą widzi (`present`)
 	d["disguised"] = not e.active
 	d["lit"] = _lit
 	d["as_corpse"] = corpse != null and not e.active and e.alive          # widok rysuje go jako zwłoki (view3d `_sync_corpses`), nie jako wroga
@@ -224,3 +259,108 @@ func tick_asleep(delta: float) -> void:
 			e._mimic_call(at)
 	else:
 		lure_t = 1.0
+
+# ---------------------------------------------------------------- chwyt z przebrania (M6)
+
+func tick_prelude(delta: float) -> void:
+	grab_ready = maxf(0.0, grab_ready - delta)
+
+## Klip kontaktu: chwyt w oknie po demaskacji, potem zwykły lżejszy cios (`EnemyMotion.KIND`).
+func attack_action() -> String:
+	return "grab_hold" if grab_ready > 0.0 else ""
+
+func strike(pp: Node2D) -> bool:
+	if grab_ready <= 0.0:
+		return false
+	grab_ready = 0.0
+	var v: Node2D = pp if _grabbable(pp, 6.0) else null
+	if v == null and pp == null:
+		v = _victim_near()                     # przemiana bez celu: chwyta tego, kto stoi przy nim
+	if v == null:
+		return false
+	_begin_grab(v)
+	return true
+
+func _grabbable(p: Node2D, slack: float) -> bool:
+	return p != null and is_instance_valid(p) and not p.is_queued_for_deletion() and not p.dead and not p.grabbed and not p.taken 			and e._in_reach(p, slack) and not e._wall_between(p)
+
+func _victim_near() -> Node2D:
+	var best: Node2D = null
+	var best_d := INF
+	for n in e.get_tree().get_nodes_in_group("players"):
+		var p := n as Node2D
+		if not _grabbable(p, GRAB_SLACK):
+			continue
+		var d := absf(p.global_position.x - e.global_position.x)
+		if d < best_d:
+			best_d = d
+			best = p
+	return best
+
+func _begin_grab(v: Node2D) -> void:
+	grab_victim = v
+	grab_t = GRAB_S
+	_grab_team = 0.0
+	_grab_dealt = 0
+	grabs += 1
+	e._sp = SP_HOLD
+	var dx: float = v.global_position.x - e.global_position.x
+	if absf(dx) > 0.1:
+		e._facing = signf(dx)
+	e.velocity.x = 0.0
+	v.deliver_grab(true, v.global_position)
+	_grab_hit(v)
+
+func _grab_hit(v: Node2D) -> void:
+	if not is_instance_valid(v) or v.dead:
+		return
+	var n: int = e._scaled_damage(GRAB_DMG)
+	v.deliver_hit(n, e.global_position, e.kind, true)
+	_grab_dealt += n
+
+## Trzyma chwyconego w miejscu; po GRAB_S drugi cios i puszczenie. Leżący (pierwszy cios go powalił) wypada z chwytu.
+func tick_phase(delta: float, _target: Node2D) -> bool:
+	if grab_victim == null:
+		return false
+	var v := grab_victim
+	if not is_instance_valid(v) or v.is_queued_for_deletion() or v.dead:
+		_release("down")
+		return false
+	e.velocity.x = 0.0
+	grab_t -= delta
+	if grab_t <= 0.0:
+		_grab_hit(v)
+		_release("time")
+	return true
+
+## Uwolnienie: cios wręcz chwyconego, ogłuszenie, obrażenia od innych (MIMIC_PLAN.md M6).
+func took_hit(info: Dictionary, dmg: float) -> void:
+	if grab_victim == null or e.hp <= 0.0 or not is_instance_valid(grab_victim):
+		return
+	var by := int(info.get("shooter", -1))
+	var mine := by == int(grab_victim.player_id)
+	if mine and String(info.get("type", "")) == "melee":
+		_release("melee")
+	elif float(info.get("stun", 0.0)) >= e.WINDUP_INTERRUPT_STUN:
+		_release("stun")
+	elif not mine:
+		_grab_team += dmg
+		if _grab_team >= GRAB_FREE_DMG:
+			_release("team")
+
+## Puszcza chwyconego; `how`: time (trzymał do końca), melee / stun / team (uwolniony), down, death. Pusty `how` (reset) bez wpisu w dzienniku.
+func _release(how: String, recoil := true) -> void:
+	var v := grab_victim
+	grab_victim = null
+	e._sp = 0
+	if v != null and is_instance_valid(v):
+		v.deliver_grab(false, Vector2.ZERO)
+	if how == "":
+		return
+	e._cd = maxf(e._cd, GRAB_AFTER_CD)
+	if recoil and how != "death":
+		e.velocity.x = -e._facing * GRAB_RECOIL
+	var ok := v != null and is_instance_valid(v)
+	SessionLog.event("mimic_grab", {"who": "P%d" % int(v.display_id) if ok else "", "bot": bool(v.is_bot) if ok else false,
+		"freed": how in ["melee", "stun", "team"], "how": how, "dmg": _grab_dealt, "team": roundi(_grab_team),
+		"held": snappedf(GRAB_S - maxf(grab_t, 0.0), 0.1), "pos": SessionLog.xy(e.global_position)})
