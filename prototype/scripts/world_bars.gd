@@ -124,7 +124,7 @@ func _enemy(src: Node2D, model, id: int, delta: float, cx: Transform2D, zoom: fl
 	if is_nan(top.x):
 		return
 	if label != "":
-		_plates.append({"pos": top, "u": PLATE_SCALE * zoom, "label": label})
+		_plates.append({"pos": top, "u": PLATE_SCALE * zoom, "label": label, "col": bs.get("label_col", MIMIC_COL)})
 	if float(s["a"]) > 0.005:
 		var elite: bool = bs["elite"]
 		_bars.append({"pos": top, "w": maxf(float(bs["w"]) * zoom, BAR_MIN_W), "frac": f, "ghost": float(s["ghost"]), "a": float(s["a"]),
@@ -236,7 +236,8 @@ func _draw() -> void:
 		_draw_bar(b)
 	for p in _plates:
 		if p.has("label"):
-			_text(p["pos"] - Vector2(0.0, GAP), String(p["label"]), NAME_SIZE * float(p["u"]), Color(MIMIC_COL, 0.45), true)     # jak imię gracza przy pełnym życiu
+			# jak imię gracza przy pełnym życiu (plakietka bez kresek): kolor udawanego gracza, alfa jak `_draw_plate` przy a = 0 (MIMIC_PLAN.md M1)
+			_text(p["pos"] - Vector2(0.0, GAP), String(p["label"]), NAME_SIZE * float(p["u"]), Color(p["col"] as Color, 0.45), true)
 		elif bool(p["st"]["dead"]):
 			_draw_down(p["pos"], float(p["zoom"]), p["st"])
 		else:

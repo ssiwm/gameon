@@ -2495,7 +2495,7 @@ func _wake_chamber(at: Vector2) -> void:
 	var n := 0
 	for m in get_tree().get_nodes_in_group("moths"):
 		if m.get_parent() == get_parent() and String(m.get_meta("chamber", "")) == String(name) and bool(m.alive):
-			m.wake()
+			m.wake("dig")
 			n += 1
 	SessionLog.note_dig(String(name), "chamber")
 	SessionLog.event("dig_chamber", {"zone": String(name), "moths": n, "map": map_key})

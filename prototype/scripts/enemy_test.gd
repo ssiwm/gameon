@@ -77,6 +77,7 @@ func run(m: Node2D) -> void:
 	await _test_butcher_grates()
 	await _test_elite_placement()
 	await _test_elite_log()
+	await _test_mimic()
 	await _test_devourer()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
@@ -1774,6 +1775,104 @@ func _test_elite_log() -> void:
 	for e in [k, u]:
 		if is_instance_valid(e):
 			e.queue_free()
+	await get_tree().process_frame
+
+# ---------------------------------------------------------------- Mimik (MIMIC_PLAN.md M0–M2)
+
+## Snop latarki demaskuje po LIGHT_REVEAL_S ciągłego światła (sprawdzenia co 0,2 s), krótka ciemność nie zeruje licznika, dłuższa tak; inni wrogowie
+## budzą się od razu. Dziennik `mimic_reveal` z przyczyną, odległością, wołaniami i czasem światła. Etykieta przebrania w kolorze udawanego gracza,
+## pusta po demaskacji. Wołanie tylko, gdy ktoś jest w zasięgu słuchu, ale nie przy nim.
+func _test_mimic() -> void:
+	var pos := Vector2(FAR_X + 33000.0, 0.0)
+	var m := _spawn("mimik", pos)
+	var t := _spawn("trzosek", pos + Vector2(300.0, 0.0))
+	for e in [m, t]:
+		e.set_physics_process(false)
+	await get_tree().process_frame
+	var b = m._beh
+	var light := func(lit: bool) -> bool:          # jedno sprawdzenie światła 0,2 s po poprzednim
+		b._lit_ms = Time.get_ticks_msec() - 200
+		return b.light_wakes(lit)
+	var woke_at := -1
+	for i in 10:
+		if light.call(true):
+			woke_at = i + 1
+			break
+	check("Mimik: snop latarki demaskuje dopiero po ~1,5 s (8. sprawdzenie co 0,2 s)", woke_at == 8, "po %d sprawdzeniach" % woke_at)
+	b.reset()
+	for i in 5:
+		light.call(true)
+	light.call(false)
+	light.call(false)
+	var kept: float = b.lit_s
+	var after_gap: bool = light.call(true) or light.call(true) or light.call(true)
+	check("Mimik: 0,4 s ciemności nie zeruje licznika światła", kept >= 0.9 and after_gap, "licznik %.1f s" % kept)
+	b.reset()
+	for i in 6:
+		light.call(true)
+	for i in 3:
+		light.call(false)
+	check("Mimik: 0,6 s ciemności zeruje licznik światła", is_zero_approx(b.lit_s) and not light.call(true), "licznik %.1f s" % b.lit_s)
+	check("Mimik: inni wrogowie budzą się od pierwszego snopu", t._beh.light_wakes(true) and not t._beh.light_wakes(false))
+	check("Mimik: podejście budzi z bliska jak dotąd (mnożnik 1)", is_equal_approx(b.near_mult(), 1.0))
+	# etykieta i widok
+	var label: String = b.disguise_label()
+	var col: Color = b.disguise_color()
+	var bot: Node = null
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot:
+			bot = p
+	var col_ok: bool = col == Player.BOT_COLOR if bot != null and label == String(bot.label()) else Player.BODY_COLORS.has(col)
+	check("Mimik: etykieta przebrania jak imię gracza, w kolorze udawanego", label != "" and col_ok and m.bar_state().get("label_col") == col, "%s %s" % [label, col])
+	var vi: Dictionary = m.view_info()
+	check("Mimik: widok dostaje przebranie i snop (`disguised`, `lit`)", vi.get("disguised") == true and vi.has("lit"), str(vi.get("disguised")))
+	# wołanie
+	m.global_position = player.global_position + Vector2(160.0, 0.0)
+	b.lure_t = 0.0
+	var calls0: int = b.calls
+	b.tick_asleep(0.1)
+	var called: int = b.calls - calls0
+	m.global_position = player.global_position + Vector2(2000.0, 0.0)
+	b.lure_t = 0.0
+	b.tick_asleep(0.1)
+	check("Mimik: woła z zasięgu słuchu, z daleka nie", called == 1 and b.calls == calls0 + 1 and b.lure_t > 0.0, "%d, %d" % [called, b.calls - calls0])
+	m.global_position = pos
+	# dziennik demaskacji
+	const LOG_DIR := "user://test_mimic_log"
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "mimic"})
+	b.lit_s = 1.6
+	m.wake("light")
+	var m2 := _spawn("mimik", pos + Vector2(600.0, 0.0))
+	m2.set_physics_process(false)
+	await get_tree().process_frame
+	m2.take_hit({"amount": 5.0, "dir": Vector2.RIGHT, "shooter": 1, "w": Weapons.M83, "type": "bullet", "pos": m2.global_position})
+	await get_tree().process_frame
+	var rows: Array = []
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("\n"):
+		if line != "":
+			rows.append(JSON.parse_string(line))
+	var rev: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mimic_reveal")
+	var of := func(cause: String) -> Dictionary:
+		for r in rev:
+			if r["cause"] == cause:
+				return r
+		return {}
+	var r_light: Dictionary = of.call("light")
+	check("dziennik Mimika: demaskacja latarką z czasem światła, wołaniami, odległością i przebraniem", not r_light.is_empty()
+			and float(r_light.get("lit", 0.0)) >= 1.5 and int(r_light.get("calls", -1)) == 1 and int(r_light.get("dist", -1)) > 0
+			and r_light.get("disguise") == "stand" and r_light.has("pos"), str(r_light))
+	check("dziennik Mimika: demaskacja trafieniem (`cause` hit), jeden wpis na Mimika", not of.call("hit").is_empty() and rev.size() == 2, str(rev.size()))
+	check("Mimik: po demaskacji bez etykiety i bez przebrania w widoku", m.bar_state().get("label") == "" and m.view_info().get("disguised") == false)
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	SessionLog.dir = SessionLog.DIR
+	for f in DirAccess.get_files_at(LOG_DIR):
+		DirAccess.remove_absolute("%s/%s" % [LOG_DIR, f])
+	DirAccess.remove_absolute(LOG_DIR)
+	for e in [m, m2, t]:
+		e.queue_free()
 	await get_tree().process_frame
 
 ## Wołek rozpędza się tylko tam, gdzie ma podłogę pod całym rozbiegiem (i ścianę sprawdzoną na pełnym dystansie).
