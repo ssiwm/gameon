@@ -7,7 +7,7 @@ extends RefCounted
 ##
 ## Bryła: cztery nogi z bali z rozstawem u dołu na betonowych stopach; oczepy pod każdym podestem z tyłu i po bokach, krzyże stężeń w tylnej
 ## i bocznych płaszczyznach (przód zostaje otwarty — gra toczy się w płaszczyźnie z = 0); podesty na legarach z poręczą z tyłu, między nimi
-## strome drabiny schodowe za płaszczyzną gry; kabina z desek z pasem okien (z tyłu i z boków), przód jak w przekroju — tylko podwalina
+## tylne drabiny schodowe i szersze biegi przy przednich krawędziach podestów; kabina z desek z pasem okien (z tyłu i z boków), przód jak w przekroju — tylko podwalina
 ## i oczep; dach czterospadowy z papy z okapem, belki stropu pod nim (tam wiszą Ćmy i Skoczek).
 
 const Level3D := preload("res://scripts/level3d.gd")
@@ -24,8 +24,17 @@ const SILL := 1.0                     ## m: wysokość parapetu okien kabiny nad
 const WIN_TOP := 2.6                  ## m: nadproże pasa okien (wysokie okna: pas nad nimi i spód dachu nie zasłaniają pół kabiny w kadrze z gry)
 const EAVE := 0.5                     ## m: okap dachu poza obrysem nóg
 const RIDGE_H := 1.35                 ## m: kalenica nad belkami stropu
-const LADDER_Z := -0.45               ## m: oś drabin między podestami (za postaciami)
-const LADDER_W := 0.62
+const REAR_STAIR_Z := -1.42           ## m: oś tylnych biegów
+const REAR_STAIR_W := 0.7             ## m: między osiami policzków tylnego biegu
+const FRONT_STAIR_W := 0.92           ## m: między osiami policzków przedniego biegu
+const FRONT_STAIR_SETBACK := 0.32     ## m: przesunięcie stopy przedniego biegu w głąb względem jego wylotu
+const FRONT_STAIR_MARGIN := 0.02      ## m: odstęp zewnętrznego policzka od przedniej krawędzi podestu
+const GROUND_RUN := 1.75 * T         ## m: poziomy odcinek od gruntu do pierwszego podestu
+const STRINGER_W := 0.09              ## m: przekrój policzka
+const LANDING_BACK := -1.98           ## m: tylna krawędź podestu
+const LANDING_SPLIT_Z := -0.96        ## m: granica między wylotami biegów na podeście
+const LANDING_INSET := 0.38           ## m: cofnięcie wewnętrznej krawędzi tylnej części podestu w osi x
+const HATCH_W := 0.92                 ## m: otwór w podłodze kabiny za kładką graczy
 const BEAM_H := 0.2                   ## m: wysokość belek stropu (górą na spodzie kafla dachu)
 
 ## Strażnica z ogólnych reguł zamiast tej (dev `--oldtower`, porównania przed / po).
@@ -72,8 +81,45 @@ static func leg_at(d: Dictionary, side: float, front: bool, y: float) -> Vector3
 	var z := Z_FRONT if front else Z_BACK - SPLAY_Z * t
 	return Vector3(x, y, z)
 
+## Końce biegów z gruntu przez podesty do kabiny. Na podestach zawraca się między dwoma torami w osi z.
+static func stair_flights(lands: Array, d: Dictionary, deck_half: float) -> Array[PackedVector3Array]:
+	var flights: Array[PackedVector3Array] = []
+	if lands.is_empty():
+		return flights
+	var front_z := deck_half - (FRONT_STAIR_W + STRINGER_W) * 0.5 - FRONT_STAIR_MARGIN
+	for i in lands.size():
+		var land: Dictionary = lands[i]
+		var ascends_left := _landing_is_left(land, d)
+		if i > 0:
+			ascends_left = int(land["c0"]) < int(lands[i - 1]["c0"])
+		# Liczenie od góry rezerwuje tylny tor dla włazu w kabinie.
+		var front := (lands.size() - i) % 2 == 1
+		var exit_z := front_z if front else REAR_STAIR_Z
+		var foot_z := front_z - FRONT_STAIR_SETBACK if front else REAR_STAIR_Z
+		var exit := _landing_edge(land, d, ascends_left, exit_z)
+		var foot := Vector3(exit.x + (GROUND_RUN if ascends_left else -GROUND_RUN), -float(d["ground"]) * T, foot_z)
+		if i > 0:
+			foot = _landing_edge(lands[i - 1], d, not ascends_left, foot_z)
+		flights.append(PackedVector3Array([foot, exit]))
+	var last := flights[-1]
+	var direction := signf(last[0].x - last[1].x)
+	var top_foot := _landing_edge(lands[-1], d, direction > 0.0, REAR_STAIR_Z)
+	var top_exit := Vector3(top_foot.x + direction * (T + LANDING_INSET), -float(d["floor"]) * T, top_foot.z)
+	flights.append(PackedVector3Array([top_foot, top_exit]))
+	return flights
+
+static func _landing_is_left(land: Dictionary, d: Dictionary) -> bool:
+	return int(land["c0"]) + int(land["c1"]) < int(d["c0"]) + int(d["c1"])
+
+static func _landing_edge(land: Dictionary, d: Dictionary, right: bool, z: float) -> Vector3:
+	var col := int(land["c1"]) + 1 if right else int(land["c0"])
+	var x := float(col) * T
+	if z < LANDING_SPLIT_Z and right == _landing_is_left(land, d):
+		x += -LANDING_INSET if right else LANDING_INSET
+	return Vector3(x, -float(land["r"]) * T, z)
+
 ## Części konstrukcji jako przekształcenia pudła 1×1×1, wg roli (test `tools/test_watchtower.gd` sprawdza je osobno):
-## "legs", "footings", "girts", "braces", "joists" (legary i obrzeża podestów), "rails" (poręcze podestów), "ladders", "floor", "walls",
+## "legs", "footings", "girts", "braces", "joists" (legary i obrzeża podestów), "rails" (poręcze podestów), "ladders", "floor" (pokłady), "walls",
 ## "front" (oczep i podwalina z przodu kabiny), "beams" (belki stropu), "fascia"; "roof": [okap lo, okap hi, y kalenicy].
 static func parts(rows: Array, d: Dictionary) -> Dictionary:
 	var p := {}
@@ -136,44 +182,53 @@ static func parts(rows: Array, d: Dictionary) -> Dictionary:
 		for side in [-1.0, 1.0]:
 			p["braces"].append(Level3D._strut(leg_at(d, side, false, ya), leg_at(d, side, true, yb), BRACE))
 			p["braces"].append(Level3D._strut(leg_at(d, side, true, ya), leg_at(d, side, false, yb), BRACE))
-	# podesty: legary od tylnego oczepu do przodu, obrzeże z przodu, poręcz z tyłu; drabiny schodowe między kolejnymi podestami
-	var prev: Dictionary = {}
+	# Tylne deski podestów łączą oba tory schodów. Poręcz biegnie po zewnętrznej krawędzi desek.
+	var rail_z := LANDING_BACK + 0.07
 	for l in lands:
 		var r: int = l["r"]
 		var x0 := float(int(l["c0"])) * T
 		var x1 := float(int(l["c1"]) + 1) * T
 		var y_top := -float(r) * T
 		var y_un := y_top - deck_h
+		var back_x0 := _landing_edge(l, d, false, LANDING_BACK).x
+		var back_x1 := _landing_edge(l, d, true, LANDING_BACK).x
 		var zb := leg_at(d, -1.0, false, y_un - GIRT * 0.5).z
-		for x in [x0 + 0.15, (x0 + x1) * 0.5, x1 - 0.15]:
+		for x in [back_x0 + 0.15, (back_x0 + back_x1) * 0.5, back_x1 - 0.15]:
 			p["joists"].append(Level3D._span_box(Vector3(float(x) - 0.07, y_un - 0.2, zb), Vector3(float(x) + 0.07, y_un, dh + 0.02)))
 		p["joists"].append(Level3D._span_box(Vector3(x0, y_un - 0.18, dh - 0.02), Vector3(x1, y_un, dh + 0.06)))     # obrzeże z przodu, pod deskami
-		for x in [x0 + 0.08, x1 - 0.08]:                                                                            # poręcz z tyłu podestu
-			p["rails"].append(Level3D._span_box(Vector3(float(x) - 0.05, y_top, -dh - 0.12), Vector3(float(x) + 0.05, y_top + 1.05, -dh - 0.02)))
-		p["rails"].append(Level3D._span_box(Vector3(x0, y_top + 0.95, -dh - 0.13), Vector3(x1, y_top + 1.05, -dh - 0.01)))
-		p["rails"].append(Level3D._span_box(Vector3(x0, y_top + 0.5, -dh - 0.11), Vector3(x1, y_top + 0.57, -dh - 0.03)))
-		var from: Vector3
-		if prev.is_empty():                                         # z gruntu: obok podestu, po stronie środka wieży
-			var xa := x1 + T * 0.55 if float(int(l["c0"])) - float(d["c0"]) < 3.0 else x0 - T * 0.55
-			from = Vector3(xa, y_g, LADDER_Z)
-		else:
-			var px0 := float(int(prev["c0"])) * T
-			var px1 := float(int(prev["c1"]) + 1) * T
-			from = Vector3(px1 if px1 < x0 else px0, -float(int(prev["r"])) * T, LADDER_Z)
-		_ladder(p["ladders"], from, Vector3(x0 if from.x < x0 else x1, y_top, LADDER_Z))
-		prev = l
-	if not prev.is_empty():                                         # ostatni podest → właz w podłodze kabiny
-		var px1 := float(int(prev["c1"]) + 1) * T
-		_ladder(p["ladders"], Vector3(px1, -float(int(prev["r"])) * T, LADDER_Z), Vector3(px1 + 0.5, y_f, LADDER_Z))
-	# podłoga kabiny: belki w poprzek, deski poza włazem (kafle `-` w wierszu podłogi zostają kładką z modelu)
+		p["floor"].append(Level3D._span_box(Vector3(x0, y_un, LANDING_SPLIT_Z), Vector3(x1, y_top, -dh + 0.02)))
+		for i in 4:
+			var z0 := lerpf(LANDING_BACK, LANDING_SPLIT_Z, float(i) / 4.0)
+			var z1 := lerpf(LANDING_BACK, LANDING_SPLIT_Z, float(i + 1) / 4.0)
+			p["floor"].append(Level3D._span_box(Vector3(back_x0, y_un, z0), Vector3(back_x1, y_top, z1 - 0.006)))
+		for x in [back_x0 + 0.08, back_x1 - 0.08]:
+			p["rails"].append(Level3D._span_box(Vector3(float(x) - 0.05, y_top, rail_z - 0.05), Vector3(float(x) + 0.05, y_top + 1.05, rail_z + 0.05)))
+		p["rails"].append(Level3D._span_box(Vector3(back_x0, y_top + 0.95, rail_z - 0.06), Vector3(back_x1, y_top + 1.05, rail_z + 0.06)))
+		p["rails"].append(Level3D._span_box(Vector3(back_x0, y_top + 0.5, rail_z - 0.04), Vector3(back_x1, y_top + 0.57, rail_z + 0.04)))
+	var flights := stair_flights(lands, d, dh)
+	for flight in flights:
+		var foot := flight[0]
+		var exit := flight[1]
+		var front := exit.z > LANDING_SPLIT_Z
+		_stair(p["ladders"], foot, exit, FRONT_STAIR_W if front else REAR_STAIR_W)
+		if front:
+			var inward := signf(exit.x - foot.x)
+			p["joists"].append(_stair_seat(exit, inward, deck_h))
+			if foot.y > y_g + 0.01:
+				p["joists"].append(_stair_seat(foot, -inward, deck_h))
+	var hatch := Rect2()
+	if not flights.is_empty():
+		var top := flights[-1]
+		hatch = Rect2(minf(top[0].x, top[1].x), top[1].z - HATCH_W * 0.5, absf(top[1].x - top[0].x), HATCH_W)
+	# Podłoga kabiny: wycięcie na schody w tylnych deskach i belkach. Kafle `-` w pasie gry rysuje Level3D.
 	for c in range(int(d["c0"]), int(d["c1"]) + 1):
 		var x := float(c) * T
-		p["floor"].append(Level3D._span_box(Vector3(x + 0.05, y_f - 0.42, Z_BACK), Vector3(x + 0.25, y_f - 0.12, Z_FRONT + 0.1)))
+		_floor_box(p["floor"], Vector3(x + 0.05, y_f - 0.42, Z_BACK), Vector3(x + 0.25, y_f - 0.12, Z_FRONT + 0.1), hatch)
 		if _ch(rows, c, int(d["floor"])) == "-":
-			p["floor"].append(Level3D._span_box(Vector3(x, y_f - 0.1, Z_BACK - 0.1), Vector3(x + T, y_f, -dh - 0.02)))
+			_floor_box(p["floor"], Vector3(x, y_f - 0.1, Z_BACK - 0.1), Vector3(x + T, y_f, -dh - 0.02), hatch)
 			p["floor"].append(Level3D._span_box(Vector3(x, y_f - 0.1, dh + 0.02), Vector3(x + T, y_f, Z_FRONT + 0.15)))
 		else:
-			p["floor"].append(Level3D._span_box(Vector3(x, y_f - 0.1, Z_BACK - 0.1), Vector3(x + T, y_f, Z_FRONT + 0.15)))
+			_floor_box(p["floor"], Vector3(x, y_f - 0.1, Z_BACK - 0.1), Vector3(x + T, y_f, Z_FRONT + 0.15), hatch)
 	p["floor"].append(Level3D._span_box(Vector3(xl - 0.4, y_f - 0.1, Z_BACK - 0.1), Vector3(float(int(d["c0"])) * T, y_f, Z_FRONT + 0.15)))
 	p["floor"].append(Level3D._span_box(Vector3(float(int(d["c1"]) + 1) * T, y_f - 0.1, Z_BACK - 0.1), Vector3(xr + 0.4, y_f, Z_FRONT + 0.15)))
 	# kabina: ściana tylna i boczne z desek z pasem okien, słupki okienne, okiennice; przód otwarty (przekrój)
@@ -249,14 +304,38 @@ static func preview_lights(parent: Node3D, d: Dictionary) -> void:
 		ol.light_color = Color(0.85, 0.88, 1.0)
 		parent.add_child(ol)
 
-## Stroma drabina schodowa (dwa policzki i stopnie) od `a` (dół) do `b` (góra) w płaszczyźnie z = a.z.
-static func _ladder(out: Array, a: Vector3, b: Vector3) -> void:
-	for dz in [-LADDER_W * 0.5, LADDER_W * 0.5]:
-		out.append(Level3D._strut(a + Vector3(0, 0, dz), b + Vector3(0, 0.9, dz), 0.08))
-	var n := int((b.y - a.y) / 0.3)
-	for i in range(1, n + 1):
-		var q := a.lerp(b, float(i) / float(n + 1))
-		out.append(Level3D._span_box(Vector3(q.x - 0.12, q.y - 0.025, a.z - LADDER_W * 0.5), Vector3(q.x + 0.12, q.y + 0.025, a.z + LADDER_W * 0.5)))
+## Policzki i poziome stopnie mają wspólną linię od gruntu/podestu do krawędzi wyższego pokładu.
+static func _stair(out: Array, a: Vector3, b: Vector3, width: float) -> void:
+	var half_width := width * 0.5
+	for dz in [-half_width, half_width]:
+		var side := Vector3(0, 0, dz)
+		out.append(Level3D._strut(a + side, b + side, STRINGER_W))
+	var rises := maxi(2, ceili((b.y - a.y) / 0.28))
+	var half_tread := minf(0.125, absf(b.x - a.x) * 0.88 / float(rises))
+	for i in range(1, rises):
+		var q := a.lerp(b, float(i) / float(rises))
+		out.append(Level3D._span_box(q - Vector3(half_tread, 0.05, half_width), q + Vector3(half_tread, 0, half_width)))
+
+## Rygiel zachodzi na oba końce policzków przy krawędzi podestu i wiąże je z pokładem.
+static func _stair_seat(at: Vector3, inward: float, deck_h: float) -> Transform3D:
+	var half_width := (FRONT_STAIR_W + STRINGER_W) * 0.5 + 0.01
+	return Level3D._span_box(at + Vector3(-inward * 0.1, -deck_h - 0.03, -half_width),
+		at + Vector3(inward * 0.2, -0.006, half_width))
+
+## Wytnij prostokąt włazu w rzucie x/z, zachowując deskę lub belkę poza otworem.
+static func _floor_box(out: Array, lo: Vector3, hi: Vector3, hatch: Rect2) -> void:
+	var cut := hatch.intersection(Rect2(lo.x, lo.z, hi.x - lo.x, hi.z - lo.z))
+	if not cut.has_area():
+		out.append(Level3D._span_box(lo, hi))
+		return
+	if lo.x < cut.position.x:
+		out.append(Level3D._span_box(lo, Vector3(cut.position.x, hi.y, hi.z)))
+	if cut.end.x < hi.x:
+		out.append(Level3D._span_box(Vector3(cut.end.x, lo.y, lo.z), hi))
+	if lo.z < cut.position.y:
+		out.append(Level3D._span_box(Vector3(cut.position.x, lo.y, lo.z), Vector3(cut.end.x, hi.y, cut.position.y)))
+	if cut.end.y < hi.z:
+		out.append(Level3D._span_box(Vector3(cut.position.x, lo.y, cut.end.y), Vector3(cut.end.x, hi.y, hi.z)))
 
 ## Dach czterospadowy: okap prostokąt (lo.x..hi.x, lo.z..hi.z) na wysokości lo.y, kalenica wzdłuż x na `ridge_y`; papa na deskowaniu,
 ## obie strony widoczne (bez odrzucania tylnych ścian).

@@ -40,7 +40,7 @@ tylko głos. Krzyki w czasie oczekiwania łączą się w jedno echo; krzyk spoza
 echo; obudzony słyszy krzyk jak każdy wróg. **Dodatek:** przebrany Mimik nie budzi się z watahą (`sibling_wake_ok`) — krzyk budził Trzoska
 obok, a ten w promieniu 140 px budził Mimika (`pack`), co psuło test przy innych wrogach; obudzony dalej budzi sąsiadów. Dziennik `mimic_echo`
 (`disguise`, `dist` — droga dźwięku, `from`, `pos`, `n`) — do pomiaru, czy gracze zaczęli krzyczeć.)
-**Solo bez stojącego Mimika w 1.7.675** (uwaga z gry: „w solo Mimik miał leżeć jako zwłoki, a stoi i udaje gracza”; dziennik sesji 1.7.673:
+**Solo bez stojącego Mimika w 1.7.676** (uwaga z gry: „w solo Mimik miał leżeć jako zwłoki, a stoi i udaje gracza”; dziennik sesji 1.7.673:
 na 1.2 stojący zdemaskowany strzałem, a Mimika-zwłoki obudził alarm Podsłuchacza 266 px od gracza, zanim ten podszedł). Wybór użytkownika:
 w solo Mimik `Y` leży jako zwłoki w swoim miejscu — level.gd `_add_y_bodies` stawia przy każdym `Y` ciało (`MimikBody%d`, `y_body`, strój
 najczęstszy na mapie, ułożenie i strona z nazwy mapy), obecne tylko, gdy Mimik w nim leży. enemy_mimic.gd `want_mode`: solo → `corpse`,
@@ -266,7 +266,7 @@ Dziś w grze nie ma ani jednych zwłok. Mimik leżący jako jedyne ciało na map
 | D2 | Gęstość | a) ≥ 4 prawdziwe na Mimika-zwłoki; b) ≥ 2 | **a)** — przy 2 rzut monetą, przy 4 przeszukiwanie się opłaca, a Mimik zaskakuje |
 | D3 | Łup ze zwłok | a) ok. 60% drobny łup, 40% nic; b) zawsze coś; c) nic | **a)** — opłaca się podejść, ale nie zawsze; bez nowych walut |
 | D4 | Ile Mimików-zwłok | a) 1 na 1.2, 1–2 na 1.3, losowane z gniazd `mimic`; b) stała pozycja | **a)** — losowanie z ziarna misji, nie da się nauczyć na pamięć |
-| D5 | Przebranie stojące | a) zostaje (`Y`), w solo z etykietą postaci z OPERATORÓW; b) tylko w co-op; c) usunąć | **a)** po M1–M2; ocenić po M0 — jeśli w solo nadal nikt się nie nabiera, przejść na b) · **Zmiana 2026-11-24 (uwaga z gry, 1.7.675):** w solo Mimik `Y` leży jako zwłoki w swoim miejscu, stoi tylko w co-op (wybór użytkownika zamiast b) — łamie D2: w solo na 1.2 dwa fałszywe ciała na 8, na 1.3 trzy na 8) |
+| D5 | Przebranie stojące | a) zostaje (`Y`), w solo z etykietą postaci z OPERATORÓW; b) tylko w co-op; c) usunąć | **a)** po M1–M2; ocenić po M0 — jeśli w solo nadal nikt się nie nabiera, przejść na b) · **Zmiana 2026-11-24 (uwaga z gry, 1.7.676):** w solo Mimik `Y` leży jako zwłoki w swoim miejscu, stoi tylko w co-op (wybór użytkownika zamiast b) — łamie D2: w solo na 1.2 dwa fałszywe ciała na 8, na 1.3 trzy na 8) |
 | D6 | Kiedy łapie przy przeszukiwaniu | a) od razu przy starcie [E]; b) po 0,3 s | **b)** — gracz zdąży zobaczyć ruch ręki, ale nie zdąży puścić |
 
 ## 7. Cel i pomiar
