@@ -81,7 +81,7 @@ func _ready() -> void:
 		_bake.call_deferred()
 
 ## Ułożenie wg `pose_id` i ziarna. Kierunki liczone w przestrzeni węzła (ciało wzdłuż osi x, głowa w stronę −x, kamera gry od +z) i przeliczane
-## do przestrzeni szkieletu (`_to_sk`) — armatura modelu GLB jest względem węzła obrócona. Klip upadku kończy się w różnym przetoczeniu,
+## do przestrzeni szkieletu (`_to_sk`) — dziś różnią się tylko skalą, ale poza nie zależy od tego, jak armatura siedzi w pliku GLB. Klip upadku kończy się w różnym przetoczeniu,
 ## więc tułów obracamy wokół osi ciała do zadanego: „back” — przodem ku górze (+y), „side” — przetoczony na bok przodem ku kamerze,
 ## wierzchnia noga zgięta, „curl” — na boku, obie nogi podkulone. Ziarno dobiera kąty i odchyla głowę, żeby dwa ciała w tym samym ułożeniu
 ## nie były bliźniakami. Przeszukane: ręka odciągnięta od ciała w stronę kamery, głowa na drugą stronę.
