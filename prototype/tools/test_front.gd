@@ -272,13 +272,13 @@ func _check_shallow(map_id: String, rows: Array, digs: Array) -> void:
 			_check(not (near and under), "%s %s: fundament przekroju nachodzi w rzucie na strefę wydobycia %s" % [map_id, k, z])
 
 
-## Wpis z przekrojem, pod którego podłogą w każdej kolumnie zaczyna się (do SHELL_DOWN) pas innego wpisu — piwniczka 1.3 nad tunelem:
-## bez podłogi przed przekrojem (`Front3D._build_floors`).
+## Wpis z przekrojem, pod którego podłogą w każdej kolumnie zaczyna się (od wiersza tej podłogi do SHELL_DOWN) pas innego wpisu — piwniczka
+## 1.3 nad tunelem, skład saperów 1.3 ze stropem tunelu w wierszu swojej podłogi: bez podłogi przed przekrojem (`Front3D._build_floors`).
 func _stacked(e: Dictionary, front: Array) -> bool:
 	for c in range(int(e["c0"]), int(e["c1"]) + 1):
 		var hit := false
 		for o: Dictionary in front:
-			hit = hit or (o != e and bool(o.get("shell", false)) and c >= int(o["c0"]) and c <= int(o["c1"]) and int(o["r0"]) > int(e["r1"]) and int(o["r0"]) <= int(e["r1"]) + Level3D.SHELL_DOWN)
+			hit = hit or (o != e and bool(o.get("shell", false)) and c >= int(o["c0"]) and c <= int(o["c1"]) and int(o["r0"]) >= int(e["r1"]) and int(o["r0"]) <= int(e["r1"]) + Level3D.SHELL_DOWN)
 		if not hit:
 			return false
 	return true

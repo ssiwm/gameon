@@ -2136,11 +2136,12 @@ static func _build_floors(parent: Node3D, front: Array, rows: Array) -> void:
 			nc += int(Level3D._ch(rows, c, int(e["r1"])) == "C")
 		var key := "C" if nc * 2 > int(e["c1"]) - int(e["c0"]) + 1 else "#"
 		# bez płyty nad innym pasem przekroju tuż pod spodem (szyb 1.1 do dolnej sztolni): z dolnego pasu płyta wyższej podłogi
-		# przed przekrojem zasłaniała pół kadru ciemnym blokiem (uwaga z gry 2026-11-22)
+		# przed przekrojem zasłaniała pół kadru ciemnym blokiem (uwaga z gry 2026-11-22). Także pas, którego strop to wiersz tej podłogi
+		# (skład saperów 1.3 nad tunelem z trzecim szybem, oba w wierszu 35 — uwaga z gry 2026-11-24: płyta na pierwszym planie przy składzie)
 		var r1 := int(e["r1"])
 		var below := func(c: int) -> bool:
 			for o: Dictionary in front:
-				if o != e and bool(o.get("shell", false)) and c >= int(o["c0"]) and c <= int(o["c1"]) 						and int(o["r0"]) > r1 and int(o["r0"]) <= r1 + Level3D.SHELL_DOWN:
+				if o != e and bool(o.get("shell", false)) and c >= int(o["c0"]) and c <= int(o["c1"]) 						and int(o["r0"]) >= r1 and int(o["r0"]) <= r1 + Level3D.SHELL_DOWN:
 					return true
 			return false
 		var c := int(e["c0"])
