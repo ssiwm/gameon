@@ -29,6 +29,10 @@ extends "res://scripts/enemy_behavior.gd"
 ## `_handle_revive`, grupa DOWNED_GROUP) po REVIVE_GRAB_S prosi serwer o demaskację (`revive`) — przemiana chwyta podnoszącego. Sygnały:
 ## prawdziwy kolega stoi w HUD drużyny (karta, strzałka przy krawędzi), odliczanie staje na 0 s, oczy w snopie, echo krzyku; leży jak zwłoki
 ## (niskie ciało, OVER_PX, CORPSE_LIGHT_S), wstaje „wstecz” jak Mimik-zwłoki — w modelu kolegi.
+##
+## Solo (uwaga z gry 2026-11-24): Mimik `Y` nie stoi jak gracz, tylko leży jako zwłoki w swoim ciele (`y_body`, level.gd `_add_y_bodies`) —
+## tak samo jak Mimik-zwłoki z gniazda: przeszukiwanie, przejście tuż nad nim, snop 2,5 s, trafienie. Serwer wybiera przebranie (`want_mode`)
+## i przełącza je tylko z dala od ludzi; klienci czytają je z `e._sp` (SP_CORPSE). Alarm Podsłuchacza przebranego nie budzi.
 
 const Lights := preload("res://scripts/lights.gd")
 const Player := preload("res://scripts/player.gd")
@@ -63,6 +67,7 @@ const ECHO_PITCH := 0.9              ## wysokość echa względem krzyku gracza 
 const ECHO_DB := -1.0                ## dB echa stojącego
 const ECHO_DB_LYING := -7.0          ## dB echa leżącego (stłumiony głos spod ciała)
 const ECHO_VIEW_S := 0.6             ## s drgnięcia ciała leżącego w widoku
+const SP_CORPSE := 3                 ## `e._sp` Mimika `Y` leżącego w swoim ciele (solo; replikowany jak SP_DOWNED)
 const SP_DOWNED := 2                 ## `e._sp` przebranego za powalonego kolegę (M9; replikowany w `_sync` — klienci i dołączający wiedzą bez RPC)
 const DOWNED_CHANCE := 0.5           ## szansa, że Mimik `Y` w co-op leży jako powalony kolega (z ziarna mapy i nazwy — stała na całą mapę)
 const DOWNED_CLEAR_PX := 300.0       ## px: przebranie zmienia się tylko, gdy żaden człowiek nie stoi bliżej (nikt nie widzi, jak się kładzie)
@@ -85,6 +90,8 @@ var _label := ""
 var _label_col := Color.WHITE
 var _label_t := 0.0
 var corpse: Node2D = null    ## zwłoki, które udaje (M5); null = przebranie stojące
+var _nest := false           ## `corpse` to gniazdo CORPSES na stałe (M5); inaczej ciało `Y` zależne od przebrania (solo)
+var y_body: Node2D = null    ## ciało Mimika `Y` (level.gd `_add_y_bodies`): leży w nim w solo
 var _stand_body := Vector2.ZERO
 var _stand_hurt := Vector2.ZERO
 var grab_ready := 0.0        ## s okna, w którym cios jest chwytem (serwer)
@@ -117,6 +124,7 @@ static var _forced := -2     ## --mimicdowned=0/1 (testy, zrzuty): wymusza przeb
 ## Mimik-zwłoki (M5): leży w miejscu zwłok `cp` (level.gd przy budowie mapy, u każdego peera tak samo).
 func become_corpse(cp: Node2D) -> void:
 	corpse = cp
+	_nest = true
 	_lie(true)
 
 func as_corpse() -> bool:
@@ -161,9 +169,13 @@ func reset() -> void:
 	echo_t = -1.0
 	echoes = 0
 	_echo_view = 0.0
-	if NoiseMgr.is_server() and corpse == null and e.is_inside_tree():
+	if not _nest:
 		downed = false                         # `e._sp` wyzerował reset wroga — przebranie od nowa (gracze po wipe'ie stoją na starcie)
-		_set_downed(want_downed(), false)
+		if corpse != null:
+			corpse = null
+			_lie(false)
+		if NoiseMgr.is_server() and e.is_inside_tree():
+			_set_mode(want_mode(), false)
 	_mode_t = MODE_EVERY
 
 ## Demaskacja: wpis w dzienniku (M0), krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg.
@@ -173,6 +185,8 @@ func on_wake() -> void:
 	if corpse != null:
 		_lie(false)
 		e._facing = -1.0 if bool(corpse.flip) else 1.0      # zwłoki leżą głową za plecami: wstaje przodem do stóp (corpse3d.gd `rise`)
+	if e._sp == SP_CORPSE:
+		e._sp = 0                              # ciało `Y` zostaje w `corpse` (wstawanie i strój w widoku), przebranie się skończyło
 	elif downed:
 		downed = false
 		_lie(false)
@@ -202,7 +216,7 @@ func _log_reveal(cause: String) -> void:
 
 ## Rodzaj przebrania do dziennika: corpse, downed (M9), stand.
 func _disguise_id() -> String:
-	return "corpse" if corpse != null else ("downed" if downed else "stand")
+	return ("corpse" if _nest else "ycorpse") if corpse != null else ("downed" if downed else "stand")
 
 ## Leży (zwłoki albo powalony kolega): niskie ciało, demaskacja z bliska tylko tuż nad nim, dłuższe światło, stłumione echo.
 func lying() -> bool:
@@ -229,9 +243,20 @@ func _humans() -> int:
 			n += 1
 	return n
 
-## Czy Mimik `Y` ma teraz leżeć jako powalony kolega: tylko w co-op, z ziarna mapy (to samo przez całą mapę) albo z wymuszenia.
+## Przebranie Mimika `Y`: „corpse” — sam człowiek (bot się nie liczy) leży w swoim ciele; w co-op „downed” (z ziarna mapy, DOWNED_CHANCE)
+## albo „stand”. `--mimicdowned=1` wymusza powalonego, `0` — stojącego (testy).
+func want_mode() -> String:
+	if _nest or not e.is_inside_tree():
+		return "nest"
+	if forced() >= 0:
+		return "downed" if forced() == 1 else "stand"
+	if _humans() < 2:
+		return "corpse" if y_body != null else "stand"
+	return "downed" if want_downed() else "stand"
+
+## Czy w co-op Mimik `Y` leży jako powalony kolega (z ziarna mapy, to samo przez całą mapę) albo z wymuszenia.
 func want_downed() -> bool:
-	if corpse != null or not e.is_inside_tree():
+	if _nest or not e.is_inside_tree():
 		return false
 	if forced() >= 0:
 		return forced() == 1
@@ -247,6 +272,36 @@ func _human_near(px: float) -> bool:
 			return true
 	return false
 
+## Bieżące przebranie (dziennik, testy): nest, corpse, downed, stand.
+func mode() -> String:
+	if _nest:
+		return "nest"
+	if corpse != null and not e.active:
+		return "corpse"
+	return "downed" if downed else "stand"
+
+## Serwer: przełącza przebranie Mimika `Y` (`want_mode`).
+func _set_mode(m: String, log_it := true) -> void:
+	if m == "nest" or m == mode() or e.active:
+		return
+	if m == "corpse":
+		if downed:
+			_set_downed(false, false)
+		corpse = y_body
+		_lie(true)
+		e._sp = SP_CORPSE
+		if log_it:
+			SessionLog.event("mimic_disguise", {"disguise": "corpse", "humans": _humans(), "pos": SessionLog.xy(e.global_position)})
+		return
+	var was_corpse := corpse != null
+	if was_corpse:
+		corpse = null
+		_lie(false)
+		e._sp = 0
+	_set_downed(m == "downed", log_it)
+	if was_corpse and m == "stand" and log_it:
+		SessionLog.event("mimic_disguise", {"disguise": "stand", "humans": _humans(), "pos": SessionLog.xy(e.global_position)})
+
 ## Serwer: kładzie się jako powalony kolega albo wstaje do przebrania stojącego.
 func _set_downed(on: bool, log_it := true) -> void:
 	if on == downed or e.active:
@@ -261,15 +316,15 @@ func _set_downed(on: bool, log_it := true) -> void:
 
 ## Co MODE_EVERY: co-op się zaczął albo skończył — zmiana przebrania, gdy nikt nie patrzy z bliska.
 func _tick_mode(delta: float) -> void:
-	if corpse != null:
+	if _nest:
 		return
 	_mode_t -= delta
 	if _mode_t > 0.0:
 		return
 	_mode_t = MODE_EVERY
-	var want := want_downed()
-	if want != downed and not _human_near(DOWNED_CLEAR_PX):
-		_set_downed(want)
+	var want := want_mode()
+	if want != mode() and not _human_near(DOWNED_CLEAR_PX):
+		_set_mode(want)
 
 ## Serwer: gracz `peer_id` podnosi powalonego kolegę dłużej niż REVIVE_GRAB_S (player.gd → enemy.gd `mimic_revive_request`) — demaskacja.
 func revive_by(peer_id: int) -> bool:
@@ -370,6 +425,10 @@ func light_wakes(lit: bool) -> bool:
 func near_mult() -> float:
 	return OVER_PX / maxf(float(e._def["wake_near"]), 1.0) if lying() else 1.0
 
+## Alarm Podsłuchacza budzi go dopiero po demaskacji — przebrany czeka na gracza (w grze alarm budził Mimika-zwłoki, zanim gracz podszedł).
+func alarm_wakes() -> bool:
+	return e.active
+
 ## Okno kontry: w czasie przemiany obrażenia × MORPH_DMG.
 func damage_mult() -> float:
 	return MORPH_DMG if morph_t > 0.0 else 1.0
@@ -398,6 +457,11 @@ func present(delta: float) -> void:
 	elif _view_since >= 0.0:
 		_view_since += delta
 	_seen_active = act
+	if act == 0 and not _nest and not NoiseMgr.is_server():
+		var want_c: Node2D = y_body if e._sp == SP_CORPSE else null      # klient: ciało `Y` z replikowanego `_sp` (solo)
+		if want_c != corpse:
+			corpse = want_c
+			_lie(want_c != null)
 	var dn: bool = act == 0 and e.alive and e._sp == SP_DOWNED
 	if dn and not _view_downed:
 		down_timer = Player.BLEED_TIME * Difficulty.m("bleed")       # jak prawdziwy powalony: odliczanie od pełnego wykrwawiania

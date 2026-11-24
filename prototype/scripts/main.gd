@@ -860,7 +860,7 @@ func _mimic_net_step() -> void:
 	await get_tree().create_timer(1.0).timeout
 	var slot := "-"
 	for cp in get_tree().get_nodes_in_group("corpses"):
-		if cp.mimic != null:
+		if cp.mimic != null and not cp.y_body:
 			slot = String(cp.name)
 	var mm: Node = level.get_node_or_null("MimikCorpse1")
 	var lying: bool = mm != null and bool(mm.view_info().get("as_corpse", false))
