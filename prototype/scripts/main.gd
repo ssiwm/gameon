@@ -846,8 +846,11 @@ func _corpse_net_step() -> void:
 ## (`_restart_mission` → `_set_map`: ziarno w RPC wczytania mapy), klient czeka na 1.2 z Mimikiem-zwłokami. Każdy wypisuje gniazdo (ciało
 ## z `mimic`), ziarno i to, czy Mimik leży jako zwłoki; dołączający później dostaje ziarno w RPC dołączenia. Klient kończy sam.
 ## Klient z `--mimicgrab` (M6) potem przeszukuje Mimika i czeka, aż serwer go chwyci (`grabbed` u klienta); host wypisuje liczbę chwytów.
+## Powalony kolega (M9): host z `--mimicdowned=1` kładzie Mimika `Y` (Mimik1) jako powalonego; klient z `--mimicrevive` czeka, aż zobaczy
+## go leżącego (`_sp` z serwera), z plakietką powalonego i podpowiedzią podnoszenia, podnosi go [E] i czeka na chwyt; host wypisuje chwyty Mimik1.
 func _mimic_net_step() -> void:
 	var host := "--host" in OS.get_cmdline_user_args()
+	var downed_test := "--mimicdowned=1" in OS.get_cmdline_user_args() or "--mimicrevive" in OS.get_cmdline_user_args()
 	if host:
 		await _restart_mission(true, "z1_m2")
 	for _i in 160:                                     # do 40 s: klient — połączenie, wczytanie 1.2
@@ -862,12 +865,48 @@ func _mimic_net_step() -> void:
 	var mm: Node = level.get_node_or_null("MimikCorpse1")
 	var lying: bool = mm != null and bool(mm.view_info().get("as_corpse", false))
 	print("[MIMIC-NET] %s map=%s slot=%s seed=%d lying=%s" % ["host" if host else "client", level.map_id, slot, int(level.mimic_seed), str(lying)])
+	if downed_test:
+		mm = level.get_node_or_null("Mimik1")
 	if host:
-		for _i in 240:                                 # do 60 s: chwyt klienta z `--mimicgrab` (M6)
+		if downed_test:
+			for _i in 40:                              # do 10 s: serwer kładzie Mimika `Y` (sprawdzenie co enemy_mimic.gd MODE_EVERY)
+				if mm != null and bool(mm._beh.downed):
+					break
+				await get_tree().create_timer(0.25).timeout
+			print("[MIMIC-NET] host downed=%s" % str(mm != null and bool(mm._beh.downed)))
+		for _i in 240:                                 # do 60 s: chwyt klienta z `--mimicgrab` (M6) albo `--mimicrevive` (M9)
 			if mm != null and int(mm._beh.grabs) > 0:
-				print("[MIMIC-NET] host grabs=%d" % int(mm._beh.grabs))
+				print("[MIMIC-NET] host grabs=%d cause=%s" % [int(mm._beh.grabs), String(mm.wake_cause)])
 				break
 			await get_tree().create_timer(0.25).timeout
+		return
+	if "--mimicrevive" in OS.get_cmdline_user_args():
+		# M9: klient widzi powalonego kolegę (stan z `_sp`), podnosi go [E] — serwer demaskuje (`revive`) i przemiana chwyta podnoszącego
+		var me: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
+		var seen := false
+		for _i in 60:
+			seen = mm != null and bool(mm.view_info().get("as_downed", false)) and not (mm.bar_state()["down"] as Dictionary).is_empty()
+			if seen:
+				break
+			await get_tree().create_timer(0.25).timeout
+		var hint := ""
+		var got := false
+		if me != null and mm != null and seen:
+			me.global_position = (mm as Node2D).global_position + Vector2(-18.0, -1.0)
+			me.velocity = Vector2.ZERO
+			await get_tree().physics_frame
+			await get_tree().physics_frame
+			hint = String(me.revive_hint())
+			Input.action_press("interact")
+			for _i in 40:
+				got = got or bool(me.grabbed)
+				if got:
+					break
+				await get_tree().create_timer(0.1).timeout
+			Input.action_release("interact")
+		print("[MIMIC-NET] client downed=%s hint=%s grabbed=%s" % [str(seen), str(hint != ""), str(got)])
+		await get_tree().create_timer(1.0).timeout
+		get_tree().quit()
 		return
 	if "--mimicgrab" in OS.get_cmdline_user_args() and slot != "-":
 		# M6: klient przeszukuje Mimika-zwłoki — serwer demaskuje i chwyta go, `grabbed` dochodzi do właściciela postaci przez RPC

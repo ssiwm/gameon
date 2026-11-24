@@ -13,7 +13,8 @@
 #    (RPC na żywo) i u dołączającego później (`send_walls_to`) stan taki sam jak u hosta.
 # 9. Zwłoki (MIMIC_PLAN.md M4): klient przeszukuje trzymanym [E], serwer rozstrzyga, dołączający dostaje przeszukane ciało.
 # 10. Mimik-zwłoki (MIMIC_PLAN.md M5): to samo gniazdo u hosta, klienta (zmiana mapy) i dołączającego (ziarno w RPC dołączenia);
-#     dołączający przeszukuje go i serwer go chwyta — `grabbed` u klienta (M6).
+#     dołączający przeszukuje go i serwer go chwyta — `grabbed` u klienta (M6). Powalony kolega (M9): Mimik `Y` leży jako powalony u klienta,
+#     podnoszenie [E] — chwyt.
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
@@ -185,6 +186,18 @@ MB=$(grep -a -o "\[MIMIC-NET\] client map=z1_m2 slot=Corpse[0-9]* seed=[0-9]* ly
 [ -n "$MH" ] && [ "$MH" = "$MB" ] && ok "dołączający: ziarno w RPC dołączenia ($MB)" || fail "dołączający: host '$MH', dołączający '$MB' $(grep -a "\[MIMIC-NET\]" "$LOG/mimic_b.log")"
 grep -a -q "\[MIMIC-NET\] client grabbed=true" "$LOG/mimic_b.log" && ok "dołączający przeszukuje Mimika — chwyt dochodzi do klienta (M6)" || fail "chwyt Mimika nie doszedł do klienta: $(grep -a "\[MIMIC-NET\]" "$LOG/mimic_b.log")"
 grep -a -q "\[MIMIC-NET\] host grabs=1" "$LOG/mimic_host.log" && ok "host: jeden chwyt z przebrania" || fail "host: brak chwytu $(grep -a "\[MIMIC-NET\]" "$LOG/mimic_host.log")"
+
+echo "== Mimik — powalony kolega =="
+# MIMIC_PLAN.md M9: host kładzie Mimika `Y` 1.2 jako powalonego kolegę (wymuszone `--mimicdowned=1` — w co-op losowanie z ziarna); klient
+# widzi go leżącego z plakietką powalonego (stan z replikowanego `_sp`), dostaje podpowiedź podnoszenia, podnosi [E] i serwer go chwyta.
+godot --headless --path . -- --host --mission=z1_hub --port=8975 --mimicnet=8 --mimicdowned=1 --autoquit=60 >"$LOG/mdown_host.log" 2>&1 &
+HOST=$!
+sleep 3
+godot --headless --path . -- --join=127.0.0.1 --port=8975 --mimicnet=1 --mimicrevive --autoquit=45 >"$LOG/mdown_client.log" 2>&1
+kill $HOST 2>/dev/null; wait $HOST 2>/dev/null
+grep -a -q "\[MIMIC-NET\] host downed=true" "$LOG/mdown_host.log" && ok "host: Mimik leży jako powalony kolega" || fail "host: Mimik nie leży $(grep -a "\[MIMIC-NET\]" "$LOG/mdown_host.log")"
+grep -a -q "\[MIMIC-NET\] client downed=true hint=true grabbed=true" "$LOG/mdown_client.log" && ok "klient: widzi powalonego, podpowiedź podnoszenia, podniesienie — chwyt" || fail "klient: $(grep -a "\[MIMIC-NET\]" "$LOG/mdown_client.log")"
+grep -a -q "\[MIMIC-NET\] host grabs=1 cause=revive" "$LOG/mdown_host.log" && ok "host: demaskacja przy podnoszeniu i chwyt" || fail "host: $(grep -a "\[MIMIC-NET\]" "$LOG/mdown_host.log")"
 
 echo "== zniszczenia =="
 # host: po 10 s rozbija skrzynię Crate1, tłucze lampę MissionLamp1 i okno Window1, zabija pusty otwór Opening1 dwiema deskami (SC), po 1 s dwa ciosy kilofem i środkowa deska otworu zestrzelona do jednego pasa (S1), gdy są obaj

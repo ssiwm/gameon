@@ -107,6 +107,10 @@ func _enemy(src: Node2D, model, id: int, delta: float, cx: Transform2D, zoom: fl
 	var e: Node3D = model as Node3D if model != null and is_instance_valid(model) else null
 	var on_screen := e.visible if e != null else src.is_visible_in_tree()
 	var alive: bool = bs["alive"]
+	var dn: Dictionary = bs.get("down", {})
+	if not dn.is_empty() and alive and not Settings.dev_nohud:
+		_plates.append({"pos": cx * src.global_position, "zoom": zoom, "st": dn})     # Mimik jako powalony kolega (MIMIC_PLAN.md M9): plakietka leżącego gracza
+		return
 	if bool(bs["elite"]) and alive and on_screen and not bool(s["seen"]):
 		s["seen"] = true
 		s["t"] = SHOW_S

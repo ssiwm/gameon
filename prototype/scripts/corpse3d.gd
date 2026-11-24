@@ -13,6 +13,9 @@ extends "res://scripts/enemy3d.gd"
 ## Demaskacja Mimika-zwłok (M7, `rise`): ciało wstaje „wstecz” — klip upadku od końca do początku, bez podparcia rąk, z łukiem pleców;
 ## ułożenie (przetoczenie, podkulone nogi) gaśnie w pierwszej części ruchu. W tym czasie przemiana jak u stojącego (przedramiona, nakładka
 ## materiału, żółte oczy). Po RISE_S widok przechodzi na model wroga, który stoi w miejscu stóp zwłok.
+##
+## Mimik jako powalony kolega (M9, `build("res://…glb", "downed", …, faded = false)`): model postaci kolegi, poza to czysty koniec klipu upadku
+## (jak u powalonego gracza — bez przetoczenia i skrętu głowy) i bez wyblaknięcia stroju; sygnały, drgnięcie i wstawanie jak u Mimika-zwłok.
 
 ## Strój → plik modelu MPFB (te same, co operatorzy — w ciemności i z daleka czytelne jako „człowiek z drużyny”).
 const OUTFITS := {
@@ -23,7 +26,7 @@ const OUTFITS := {
 ## Sprzęt na plecach i przy pasie (plecak, butla, torby): ciało opiera się na gruncie sobą, sprzęt chowa się pod podłogą — oparte na plecaku
 ## wisiało ok. 0,35 m nad ziemią. Z kamery gry (z przodu, lekko z góry) wierzch podłogi zasłania to, co pod nim.
 const GEAR := ["backpack", "gear", "canteen", "medbag", "pouch_L", "pouch_R"]
-const POSES := ["back", "side", "curl"]          ## ułożenia (wariant pozy z klipu upadku)
+const POSES := ["back", "side", "curl", "downed"]  ## ułożenia (wariant pozy z klipu upadku; „downed” — sam klip, jak powalony gracz, M9)
 const DOWN_T := 1.65                             ## s: koniec klipu upadku (char_clips.gd „down”, `scrub`)
 const MOD := Color(0.78, 0.76, 0.72)             ## wyblakły, przybrudzony strój (ten sam u Mimika-zwłok, M5)
 const FLOOR_GAP := 0.004                          ## m: najniższy punkt skóry nad gruntem
@@ -60,13 +63,15 @@ var _breath_t := 0.0
 var _chest_rest := Quaternion.IDENTITY           ## wypieczony obrót Spine2 (oddech dokłada się do niego)
 var _mimic_eyes: Array = []
 
-## Buduje model w stroju `out` i ułożeniu `pose`; `flip` = −1 leży głową w drugą stronę (i drugim bokiem do kamery).
-func build(out: String, pose: String, s: int, flip := 1.0, is_mimic := false) -> bool:
+## Buduje model w stroju `out` (klucz OUTFITS albo ścieżka `res://…glb` — model gracza, M9) i ułożeniu `pose`; `flip` = −1 leży głową
+## w drugą stronę (i drugim bokiem do kamery); `faded` — wyblakły, przybrudzony strój (zwłoki), bez niego świeży (powalony kolega).
+func build(out: String, pose: String, s: int, flip := 1.0, is_mimic := false, faded := true) -> bool:
 	mimic = is_mimic
-	outfit = out if OUTFITS.has(out) else "patrol"
+	var own := out.begins_with("res://") and ResourceLoader.exists(out)
+	outfit = out if OUTFITS.has(out) or own else "patrol"
 	pose_id = pose if pose in POSES else "back"
 	seed_v = s
-	model_path = String(OUTFITS[outfit])
+	model_path = out if own else String(OUTFITS[outfit])
 	hull_skip = PackedStringArray(GEAR)
 	life_seed = s
 	if not setup("corpse"):
@@ -80,8 +85,9 @@ func build(out: String, pose: String, s: int, flip := 1.0, is_mimic := false) ->
 	_pivot.scale = Vector3.ONE * _scale
 	_pivot.position.x = -_x0 * _scale
 	rotation.y = PI if flip < 0.0 else 0.0                # głową w drugą stronę (obrót, nie lustro — lustro odwraca ściany siatki)
-	for sm in _mats:
-		(sm as ShaderMaterial).set_shader_parameter("mod", Vector4(MOD.r, MOD.g, MOD.b, 1.0))
+	if faded:
+		for sm in _mats:
+			(sm as ShaderMaterial).set_shader_parameter("mod", Vector4(MOD.r, MOD.g, MOD.b, 1.0))
 	_bake()
 	if mimic:
 		for sd in [-1.0, 1.0]:
@@ -263,6 +269,8 @@ func _ready() -> void:
 ## wierzchnia noga zgięta, „curl” — na boku, obie nogi podkulone. Ziarno dobiera kąty i odchyla głowę, żeby dwa ciała w tym samym ułożeniu
 ## nie były bliźniakami. Przeszukane: ręka odciągnięta od ciała w stronę kamery, głowa na drugą stronę.
 func _variant() -> void:
+	if pose_id == "downed":
+		return                                                    # powalony gracz leży w samym końcu klipu upadku (char3d.gd)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
 	var roll := 0.0

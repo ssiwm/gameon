@@ -750,6 +750,22 @@ func _normal_clones(root: Node, skinned: bool) -> void:
 ## modele Tripo sprzed 1.7.220, --charset=tripo). Brak modelu w zestawie → art/char3d/.
 static var charset := "mpfb"
 
+## Kości bez rodzica poza biodrami (MPFB: `neutral_bone` w female_scav — 2 wierzchołki kamizelki) zostają w spoczynku, gdy poza obraca
+## ciało od bioder: w leżeniu ciągnęły trójkąt kamizelki na wysokość stojącej głowy (1,7 m). Przepina je pod `to` (Spine2) z zachowaniem
+## spoczynku globalnego — wiązania skóry się nie zmieniają, a wierzchołki idą z tułowiem (MIMIC_PLAN.md M9: powalony gracz i Mimik-powalony).
+static func pin_stray_roots(sk: Skeleton3D, to: String = PRE + "Spine2") -> void:
+	var parent := sk.find_bone(to)
+	var hips := sk.find_bone(PRE + "Hips")
+	if parent < 0 or hips < 0:
+		return
+	for i in sk.get_bone_count():
+		if i == hips or sk.get_bone_parent(i) >= 0 or sk.get_bone_children(i).size() > 0:
+			continue
+		var local := sk.get_bone_global_rest(parent).affine_inverse() * sk.get_bone_global_rest(i)
+		sk.set_bone_parent(i, parent)
+		sk.set_bone_rest(i, local)
+		sk.set_bone_pose(i, local)
+
 ## Wymiana modelu postaci (wygląd z warsztatu, replikowany `player.look`). Zwraca false, gdy brak pliku.
 func set_look(char_name: String) -> bool:
 	if char_name == _char_name and _sk != null:
@@ -770,6 +786,7 @@ func set_look(char_name: String) -> bool:
 	_char_name = char_name
 	_grip_depth_offset = 0.0
 	_sk = sk
+	pin_stray_roots(sk)
 	_prepare_materials(scene)
 	_root3d.add_child(scene)
 	_b.clear()

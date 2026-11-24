@@ -910,6 +910,8 @@ func setup(k: String, translucent := false) -> bool:
 	if mis.is_empty() or (sks.is_empty() and deform == ""):
 		return false
 	_sk = sks[0] if not sks.is_empty() else null
+	if _sk != null:
+		Char3D.pin_stray_roots(_sk)                      # kość bez rodzica (female_scav) idzie z tułowiem — Mimik-powalony w modelu gracza (M9)
 	_mesh = mis[0]
 	var aps := _model.find_children("*", "AnimationPlayer", true, false)
 	if not aps.is_empty():
