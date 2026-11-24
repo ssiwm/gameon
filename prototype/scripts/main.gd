@@ -33,6 +33,7 @@ const NOBOT_TEST := preload("res://scripts/nobot_test.gd")
 const FUN_TEST := preload("res://scripts/fun_test.gd")
 const VEIN_TEST := preload("res://scripts/vein_test.gd")
 const BATTERY_TEST := preload("res://scripts/battery_test.gd")
+const CORPSE_TEST := preload("res://scripts/corpse_test.gd")
 const DESTRUCTION_TEST := preload("res://scripts/destruction_test.gd")
 const FOG_SHADOW_TEST := preload("res://scripts/fog_shadow_test.gd")
 const FX_TEST := preload("res://scripts/fx_test.gd")
@@ -269,6 +270,9 @@ func _restart_mission(new_run: bool, map_id := "", carry := false) -> void:
 		chg.reset_charger()
 	for sb in get_tree().get_nodes_in_group("strongboxes"):
 		sb.reset_strongbox()                 # sejfy znów zamknięte (łup próby przepada razem z resztą)
+	if new_run:
+		for cp in get_tree().get_nodes_in_group("corpses"):
+			cp.reset_corpse()                # nowa misja na tej samej mapie: zwłoki znów nieprzeszukane; wipe ich nie rusza (MIMIC_PLAN.md M4)
 	for car in get_tree().get_nodes_in_group("handcar"):
 		car.reset_handcar()
 	level.reset_collapse()
@@ -790,6 +794,32 @@ func _charger_net_step() -> void:
 			cl = c
 	print("[CHARGER-NET] host active=%s client_pct=%d" % [str(chg.active), int(cl.bat_pct) if cl != null else -1])
 
+## Test sieci zwłok (--corpsenet=N, tools/test_net_session.sh, MIMIC_PLAN.md M4; mapa z1_m1, ciało Corpse7 bez nieśmiertelnika): klient po N s
+## staje przy ciele i trzyma [E] 2 s — serwer liczy postęp i rozsyła „przeszukane”; klient wypisuje stan z RPC. Klient, który dołącza
+## później, zastaje ciało przeszukane (`send_walls_to`) i tylko je wypisuje. Host po N s wypisuje stan i wiersz dziennika.
+func _corpse_net_step() -> void:
+	var cp: Node2D = level.get_node_or_null("Corpse7")
+	if cp == null:
+		print("[CORPSE-NET] brak zwłok na mapie %s" % level.map_id)
+		return
+	if multiplayer.is_server():
+		print("[CORPSE-NET] host searched=%s" % str(cp.searched))
+		return
+	if cp.searched:
+		print("[CORPSE-NET] joiner searched=true")
+		return
+	var me: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
+	if me == null:
+		return
+	me.global_position = cp.global_position + Vector2(-8.0, -1.0)
+	me.velocity = Vector2.ZERO
+	await get_tree().physics_frame
+	Input.action_press("interact")
+	await get_tree().create_timer(2.0).timeout
+	Input.action_release("interact")
+	await get_tree().create_timer(0.5).timeout
+	print("[CORPSE-NET] client searched=%s" % str(cp.searched))
+
 ## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
 ## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną), deski w pustym otworze Opening1 (D2b), skrzyni
 ## Crate1 (D1) i desek schowka (`pl=`, HP i dziury — ostrzał S1). Host po N s rozbija skrzynię, zabija otwór dwiema deskami, po 1 s rani ścianę
@@ -1038,6 +1068,8 @@ func _handle_cmdline() -> void:
 			_vein_net_guard()
 		if sa.begins_with("--chargernet="):                # test sieci: ładowarka — klient ładuje się u siebie, serwer widzi, że pracuje
 			get_tree().create_timer(float(sa.substr("--chargernet=".length()))).timeout.connect(_charger_net_step)
+		if sa.begins_with("--corpsenet="):                 # test sieci: zwłoki — klient przeszukuje, serwer rozstrzyga, dołączający dostaje stan
+			get_tree().create_timer(float(sa.substr("--corpsenet=".length()))).timeout.connect(_corpse_net_step)
 		if sa.begins_with("--destructionnet="):            # test sieci: zniszczenia — rany, rozbicie, punkt kontrolny i wipe u wszystkich
 			_destruction_net(float(sa.substr("--destructionnet=".length())))
 		if sa.begins_with("--cavenet="):                   # test sieci: zawał na mapie testowej t_mine — stempel, strefa, migawka i wipe u wszystkich
@@ -1056,6 +1088,7 @@ func _handle_cmdline() -> void:
 	var funtest := false
 	var veintest := false
 	var batterytest := false
+	var corpsetest := false
 	var destructiontest := false
 	var fogshadowtest := false
 	var fxtest := false
@@ -1195,6 +1228,8 @@ func _handle_cmdline() -> void:
 			veintest = true
 		elif a == "--batterytest":
 			batterytest = true
+		elif a == "--corpsetest":
+			corpsetest = true
 		elif a == "--destructiontest":
 			destructiontest = true
 		elif a == "--fogshadowtest":
@@ -1382,6 +1417,11 @@ func _handle_cmdline() -> void:
 		bat.name = "BatteryTest"
 		add_child(bat)
 		bat.run(self)
+	if corpsetest:
+		var ct := CORPSE_TEST.new()
+		ct.name = "CorpseTest"
+		add_child(ct)
+		ct.run(self)
 	if destructiontest:
 		var dt := DESTRUCTION_TEST.new()
 		dt.name = "DestructionTest"

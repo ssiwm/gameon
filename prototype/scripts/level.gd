@@ -70,6 +70,7 @@ const FLARE := preload("res://scripts/flare.gd")
 const GENERATOR := preload("res://scripts/generator.gd")
 const CHARGER := preload("res://scripts/charger.gd")
 const STRONGBOX := preload("res://scripts/strongbox.gd")
+const CORPSE := preload("res://scripts/corpse.gd")
 const HANDCAR := preload("res://scripts/handcar.gd")
 const RACK := preload("res://scripts/rack.gd")
 const CABINET := preload("res://scripts/cabinet.gd")
@@ -185,6 +186,7 @@ var break_how := {}                        ## nazwa rozbitej przegrody → [czym
 var door_planks := {}                      ## drzwi wyważone i zabite deskami (W4): nazwa → true, póki w otworze stoi barykada `planks` zamiast drzwi
 var doors := {}                            ## DOORS z danych mapy (DESTRUCTION_CONTENT_PLAN.md W1): kolumna wejścia budynku 3D → {"mat": wood/metal/steel, "start": "broken"?}
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
+var _corpses: Array = []                  ## CORPSES z danych mapy: [kolumna, rząd, ułożenie, strój, flagi] — zwłoki do przeszukania (MIMIC_PLAN.md M3–M4, corpse.gd)
 var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
 var _power_crates: Array = []             ## POWER_CRATES z danych mapy: [kolumna, rząd, broń, naboje] — skrzynie mocy (FUN_PLAN.md P1.3, pickup „power”)
 ## VAULT_LOOT z danych mapy (DESTRUCTION_CONTENT_PLAN.md W2b): kolumna drzwi zbrojonych → łup pomieszczenia za nimi, [kolumna, rząd podłogi, rodzaj, …]:
@@ -322,6 +324,7 @@ func _load(id: String) -> void:
 	vault_sign = ((m as GDScript).get_script_constant_map().get("VAULT_SIGN", {}) as Dictionary).duplicate()
 	_vaults_opened.clear()
 	_strongboxes = ((m as GDScript).get_script_constant_map().get("STRONGBOXES", []) as Array).duplicate()
+	_corpses = ((m as GDScript).get_script_constant_map().get("CORPSES", []) as Array).duplicate(true)
 	_finale_on = false
 	_blocks.clear()
 	_wall_cells.clear()
@@ -1038,6 +1041,17 @@ func _spawn_entities() -> void:
 		box.value = int(sb[2])
 		box.position = Vector2(int(sb[0]) * TILE + TILE * 0.5, (int(sb[1]) + 1) * TILE)      # stopy na podłodze, jak znaczniki mapy
 		add_child(box)
+	for i in _corpses.size():
+		var cd: Array = _corpses[i]
+		var cp: Node2D = CORPSE.new()
+		cp.name = "Corpse%d" % (i + 1)
+		cp.index = i
+		cp.pose = String(cd[2])
+		cp.outfit = String(cd[3])
+		cp.flags = (cd[4] as Dictionary) if cd.size() > 4 else {}
+		cp.flip = bool(cp.flags.get("flip", false))
+		cp.position = Vector2(int(cd[0]) * TILE + TILE * 0.5, (int(cd[1]) + 1) * TILE)      # na podłodze, jak sejf
+		add_child(cp)
 	for i in found["D"].size():
 		var car: AnimatableBody2D = HANDCAR.new()
 		car.name = "Handcar" if i == 0 else "Handcar%d" % (i + 1)
@@ -1937,6 +1951,8 @@ func send_walls_to(peer_id: int) -> void:
 			win.send_state_to(peer_id)                       # stłuczone okna (window_glass.gd)
 		for z in dig_zones():
 			z.send_state_to(peer_id)                         # wykopy w strefach wydobycia (dig_zone.gd)
+		for cp in get_tree().get_nodes_in_group("corpses"):
+			cp.send_state_to(peer_id)                        # przeszukane zwłoki (corpse.gd)
 
 # ---------------------------------------------------------------- barykadowanie (DESTRUCTION_PLAN.md D2b)
 

@@ -2368,6 +2368,13 @@ func _near_strongbox() -> Node:
 			return sb
 	return null
 
+## Zwłoki (corpse.gd, MIMIC_PLAN.md M4), przy których stoi lokalny gracz, albo null.
+func _near_corpse() -> Node:
+	for cp in get_tree().get_nodes_in_group("corpses"):
+		if bool(cp.get("local_in_range")):
+			return cp
+	return null
+
 ## Miejsce przybijania desek (barricade_spot.gd, D2b), przy którym stoi lokalny gracz, albo null.
 func _near_barricade() -> Node:
 	for sp in get_tree().get_nodes_in_group("barricade_spots"):
@@ -2440,6 +2447,13 @@ func _prompt_candidates() -> Array:
 			add.call(tr("Prying the strongbox open…  it's loud"), box.progress, UiTheme.ACCENT)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Pry open the strongbox  (LOUD · +%d scrap)")) % int(box.value), -1.0, UiTheme.ACCENT)
+	var body := _near_corpse()
+	if body != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+		# zwłoki (MIMIC_PLAN.md M4): drobny łup albo nic, cichy szelest
+		if float(body.progress) > 0.0:
+			add.call(tr("Searching the body…"), float(body.progress), UiTheme.OK)
+		else:
+			add.call(Actions.fmt(tr("Hold [{interact}]  Search the body")), -1.0, UiTheme.OK)
 	var bar := _near_barricade()
 	if bar != null and _player != null and _player.weapons.nearby_weapon_item() == null:
 		# barykadowanie (D2b): ile desek już stoi, zapas desek drużyny albo cena w złomie

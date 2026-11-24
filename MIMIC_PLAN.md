@@ -2,7 +2,12 @@
 
 Status: **plan z 2026-11-23 (main 1.7.666, c20b205a).** Decyzje D1–D6 (§6) przyjęte 2026-11-24 — wszystkie warianty zalecane.
 **M0–M2 wdrożone w 1.7.667** (odstępstwa: przebrany stojący nie oddycha tylko w ciemności — w snopie latarki oddycha głęboko, jako
-sygnał obok połysku oczu; solo bez innych postaci i bez bota etykieta to kryptonim spoza drużyny z `FALLBACK_NAMES`). Kolejność wg rekomendacji z analizy: najpierw M0–M2
+sygnał obok połysku oczu; solo bez innych postaci i bez bota etykieta to kryptonim spoza drużyny z `FALLBACK_NAMES`).
+**M3–M4 wdrożone w 1.7.668** (odstępstwa: stroje to istniejące modele MPFB — mundur polowy `male_scav` dla patrolu, kombinezon
+`male_hazmat` dla obsługi radiostacji, `male_medic` dla górników; ułożenia na plecach, na boku i podkulone (każde w obie strony) — bez
+pozy na twarzy i siedzącej, bez przysypania igliwiem; sprzęt na plecach chowa się pod podłogą zamiast podpierać ciało;
+nieśmiertelniki 1.1 dalej leżą jako przedmiot przy ciele, kolumnę obok — strzałka celu i testy map ich potrzebują, a ciało i tak
+prowadzi do nich wzrok; nowa misja na tej samej mapie kładzie zwłoki od nowa; przeszukanie nie daje notatki z radia). Kolejność wg rekomendacji z analizy: najpierw M0–M2
 (pomiar i przebranie, które trzyma się na ekranie), potem rdzeń M3–M6 (zwłoki w świecie i Mimik udający zwłoki — główna zmiana
 rozgrywki, działa w solo), dalej M7 (przemiana i ruch) i M8 (echo krzyku). M9 (powalony kolega) czeka na sesje co-op.
 Uwaga użytkownika (2026-11-23), wpisana w §4 i etapy M3–M5: **żeby leżący Mimik nie wzbudzał podejrzeń, w świecie muszą zostawać

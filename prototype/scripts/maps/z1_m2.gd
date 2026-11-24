@@ -43,6 +43,10 @@ const VAULT_SIGN := {280: "SIGNALS"}
 ## Sejfy (FUN_PLAN.md P2.2): [kolumna, rząd, złom] — wyważanie trzymanym [E] jest głośne; tuż obok Podsłuchacza przy generatorze.
 ## Kolumna 103, nie 100: w kolumnie 100 stoi słup budynku stacji, który w widoku 3D zasłaniał skrzynię (skrytka „u” jest w kolumnie 101).
 const STRONGBOXES := [[103, 25, 40]]
+## Zwłoki (MIMIC_PLAN.md M3–M4, corpse.gd): [kolumna, rząd, ułożenie, strój, flagi] — obsługa radiostacji (`tech`) przy stanowiskach
+## i patrol w drodze; jedno ciało w tunelu pod stacją. Przeszukanie trzymanym [E] daje drobny łup (D3).
+const CORPSES := [[30, 25, "back", "patrol", {}], [80, 25, "side", "tech", {}], [144, 25, "curl", "patrol", {"flip": true}],
+	[178, 25, "back", "tech", {"flip": true}], [238, 25, "side", "tech", {}], [259, 25, "curl", "tech", {"flip": true}], [197, 39, "back", "patrol", {}]]
 ## (8+) Poly Haven: koksownik przy kłodach za chatą radiową, opona w bagnie, pniak za bagnem.
 const ACCENTS := [[Vector2(584, 416), 7], [Vector2(2000, 416), 7], [Vector2(3500, 416), 7], [Vector2(696, 416), 11], [Vector2(808, 416), 13], [Vector2(920, 416), 9], [Vector2(3624, 416), 15], [Vector2(3704, 416), 18], [Vector2(3816, 416), 20], [Vector2(3864, 416), 19], [Vector2(3656, 353), 15], [Vector2(3704, 353), 20], [Vector2(3848, 353), 18], [Vector2(3928, 353), 15], [Vector2(3896, 416), 21], [Vector2(3832, 405), 22]]
 

@@ -28,6 +28,10 @@ const POWER_CRATES := [[164, 34, Weapons.WIDMO1, 10]]
 ## Łup składu saperów (kolumna drzwi → [kolumna, rząd podłogi, rodzaj, …]): złom, granat odłamkowy i część broni wypadająca przy wysadzeniu.
 const VAULT_LOOT := {170: [[167, 34, "scrap", 60], [168, 34, "supply", "frag"], [161, 34, "part"]]}
 const VAULT_SIGN := {170: "SAPPERS"}
+## Zwłoki (MIMIC_PLAN.md M3–M4, corpse.gd): [kolumna, rząd, ułożenie, strój, flagi] — górnicy (`miner`) w osadzie i w chodnikach,
+## jeden z patrolu przy wejściu. Przeszukanie trzymanym [E] daje drobny łup (D3).
+const CORPSES := [[11, 25, "side", "patrol", {}], [86, 25, "back", "miner", {}], [137, 17, "curl", "miner", {"flip": true}],
+	[52, 39, "back", "miner", {"flip": true}], [132, 39, "side", "miner", {}], [161, 39, "curl", "miner", {}]]
 ## Ręczne akcenty dekoracji: [pozycja stóp, indeks z art/props.png] — kłody w tartaku, regały i beczki w Składzie.
 ## (8+) Poly Haven: koksownik wartowników przed posterunkiem. Start w lesie bez płotu i zapory (porządek po playteście F3).
 const ACCENTS := [[Vector2(1432, 416), 7], [Vector2(248, 416), 11], [Vector2(1864, 416), 15], [Vector2(1928, 416), 20], [Vector2(1960, 416), 16], [Vector2(2024, 416), 19], [Vector2(2072, 416), 15], [Vector2(2120, 416), 20], [Vector2(2184, 416), 16], [Vector2(2216, 416), 15], [Vector2(1880, 353), 15], [Vector2(2008, 353), 20], [Vector2(2056, 353), 16], [Vector2(2136, 353), 15], [Vector2(2200, 353), 20], [Vector2(2088, 416), 21], [Vector2(1896, 405), 22]]
