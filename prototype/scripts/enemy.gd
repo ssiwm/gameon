@@ -648,13 +648,16 @@ func _interrupt_windup() -> void:
 	winding = false
 	_cd = maxf(_cd, WINDUP_INTERRUPT_CD * Difficulty.m("enemy_cd"))
 
-## Krzyk gracza (mikrofon albo G): wróg w promieniu 25 m rusza do źródła; śpiącego budzi.
+## Krzyk gracza (mikrofon albo G): wróg w promieniu 25 m rusza do źródła; śpiącego budzi. Zachowanie może go przejąć (`hears_scream`:
+## Mimik w przebraniu odpowiada echem zamiast się demaskować, MIMIC_PLAN.md M8).
 func hear_scream(pos: Vector2) -> void:
 	if not NoiseMgr.is_server() or not alive:
 		return
 	var lim := SCREAM_LURE_R * Difficulty.m("enemy_hear")
 	var heard := _sound_distance(pos, lim)
 	if heard > lim:
+		return
+	if _beh.hears_scream(pos, heard):
 		return
 	_lead_at(_heard_pos(pos, heard, lim, NoiseMgr.N_SCREAM))        # krzyk jest głośny (mały błąd), ale też nie wskazuje punktu co do piksela
 	wake("scream")
@@ -719,6 +722,15 @@ func see_light(pos: Vector2) -> void:
 func _mimic_call(at: Vector2) -> void:
 	Audio.play_variant_at("player_hurt", 2, at, Audio.BUS_WORLD, -2.0, 0.8 * randf_range(0.97, 1.03))
 	Audio.play_at("radio_beep", at, Audio.BUS_WORLD, -14.0, randf_range(0.9, 1.05))
+
+## Echo krzyku gracza z przebranego Mimika (MIMIC_PLAN.md M8): ten sam dźwięk co krzyk [G] (player.gd `_scream_fx`), odrobinę za nisko
+## (enemy_mimic.gd ECHO_PITCH), z jego miejsca, bez trzasku radia. Leżący — ciszej i stłumiony (szyna z filtrem), ciało drga w widoku.
+@rpc("authority", "call_local", "reliable")
+func _mimic_echo(lying: bool) -> void:
+	var pitch: float = 0.8 * _beh.ECHO_PITCH
+	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_OCC_LIGHT if lying else Audio.BUS_WORLD,
+			_beh.ECHO_DB_LYING if lying else _beh.ECHO_DB, pitch, 0.02)
+	_beh.echo_fx(pitch, lying)
 
 ## Efekt uderzenia Wołka o ścianę (RPC musi żyć w węźle wroga; woła go `enemy_bruiser.gd` i lądowanie Skoczka).
 @rpc("authority", "call_local", "reliable")

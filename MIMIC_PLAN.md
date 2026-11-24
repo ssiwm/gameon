@@ -1,6 +1,6 @@
 # Mimik — plan
 
-Status: **plan z 2026-11-23 (main 1.7.666, c20b205a); wdrożone M0–M7 (1.7.671), dalej M8.** Decyzje D1–D6 (§6) przyjęte 2026-11-24 — wszystkie warianty zalecane.
+Status: **plan z 2026-11-23 (main 1.7.666, c20b205a); wdrożone M0–M8 (1.7.672); M9 czeka na sesje co-op.** Decyzje D1–D6 (§6) przyjęte 2026-11-24 — wszystkie warianty zalecane.
 **M0–M2 wdrożone w 1.7.667** (odstępstwa: przebrany stojący nie oddycha tylko w ciemności — w snopie latarki oddycha głęboko, jako
 sygnał obok połysku oczu; solo bez innych postaci i bez bota etykieta to kryptonim spoza drużyny z `FALLBACK_NAMES`).
 **M3–M4 wdrożone w 1.7.668** (odstępstwa: stroje to istniejące modele MPFB — mundur polowy `male_scav` dla patrolu, kombinezon
@@ -33,6 +33,13 @@ przechodzi na model wroga **w stroju udawanych zwłok** (technik, górnik — wc
 przodem do stóp zwłok. `lope` to postawa z profilu (pochylenie +20°, biodra niżej, dłonie przy kolanach), nogi dalej z klipu `human` —
 dłuższy krok rozjeżdżał stopy z klipem. Obrażenia ×1,25 tylko przez 0,9 s przemiany, także od ognia i wybuchu; zryw 110 px/s przez 1,5 s
 po niej. Dołączający w trakcie widzi Mimika już po przemianie. Stykówka: `tools/shot_mimic_morph.gd`.)
+**M8 wdrożone w 1.7.672** (odstępstwa i dodatki: echo to próbka krzyku gracza (`player_hurt`, wariant losowany jak u każdego peera) na wysokości
+0,72 — poniżej najniższego krzyku gracza (0,8 ± 0,06), opóźnienie 0,5 ± 0,08 s; stojący bez trzasku radia (inaczej niż wołanie), leżący
+o 6 dB ciszej na szynie z filtrem (stłumiony) i drgnięcie klatki i głowy przez 0,6 s (corpse3d.gd `echo_jerk`); stojący przebrany bez ruchu —
+tylko głos. Krzyki w czasie oczekiwania łączą się w jedno echo; krzyk spoza zasięgu (25 m drogi dźwięku) — nic; demaskacja odwołuje czekające
+echo; obudzony słyszy krzyk jak każdy wróg. **Dodatek:** przebrany Mimik nie budzi się z watahą (`sibling_wake_ok`) — krzyk budził Trzoska
+obok, a ten w promieniu 140 px budził Mimika (`pack`), co psuło test przy innych wrogach; obudzony dalej budzi sąsiadów. Dziennik `mimic_echo`
+(`disguise`, `dist` — droga dźwięku, `from`, `pos`, `n`) — do pomiaru, czy gracze zaczęli krzyczeć.)
 Kolejność wg rekomendacji z analizy: najpierw M0–M2
 (pomiar i przebranie, które trzyma się na ekranie), potem rdzeń M3–M6 (zwłoki w świecie i Mimik udający zwłoki — główna zmiana
 rozgrywki, działa w solo), dalej M7 (przemiana i ruch) i M8 (echo krzyku). M9 (powalony kolega) czeka na sesje co-op.

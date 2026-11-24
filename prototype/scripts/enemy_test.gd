@@ -81,6 +81,7 @@ func run(m: Node2D) -> void:
 	await _test_mimic()
 	await _test_mimic_grab()
 	await _test_mimic_morph()
+	await _test_mimic_echo()
 	await _test_devourer()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
@@ -1974,6 +1975,65 @@ func _test_mimic_grab() -> void:
 
 ## Przemiana (MIMIC_PLAN.md M7): demaskacja to MORPH_S zapowiedzi z klipem `morph`, w tym czasie obrażenia × MORPH_DMG; potem zryw LOPE_S
 ## z prędkością LOPE_SPEED i powrót do zwykłej. Widok dostaje czas od demaskacji; dołączający widzi Mimika już po przemianie.
+## Echo krzyku (MIMIC_PLAN.md M8): krzyk gracza budzi innych wrogów, przebranego Mimika nie — ten po ok. 0,5 s odpowiada echem, raz na krzyk,
+## niżej niż najniższy krzyk gracza; z daleka nic, obudzony słyszy krzyk jak każdy, demaskacja odwołuje czekające echo. Dziennik `mimic_echo`.
+func _test_mimic_echo() -> void:
+	const LOG_DIR := "user://test_mimic_echo_log"
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "mimic_echo"})
+	var pos := Vector2(FAR_X + 35000.0, 0.0)
+	var m := _spawn("mimik", pos)
+	var t := _spawn("trzosek", pos + Vector2(-40.0, 0.0))     # w promieniu watahy (140 px): jego obudzenie nie budzi przebranego
+	for e in [m, t]:
+		e.set_physics_process(false)
+	await get_tree().process_frame
+	var b = m._beh
+	var src := pos + Vector2(-90.0, 0.0)                        # poza mapą droga dźwięku × SOUND_MUFFLE: 270 px z 400
+	t.hear_scream(src)
+	m.hear_scream(src)
+	var delay: float = b.echo_t
+	check("Mimik/echo: krzyk budzi innych (%s), przebranego Mimika nie — także z watahą obok" % t.wake_cause, t.active and t.wake_cause == "scream" and not m.active)
+	check("Mimik/echo: echo czeka ok. 0,5 s (%.2f s)" % delay, absf(delay - b.ECHO_DELAY) <= b.ECHO_JITTER + 0.001)
+	m.hear_scream(src)
+	check("Mimik/echo: drugi krzyk w czasie oczekiwania nie dokłada echa", is_equal_approx(b.echo_t, delay))
+	b._tick_echo(delay * 0.6)
+	var early: int = b.echoes
+	b._tick_echo(delay * 0.6)
+	var vi: Dictionary = m.view_info()
+	var pitch := float(b.last_echo.get("pitch", 1.0))
+	check("Mimik/echo: po czasie jedno echo, nie wcześniej (%d → %d)" % [early, b.echoes], early == 0 and b.echoes == 1 and b.echo_t < 0.0)
+	check("Mimik/echo: niższe niż najniższy krzyk gracza (%.2f < 0,74), stojący bez tłumienia, widok dostaje `echo`" % pitch,
+			pitch < 0.8 - 0.06 - 0.01 and pitch > 0.6 and b.last_echo.get("lying") == false and float(vi.get("echo", 0.0)) > 0.9)
+	b._tick_echo(1.0)
+	check("Mimik/echo: raz na krzyk", b.echoes == 1)
+	m.hear_scream(pos + Vector2(-m.SCREAM_LURE_R * 2.0, 0.0))
+	check("Mimik/echo: krzyk spoza 25 m bez echa", b.echo_t < 0.0)
+	m.hear_scream(src)
+	m.wake("hit")
+	b._tick_echo(1.0)
+	check("Mimik/echo: demaskacja odwołuje czekające echo", b.echoes == 1 and b.echo_t < 0.0)
+	m._has_lead = false
+	m.hear_scream(src)
+	check("Mimik/echo: obudzony słyszy krzyk jak każdy wróg (ślad, bez echa)", m._has_lead and b.echo_t < 0.0 and b.echoes == 1)
+	var rows: Array = []
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("
+"):
+		if line != "":
+			rows.append(JSON.parse_string(line))
+	var ech: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mimic_echo")
+	check("dziennik Mimika: `mimic_echo` z przebraniem i drogą dźwięku, bez `mimic_reveal` od krzyku", ech.size() == 1 and ech[0].get("disguise") == "stand"
+			and int(ech[0].get("dist", 0)) >= 85 and ech[0].has("from") and rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mimic_reveal" and r["cause"] == "scream").is_empty(), str(ech))
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	SessionLog.dir = SessionLog.DIR
+	for f in DirAccess.get_files_at(LOG_DIR):
+		DirAccess.remove_absolute("%s/%s" % [LOG_DIR, f])
+	DirAccess.remove_absolute(LOG_DIR)
+	for e in [m, t]:
+		e.queue_free()
+	await get_tree().process_frame
+
 func _test_mimic_morph() -> void:
 	var pos := Vector2(FAR_X + 34000.0, 0.0)
 	var m := _spawn("mimik", pos)

@@ -9,6 +9,7 @@ extends "res://scripts/corpse_test.gd"
 ## 3. Demaskacja: snop dopiero po ~2,5 s, przejście tuż nad nim (bot) tak, stanie obok nie; przeszukiwanie — chwyt po 0,3 s zamiast łupu;
 ##    trafienie; po demaskacji wymiary stojącego, zwłok już nie ma (`present`). Dziennik `mimic_reveal` z `disguise` = corpse.
 ## 4. Zabity zostawia łup ciała; wipe kładzie go z powrotem; prawdziwe zwłoki przeszukane do końca nie budzą nikogo.
+## 5. Echo krzyku (M8): krzyk gracza go nie demaskuje — po ok. 0,5 s odpowiada stłumionym echem spod ciała, dalej leży; `mimic_echo` z `corpse`.
 ## Wynik: linie [MIMIC-CORPSE] i kod wyjścia.
 
 const MIMIC := preload("res://scripts/enemy_mimic.gd")
@@ -71,6 +72,7 @@ func run(m: Node2D) -> void:
 	await _over()
 	await _search_fake()
 	await _hit()
+	await _echo()
 	await _kill_and_wipe()
 	await _real_search()
 	_check_reveal_log()
@@ -195,6 +197,22 @@ func _hit() -> void:
 	_rewind()
 	await _frames(0.1)
 
+## Krzyk gracza z 10 m przez NoiseMgr (jak [G]): leżący nie wstaje, po ok. 0,5 s echo stłumione, z widokiem drgnięcia.
+func _echo() -> void:
+	var b = mim._beh
+	_place_player(cp_fake.global_position + Vector2(-160.0, 0.0))
+	await _frames(0.1)
+	var n0: int = b.echoes
+	NoiseMgr.add_scream(0.0, player.global_position)
+	await _frames(0.3)
+	var early: bool = b.echoes == n0 and b.echo_t > 0.0
+	await _frames(0.45)
+	check("krzyk G: dalej leży (zwłoki są), echo po ok. 0,5 s, nie wcześniej (%d → %d)" % [n0, b.echoes],
+		early and b.echoes == n0 + 1 and not mim.active and cp_fake.present())
+	check("echo leżącego stłumione (%s)" % str(b.last_echo), b.last_echo.get("lying") == true and float(b.last_echo.get("pitch", 1.0)) < 0.74)
+	_rewind()
+	await _frames(0.1)
+
 # ---------------------------------------------------------------- 4. śmierć, wipe, prawdziwe zwłoki
 
 func _kill_and_wipe() -> void:
@@ -239,5 +257,7 @@ func _check_reveal_log() -> void:
 	for r in rev:
 		if r.get("disguise") == "corpse":
 			causes[String(r["cause"])] = true
-	check("dziennik: `mimic_reveal` z `disguise` = corpse dla light, near, search, hit %s" % str(causes.keys()),
-		causes.has("light") and causes.has("near") and causes.has("search") and causes.has("hit"))
+	check("dziennik: `mimic_reveal` z `disguise` = corpse dla light, near, search, hit %s, bez scream" % str(causes.keys()),
+		causes.has("light") and causes.has("near") and causes.has("search") and causes.has("hit") and not causes.has("scream"))
+	var ech: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mimic_echo" and r.get("disguise") == "corpse")
+	check("dziennik: `mimic_echo` z `disguise` = corpse (%d)" % ech.size(), ech.size() == 1)
