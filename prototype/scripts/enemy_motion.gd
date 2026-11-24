@@ -2,10 +2,10 @@ extends RefCounted
 ## Autorskie klipy riga w natywnej AnimationLibrary. Pozycje kończyn są ułamkiem wysokości bioder;
 ## Enemy3D retargetuje je do anatomii przez IK. Kontakt jest znacznikiem czasu, nie komendą zadania obrażeń.
 const PATH := "res://art/enemy3d/motion.tres"
-const KIND := {"wolek": "smash", "rzeznik": "cleave", "slepiec": "claw", "stalker": "grab", "mimik": "reveal_grab",
+const KIND := {"wolek": "smash", "rzeznik": "cleave", "slepiec": "claw", "stalker": "grab", "mimik": "jab",
 	"podsluchacz": "scream", "kaplan": "ritual", "skoczek": "pounce", "zerca": "snatch", "trzosek": "bite", "cma": "dive"}
 const TIMING := {"smash": [0.60, 0.76], "cleave": [0.50, 0.64], "claw": [0.35, 0.46], "grab": [0.40, 0.68],
-	"reveal_grab": [0.40, 0.55], "scream": [0.90, 0.60], "ritual": [0.70, 0.82], "summon": [1.20, 0.70], "bless": [0.05, 0.85], "pounce": [0.30, 0.38],
+	"grab_hold": [0.40, 0.55], "jab": [0.40, 0.40], "scream": [0.90, 0.60], "ritual": [0.70, 0.82], "summon": [1.20, 0.70], "bless": [0.05, 0.85], "pounce": [0.30, 0.38],
 	"snatch": [0.40, 0.56], "bite": [0.28, 0.42], "dive": [0.20, 0.40], "charge": [0.70, 0.25], "throw": [0.60, 0.52], "landing": [0.0, 0.24]}
 ## Klatki: [ułamek zapowiedzi lub odzyskania równowagi, kanały riga]. Ujemny czas = przed kontaktem.
 const KEYS := {
@@ -40,10 +40,16 @@ const KEYS := {
 		[0.0,{"lean": 12.0,"drop": 0.08,"hR": Vector3(1.02,1.28,0.20),"hL": Vector3(1.02,1.28,-0.20),"fR": Vector3(0.18,0,0),"fL": Vector3(-0.10,0,0)}],
 		[0.22,{"lean": 10.0,"hR": Vector3(0.88,1.24,0.13),"hL": Vector3(0.88,1.24,-0.13)}],
 		[0.67,{"lean": 5.0,"drop": 0.03,"hR": Vector3(0.38,1.02,0.32),"hL": Vector3(0.38,1.02,-0.32)}]],
-	"reveal_grab": [[-1.0,{"lean": 0.0,"drop": 0.0,"hR": Vector3(0.05,0.75,0.35),"hL": Vector3(0.05,0.75,-0.35)}],
+	# Mimik (MIMIC_PLAN.md M6): chwyt z przebrania obiema rękami (pierwszy cios po demaskacji; widok trzyma pozę tuż po kontakcie przez
+	# cały chwyt, enemy3d.gd `hold_sp`) i lżejszy zwykły cios jedną ręką. Zapowiedź obu jest ta sama — klient nie wie, który przyjdzie.
+	"grab_hold": [[-1.0,{"lean": 0.0,"drop": 0.0,"hR": Vector3(0.05,0.75,0.35),"hL": Vector3(0.05,0.75,-0.35)}],
 		[-0.50,{"lean": -5.0,"head": 1.3,"hR": Vector3(0.22,1.32,0.42),"hL": Vector3(0.22,1.32,-0.42)}],
 		[0.0,{"lean": 14.0,"drop": 0.06,"hR": Vector3(0.95,1.18,0.18),"hL": Vector3(0.95,1.18,-0.18)}],
-		[0.20,{"hR": Vector3(0.80,1.12,0.10),"hL": Vector3(0.80,1.12,-0.10)}]],
+		[0.20,{"lean": 12.0,"hR": Vector3(0.80,1.12,0.10),"hL": Vector3(0.80,1.12,-0.10)}]],
+	"jab": [[-1.0,{"lean": 0.0,"drop": 0.0,"hR": Vector3(0.05,0.75,0.35),"hL": Vector3(0.05,0.75,-0.35)}],
+		[-0.50,{"lean": -5.0,"head": 1.3,"hR": Vector3(0.22,1.32,0.42),"hL": Vector3(0.22,1.32,-0.42)}],
+		[0.0,{"lean": 9.0,"drop": 0.03,"hR": Vector3(0.90,1.12,0.20),"hL": Vector3(0.28,1.02,-0.40)}],
+		[0.40,{"lean": 3.0,"drop": 0.01,"hR": Vector3(0.40,0.92,0.32),"hL": Vector3(0.10,0.80,-0.36)}]],
 	"scream": [[-1.0,{"lean": 3.0,"hR": Vector3(0.05,0.70,0.35),"hL": Vector3(0.05,0.70,-0.35)}],
 		[-0.55,{"lean": -5.0,"hR": Vector3(0.26,1.38,0.31),"hL": Vector3(0.26,1.38,-0.31)}],
 		[-0.15,{"lean": -12.0,"hR": Vector3(0.15,1.56,0.24),"hL": Vector3(0.15,1.56,-0.24)}],

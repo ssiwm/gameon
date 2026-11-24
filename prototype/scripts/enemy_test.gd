@@ -8,6 +8,7 @@ extends Node
 
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const Enemy := preload("res://scripts/enemy.gd")
+const EnemyMotion := preload("res://scripts/enemy_motion.gd")
 const Player := preload("res://scripts/player.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Weapons := preload("res://scripts/weapons.gd")
@@ -78,6 +79,7 @@ func run(m: Node2D) -> void:
 	await _test_elite_placement()
 	await _test_elite_log()
 	await _test_mimic()
+	await _test_mimic_grab()
 	await _test_devourer()
 	await _test_wolek_throw_vertical()
 	await _test_slepiec_mechanics()
@@ -1873,6 +1875,95 @@ func _test_mimic() -> void:
 	DirAccess.remove_absolute(LOG_DIR)
 	for e in [m, m2, t]:
 		e.queue_free()
+	await get_tree().process_frame
+
+## Chwyt z przebrania (MIMIC_PLAN.md M6): przemiana chwyta tego, kto stoi przy nim, trzyma GRAB_S i bije na początku i na końcu; kolejny cios
+## jest zwykły. Uwolnienie: cios wręcz chwyconego (jego strzał nie), ogłuszenie, GRAB_FREE_DMG od innych (bot), śmierć Mimika. Dziennik `mimic_grab`.
+func _test_mimic_grab() -> void:
+	const LOG_DIR := "user://test_mimic_grab_log"
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "mimic_grab"})
+	var saved_pos := player.global_position
+	var saved_hp := int(player.hp)
+	player.set_physics_process(false)
+	player.hp = 5
+	player._invuln = 0.0
+	var m := _spawn("mimik", player.global_position + Vector2(12.0, 0.0))
+	m.set_physics_process(false)
+	await get_tree().process_frame
+	var b = m._beh
+	var dmg: int = m._scaled_damage(b.GRAB_DMG)
+	m.wake("search")
+	var ready_clip: String = b.attack_action()
+	var ready_view: String = String(m.view_info().get("motion_action", ""))
+	m._resolve_attack()
+	check("Mimik/chwyt: przemiana chwyta stojącego przy nim (klip `grab_hold`, `_sp` chwytu w widoku, obrażenia na początku)",
+			player.grabbed and b.grab_victim == player and b.grabs == 1 and player.hp == 5 - dmg and ready_clip == "grab_hold"
+			and ready_view == "grab_hold" and m.visual_attack_action == "grab_hold" and int(m.view_info()["sp"]) == b.SP_HOLD,
+			"grabbed %s hp %d klip %s/%s/%s sp %d" % [player.grabbed, player.hp, ready_clip, ready_view, m.visual_attack_action, int(m.view_info()["sp"])])
+	var ticks := 0
+	while b.grab_victim != null and ticks < 40:
+		b.tick_phase(0.05, player)
+		ticks += 1
+	check("Mimik/chwyt: trzyma ok. 1,5 s, na końcu drugi cios i puszcza", not player.grabbed and player.hp == 5 - 2 * dmg and m._sp == 0
+			and absf(ticks * 0.05 - b.GRAB_S) < 0.06 and m._cd >= b.GRAB_AFTER_CD - 0.001, "%d tików, hp %d" % [ticks, player.hp])
+	m._cd = 0.0
+	check("Mimik/chwyt: tylko pierwszy cios — kolejny zwykły (klip `jab`)", not b.strike(player) and b.attack_action() == ""
+			and EnemyMotion.action("mimik") == "jab" and not player.grabbed)
+	var grab := func() -> void:
+		player.hp = 5
+		player._invuln = 0.0
+		m.hp = m._max_hp
+		m.global_position = player.global_position + Vector2(12.0, 0.0)
+		b.grab_ready = 1.0
+		b.strike(player)
+	var hit := func(amount: float, shooter: int, type: String, stun := 0.0) -> void:
+		m.take_hit({"amount": amount, "dir": Vector2.RIGHT, "pos": m.global_position, "shooter": shooter, "type": type, "stun": stun, "w": Weapons.M83})
+	var me := int(player.player_id)
+	grab.call()
+	var held: bool = player.grabbed
+	hit.call(30.0, me, "bullet")
+	var shot_holds: bool = player.grabbed
+	hit.call(5.0, me, "melee")
+	check("Mimik/chwyt: strzał chwyconego nie zrywa, jego cios wręcz tak", held and shot_holds and not player.grabbed and b.grab_victim == null)
+	grab.call()
+	hit.call(0.5, me + 77, "bullet", 0.5)
+	check("Mimik/chwyt: ogłuszenie (strzelba, harpun) zrywa chwyt", not player.grabbed)
+	var helper := me + 77
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot:
+			helper = int(p.player_id)
+	grab.call()
+	hit.call(12.0, helper, "bullet")
+	var after_one: bool = player.grabbed
+	hit.call(12.0, helper, "bullet")
+	check("Mimik/chwyt: 20 obrażeń od kolegi albo bota zrywa chwyt, 12 jeszcze nie", after_one and not player.grabbed)
+	grab.call()
+	hit.call(999.0, helper, "bullet")
+	check("Mimik/chwyt: śmierć Mimika puszcza chwyconego", not m.alive and not player.grabbed and b.grab_victim == null)
+	await get_tree().process_frame
+	var rows: Array = []
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("
+"):
+		if line != "":
+			rows.append(JSON.parse_string(line))
+	var hows: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mimic_grab").map(func(r: Dictionary) -> String: return "%s:%s:%d" % [r["how"], r["freed"], int(r["dmg"])])
+	check("dziennik `mimic_grab`: kto, czy uwolniony, czym, ile obrażeń", hows == ["time:false:%d" % (2 * dmg), "melee:true:%d" % dmg, "stun:true:%d" % dmg,
+			"team:true:%d" % dmg, "death:false:%d" % dmg], str(hows))
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	SessionLog.dir = SessionLog.DIR
+	for f in DirAccess.get_files_at(LOG_DIR):
+		DirAccess.remove_absolute("%s/%s" % [LOG_DIR, f])
+	DirAccess.remove_absolute(LOG_DIR)
+	m.queue_free()
+	player.global_position = saved_pos
+	player.hp = saved_hp
+	player.grabbed = false
+	player._invuln = 0.0
+	player.velocity = Vector2.ZERO
+	player.set_physics_process(true)
 	await get_tree().process_frame
 
 ## Wołek rozpędza się tylko tam, gdzie ma podłogę pod całym rozbiegiem (i ścianę sprawdzoną na pełnym dystansie).

@@ -10,7 +10,7 @@
 | Rzeźnik | cleave | 0,50 / 0,64 |
 | Ślepiec | claw | 0,35 / 0,46 |
 | Stalker | grab | 0,40 / 0,68 |
-| Mimik | reveal_grab | 0,40 / 0,55 |
+| Mimik — chwyt z przebrania / zwykły cios | grab_hold / jab | 0,40 / 0,55; 0,40 / 0,40 |
 | Podsłuchacz | scream | 0,90 / 0,60 |
 | Kapłan | ritual | 0,70 / 0,82 |
 | Skoczek | pounce | 0,30 / 0,38 |

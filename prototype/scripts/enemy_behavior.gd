@@ -168,6 +168,15 @@ func on_sighting(_pos: Vector2) -> void:
 func after_attack() -> void:
 	pass
 
+## Rozstrzygnięcie ciosu po zapowiedzi (po `after_attack`, przed zwykłym trafieniem): `pp` = cel zapowiedzi albo null (przemiana Mimika).
+## true = zachowanie samo rozstrzygnęło cios (chwyt Mimika, MIMIC_PLAN.md M6) i rdzeń nie zadaje zwykłych obrażeń.
+func strike(_pp: Node2D) -> bool:
+	return false
+
+## Wróg dostał obrażenia (`dmg` po pancerzu i polu, przed sprawdzeniem śmierci), z pełnym `info` trafienia: uwolnienie z chwytu Mimika.
+func took_hit(_info: Dictionary, _dmg: float) -> void:
+	pass
+
 ## Wróg się zapalił.
 func on_ignite() -> void:
 	pass

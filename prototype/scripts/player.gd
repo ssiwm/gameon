@@ -1612,6 +1612,7 @@ func _respawn(hp_amount: int, quiet := false, bled := false) -> void:
 	chip = 0.0
 	taken = false
 	taken_t = 0.0
+	grabbed = false                 # chwyt (Pijawka, Mimik) nie przeżywa odrodzenia ani zmiany mapy — chwytający mógł zniknąć bez puszczenia
 	bleed_left = 0.0
 	revive_progress = 0.0
 	global_position = _respawn_at() if bled else _spawn_point

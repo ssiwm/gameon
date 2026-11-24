@@ -13,6 +13,14 @@ na jednego); `MIMIC_CORPSES` w danych mapy pozwala to zmienić. Losowanie przy z
 samej mapie (bez przeładowania) i wipe zostawiają Mimika w tym samym gnieździe. Demaskacja z leżenia to na razie podmiana: zwłoki
 znikają i stoi Mimik w zwykłej przemianie 0,35 s — wstawanie „wstecz” to M7; chwyt po przeszukiwaniu to zwykły cios do M6. Krzyk G
 dalej demaskuje (M8). Kodeks od razu opisuje sygnały obu przebrań, nie dopiero po pierwszej demaskacji.)
+**M6 wdrożone w 1.7.670** (odstępstwa: chwytem jest pierwszy cios w oknie 2,5 s po demaskacji — później tylko zwykłe ciosy; przemiana
+bez celu sama chwyta tego, kto stoi przy nim (zasięg ciosu + 12 px — przeszukujący zwłoki stoi do 24 px od środka ciała). „Odrzut” to
+odskok Mimika — gracz nie ma mechaniki odrzucenia. Strzał chwyconego nie zrywa chwytu i nie liczy się do 20 obrażeń (tylko jego cios
+wręcz); ogłuszenie to każde trafienie z ≥ 0,4 s ogłuszenia (strzelba, harpun, kilof, szyna), także od chwyconego. Obrażenia chwytu
+omijają chwilową niewrażliwość po trafieniu. Lżejszy klip nazywa się `jab` (`swipe` ma Łupacz); `grab_hold` i `jab` mają tę samą
+zapowiedź, a widok trzyma pozę tuż po kontakcie, póki serwer trzyma ofiarę (`_sp` = 1, enemy3d.gd `hold_sp`). Bot pomaga dotychczasowym
+zachowaniem — podskakuje dla czystej linii nad kolegą i strzela; test sprawdza, że jego obrażenia zrywają chwyt. Pasek akcji bez licznika
+— 1,5 s to za mało na odczyt. Sieć: test `test_net_session.sh` — dołączający przeszukuje Mimika i dostaje `grabbed`.)
 Kolejność wg rekomendacji z analizy: najpierw M0–M2
 (pomiar i przebranie, które trzyma się na ekranie), potem rdzeń M3–M6 (zwłoki w świecie i Mimik udający zwłoki — główna zmiana
 rozgrywki, działa w solo), dalej M7 (przemiana i ruch) i M8 (echo krzyku). M9 (powalony kolega) czeka na sesje co-op.

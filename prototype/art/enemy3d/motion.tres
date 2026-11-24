@@ -468,6 +468,136 @@ metadata/contact = 0.4
 metadata/recovery = 0.68
 
 [sub_resource type="Animation" id="Animation_qxtcf"]
+length = 0.9500000000000001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(":lean")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.4, 0.51, 0.95),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [0.0, -5.0, 14.0, 12.0, 0.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(":drop")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.4, 0.95),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 0.06, 0.0]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath(":hR")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.4, 0.51, 0.95),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0.05, 0.75, 0.35), Vector3(0.22, 1.32, 0.42), Vector3(0.95, 1.18, 0.18), Vector3(0.8, 1.12, 0.1), Vector3(0.05, 0.75, 0.35)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath(":hL")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.4, 0.51, 0.95),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0.05, 0.75, -0.35), Vector3(0.22, 1.32, -0.42), Vector3(0.95, 1.18, -0.18), Vector3(0.8, 1.12, -0.1), Vector3(0.05, 0.75, -0.35)]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath(":head")
+tracks/4/interp = 2
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.95),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 1.3, 0.0]
+}
+metadata/contact = 0.4
+metadata/recovery = 0.55
+
+[sub_resource type="Animation" id="Animation_cjuno"]
+length = 0.8
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(":lean")
+tracks/0/interp = 2
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.4, 0.56, 0.8),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [0.0, -5.0, 9.0, 3.0, 0.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(":drop")
+tracks/1/interp = 2
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.4, 0.56, 0.8),
+"transitions": PackedFloat32Array(1, 1, 1, 1),
+"update": 0,
+"values": [0.0, 0.03, 0.01, 0.0]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath(":hR")
+tracks/2/interp = 2
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.4, 0.56, 0.8),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0.05, 0.75, 0.35), Vector3(0.22, 1.32, 0.42), Vector3(0.9, 1.12, 0.2), Vector3(0.4, 0.92, 0.32), Vector3(0.05, 0.75, 0.35)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath(":hL")
+tracks/3/interp = 2
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.4, 0.56, 0.8),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
+"update": 0,
+"values": [Vector3(0.05, 0.75, -0.35), Vector3(0.22, 1.32, -0.42), Vector3(0.28, 1.02, -0.4), Vector3(0.1, 0.8, -0.36), Vector3(0.05, 0.75, -0.35)]
+}
+tracks/4/type = "value"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath(":head")
+tracks/4/interp = 2
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"times": PackedFloat32Array(0, 0.2, 0.8),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [0.0, 1.3, 0.0]
+}
+metadata/contact = 0.4
+metadata/recovery = 0.4
+
+[sub_resource type="Animation" id="Animation_37cul"]
 length = 0.24
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -508,7 +638,7 @@ tracks/2/keys = {
 metadata/contact = 0.0
 metadata/recovery = 0.24
 
-[sub_resource type="Animation" id="Animation_cjuno"]
+[sub_resource type="Animation" id="Animation_5ypb6"]
 length = 0.6799999999999999
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -573,72 +703,7 @@ tracks/4/keys = {
 metadata/contact = 0.3
 metadata/recovery = 0.38
 
-[sub_resource type="Animation" id="Animation_37cul"]
-length = 0.9500000000000001
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath(":lean")
-tracks/0/interp = 2
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0, 0.2, 0.4, 0.95),
-"transitions": PackedFloat32Array(1, 1, 1, 1),
-"update": 0,
-"values": [0.0, -5.0, 14.0, 0.0]
-}
-tracks/1/type = "value"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath(":drop")
-tracks/1/interp = 2
-tracks/1/loop_wrap = true
-tracks/1/keys = {
-"times": PackedFloat32Array(0, 0.4, 0.95),
-"transitions": PackedFloat32Array(1, 1, 1),
-"update": 0,
-"values": [0.0, 0.06, 0.0]
-}
-tracks/2/type = "value"
-tracks/2/imported = false
-tracks/2/enabled = true
-tracks/2/path = NodePath(":hR")
-tracks/2/interp = 2
-tracks/2/loop_wrap = true
-tracks/2/keys = {
-"times": PackedFloat32Array(0, 0.2, 0.4, 0.51, 0.95),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
-"update": 0,
-"values": [Vector3(0.05, 0.75, 0.35), Vector3(0.22, 1.32, 0.42), Vector3(0.95, 1.18, 0.18), Vector3(0.8, 1.12, 0.1), Vector3(0.05, 0.75, 0.35)]
-}
-tracks/3/type = "value"
-tracks/3/imported = false
-tracks/3/enabled = true
-tracks/3/path = NodePath(":hL")
-tracks/3/interp = 2
-tracks/3/loop_wrap = true
-tracks/3/keys = {
-"times": PackedFloat32Array(0, 0.2, 0.4, 0.51, 0.95),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1),
-"update": 0,
-"values": [Vector3(0.05, 0.75, -0.35), Vector3(0.22, 1.32, -0.42), Vector3(0.95, 1.18, -0.18), Vector3(0.8, 1.12, -0.1), Vector3(0.05, 0.75, -0.35)]
-}
-tracks/4/type = "value"
-tracks/4/imported = false
-tracks/4/enabled = true
-tracks/4/path = NodePath(":head")
-tracks/4/interp = 2
-tracks/4/loop_wrap = true
-tracks/4/keys = {
-"times": PackedFloat32Array(0, 0.2, 0.95),
-"transitions": PackedFloat32Array(1, 1, 1),
-"update": 0,
-"values": [0.0, 1.3, 0.0]
-}
-metadata/contact = 0.4
-metadata/recovery = 0.55
-
-[sub_resource type="Animation" id="Animation_5ypb6"]
+[sub_resource type="Animation" id="Animation_m6r2e"]
 length = 1.52
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -679,7 +744,7 @@ tracks/2/keys = {
 metadata/contact = 0.7
 metadata/recovery = 0.82
 
-[sub_resource type="Animation" id="Animation_m6r2e"]
+[sub_resource type="Animation" id="Animation_k5rq3"]
 length = 1.5
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -732,7 +797,7 @@ tracks/3/keys = {
 metadata/contact = 0.9
 metadata/recovery = 0.6
 
-[sub_resource type="Animation" id="Animation_k5rq3"]
+[sub_resource type="Animation" id="Animation_kwe2e"]
 length = 1.3599999999999999
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -857,7 +922,7 @@ tracks/9/keys = {
 metadata/contact = 0.6
 metadata/recovery = 0.76
 
-[sub_resource type="Animation" id="Animation_kwe2e"]
+[sub_resource type="Animation" id="Animation_48qmx"]
 length = 0.9600000000000001
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -922,7 +987,7 @@ tracks/4/keys = {
 metadata/contact = 0.4
 metadata/recovery = 0.56
 
-[sub_resource type="Animation" id="Animation_48qmx"]
+[sub_resource type="Animation" id="Animation_u2yl3"]
 length = 1.9
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -987,7 +1052,7 @@ tracks/4/keys = {
 metadata/contact = 1.2
 metadata/recovery = 0.7
 
-[sub_resource type="Animation" id="Animation_u2yl3"]
+[sub_resource type="Animation" id="Animation_fgmyv"]
 length = 1.12
 tracks/0/type = "value"
 tracks/0/imported = false
@@ -1037,13 +1102,14 @@ _data = {
 &"cleave": SubResource("Animation_78pq6"),
 &"dive": SubResource("Animation_xagmw"),
 &"grab": SubResource("Animation_46k4s"),
-&"landing": SubResource("Animation_qxtcf"),
-&"pounce": SubResource("Animation_cjuno"),
-&"reveal_grab": SubResource("Animation_37cul"),
-&"ritual": SubResource("Animation_5ypb6"),
-&"scream": SubResource("Animation_m6r2e"),
-&"smash": SubResource("Animation_k5rq3"),
-&"snatch": SubResource("Animation_kwe2e"),
-&"summon": SubResource("Animation_48qmx"),
-&"throw": SubResource("Animation_u2yl3")
+&"grab_hold": SubResource("Animation_qxtcf"),
+&"jab": SubResource("Animation_cjuno"),
+&"landing": SubResource("Animation_37cul"),
+&"pounce": SubResource("Animation_5ypb6"),
+&"ritual": SubResource("Animation_m6r2e"),
+&"scream": SubResource("Animation_k5rq3"),
+&"smash": SubResource("Animation_kwe2e"),
+&"snatch": SubResource("Animation_48qmx"),
+&"summon": SubResource("Animation_u2yl3"),
+&"throw": SubResource("Animation_fgmyv")
 }
