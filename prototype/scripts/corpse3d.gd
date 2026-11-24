@@ -1,8 +1,8 @@
 extends "res://scripts/enemy3d.gd"
 ## Zwłoki w świecie (MIMIC_PLAN.md M3): operator Patrolu Siedem, technik radiostacji albo górnik leżący na podłodze — ten sam model i
 ## dopasowanie co Mimik (PROP_SPEC `corpse` w enemy3d.gd, strój wybiera `model_path`), żeby Mimik udający zwłoki (M5) wyglądał tak samo.
-## Poza leżenia jest wypiekana raz przy budowie: koniec klipu upadku gracza (`down`, char_clips.gd) plus wariant ułożenia z ziarna,
-## potem szkielet stoi — bez klipów, IK i oddechu w każdej klatce, koszt zbliżony do rekwizytu. Ciało opiera się najniższym punktem
+## Poza leżenia jest wypiekana raz przy budowie: koniec klipu upadku gracza (`down`, char_clips.gd) plus wariant ułożenia z ziarna
+## i opadanie pod ciężarem (`_drape`: tułów, głowa i kończyny kładą się na gruncie, zamiast wisieć w pozie z klipu), potem szkielet stoi — bez klipów, IK i oddechu w każdej klatce, koszt zbliżony do rekwizytu. Ciało opiera się najniższym punktem
 ## otoczki skóry na gruncie. Przeszukane (M4) zmienia ułożenie o szczegół: ręka odsunięta od ciała, głowa na drugą stronę.
 ##
 ## Mimik-zwłoki (M5, `build(…, mimic = true)`): ta sama poza, strój i materiał; różnią go sygnały: brak plamy pod ciałem (view3d), oczy
@@ -62,6 +62,22 @@ var _lit_s := 0.0
 var _breath_t := 0.0
 var _chest_rest := Quaternion.IDENTITY           ## wypieczony obrót Spine2 (oddech dokłada się do niego)
 var _mimic_eyes: Array = []
+## Opadanie pod ciężarem (`_drape`): [kość, największy obrót w stopniach, staw zawiasowy (łokieć, kolano — zgięcie tylko w jedną stronę),
+## część skóry bez kończyn (tułów: ręce opadają osobno)]. Od tułowia na zewnątrz — rodzic leży, zanim opadnie dziecko.
+const DRAPE := [
+	["Spine", 18.0, false, true], ["Spine1", 18.0, false, true], ["Spine2", 18.0, false, true], ["Neck", 40.0, false, false], ["Head", 30.0, false, false],
+	["LeftArm", 120.0, false, false], ["LeftForeArm", 140.0, true, false], ["LeftHand", 60.0, false, false],
+	["RightArm", 120.0, false, false], ["RightForeArm", 140.0, true, false], ["RightHand", 60.0, false, false],
+	["LeftUpLeg", 85.0, false, false], ["LeftLeg", 150.0, true, false], ["LeftFoot", 45.0, false, false],
+	["RightUpLeg", 85.0, false, false], ["RightLeg", 150.0, true, false], ["RightFoot", 45.0, false, false],
+]
+const DRAPE_PASSES := 2                          ## przebiegi opadania
+const UNPROP_TRIES := 3                          ## próby zdjęcia ciała z podpierającej kończyny (`_unprop`)
+const DRAPE_STEP := 4.0                          ## °: krok szukania styku z gruntem (potem połowienie)
+const DRAPE_TOL := 0.006                         ## m: styk z gruntem (najniższy punkt części skóry nad FLOOR_GAP)
+const BEND_MAX := {"ForeArm": 145.0, "Leg": 150.0}   ## °: największe zgięcie łokcia i kolana (0 = prosto)
+const UNBEND_MAX := 35.0                         ## °: o ile ciężar rozprostowuje łokieć albo kolano (sztywnieje — noga w bok nie prostuje się do końca)
+var _drape_parts := {}                           ## kość → indeksy próbek otoczki jej części skóry (cache na model)
 
 ## Buduje model w stroju `out` (klucz OUTFITS albo ścieżka `res://…glb` — model gracza, M9) i ułożeniu `pose`; `flip` = −1 leży głową
 ## w drugą stronę (i drugim bokiem do kamery); `faded` — wyblakły, przybrudzony strój (zwłoki), bez niego świeży (powalony kolega).
@@ -169,6 +185,8 @@ func _bake() -> void:
 	_down_at(DOWN_T)
 	_variant()
 	_settle()
+	if pose_id != "downed":
+		_drape()                                                  # powalony gracz (M9) leży jak w char3d.gd — Mimik musi wyglądać tak samo
 	_sk.force_update_all_bone_transforms()
 	_chest_rest = _sk.get_bone_pose_rotation(_b["Spine2"])
 	for i in _sk.get_bone_count():
@@ -279,6 +297,10 @@ func _variant() -> void:
 		"side": roll = deg_to_rad(rng.randf_range(58.0, 72.0))
 		"curl": roll = deg_to_rad(rng.randf_range(70.0, 82.0))
 	_roll_to(roll)
+	if pose_id == "back":
+		for side in ["Left", "Right"]:
+			_arm_lay(side, rng)                                   # klip kończy się z dłońmi przy twarzy („bokser”) — ręce bezwładnie na ziemi
+			_leg_out(side, deg_to_rad(rng.randf_range(20.0, 40.0)))  # stopy opadają na zewnątrz, nie stoją palcami w górę
 	if pose_id == "side":
 		_leg_to("Right", 55.0, -35.0)                            # wierzchnia noga zgięta przed ciałem
 	elif pose_id == "curl":
@@ -287,7 +309,10 @@ func _variant() -> void:
 	var turn := deg_to_rad(rng.randf_range(15.0, 35.0)) * (1.0 if rng.randf() < 0.5 else -1.0)
 	if searched:
 		turn = -turn
-		_arm_out("Right")
+		var top := "Right"
+		if pose_id != "back" and _node_pt(_b["LeftArm"]).y > _node_pt(_b["RightArm"]).y:
+			top = "Left"                                          # na boku odsunięta ręka to wierzchnia — przygniecionej nikt nie wyciągnie
+		_arm_out(top)
 	_rot_world(_b["Head"], _to_sk(_body_axis()), turn)
 
 ## Kierunek z przestrzeni węzła do przestrzeni szkieletu (znormalizowany).
@@ -330,6 +355,50 @@ func _leg_to(side: String, thigh: float, shin: float) -> void:
 	var sh := _to_sk(Vector3(cos(deg_to_rad(shin)), 0.0, sin(deg_to_rad(shin))))
 	_point_bone(knee, foot, _gp(knee).origin + sh * float(lens[1]))
 
+## Ręka leżącego na plecach bezwładnie na ziemi: ramię odchylone od tułowia o 15–70° (od osi ciała ku stopom na zewnątrz), łokieć zgięty
+## 5–45° w płaszczyźnie gruntu; kąty z ziarna, osobno dla każdej ręki. Wysokość dopasowuje potem `_drape`.
+func _arm_lay(side: String, rng: RandomNumberGenerator) -> void:
+	var arm: int = _b[side + "Arm"]
+	var fore: int = _b[side + "ForeArm"]
+	var hand: int = _b[side + "Hand"]
+	var lens: Array = _arm_len[side]
+	var feet := -_body_axis()
+	feet = Vector3(feet.x, 0.0, feet.z).normalized()
+	var o := _node_pt(arm) - _node_pt(_b["Spine2"])
+	var out := Vector3(o.x, 0.0, o.z)
+	out = (out - feet * out.dot(feet)).normalized()
+	var a := deg_to_rad(rng.randf_range(15.0, 70.0))
+	var bend := deg_to_rad(rng.randf_range(5.0, 45.0)) * (1.0 if rng.randf() < 0.6 else -1.0)
+	var u := (feet * cos(a) + out * sin(a) + Vector3.DOWN * 0.08).normalized()
+	var f := (feet * cos(a + bend) + out * sin(a + bend) + Vector3.DOWN * 0.04).normalized()
+	_point_bone(arm, fore, _gp(arm).origin + _to_sk(u) * float(lens[0]))
+	_point_bone(fore, hand, _gp(fore).origin + _to_sk(f) * float(lens[1]))
+
+## Noga wyprostowana w kolanie i obrócona wokół własnej osi (biodro → kolano) tak, że palce stopy uciekają od osi ciała — u bezwładnego
+## leżącego na plecach stopy opadają na boki.
+func _leg_out(side: String, ang: float) -> void:
+	var up: int = _b[side + "UpLeg"]
+	var knee: int = _b[side + "Leg"]
+	var toe := _sk.find_bone(PRE + side + "ToeBase")
+	if toe < 0:
+		return
+	var ax := _node_pt(knee) - _node_pt(up)
+	if ax.length() < 0.001:
+		return
+	ax = ax.normalized()
+	var hips := _node_pt(_b["Hips"])
+	var body := _body_axis()
+	var lateral := func() -> float:
+		var v := _node_pt(toe) - hips
+		return (v - body * v.dot(body)).length()
+	var foot: int = _b[side + "Foot"]
+	_point_bone(knee, foot, _gp(knee).origin + _to_sk(ax) * float(_leg_len[side][1]))   # kolano prosto: przy zgiętym obrót uda zadzierał goleń
+	_sk.force_update_all_bone_transforms()
+	var before: float = lateral.call()
+	_rot_world(up, _to_sk(ax), ang)
+	if float(lateral.call()) < before:
+		_rot_world(up, _to_sk(ax), -2.0 * ang)              # w drugą stronę — to była rotacja do środka
+
 ## Ręka odciągnięta od ciała ku kamerze i lekko ku głowie (przeszukane: ktoś ją odsunął, żeby dostać się do kieszeni).
 func _arm_out(side: String) -> void:
 	var arm: int = _b[side + "Arm"]
@@ -338,6 +407,281 @@ func _arm_out(side: String) -> void:
 	var lens: Array = _arm_len[side]
 	_point_bone(arm, fore, _gp(arm).origin + _to_sk(Vector3(-0.25, 0.1, 0.96)) * float(lens[0]))
 	_point_bone(fore, hand, _gp(fore).origin + _to_sk(Vector3(0.35, 0.05, 0.93)) * float(lens[1]))
+
+# ---------------------------------------------------------------- opadanie pod ciężarem
+
+## Klip upadku kończy się w pozie żywego człowieka w chwili zderzenia z ziemią: głowa uniesiona, ręce i nogi w powietrzu (na plecach dłoń
+## 0,3 m, na boku wierzchni łokieć 0,8 m nad gruntem) — zwłoki wyglądały jak manekin. Bez fizyki: po kolei (DRAPE) każda kość obraca się
+## wokół swojego stawu w dół, aż najniższy punkt jej części skóry dotknie gruntu, najwyżej o zadany kąt; łokieć i kolano tylko na zawiasie
+## i w granicach zgięcia. Część, która przy tym weszła pod grunt (ręka pod opadającym tułowiem), wraca na jego powierzchnię.
+func _drape() -> void:
+	if _hull.is_empty():
+		_prepare_hull()
+	if _hull.is_empty():
+		return
+	_prepare_drape_parts()
+	for _pass in DRAPE_PASSES:
+		_drape_pass()
+	_sk.force_update_all_bone_transforms()
+	for _i in UNPROP_TRIES:
+		if not _unprop():
+			break
+		_sk.force_update_all_bone_transforms()
+		_settle()
+		_sk.force_update_all_bone_transforms()
+		_drape_pass()
+		_sk.force_update_all_bone_transforms()
+	_sk.force_update_all_bone_transforms()
+	_settle()
+
+## Kończyna niżej niż tułów — wbita w grunt albo podpierająca go jak statyw (dolny łokieć pod ciałem na boku: po oparciu tułów wisiał
+## 0,3 m nad gruntem): odchyla się w barku / biodrze do poziomu tułowia, który potem opada. Zwraca true, gdy coś odchylił.
+func _unprop() -> bool:
+	var torso := _sk.find_bone(PRE + "Spine")
+	if torso < 0 or not _drape_parts.has(torso):
+		return false
+	var t_low := _part_low(torso)
+	var moved := false
+	for root_name in ["LeftArm", "RightArm", "LeftUpLeg", "RightUpLeg"]:
+		var b := _sk.find_bone(PRE + root_name)
+		if b < 0 or not _drape_parts.has(b):
+			continue
+		_sk.force_update_all_bone_transforms()
+		if _part_low(b) < t_low - 0.03:
+			_drop(b, deg_to_rad(120.0 if root_name.ends_with("Arm") else 60.0), false, -1, Vector3.ZERO, t_low)
+			moved = true
+	return moved
+
+## Jeden przebieg opadania po DRAPE (drugi poprawia kości, które pierwszy położył na części, która potem opadła).
+func _drape_pass() -> void:
+	for d in DRAPE:
+		var b := _sk.find_bone(PRE + String(d[0]))
+		if b >= 0 and _drape_parts.has(b):
+			_sk.force_update_all_bone_transforms()
+			if String(d[0]).ends_with("Hand"):
+				_hand_flat(String(d[0]).trim_suffix("Hand"))
+				_sk.force_update_all_bone_transforms()
+			_drop(b, deg_to_rad(float(d[1])), bool(d[2]))
+			if bool(d[2]):
+				_sk.force_update_all_bone_transforms()
+				if absf(_part_low(b) - FLOOR_GAP) > DRAPE_TOL:
+					# zawias nie sięga gruntu albo nie wyciąga części spod niego (odsunięta ręka przeszukanego): obrót w barku / biodrze
+					# wokół osi ramienia / uda przetacza zgiętą część na ziemię
+					var par := _sk.get_bone_parent(b)
+					var seg := (_node_pt(b) - _node_pt(par)).normalized()
+					var twist := 90.0 if String(d[0]).ends_with("ForeArm") else 45.0
+					_drop(par, deg_to_rad(twist), false, b, seg)
+					_sk.force_update_all_bone_transforms()
+					_drop(b, deg_to_rad(float(d[1])), true)
+
+## Dłoń płasko: nadgarstek prosto jak przedramię, potem obrót wokół osi dłoni, aż linia kostek (palec wskazujący → mały) jest pozioma —
+## w klipie dłonie stały na krawędzi z palcami w górę (jak przy machaniu).
+func _hand_flat(side: String) -> void:
+	var hand := _sk.find_bone(PRE + side + "Hand")
+	var fore := _sk.find_bone(PRE + side + "ForeArm")
+	var mid := _sk.find_bone(PRE + side + "HandMiddle1")
+	var idx := _sk.find_bone(PRE + side + "HandIndex1")
+	var pky := _sk.find_bone(PRE + side + "HandPinky1")
+	if hand < 0 or fore < 0 or mid < 0 or idx < 0 or pky < 0:
+		return
+	var g := _gp(hand).origin
+	_point_bone(hand, mid, g + (g - _gp(fore).origin).normalized() * (_gp(mid).origin - g).length())
+	_sk.force_update_all_bone_transforms()
+	var ax := (_node_pt(mid) - _node_pt(hand)).normalized()
+	var w := _node_pt(pky) - _node_pt(idx)
+	w = (w - ax * w.dot(ax))
+	var h := ax.cross(Vector3.UP)
+	if w.length() < 0.0001 or h.length() < 0.05:
+		return
+	h = h.normalized()
+	if h.dot(w) < 0.0:
+		h = -h
+	var ang := w.normalized().signed_angle_to(h, ax)
+	if absf(ang) > 0.001:
+		_rot_world(hand, _to_sk(ax), ang)
+
+## Próbki otoczki przypisane do kości o największej wadze; część kości = ona i potomkowie (tułów bez rąk — od barku w dół opadają osobno).
+func _prepare_drape_parts() -> void:
+	if not _drape_parts.is_empty():
+		return
+	var owner := PackedInt32Array()
+	for sample in _hull:
+		var best := -1
+		var bw := -1.0
+		for inf in sample:
+			if float(inf[2]) > bw:
+				bw = float(inf[2])
+				best = int(inf[0])
+		owner.append(best)
+	var arms := PackedInt32Array()
+	for side in ["Left", "Right"]:
+		var a := _sk.find_bone(PRE + side + "Arm")
+		if a >= 0:
+			arms.append(a)
+	for d in DRAPE:
+		var b := _sk.find_bone(PRE + String(d[0]))
+		if b < 0:
+			continue
+		var idx := PackedInt32Array()
+		for i in owner.size():
+			var o := owner[i]
+			if o >= 0 and _under(o, b) and not (bool(d[3]) and _under_any(o, arms)):
+				idx.append(i)
+		if not idx.is_empty():
+			_drape_parts[b] = idx
+
+func _under(bone: int, root_bone: int) -> bool:
+	var x := bone
+	while x >= 0:
+		if x == root_bone:
+			return true
+		x = _sk.get_bone_parent(x)
+	return false
+
+func _under_any(bone: int, roots: PackedInt32Array) -> bool:
+	for r in roots:
+		if _under(bone, r):
+			return true
+	return false
+
+## Najniższy punkt części skóry kości `b` (przestrzeń węzła).
+func _part_low(b: int) -> float:
+	var low := INF
+	for q in _part_points(b):
+		low = minf(low, q.y)
+	return low
+
+## Punkty części skóry kości `b` w przestrzeni węzła (bieżąca poza).
+func _part_points(b: int) -> PackedVector3Array:
+	var xf := _transform_under(_sk, self)
+	var poses := {}
+	var out := PackedVector3Array()
+	for i in _drape_parts[b]:
+		var point := Vector3.ZERO
+		for inf in _hull[i]:
+			var bone: int = inf[0]
+			if not poses.has(bone):
+				poses[bone] = _gp(bone)
+			point += (poses[bone] as Transform3D) * (inf[1] as Vector3) * float(inf[2])
+		out.append(xf * point)
+	return out
+
+## Obrót kości `b` wokół osi przez jej staw (przestrzeń węzła) tak, żeby najniższy punkt jej części leżał na gruncie: opuszcza wiszącą,
+## podnosi wbitą w grunt; najwyżej `lim`. Wysokość punktu przy obrocie o θ: A + B·cos θ + C·sin θ (Rodrigues), bez przeliczania szkieletu.
+func _drop(b: int, lim: float, hinge: bool, part := -1, axis := Vector3.ZERO, floor_y := FLOOR_GAP) -> void:
+	var pts := _part_points(part if part >= 0 else b)
+	if pts.is_empty():
+		return
+	var piv := _node_pt(b)
+	var low := INF
+	var c := Vector3.ZERO
+	for q in pts:
+		low = minf(low, q.y)
+		c += q
+	c /= float(pts.size())
+	var raise := low < floor_y - DRAPE_TOL
+	if absf(low - floor_y) <= DRAPE_TOL:
+		return
+	var k := axis if axis != Vector3.ZERO else _drop_axis(b, piv, c, hinge)
+	if k == Vector3.ZERO:
+		return
+	var coef := PackedVector3Array()                 # (A, B, C) na punkt
+	for q in pts:
+		coef.append(_rot_coef(q, piv, k))
+	var cc := _rot_coef(c, piv, k)
+	var dir := 1.0
+	var span := lim
+	if raise:
+		# wbita w grunt: w stronę, w którą najniższy punkt rośnie
+		dir = 1.0 if _low_at(coef, 0.05) >= _low_at(coef, -0.05) else -1.0
+	else:
+		# wisząca: jak pod ciężarem — w stronę, w którą opada środek części, najwyżej do zwisu (środek najniżej)
+		var th := atan2(-cc.z, -cc.y)
+		if absf(th) < 0.002:
+			return
+		dir = signf(th)
+		span = minf(absf(th), lim)
+		if hinge and dir < 0.0:
+			span = minf(span, deg_to_rad(UNBEND_MAX))         # oś zawiasu: + zgina, − prostuje
+	var best := 0.0
+	var prev := 0.0
+	var t := 0.0
+	while t < span:
+		t = minf(t + deg_to_rad(DRAPE_STEP), span)
+		if hinge and not _bend_ok(b, k, dir * t):
+			break
+		var y := _low_at(coef, dir * t)
+		if (y <= floor_y and not raise) or (y >= floor_y and raise):
+			var lo := prev
+			var hi := t
+			for _i in 8:
+				var mid := (lo + hi) * 0.5
+				if (_low_at(coef, dir * mid) <= floor_y) != raise:
+					hi = mid
+				else:
+					lo = mid
+			best = lo if not raise else hi
+			prev = -1.0
+			break
+		prev = t
+	if prev >= 0.0:
+		best = prev                                   # bez styku: do zwisu, granicy stawu albo zgięcia
+	if best > 0.0001:
+		_rot_world(b, _to_sk(k), dir * best)
+
+## Wysokość punktu `q` obróconego o θ wokół osi `k` przez `piv`: A + B·cos θ + C·sin θ → Vector3(A, B, C).
+static func _rot_coef(q: Vector3, piv: Vector3, k: Vector3) -> Vector3:
+	var v := q - piv
+	var par := k * v.dot(k)
+	var perp := v - par
+	return Vector3(piv.y + par.y, perp.y, k.cross(perp).y)
+
+func _low_at(coef: PackedVector3Array, th: float) -> float:
+	var cs := cos(th)
+	var sn := sin(th)
+	var low := INF
+	for e in coef:
+		low = minf(low, e.x + e.y * cs + e.z * sn)
+	return low
+
+## Oś opadania (przestrzeń węzła). Staw kulisty: pozioma, prostopadła do kierunku od stawu do środka części — część pada „przed siebie”;
+## część pionowa pada na zewnątrz ciała. Zawias (łokieć, kolano): oś zgięcia z bieżącej pozy (rodzic × kość); prosta kończyna — oś
+## prostopadła do niej i do pionu.
+func _drop_axis(b: int, piv: Vector3, c: Vector3, hinge: bool) -> Vector3:
+	var d := c - piv
+	if hinge:
+		var par := _sk.get_bone_parent(b)
+		var up_dir := (piv - _node_pt(par)).normalized()
+		var lo_dir := d.normalized()
+		var ax := up_dir.cross(lo_dir)
+		if ax.length() < 0.05:
+			ax = lo_dir.cross(Vector3.UP)
+		return ax.normalized() if ax.length() > 0.001 else Vector3.ZERO
+	var h := Vector3(d.x, 0.0, d.z)
+	if h.length() < 0.15 * d.length():
+		var out := piv - _node_pt(_b["Hips"])
+		h = Vector3(out.x, 0.0, out.z)
+		if h.length() < 0.001:
+			h = Vector3(0.0, 0.0, 1.0)                # ku kamerze
+	return Vector3.UP.cross(h.normalized()).normalized()
+
+## Czy obrót zawiasu `b` o `th` wokół `k` zostawia zgięcie w granicach (0 = prosto … BEND_MAX), bez przeprostu w drugą stronę.
+func _bend_ok(b: int, k: Vector3, th: float) -> bool:
+	var par := _sk.get_bone_parent(b)
+	var piv := _node_pt(b)
+	var up_dir := (piv - _node_pt(par)).normalized()
+	var ch := _first_child(b)
+	if ch < 0:
+		return true
+	var lo_dir := (_node_pt(ch) - piv).normalized().rotated(k, th)
+	var flex := up_dir.cross(lo_dir).dot(k)            # > 0: zgięcie w stronę osi zawiasu z bieżącej pozy
+	var bend := rad_to_deg(up_dir.angle_to(lo_dir))
+	var key := "ForeArm" if String(_sk.get_bone_name(b)).ends_with("ForeArm") else "Leg"
+	return flex >= -0.02 and bend <= float(BEND_MAX[key])
+
+func _first_child(b: int) -> int:
+	var ch := _sk.get_bone_children(b)
+	return ch[0] if ch.size() > 0 else -1
 
 ## Ciało opiera się najniższym punktem skóry na gruncie (y = 0 węzła). Liczone w przestrzeni węzła — działa też przed wejściem do drzewa.
 func _settle() -> void:
