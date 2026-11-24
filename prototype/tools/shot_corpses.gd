@@ -1,7 +1,9 @@
 extends SceneTree
 ## Stykówka zwłok (MIMIC_PLAN.md M3, corpse3d.gd): wiersz na strój, kolumna na ułożenie (każde z flip ±1), widok z boku jak kamera gry
 ## i z góry pod kątem (--pitch); pod komórką wariant i najniższy punkt skóry. Ostatnia kolumna: to samo ciało przeszukane (M4).
-##   godot --path prototype --script tools/shot_corpses.gd -- --out=C:/tmp/corpses.png [--px=360] [--pitch=12]
+##   godot --path prototype --script tools/shot_corpses.gd -- --out=C:/tmp/corpses.png [--px=360] [--pitch=12] [--mimic]
+## --mimic (M5): prawdziwe ciało obok Mimika-zwłok w tym samym ułożeniu, nocą i w snopie latarki (Mimik ~2 s w świetle: połysk oczu,
+## oddech w szczytowej fazie). Plamy krwi pod prawdziwym ciałem stykówka nie rysuje (to view3d) — jej brak u Mimika widać tylko w grze.
 ## Okno (render), override.cfg z custom_user_dir jak przy innych zrzutach.
 const Corpse3D := preload("res://scripts/corpse3d.gd")
 const CELL := 3.0
@@ -10,18 +12,22 @@ var _px := 360
 var _pitch := 12.0
 var _frames := 0
 var _vp: SubViewport
+var _mimic := false
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="): _out = a.substr(6)
 		elif a.begins_with("--px="): _px = int(a.substr(5))
 		elif a.begins_with("--pitch="): _pitch = float(a.substr(8))
+		elif a == "--mimic": _mimic = true
 	var outfits: Array = Corpse3D.OUTFITS.keys()
 	var cols: Array = []
 	for p in Corpse3D.POSES:
 		cols.append([p, 1.0, false])
 		cols.append([p, -1.0, false])
 	cols.append([Corpse3D.POSES[0], 1.0, true])
+	if _mimic:                                           # [ułożenie, strona, przeszukane, Mimik, snop]
+		cols = [["side", 1.0, false, false, false], ["side", 1.0, false, true, false], ["side", 1.0, false, false, true], ["side", 1.0, false, true, true]]
 	_vp = SubViewport.new()
 	_vp.size = Vector2i(_px * cols.size(), int(float(_px) * 1.3 / CELL) * outfits.size())     # ta sama skala w poziomie i pionie
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -31,13 +37,13 @@ func _initialize() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.17, 0.2, 0.19)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.6, 0.62, 0.66)
+	env.ambient_light_color = Color(0.6, 0.62, 0.66) if not _mimic else Color(0.1, 0.12, 0.16)       # --mimic: noc
 	var we := WorldEnvironment.new()
 	we.environment = env
 	_vp.add_child(we)
 	var dl := DirectionalLight3D.new()
 	dl.rotation_degrees = Vector3(-50, -20, 0)
-	dl.light_energy = 1.4
+	dl.light_energy = 1.4 if not _mimic else 0.12
 	dl.shadow_enabled = true
 	_vp.add_child(dl)
 	const ROW := 1.3                                     # m między wierszami (pion)
@@ -64,15 +70,34 @@ func _initialize() -> void:
 			var e: Node3D = (Corpse3D as Script).new()
 			_vp.add_child(e)
 			e.position = Vector3((c - (cols.size() - 1) * 0.5) * CELL, -ROW * r, 0.0)
-			if not e.call("build", String(outfits[r]), String(cd[0]), 11 + c, float(cd[1])):
+			var mim: bool = cd.size() > 3 and bool(cd[3])
+			var lit: bool = cd.size() > 4 and bool(cd[4])
+			if not e.call("build", String(outfits[r]), String(cd[0]), 11 if _mimic else 11 + c, float(cd[1]), mim):
 				push_error("build %s" % outfits[r])
 				continue
 			if bool(cd[2]):
 				e.call("set_searched", true)
+			if lit:                                           # snop latarki z boku kamery, jak gracz stojący obok
+				var sp := SpotLight3D.new()
+				sp.light_energy = 6.0
+				sp.spot_range = 6.0
+				sp.spot_angle = 24.0
+				sp.light_color = Color(1.0, 0.93, 0.8)
+				_vp.add_child(sp)
+				sp.look_at_from_position(e.position + Vector3(-1.6, 1.1, 1.4), e.position + Vector3(0.0, 0.15, 0.0), Vector3.UP)
+			if mim:
+				e.set_process(false)
+				e.set("mimic_lit", 1.0 if lit else 0.0)
+				var steps := 0
+				while steps < 200 and (steps < 22 or (lit and absf(sin(float(e.get("_breath_t")) * PI * Corpse3D.BREATH_HZ)) < 0.97)):
+					e.call("step_mimic", 0.1 if steps < 22 else 0.01)       # ~2 s w świetle, potem do szczytu oddechu
+					steps += 1
 			var l := Label.new()
 			l.position = Vector2(_px * c + 6, int(float(_px) * 1.3 / CELL) * (r + 1) - 22)
 			l.add_theme_font_size_override("font_size", 13)
 			l.text = "%s · %s%s%s" % [outfits[r], cd[0], " ⇄" if float(cd[1]) < 0.0 else "", " · przeszukane" if bool(cd[2]) else ""]
+			if _mimic:
+				l.text = "%s · %s · %s" % [outfits[r], "MIMIK" if mim else "zwłoki", "snop" if lit else "noc"]
 			_vp.add_child(l)
 
 func _process(_delta: float) -> bool:

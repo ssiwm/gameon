@@ -4,6 +4,10 @@ extends "res://scripts/enemy3d.gd"
 ## Poza leżenia jest wypiekana raz przy budowie: koniec klipu upadku gracza (`down`, char_clips.gd) plus wariant ułożenia z ziarna,
 ## potem szkielet stoi — bez klipów, IK i oddechu w każdej klatce, koszt zbliżony do rekwizytu. Ciało opiera się najniższym punktem
 ## otoczki skóry na gruncie. Przeszukane (M4) zmienia ułożenie o szczegół: ręka odsunięta od ciała, głowa na drugą stronę.
+##
+## Mimik-zwłoki (M5, `build(…, mimic = true)`): ta sama poza, strój i materiał; różnią go sygnały: brak plamy pod ciałem (view3d), oczy
+## otwarte — w snopie latarki łapią połysk (`mimic_lit` z widoku, jak u stojącego Mimika), a po BREATH_AFTER s ciągłego światła klatka
+## piersiowa zaczyna się unosić. Tylko on liczy coś w klatce (`_process`); prawdziwe zwłoki stoją wypieczone.
 
 ## Strój → plik modelu MPFB (te same, co operatorzy — w ciemności i z daleka czytelne jako „człowiek z drużyny”).
 const OUTFITS := {
@@ -20,14 +24,29 @@ const MOD := Color(0.78, 0.76, 0.72)             ## wyblakły, przybrudzony str�
 const FLOOR_GAP := 0.004                          ## m: najniższy punkt skóry nad gruntem
 const FIT_H := 22.0                              ## px: wysokość ciała jak Mimik (`fit` Mimika w SPEC)
 const BODY_H := 1.581671                         ## m: wysokość siatki „body” modelu MPFB w spoczynku (male_scav)
+const EYE_OFF := Vector3(0.12, 0.095, 0.033)     ## m: oczy względem kości głowy w spoczynku (jak SPEC `mimik` „eye_off”)
+const EYE_R := 0.012
+const SHINE := Color(0.78, 1.0, 0.82)            ## połysk oczu w snopie (blady, zielonkawy — jak u stojącego Mimika)
+const BREATH_AFTER := 1.0                        ## s ciągłego snopu, po których „przyłapany” zaczyna oddychać
+const BREATH_DEG := 8.0                          ## °: wychylenie klatki piersiowej
+const BREATH_HZ := 0.3                           ## oddechy na sekundę (płytki, szybszy niż śpiący — wstrzymywał oddech)
 
 var outfit := "patrol"
 var pose_id := "back"
 var searched := false
 var seed_v := 0
+var mimic := false                               ## Mimik-zwłoki (M5)
+var mimic_lit := 0.0                             ## 0..1 snop latarki na nim (view3d z `view_info` Mimika)
+var lit_w := 0.0                                 ## wygładzone `lit` (połysk oczu)
+var breath_w := 0.0                              ## 0..1 waga oddechu (rośnie po BREATH_AFTER s światła)
+var _lit_s := 0.0
+var _breath_t := 0.0
+var _chest_rest := Quaternion.IDENTITY           ## wypieczony obrót Spine2 (oddech dokłada się do niego)
+var _mimic_eyes: Array = []
 
 ## Buduje model w stroju `out` i ułożeniu `pose`; `flip` = −1 leży głową w drugą stronę (i drugim bokiem do kamery).
-func build(out: String, pose: String, s: int, flip := 1.0) -> bool:
+func build(out: String, pose: String, s: int, flip := 1.0, is_mimic := false) -> bool:
+	mimic = is_mimic
 	outfit = out if OUTFITS.has(out) else "patrol"
 	pose_id = pose if pose in POSES else "back"
 	seed_v = s
@@ -48,7 +67,57 @@ func build(out: String, pose: String, s: int, flip := 1.0) -> bool:
 	for sm in _mats:
 		(sm as ShaderMaterial).set_shader_parameter("mod", Vector4(MOD.r, MOD.g, MOD.b, 1.0))
 	_bake()
+	if mimic:
+		for sd in [-1.0, 1.0]:
+			var mi := MeshInstance3D.new()
+			var sph := SphereMesh.new()
+			sph.radius = EYE_R
+			sph.height = EYE_R * 2.0
+			sph.radial_segments = 8
+			sph.rings = 4
+			mi.mesh = sph
+			var em := StandardMaterial3D.new()
+			em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			em.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			em.albedo_color = Color(SHINE, 0.0)
+			mi.material_override = em
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.visible = false
+			mi.set_meta("side", sd)
+			_model.add_child(mi)
+			_mimic_eyes.append(mi)
+	set_process(mimic)
 	return true
+
+## Mimik-zwłoki: połysk oczu w snopie i oddech po BREATH_AFTER s ciągłego światła; w ciemności wstrzymuje oddech i gasi połysk.
+func _process(delta: float) -> void:
+	step_mimic(delta)
+
+func step_mimic(delta: float) -> void:
+	if not mimic or _sk == null:
+		return
+	lit_w = move_toward(lit_w, mimic_lit, delta / (0.3 if mimic_lit > lit_w else 0.6))
+	_lit_s = _lit_s + delta if mimic_lit > 0.5 else 0.0
+	breath_w = move_toward(breath_w, 1.0 if _lit_s >= BREATH_AFTER else 0.0, delta / (0.5 if _lit_s >= BREATH_AFTER else 1.5))
+	_breath_t += delta
+	var chest: int = _b["Spine2"]
+	_sk.set_bone_pose_rotation(chest, _chest_rest)
+	if breath_w > 0.001:
+		var lr := _gp(_b["RightArm"]).origin - _gp(_b["LeftArm"]).origin
+		_rot_world(chest, lr.normalized(), deg_to_rad(BREATH_DEG) * breath_w * (0.5 - 0.5 * cos(_breath_t * TAU * BREATH_HZ)))
+	_place_mimic_eyes()
+
+## Oczy przy kości głowy (przestrzeń szkieletu → węzeł modelu), widoczne tylko z połyskiem.
+func _place_mimic_eyes() -> void:
+	var hp := _gp(_b["Head"])
+	var rest := _sk.get_bone_global_rest(_b["Head"])
+	var rel := _transform_under(_sk, _model)
+	for e in _mimic_eyes:
+		var mi := e as MeshInstance3D
+		var p := rest.origin + Vector3(EYE_OFF.x, EYE_OFF.y, EYE_OFF.z * float(mi.get_meta("side")))
+		mi.position = rel * (hp * (rest.affine_inverse() * p))
+		(mi.material_override as StandardMaterial3D).albedo_color = Color(SHINE, lit_w)
+		mi.visible = lit_w > 0.02
 
 ## Przeszukane (M4): ułożenie zmienia się o szczegół, który widać z kamery gry.
 func set_searched(on: bool) -> void:
@@ -74,6 +143,7 @@ func _bake() -> void:
 	_variant()
 	_settle()
 	_sk.force_update_all_bone_transforms()
+	_chest_rest = _sk.get_bone_pose_rotation(_b["Spine2"])
 
 ## Zbudowane przed wejściem do drzewa: skóra nie dostała zmiany pozy (szkielet odświeża ją dopiero w drzewie) — wypiekamy jeszcze raz.
 func _ready() -> void:

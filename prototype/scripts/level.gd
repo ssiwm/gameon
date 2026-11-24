@@ -187,6 +187,10 @@ var door_planks := {}                      ## drzwi wyważone i zabite deskami (
 var doors := {}                            ## DOORS z danych mapy (DESTRUCTION_CONTENT_PLAN.md W1): kolumna wejścia budynku 3D → {"mat": wood/metal/steel, "start": "broken"?}
 var front_skip: Array = []                ## FRONT_SKIP z danych mapy: [c0, c1] — kolumny bez pierwszego planu (arena, pościg, start i wyjście)
 var _corpses: Array = []                  ## CORPSES z danych mapy: [kolumna, rząd, ułożenie, strój, flagi] — zwłoki do przeszukania (MIMIC_PLAN.md M3–M4, corpse.gd)
+var _mimic_corpses := 1                   ## MIMIC_CORPSES z danych mapy: ile gniazd `mimic` losujemy na Mimika-zwłoki (M5, D4)
+## Ziarno wyboru Mimika-zwłok (M5): serwer losuje je przy zmianie mapy i wysyła w RPC wczytania (main.gd `_load_map_rpc`, także dołączającemu),
+## więc każdy peer stawia Mimika w tym samym gnieździe. Testy i narzędzia wczytujące mapę wprost dostają 0.
+var mimic_seed := 0
 var _strongboxes: Array = []              ## STRONGBOXES z danych mapy: [kolumna, rząd, złom] — sejfy wyważane hałasem (FUN_PLAN.md P2.2, strongbox.gd)
 var _power_crates: Array = []             ## POWER_CRATES z danych mapy: [kolumna, rząd, broń, naboje] — skrzynie mocy (FUN_PLAN.md P1.3, pickup „power”)
 ## VAULT_LOOT z danych mapy (DESTRUCTION_CONTENT_PLAN.md W2b): kolumna drzwi zbrojonych → łup pomieszczenia za nimi, [kolumna, rząd podłogi, rodzaj, …]:
@@ -325,6 +329,7 @@ func _load(id: String) -> void:
 	_vaults_opened.clear()
 	_strongboxes = ((m as GDScript).get_script_constant_map().get("STRONGBOXES", []) as Array).duplicate()
 	_corpses = ((m as GDScript).get_script_constant_map().get("CORPSES", []) as Array).duplicate(true)
+	_mimic_corpses = int((m as GDScript).get_script_constant_map().get("MIMIC_CORPSES", 1))
 	_finale_on = false
 	_blocks.clear()
 	_wall_cells.clear()
@@ -1041,6 +1046,7 @@ func _spawn_entities() -> void:
 		box.value = int(sb[2])
 		box.position = Vector2(int(sb[0]) * TILE + TILE * 0.5, (int(sb[1]) + 1) * TILE)      # stopy na podłodze, jak znaczniki mapy
 		add_child(box)
+	var fakes: Array = CORPSE.pick_mimic(_corpses, _mimic_corpses, mimic_seed)
 	for i in _corpses.size():
 		var cd: Array = _corpses[i]
 		var cp: Node2D = CORPSE.new()
@@ -1052,6 +1058,12 @@ func _spawn_entities() -> void:
 		cp.flip = bool(cp.flags.get("flip", false))
 		cp.position = Vector2(int(cd[0]) * TILE + TILE * 0.5, (int(cd[1]) + 1) * TILE)      # na podłodze, jak sejf
 		add_child(cp)
+		if i in fakes:
+			var mn := "MimikCorpse%d" % (fakes.find(i) + 1)
+			_add_enemy(mn, "mimik", cp.position)
+			var mm: Node2D = get_node(mn)
+			mm._beh.become_corpse(cp)
+			cp.mimic = mm
 	for i in found["D"].size():
 		var car: AnimatableBody2D = HANDCAR.new()
 		car.name = "Handcar" if i == 0 else "Handcar%d" % (i + 1)

@@ -2,9 +2,11 @@ extends SceneTree
 ## Zwłoki w świecie (MIMIC_PLAN.md M3, corpse.gd + corpse3d.gd):
 ## - dane CORPSES map kampanii 1.1–1.3: pola, ułożenie i strój ze znanych, ciało na podłodze (3 kafle podłogi, powietrze nad nimi),
 ##   nie w kolumnie drzwi ±2, nie w strefie wydobycia, nie na sejfie; na 1.1 ciało przy każdym nieśmiertelniku (F) i najwyżej 2 bez,
-##   na 1.2 i 1.3 po 5–7 ciał;
+##   na 1.2 i 1.3 po 5–7 ciał; gniazda Mimika-zwłok (`mimic`, M5): na 1.1 brak, na 1.2 i 1.3 ≥ 3, ≥ 4 prawdziwe na jednego, z dala od `Y`;
 ## - modele: każdy strój × ułożenie × strona leży na gruncie (najniższy punkt skóry FLOOR_GAP nad y = 0), nie dłuższy niż
-##   2,6 m (ręce za głową), biodra niżej niż 0,35 m, a uniesiona ręka czy kolano poniżej 0,9 m; sprzęt na plecach (`GEAR`) nie podpiera ciała; przeszukane odsuwa prawą dłoń (> 0,2 m), ziarno różnicuje dwa ciała w tym samym ułożeniu.
+##   2,6 m (ręce za głową), biodra niżej niż 0,35 m, a uniesiona ręka czy kolano poniżej 0,9 m; sprzęt na plecach (`GEAR`) nie podpiera ciała; przeszukane odsuwa prawą dłoń (> 0,2 m), ziarno różnicuje dwa ciała w tym samym ułożeniu;
+## - Mimik-zwłoki (M5): ta sama poza co prawdziwe ciało w tym miejscu; w ciemności bez oczu i oddechu, w snopie połysk oczu przy głowie
+##   od razu, oddech dopiero po ~1 s (klatka piersiowa się rusza), po zgaszeniu znów nieruchomy; prawdziwe zwłoki bez oczu i bez `_process`.
 ##   godot --headless --path prototype -s tools/test_corpses.gd
 const Corpse3D := preload("res://scripts/corpse3d.gd")
 const MAPS := ["z1_m1", "z1_m2", "z1_m3"]
@@ -66,6 +68,20 @@ func _check_map(id: String) -> void:
 		_ok(lonely.is_empty() and extra <= 2, "1.1: ciało przy każdym z %d nieśmiertelników %s, bez nieśmiertelnika %d (≤ 2)" % [tags.size(), lonely, extra])
 	else:
 		_ok(defs.size() >= 5 and defs.size() <= 7, "%s: 5–7 zwłok (%d)" % [id, defs.size()])
+	# gniazda Mimika-zwłok (M5): na 1.1 żadnych; na 1.2 i 1.3 co najmniej 3 (losowanie), ≥ 4 prawdziwe na jednego Mimika (D2), z dala od
+	# stojącego Mimika `Y` (≥ 8 kolumn w tym samym rzędzie — dwa przebrania obok siebie zdradzają się nawzajem)
+	var nests := defs.filter(func(cd: Array) -> bool: return bool(cd[4].get("mimic", false)))
+	var n_mim := int(consts.get("MIMIC_CORPSES", 1)) if not nests.is_empty() else 0
+	var near_y: Array = []
+	for r in rows.size():
+		for c in (rows[r] as String).length():
+			if String(rows[r])[c] == "Y":
+				for cd in nests:
+					if int(cd[1]) == r and absi(int(cd[0]) - c) < 8:
+						near_y.append("%d,%d" % [int(cd[0]), int(cd[1])])
+	var nest_ok: bool = nests.is_empty() if id == "z1_m1" else (nests.size() >= 3 and n_mim >= 1 and n_mim < nests.size())
+	_ok(nest_ok and defs.size() - n_mim >= 4 * n_mim and near_y.is_empty(),
+		"%s: gniazd `mimic` %d, Mimików-zwłok %d, prawdziwych %d (≥ 4 na jednego), przy `Y` %s" % [id, nests.size(), n_mim, defs.size() - n_mim, near_y])
 
 func _go() -> void:
 	await process_frame
@@ -121,5 +137,46 @@ func _go() -> void:
 	var head: int = a._b["Head"]
 	var diff := (a._gp(head).basis.get_euler() - b._gp(head).basis.get_euler()).length()
 	_ok(diff > deg_to_rad(5.0), "dwa ciała w tym samym ułożeniu różnią się głową (%.1f°)" % rad_to_deg(diff))
+	await _mimic_view()
 	print("[CORPSES] %s" % ("PASS" if _fails == 0 else "FAIL (%d)" % _fails))
 	quit(1 if _fails > 0 else 0)
+
+## Mimik-zwłoki w widoku (M5): poza jak prawdziwe ciało, oczy i oddech tylko w snopie.
+func _mimic_view() -> void:
+	var real := Corpse3D.new()
+	var fake := Corpse3D.new()
+	root.add_child(real)
+	root.add_child(fake)
+	real.build("tech", "side", 11, 1.0)
+	fake.build("tech", "side", 11, 1.0, true)
+	await process_frame
+	await process_frame
+	var head: int = fake._b["Head"]
+	var same: bool = real._gp(head).origin.distance_to(fake._gp(head).origin) < 0.001
+	fake.set_process(false)                                     # krok ręcznie, ze stałym czasem
+	var chest: int = fake._b["Spine2"]
+	var eyes_dark := false
+	for _i in 10:
+		fake.step_mimic(0.1)
+	eyes_dark = fake._mimic_eyes.all(func(e: MeshInstance3D) -> bool: return not e.visible)
+	var still := fake._sk.get_bone_pose_rotation(chest)
+	fake.mimic_lit = 1.0
+	for _i in 5:
+		fake.step_mimic(0.1)
+	var eyes_lit: bool = fake._mimic_eyes.all(func(e: MeshInstance3D) -> bool: return e.visible)
+	var near_head: bool = fake._mimic_eyes.all(func(e: MeshInstance3D) -> bool: return (e.global_position - fake._model.global_transform * fake._transform_under(fake._sk, fake._model) * fake._gp(head).origin).length() < 0.25)
+	var breath_early: float = fake.breath_w
+	var moved := 0.0
+	for _i in 40:
+		fake.step_mimic(0.1)
+		moved = maxf(moved, rad_to_deg(fake._sk.get_bone_pose_rotation(chest).angle_to(still)))
+	var breath_late: float = fake.breath_w
+	fake.mimic_lit = 0.0
+	for _i in 30:
+		fake.step_mimic(0.1)
+	var calm: bool = fake.breath_w < 0.01 and fake._mimic_eyes.all(func(e: MeshInstance3D) -> bool: return not e.visible) 		and rad_to_deg(fake._sk.get_bone_pose_rotation(chest).angle_to(still)) < 0.5
+	_ok(same and eyes_dark and eyes_lit and near_head and breath_early < 0.01 and breath_late > 0.9 and moved > 5.0 and calm
+		and real._mimic_eyes.is_empty() and not real.is_processing(),
+		"Mimik-zwłoki: ta sama poza %s; w ciemności bez oczu %s; w snopie oczy przy głowie %s/%s, oddech po 0,5 s %.2f, po 4,5 s %.2f (klatka %.1f°); po zgaszeniu nieruchomy %s; prawdziwe bez oczu" % [same, eyes_dark, eyes_lit, near_head, breath_early, breath_late, moved, calm])
+	real.queue_free()
+	fake.queue_free()

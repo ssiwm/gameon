@@ -34,6 +34,7 @@ const FUN_TEST := preload("res://scripts/fun_test.gd")
 const VEIN_TEST := preload("res://scripts/vein_test.gd")
 const BATTERY_TEST := preload("res://scripts/battery_test.gd")
 const CORPSE_TEST := preload("res://scripts/corpse_test.gd")
+const MIMIC_CORPSE_TEST := preload("res://scripts/mimic_corpse_test.gd")
 const DESTRUCTION_TEST := preload("res://scripts/destruction_test.gd")
 const FOG_SHADOW_TEST := preload("res://scripts/fog_shadow_test.gd")
 const FX_TEST := preload("res://scripts/fx_test.gd")
@@ -584,13 +585,19 @@ func _set_map(id: String) -> void:
 	if not level.MAPS.has(id):
 		push_warning("Unknown map: %s" % id)
 		return
+	var ms := randi() & 0x7fffffff                   # ziarno Mimika-zwłok (MIMIC_PLAN.md M5): to samo gniazdo u każdego peera
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--mimicseed="):            # dev / testy: stałe ziarno
+			ms = int(a.substr("--mimicseed=".length()))
 	if NoiseMgr.has_network():
-		_load_map_rpc.rpc(id)
+		_load_map_rpc.rpc(id, ms)
 	else:
-		_load_map_rpc(id)
+		_load_map_rpc(id, ms)
 
 @rpc("authority", "call_local", "reliable")
-func _load_map_rpc(id: String) -> void:
+func _load_map_rpc(id: String, mimic_seed: int) -> void:
+	if id != level.map_id:
+		level.mimic_seed = mimic_seed
 	level.load_map(id)
 	if NoiseMgr.is_server():
 		Scrap._action_at.clear()
@@ -834,6 +841,28 @@ func _corpse_net_step() -> void:
 	Input.action_release("interact")
 	print("[CORPSE-NET] client searched=%s" % str(cp.searched))
 	get_tree().quit()
+
+## Test sieci Mimika-zwłok (--mimicnet=N, tools/test_net_session.sh, MIMIC_PLAN.md M5): host po N s przechodzi z kryjówki na 1.2
+## (`_restart_mission` → `_set_map`: ziarno w RPC wczytania mapy), klient czeka na 1.2 z Mimikiem-zwłokami. Każdy wypisuje gniazdo (ciało
+## z `mimic`), ziarno i to, czy Mimik leży jako zwłoki; dołączający później dostaje ziarno w RPC dołączenia. Klient kończy sam.
+func _mimic_net_step() -> void:
+	var host := "--host" in OS.get_cmdline_user_args()
+	if host:
+		await _restart_mission(true, "z1_m2")
+	for _i in 160:                                     # do 40 s: klient — połączenie, wczytanie 1.2
+		if level != null and level.map_id == "z1_m2" and level.get_node_or_null("MimikCorpse1") != null and (host or (multiplayer.has_multiplayer_peer() and not multiplayer.is_server())):
+			break
+		await get_tree().create_timer(0.25).timeout
+	await get_tree().create_timer(1.0).timeout
+	var slot := "-"
+	for cp in get_tree().get_nodes_in_group("corpses"):
+		if cp.mimic != null:
+			slot = String(cp.name)
+	var mm: Node = level.get_node_or_null("MimikCorpse1")
+	var lying: bool = mm != null and bool(mm.view_info().get("as_corpse", false))
+	print("[MIMIC-NET] %s map=%s slot=%s seed=%d lying=%s" % ["host" if host else "client", level.map_id, slot, int(level.mimic_seed), str(lying)])
+	if not host:
+		get_tree().quit()
 
 ## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
 ## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną), deski w pustym otworze Opening1 (D2b), skrzyni
@@ -1083,6 +1112,8 @@ func _handle_cmdline() -> void:
 			_vein_net_guard()
 		if sa.begins_with("--chargernet="):                # test sieci: ładowarka — klient ładuje się u siebie, serwer widzi, że pracuje
 			get_tree().create_timer(float(sa.substr("--chargernet=".length()))).timeout.connect(_charger_net_step)
+		if sa.begins_with("--mimicnet="):                  # test sieci: Mimik-zwłoki — to samo gniazdo u hosta, klienta i dołączającego
+			get_tree().create_timer(float(sa.substr("--mimicnet=".length()))).timeout.connect(_mimic_net_step)
 		if sa.begins_with("--corpsenet="):                 # test sieci: zwłoki — klient przeszukuje, serwer rozstrzyga, dołączający dostaje stan
 			get_tree().create_timer(float(sa.substr("--corpsenet=".length()))).timeout.connect(_corpse_net_step)
 		if sa.begins_with("--destructionnet="):            # test sieci: zniszczenia — rany, rozbicie, punkt kontrolny i wipe u wszystkich
@@ -1104,6 +1135,7 @@ func _handle_cmdline() -> void:
 	var veintest := false
 	var batterytest := false
 	var corpsetest := false
+	var mimiccorpsetest := false
 	var destructiontest := false
 	var fogshadowtest := false
 	var fxtest := false
@@ -1245,6 +1277,8 @@ func _handle_cmdline() -> void:
 			batterytest = true
 		elif a == "--corpsetest":
 			corpsetest = true
+		elif a == "--mimiccorpsetest":
+			mimiccorpsetest = true
 		elif a == "--destructiontest":
 			destructiontest = true
 		elif a == "--fogshadowtest":
@@ -1437,6 +1471,11 @@ func _handle_cmdline() -> void:
 		ct.name = "CorpseTest"
 		add_child(ct)
 		ct.run(self)
+	if mimiccorpsetest:
+		var mct := MIMIC_CORPSE_TEST.new()
+		mct.name = "MimicCorpseTest"
+		add_child(mct)
+		mct.run(self)
 	if destructiontest:
 		var dt := DESTRUCTION_TEST.new()
 		dt.name = "DestructionTest"
@@ -5270,7 +5309,7 @@ func _on_peer_connected(id: int) -> void:
 	if multiplayer.is_server():
 		_sync_difficulty.rpc_id(id, Difficulty.level)
 		_sync_companion.rpc_id(id, companion_on)
-		_load_map_rpc.rpc_id(id, level.map_id)       # mapa zanim pojawi się postać
+		_load_map_rpc.rpc_id(id, level.map_id, level.mimic_seed)       # mapa zanim pojawi się postać (i gniazdo Mimika-zwłok)
 		level.send_collapse_to(id)                   # zawały, które już się wydarzyły w tej misji
 		level.send_walls_to(id)                      # rozbite zamurowane przejścia
 		Director.send_roamers_to(id)

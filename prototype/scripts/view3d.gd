@@ -1424,7 +1424,7 @@ func _sync_enemies(delta: float) -> void:
 		st["wind"] = winding
 		st["attack_seq"] = int(info.get("attack_seq", 0))
 		_estate[id] = st
-		var show: bool = (src.is_visible_in_tree() or dying) and body != null
+		var show: bool = (src.is_visible_in_tree() or dying) and body != null and not bool(info.get("as_corpse", false))   # Mimik-zwłoki: rysuje go `_sync_corpses`
 		var near: bool = absf(pos.x - cam_x) < 90.0
 		if dying and not near:
 			e.set("finished", true)
@@ -8822,7 +8822,8 @@ func _sync_corpses() -> void:
 			budget -= 1
 			var c := Corpse3D.new()
 			var fl := -1.0 if bool(n.flip) else 1.0
-			if not c.build(String(n.outfit), String(n.pose), hash(String(n.name)) & 0x7fffffff, fl):
+			var fake: bool = n.get("mimic") != null
+			if not c.build(String(n.outfit), String(n.pose), hash(String(n.name)) & 0x7fffffff, fl, fake):
 				c.free()
 				_corpses[n.get_instance_id()] = [n, null, null]
 				continue
@@ -8831,7 +8832,7 @@ func _sync_corpses() -> void:
 			c.set_searched(bool(n.searched))
 			_set_layer(c, LAYER_WORLD)
 			_world.add_child(c)
-			_corpses[n.get_instance_id()] = [n, c, _corpse_stain(at, fl)]
+			_corpses[n.get_instance_id()] = [n, c, null if fake else _corpse_stain(at, fl)]       # Mimik-zwłoki bez plamy krwi (M5, sygnał 1)
 	var cam_x := _cam_a.global_position.x
 	for id in _corpses.keys():
 		var pr: Array = _corpses[id]
@@ -8844,9 +8845,12 @@ func _sync_corpses() -> void:
 		if pr[1] == null or not is_instance_valid(pr[1]):
 			continue
 		var c: Node3D = pr[1]
-		c.visible = absf(c.position.x - cam_x) < CORPSE_CULL_M
+		c.visible = absf(c.position.x - cam_x) < CORPSE_CULL_M and bool(pr[0].present())
 		if c.visible and bool(pr[0].searched) != bool(c.searched):
 			c.set_searched(bool(pr[0].searched))
+		var mm = pr[0].get("mimic")
+		if mm != null and is_instance_valid(mm):
+			c.set("mimic_lit", float(mm.view_info().get("lit", 0.0)) if c.visible else 0.0)      # snop na Mimiku-zwłokach: połysk oczu i oddech
 
 ## Zaschnięta krew pod tułowiem (shader kałuży, `wet` = 0: matowa i ciemna). W geometrii mapy, jak kałuże — znika z mapą.
 func _corpse_stain(at: Vector3, flip: float) -> MeshInstance3D:
