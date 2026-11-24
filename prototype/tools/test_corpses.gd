@@ -7,6 +7,8 @@ extends SceneTree
 ##   2,6 m (ręce za głową), biodra niżej niż 0,35 m, a uniesiona ręka czy kolano poniżej 0,9 m; sprzęt na plecach (`GEAR`) nie podpiera ciała; przeszukane odsuwa prawą dłoń (> 0,2 m), ziarno różnicuje dwa ciała w tym samym ułożeniu;
 ## - Mimik-zwłoki (M5): ta sama poza co prawdziwe ciało w tym miejscu; w ciemności bez oczu i oddechu, w snopie połysk oczu przy głowie
 ##   od razu, oddech dopiero po ~1 s (klatka piersiowa się rusza), po zgaszeniu znów nieruchomy; prawdziwe zwłoki bez oczu i bez `_process`.
+## - wstawanie Mimika-zwłok (M7, `rise`): zaczyna z pozy zwłok, wstaje płynnie (bez skoków wysokości), kończy stojąc przodem do stóp
+##   (+x węzła), w miejscu stóp, ze świecącymi oczami, dłuższymi przedramionami i nakładką przemiany; `end_rise` znów kładzie ciało.
 ##   godot --headless --path prototype -s tools/test_corpses.gd
 const Corpse3D := preload("res://scripts/corpse3d.gd")
 const MAPS := ["z1_m1", "z1_m2", "z1_m3"]
@@ -178,5 +180,33 @@ func _mimic_view() -> void:
 	_ok(same and eyes_dark and eyes_lit and near_head and breath_early < 0.01 and breath_late > 0.9 and moved > 5.0 and calm
 		and real._mimic_eyes.is_empty() and not real.is_processing(),
 		"Mimik-zwłoki: ta sama poza %s; w ciemności bez oczu %s; w snopie oczy przy głowie %s/%s, oddech po 0,5 s %.2f, po 4,5 s %.2f (klatka %.1f°); po zgaszeniu nieruchomy %s; prawdziwe bez oczu" % [same, eyes_dark, eyes_lit, near_head, breath_early, breath_late, moved, calm])
+	# wstawanie (M7)
+	var lie_bb: AABB = fake.skin_bounds()
+	var arm := func() -> float: return fake._gp(fake._b["RightForeArm"]).origin.distance_to(fake._gp(fake._b["RightHand"]).origin)
+	var arm0: float = arm.call()
+	fake.rise(0.0, 0.0)
+	var start_bb: AABB = fake.skin_bounds()
+	var hs: Array = []
+	var max_jump := 0.0
+	for i in 31:
+		var u := float(i) / 30.0
+		fake.rise(u, u * 0.75)
+		var h: float = fake.skin_bounds().end.y
+		if not hs.is_empty():
+			max_jump = maxf(max_jump, absf(h - float(hs[-1])))
+		hs.append(h)
+	var up_bb: AABB = fake.skin_bounds()
+	var fwd: Vector3 = fake.chest_forward()
+	var eyes_on: bool = fake._mimic_eyes.all(func(e: MeshInstance3D) -> bool: return e.visible)
+	var arm1: float = arm.call()
+	var ov: float = float((fake._morph_mats[0] as ShaderMaterial).get_shader_parameter("amount")) if not fake._morph_mats.is_empty() else 0.0
+	_ok(start_bb.size.y < lie_bb.size.y + 0.05 and up_bb.size.y > 1.4 and max_jump < 0.2 and absf(up_bb.get_center().x) < 0.45
+		and fwd.x > 0.5 and eyes_on and arm1 > arm0 * 1.3 and ov > 0.8,
+		"Mimik-zwłoki wstaje: z pozy zwłok (%.2f → %.2f m), płynnie (skok %.2f m), stoi %.2f m w miejscu stóp (x %.2f), przodem do stóp (%.2f), oczy %s, przedramię ×%.2f, nakładka %.2f" % [lie_bb.size.y, start_bb.size.y, max_jump, up_bb.size.y, up_bb.get_center().x, fwd.x, eyes_on, arm1 / arm0, ov])
+	fake.end_rise()
+	var back_bb: AABB = fake.skin_bounds()
+	var ov2: float = float((fake._morph_mats[0] as ShaderMaterial).get_shader_parameter("amount")) if not fake._morph_mats.is_empty() else 0.0
+	_ok(absf(back_bb.size.y - lie_bb.size.y) < 0.01 and fake.rise_u < 0.0 and is_zero_approx(ov2) and absf(arm.call() / arm0 - 1.0) < 0.01,
+		"Mimik-zwłoki: `end_rise` (restart) znów leży bez przemiany (%.2f m)" % back_bb.size.y)
 	real.queue_free()
 	fake.queue_free()

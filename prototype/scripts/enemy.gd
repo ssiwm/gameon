@@ -569,7 +569,7 @@ func _tick_server(delta: float) -> void:
 	_listen()
 	_perceive(delta)
 	var target := _target
-	var speed: float = float(_def["speed"]) * Difficulty.m("enemy_speed")
+	var speed: float = float(_def["speed"]) * Difficulty.m("enemy_speed") * _beh.speed_mult()
 	if _stagger > 0.0:
 		speed *= 0.25
 	if not _def.get("fly", false):
@@ -1467,6 +1467,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 	if shield_mult < 1.0 and info.get("type", "") != "melee":          # cios w zwarciu przechodzi przez pole Podsłuchacza (FUN_PLAN.md P1.4)
 		dmg *= shield_mult
 		mat = 1                          # pole ochronne: iskry i szary hitmarker jak przy pancerzu
+	elif shield_mult > 1.0:
+		dmg *= shield_mult               # okno kontry (przemiana Mimika, MIMIC_PLAN.md M7)
 	hp -= dmg
 	_beh.took_hit(info, dmg)
 	if bool(_def.get("elite", false)):

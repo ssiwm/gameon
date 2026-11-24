@@ -14,6 +14,10 @@ extends "res://scripts/enemy_behavior.gd"
 ## dostaje GRAB_DMG na początku i na końcu GRAB_S; Mimik trzyma go w miejscu (`tick_phase`, `_sp` = SP_HOLD dla widoku) i potem odskakuje.
 ## Wcześniej puszcza (`took_hit`): cios wręcz chwyconego, ogłuszenie (strzelba, harpun, kilof), GRAB_FREE_DMG od innych, śmierć.
 ## Kolejne ciosy są zwykłe, lżejszym klipem `jab`. Każdy chwyt to wpis `mimic_grab` w dzienniku sesji.
+##
+## Przemiana (M7): demaskacja to MORPH_S zapowiedzi bez celu (klip `morph`) — przez nią Mimik przyjmuje MORPH_DMG × obrażenia (okno kontry);
+## potem zryw LOPE_S z prędkością LOPE_SPEED, dalej zwykłe 95 px/s. Leżący odwraca się przodem do stóp zwłok, bo widok wstaje klipem upadku
+## od końca (corpse3d.gd `rise`). Widok dostaje czas od demaskacji (`since_reveal`) — z niego liczy wstawanie, wydłużanie rąk, materiał i chód.
 
 const Lights := preload("res://scripts/lights.gd")
 const Player := preload("res://scripts/player.gd")
@@ -37,6 +41,11 @@ const GRAB_SLACK := 12.0             ## px ponad zasięg ciosu: przemiana chwyta
 const GRAB_AFTER_CD := 0.9           ## s do następnego ciosu po puszczeniu
 const GRAB_RECOIL := 110.0           ## px/s odskoku Mimika po puszczeniu
 const SP_HOLD := 1                   ## `e._sp` w trakcie chwytu (replikowany — widok 3D trzyma pozę chwytu, enemy3d.gd `hold_sp`)
+const MORPH_S := 0.9                 ## s przemiany po demaskacji (zapowiedź bez celu; była 0,35 s)
+const MORPH_DMG := 1.25              ## mnożnik przyjmowanych obrażeń w czasie przemiany
+const LOPE_S := 1.5                  ## s zrywu po przemianie
+const LOPE_SPEED := 110.0            ## px/s w zrywie (zwykle 95, jak gracz)
+const RISE_S := 0.75                 ## s wstawania Mimika-zwłok w widoku (corpse3d.gd `rise`); potem widać model wroga
 ## Kryptonimy, gdy nie ma kogo udawać (sam, bez innych postaci i bez bota) — brzmią jak operatorzy, ale nikt ich nie nosi.
 const FALLBACK_NAMES := ["Kret", "Wiór", "Sowa", "Łoś"]
 
@@ -60,7 +69,11 @@ var grabs := 0               ## chwyty od początku misji (testy)
 var _grab_team := 0.0        ## obrażenia od innych w trakcie chwytu
 var _grab_dealt := 0         ## obrażenia zadane chwyconemu
 var _view_grab := 0.0        ## s okna chwytu wg widoku (klient nie zna `grab_ready`: liczy od demaskacji, którą widzi)
-var _seen_active := false
+var _seen_active := -1       ## ostatni widziany stan `active` (-1: jeszcze nie widziany — dołączający nie odgrywa cudzej demaskacji)
+var morph_t := 0.0           ## s do końca przemiany (serwer)
+var lope_t := 0.0            ## s zrywu (serwer)
+var _morph_hit := false      ## następny cios kończy przemianę (klip `morph` zamiast chwytu)
+var _view_since := -1.0      ## s od demaskacji widzianej w widoku; < 0 = udaje
 
 ## Mimik-zwłoki (M5): leży w miejscu zwłok `cp` (level.gd przy budowie mapy, u każdego peera tak samo).
 func become_corpse(cp: Node2D) -> void:
@@ -95,6 +108,9 @@ func reset() -> void:
 		_release("", false)
 	grab_ready = 0.0
 	grabs = 0
+	morph_t = 0.0
+	lope_t = 0.0
+	_morph_hit = false
 	if corpse != null:
 		_lie(true)
 	lure_t = 4.0
@@ -109,15 +125,18 @@ func on_wake() -> void:
 	_log_reveal(String(e.wake_cause))
 	if corpse != null:
 		_lie(false)
+		e._facing = -1.0 if bool(corpse.flip) else 1.0      # zwłoki leżą głową za plecami: wstaje przodem do stóp (corpse3d.gd `rise`)
 	NoiseMgr.add_noise(6.0, e.global_position, "enemy")
 	if NoiseMgr.has_network():
 		e._scream_fx.rpc()
 	else:
 		e._scream_fx()
-	e._windup = 0.35
+	e._windup = MORPH_S
 	e._windup_duration = e._windup
 	e.winding = true
 	grab_ready = GRAB_READY_S
+	morph_t = MORPH_S
+	_morph_hit = true
 
 ## `mimic_reveal` (MIMIC_PLAN.md M0): przyczyna, odległość do najbliższego człowieka, wołania przed demaskacją, rodzaj przebrania, czas światła.
 func _log_reveal(cause: String) -> void:
@@ -158,6 +177,14 @@ func light_wakes(lit: bool) -> bool:
 func near_mult() -> float:
 	return OVER_PX / maxf(float(e._def["wake_near"]), 1.0) if corpse != null else 1.0
 
+## Okno kontry: w czasie przemiany obrażenia × MORPH_DMG.
+func damage_mult() -> float:
+	return MORPH_DMG if morph_t > 0.0 else 1.0
+
+## Zryw po przemianie.
+func speed_mult() -> float:
+	return LOPE_SPEED / maxf(float(e._def["speed"]), 1.0) if lope_t > 0.0 else 1.0
+
 ## Zabity Mimik-zwłoki zostawia łup ciała, które udawał.
 func on_death() -> void:
 	if grab_victim != null:
@@ -167,9 +194,17 @@ func on_death() -> void:
 
 ## Widok (każdy peer): czy jeszcze udaje, i snop na nim — odwraca twarz, połysk oczu, oddech.
 func present(delta: float) -> void:
-	if e.active and not _seen_active:
+	var act := 1 if e.active else 0
+	if act == 1 and _seen_active == 0:
 		_view_grab = GRAB_READY_S
-	_seen_active = e.active
+		_view_since = 0.0
+	elif act == 1 and _seen_active == -1:
+		_view_since = 99.0                     # dołączający widzi Mimika już po przemianie
+	elif act == 0:
+		_view_since = -1.0
+	elif _view_since >= 0.0:
+		_view_since += delta
+	_seen_active = act
 	_view_grab = maxf(0.0, _view_grab - delta)
 	_lit_t -= delta
 	if _lit_t > 0.0:
@@ -180,8 +215,15 @@ func present(delta: float) -> void:
 	_lit = 1.0 if on else 0.0
 
 func view_extra(d: Dictionary) -> void:
-	if (grab_ready if NoiseMgr.is_server() else _view_grab) > 0.0 and e.winding:
+	var morphing: bool = _morph_hit if NoiseMgr.is_server() else (_view_since >= 0.0 and _view_since < MORPH_S + 0.2)
+	if e.winding and morphing:
+		d["motion_action"] = "morph"                # przemiana (M7)
+	elif (grab_ready if NoiseMgr.is_server() else _view_grab) > 0.0 and e.winding:
 		d["motion_action"] = "grab_hold"            # zapowiedź chwytu; klient liczy okno od demaskacji, którą widzi (`present`)
+	d["since_reveal"] = _view_since if e.alive else -1.0
+	d["rise"] = _view_since / RISE_S if corpse != null and e.alive and _view_since >= 0.0 and _view_since < RISE_S else -1.0
+	d["from_corpse"] = corpse != null
+	d["outfit_model"] = String(corpse.outfit) if corpse != null else ""
 	d["disguised"] = not e.active
 	d["lit"] = _lit
 	d["as_corpse"] = corpse != null and not e.active and e.alive          # widok rysuje go jako zwłoki (view3d `_sync_corpses`), nie jako wroga
@@ -264,12 +306,23 @@ func tick_asleep(delta: float) -> void:
 
 func tick_prelude(delta: float) -> void:
 	grab_ready = maxf(0.0, grab_ready - delta)
+	if morph_t > 0.0:
+		morph_t -= delta
+		if morph_t <= 0.0:
+			lope_t = LOPE_S
+	else:
+		lope_t = maxf(0.0, lope_t - delta)
+		if not e.winding:
+			_morph_hit = false                 # cios przemiany rozstrzygnięty bez `strike` (np. Mimik zginął w przemianie)
 
-## Klip kontaktu: chwyt w oknie po demaskacji, potem zwykły lżejszy cios (`EnemyMotion.KIND`).
+## Klip kontaktu: koniec przemiany, chwyt w oknie po demaskacji, potem zwykły lżejszy cios (`EnemyMotion.KIND`).
 func attack_action() -> String:
+	if _morph_hit:
+		return "morph"
 	return "grab_hold" if grab_ready > 0.0 else ""
 
 func strike(pp: Node2D) -> bool:
+	_morph_hit = false
 	if grab_ready <= 0.0:
 		return false
 	grab_ready = 0.0

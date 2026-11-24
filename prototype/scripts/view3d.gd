@@ -1366,6 +1366,10 @@ func _sync_enemies(delta: float) -> void:
 			budget -= 1
 			var e := Enemy3D.new()
 			e.life_seed = hash(String(n.name)) & 0x7fffffff          # oddech i tiki w spoczynku (IDLE_PLAN.md A1): ziarno z nazwy wroga, nie wspólna faza
+			var outfit := String((n.call("view_info") as Dictionary).get("outfit_model", "")) if n.has_method("view_info") else ""
+			if Corpse3D.OUTFITS.has(outfit):
+				e.model_path = String(Corpse3D.OUTFITS[outfit])     # Mimik-zwłoki wstaje w stroju ciała, które udawał (MIMIC_PLAN.md M7)
+				e.fit_body_h = Corpse3D.BODY_H
 			if not e.setup(k, k == "stalker"):
 				e.free()
 				_enemies[id] = [n, null]                  # bez modelu nic nie widać (wszystkie rodzaje mają modele)
@@ -1424,7 +1428,7 @@ func _sync_enemies(delta: float) -> void:
 		st["wind"] = winding
 		st["attack_seq"] = int(info.get("attack_seq", 0))
 		_estate[id] = st
-		var show: bool = (src.is_visible_in_tree() or dying) and body != null and not bool(info.get("as_corpse", false))   # Mimik-zwłoki: rysuje go `_sync_corpses`
+		var show: bool = (src.is_visible_in_tree() or dying) and body != null and not bool(info.get("as_corpse", false)) 				and float(info.get("rise", -1.0)) < 0.0                  # Mimik-zwłoki (także wstający, M7): rysuje go `_sync_corpses`
 		var near: bool = absf(pos.x - cam_x) < 90.0
 		if dying and not near:
 			e.set("finished", true)
@@ -8845,12 +8849,20 @@ func _sync_corpses() -> void:
 		if pr[1] == null or not is_instance_valid(pr[1]):
 			continue
 		var c: Node3D = pr[1]
-		c.visible = absf(c.position.x - cam_x) < CORPSE_CULL_M and bool(pr[0].present())
+		var mm = pr[0].get("mimic")
+		var vi: Dictionary = mm.view_info() if mm != null and is_instance_valid(mm) else {}
+		var rise := float(vi.get("rise", -1.0))
+		c.visible = absf(c.position.x - cam_x) < CORPSE_CULL_M and (bool(pr[0].present()) or rise >= 0.0)
 		if c.visible and bool(pr[0].searched) != bool(c.searched):
 			c.set_searched(bool(pr[0].searched))
-		var mm = pr[0].get("mimic")
-		if mm != null and is_instance_valid(mm):
-			c.set("mimic_lit", float(mm.view_info().get("lit", 0.0)) if c.visible else 0.0)      # snop na Mimiku-zwłokach: połysk oczu i oddech
+		if not vi.is_empty():
+			c.set("mimic_lit", float(vi.get("lit", 0.0)) if c.visible else 0.0)      # snop na Mimiku-zwłokach: połysk oczu i oddech
+			if rise >= 0.0 and c.visible:
+				c.call("rise", rise, float(vi.get("since_reveal", 0.0)))           # wstaje „wstecz” (M7), potem widać model wroga
+				c.position.z = lerpf(CORPSE_Z, 0.0, smoothstep(0.0, 1.0, rise))
+			elif rise < 0.0 and float(c.get("rise_u")) >= 0.0:
+				c.call("end_rise")
+				c.position.z = CORPSE_Z
 
 ## Zaschnięta krew pod tułowiem (shader kałuży, `wet` = 0: matowa i ciemna). W geometrii mapy, jak kałuże — znika z mapą.
 func _corpse_stain(at: Vector3, flip: float) -> MeshInstance3D:
