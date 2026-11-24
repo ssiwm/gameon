@@ -794,31 +794,46 @@ func _charger_net_step() -> void:
 			cl = c
 	print("[CHARGER-NET] host active=%s client_pct=%d" % [str(chg.active), int(cl.bat_pct) if cl != null else -1])
 
-## Test sieci zwłok (--corpsenet=N, tools/test_net_session.sh, MIMIC_PLAN.md M4; mapa z1_m1, ciało Corpse7 bez nieśmiertelnika): klient po N s
-## staje przy ciele i trzyma [E] 2 s — serwer liczy postęp i rozsyła „przeszukane”; klient wypisuje stan z RPC. Klient, który dołącza
-## później, zastaje ciało przeszukane (`send_walls_to`) i tylko je wypisuje. Host po N s wypisuje stan i wiersz dziennika.
+## Test sieci zwłok (--corpsenet=N, tools/test_net_session.sh, MIMIC_PLAN.md M4; mapa z1_m1, ciało Corpse7 bez nieśmiertelnika). Bez sztywnych
+## odstępów — każda rola czeka na stan (CI bywa wolne). Host od N s co 0,25 s sprawdza ciało i wypisuje „host searched=true”, gdy klient je
+## przeszuka (najwyżej 30 s). Klient po N s czeka na swoją postać na mapie i 1 s na stan od serwera: ciało już przeszukane → dołączający
+## (`send_walls_to`), wypisuje i kończy; inaczej staje przy ciele i trzyma [E], aż serwer roześle „przeszukane” (najwyżej 8 s).
 func _corpse_net_step() -> void:
-	var cp: Node2D = level.get_node_or_null("Corpse7")
-	if cp == null:
-		print("[CORPSE-NET] brak zwłok na mapie %s" % level.map_id)
+	var host := "--host" in OS.get_cmdline_user_args()
+	var cp: Node2D = null
+	var me: Node2D = null
+	for _i in 120:                                     # do 30 s na wczytanie mapy (klient: połączenie i spawn postaci)
+		cp = level.get_node_or_null("Corpse7") if level != null and level.map_id == "z1_m1" else null
+		me = null if host else _players.get_node_or_null(str(multiplayer.get_unique_id()))
+		if cp != null and (host or (me != null and multiplayer.has_multiplayer_peer() and not multiplayer.is_server())):
+			break
+		await get_tree().create_timer(0.25).timeout
+	if cp == null or (not host and me == null):
+		print("[CORPSE-NET] brak zwłok albo postaci na mapie")
 		return
-	if multiplayer.is_server():
+	if host:
+		for _i in 120:
+			if cp.searched:
+				break
+			await get_tree().create_timer(0.25).timeout
 		print("[CORPSE-NET] host searched=%s" % str(cp.searched))
 		return
+	await get_tree().create_timer(1.0).timeout         # stan z `send_walls_to` dochodzi zaraz po wczytaniu mapy
 	if cp.searched:
 		print("[CORPSE-NET] joiner searched=true")
-		return
-	var me: Node2D = _players.get_node_or_null(str(multiplayer.get_unique_id()))
-	if me == null:
+		get_tree().quit()
 		return
 	me.global_position = cp.global_position + Vector2(-8.0, -1.0)
 	me.velocity = Vector2.ZERO
 	await get_tree().physics_frame
 	Input.action_press("interact")
-	await get_tree().create_timer(2.0).timeout
+	for _i in 32:
+		if cp.searched:
+			break
+		await get_tree().create_timer(0.25).timeout
 	Input.action_release("interact")
-	await get_tree().create_timer(0.5).timeout
 	print("[CORPSE-NET] client searched=%s" % str(cp.searched))
+	get_tree().quit()
 
 ## Test sieci zniszczeń (--destructionnet=N, tools/test_net_session.sh, DESTRUCTION_PLAN.md D0; mapa z1_m2): każdy peer co 0,25 s
 ## wypisuje zmieniony stan zamurowanego przejścia (mapa, rozbite, HP, plamy z sumą kontrolną), deski w pustym otworze Opening1 (D2b), skrzyni

@@ -152,15 +152,15 @@ grep -a -q "\[CHARGER-NET\] client gain=\(1[5-9]\|2[0-2]\) active=true" "$LOG/ch
 
 echo "== zwłoki =="
 # MIMIC_PLAN.md M4: klient A trzyma [E] przy zwłokach (Corpse7, 1.1) — postęp i „przeszukane” rozstrzyga serwer i rozsyła RPC; klient B dołącza
-# później i dostaje przeszukane ciało z `send_walls_to`
-godot --headless --path . -- --host --mission=z1_m1 --port=8973 --corpsenet=17 --autoquit=28 >"$LOG/corpse_host.log" 2>&1 &
+# po przeszukaniu i dostaje przeszukane ciało z `send_walls_to`. Bez sztywnych odstępów: role czekają na stan, skrypt — na wiersze dziennika.
+godot --headless --path . -- --host --mission=z1_m1 --port=8973 --corpsenet=2 --autoquit=90 >"$LOG/corpse_host.log" 2>&1 &
 HOST=$!
 sleep 3
-godot --headless --path . -- --join=127.0.0.1 --port=8973 --corpsenet=8 --autoquit=16 >"$LOG/corpse_a.log" 2>&1 &
+godot --headless --path . -- --join=127.0.0.1 --port=8973 --corpsenet=2 --autoquit=50 >"$LOG/corpse_a.log" 2>&1 &
 CA=$!
-sleep 13
-godot --headless --path . -- --join=127.0.0.1 --port=8973 --corpsenet=4 --autoquit=10 >"$LOG/corpse_b.log" 2>&1
-wait $CA $HOST
+wait $CA
+godot --headless --path . -- --join=127.0.0.1 --port=8973 --corpsenet=2 --autoquit=40 >"$LOG/corpse_b.log" 2>&1
+kill $HOST 2>/dev/null; wait $HOST 2>/dev/null
 grep -a -q "\[CORPSE-NET\] client searched=true" "$LOG/corpse_a.log" && ok "klient: przeszukanie trzymanym [E] rozstrzyga serwer" || fail "klient: $(grep -a "\[CORPSE-NET\]" "$LOG/corpse_a.log")"
 grep -a -q "\[CORPSE\] Corpse7 searched" "$LOG/corpse_host.log" && grep -a -q "\[CORPSE-NET\] host searched=true" "$LOG/corpse_host.log" && ok "host: ciało przeszukane przez klienta" || fail "host: $(grep -a "CORPSE" "$LOG/corpse_host.log")"
 grep -a -q "\[CORPSE-NET\] joiner searched=true" "$LOG/corpse_b.log" && ok "dołączający: ciało przeszukane" || fail "dołączający: $(grep -a "\[CORPSE-NET\]" "$LOG/corpse_b.log")"

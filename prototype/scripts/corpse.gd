@@ -94,8 +94,7 @@ func _physics_process(delta: float) -> void:
 	_update_local()
 	if not NoiseMgr.is_server() or searched:
 		return
-	_validate_workers()
-	if not _workers.is_empty():
+	if _validate_workers() > 0:
 		if progress <= 0.0:
 			_start_ms = Time.get_ticks_msec()
 		progress = minf(1.0, progress + delta / SEARCH_TIME)
@@ -114,19 +113,23 @@ func _physics_process(delta: float) -> void:
 		if NoiseMgr.has_network():
 			_sync.rpc(progress)
 
-## Tylko żywi ludzie w zasięgu (z zapasem) — bot i odchodzący gracz wypadają.
-func _validate_workers() -> void:
+## Liczy przeszukujących, którzy są żywymi ludźmi w zasięgu (z zapasem). Bot, martwy i odchodzący gracz wypadają ze zgłoszeń; człowiek poza
+## zasięgiem zostaje zgłoszony, ale się nie liczy — pozycja klienta dochodzi do serwera z opóźnieniem, a klient zgłasza „trzymam” tylko raz
+## (sam puszcza, gdy u siebie wyjdzie z zasięgu). Bez nikogo w zasięgu postęp wraca do zera (jak puszczenie).
+func _validate_workers() -> int:
 	if _workers.is_empty():
-		return
-	var ok := {}
+		return 0
+	var alive := {}
+	var near := 0
 	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot and not p.dead and not p.is_queued_for_deletion() and _in_reach(p.global_position, 1.4):
-			ok[String(p.name)] = true
+		if not p.is_bot and not p.dead and not p.is_queued_for_deletion():
+			alive[String(p.name)] = true
+			if _workers.has(String(p.name)) and _in_reach(p.global_position, 1.4):
+				near += 1
 	for k in _workers.keys():
-		if not ok.has(k):
+		if not alive.has(k):
 			_workers.erase(k)
-	if _workers.is_empty():
-		progress = 0.0
+	return near
 
 ## Wynik losowania łupu (D3): „none” albo rodzaj z LOOT_TABLE.
 static func roll_loot(rng: RandomNumberGenerator) -> String:

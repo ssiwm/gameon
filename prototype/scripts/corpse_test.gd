@@ -5,7 +5,7 @@ extends "res://scripts/stalker_test.gd"
 ##
 ## 1. Dane: zwłoki z CORPSES na mapie (strój, ułożenie, flagi), na 1.1 przy każdym nieśmiertelniku leży ciało.
 ## 2. Trzymanie [E] (prawdziwe wejście): postęp rośnie, podpowiedź HUD, puszczenie przerywa (postęp od zera).
-## 3. Z daleka i bot: serwer odrzuca przeszukującego poza zasięgiem i bota.
+## 3. Z daleka i bot: serwer nie liczy przeszukującego poza zasięgiem (zgłoszenie zostaje — opóźniona pozycja klienta) i odrzuca bota.
 ## 4. Przeszukanie: łup z wymuszonego losowania (złom, bateria, naboje albo nic + komunikat), szelest (hałas), dziennik `corpse_search`,
 ##    przeszukane tylko raz.
 ## 5. Wipe zostawia przeszukane, nowa misja na tej samej mapie kładzie zwłoki od nowa.
@@ -149,8 +149,16 @@ func _reach_and_bot() -> void:
 	_place_player(cp.global_position + Vector2(-160.0, 0.0))
 	cp.set_worker(1, true)
 	await _frames(0.5)
-	check("z daleka: serwer odrzuca (postęp %.2f)" % cp.progress, cp.progress == 0.0 and cp._workers.is_empty())
+	check("z daleka: serwer nie liczy (postęp %.2f)" % cp.progress, cp.progress == 0.0 and not cp.searched)
 	check("z daleka bez podpowiedzi", not cp.local_in_range)
+	# pozycja klienta dochodzi z opóźnieniem: zgłoszenie „trzymam” sprzed dojścia pozycji nie przepada
+	_place_player(cp.global_position + Vector2(-8.0, -1.0))
+	await _frames(0.3)
+	check("opóźniona pozycja: zgłoszenie zostaje, postęp rośnie po dojściu (%.2f)" % cp.progress, cp.progress > 0.0 and not cp.searched)
+	cp.set_worker(1, false)
+	await _frames(0.1)
+	check("puszczenie po opóźnionej pozycji: postęp od zera", cp.progress == 0.0 and cp._workers.is_empty() and not cp.searched)
+	_place_player(cp.global_position + Vector2(-160.0, 0.0))
 	bot.set_physics_process(true)
 	bot.global_position = cp.global_position + Vector2(6.0, -1.0)
 	bot.set_physics_process(false)
