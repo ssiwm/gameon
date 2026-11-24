@@ -3,6 +3,11 @@ extends "res://scripts/enemy_behavior.gd"
 ## ale bez serduszek. Woła o pomoc krzykiem kolegi, gdy ktoś jest w zasięgu słuchu, ale jeszcze nie przy nim — wabi do zasadzki.
 ## Kto podejdzie albo strzeli, ten go demaskuje (`wake`): krzyk, fala i chwila na przemianę. Snop latarki demaskuje dopiero po
 ## LIGHT_REVEAL_S ciągłego światła (M2); w świetle Mimik odwraca twarz, oczy łapią połysk, a klatka piersiowa zaczyna oddychać (widok 3D).
+##
+## Mimik-zwłoki (M5, `become_corpse`): leży w gnieździe zwłok z danych mapy (corpse.gd), w tej samej pozie i stroju co prawdziwe ciało —
+## widok rysuje go jako zwłoki (corpse3d.gd), bez plamy krwi pod ciałem. Nie woła i nie ma etykiety. Demaskuje go: przeszukiwanie
+## (po corpse.gd MIMIC_GRAB_S), przejście tuż nad nim (OVER_PX, także bot), trafienie, CORPSE_LIGHT_S ciągłego snopu, krzyk G (do M8).
+## Leżąc ma niskie ciało i strefę trafień (LYING), po demaskacji wraca do stojących.
 
 const Lights := preload("res://scripts/lights.gd")
 const Player := preload("res://scripts/player.gd")
@@ -15,6 +20,9 @@ const CALL_R := Vector2(70.0, 340.0) ## px: wabi, gdy najbliższy gracz jest dal
 const CALL_GAP := Vector2(6.0, 10.0) ## s między wołaniami
 const CALL_BLUR := 48.0              ## px: rozrzut miejsca wołania (kierunek rozmyty jak przez radio)
 const LABEL_EVERY := 2.0             ## s między przeliczeniem etykiety (lista drużyny i postaci)
+const CORPSE_LIGHT_S := 2.5          ## s ciągłego snopu do demaskacji leżącego (dłużej niż stojący — „wytrzymuje” światło)
+const OVER_PX := 10.0                ## px: przejście tuż nad leżącym (ok. 0,6 m) go budzi
+const LYING := Vector2(26.0, 5.0)    ## px: ciało ruchu i strefa trafień leżącego (zwłoki mają ok. 26 px długości)
 ## Kryptonimy, gdy nie ma kogo udawać (sam, bez innych postaci i bez bota) — brzmią jak operatorzy, ale nikt ich nie nosi.
 const FALLBACK_NAMES := ["Kret", "Wiór", "Sowa", "Łoś"]
 
@@ -28,8 +36,41 @@ var _lit_t := 0.0
 var _label := ""
 var _label_col := Color.WHITE
 var _label_t := 0.0
+var corpse: Node2D = null    ## zwłoki, które udaje (M5); null = przebranie stojące
+var _stand_body := Vector2.ZERO
+var _stand_hurt := Vector2.ZERO
+
+## Mimik-zwłoki (M5): leży w miejscu zwłok `cp` (level.gd przy budowie mapy, u każdego peera tak samo).
+func become_corpse(cp: Node2D) -> void:
+	corpse = cp
+	_lie(true)
+
+func as_corpse() -> bool:
+	return corpse != null
+
+## Niskie ciało i strefa trafień leżącego (kule nad ciałem przelatują jak nad zwłokami); `false` — wymiary stojącego.
+func _lie(on: bool) -> void:
+	var cs := e.get_node_or_null("CollisionShape2D") as CollisionShape2D
+	if cs == null:
+		return
+	var body := cs.shape as RectangleShape2D
+	var hurt: RectangleShape2D = e._hit_shape
+	if _stand_body == Vector2.ZERO:
+		_stand_body = body.size
+		_stand_hurt = hurt.size
+	var bs := LYING if on else _stand_body
+	var hs := LYING if on else _stand_hurt
+	body.size = bs
+	cs.position = Vector2(0.0, -bs.y * 0.5)
+	if hurt != body:
+		hurt.size = hs
+		var hn = e.get_meta("hurt_shape") if e.has_meta("hurt_shape") else null
+		if hn is CollisionShape2D:
+			(hn as CollisionShape2D).position = Vector2(0.0, -hs.y * 0.5)
 
 func reset() -> void:
+	if corpse != null:
+		_lie(true)
 	lure_t = 4.0
 	calls = 0
 	lit_s = 0.0
@@ -40,6 +81,8 @@ func reset() -> void:
 ## Demaskacja: wpis w dzienniku (M0), krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg.
 func on_wake() -> void:
 	_log_reveal(String(e.wake_cause))
+	if corpse != null:
+		_lie(false)
 	NoiseMgr.add_noise(6.0, e.global_position, "enemy")
 	if NoiseMgr.has_network():
 		e._scream_fx.rpc()
@@ -57,7 +100,7 @@ func _log_reveal(cause: String) -> void:
 			continue
 		best = minf(best, (p as Node2D).global_position.distance_to(e.global_position))
 	SessionLog.event("mimic_reveal", {"cause": cause, "dist": roundi(best) if is_finite(best) else -1, "calls": calls,
-		"disguise": "stand", "lit": snappedf(lit_s, 0.1), "pos": SessionLog.xy(e.global_position)})
+		"disguise": "corpse" if corpse != null else "stand", "lit": snappedf(lit_s, 0.1), "pos": SessionLog.xy(e.global_position)})
 
 func scream_pitch() -> float:
 	return 0.85
@@ -82,7 +125,16 @@ func light_wakes(lit: bool) -> bool:
 		_dark_s += dt
 		if _dark_s >= DARK_RESET_S:
 			lit_s = 0.0
-	return lit_s >= LIGHT_REVEAL_S
+	return lit_s >= (CORPSE_LIGHT_S if corpse != null else LIGHT_REVEAL_S)
+
+## Leżący budzi się dopiero, gdy ktoś przejdzie tuż nad nim (OVER_PX); stojący — przy zwykłym `wake_near`.
+func near_mult() -> float:
+	return OVER_PX / maxf(float(e._def["wake_near"]), 1.0) if corpse != null else 1.0
+
+## Zabity Mimik-zwłoki zostawia łup ciała, które udawał.
+func on_death() -> void:
+	if corpse != null and is_instance_valid(corpse) and corpse.has_method("drop_mimic_loot"):
+		corpse.drop_mimic_loot()
 
 ## Widok (każdy peer): czy jeszcze udaje, i snop na nim — odwraca twarz, połysk oczu, oddech.
 func present(delta: float) -> void:
@@ -97,9 +149,10 @@ func present(delta: float) -> void:
 func view_extra(d: Dictionary) -> void:
 	d["disguised"] = not e.active
 	d["lit"] = _lit
+	d["as_corpse"] = corpse != null and not e.active and e.alive          # widok rysuje go jako zwłoki (view3d `_sync_corpses`), nie jako wroga
 
 func disguise_label() -> String:
-	if e.active:
+	if e.active or corpse != null:
 		return ""
 	_refresh_label()
 	return _label
@@ -154,6 +207,8 @@ func asleep_lod() -> bool:
 	return false
 
 func tick_asleep(delta: float) -> void:
+	if corpse != null:
+		return                                  # zwłoki nie wołają
 	lure_t -= delta
 	if lure_t > 0.0:
 		return

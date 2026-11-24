@@ -7,7 +7,13 @@ sygnał obok połysku oczu; solo bez innych postaci i bez bota etykieta to krypt
 `male_hazmat` dla obsługi radiostacji, `male_medic` dla górników; ułożenia na plecach, na boku i podkulone (każde w obie strony) — bez
 pozy na twarzy i siedzącej, bez przysypania igliwiem; sprzęt na plecach chowa się pod podłogą zamiast podpierać ciało;
 nieśmiertelniki 1.1 dalej leżą jako przedmiot przy ciele, kolumnę obok — strzałka celu i testy map ich potrzebują, a ciało i tak
-prowadzi do nich wzrok; nowa misja na tej samej mapie kładzie zwłoki od nowa; przeszukanie nie daje notatki z radia). Kolejność wg rekomendacji z analizy: najpierw M0–M2
+prowadzi do nich wzrok; nowa misja na tej samej mapie kładzie zwłoki od nowa; przeszukanie nie daje notatki z radia).
+**M5 wdrożone w 1.7.669** (odstępstwa: na 1.3 jeden Mimik-zwłoki, nie 1–2 — przy 6 ciałach na mapie dwa łamałyby D2 (≥ 4 prawdziwe
+na jednego); `MIMIC_CORPSES` w danych mapy pozwala to zmienić. Losowanie przy zmianie mapy, nie przy każdej próbie — nowa misja na tej
+samej mapie (bez przeładowania) i wipe zostawiają Mimika w tym samym gnieździe. Demaskacja z leżenia to na razie podmiana: zwłoki
+znikają i stoi Mimik w zwykłej przemianie 0,35 s — wstawanie „wstecz” to M7; chwyt po przeszukiwaniu to zwykły cios do M6. Krzyk G
+dalej demaskuje (M8). Kodeks od razu opisuje sygnały obu przebrań, nie dopiero po pierwszej demaskacji.)
+Kolejność wg rekomendacji z analizy: najpierw M0–M2
 (pomiar i przebranie, które trzyma się na ekranie), potem rdzeń M3–M6 (zwłoki w świecie i Mimik udający zwłoki — główna zmiana
 rozgrywki, działa w solo), dalej M7 (przemiana i ruch) i M8 (echo krzyku). M9 (powalony kolega) czeka na sesje co-op.
 Uwaga użytkownika (2026-11-23), wpisana w §4 i etapy M3–M5: **żeby leżący Mimik nie wzbudzał podejrzeń, w świecie muszą zostawać

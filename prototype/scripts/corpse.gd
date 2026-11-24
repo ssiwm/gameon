@@ -9,7 +9,12 @@ extends Node2D
 ##
 ## Autorytet: serwer (postęp, łup, stan „przeszukane”); klienci dostają postęp przez _sync, a przeszukanie przez _sync_searched.
 ## Każdy gracz zgłasza tylko „trzymam / puściłem” (_work_rpc), serwer sam sprawdza zasięg, życie i to, że to człowiek — jak sejf (strongbox.gd).
-## Widok 3D (view3d.gd `_sync_corpses`, corpse3d.gd) czyta `outfit`, `pose`, `flip` i `searched`.
+## Widok 3D (view3d.gd `_sync_corpses`, corpse3d.gd) czyta `outfit`, `pose`, `flip`, `searched` i `mimic`.
+##
+## Mimik-zwłoki (M5): w gnieździe z flagą `mimic` serwer losuje z ziarna mapy (`pick_mimic`, `level.mimic_seed` z RPC wczytania mapy —
+## ten sam wybór u każdego peera), które ciało to Mimik. Węzeł zwłok zostaje (podpowiedź [E], ta sama poza i strój), ale `mimic` wskazuje
+## wroga, który leży w tym miejscu: przeszukiwanie po MIMIC_GRAB_S budzi go (`search`) zamiast dać łup. Zwłoki „są” tylko póki Mimik
+## udaje (`present`); zabity Mimik zostawia łup ciała (`drop_mimic_loot`), wipe kładzie go z powrotem.
 
 const SessionLog := preload("res://scripts/session_log.gd")
 const Weapons := preload("res://scripts/weapons.gd")
@@ -24,6 +29,7 @@ const LOOT_CHANCE := 0.6             ## D3: drobny łup w ok. 60% ciał, reszta 
 const SCRAP := Vector2i(3, 6)        ## złom z kieszeni
 ## Rodzaj łupu, gdy coś jest: [rodzaj, waga].
 const LOOT_TABLE := [["scrap", 0.45], ["ammo", 0.3], ["battery", 0.25]]
+const MIMIC_GRAB_S := 0.3            ## s przeszukiwania Mimika-zwłok do chwytu (D6: gracz zobaczy ruch ręki, ale nie zdąży puścić)
 
 var index := 0                       ## numer na mapie (dziennik `corpse_search`, `id`)
 var outfit := "patrol"
@@ -34,6 +40,7 @@ var searched := false
 var progress := 0.0
 var local_in_range := false          ## lokalny człowiek stoi w zasięgu (HUD pokazuje podpowiedź)
 var force_loot := ""                 ## testy: wymuszony wynik losowania („none” albo rodzaj z LOOT_TABLE)
+var mimic: Node2D = null             ## Mimik leżący w tym miejscu (M5); null = prawdziwe zwłoki
 
 var _holding := false
 var _workers := {}
@@ -44,6 +51,26 @@ var _start_ms := 0
 
 func _ready() -> void:
 	add_to_group("corpses")
+
+## Ciało jest na ziemi: prawdziwe zawsze, Mimik-zwłoki — póki żyje i udaje.
+func present() -> bool:
+	return mimic == null or (is_instance_valid(mimic) and bool(mimic.alive) and not bool(mimic.active))
+
+## Gniazda Mimika-zwłok (flaga `mimic` w CORPSES) wybrane z ziarna: `n` indeksów (mniej, gdy gniazd mniej). Ten sam wynik u każdego peera.
+static func pick_mimic(defs: Array, n: int, seed_v: int) -> Array:
+	var nests: Array = []
+	for i in defs.size():
+		var cd: Array = defs[i]
+		if cd.size() > 4 and cd[4] is Dictionary and bool((cd[4] as Dictionary).get("mimic", false)):
+			nests.append(i)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_v
+	for i in range(nests.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var t = nests[i]
+		nests[i] = nests[j]
+		nests[j] = t
+	return nests.slice(0, mini(n, nests.size()))
 
 func _in_reach(p: Vector2, mult := 1.0) -> bool:
 	return absf(p.x - global_position.x) <= REACH_X * mult and absf(p.y - global_position.y) <= REACH_Y * mult
@@ -58,7 +85,7 @@ func _local_human() -> Node2D:
 
 func _update_local() -> void:
 	var me := _local_human()
-	var near: bool = me != null and not searched and not me.dead and _in_reach(me.global_position)
+	var near: bool = me != null and not searched and present() and not me.dead and _in_reach(me.global_position)
 	local_in_range = near
 	var want := false
 	if near and Input.is_action_pressed("interact"):
@@ -94,10 +121,17 @@ func _physics_process(delta: float) -> void:
 	_update_local()
 	if not NoiseMgr.is_server() or searched:
 		return
-	if _validate_workers() > 0:
+	if not present():
+		_workers.clear()
+		progress = 0.0
+	elif _validate_workers() > 0:
 		if progress <= 0.0:
 			_start_ms = Time.get_ticks_msec()
 		progress = minf(1.0, progress + delta / SEARCH_TIME)
+		if mimic != null and progress * SEARCH_TIME >= MIMIC_GRAB_S:
+			_workers.clear()
+			progress = 0.0
+			mimic.wake("search")                      # ręka sięga do kieszeni — „ciało” chwyta (M6: chwyt); postęp 0 dojdzie do klientów niżej
 		_noise_acc += RUSTLE_PER_S * delta
 		if _noise_acc >= NOISE_CHUNK:
 			NoiseMgr.add_noise(_noise_acc, global_position, "corpse")
@@ -147,7 +181,22 @@ func _finish_search() -> void:
 	_workers.clear()
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	var loot := force_loot if force_loot != "" else roll_loot(rng)
+	var got := _spawn_loot(force_loot if force_loot != "" else roll_loot(rng), rng)
+	var loot := String(got[0])
+	var amount := int(got[1])
+	var lv := get_tree().get_first_node_in_group("level")
+	var held := float(Time.get_ticks_msec() - _start_ms) / 1000.0
+	var by := get_tree().current_scene.get_node_or_null("Players/" + String(who[0])) if not who.is_empty() and get_tree().current_scene != null else null
+	SessionLog.event("corpse_search", {"map": String(lv.map_id) if lv != null else "", "id": index, "loot": loot, "amount": amount,
+		"hold": snappedf(held, 0.1), "who": "P%d" % int(by.display_id) if by != null else "?", "tag": bool(flags.get("tag", false)),
+		"pos": SessionLog.xy(global_position)})
+	print("[CORPSE] %s searched: %s" % [name, loot])
+	if NoiseMgr.has_network():
+		_sync_searched.rpc(true, loot)
+	_set_searched(true, loot)
+
+## Łup `loot` przy ciele (serwer): [rodzaj po zamianie, ilość]. Naboje przy pełnych zapasach to garść złomu.
+func _spawn_loot(loot: String, rng: RandomNumberGenerator) -> Array:
 	var lv := get_tree().get_first_node_in_group("level")
 	var at := global_position + Vector2(rng.randf_range(-6.0, 6.0), -14.0)
 	var amount := 0
@@ -167,15 +216,18 @@ func _finish_search() -> void:
 					lv.spawn_item("scrap", 0, at, amount)
 			"battery":
 				lv.spawn_item("battery", 0, at)
-	var held := float(Time.get_ticks_msec() - _start_ms) / 1000.0
-	var by := get_tree().current_scene.get_node_or_null("Players/" + String(who[0])) if not who.is_empty() and get_tree().current_scene != null else null
-	SessionLog.event("corpse_search", {"map": String(lv.map_id) if lv != null else "", "id": index, "loot": loot, "amount": amount,
-		"hold": snappedf(held, 0.1), "who": "P%d" % int(by.display_id) if by != null else "?", "tag": bool(flags.get("tag", false)),
-		"pos": SessionLog.xy(global_position)})
-	print("[CORPSE] %s searched: %s" % [name, loot])
-	if NoiseMgr.has_network():
-		_sync_searched.rpc(true, loot)
-	_set_searched(true, loot)
+	return [loot, amount]
+
+## Zabity Mimik-zwłoki zostawia łup ciała, które udawał — zawsze coś (nagroda za rozpoznanie). Serwer; zwraca rodzaj łupu.
+func drop_mimic_loot() -> String:
+	if not NoiseMgr.is_server():
+		return ""
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var loot := force_loot
+	while loot == "" or loot == "none":
+		loot = roll_loot(rng)
+	return String(_spawn_loot(loot, rng)[0])
 
 ## Nowa próba misji na tej samej mapie (main.gd `_restart_mission(true)`): zwłoki znów nieprzeszukane. Wipe ich nie rusza.
 func reset_corpse() -> void:

@@ -12,6 +12,7 @@
 #    i zawał na mapie testowej t_mine, wykopy, wybuch, wykopana znajdźka, osypany żwir, spadła wyspa i pula znajdziek hosta w strefach wydobycia (D5) na mapie testowej t_dig — u klienta obecnego od początku
 #    (RPC na żywo) i u dołączającego później (`send_walls_to`) stan taki sam jak u hosta.
 # 9. Zwłoki (MIMIC_PLAN.md M4): klient przeszukuje trzymanym [E], serwer rozstrzyga, dołączający dostaje przeszukane ciało.
+# 10. Mimik-zwłoki (MIMIC_PLAN.md M5): to samo gniazdo u hosta, klienta (zmiana mapy) i dołączającego (ziarno w RPC dołączenia).
 # 3. Czterech ludzi: numery P1–P4 (bot nie zabiera numeru, P5 się nie pojawia); klienci wychodzą po kolei, a ci, którzy zostają, nie dostają
 #    błędu silnika `on_despawn_receive … ERR_UNAUTHORIZED` (postać wychodzącego usuwa tylko serwer).
 # Wymaga `godot` w PATH i zaimportowanego projektu (godot --headless --path . --import).
@@ -164,6 +165,23 @@ kill $HOST 2>/dev/null; wait $HOST 2>/dev/null
 grep -a -q "\[CORPSE-NET\] client searched=true" "$LOG/corpse_a.log" && ok "klient: przeszukanie trzymanym [E] rozstrzyga serwer" || fail "klient: $(grep -a "\[CORPSE-NET\]" "$LOG/corpse_a.log")"
 grep -a -q "\[CORPSE\] Corpse7 searched" "$LOG/corpse_host.log" && grep -a -q "\[CORPSE-NET\] host searched=true" "$LOG/corpse_host.log" && ok "host: ciało przeszukane przez klienta" || fail "host: $(grep -a "CORPSE" "$LOG/corpse_host.log")"
 grep -a -q "\[CORPSE-NET\] joiner searched=true" "$LOG/corpse_b.log" && ok "dołączający: ciało przeszukane" || fail "dołączający: $(grep -a "\[CORPSE-NET\]" "$LOG/corpse_b.log")"
+
+echo "== Mimik-zwłoki =="
+# MIMIC_PLAN.md M5: gniazdo Mimika-zwłok losuje serwer; ziarno idzie w RPC wczytania mapy (zmiana mapy przy kliencie A) i w RPC dołączenia
+# (klient B) — u wszystkich ten sam Mimik w tym samym ciele, leżący jako zwłoki.
+godot --headless --path . -- --host --mission=z1_hub --port=8974 --mimicnet=8 --autoquit=60 >"$LOG/mimic_host.log" 2>&1 &
+HOST=$!
+sleep 3
+godot --headless --path . -- --join=127.0.0.1 --port=8974 --mimicnet=1 --autoquit=45 >"$LOG/mimic_a.log" 2>&1 &
+CA=$!
+wait $CA
+godot --headless --path . -- --join=127.0.0.1 --port=8974 --mimicnet=1 --autoquit=30 >"$LOG/mimic_b.log" 2>&1
+kill $HOST 2>/dev/null; wait $HOST 2>/dev/null
+MH=$(grep -a -o "\[MIMIC-NET\] host map=z1_m2 slot=Corpse[0-9]* seed=[0-9]* lying=true" "$LOG/mimic_host.log" | sed 's/.*slot=//')
+MA=$(grep -a -o "\[MIMIC-NET\] client map=z1_m2 slot=Corpse[0-9]* seed=[0-9]* lying=true" "$LOG/mimic_a.log" | sed 's/.*slot=//')
+MB=$(grep -a -o "\[MIMIC-NET\] client map=z1_m2 slot=Corpse[0-9]* seed=[0-9]* lying=true" "$LOG/mimic_b.log" | sed 's/.*slot=//')
+[ -n "$MH" ] && [ "$MH" = "$MA" ] && ok "klient: zmiana mapy niesie ziarno — ten sam Mimik-zwłoki ($MA)" || fail "klient: host '$MH', klient '$MA' $(grep -a "\[MIMIC-NET\]" "$LOG/mimic_a.log")"
+[ -n "$MH" ] && [ "$MH" = "$MB" ] && ok "dołączający: ziarno w RPC dołączenia ($MB)" || fail "dołączający: host '$MH', dołączający '$MB' $(grep -a "\[MIMIC-NET\]" "$LOG/mimic_b.log")"
 
 echo "== zniszczenia =="
 # host: po 10 s rozbija skrzynię Crate1, tłucze lampę MissionLamp1 i okno Window1, zabija pusty otwór Opening1 dwiema deskami (SC), po 1 s dwa ciosy kilofem i środkowa deska otworu zestrzelona do jednego pasa (S1), gdy są obaj
