@@ -41,6 +41,7 @@ var progress := 0.0
 var local_in_range := false          ## lokalny człowiek stoi w zasięgu (HUD pokazuje podpowiedź)
 var force_loot := ""                 ## testy: wymuszony wynik losowania („none” albo rodzaj z LOOT_TABLE)
 var mimic: Node2D = null             ## Mimik leżący w tym miejscu (M5); null = prawdziwe zwłoki
+var y_body := false                  ## ciało Mimika `Y` z mapy (solo: leży w nim zamiast stać, enemy_mimic.gd `y_body`); nie gniazdo CORPSES
 
 var _holding := false
 var _workers := {}
@@ -52,9 +53,9 @@ var _start_ms := 0
 func _ready() -> void:
 	add_to_group("corpses")
 
-## Ciało jest na ziemi: prawdziwe zawsze, Mimik-zwłoki — póki żyje i udaje.
+## Ciało jest na ziemi: prawdziwe zawsze, Mimik-zwłoki — póki żyje, udaje i leży właśnie w nim (ciało `Y` tylko w solo, gdy Mimik nie stoi).
 func present() -> bool:
-	return mimic == null or (is_instance_valid(mimic) and bool(mimic.alive) and not bool(mimic.active))
+	return mimic == null or (is_instance_valid(mimic) and bool(mimic.alive) and not bool(mimic.active) and mimic._beh.corpse == self)
 
 ## Gniazda Mimika-zwłok (flaga `mimic` w CORPSES) wybrane z ziarna: `n` indeksów (mniej, gdy gniazd mniej). Ten sam wynik u każdego peera.
 static func pick_mimic(defs: Array, n: int, seed_v: int) -> Array:
