@@ -8,6 +8,7 @@ extends "res://scripts/enemy3d.gd"
 ## Mimik-zwłoki (M5, `build(…, mimic = true)`): ta sama poza, strój i materiał; różnią go sygnały: brak plamy pod ciałem (view3d), oczy
 ## otwarte — w snopie latarki łapią połysk (`mimic_lit` z widoku, jak u stojącego Mimika), a po BREATH_AFTER s ciągłego światła klatka
 ## piersiowa zaczyna się unosić. Tylko on liczy coś w klatce (`_process`); prawdziwe zwłoki stoją wypieczone.
+## Echo krzyku (M8, `mimic_echo` 1 → 0): ciało drga — klatka i głowa szarpią się kilka razy z gasnącą siłą, gdy spod niego dobiega echo.
 ##
 ## Demaskacja Mimika-zwłok (M7, `rise`): ciało wstaje „wstecz” — klip upadku od końca do początku, bez podparcia rąk, z łukiem pleców;
 ## ułożenie (przetoczenie, podkulone nogi) gaśnie w pierwszej części ruchu. W tym czasie przemiana jak u stojącego (przedramiona, nakładka
@@ -34,6 +35,9 @@ const SHINE := Color(0.78, 1.0, 0.82)            ## połysk oczu w snopie (blady
 const BREATH_AFTER := 1.0                        ## s ciągłego snopu, po których „przyłapany” zaczyna oddychać
 const BREATH_DEG := 8.0                          ## °: wychylenie klatki piersiowej
 const BREATH_HZ := 0.3                           ## oddechy na sekundę (płytki, szybszy niż śpiący — wstrzymywał oddech)
+const ECHO_DEG := 9.0                            ## °: drgnięcie klatki piersiowej przy echu krzyku (M8)
+const ECHO_HEAD_DEG := 16.0                      ## °: szarpnięcie głowy przy echu
+const ECHO_JERKS := 2.5                          ## szarpnięcia w czasie drgnięcia (enemy_mimic.gd ECHO_VIEW_S)
 
 var outfit := "patrol"
 var pose_id := "back"
@@ -41,6 +45,7 @@ var searched := false
 var seed_v := 0
 var mimic := false                               ## Mimik-zwłoki (M5)
 var mimic_lit := 0.0                             ## 0..1 snop latarki na nim (view3d z `view_info` Mimika)
+var mimic_echo := 0.0                            ## 1 → 0 drgnięcie przy echu krzyku (view3d z `view_info` Mimika, M8)
 var rise_u := -1.0                               ## 0..1 postęp wstawania (M7); < 0 = leży
 const RISE_ARCH := 24.0                          ## °: łuk pleców w połowie wstawania
 const RISE_VARIANT := 0.3                        ## ułamek wstawania, w którym gaśnie ułożenie (przetoczenie, nogi)
@@ -115,11 +120,21 @@ func step_mimic(delta: float) -> void:
 	breath_w = move_toward(breath_w, 1.0 if _lit_s >= BREATH_AFTER else 0.0, delta / (0.5 if _lit_s >= BREATH_AFTER else 1.5))
 	_breath_t += delta
 	var chest: int = _b["Spine2"]
+	var head: int = _b["Head"]
 	_sk.set_bone_pose_rotation(chest, _chest_rest)
+	_sk.set_bone_pose_rotation(head, _lie_rot.get(head, _sk.get_bone_pose_rotation(head)))
+	var lr := (_gp(_b["RightArm"]).origin - _gp(_b["LeftArm"]).origin).normalized()
 	if breath_w > 0.001:
-		var lr := _gp(_b["RightArm"]).origin - _gp(_b["LeftArm"]).origin
-		_rot_world(chest, lr.normalized(), deg_to_rad(BREATH_DEG) * breath_w * (0.5 - 0.5 * cos(_breath_t * TAU * BREATH_HZ)))
+		_rot_world(chest, lr, deg_to_rad(BREATH_DEG) * breath_w * (0.5 - 0.5 * cos(_breath_t * TAU * BREATH_HZ)))
+	if mimic_echo > 0.001:
+		var jerk := echo_jerk(mimic_echo)
+		_rot_world(chest, lr, deg_to_rad(ECHO_DEG) * jerk)
+		_rot_world(head, _to_sk(_body_axis()), deg_to_rad(ECHO_HEAD_DEG) * jerk)
 	_place_mimic_eyes()
+
+## Drgnięcie przy echu (−1..1): `w` 1 → 0 w czasie drgnięcia; szarpnięcia gasną z kwadratem wagi.
+static func echo_jerk(w: float) -> float:
+	return w * w * sin((1.0 - w) * TAU * ECHO_JERKS)
 
 ## Oczy przy kości głowy (przestrzeń szkieletu → węzeł modelu), widoczne tylko z połyskiem.
 func _place_mimic_eyes(shine := true) -> void:

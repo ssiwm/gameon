@@ -6,7 +6,7 @@ extends "res://scripts/enemy_behavior.gd"
 ##
 ## Mimik-zwłoki (M5, `become_corpse`): leży w gnieździe zwłok z danych mapy (corpse.gd), w tej samej pozie i stroju co prawdziwe ciało —
 ## widok rysuje go jako zwłoki (corpse3d.gd), bez plamy krwi pod ciałem. Nie woła i nie ma etykiety. Demaskuje go: przeszukiwanie
-## (po corpse.gd MIMIC_GRAB_S), przejście tuż nad nim (OVER_PX, także bot), trafienie, CORPSE_LIGHT_S ciągłego snopu, krzyk G (do M8).
+## (po corpse.gd MIMIC_GRAB_S), przejście tuż nad nim (OVER_PX, także bot), trafienie, CORPSE_LIGHT_S ciągłego snopu.
 ## Leżąc ma niskie ciało i strefę trafień (LYING), po demaskacji wraca do stojących.
 ##
 ## Chwyt z przebrania (M6): pierwszy cios w ciągu GRAB_READY_S po demaskacji to chwyt (`strike`) — przemiana bez celu chwyta tego, kto stoi
@@ -18,6 +18,10 @@ extends "res://scripts/enemy_behavior.gd"
 ## Przemiana (M7): demaskacja to MORPH_S zapowiedzi bez celu (klip `morph`) — przez nią Mimik przyjmuje MORPH_DMG × obrażenia (okno kontry);
 ## potem zryw LOPE_S z prędkością LOPE_SPEED, dalej zwykłe 95 px/s. Leżący odwraca się przodem do stóp zwłok, bo widok wstaje klipem upadku
 ## od końca (corpse3d.gd `rise`). Widok dostaje czas od demaskacji (`since_reveal`) — z niego liczy wstawanie, wydłużanie rąk, materiał i chód.
+##
+## Echo krzyku (M8): krzyk gracza (G albo mikrofon) nie demaskuje przebranego Mimika — po ECHO_DELAY odpowiada tym samym krzykiem, odrobinę
+## za nisko (ECHO_PITCH), z miejsca, w którym stoi albo leży (leżący ciszej i stłumiony, a ciało drga — corpse3d.gd `echo`). Prawdziwi
+## koledzy, bot i zwłoki milczą, więc krzyk to test „kto to?”. Jedno echo na krzyk; krzyki w czasie oczekiwania łączą się w nie.
 
 const Lights := preload("res://scripts/lights.gd")
 const Player := preload("res://scripts/player.gd")
@@ -46,6 +50,12 @@ const MORPH_DMG := 1.25              ## mnożnik przyjmowanych obrażeń w czasi
 const LOPE_S := 1.5                  ## s zrywu po przemianie
 const LOPE_SPEED := 110.0            ## px/s w zrywie (zwykle 95, jak gracz)
 const RISE_S := 0.75                 ## s wstawania Mimika-zwłok w widoku (corpse3d.gd `rise`); potem widać model wroga
+const ECHO_DELAY := 0.5              ## s od krzyku gracza do echa (M8)
+const ECHO_JITTER := 0.08            ## s rozrzutu opóźnienia (echo nie brzmi jak automat)
+const ECHO_PITCH := 0.9              ## wysokość echa względem krzyku gracza (player.gd `_scream_fx` 0,8 ± 0,06)
+const ECHO_DB := -1.0                ## dB echa stojącego
+const ECHO_DB_LYING := -7.0          ## dB echa leżącego (stłumiony głos spod ciała)
+const ECHO_VIEW_S := 0.6             ## s drgnięcia ciała leżącego w widoku
 ## Kryptonimy, gdy nie ma kogo udawać (sam, bez innych postaci i bez bota) — brzmią jak operatorzy, ale nikt ich nie nosi.
 const FALLBACK_NAMES := ["Kret", "Wiór", "Sowa", "Łoś"]
 
@@ -74,6 +84,12 @@ var morph_t := 0.0           ## s do końca przemiany (serwer)
 var lope_t := 0.0            ## s zrywu (serwer)
 var _morph_hit := false      ## następny cios kończy przemianę (klip `morph` zamiast chwytu)
 var _view_since := -1.0      ## s od demaskacji widzianej w widoku; < 0 = udaje
+var echo_t := -1.0           ## s do echa krzyku (serwer); < 0 = brak
+var echoes := 0              ## echa od początku misji (testy, dziennik)
+var _echo_from := Vector2.ZERO  ## skąd krzyknięto (dziennik `mimic_echo`)
+var _echo_heard := 0.0       ## px drogi dźwięku krzyku
+var _echo_view := 0.0        ## s drgnięcia w widoku (każdy peer, z `_mimic_echo`)
+var last_echo := {}          ## ostatnie echo u tego peera: `pitch`, `lying` (testy)
 
 ## Mimik-zwłoki (M5): leży w miejscu zwłok `cp` (level.gd przy budowie mapy, u każdego peera tak samo).
 func become_corpse(cp: Node2D) -> void:
@@ -119,9 +135,13 @@ func reset() -> void:
 	_dark_s = 0.0
 	_lit_ms = 0
 	_label_t = 0.0
+	echo_t = -1.0
+	echoes = 0
+	_echo_view = 0.0
 
 ## Demaskacja: wpis w dzienniku (M0), krzyk, fala i chwila na zmianę postaci (zapowiedź), potem normalny pościg.
 func on_wake() -> void:
+	echo_t = -1.0                              # obudzony nie odpowiada już echem
 	_log_reveal(String(e.wake_cause))
 	if corpse != null:
 		_lie(false)
@@ -150,6 +170,43 @@ func _log_reveal(cause: String) -> void:
 
 func scream_pitch() -> float:
 	return 0.85
+
+## Krzyk gracza w zasięgu (M8): przebrany nie budzi się i nie rusza do źródła, tylko po ECHO_DELAY odpowiada echem; obudzony słyszy jak każdy.
+func hears_scream(pos: Vector2, heard: float) -> bool:
+	if e.active:
+		return false
+	if echo_t < 0.0:
+		echo_t = ECHO_DELAY + randf_range(-ECHO_JITTER, ECHO_JITTER)
+		_echo_from = pos
+		_echo_heard = heard
+	return true
+
+## Przebrany nie budzi się z watahą (krzyk czy hałas obudzi Trzoska obok, a test „kto to?” ma działać i przy innych wrogach); obudzony budzi
+## sąsiadów jak każdy (rdzeń pyta obie strony — enemy.gd `wake`).
+func sibling_wake_ok(_other) -> bool:
+	return e.active
+
+## Odlicza echo i je wysyła (serwer, w tiku uśpionego).
+func _tick_echo(delta: float) -> void:
+	if echo_t < 0.0:
+		return
+	echo_t -= delta
+	if echo_t > 0.0:
+		return
+	echo_t = -1.0
+	echoes += 1
+	var lying := corpse != null
+	if NoiseMgr.has_network():
+		e._mimic_echo.rpc(lying)
+	else:
+		e._mimic_echo(lying)
+	SessionLog.event("mimic_echo", {"disguise": "corpse" if lying else "stand", "dist": roundi(_echo_heard), "n": echoes,
+		"from": SessionLog.xy(_echo_from), "pos": SessionLog.xy(e.global_position)})
+
+## Echo na każdym peerze (enemy.gd `_mimic_echo`): drgnięcie leżącego w widoku.
+func echo_fx(pitch: float, lying: bool) -> void:
+	last_echo = {"pitch": pitch, "lying": lying}
+	_echo_view = ECHO_VIEW_S
 
 ## Zamaskowany stoi jak żywy kolega, nie „śpi"; nie przygasa i ma etykietę gracza.
 func anim(a: String, _moving: bool) -> String:
@@ -206,6 +263,7 @@ func present(delta: float) -> void:
 		_view_since += delta
 	_seen_active = act
 	_view_grab = maxf(0.0, _view_grab - delta)
+	_echo_view = maxf(0.0, _echo_view - delta)
 	_lit_t -= delta
 	if _lit_t > 0.0:
 		return
@@ -226,6 +284,7 @@ func view_extra(d: Dictionary) -> void:
 	d["outfit_model"] = String(corpse.outfit) if corpse != null else ""
 	d["disguised"] = not e.active
 	d["lit"] = _lit
+	d["echo"] = _echo_view / ECHO_VIEW_S if not e.active else 0.0      # 1 → 0: drgnięcie leżącego przy echu (M8)
 	d["as_corpse"] = corpse != null and not e.active and e.alive          # widok rysuje go jako zwłoki (view3d `_sync_corpses`), nie jako wroga
 
 func disguise_label() -> String:
@@ -284,6 +343,7 @@ func asleep_lod() -> bool:
 	return false
 
 func tick_asleep(delta: float) -> void:
+	_tick_echo(delta)
 	if corpse != null:
 		return                                  # zwłoki nie wołają
 	lure_t -= delta

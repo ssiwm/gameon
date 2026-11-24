@@ -8857,6 +8857,7 @@ func _sync_corpses() -> void:
 			c.set_searched(bool(pr[0].searched))
 		if not vi.is_empty():
 			c.set("mimic_lit", float(vi.get("lit", 0.0)) if c.visible else 0.0)      # snop na Mimiku-zwłokach: połysk oczu i oddech
+			c.set("mimic_echo", float(vi.get("echo", 0.0)) if c.visible else 0.0)    # echo krzyku (M8): ciało drga
 			if rise >= 0.0 and c.visible:
 				c.call("rise", rise, float(vi.get("since_reveal", 0.0)))           # wstaje „wstecz” (M7), potem widać model wroga
 				c.position.z = lerpf(CORPSE_Z, 0.0, smoothstep(0.0, 1.0, rise))

@@ -7,6 +7,7 @@ extends SceneTree
 ##   2,6 m (ręce za głową), biodra niżej niż 0,35 m, a uniesiona ręka czy kolano poniżej 0,9 m; sprzęt na plecach (`GEAR`) nie podpiera ciała; przeszukane odsuwa prawą dłoń (> 0,2 m), ziarno różnicuje dwa ciała w tym samym ułożeniu;
 ## - Mimik-zwłoki (M5): ta sama poza co prawdziwe ciało w tym miejscu; w ciemności bez oczu i oddechu, w snopie połysk oczu przy głowie
 ##   od razu, oddech dopiero po ~1 s (klatka piersiowa się rusza), po zgaszeniu znów nieruchomy; prawdziwe zwłoki bez oczu i bez `_process`.
+## - echo krzyku (M8, `mimic_echo`): klatka i głowa drgają kilka razy (zmiana kierunku), potem ciało wraca dokładnie do pozy zwłok.
 ## - wstawanie Mimika-zwłok (M7, `rise`): zaczyna z pozy zwłok, wstaje płynnie (bez skoków wysokości), kończy stojąc przodem do stóp
 ##   (+x węzła), w miejscu stóp, ze świecącymi oczami, dłuższymi przedramionami i nakładką przemiany; `end_rise` znów kładzie ciało.
 ##   godot --headless --path prototype -s tools/test_corpses.gd
@@ -180,6 +181,28 @@ func _mimic_view() -> void:
 	_ok(same and eyes_dark and eyes_lit and near_head and breath_early < 0.01 and breath_late > 0.9 and moved > 5.0 and calm
 		and real._mimic_eyes.is_empty() and not real.is_processing(),
 		"Mimik-zwłoki: ta sama poza %s; w ciemności bez oczu %s; w snopie oczy przy głowie %s/%s, oddech po 0,5 s %.2f, po 4,5 s %.2f (klatka %.1f°); po zgaszeniu nieruchomy %s; prawdziwe bez oczu" % [same, eyes_dark, eyes_lit, near_head, breath_early, breath_late, moved, calm])
+	# echo krzyku (M8): drgnięcie, potem dokładnie poza zwłok
+	var head_still := fake._sk.get_bone_pose_rotation(head)
+	var jerk_max := 0.0
+	var head_max := 0.0
+	var flips := 0
+	var last_sign := 0.0
+	var w := 1.0
+	while w > 0.0:
+		w = maxf(0.0, w - 0.05 / 0.6)                          # enemy_mimic.gd ECHO_VIEW_S, kroki 0,05 s
+		fake.mimic_echo = w
+		fake.step_mimic(0.05)
+		jerk_max = maxf(jerk_max, rad_to_deg(fake._sk.get_bone_pose_rotation(chest).angle_to(still)))
+		head_max = maxf(head_max, rad_to_deg(fake._sk.get_bone_pose_rotation(head).angle_to(head_still)))
+		var sg := signf(Corpse3D.echo_jerk(w))
+		if sg != 0.0 and last_sign != 0.0 and sg != last_sign:
+			flips += 1
+		if sg != 0.0:
+			last_sign = sg
+	fake.step_mimic(0.05)
+	var echo_rest: float = rad_to_deg(fake._sk.get_bone_pose_rotation(chest).angle_to(still)) + rad_to_deg(fake._sk.get_bone_pose_rotation(head).angle_to(head_still))
+	_ok(jerk_max > 3.0 and head_max > 5.0 and flips >= 2 and echo_rest < 0.5,
+		"Mimik-zwłoki: echo krzyku — klatka drga do %.1f°, głowa do %.1f°, %d zmian kierunku, potem poza zwłok (%.2f°)" % [jerk_max, head_max, flips, echo_rest])
 	# wstawanie (M7)
 	var lie_bb: AABB = fake.skin_bounds()
 	var arm := func() -> float: return fake._gp(fake._b["RightForeArm"]).origin.distance_to(fake._gp(fake._b["RightHand"]).origin)

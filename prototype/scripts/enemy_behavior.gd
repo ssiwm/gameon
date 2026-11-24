@@ -124,6 +124,11 @@ func after_slide() -> void:
 func returns_home() -> bool:
 	return true
 
+## Krzyk gracza dotarł do wroga (`heard` px drogi dźwięku, w zasięgu). `true` — zachowanie obsłużyło go samo: bez budzenia i bez śladu
+## (Mimik w przebraniu odpowiada echem, MIMIC_PLAN.md M8).
+func hears_scream(_pos: Vector2, _heard: float) -> bool:
+	return false
+
 ## Wysokość głosu krzyku demaskacji (Mimik niżej niż Podsłuchacz).
 func scream_pitch() -> float:
 	return 1.0
