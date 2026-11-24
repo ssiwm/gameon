@@ -3,7 +3,7 @@
 Stan: **T0 i T1 zrobione (1.7.664)**; plan przyjęty 2026-11-23 zgodnie z zaleceniami. Porównanie przed / po:
 `C:\deadair87\shots_tower\porownanie_t1.jpg` (prototyp: `porownanie.jpg`).
 
-Korekta schodów przyjęta 2026-11-24 (1.7.674). Przednie biegi dochodzą do rygli przy krawędziach podestów, a ostatni tylny bieg do otworu w podłodze kabiny.
+Korekta schodów przyjęta 2026-11-24 (1.7.675). Przednie biegi dochodzą do rygli przy krawędziach podestów, a ostatni tylny bieg do otworu w podłodze kabiny.
 
 Strażnica przed rampą kopalni na 1.1 (kol. 210–223, wiersze 7–23; nieśmiertelnik 4, Ćmy i Skoczek pod dachem, lekcja flary) nie ma
 własnego modelu. Składa się z trzech ogólnych reguł widoku 3D:
