@@ -84,10 +84,6 @@ const SPEC := {
 		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "windup": "reach", "sleep_lean": 3.0}, "clips": true, "attack_kind": "grab", "walk_clip": "human",
 		"idle": {"tics": ["look"], "rate": [3.0, 7.0]},
 		"death": {"dir": 1.0, "lean": 8.0, "dur": 1.2, "tilt": 84.0}, "death_floor": true},
-	# Zwłoki w świecie (corpse3d.gd, MIMIC_PLAN.md M3): ten sam model i dopasowanie co Mimik (strój wybiera `model_path`), bez oczu, broni i klipów —
-	# poza leżenia wypiekana raz przy budowie. Mimik udający zwłoki (M5) używa tej samej pozy i materiału.
-	"corpse": {"no_heed": true, "model": "res://art/char3d/mpfb/male_scav.glb", "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8,
-		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "sleep_lean": 3.0}},
 	# Ćma: naturalna rozpiętość ok. 14 cm (1,7 px; było 18 px = 1,5 m); skrzydła machają z własnego zegara (WING_HZ), nie w tempie klatek sprite'a
 	"cma": {"fit": ["width", 1.7], "frame_h": 2.0, "deform": "cma", "float": true, "clips": true, "death_dur": 0.9, "no_shadow": true},
 	"nest": {"fit": ["height", 30.0], "frame_h": 34.0, "deform": "nest", "clips": true, "death_dur": 0.6},
@@ -831,13 +827,21 @@ var _cknee := {}                           ## strona → kierunek kolana w klipi
 var _crise := 0.0                          ## o tyle biodra stoją wyżej niż w klipie (jednostki modelu)
 var _chips := Vector3.ZERO                 ## przesunięcie bioder z klipu względem spoczynku — ręce idą za ciałem
 
+## Rekwizyty na szkielecie wroga, które nie są rodzajem wroga (narzędzia i testy iterują po SPEC — tu ich nie widzą); setup() czyta oba.
+## Zwłoki w świecie (corpse3d.gd, MIMIC_PLAN.md M3): ten sam model i dopasowanie co Mimik (strój wybiera `model_path`), bez oczu, broni i klipów —
+## poza leżenia wypiekana raz przy budowie. Mimik udający zwłoki (M5) używa tej samej pozy i materiału.
+const PROP_SPEC := {
+	"corpse": {"no_heed": true, "model": "res://art/char3d/mpfb/male_scav.glb", "fit": ["height", 22.0], "fit_mesh": "body", "frame_h": 28.0, "cycle": 0.8,
+		"prof": {"lean": 3.0, "lean_walk": 7.0, "hy": 0.21, "hz": 0.80, "stride": 0.24, "sleep_lean": 3.0}},
+}
+
 static func has_model(k: String) -> bool:
 	return SPEC.has(k) and ResourceLoader.exists(String((SPEC[k] as Dictionary).get("model", DIR + k + ".glb")))
 
 ## Buduje model. translucent: materiał z przezroczystością (Stalker znika bez światła).
 func setup(k: String, translucent := false) -> bool:
 	kind = k
-	_spec = SPEC.get(k, {})
+	_spec = SPEC.get(k, PROP_SPEC.get(k, {}))
 	if _spec.is_empty():
 		return false
 	var mp := model_path if model_path != "" else String(_spec.get("model", DIR + k + ".glb"))

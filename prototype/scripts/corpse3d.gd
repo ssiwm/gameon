@@ -1,6 +1,6 @@
 extends "res://scripts/enemy3d.gd"
 ## Zwłoki w świecie (MIMIC_PLAN.md M3): operator Patrolu Siedem, technik radiostacji albo górnik leżący na podłodze — ten sam model i
-## dopasowanie co Mimik (SPEC `corpse` w enemy3d.gd, strój wybiera `model_path`), żeby Mimik udający zwłoki (M5) wyglądał tak samo.
+## dopasowanie co Mimik (PROP_SPEC `corpse` w enemy3d.gd, strój wybiera `model_path`), żeby Mimik udający zwłoki (M5) wyglądał tak samo.
 ## Poza leżenia jest wypiekana raz przy budowie: koniec klipu upadku gracza (`down`, char_clips.gd) plus wariant ułożenia z ziarna,
 ## potem szkielet stoi — bez klipów, IK i oddechu w każdej klatce, koszt zbliżony do rekwizytu. Ciało opiera się najniższym punktem
 ## otoczki skóry na gruncie. Przeszukane (M4) zmienia ułożenie o szczegół: ręka odsunięta od ciała, głowa na drugą stronę.
@@ -18,7 +18,7 @@ const POSES := ["back", "side", "curl"]          ## ułożenia (wariant pozy z k
 const DOWN_T := 1.65                             ## s: koniec klipu upadku (char_clips.gd „down”, `scrub`)
 const MOD := Color(0.78, 0.76, 0.72)             ## wyblakły, przybrudzony strój (ten sam u Mimika-zwłok, M5)
 const FLOOR_GAP := 0.004                          ## m: najniższy punkt skóry nad gruntem
-const FIT_H := 22.0                              ## px: wysokość ciała jak Mimik (SPEC `fit`)
+const FIT_H := 22.0                              ## px: wysokość ciała jak Mimik (`fit` Mimika w SPEC)
 const BODY_H := 1.581671                         ## m: wysokość siatki „body” modelu MPFB w spoczynku (male_scav)
 
 var outfit := "patrol"
