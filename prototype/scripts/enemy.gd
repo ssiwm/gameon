@@ -770,7 +770,7 @@ func answer_alarm(pos: Vector2, heard: float, radius: float, wave: float) -> voi
 		get_tree().create_timer(delay).timeout.connect(_hear_alarm.bind(lead))
 
 func _hear_alarm(lead: Vector2) -> void:
-	if not alive:
+	if not alive or not _beh.alarm_wakes():
 		return
 	_lead_at(lead)
 	wake("alarm")

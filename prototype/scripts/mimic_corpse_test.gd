@@ -9,6 +9,8 @@ extends "res://scripts/corpse_test.gd"
 ## 3. Demaskacja: snop dopiero po ~2,5 s, przejście tuż nad nim (bot) tak, stanie obok nie; przeszukiwanie — chwyt po 0,3 s zamiast łupu;
 ##    trafienie; po demaskacji wymiary stojącego, zwłok już nie ma (`present`). Dziennik `mimic_reveal` z `disguise` = corpse.
 ## 4. Zabity zostawia łup ciała; wipe kładzie go z powrotem; prawdziwe zwłoki przeszukane do końca nie budzą nikogo.
+## 6. Solo (uwaga z gry 2026-11-24): Mimik `Y` (Mimik1 na 1.2) nie stoi jak gracz, tylko leży w swoim ciele (`MimikBody1`) jak Mimik-zwłoki;
+##    alarm Podsłuchacza nie budzi przebranego; przeszukanie go demaskuje; restart kładzie go z powrotem.
 ## 5. Echo krzyku (M8): krzyk gracza go nie demaskuje — po ok. 0,5 s odpowiada stłumionym echem spod ciała, dalej leży; `mimic_echo` z `corpse`.
 ## Wynik: linie [MIMIC-CORPSE] i kod wyjścia.
 
@@ -53,7 +55,7 @@ func run(m: Node2D) -> void:
 		return
 	# świat wyciszony jak w stalker_test.gd, ale Mimik-zwłoki zostaje
 	for e in get_tree().get_nodes_in_group("enemies"):
-		if not String(e.name).begins_with("MimikCorpse"):
+		if not String(e.name).begins_with("MimikCorpse") and String(e.name) != "Mimik1":
 			e.queue_free()
 	var st := level.get_node_or_null("Stalker")
 	if st != null:
@@ -63,6 +65,7 @@ func run(m: Node2D) -> void:
 	SessionLog.enabled = true
 	SessionLog.dir = LOG_DIR
 	SessionLog.mission_start({"map": level.map_id, "test": "mimic_corpse"})
+	await _y_body()
 	_nests()
 	if mim == null or cp_fake == null:
 		_finish()
@@ -90,6 +93,38 @@ func _rewind() -> void:
 	_park_bot()
 	_place_player(cp_fake.global_position + Vector2(-200.0, 0.0))
 
+# ---------------------------------------------------------------- 6. Mimik `Y` w solo
+
+func _y_body() -> void:
+	var y: Node2D = level.get_node_or_null("Mimik1")
+	var body: Node2D = level.get_node_or_null("MimikBody1")
+	if y == null or body == null:
+		check("1.2: Mimik `Y` (Mimik1) i jego ciało (MimikBody1)", false)
+		return
+	var b = y._beh
+	b._mode_t = 0.0
+	await _frames(0.3)
+	var hurt: RectangleShape2D = y._hit_shape
+	var vi: Dictionary = y.view_info()
+	check("solo: Mimik `Y` leży w swoim ciele (tryb %s, `_sp` %d), niski, widok jako zwłoki bez etykiety, ciało obecne, strój %s, nie gniazdo" % [b.mode(), y._sp, body.outfit],
+		b.mode() == "corpse" and y._sp == MIMIC.SP_CORPSE and b.corpse == body and is_equal_approx(hurt.size.y, MIMIC.LYING.y)
+		and vi.get("as_corpse") == true and y.bar_state().get("label") == "" and body.present() and body.y_body and not y.active)
+	y._hear_alarm(body.global_position)
+	check("alarm Podsłuchacza nie budzi przebranego Mimika", not y.active)
+	_place_player(body.global_position + Vector2(-16.0, -1.0))
+	await _frames(0.2)
+	body.set_worker(1, true)
+	await _frames(0.45)
+	check("przeszukanie ciała `Y` po 0,3 s demaskuje (%s), ciała już nie ma, wymiary stojącego" % y.wake_cause,
+		y.active and y.wake_cause == "search" and not body.present() and y._sp != MIMIC.SP_CORPSE and is_equal_approx((y._hit_shape as RectangleShape2D).size.y, 22.0))
+	b._release("", false)
+	_place_player(body.global_position + Vector2(-400.0, 0.0))
+	y.reset_enemy()
+	await _frames(0.1)
+	check("restart: Mimik `Y` znów leży w swoim ciele", not y.active and b.mode() == "corpse" and body.present())
+	y.queue_free()
+	await _frames(0.1)
+
 # ---------------------------------------------------------------- 1. gniazda i ziarno
 
 func _nests() -> void:
@@ -116,7 +151,7 @@ func _nests() -> void:
 	var mims := get_tree().get_nodes_in_group("enemies").filter(func(e: Node) -> bool: return String(e.name).begins_with("MimikCorpse") and not e.is_queued_for_deletion())
 	mim = mims[0] if mims.size() == 1 else null
 	cp_fake = level.get_node_or_null("Corpse%d" % (int(want[0]) + 1)) if want.size() == 1 else null
-	var fakes := _corpses().filter(func(c: Node) -> bool: return c.mimic != null)
+	var fakes := _corpses().filter(func(c: Node) -> bool: return c.mimic != null and not c.y_body)
 	check("ziarno mapy %d (--mimicseed): jeden Mimik-zwłoki w wybranym gnieździe %s, tylko to ciało ma `mimic`" % [level.mimic_seed, str(cp_fake.name) if cp_fake != null else "?"],
 		int(level.mimic_seed) == 5 and mim != null and cp_fake != null and cp_fake.mimic == mim and fakes.size() == 1
 		and mim.global_position.distance_to(cp_fake.global_position) < 1.0 and mim._beh.corpse == cp_fake)

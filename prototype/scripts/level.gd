@@ -1064,6 +1064,7 @@ func _spawn_entities() -> void:
 			var mm: Node2D = get_node(mn)
 			mm._beh.become_corpse(cp)
 			cp.mimic = mm
+	_add_y_bodies(found["Y"])
 	for i in found["D"].size():
 		var car: AnimatableBody2D = HANDCAR.new()
 		car.name = "Handcar" if i == 0 else "Handcar%d" % (i + 1)
@@ -1223,6 +1224,34 @@ func tag_total() -> int:
 	return (_map_items.get("F", []) as Array).size()
 
 ## Odprawa misji `id` z danych mapy (kryjówka, tablica): tytuł, cel, liczba wrogów każdego rodzaju policzona ze znaczników.
+## Ciała Mimików `Y` (MIMIC_PLAN.md, uwaga z gry 2026-11-24: w solo Mimik ma leżeć jako zwłoki, nie stać jak gracz): w miejscu każdego `Y`
+## węzeł zwłok w stroju najczęstszym na tej mapie (1.2 patrol, 1.3 górnicy), ułożenie i strona z nazwy mapy i numeru — to samo u każdego peera.
+## Ciało „jest” (corpse.gd `present`) tylko wtedy, gdy Mimik w nim leży (solo); w co-op Mimik stoi albo leży jako powalony kolega.
+func _add_y_bodies(ys: Array) -> void:
+	var count := {}
+	for cd in _corpses:
+		count[String(cd[3])] = int(count.get(String(cd[3]), 0)) + 1
+	var outfit := "patrol"
+	for o in count:
+		if int(count[o]) > int(count.get(outfit, 0)):
+			outfit = String(o)
+	for i in ys.size():
+		var mm: Node2D = get_node_or_null("Mimik%d" % (i + 1))
+		if mm == null:
+			continue
+		var h := hash([map_id, i]) & 0x7fffffff
+		var cp: Node2D = CORPSE.new()
+		cp.name = "MimikBody%d" % (i + 1)
+		cp.index = 100 + i
+		cp.y_body = true
+		cp.outfit = outfit
+		cp.pose = ["back", "side", "curl"][h % 3]
+		cp.flip = (h / 3) % 2 == 1
+		cp.position = ys[i]
+		add_child(cp)
+		cp.mimic = mm
+		mm._beh.y_body = cp
+
 const THREAT_CHARS := {"T": "trzosek", "A": "kaplan", "U": "rzeznik", "V": "zerca", "W": "wolek", "L": "slepiec", "P": "podsluchacz", "Y": "mimik", "J": "skoczek", "Z": "cma"}
 
 func briefing(id: String) -> Dictionary:

@@ -145,6 +145,10 @@ func shield_up() -> bool:
 func disguise_label() -> String:
 	return ""
 
+## Czy alarm Podsłuchacza go budzi (Mimik w przebraniu nie — pułapka czeka na gracza, nie na hordę).
+func alarm_wakes() -> bool:
+	return true
+
 ## Plakietka powalonego kolegi, gdy wróg go udaje (Mimik, M9; world_bars.gd `_draw_down`); pusta = brak.
 func down_state() -> Dictionary:
 	return {}
