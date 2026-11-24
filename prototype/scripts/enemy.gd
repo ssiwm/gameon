@@ -1358,7 +1358,7 @@ func _try_begin_attack(target: Node2D) -> void:
 func _resolve_attack() -> void:
 	winding = false
 	visual_attack(_beh.attack_action())
-	var pp := _windup_target
+	var pp: Node2D = _windup_target if is_instance_valid(_windup_target) and not _windup_target.is_queued_for_deletion() else null      # cel zniknął w trakcie zapowiedzi (gracz wyszedł z sesji): typowany hak `strike` nie przyjmie zwolnionego obiektu
 	_windup_target = null
 	_cd = float(_def["cooldown"]) * Difficulty.m("enemy_cd")
 	_beh.after_attack()
