@@ -7,6 +7,9 @@ extends SceneTree
 ##   2,6 m (ręce za głową), biodra niżej niż 0,35 m, a uniesiona ręka czy kolano poniżej 0,9 m; sprzęt na plecach (`GEAR`) nie podpiera ciała; przeszukane odsuwa prawą dłoń (> 0,2 m), ziarno różnicuje dwa ciała w tym samym ułożeniu;
 ## - Mimik-zwłoki (M5): ta sama poza co prawdziwe ciało w tym miejscu; w ciemności bez oczu i oddechu, w snopie połysk oczu przy głowie
 ##   od razu, oddech dopiero po ~1 s (klatka piersiowa się rusza), po zgaszeniu znów nieruchomy; prawdziwe zwłoki bez oczu i bez `_process`.
+## - opadanie pod ciężarem (`_drape`): w każdym stroju, ułożeniu, stronie i po przeszukaniu głowa, dłonie, przedramiona, golenie, stopy
+##   i tułów dotykają gruntu (najniższy punkt skóry ≤ DRAPE_MAX; przedramię i dłoń mogą leżeć na brzuchu — DRAPE_ARM_MAX) — ciało nie wisi
+##   na ręce ani nie ma kończyn w powietrzu;
 ## - echo krzyku (M8, `mimic_echo`): klatka i głowa drgają kilka razy (zmiana kierunku), potem ciało wraca dokładnie do pozy zwłok.
 ## - powalony kolega (M9, poza „downed”): każdy model gracza leży na gruncie w pozie upadku, z oczami Mimika; brak pliku → mundur patrolu.
 ## - wstawanie Mimika-zwłok (M7, `rise`): zaczyna z pozy zwłok, wstaje płynnie (bez skoków wysokości), kończy stojąc przodem do stóp
@@ -18,6 +21,8 @@ const FLOOR := "#CM-="
 const AIR := ".bwF"
 
 var _fails := 0
+const DRAPE_MAX := 0.05                          ## m: najniższy punkt części ciała nad gruntem (przed opadaniem dłoń 0,3 m, łokieć 0,8 m)
+const DRAPE_ARM_MAX := 0.16                      ## m: przedramię i dłoń mogą leżeć na brzuchu albo biodrze (tułów ma ok. 0,2 m)
 
 func _ok(cond: bool, msg: String) -> void:
 	print("[CORPSES] %s  %s" % ["PASS" if cond else "FAIL", msg])
@@ -116,6 +121,32 @@ func _go() -> void:
 				c.queue_free()
 	_ok(bad.is_empty() and n == Corpse3D.OUTFITS.size() * Corpse3D.POSES.size() * 2,
 		"%d modeli: leżą na gruncie (%.3f m), biodra niżej niż 0,35 m, całość niżej niż 0,9 m (uniesiona ręka, kolano), krócej niż 2,6 m %s" % [n, Corpse3D.FLOOR_GAP, bad])
+	# opadanie pod ciężarem (`_drape`): żadna część nie wisi — głowa, dłonie, przedramiona, golenie, stopy i tułów dotykają gruntu
+	var hang: Array = []
+	var worst := 0.0
+	var parts := ["Spine", "Head", "LeftForeArm", "RightForeArm", "LeftHand", "RightHand", "LeftLeg", "RightLeg", "LeftFoot", "RightFoot"]
+	for out in Corpse3D.OUTFITS.keys():
+		for pose in ["back", "side", "curl"]:
+			for flip in [1.0, -1.0]:
+				for srch in [false, true]:
+					var c := Corpse3D.new()
+					root.add_child(c)
+					c.build(String(out), pose, 21 + int(flip > 0.0) * 5, flip)
+					if srch:
+						c.set_searched(true)
+					await process_frame
+					for pn in parts:
+						var bi: int = c._sk.find_bone(Corpse3D.PRE + pn)
+						if not c._drape_parts.has(bi):
+							hang.append("%s/%s: brak części %s" % [out, pose, pn])
+							continue
+						var lo: float = c._part_low(bi) - Corpse3D.FLOOR_GAP
+						var lim := DRAPE_ARM_MAX if pn.ends_with("Hand") or pn.ends_with("ForeArm") else DRAPE_MAX
+						worst = maxf(worst, lo)
+						if lo > lim:
+							hang.append("%s/%s/%d%s: %s %.2f m" % [out, pose, int(flip), "/p" if srch else "", pn, lo])
+					c.queue_free()
+	_ok(hang.is_empty(), "opadanie: w 36 ciałach (strój × ułożenie × strona × przeszukane) każda część na gruncie (najwyżej %.3f m, próg %.2f, ręka na tułowiu %.2f) %s" % [worst, DRAPE_MAX, DRAPE_ARM_MAX, hang])
 	# przeszukane: prawa dłoń odsunięta
 	var s := Corpse3D.new()
 	root.add_child(s)

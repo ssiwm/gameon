@@ -47,6 +47,12 @@ najczęstszy na mapie, ułożenie i strona z nazwy mapy), obecne tylko, gdy Mimi
 co-op → `downed` (50%) albo `stand`; serwer przełącza z dala od ludzi, klienci czytają `_sp` = 3 (SP_CORPSE). Przebrany Mimik nie budzi się
 na alarm Podsłuchacza (`alarm_wakes`). Dziennik: `mimic_disguise` z `corpse`, `mimic_reveal` z `disguise` = ycorpse. Konsekwencja: D2 w solo
 nie obowiązuje (1.2: 2 fałszywe na 8 ciał, 1.3: 3 na 8).
+**Pozy zwłok poprawione w 1.7.674** (po uwadze użytkownika: „leżą jak manekiny z kończynami nad ziemią”): koniec klipu upadku zostawiał
+głowę, ręce i nogi w powietrzu (na plecach dłoń 0,3 m, na boku wierzchni łokieć 0,8 m). corpse3d.gd `_drape`: opadanie pod ciężarem bez
+fizyki — od tułowia na zewnątrz każda kość obraca się w dół wokół stawu, aż jej część skóry dotknie gruntu, w granicach stawu (łokieć i kolano
+tylko na zawiasie, prostują się pod ciężarem najwyżej o 35°; gdy zawias nie sięga — obrót w barku / biodrze), kończyna podpierająca tułów
+odchyla się; na plecach ręce bezwładnie na ziemi (zamiast dłoni przy twarzy) i stopy opadające na boki, dłonie płasko; przeszukane na boku
+odsuwa rękę wierzchnią. Poza `downed` (M9) bez zmian — musi wyglądać jak powalony gracz w char3d.gd.
 **M9 wdrożone w 1.7.673** — na prośbę użytkownika przed sesjami co-op (dzienniki do 23.11 bez co-op i bez zdarzeń Mimika). Odstępstwa i
 szczegóły: udaje go Mimik stojący z mapy (`Y`), nie Mimik-zwłoki — w co-op (≥ 2 ludzi, bot się nie liczy) z szansą 50% (`DOWNED_CHANCE`, ziarno
 mapy i nazwa — stałe na mapę). Przebranie przełącza tylko serwer i tylko gdy żaden człowiek nie stoi bliżej niż 300 px (koniec co-op wraca
