@@ -65,6 +65,7 @@ func run(m: Node2D) -> void:
 	await _test_pack_morale()
 	await _test_windup_interrupt()
 	await _test_mole_swipe()
+	await _test_mole_shell()
 	await _test_director()
 	await _test_pincer()
 	await _test_director_composition()
@@ -2394,6 +2395,81 @@ func _test_mole_swipe() -> void:
 	player._invuln = 0.0
 	player.velocity = Vector2.ZERO
 	player.set_physics_process(true)
+	await get_tree().physics_frame
+
+## Skorupa Łupacza (1.7.681): trzy płyty łupka zjadają kule (×0,3 dla płyty, nic dla ciała), płyta od strony strzelca, rozbita odsłania
+## tercję ciała, brzuch przy zapowiedzi ciosu ×1,5, kilof rozbija płytę jednym ciosem, wybuch zrywa wszystkie, ogień przechodzi,
+## restart przywraca skorupę, maska płyt w migawce. Seria z M-83 w przód: magazynek nie wystarcza.
+func _test_mole_shell() -> void:
+	var Mole: GDScript = EnemyDefs.Mole
+	var pos := Vector2(FAR_X + 29000.0, -7200.0)
+	var floor_body := _floor(pos.x - 60.0, pos.x + 60.0, pos.y)
+	var e := _spawn("lupacz", pos)
+	e.set_physics_process(false)
+	e.active = true
+	e._facing = 1.0
+	var beh = e._beh
+	var shooter := int(player.player_id)
+	var m83: float = Weapons.def(Weapons.M83).damage
+	var front := pos + Vector2(8.0, -7.0)                     # przód ciała na wysokości grzbietu (ogień od przodu)
+	var shot := func(at: Vector2, amount: float, type := "bullet", w := Weapons.M83) -> Dictionary:
+		var inf := Combat.make_info(w, amount, at, Vector2.LEFT, shooter, type)
+		return Combat.apply(e, inf)
+	check("skorupa: płyty po stronie z punktu trafienia (przód — kark, środek, tył — zad)",
+		Mole.plate_at(front, pos, 1.0) == 0 and Mole.plate_at(pos + Vector2(0, -7), pos, 1.0) == 1 and Mole.plate_at(pos + Vector2(-8, -7), pos, 1.0) == 2
+		and Mole.plate_at(front, pos, -1.0) == 2)
+	var hp0: float = e.hp
+	var noise0: float = NoiseMgr.level
+	var r1: Dictionary = shot.call(front, m83)
+	check("skorupa: kula w całą płytę — ciało bez obrażeń, płyta −30%%, iskry pancerza (%.1f HP płyty)" % beh.plates[0],
+		is_equal_approx(e.hp, hp0) and is_equal_approx(beh.plates[0], Mole.PLATE_HP - m83 * Mole.SHELL_BULLET) and int(r1.get("mat", -1)) == 1)
+	check("skorupa: rykoszet hałasuje (Uwaga %.1f → %.1f)" % [noise0, NoiseMgr.level], NoiseMgr.level > noise0)
+	var n := 1
+	while beh.plates[0] > 0.0 and n < 60:
+		shot.call(front, m83)
+		n += 1
+	check("skorupa: płyta karku pęka po %d kulach M-83 (60 HP ÷ 2,4 = 25), chwianie" % n, n == 25 and beh.intact() == 2 and e._stagger >= Mole.PLATE_STAGGER - 0.001)
+	var r2: Dictionary = shot.call(front, m83)
+	check("skorupa: rozbita płyta odsłania kark — pełne obrażenia kuli (%.1f)" % float(r2.get("dealt", 0.0)), is_equal_approx(float(r2.get("dealt", 0.0)), m83) and int(r2.get("mat", -1)) != 1)
+	var mag: int = Weapons.def(Weapons.M83).mag
+	var kills_at := n + int(ceil((hp0 - m83) / m83)) + 1
+	check("skorupa: seria M-83 w przód potrzebuje %d kul — więcej niż magazynek (%d), dziś 9" % [kills_at, mag], kills_at > mag)
+	# brzuch przy zapowiedzi ciosu
+	e.hp = hp0
+	e._windup = 0.5
+	e._windup_duration = 0.8
+	var r3: Dictionary = shot.call(pos + Vector2(0.0, -16.0), m83)
+	check("skorupa: brzuch uniesiony do ciosu bierze ×1,5 i krytyk (%.1f)" % float(r3.get("dealt", 0.0)), is_equal_approx(float(r3.get("dealt", 0.0)), m83 * Mole.BELLY_MULT) and bool(r3.get("crit", false)))
+	var low: Dictionary = shot.call(pos + Vector2(0.0, -7.0), m83)
+	check("skorupa: przy zamachu kula w środkową płytę dalej odbita", is_equal_approx(float(low.get("dealt", -1.0)), 0.0))
+	e._windup = 0.0
+	# kilof i maczeta
+	var pick: float = Weapons.def(Weapons.KILOF).damage
+	var p1: float = beh.plates[1]
+	shot.call(pos + Vector2(0.0, -7.0), 20.0, "melee", Weapons.MACZETA)
+	check("skorupa: maczeta tylko rysuje płytę (−%.1f)" % (p1 - beh.plates[1]), is_equal_approx(p1 - beh.plates[1], 20.0 * Mole.SHELL_BULLET))
+	var hp1: float = e.hp
+	shot.call(pos + Vector2(0.0, -7.0), pick, "melee", Weapons.KILOF)
+	check("skorupa: kilof łupie płytę jednym ciosem, ciało całe", beh.plates[1] <= 0.0 and is_equal_approx(e.hp, hp1) and beh.intact() == 1)
+	# ogień przechodzi
+	var hp2: float = e.hp
+	shot.call(pos + Vector2(-8.0, -7.0), 6.0, "fire")
+	check("skorupa: ogień przechodzi przez płytę zadu", e.hp < hp2 and beh.plates[2] > 0.0)
+	# migawka
+	check("skorupa: maska płyt w migawce (%d)" % beh.net_bits(), beh.net_bits() == 4)
+	beh.apply_net_bits(7)
+	check("skorupa: klient odtwarza płyty z migawki", beh.intact() == 3)
+	beh.apply_net_bits(4)
+	# wybuch: zrywa wszystko, ciało połowę
+	e.hp = hp0
+	var r4: Dictionary = shot.call(pos + Vector2(0.0, -6.0), 40.0, "blast")
+	check("skorupa: wybuch zrywa ostatnią płytę, ciało dostaje połowę (%.1f)" % float(r4.get("dealt", 0.0)), beh.intact() == 0 and is_equal_approx(float(r4.get("dealt", 0.0)), 20.0))
+	var r5: Dictionary = shot.call(pos + Vector2(0.0, -6.0), 10.0, "blast")
+	check("skorupa: bez płyt wybuch w pełni", is_equal_approx(float(r5.get("dealt", 0.0)), 10.0))
+	beh.reset()
+	check("skorupa: restart przywraca trzy płyty", beh.intact() == 3 and beh.net_bits() == 7)
+	e.queue_free()
+	floor_body.queue_free()
 	await get_tree().physics_frame
 
 ## Wartości sprzed przeniesienia do `enemy_defs.gd` (SUPPLY_DROP, AMMO_DROP, HEALTH_DROP, KILL_XP, Scrap.DROP, VOICES): przeniesienie nie zmienia balansu.
