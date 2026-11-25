@@ -1,7 +1,7 @@
 # Łupacz — plan zagrożenia
 
-Status: **plan z 2026-11-25 (main 1.7.685, cd81e4ae); nic niewdrożone.** Decyzje D1–D8 (§6) czekają na przyjęcie — przy każdej
-wariant zalecany.
+Status: **plan z 2026-11-25 (main 1.7.685, cd81e4ae); decyzje D1–D8 (§6) przyjęte w wariantach zalecanych.** Wdrożone: L0 (1.7.686, #816),
+L1 (1.7.687, #817), L2 (1.7.688, #818), po playteście L3 (1.7.689, #820) i L4 (1.7.690). Zostaje L5 — strojenie na dziennikach.
 
 Łupacz po #810–#814 ma skorupę, model, lampę, zanurzanie, markę lampową i własne dźwięki, ale w grze nadal jest „nieporadnym, bezbronnym
 stworzeniem” (uwaga użytkownika po teście 1.7.685). Plan daje mu trzy zdolności, z których każda zamienia kopalnię w zagrożenie:

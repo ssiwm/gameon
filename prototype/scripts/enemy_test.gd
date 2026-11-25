@@ -66,6 +66,7 @@ func run(m: Node2D) -> void:
 	await _test_windup_interrupt()
 	await _test_mole_swipe()
 	await _test_mole_shell()
+	await _test_mole_roll()
 	await _test_director()
 	await _test_pincer()
 	await _test_director_composition()
@@ -2494,6 +2495,233 @@ func _test_mole_shell() -> void:
 	model.queue_free()
 	e.queue_free()
 	floor_body.queue_free()
+	await get_tree().physics_frame
+
+## Pancerna kula Łupacza (LUPACZ_PLAN.md L4): warunki (poziom, odległość, rozbieg, płyty, przerwa), zwinięcie 0,6 s, toczenie 180 px/s, trafienie
+## gracza (1 serce, odrzut, ogłuszenie, raz na toczenie), przeskok to unik, kula w toczeniu trafia płytę (×0,15), deski rozbija, próg 6 px przetacza,
+## ściana — leży na grzbiecie 2 s z brzuchem ×1,5, przepaść — spada bez ogłuszenia; dziennik `mole_roll` i `mole_hit` z „roll”; model: klipy `curl`
+## i `belly_up`, obrót kłębka wg drogi, przewrót na grzbiet.
+func _test_mole_roll() -> void:
+	const LOG_DIR := "user://test_mole_roll"
+	var Mole: GDScript = EnemyDefs.Mole
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "mole_roll"})
+	var y := -9000.0
+	var x0 := FAR_X + 32000.0
+	var made: Array = []
+	made.append(_floor(x0 - 200.0, x0 + 500.0, y))
+	var e := _spawn("lupacz", Vector2(x0, y))
+	made.append(e)
+	var dummy := Node2D.new()
+	level.add_child(dummy)
+	made.append(dummy)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	e.active = true
+	var beh = e._beh
+	check("kula: po wczytaniu przerwa %.1f s, zanim się zwinie" % beh.roll_cd, is_equal_approx(beh.roll_cd, Mole.ROLL_FIRST))
+	beh.roll_cd = 0.0
+	var ready := func(at: Vector2) -> bool:
+		dummy.global_position = at
+		var ok: bool = beh._roll_ready(dummy)
+		return ok
+	check("kula: cel 120 px na tym samym poziomie — zwija się; za blisko (30), za daleko (250) i 20 px wyżej — nie",
+		ready.call(Vector2(x0 + 120.0, y)) and ready.call(Vector2(x0 - 120.0, y)) and not ready.call(Vector2(x0 + 30.0, y))
+		and not ready.call(Vector2(x0 + 250.0, y)) and not ready.call(Vector2(x0 + 120.0, y - 20.0)))
+	beh.plates[0] = 0.0
+	var two: bool = ready.call(Vector2(x0 + 120.0, y))
+	beh.plates[1] = 0.0
+	check("kula: zwija się przy 2 całych płytach, przy 1 nie (D7)", two and not ready.call(Vector2(x0 + 120.0, y)))
+	beh.plates = PackedFloat32Array([Mole.PLATE_HP, Mole.PLATE_HP, Mole.PLATE_HP])
+	var wall := _block(Vector2(x0 + 60.0, y - 20.0), Vector2(8.0, 40.0))
+	await get_tree().physics_frame
+	var walled: bool = ready.call(Vector2(x0 + 120.0, y))
+	wall.queue_free()
+	var gap := _floor(x0 + 600.0, x0 + 700.0, y)                # osobna wyspa podłogi za przepaścią
+	made.append(gap)
+	await get_tree().physics_frame
+	e.global_position = Vector2(x0 + 400.0, y)
+	e._phys_x = e.global_position.x
+	await get_tree().physics_frame
+	var chasm: bool = ready.call(Vector2(x0 + 560.0, y))
+	e.global_position = Vector2(x0, y)
+	e._phys_x = x0
+	check("kula: ściana na rozbiegu i przepaść przed nim — nie zwija się", not walled and not chasm)
+	dummy.global_position = Vector2(x0 + 120.0, y)
+	check("kula: zwinięcie — stan specjalny, %.2f s (0,6 × trudność), stoi" % beh.roll_t, beh.tick_phase(0.016, dummy) and e._sp == Mole.SP_CURL
+		and is_equal_approx(beh.roll_t, Mole.ROLL_WINDUP * Difficulty.m("enemy_windup")) and e.velocity.x == 0.0 and not beh.is_hidden())
+	beh.roll_t = 0.0
+	beh.tick_phase(0.016, dummy)
+	beh.tick_phase(0.016, dummy)
+	check("kula: po zwinięciu toczy się %.0f px/s na wprost" % e.velocity.x, e._sp == Mole.SP_ROLL and is_equal_approx(e.velocity.x, Mole.ROLL_SPEED) and beh.rolls == 1)
+	var shooter := int(player.player_id)
+	var m83: float = Weapons.def(Weapons.M83).damage
+	var hp0: float = e.hp
+	var r1: Dictionary = Combat.apply(e, Combat.make_info(Weapons.M83, m83, e.global_position + Vector2(-8.0, -4.0), Vector2.RIGHT, shooter, "bullet"))
+	var worn: float = Mole.PLATE_HP * 3.0 - (beh.plates[0] + beh.plates[1] + beh.plates[2])
+	check("kula: w toczeniu kula od tyłu trafia płytę — ciało całe, płyta −%.2f (×0,15), łupek" % worn,
+		is_equal_approx(e.hp, hp0) and is_equal_approx(worn, m83 * Mole.ROLL_SHELL) and int(r1.get("mat", -1)) == Arsenal.Mat.SLATE)
+	e._sp = 0
+	check("kula: przerwa — zaraz po toczeniu nie zwija się znowu", (func() -> bool:
+		beh._end_roll("time")
+		return beh.roll_cd > 7.0 and not beh._roll_ready(dummy)).call())
+	e.queue_free()
+	made.erase(e)
+
+	# trafienie gracza: 1 serce, odrzut w stronę toczenia, ogłuszenie, raz na toczenie
+	var saved_pos := player.global_position
+	var saved_hp := int(player.hp)
+	player.global_position = Vector2(x0 + 150.0, y - 1.0)
+	player.velocity = Vector2.ZERO
+	player.hp = 5
+	player._invuln = 0.0
+	player._stun_immune = 0.0
+	var m := _spawn("lupacz", Vector2(x0 + 40.0, y))
+	made.append(m)
+	await get_tree().physics_frame
+	m.active = true
+	m._cd = 99.0
+	m._beh.roll_cd = 0.0
+	m._beh._begin_curl(player)
+	var t := 0.0
+	while t < 2.0 and m._beh.roll_hits.is_empty():
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	var hit_x: float = player.global_position.x
+	var hp_hit: int = player.hp
+	var stun_hit: float = player.stun_t
+	await get_tree().create_timer(0.4).timeout
+	var dmg_expect: int = m._scaled_damage(Mole.ROLL_DMG)
+	check("kula: trafia gracza po %.2f s — −%d serce (HP %d), ogłuszenie %.2f s" % [t, 5 - hp_hit, hp_hit, stun_hit],
+		m._beh.roll_hits.size() == 1 and hp_hit == 5 - dmg_expect and stun_hit > Mole.ROLL_STUN - 0.1)
+	check("kula: odrzut w stronę toczenia (%.0f px w 0,4 s), drugi raz w tym toczeniu nie bije (HP %d)" % [player.global_position.x - hit_x, player.hp],
+		player.global_position.x - hit_x > 8.0 and player.hp == hp_hit)
+	m.queue_free()
+	made.erase(m)
+	# przeskok: stopy 20 px nad drogą kuli — unik
+	player.set_physics_process(false)
+	player.global_position = Vector2(x0 + 150.0, y - 20.0)
+	player.hp = 5
+	player._invuln = 0.0
+	var jm := _spawn("lupacz", Vector2(x0 + 40.0, y))
+	made.append(jm)
+	await get_tree().physics_frame
+	jm.active = true
+	jm._cd = 99.0
+	jm._beh.roll_cd = 0.0
+	jm._beh._begin_curl(player)
+	await get_tree().create_timer(Mole.ROLL_WINDUP * Difficulty.m("enemy_windup") + 0.9).timeout
+	check("kula: gracz w skoku nad nią — przetacza się pod nim bez trafienia (x %.0f, HP %d)" % [jm.global_position.x, player.hp],
+		jm.global_position.x > x0 + 170.0 and jm._beh.roll_hits.is_empty() and player.hp == 5)
+	jm.queue_free()
+	made.erase(jm)
+	player.global_position = saved_pos
+	player.hp = saved_hp
+	player.set_physics_process(true)
+
+	# tory równolegle (z dala od gracza): ściana, deski, próg 6 px, przepaść
+	var lane := func(i: int) -> Vector2:
+		return Vector2(x0 + 2000.0 + 900.0 * i, y)
+	var moles: Array = []
+	var targets: Array = []
+	for i in 4:
+		var at: Vector2 = lane.call(i)
+		made.append(_floor(at.x - 60.0, at.x + (110.0 if i == 3 else 400.0), at.y))
+	var crash_wall := _block(lane.call(0) + Vector2(160.0, -24.0), Vector2(10.0, 48.0))
+	made.append(crash_wall)
+	var planks = level.BREAKABLE.new()
+	planks.name = "TestPlanksRoll"
+	planks.mat_id = "planks"
+	planks.rows = 3
+	planks.position = lane.call(1) + Vector2(120.0, 0.0)
+	level.add_child(planks)
+	made.append(planks)
+	made.append(_block(lane.call(2) + Vector2(230.0, -3.0), Vector2(340.0, 6.0)))        # stopień 6 px od x+60
+	made.append(_floor(lane.call(3).x + 100.0, lane.call(3).x + 400.0, y + 60.0))      # dno 60 px niżej
+	await get_tree().physics_frame
+	for i in 4:
+		var mm := _spawn("lupacz", lane.call(i))
+		made.append(mm)
+		var tg := Node2D.new()
+		level.add_child(tg)
+		tg.global_position = lane.call(i) + Vector2(150.0, 0.0)
+		made.append(tg)
+		moles.append(mm)
+		targets.append(tg)
+	await get_tree().physics_frame
+	for i in 4:
+		moles[i].active = true
+		moles[i]._cd = 99.0
+		moles[i]._beh.roll_cd = 0.0
+		moles[i]._beh._begin_curl(targets[i])
+	var wall_ok := false
+	var belly_hit := {}
+	t = 0.0
+	while t < 4.0:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		if moles[0]._sp == Mole.SP_BELLY and belly_hit.is_empty():
+			wall_ok = true
+			var hpb: float = moles[0].hp
+			belly_hit = Combat.apply(moles[0], Combat.make_info(Weapons.M83, m83, moles[0].global_position + Vector2(0.0, -6.0), Vector2.LEFT, shooter, "bullet"))
+			belly_hit["hp"] = hpb - moles[0].hp
+			belly_hit["plates"] = moles[0]._beh.intact()
+			belly_hit["t"] = moles[0]._beh.roll_t
+	check("kula: ściana — zderzenie, leży na grzbiecie %.1f s; kula w brzuch ×1,5 i krytyk (%.1f HP), płyty nie chronią (%s)" % [float(belly_hit.get("t", -1.0)), float(belly_hit.get("hp", 0.0)), str(belly_hit.get("plates", -1))],
+		wall_ok and moles[0]._beh.crashes == 1 and is_equal_approx(float(belly_hit.get("hp", 0.0)), m83 * Mole.BELLY_UP_MULT) and bool(belly_hit.get("crit", false))
+		and int(belly_hit.get("plates", 0)) == 3 and float(belly_hit.get("t", 0.0)) > Mole.BELLY_S - 0.1)
+	check("kula: po %.0f s wstaje (stan %d)" % [Mole.BELLY_S, moles[0]._sp], moles[0]._sp != Mole.SP_BELLY)
+	check("kula: deski na drodze rozbija i toczy się dalej (x %.0f za deskami %.0f, zderzeń %d)" % [moles[1].global_position.x, lane.call(1).x + 120.0, moles[1]._beh.crashes],
+		(not is_instance_valid(planks) or planks.hp <= 0.0) and moles[1]._beh.crashes == 0 and moles[1].global_position.x > lane.call(1).x + 140.0)
+	check("kula: próg 6 px przetacza (x %.0f, %.0f px nad dołem, zderzeń %d)" % [moles[2].global_position.x, y - moles[2].global_position.y, moles[2]._beh.crashes],
+		moles[2]._beh.crashes == 0 and moles[2].global_position.x > lane.call(2).x + 120.0 and moles[2].global_position.y < y - 4.0)
+	check("kula: przepaść — spada i kończy toczenie bez ogłuszenia (y %+.0f, stan %d, zderzeń %d)" % [moles[3].global_position.y - y, moles[3]._sp, moles[3]._beh.crashes],
+		moles[3].global_position.y > y + 50.0 and moles[3]._beh.crashes == 0 and moles[3]._sp != Mole.SP_BELLY and moles[3]._stagger <= 0.2)
+
+	# model: zwinięcie, toczenie (obrót wg drogi), leżenie na grzbiecie
+	var model := preload("res://scripts/enemy3d.gd").new()
+	level.add_child(model)
+	made.append(model)
+	if model.setup("lupacz"):
+		var pose := func(sp: int, dt := 1.0 / 60.0) -> void:
+			model.pose(dt, "special", false, Color.WHITE, 0.0, 1, true, 0.0, sp)
+		check("kula/model: klipy `curl` i `belly_up` w GLB", model._qhas("curl") and model._qhas("belly_up"))
+		pose.call(Mole.SP_CURL)
+		var curl_a := String(model._ap.assigned_animation)
+		pose.call(Mole.SP_ROLL)
+		var b0: Basis = model._tilt.basis
+		model.global_position.x += 0.4
+		pose.call(Mole.SP_ROLL)
+		var ang: float = model._tilt.basis.get_euler().z
+		check("kula/model: zwinięcie gra `curl`, toczenie obraca kłębek w przód wg drogi (%.2f rad)" % ang, curl_a == "curl" and String(model._ap.assigned_animation) == "curl"
+			and b0.is_equal_approx(Basis.IDENTITY) and ang < -0.5)
+		pose.call(Mole.SP_BELLY)
+		pose.call(Mole.SP_BELLY, 0.3)
+		check("kula/model: zderzenie — `belly_up` i model na grzbiecie (oś Y %.2f)" % model._tilt.basis.y.y, String(model._ap.assigned_animation) == "belly_up" and model._tilt.basis.y.y < -0.9)
+		pose.call(0)
+		check("kula/model: po wstaniu zwykła poza", model._tilt.basis.is_equal_approx(Basis.IDENTITY) and String(model._ap.assigned_animation) != "belly_up")
+	else:
+		check("kula/model: model Łupacza się buduje", false)
+
+	SessionLog.mission_end({"result": "test"})
+	var rows: Array = []
+	for line in FileAccess.get_file_as_string(SessionLog.path).split("\n"):
+		if line != "":
+			rows.append(JSON.parse_string(line))
+	var ends: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mole_roll").map(func(r: Dictionary) -> String: return String(r["end"]))
+	var hits: Array = rows.filter(func(r: Dictionary) -> bool: return r["ev"] == "mole_hit" and r["by"] == "roll")
+	check("kula: dziennik — mole_roll z końcem (%s), mole_hit „roll” (%d)" % [str(ends), hits.size()], ends.has("crash") and ends.has("drop") and ends.has("time") and hits.size() == 1)
+	SessionLog.reset_for_test()
+	SessionLog.enabled = false
+	SessionLog.dir = SessionLog.DIR
+	for f in DirAccess.get_files_at(LOG_DIR):
+		DirAccess.remove_absolute("%s/%s" % [LOG_DIR, f])
+	DirAccess.remove_absolute(LOG_DIR)
+	for n in made:
+		if is_instance_valid(n):
+			n.queue_free()
+	await get_tree().physics_frame
 	await get_tree().physics_frame
 
 ## Wartości sprzed przeniesienia do `enemy_defs.gd` (SUPPLY_DROP, AMMO_DROP, HEALTH_DROP, KILL_XP, Scrap.DROP, VOICES): przeniesienie nie zmienia balansu.

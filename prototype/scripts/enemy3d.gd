@@ -34,8 +34,11 @@ const LIT_GLOW := 1.6                      ## Ćma: emisja ciała w snopie latar
 const SPEC := {
 	# `back_lamp` (1.7.682): lampa górnicza na skorupie — punkt w przestrzeni szkieletu (rig_lupacz.py „shell”: źródło (−0,24; 0,33; 0,70) × UNIT,
 	# osie glTF) i kość, z którą się rusza; świeci, dopóki płyta zadu (bit 2 maski `shell`) jest cała.
+	# `ball` (L4): środek (x, y) i promień kłębka z ostatniej klatki klipu `curl` w metrach modelu (rig_lupacz.py, obwiednia siatki) — wokół
+	# niego model obraca się w toczeniu; `belly_y`: połowa wysokości grzbietu — oś, wokół której przewraca się na plecy po zderzeniu.
 	"lupacz": {"fit": ["length", EnemyDefs.Mole.LENGTH_PX], "quad": true, "clips": true, "burrow_clips": true,
-		"cycle": 0.38, "eye_glow": 0.0, "back_lamp": {"bone": "Spine", "at": Vector3(-0.208, 0.607, -0.286)}},
+		"cycle": 0.38, "eye_glow": 0.0, "back_lamp": {"bone": "Spine", "at": Vector3(-0.208, 0.607, -0.286)},
+		"ball": Vector3(-0.035, 0.49, 0.52), "belly_y": 0.40},
 	# Chód z kodu (`gait: heavy`, `_heavy_gait`): ciężki, kołyszący krok goryli z wymachem długich rąk. Klip `zombie` dawał drobny
 	# krok na palcach z głową opuszczoną pod barki (krótkie nogi Wołka). Cykl 0.62 s: podpora przesuwa stopę z prędkością ciała z DEFS.
 	# Oczy: tekstura ma ledwie kilka ciepłych pikseli, więc maska HSV nie dawała zapowiedzi — świecą kulki przy kości głowy (`eye_lamp`:
@@ -313,6 +316,12 @@ var _burrow_time := -1.0
 var _swipe_recovery := 0.0
 var _grab_hold := false                      ## Łupacz chwyta spod ziemi (enemy_mole.gd `view_extra`): wynurzony do łopatek
 const GRAB_LOWER := 7.0                      ## px: o tyle model siedzi w dołku przy chwycie
+var _ball_sp := 0                            ## Łupacz (L4): faza kuli w poprzedniej klatce — początek zwijania i leżenia liczony od zmiany
+var _ball_t0 := 0.0
+var _ball_ang := 0.0                         ## rad: obrót kłębka wg przebytej drogi
+var _ball_x := NAN
+const BELLY_TIP := 0.18                      ## s przewrotu na grzbiet po zderzeniu
+const BELLY_WOBBLE := 0.12                   ## rad: kołysanie leżącego na kopule
 var _motion_values: Dictionary = {}
 var _contact_frame := false
 var _grounded_hint := -1
@@ -1708,6 +1717,8 @@ func _pose_burrower(anim: String) -> void:
 	_tilt.position = Vector3.ZERO
 	_tilt.basis = Basis.IDENTITY
 	_pivot.basis = Basis.from_scale(Vector3.ONE * _scale)
+	if _pose_ball():
+		return
 	if _grab_hold:
 		clip = "attack"                                          # stoi dęba w dołku: przednie łapy trzymają nogę, ryj w górę, szarpie
 		t = EnemyDefs.Mole.CONTACT * (0.7 + 0.06 * sin(_t * 9.0))
@@ -1732,6 +1743,44 @@ func _pose_burrower(anim: String) -> void:
 		t = fposmod(_phase / TAU, 1.0) * _qlen(clip)
 	_ap.assigned_animation = clip
 	_ap.seek(t, true)
+
+## Pancerna kula Łupacza (LUPACZ_PLAN.md L4): zwijanie — klip `curl` od zmiany fazy; toczenie — ostatnia klatka `curl` i obrót całego modelu
+## wokół środka kłębka (SPEC `ball`) o drogę / promień (bez fizyki 3D); po zderzeniu przewraca się na grzbiet (oś SPEC `belly_y`) i młóci
+## łapami (`belly_up`). True — poza ustawiona.
+func _pose_ball() -> bool:
+	var Mole = EnemyDefs.Mole
+	var sp := _sp if _sp == Mole.SP_CURL or _sp == Mole.SP_ROLL or _sp == Mole.SP_BELLY else 0
+	if not _qhas("curl") or not _qhas("belly_up"):
+		return false                                              # model bez klipów kuli (stary GLB): zwykła poza
+	if sp != _ball_sp:
+		if sp == Mole.SP_CURL or sp == Mole.SP_BELLY:
+			_ball_t0 = _t
+		if sp == Mole.SP_ROLL and _ball_sp != Mole.SP_CURL:
+			_ball_t0 = _t - _qlen("curl")                         # dołączył w trakcie toczenia: od razu kłębek
+		_ball_sp = sp
+		_ball_x = global_position.x
+	if sp == 0:
+		return false
+	var ball: Vector3 = _spec.get("ball", Vector3(0.0, 0.5, 0.5))
+	if sp == Mole.SP_BELLY:
+		var tip := smoothstep(0.0, BELLY_TIP, _t - _ball_t0)
+		var c := Vector3(0.0, float(_spec.get("belly_y", 0.4)) * _scale, 0.0)
+		_tilt.basis = Basis(Vector3.BACK, BELLY_WOBBLE * sin((_t - _ball_t0) * 7.0) * tip) * Basis(Vector3.RIGHT, PI * tip)
+		_tilt.position = c - _tilt.basis * c
+		_ap.assigned_animation = "belly_up"
+		_ap.seek(fmod(_t - _ball_t0, _qlen("belly_up")), true)
+		return true
+	_ap.assigned_animation = "curl"
+	_ap.seek(minf(_t - _ball_t0, _qlen("curl")), true)
+	if sp == Mole.SP_ROLL:
+		var r := maxf(ball.z * _scale, 0.001)
+		if is_finite(_ball_x):
+			_ball_ang = fmod(_ball_ang + absf(global_position.x - _ball_x) / r, TAU)
+		_ball_x = global_position.x
+		var c := _pivot.position + Vector3(ball.x, ball.y, 0.0) * _scale
+		_tilt.basis = Basis(Vector3.BACK, -_ball_ang)               # w przód (+X modelu): góra kłębka idzie do przodu
+		_tilt.position = c - _tilt.basis * c
+	return true
 
 func _pose_quad(anim: String, delta: float) -> void:
 	var len := 1.0

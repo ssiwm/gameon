@@ -80,6 +80,7 @@ CAPTIONS = {
     "kaplan_scream": ["[Wailing scream]", 3], "rzeznik_roar": ["[Heavy roar]", 3], "zerca_grab": ["[Rasping screech]", 3], "zerca_warn": ["[Something breathes nearby]", 1], "moth_flutter": ["[Fluttering wings]", 1], "moth_dust": ["[Coughing]", 2], "moth_crack": ["[Wings crackle]", 0],
     "shell_ricochet": ["[Stone ricochet]", 1], "shell_crack": ["[Stone plate cracks]", 2], "lupacz_squeal": ["[Squeal]", 2],
     "claw_scrape": ["[Claws scraping rock]", 3], "mole_grab": ["[Ground bursts, something grabs]", 3],
+    "shell_curl": ["[Stone plates grind shut]", 3], "shell_roll_loop": ["[Stone shell rumbling closer]", 3],
     "wolek_sleep": ["[Snoring]", 0], "rzeznik_sleep": ["[Snoring, smacking lips]", 0], "trzosek_sleep": ["[Whimpering in sleep]", 0],
     "slepiec_sleep": ["[Wheezing breath]", 0], "kaplan_sleep": ["[Whispering]", 0],
     "amb_creak": ["[Creaking]", 1], "amb_thud": ["[Distant thud]", 1], "amb_gust": ["[Wind gust]", 0],

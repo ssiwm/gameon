@@ -533,6 +533,52 @@ def _build_shell() -> None:
         x = d.mix([(crunch, 1.0), (heave, .9), (gravel, .5), (wet, .8, .07), (grip, .7, .07), (tug, .45, .33), (d.lp(squeak, 1600.0, order=2), .25, .4)], n)
         finalize("mole_grab_%d" % (i + 1), d.limiter(d.reverb(x / (d.peak(x) + 1e-9), ir("cave"), wet=.18), -4.0), lufs=-17.0, fade_out_ms=120)
 
+    # Pancerna kula (LUPACZ_PLAN.md L4), zwinięcie (0,6 s zapowiedzi): płyty łupka nasuwają się na siebie — seria suchych zgrzytów kamienia
+    # o kamień (tarcie z poślizgiem: coraz gęściej i wyżej), sapnięcie przez ryj, na końcu twarde kliknięcie zamkniętej kopuły.
+    for i in range(2):
+        r = Rng(0xF600 + i * 1777)
+        n = ms(700)
+        grind = np.zeros(n)
+        times = sorted(.48 * r.uniform(0.0, 1.0) ** .7 for _ in range(10 + 2 * i))       # gęściej pod koniec
+        for j, at in enumerate(times):
+            m = ms(vary(r, 40, .3))
+            g = d.filt(d.colored(m, r, .4), "bp", vary(r, 1500 + 110 * j, .12), 2.2) * d.env_pts(m, [(0, 0), (.003, 1), (m / SR, 0)])
+            c = tick(r, r.uniform(2400, 4800), 1.4, 6, .0012)[:m]
+            g[:len(c)] += .5 * c
+            k = ms(at * 1000)
+            grind[k:k + m] += g[:n - k] * (.45 + .55 * j / len(times))
+        ns = ms(220)
+        huff = d.filt(d.colored(ns, r, .5), "bp", vary(r, 1100, .15), 1.0) * d.env_pts(ns, [(0, 0), (.03, 1), (.22, 0)])
+        clack = d.mix([(ring(r, [vary(r, 560, .1), vary(r, 1240, .1)], [.05, .03], [1.0, .5], dur=.15, jitter=.03), 1.0),
+                       (burst(ms(60), r, vary(r, 5200, .1), 1500.0, .008, color=.2), .7)])
+        x = d.mix([(grind / (d.peak(grind) + 1e-9), .85), (huff / (d.peak(huff) + 1e-9), .25, .05), (clack / (d.peak(clack) + 1e-9), .9, .52)], n)
+        finalize("shell_curl_%d" % (i + 1), d.reverb(x / (d.peak(x) + 1e-9), ir("cave"), wet=.14), lufs=-19.0, fade_out_ms=100)
+
+    # Toczenie kuli — pętla 1 s: dudnienie skorupy po gruncie (niski szum), takt krawędzi płyt uderzających o podłoże (14 na sekundę —
+    # trzy płyty, kłębek o promieniu ok. 6 px przy 180 px/s) i chrzęst żwiru pod nimi. Bez pogłosu (szew pętli); całość okresowa.
+    r = Rng(0xF700)
+    n = sec(1.0)
+    t = np.arange(n) / SR
+    rumble = d.circ_filter(d.colored(n, r, 1.6), lambda z: d.filt(z, "lp", 260.0, .7))
+    rumble = rumble / (d.peak(rumble) + 1e-9) * (.8 + .2 * np.sin(TAU * 3.0 * t))
+    knocks = np.zeros(n)
+    beats = 14
+    for b in range(beats):
+        at = (b + r.uniform(-.12, .12)) / beats
+        k = ms(at % 1.0 * 1000)
+        hit = d.mix([(thump(.06, vary(r, 170, .15), 90, .01, .018), 1.0), (tick(r, vary(r, 2100, .2), 1.5, 9, .0016), .45)])
+        hit = hit * (.75 + .25 * r.uniform(0.0, 1.0)) * (1.0 if b % 3 else 1.25)
+        for o in range(len(hit)):
+            knocks[(k + o) % n] += hit[o]
+    gravel = np.zeros(n)
+    for _ in range(60):
+        k = ms(r.uniform(0.0, 1.0) * 1000)
+        c = tick(r, r.uniform(1200, 5200), 1.4, 7, .0012) * r.uniform(.15, .55)
+        for o in range(len(c)):
+            gravel[(k + o) % n] += c[o]
+    y = d.mix([(rumble, .9), (knocks / (d.peak(knocks) + 1e-9), .8), (gravel / (d.peak(gravel) + 1e-9), .35)], n)
+    finalize("shell_roll_loop", y, loop=True, lufs=-18.0)
+
 
 def _crumbs_fall(r: Rng, n: int) -> np.ndarray:
     """Kilka okruchów osypujących się po drapaniu (miękkie, stłumione)."""

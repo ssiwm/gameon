@@ -313,6 +313,10 @@ DIG_FRAMES = 16
 # i grabią skałę w dół i pod siebie. Faza łapy, potem pozycja (przód, góra) i pochylenie pazurów w stopniach.
 DIG_PAW = [(0, (-.06, .02, 4)), (.30, (.36, .25, -32)), (.42, (.40, .21, -24)), (.70, (.06, .03, 16)), (1, (-.06, .02, 4))]
 
+CURL_FRAMES = 14                                     # 0,58 s przy 24 kl./s — zapowiedź kuli trwa 0,6 s (enemy_mole.gd ROLL_WINDUP)
+CURL_LIFT = .10                                      # podniesienie bioder w kłębku: zwinięty ryj nie wchodzi w podłoże
+BELLY_FRAMES = 24
+
 def dig_paw(f):
     f %= 1.0
     for (start, pose_a), (end, pose_b) in zip(DIG_PAW, DIG_PAW[1:]):
@@ -332,7 +336,7 @@ def build_pose(action,t):
     wave=math.sin(TAU*t)
     dx=dy=dz=0.0
     chest_pitch=chest_yaw=chest_roll=head_pitch=head_yaw=0.0
-    pelvis_pitch=tail_yaw=0.0
+    pelvis_pitch=tail_yaw=tail_tilt=0.0
     tail_yaw=3.4*wave
     if action=='idle':
         sniff=math.exp(-((t-.32)/.076)**2)+.75*math.exp(-((t-.49)/.070)**2)
@@ -366,6 +370,23 @@ def build_pose(action,t):
         head_pitch=15+4*stroke
         head_yaw=-5*math.sin(TAU*t)
         tail_yaw=7*math.sin(TAU*t+.6)
+    elif action=='curl':
+        # Pancerna kula (LUPACZ_PLAN.md L4): w 0,6 s zapowiedzi zwija się w kłębek — ryj pod brzuch, zad i ogon pod siebie, łapy
+        # podciągnięte; grzbiet z płytami robi kopułę. Ostatnia klatka to poza toczenia (enemy3d.gd obraca całość wokół środka kuli).
+        k=ease(t)
+        dz=CURL_LIFT*k
+        pelvis_pitch=-38*k
+        chest_pitch=46*k
+        head_pitch=72*k
+        tail_tilt=-75*k
+        tail_yaw=0.0
+    elif action=='belly_up':
+        # Po zderzeniu leży na grzbiecie (enemy3d.gd odwraca model): łapy młócą powietrze, łeb się szarpie — pętla.
+        chest_pitch=-6+3*math.sin(2*TAU*t)
+        head_pitch=-14+10*math.sin(2*TAU*t+.8)
+        head_yaw=22*math.sin(TAU*t)
+        chest_roll=7*math.sin(TAU*t)
+        tail_yaw=14*math.sin(2*TAU*t)
     elif action=='emerge':
         dx=curve(t,[(0,-1.64),(.12,-1.52),(.27,-1.34),(.40,-1.16),(.55,-.78),(.77,-.38),(.92,-.06),(1,0)])
         dz=curve(t,[(0,-.19),(.32,-.19),(.46,-.11),(.62,-.022),(.76,-.065),(.92,.022),(1,0)])
@@ -388,8 +409,8 @@ def build_pose(action,t):
     add('Neck',head_pitch*.45,yaw=head_yaw*.50)
     add('Head',head_pitch*.55,yaw=head_yaw*.50)
     tail_lift = max(0.0, -pelvis_pitch) * .30 if action == 'attack' else 0.0
-    add('Tail',tilt=tail_lift,yaw=tail_yaw*.55)
-    add('TailEnd',yaw=tail_yaw*.65)
+    add('Tail',tilt=tail_lift+tail_tilt*.55,yaw=tail_yaw*.55)
+    add('TailEnd',tilt=tail_tilt*.45,yaw=tail_yaw*.65)
     for front,sign,chain,pts in legs:
         fx=fy=fz=toe=toe_yaw=0.0
         if action=='walk':
@@ -412,6 +433,16 @@ def build_pose(action,t):
                 fx *= V['reach']; fz *= V['reach']
             # Tylne łapy stoją, a przednia w podporze trzyma ciężar pochylonego ciała.
             fx -= dx
+        elif action=='curl':
+            k=ease(t)                                        # przednie łapy pod pierś, tylne pod brzuch — wszystkie w kłębku
+            fx=(-.20 if front else .22)*k
+            fz=(.16 if front else .14)*k
+            fy=-.04*k
+            toe=(-50 if front else -35)*k
+        elif action=='belly_up':
+            offset=(0.0 if sign<0 else .5) if front else (.25 if sign<0 else .75)
+            fx,fz,fy,toe=gait(2*t,offset)                    # dwa szybkie cykle na pętlę, wyżej niż w chodzie — młóci powietrze
+            fx*=1.4; fz=fz*2.2+.05
         elif action=='emerge':
             offset=(.01 if sign<0 else .43) if front else (.56 if sign<0 else .08)
             if front and sign<0 and t < .58:
@@ -431,7 +462,7 @@ def build_pose(action,t):
 scene=bpy.context.scene
 scene.render.fps=FPS
 arm.animation_data_create()
-for clip, duration in [('idle',72),('walk',24),('emerge',48),('attack',ATTACK_FRAMES),('dig',DIG_FRAMES)]:
+for clip, duration in [('idle',72),('walk',24),('emerge',48),('attack',ATTACK_FRAMES),('dig',DIG_FRAMES),('curl',CURL_FRAMES),('belly_up',BELLY_FRAMES)]:
     action=bpy.data.actions.new(clip)
     arm.animation_data.action=action
     last={}

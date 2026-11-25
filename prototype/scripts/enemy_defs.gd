@@ -46,6 +46,7 @@ const DEFS := {
 		"color": Color(0.42, 0.39, 0.34), "size": Vector2(13, 10), "hurt_w": 17.0, "hurt_h": 12.0,
 		"knock": 40.0, "knock_mult": 0.65, "head": 0.0,
 		"xp": 4, "scrap": 4,          # bez nabojów i baterii z trupa (1.7.682): łupem jest urobek z płyt skorupy (enemy_mole.gd PLATE_ORE)
+		"charge_breaks": ["planks"],  # pancerna kula (L4) rozbija deski jak szarża Wołka
 		"voice": {"attack": ["wolek_attack", 2, -5.0, 0.86], "sleep": ["wolek_sleep", 3, -7.0, 0.84], "death": ["wolek_death", 2, -5.0, 0.92]},
 	},
 	"trzosek": {

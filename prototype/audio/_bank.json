@@ -879,6 +879,14 @@
   "sfx/enemies/shell_crack_2",
   0
  ],
+ "shell_curl_1": [
+  "sfx/enemies/shell_curl_1",
+  0
+ ],
+ "shell_curl_2": [
+  "sfx/enemies/shell_curl_2",
+  0
+ ],
  "shell_ricochet_1": [
   "sfx/enemies/shell_ricochet_1",
   0
@@ -890,6 +898,10 @@
  "shell_ricochet_3": [
   "sfx/enemies/shell_ricochet_3",
   0
+ ],
+ "shell_roll_loop": [
+  "sfx/enemies/shell_roll_loop",
+  1
  ],
  "slepiec_attack_1": [
   "sfx/enemies/slepiec_attack_1",

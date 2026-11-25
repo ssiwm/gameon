@@ -175,6 +175,49 @@ const CRUSH_STAGGER := 2.0
 var undermines := 0                     ## serwer: podkopy od wczytania (test)
 var cut_roll := -1.0                    ## test: 0 — nad celem, 1 — odcięcie; < 0 — losowo
 var last_grab := Vector2.INF
+
+## Pancerna kula (LUPACZ_PLAN.md L4, D7): na powierzchni, cel na tym samym poziomie (±ROLL_DY px) ROLL_MIN–ROLL_MAX px dalej, prosty
+## rozbieg (bez ściany, z podłogą) i co najmniej ROLL_PLATES całe płyty — zwija się (SP_CURL, ROLL_WINDUP s × trudność, skrzypienie płyt)
+## i toczy na wprost (SP_ROLL) ROLL_SPEED px/s przez najwyżej ROLL_TIME s. W kuli każda kula trafia w płytę (płyta bierze ROLL_SHELL,
+## ciało nic), brzucha nie ma. Deski i skrzynie rozbija (`charge_breaks` w enemy_defs.gd, jak szarża Wołka). Trafiony gracz: ROLL_DMG serca,
+## odrzut ROLL_KNOCK px/s i ogłuszenie ROLL_STUN s; przeskok (stopy ROLL_HIT.y px nad nim) to unik. Próg do STEP_UP px przetacza, wyższy
+## albo ściana — zderzenie: leży na grzbiecie BELLY_S s (SP_BELLY), całe ciało ×BELLY_UP_MULT, płyty nie chronią. Przepaść — spada
+## i kończy toczenie bez ogłuszenia. Rozbita skorupa (< ROLL_PLATES) się nie zwija — nagroda za wcześniejsze rozbijanie płyt.
+const SP_CURL := -10                    ## kody między kierunkami kopania (−1…−5) a zanurzeniem (≤ SP_UNDER) — widoczny, nie kopie
+const SP_ROLL := -11
+const SP_BELLY := -12
+const ROLL_MIN := 48.0
+const ROLL_MAX := 200.0
+const ROLL_DY := 10.0
+const ROLL_PLATES := 2
+const ROLL_CD := 8.0
+const ROLL_FIRST := 2.0                 ## s po wczytaniu, wipe i restarcie, zanim pierwszy raz się zwinie
+const ROLL_WINDUP := 0.6
+const ROLL_SPEED := 180.0
+const ROLL_TIME := 1.4
+const ROLL_SHELL := 0.15
+const ROLL_DMG := 1
+const ROLL_KNOCK := 140.0
+const ROLL_STUN := 0.5
+const ROLL_HIT := Vector2(12.0, 14.0)   ## px: |dx| i |dy| stóp gracza od stóp kuli, przy których kula go trafia
+const ROLL_RAY_Y := -10.0               ## px nad stopami: promień rozbiegu (niższy próg kula przetacza, `step_up`)
+const ROLL_FLOOR_STEP := 16.0
+const ROLL_FLOOR_DEPTH := 28.0
+const ROLL_AIR := 0.1                   ## s bez podłogi w toczeniu = spada (krótsze to nierówność konturu)
+const ROLL_NOISE := 5.0                 ## Uwagi z uderzenia kuli o ścianę
+const BELLY_S := 2.0
+const BELLY_UP_MULT := 1.5
+var roll_on := true                     ## testy sprzed L4 (dig_test.gd) wyłączają kulę — sprawdzają pościg i cios
+var roll_cd := ROLL_FIRST
+var roll_t := 0.0                       ## serwer: s do końca zwijania / toczenia / leżenia
+var roll_dir := 1.0
+var roll_air := 0.0
+var roll_from := 0.0                    ## serwer: x początku toczenia (dziennik)
+var roll_hits: Array = []               ## serwer: gracze trafieni w tym toczeniu (każdy raz)
+var rolls := 0                          ## serwer: toczenia od wczytania (test)
+var crashes := 0
+var _roll_loop := false                 ## każdy peer: gra pętla toczenia
+var _spark_t := 0.0
 var exposed_t := 0.0                    ## serwer: s odsłoniętego łba po uniku albo uwolnieniu
 var grabs := 0                          ## serwer: chwyty od wczytania (test)
 var dodges := 0
@@ -239,6 +282,9 @@ func reset() -> void:
 	grab_done = false
 	last_grab = Vector2.INF
 	exposed_t = 0.0
+	roll_cd = ROLL_FIRST
+	roll_t = 0.0
+	roll_hits.clear()
 
 # ---------------------------------------------------------------- skorupa
 
@@ -267,6 +313,9 @@ func absorb(info: Dictionary, dmg: float) -> float:
 		exposed_t = maxf(exposed_t, CRUSH_STAGGER)
 		info["shell"] = true
 		return 0.0
+	if e._sp == SP_BELLY:
+		info["crit"] = true                                  # na grzbiecie: brzuch do góry, płyty pod spodem (L4)
+		return dmg * BELLY_UP_MULT
 	if t == "blast":
 		if intact() == 0:
 			return dmg
@@ -282,15 +331,16 @@ func absorb(info: Dictionary, dmg: float) -> float:
 		info["crit"] = true                                  # po uniku albo uwolnieniu: wychylony łeb
 		return dmg * EXPOSED_MULT
 	var pos: Vector2 = info.get("pos", e.global_position)
-	if e._windup > 0.0 and pos.y < e.global_position.y - BELLY_Y:
+	var ball := rolling()
+	if e._windup > 0.0 and not ball and pos.y < e.global_position.y - BELLY_Y:
 		info["crit"] = true                                  # brzuch podniesiony do ciosu
 		return dmg * BELLY_MULT
-	var i := plate_at(pos, e.global_position, e._facing)
-	if plates[i] <= 0.0:
+	var i := _ball_plate() if ball else plate_at(pos, e.global_position, e._facing)
+	if i < 0 or plates[i] <= 0.0:
 		return dmg                                           # rozbita płyta: ta tercja ciała jest odsłonięta
 	info["shell"] = true
 	var pick := t == "melee" and int(info.get("w", -1)) == Weapons.KILOF
-	var mult := SHELL_PICK if pick else lerpf(SHELL_BULLET, 1.0, clampf(float(info.get("ap", 0.0)), 0.0, 1.0))
+	var mult := SHELL_PICK if pick else lerpf(ROLL_SHELL if ball else SHELL_BULLET, 1.0, clampf(float(info.get("ap", 0.0)), 0.0, 1.0))
 	plates[i] = maxf(0.0, plates[i] - dmg * mult)
 	if plates[i] <= 0.0:
 		_break(i, "pick" if pick else t, int(info.get("shooter", -1)))
@@ -332,7 +382,7 @@ func immune(_info: Dictionary) -> bool:
 
 ## Serwer: strefa, w której Łupacz ma się zanurzyć teraz, albo null. Tylko na podłożu, poza ciosem, w samej strefie.
 func _wants_under(went_idle := false):
-	if sub_cd > 0.0 or (not e.active and not went_idle) or e._windup > 0.0 or recovery_left > 0.0 or not e.is_on_floor():
+	if sub_cd > 0.0 or (not e.active and not went_idle) or e._windup > 0.0 or recovery_left > 0.0 or not e.is_on_floor() or in_roll():
 		return null
 	var hurt: bool = e.hp < e._max_hp * SUB_HP and intact() < PLATES
 	if not hurt and lost_t < SUB_LOST and not went_idle:
@@ -813,6 +863,9 @@ func fx(event: String) -> void:
 		if au != null:
 			au.play_variant_at("claw_scrape", 3, Vector2(float(xy[1]), float(xy[2])), au.BUS_WORLD, 0.0, randf_range(0.85, 0.95))
 		return
+	if event == "curl" or event == "rcrash" or event == "rhit":
+		_roll_fx(event)
+		return
 	if event == "ore":
 		var msg := _autoload("Msg")
 		if msg != null:
@@ -863,6 +916,7 @@ func tick_special(delta: float) -> bool:
 	return true
 
 func present(delta: float) -> void:
+	_present_roll(delta)
 	if not e.is_multiplayer_authority():
 		if e._sp > 0:
 			var stamp: int = e._sp
@@ -1064,3 +1118,220 @@ func _fit_hurt(remaining: float, duration: float) -> void:
 
 func holds_still() -> bool:
 	return recovery_left > 0.0 or exposed_t > 0.0
+
+# ---------------------------------------------------------------- pancerna kula (L4)
+
+## Zwinięty albo toczy się — płyty dookoła ciała.
+func rolling() -> bool:
+	return e._sp == SP_CURL or e._sp == SP_ROLL
+
+## W którejś fazie kuli (z leżeniem na grzbiecie).
+func in_roll() -> bool:
+	return rolling() or e._sp == SP_BELLY
+
+## Płyta, w którą trafia kula w kłębku: ta z największym zapasem (kłębek się obraca, więc ostrzał rozkłada się na całe płyty). −1 — brak.
+func _ball_plate() -> int:
+	var best := -1
+	for i in PLATES:
+		if plates[i] > 0.0 and (best < 0 or plates[i] > plates[best]):
+			best = i
+	return best
+
+## Serwer: fazy kuli. True — przejęła ruch w tej klatce (rdzeń doda grawitację, ruch i `after_phase_move`).
+func tick_phase(delta: float, target: Node2D) -> bool:
+	roll_cd = maxf(0.0, roll_cd - delta)
+	match e._sp:
+		SP_CURL:
+			e.velocity.x = 0.0
+			e._facing = roll_dir
+			roll_t -= delta
+			if roll_t <= 0.0:
+				e._sp = SP_ROLL
+				roll_t = ROLL_TIME
+				roll_air = 0.0
+				roll_from = e.global_position.x
+				rolls += 1
+			return true
+		SP_ROLL:
+			roll_t -= delta
+			e._facing = roll_dir
+			e.velocity.x = roll_dir * ROLL_SPEED
+			roll_air = 0.0 if e.is_on_floor() else roll_air + delta
+			if roll_air >= ROLL_AIR:
+				_end_roll("drop")                                # przepaść: spada z rozpędem i rozwija się bez ogłuszenia
+			elif roll_t <= 0.0:
+				_end_roll("time")
+			return true
+		SP_BELLY:
+			e._facing = roll_dir                             # odbicie od ściany nie odwraca leżącego (`_update_facing` liczy zwrot z ruchu)
+			e.velocity.x = move_toward(e.velocity.x, 0.0, 240.0 * delta)
+			roll_t -= delta
+			if roll_t <= 0.0:
+				e._sp = 0
+			return true
+	if e._sp == 0 and _roll_ready(target):
+		_begin_curl(target)
+		return true
+	return false
+
+## Czy zwija się teraz na cel `target`.
+func _roll_ready(target: Node2D) -> bool:
+	if not roll_on or roll_cd > 0.0 or target == null or not e.is_on_floor() or e._windup > 0.0 or e._stagger > 0.0 \
+			or recovery_left > 0.0 or exposed_t > 0.0 or intact() < ROLL_PLATES or target.get("dead") == true:
+		return false
+	var d: Vector2 = target.global_position - e.global_position
+	var ax := absf(d.x)
+	return absf(d.y) <= ROLL_DY and ax >= ROLL_MIN and ax <= ROLL_MAX and roll_clear(signf(d.x), ax)
+
+## Wolny rozbieg na `dist` px w stronę `dir`: bez ściany na wysokości ROLL_RAY_Y (deski i skrzynie się nie liczą — rozbije je) i z podłogą
+## co ROLL_FLOOR_STEP px (nie toczy się w przepaść, w którą widzi). Jak `enemy_bruiser.gd: _run_clear`.
+func roll_clear(dir: float, dist: float) -> bool:
+	var space: PhysicsDirectSpaceState2D = e.get_world_2d().direct_space_state
+	var from: Vector2 = e.global_position + Vector2(0.0, ROLL_RAY_Y)
+	var hit := space.intersect_ray(PhysicsRayQueryParameters2D.create(from, from + Vector2(dir * dist, 0.0), 1 | 128))
+	if not hit.is_empty():
+		var col := hit["collider"] as Node
+		if col == null or not rolls_through(col.get_parent()):
+			return false
+	var x := ROLL_FLOOR_STEP
+	while x <= dist:
+		var top: Vector2 = e.global_position + Vector2(dir * x, -4.0)
+		if space.intersect_ray(PhysicsRayQueryParameters2D.create(top, top + Vector2(0.0, ROLL_FLOOR_DEPTH), 1 | (1 << (e.PLATFORM_BIT - 1)))).is_empty():
+			return false
+		x += ROLL_FLOOR_STEP
+	return true
+
+## Czy kula rozbija przegrodę `n` (`breakable.gd`): materiał przyjmuje szarżę i jest w `charge_breaks` Łupacza (deski).
+func rolls_through(n: Node) -> bool:
+	if n == null or not n.is_in_group("breakables") or not (n.call("mat_def")["breaks"] as Array).has("charge"):
+		return false
+	return (e._def.get("charge_breaks", []) as Array).has(String(n.get("mat_id")))
+
+func _begin_curl(target: Node2D) -> void:
+	var diff := _autoload("Difficulty")
+	e._sp = SP_CURL
+	roll_dir = signf(target.global_position.x - e.global_position.x)
+	e._facing = roll_dir
+	roll_t = ROLL_WINDUP * (float(diff.m("enemy_windup")) if diff != null else 1.0)
+	roll_hits.clear()
+	e.velocity.x = 0.0
+	e.behavior_fx("curl")
+
+## Serwer, po ruchu w toczeniu: skrzynie i deski rozbija, próg do STEP_UP px przetacza, ściana i wyższy próg — zderzenie; gracz w zasięgu
+## kuli dostaje raz na toczenie.
+func after_phase_move() -> void:
+	if e._sp != SP_ROLL:
+		return
+	var crashed := false
+	for i in e.get_slide_collision_count():
+		var c: KinematicCollision2D = e.get_slide_collision(i)
+		var col := c.get_collider() as Node
+		if col == null:
+			continue
+		if col.is_in_group("props"):
+			if col.has_method("take_bullet"):
+				col.take_bullet(e.global_position, 45.0)
+		elif rolls_through(col.get_parent()):
+			col.get_parent().take_hit({"type": "charge", "amount": 400.0, "src": String(e.kind), "dir": Vector2(roll_dir, 0.0)})
+		elif absf(c.get_normal().x) > 0.7:
+			crashed = true
+	if crashed and e.is_on_floor() and step_up(roll_dir):
+		crashed = false
+	for p in e.get_tree().get_nodes_in_group("players"):
+		if p.get("dead") == true or roll_hits.has(p):
+			continue
+		var d: Vector2 = p.global_position - e.global_position
+		if absf(d.x) < ROLL_HIT.x and absf(d.y) < ROLL_HIT.y:
+			roll_hits.append(p)
+			_roll_hit(p)
+	if crashed:
+		_crash()
+
+func _roll_hit(p: Node2D) -> void:
+	var dmg: int = e._scaled_damage(ROLL_DMG)
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("mole_hit", {"to": _who(p), "bot": bool(p.get("is_bot")), "dmg": dmg, "by": "roll", "hp": int(p.get("hp")), "pos": log_s.xy(e.global_position)})
+	log_s.note_mole("hits")
+	log_s.note_mole("dmg", float(dmg))
+	p.deliver_hit(dmg, e.global_position, String(e.kind))
+	p.deliver_knock(roll_dir * ROLL_KNOCK)
+	p.deliver_stun(ROLL_STUN, String(e.kind))
+	e.behavior_fx("rhit")
+
+## Serwer: ściana albo wysoki próg — kula pęka o przeszkodę, Łupacz leży na grzbiecie BELLY_S s z brzuchem do góry.
+func _crash() -> void:
+	e._sp = SP_BELLY
+	roll_t = BELLY_S
+	crashes += 1
+	_log_roll("crash")
+	e.velocity.x = -roll_dir * 40.0
+	var nm := _autoload("NoiseMgr")
+	if nm != null:
+		nm.add_noise(ROLL_NOISE, e.global_position, "enemy")
+		if nm.has_network():
+			e._crash_fx.rpc()
+		else:
+			e._crash_fx()
+	e.behavior_fx("rcrash")
+
+func _end_roll(how: String) -> void:
+	e._sp = 0
+	_log_roll(how)
+	e.velocity.x = roll_dir * ROLL_SPEED * (0.5 if how == "drop" else 0.2)
+
+func _log_roll(how: String) -> void:
+	var diff := _autoload("Difficulty")
+	roll_cd = ROLL_CD * (float(diff.m("enemy_cd")) if diff != null else 1.0)
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("mole_roll", {"end": how, "dist": roundi(absf(e.global_position.x - roll_from)), "hits": roll_hits.map(func(p: Node) -> String: return _who(p)),
+		"plates": intact(), "pos": log_s.xy(e.global_position)})
+	log_s.note_mole("rolls")
+	if how == "crash":
+		log_s.note_mole("crashes")
+
+## Każdy peer: zwinięcie (skrzypienie płyt), trafienie gracza kulą, zderzenie (łupek o skałę — `shell_crack` ciszej, okruchy, pisk).
+func _roll_fx(event: String) -> void:
+	var au := _autoload("Audio")
+	var at: Vector2 = e.global_position + Vector2(0.0, -6.0)
+	if event == "rcrash":
+		(load(VFX_PATH) as GDScript).chips(e.get_parent(), at + Vector2(roll_dir_view() * 6.0, 0.0), Vector2(-roll_dir_view(), -0.8).normalized(), Color(0.27, 0.29, 0.31), 10, "chip", 120.0, Vector2(0.8, 2.0))
+	if au == null:
+		return
+	if event == "curl":
+		au.play_variant_at("shell_curl", 2, at, au.BUS_WORLD, -2.0, randf_range(0.95, 1.05))
+	elif event == "rcrash":
+		au.play_variant_at("shell_crack", 2, at, au.BUS_WORLD, -9.0, randf_range(0.85, 0.95))
+		au.play_variant_at("lupacz_squeal", 2, at, au.BUS_WORLD, -5.0, randf_range(1.0, 1.1))
+	elif event == "rhit":
+		au.play_variant_at("shell_ricochet", 3, at, au.BUS_WORLD, -4.0, randf_range(0.6, 0.7))
+
+## Zwrot kuli u każdego peera (klient zna go z migawki).
+func roll_dir_view() -> float:
+	return roll_dir if e.is_multiplayer_authority() else e._facing
+
+## Każdy peer: pętla toczenia (płyty po żwirze) i iskry z płyt o grunt co 0,15 s.
+func _present_roll(delta: float) -> void:
+	var on: bool = e._sp == SP_ROLL and bool(e.alive) and e.visible
+	var au := _autoload("Audio")
+	var id := "mole_roll_%d" % e.get_instance_id()
+	if on != _roll_loop and au != null:
+		_roll_loop = on
+		if on:
+			au.start_loop_at("shell_roll_loop", e, au.BUS_WORLD, -4.0, true, id)
+		else:
+			au.stop_loop(id)
+	if not on:
+		_spark_t = 0.0
+		return
+	_spark_t -= delta
+	if _spark_t <= 0.0:
+		_spark_t = 0.15
+		(load(VFX_PATH) as GDScript).sparks(e.get_parent(), e.global_position + Vector2(-e._facing * 3.0, -1.0), Vector2(-e._facing, -0.6).normalized())
+
+## Węzeł znika (koniec misji): pętla przypięta do węzła ginie z nim, a wpis w AudioDirector trzeba zwolnić.
+func on_exit() -> void:
+	if _roll_loop:
+		_roll_loop = false
+		var au := _autoload("Audio")
+		if au != null:
+			au.stop_loop("mole_roll_%d" % e.get_instance_id())
