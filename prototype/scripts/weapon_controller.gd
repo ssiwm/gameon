@@ -1651,7 +1651,7 @@ func melee_for_target() -> int:
 		var br: Array = t.call("mat_def")["breaks"]
 		wall = wall or (br.has("pick") and not br.has(have))
 	if not wall and have == "blade":
-		for z in get_tree().get_nodes_in_group("dig_zones"):   # strefa wydobycia (D5): skała i żyła tylko kilofem; ziemię broń biała bierze sama
+		for z in get_tree().get_nodes_in_group("dig_zones"):   # strefa wydobycia (D5): skała albo żyła w wyrwie — kilof (też przy ziemi obok); czystą ziemię i żwir broń biała bierze sama
 			if bool((z.cut_needs(origin, player.aim_dir) as Array)[1]):
 				wall = true
 				break
