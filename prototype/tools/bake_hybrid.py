@@ -40,6 +40,7 @@ heart_slow_loop, revive; amb_air, amb_drips. Zostały syntetyczne: kaplan_scream
 Odsłuch 2026-11-14, z nagrań: dig_dirt, dig_gravel, dig_rock (cios kilofem w strefie wydobycia).
 Odsłuch 2026-11-15, z nagrań: cała pogoda (WEATHER_PLAN.md W2–W4) — tło deszczu, krople na materiałach, dach, okap, kaptur, wiatr,
 podmuch, świst w oknie, grzmot (trzask, toczenie, drżenie szyb).
+Odsłuch 2026-11-25, z nagrań: Łupacz w skorupie — shell_ricochet, shell_crack, lupacz_squeal, claw_scrape.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
@@ -996,7 +997,7 @@ def _moth_dust_bake() -> None:
 
 
 # --- Łupacz w skorupie z łupka (1.7.685): ten sam gest co synteza z bake_sfx._build_shell, ale na nagraniach kamienia, dachówki,
-# kwiku i pazurów. Łupek jest grubszy od dachówki, więc trzaski ceramiki idą w dół; kamień nie dzwoni jak blacha.
+# kwiku i pazurów (werdykt odsłuchu 2026-11-25: wszystkie cztery z nagrań). Łupek jest grubszy od dachówki, więc trzaski ceramiki idą w dół; kamień nie dzwoni jak blacha.
 SHELL_RICOCHET_SRC = (("impact_rock_4", 0.30), ("stone_impact_041", 0.15), ("stone_impact_015", 0.10))
 SHELL_RICOCHET_NEEDS = [sid for sid, _ in SHELL_RICOCHET_SRC] + ["crushed_rock_drop"]
 SHELL_CRACK_NEEDS = ["tile_crack_roof", "tile_smash_04", "boulder_stones_14", "rock_into_gravel_06"]
