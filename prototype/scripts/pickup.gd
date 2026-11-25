@@ -53,6 +53,7 @@ const GLOW := {
 	"power": Color(1.0, 0.42, 0.18),
 	"battery": Color(1.0, 0.92, 0.66),      # ciepła biel żarówki latarki
 	"tape": Color(0.95, 0.55, 0.85),        # fabularna: inny kolor niż złom i części
+	"lamptoken": Color(0.98, 0.74, 0.34),   # marka lampowa: mosiądz
 }
 const MAG_EMPTY_LIFE := 30.0      ## s — pusty magazynek (nic do podniesienia) potem znika
 
@@ -72,7 +73,7 @@ const RARITY_SOUND := ["", "loot_rare", "loot_story"]
 ## Klasa rzadkości rodzaju znajdźki (`rounds`: złom — wartość, broń — naboje; porzucona broń ma 0 i jest zwykła).
 static func rarity_of(k: String, r: int) -> int:
 	match k:
-		"tape", "tag":
+		"tape", "tag", "lamptoken":
 			return Rarity.STORY
 		"part", "power", "stash":
 			return Rarity.RARE
@@ -226,6 +227,7 @@ func _hd_name() -> String:
 		"supply": return "ammo" if Throwables.is_ammo(_supply_kind()) else _supply_kind()        # pudełko amunicji specjalnej = model skrzynki amunicji
 		"stash": return "stash"
 		"tag": return "tag"
+		"lamptoken": return "tag"                # marka lampowa: mosiężny żeton — model nieśmiertelnika
 		"scrap": return "scrap_pile"
 		"cache": return "cache"
 		"ammo": return "ammo"
@@ -335,6 +337,8 @@ func _try_pickup() -> void:
 			_try_battery()
 		"tape":
 			_try_tape()
+		"lamptoken":
+			_try_lamp_token()
 
 ## Skrzynia mocy: pierwszy żywy człowiek, który jej dotknie i nie ma już broni mocy, dostaje ją poza slotami (boty nie biorą).
 func _try_power() -> void:
@@ -460,6 +464,17 @@ func _try_tape() -> void:
 		var lvl := _level()
 		if lvl != null:
 			lvl.tape_found(arg, p, global_position)
+			lvl.take_item(String(name))
+		return
+
+## Marka lampowa (lamp_tokens.gd) — jak taśma: podnosi człowiek, wpis dostaje cała drużyna.
+func _try_lamp_token() -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		if p.is_bot or p.dead or not _near(p):
+			continue
+		var lvl := _level()
+		if lvl != null:
+			lvl.lamp_token_found(arg, p, global_position)
 			lvl.take_item(String(name))
 		return
 
