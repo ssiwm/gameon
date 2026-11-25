@@ -27,7 +27,7 @@ const PORTRAITS := "res://art/portraits/"
 const ENEMIES := [
 	["lupacz", "", "idle", "SHALEBREAKER", "Mine burrower",
 		"Scratching behind the rock warns you that a Shalebreaker is digging toward you. Its pale claws come through first. A pit won't hold it — it claws through earth and rock to reach you. Its back is a shell of shale plates fused with what it dug up, and bullets ring off it. It is nearly deaf to the air but feels the ground through rock: running, digging and hard landings lead it to you. Hurt or lost, it sinks back into the rock and comes out next to whoever it feels, with a new plate. It rears up on its hind legs before striking.",
-		"Crouch and stop digging — it feels the ground, not the air. Shoot the belly when it rears up, then back away from the paw. A pickaxe cracks a plate in one blow, a blast strips the shell, and fire gets through.", "res://art/portraits/lupacz.png"],
+		"Crouch and stop digging — it feels the ground, not the air. When the ground cracks under your feet, jump or step aside; if it grabs your leg, hit it with the pickaxe. Shoot the belly when it rears up, then back away from the paw. A pickaxe cracks a plate in one blow, a blast strips the shell, and fire gets through.", "res://art/portraits/lupacz.png"],
 	["trzosek", "trzosek", "idle", "CUTPURSE", "Pack hunter",
 		"Fast and cowardly alone, vicious in a pack of three to six. Sleeps until a shot or a close step wakes it. The oldest of the pack leads — when it dies, the rest panic. Flares make them curious.",
 		"Continuous fire or the machete. Kill the leader first and the pack scatters."],

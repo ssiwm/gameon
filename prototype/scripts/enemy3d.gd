@@ -311,6 +311,8 @@ var _motion_remaining := NAN
 var _motion_duration := 0.0
 var _burrow_time := -1.0
 var _swipe_recovery := 0.0
+var _grab_hold := false                      ## Łupacz chwyta spod ziemi (enemy_mole.gd `view_extra`): wynurzony do łopatek
+const GRAB_LOWER := 7.0                      ## px: o tyle model siedzi w dołku przy chwycie
 var _motion_values: Dictionary = {}
 var _contact_frame := false
 var _grounded_hint := -1
@@ -347,6 +349,7 @@ func motion_context(info: Dictionary) -> void:
 	if _spec.get("burrow_clips", false):
 		_burrow_time = float(info.get("burrow_time", -1.0))
 		_swipe_recovery = float(info.get("swipe_recovery", 0.0))
+		_grab_hold = bool(info.get("grab_hold", false))
 	_vein_face = float(info.get("face", 0.0))
 	_disguised = bool(info.get("disguised", false))
 	_since_reveal = float(info.get("since_reveal", -1.0))
@@ -1705,7 +1708,11 @@ func _pose_burrower(anim: String) -> void:
 	_tilt.position = Vector3.ZERO
 	_tilt.basis = Basis.IDENTITY
 	_pivot.basis = Basis.from_scale(Vector3.ONE * _scale)
-	if _burrow_time >= 0.0:
+	if _grab_hold:
+		clip = "attack"                                          # stoi dęba w dołku: przednie łapy trzymają nogę, ryj w górę, szarpie
+		t = EnemyDefs.Mole.CONTACT * (0.7 + 0.06 * sin(_t * 9.0))
+		_tilt.position.y = -GRAB_LOWER * PX
+	elif _burrow_time >= 0.0:
 		clip = "emerge"
 		t = _burrow_time
 		_tilt.position.x = (EnemyDefs.Mole.ENTRY_TRAVEL - EnemyDefs.Mole.entry_travel(t)) * PX

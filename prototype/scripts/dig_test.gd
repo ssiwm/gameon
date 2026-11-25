@@ -110,6 +110,10 @@ func run(m: Node2D) -> void:
 		await _tremor_l1()
 		_finish()
 		return
+	if "--digonly=grab" in OS.get_cmdline_user_args():       # chwyt spod ziemi (LUPACZ_PLAN.md L2)
+		await _grab_l2()
+		_finish()
+		return
 	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48 + 16 — komora DigZone4 to powietrze)" % dig0, dig0 == 192 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
@@ -129,6 +133,7 @@ func run(m: Node2D) -> void:
 	await _submerge_k3d()
 	await _resurface_l0()
 	await _tremor_l1()
+	await _grab_l2()
 	await _minimap_k5()
 	await _chamber_k5b()
 	await _signals()
@@ -227,6 +232,7 @@ func _submerge_k3d() -> void:
 	if mole == null:
 		return
 	var beh = mole._beh
+	beh.grab_on = false                                                  # tu zwykłe wynurzenie; chwyt spod ziemi sprawdza L2
 	beh.plates[0] = 0.0
 	mole.hp = mole._max_hp * 0.3                                         # ranny, z rozbitym karkiem
 	var t := 0.0
@@ -310,6 +316,7 @@ func _resurface_l0() -> void:
 	if mole == null:
 		return
 	var beh = mole._beh
+	beh.grab_on = false                                                  # tu zwykłe wynurzenie; chwyt spod ziemi sprawdza L2
 	mole.hp = mole._max_hp * 0.3
 	mole.take_hit({"type": "bullet", "amount": 200.0, "pos": mole.global_position + Vector2(mole._facing * 6.0, -6.0), "dir": Vector2(-mole._facing, 0.0), "shooter": 1})
 	mole.hp = mole._max_hp * 0.25                                            # kark rozbity kulą, HP 25%
@@ -536,6 +543,7 @@ func _tremor_l1() -> void:
 	if mole == null:
 		Input.action_release("crouch")
 		return
+	mole._beh.grab_on = false                                              # tu zwykłe wynurzenie; chwyt spod ziemi sprawdza L2
 	mole._beh._go_under(rock)
 	t = 0.0
 	while t < Mole.SUB_TIME + 2.0 and int(mole._sp) == Mole.SP_UNDER:
@@ -569,6 +577,166 @@ func _tremor_l1() -> void:
 	await _frames(0.2)
 
 ## Drganie gruntu (NoiseMgr.tremor) przy graczu co `every` s pętli testu z czasem `t` — gracz kopie albo biegnie (Łupacz czuje grunt, L1).
+## LUPACZ_PLAN.md L2: zanurzony Łupacz pod kopiącym na gruncie strefy — zapowiedź (ukryty, miejsce pod stopami), unik (wychodzi w pustą kieszeń,
+## odsłonięty łeb ×1,5), chwyt (przypięty z nogą w gruncie, 2 serca w 3 s, potem wraca pod ziemię), raz na zanurzenie, uwolnienie każdą drogą
+## (kilof, 2 ciosy maczetą, obrażenia od innych, ogłuszenie), pomost nad pustką i beton bez chwytu, bot nigdy (D4), GRAB_GAP. Dziennik `mole_grab`.
+func _grab_l2() -> void:
+	var Mole := preload("res://scripts/enemy_mole.gd")
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "lupacz_l2"})
+	var dt := 1.0 / float(Engine.physics_ticks_per_second)
+	var rr: Rect2 = rock.rect_px()
+	var x0 := rr.position.x + 60.0
+	# zapowiedź i unik
+	var mole = await _grab_setup(x0)
+	check("L2: zanurzony Łupacz pod graczem stojącym na wierzchu skały", mole != null and int(mole._sp) == Mole.SP_UNDER)
+	if mole == null:
+		SessionLog.enabled = false
+		return
+	var beh = mole._beh
+	var t: float = await _dig_until(mole, [Mole.SP_GWARN, Mole.SP_RISE])
+	var feet: Vector2 = player.global_position
+	check("L2: kopiącemu na gruncie strefy zapowiada chwyt po %.2f s — ukryty, miejsce pod stopami (%s / %s), zapowiedź %.2f s" % [t, str((beh.grab_spot as Vector2).round()), str(feet.round()), float(beh.grab_t)],
+		int(mole._sp) == Mole.SP_GWARN and beh.is_hidden() and (beh.grab_spot as Vector2).distance_to(feet) < 1.0 and absf(float(beh.grab_t) - Mole.GRAB_WARN) < 0.05)
+	var spot: Vector2 = beh.grab_spot
+	_place_player(feet + Vector2(20.0, 0.0))
+	var hp0: int = player.hp
+	t = 0.0
+	while t < Mole.GRAB_WARN + 0.3 and int(mole._sp) == Mole.SP_GWARN:
+		await get_tree().physics_frame
+		t += dt
+	check("L2: unik (20 px dalej) — wychodzi w pustą kieszeń po %.2f s i chwieje się z odsłoniętym łbem (%.1f s), gracz cały (_sp %d, %.0f px od miejsca)" % [t, float(beh.exposed_t), int(mole._sp), mole.global_position.distance_to(spot)],
+		int(mole._sp) == 0 and not beh.is_hidden() and float(beh.exposed_t) > 1.0 and float(mole._stagger) > 1.0 and not bool(player.grabbed) and player.hp == hp0
+		and int(beh.dodges) == 1 and mole.global_position.distance_to(spot) < 10.0)
+	var mhp: float = mole.hp
+	var p0: PackedFloat32Array = (beh.plates as PackedFloat32Array).duplicate()
+	mole.take_hit({"type": "bullet", "amount": 10.0, "pos": mole.global_position + Vector2(0.0, -6.0), "dir": Vector2.LEFT, "shooter": 1})
+	check("L2: odsłonięty łeb — kula ×1,5 w ciało, płyty bez zmian (HP %.1f → %.1f)" % [mhp, mole.hp], is_equal_approx(mhp - float(mole.hp), 15.0) and beh.plates == p0)
+	mole.queue_free()
+	await _frames(0.1)
+	# chwyt do końca: 2 serca w 3 s, potem wraca pod ziemię; drugi raz w tym zanurzeniu już tylko wynurzenie
+	mole = await _grab_setup(x0)
+	beh = mole._beh
+	await _dig_until(mole, [Mole.SP_GWARN, Mole.SP_RISE])
+	feet = player.global_position
+	t = 0.0
+	while t < Mole.GRAB_WARN + 0.3 and int(mole._sp) != Mole.SP_GRAB:
+		await get_tree().physics_frame
+		t += dt
+	await get_tree().process_frame
+	var view: Dictionary = mole.view_info()
+	check("L2: stojący chwycony po %.2f s — przypięty z nogą w gruncie, 1 serce (HP %d), Łupacz widoczny %.0f px obok stóp, widok `grab_hold`" % [t, player.hp, absf(mole.global_position.x - feet.x)],
+		int(mole._sp) == Mole.SP_GRAB and bool(player.grabbed) and bool(player.grab_ground) and player.hp == player.MAX_HP - 1 and not beh.is_hidden() and mole.visible
+		and absf(absf(mole.global_position.x - feet.x) - Mole.GRAB_REACH) < 0.5 and bool(view.get("grab_hold", false)))
+	Input.action_press("move_right")
+	await _frames(0.4)
+	Input.action_release("move_right")
+	var pinned: bool = player.global_position.distance_to(feet) < 1.0
+	t = 0.0
+	while t < Mole.GRAB_S + 0.5 and bool(player.grabbed):
+		await get_tree().physics_frame
+		t += dt
+	check("L2: nie odejdzie (%s); po %.2f s drugie serce (HP %d) i puszcza, Łupacz wraca pod ziemię (_sp %d)" % [str(pinned), t + 0.4, player.hp, int(mole._sp)],
+		pinned and absf(t + 0.4 - Mole.GRAB_S) < 0.15 and player.hp == player.MAX_HP - 2 and not bool(player.grabbed) and not bool(player.grab_ground) and int(mole._sp) == Mole.SP_UNDER)
+	player.hp = player.MAX_HP
+	_place_player(feet + Vector2(40.0, 0.0))
+	await _frames(0.2)
+	t = await _dig_until(mole, [Mole.SP_GWARN, Mole.SP_RISE])
+	check("L2: raz na zanurzenie — kopiący 40 px dalej dostaje zwykłe wynurzenie (_sp %d po %.2f s)" % [int(mole._sp), t], int(mole._sp) == Mole.SP_RISE)
+	mole.queue_free()
+	await _frames(0.1)
+	# uwolnienie: kilof, maczeta (2 ciosy), obrażenia od innych, ogłuszenie
+	var x := x0
+	for how in ["pick", "blade", "team", "stun"]:
+		x += 4.0
+		mole = await _grab_setup(x)
+		beh = mole._beh
+		await _dig_until(mole, [Mole.SP_GWARN, Mole.SP_RISE])
+		t = 0.0
+		while t < Mole.GRAB_WARN + 0.3 and int(mole._sp) != Mole.SP_GRAB:
+			await get_tree().physics_frame
+			t += dt
+		var held: bool = bool(player.grabbed)
+		var to_mole := Vector2(signf(mole.global_position.x - player.global_position.x), 0.0)
+		var first := true
+		if how == "pick":
+			player.weapons._server_melee(player.global_position + Vector2(0, -6), to_mole, pick, player.player_id)
+		elif how == "blade":
+			player.weapons._server_melee(player.global_position + Vector2(0, -6), to_mole, blade, player.player_id)
+			await _frames(0.2)
+			first = bool(player.grabbed)
+			player.weapons._server_melee(player.global_position + Vector2(0, -6), to_mole, blade, player.player_id)
+		elif how == "team":
+			for i in 2:
+				mole.take_hit({"type": "bullet", "amount": 12.0, "pos": mole.global_position + Vector2(0.0, -6.0), "dir": -to_mole, "shooter": 77})
+		else:
+			mole.take_hit({"type": "bullet", "amount": 1.0, "stun": 0.5, "pos": mole.global_position + Vector2(0.0, -6.0), "dir": -to_mole, "shooter": 77})
+		await _frames(0.1)
+		check("L2: uwolnienie (%s) — chwycony był (%s), puścił%s, Łupacz wychodzi z dołka i chwieje się (_sp %d, chwiej %.1f s, HP %.0f, żyje %s)" % [how, str(held),
+			" dopiero po drugim ciosie" if how == "blade" else "", int(mole._sp), float(mole._stagger), mole.hp, str(mole.alive)],
+			held and first and not bool(player.grabbed) and int(mole._sp) == 0 and bool(mole.alive) and float(mole._stagger) >= 0.8 and float(beh.exposed_t) > 0.8
+			and player.hp == player.MAX_HP - 1)
+		mole.queue_free()
+		await _frames(0.1)
+	# pomost nad pustką wykopu i beton obok strefy — bez chwytu; bot nigdy (D4); GRAB_GAP od ostatniego chwytu
+	var top := rr.position.y
+	rock.reset_to(PackedByteArray())
+	rock.apply_dig(Vector2(x0 + 40.0, top + 12.0), Vector2(10.0, 9.0), 2.0, DigMats.Tool.BLAST)
+	check("L2: grunt strefy pod stopami — na wierzchu skały tak, nad pustką wykopu (deski, pomost) i na betonie obok strefy nie",
+		Mole.feet_on_zone(rock, Vector2(x0, top)) and not Mole.feet_on_zone(rock, Vector2(x0 + 40.0, top + 4.0)) and not Mole.feet_on_zone(rock, Vector2(rr.position.x - 20.0, top)))
+	mole = await _grab_setup(x0)
+	beh = mole._beh
+	player.is_bot = true
+	var bot_ok: bool = beh._grabbable(player)
+	player.is_bot = false
+	var human_ok: bool = beh._grabbable(player)
+	beh.last_grab = player.global_position + Vector2(12.0, 0.0)
+	var gap_ok: bool = beh._grabbable(player)
+	check("L2: bota nie chwyta (D4), człowieka tak; 12 px od ostatniego chwytu nie (GRAB_GAP %.0f px)" % Mole.GRAB_GAP, not bot_ok and human_ok and not gap_ok)
+	t = await _dig_until(mole, [Mole.SP_GWARN, Mole.SP_RISE])
+	check("L2: przy miejscu ostatniego chwytu zwykłe wynurzenie (_sp %d po %.2f s)" % [int(mole._sp), t], int(mole._sp) == Mole.SP_RISE)
+	mole.queue_free()
+	await _frames(0.1)
+	SessionLog.mission_end({"result": "test"})
+	var hows: Array = _log_events("mole_grab").map(func(r: Dictionary) -> String: return "%s:%d" % [r["how"], int(r["dmg"])])
+	var grab_hits: Array = _log_events("mole_hit").filter(func(r: Dictionary) -> bool: return String(r.get("by", "")) == "grab")
+	var ends := _log_events("mission_end")
+	var sum: Dictionary = (ends[-1] as Dictionary).get("mole", {}) if not ends.is_empty() else {}
+	check("L2: dziennik — mole_grab czym i ile (%s), mole_hit by=grab (%d), mission_end.mole grabs/dodges (%s)" % [str(hows), grab_hits.size(), str(sum)],
+		hows == ["dodge:0", "time:2", "melee:1", "melee:1", "team:1", "stun:1"] and grab_hits.size() == 6 and int(sum.get("grabs", 0)) == 5 and int(sum.get("dodges", 0)) == 1)
+	SessionLog.enabled = false
+	rock.reset_to(PackedByteArray())
+	player.hp = player.MAX_HP
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	await _frames(0.2)
+
+## Zanurzony Łupacz w komorze na dnie skały, gracz na wierzchu strefy w `x` (L2).
+func _grab_setup(x: float) -> Node2D:
+	rock.reset_to(PackedByteArray())
+	level.clear_pickups()
+	var rr: Rect2 = rock.rect_px()
+	var cell := Vector2(rr.position.x + 22.0, rr.end.y - 14.0)
+	rock.apply_dig(cell, Vector2(12.0, 7.0), 2.0, DigMats.Tool.BLAST)
+	_place_player(Vector2(x, rr.position.y - 2.0))
+	player.hp = player.MAX_HP
+	await _frames(0.3)
+	var names: Array = Director.spawn_at(["lupacz"], Vector2(cell.x, cell.y + 6.0), Vector2(cell.x, cell.y + 6.0))
+	await _frames(MOLE_ENTRY + 0.3)
+	var mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	if mole != null:
+		mole._beh._go_under(rock)
+	return mole
+
+## Kopie w miejscu (drganie co 0,45 s), aż Łupacz wejdzie w jeden ze stanów `states` (najdłużej `limit` s); zwraca czas.
+func _dig_until(mole: Node2D, states: Array, limit := 6.0) -> float:
+	var t := 0.0
+	while t < limit and not (int(mole._sp) in states):
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		_tremor_every(t, 0.45, "dig")
+	return t
+
 func _tremor_every(t: float, every: float, tag: String, strength := 1.0) -> void:
 	if fmod(t, every) < 1.0 / float(Engine.physics_ticks_per_second):
 		NoiseMgr.tremor(strength, player.global_position, tag)

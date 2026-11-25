@@ -512,6 +512,27 @@ def _build_shell() -> None:
         x = d.mix([(x, 1.0), (_crumbs_fall(r, n), .3)], n)
         finalize("claw_scrape_%d" % (i + 1), d.reverb(d.lp(x / (d.peak(x) + 1e-9), 2600.0, order=2), ir("cave"), wet=.2), lufs=-21.0, fade_out_ms=150)
 
+    # Chwyt spod ziemi (LUPACZ_PLAN.md L2): grunt pęka od spodu — głuche chrupnięcie ziemi z grzechotem żwiru, zaraz po nim mokre,
+    # mięsiste złapanie (pazury zaciskają się na cholewce), krótkie szarpnięcie i krótki, zduszony pisk spod ziemi.
+    for i in range(2):
+        r = Rng(0xF500 + i * 1931)
+        n = ms(900)
+        crunch = burst(ms(160), r, vary(r, 3200, .12), 500.0, .045, color=.6)
+        heave = thump(.3, vary(r, 95, .1), 48, .03, .12)
+        gravel = np.zeros(n)
+        for _ in range(14 + 3 * i):
+            at = r.uniform(0.0, .45)
+            k = ms(at * 1000)
+            tap = d.mix([(tick(r, r.uniform(900, 3600), 1.3, 10, .002), 1.0), (thump(.04, r.uniform(180, 380), 120, .008, .012), .35)])
+            gravel[k:k + len(tap)] += tap[:n - k] * r.uniform(.2, .6) * (1.0 - at / .5)
+        nw = ms(vary(r, 130, .15))
+        wet = d.filt(d.colored(nw, r, .3), "bp", vary(r, 900, .15), 1.8) * d.env_pts(nw, [(0, 0), (.004, 1), (.03, .5), (nw / SR, 0)])
+        grip = thump(.12, vary(r, 210, .1), 110, .015, .04)
+        tug = burst(ms(120), r, vary(r, 1800, .15), 400.0, .05, color=.8)
+        squeak = d.osc("sine", d.glide_exp(vary(r, 900, .1), vary(r, 1250, .1), ms(110), .05), ms(110)) * d.env_pts(ms(110), [(0, 0), (.015, 1), (.11, 0)])
+        x = d.mix([(crunch, 1.0), (heave, .9), (gravel, .5), (wet, .8, .07), (grip, .7, .07), (tug, .45, .33), (d.lp(squeak, 1600.0, order=2), .25, .4)], n)
+        finalize("mole_grab_%d" % (i + 1), d.limiter(d.reverb(x / (d.peak(x) + 1e-9), ir("cave"), wet=.18), -4.0), lufs=-17.0, fade_out_ms=120)
+
 
 def _crumbs_fall(r: Rng, n: int) -> np.ndarray:
     """Kilka okruchów osypujących się po drapaniu (miękkie, stłumione)."""
