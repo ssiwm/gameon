@@ -8,7 +8,7 @@ extends Node
 ##    odblokowania z obu); drużyna (wyróżnienia przy właściwym graczu, gotowość, solo).
 ## 2. Na żywo: mission._success() z przebiegiem → result_info od serwera (zysk, premie, znaleziska, taśma), raport otwarty, HUD rozgrywki gaśnie;
 ##    próbka za cel poboczny w banku, w znaleziskach raportu i w dzienniku (`mission_end.scrap.samples`).
-## 3. Sekwencja: przy t = 0,5 widać tytuł, nie pieczątki; przy końcu wszystko; skip() → liczniki na wartościach końcowych;
+## 3. Sekwencja: przy t = 0,5 widać tytuł, nie pieczątki; dźwięki: jeden na sekcję, odstęp ≥ CUE_GAP; przy końcu wszystko; skip() → liczniki na wartościach końcowych;
 ##    „Ogranicz efekty” → stan końcowy od razu.
 ## 4. Spóźnione XP: etap czeka do DATA_WAIT s i rusza, gdy dane dojdą; bez danych idzie dalej po limicie.
 ## 5. Rekordy osobiste (Profile.map_best): pierwsze przejście, lepszy czas, gorszy czas, zapis i odczyt.
@@ -263,6 +263,7 @@ func _sequence_checks() -> void:
 	var stamps: Array = rs._anims.filter(func(a: Dictionary) -> bool: return String(a["kind"]) == "stamp")
 	check("t = 0,5: tytuł widać, pieczątek nie", title.modulate.a > 0.95 and stamps.all(func(a: Dictionary) -> bool: return (a["node"] as Control).modulate.a < 0.01))
 	check("t = 0,5: przycisk akcji przygaszony, podpowiedź pominięcia", rs._prompt_box.modulate.a < 0.5 and rs._skip_hint.visible)
+	_cue_checks(rs)
 	rs.skip()
 	check("skip(): koniec sekwencji, licznik złomu na wartości końcowej (%s)" % rs._scrap_val.text,
 		rs.is_done() and rs._scrap_val.text == "+%d" % int(rs.model["scrap"]["total"]) and stamps.all(func(a: Dictionary) -> bool: return (a["node"] as Control).modulate.a > 0.99))
@@ -275,6 +276,22 @@ func _sequence_checks() -> void:
 	for i in 70:
 		rs.advance(0.1)
 	check("po 7 s sekwencja skończona", rs.is_done())
+
+## Dźwięki raportu (1.7.680): bez sygnału tytułu i maszynopisu, jeden sygnał na sekcję, liczniki bez cykania na każdy krok,
+## odstęp co najmniej CUE_GAP; przy zderzeniu zostaje ważniejszy sygnał.
+func _cue_checks(rs: Node) -> void:
+	var cues: Array = rs._cues
+	var snds: Array = cues.map(func(c: Dictionary) -> String: return String(c["snd"]))
+	print("[RESULT-TEST] sygnały raportu: %s" % str(cues.map(func(c: Dictionary) -> String: return "%.2f %s" % [float(c["t"]), String(c["snd"])])))
+	check("dźwięki raportu: bez maszynopisu i bez stempla tytułu", not snds.has("type") and cues.all(func(c: Dictionary) -> bool: return float(c["t"]) > ResultScreen.T_TITLE + 0.01))
+	check("dźwięki raportu: najwyżej 6 sygnałów, po jednym na sekcję (%d)" % cues.size(), cues.size() <= 6 and snds.count("stamp") <= 3 and snds.count("levelup") <= 1 and snds.count("tick") <= 2)
+	var gap_ok := true
+	for i in range(1, cues.size()):
+		gap_ok = gap_ok and float(cues[i]["t"]) - float(cues[i - 1]["t"]) >= ResultScreen.CUE_GAP - 0.001
+	check("dźwięki raportu: odstęp ≥ %.1f s" % ResultScreen.CUE_GAP, gap_ok)
+	var thin: Array = ResultScreen.thin_cues([{"t": 4.4, "snd": "tick"}, {"t": 4.7, "snd": "stamp"}, {"t": 5.0, "snd": "stamp"}, {"t": 5.6, "snd": "stamp"}, {"t": 5.8, "snd": "record"}])
+	check("thin_cues: pieczątka wypiera licznik, rekord wypiera pieczątkę, równe — zostaje wcześniejszy (%s)" % str(thin),
+		thin.size() == 2 and String(thin[0]["snd"]) == "stamp" and is_equal_approx(float(thin[0]["t"]), 4.7) and String(thin[1]["snd"]) == "record")
 
 # ---------------------------------------------------------------- 4. spóźnione XP
 

@@ -659,8 +659,7 @@ func _success() -> void:
 		if not p.is_bot and not p.is_queued_for_deletion():
 			_stat(p)                                  # raport: karta dla każdego człowieka, także bez zabójstw i hałasu
 	_send_stats()
-	_event.rpc("success")
-	_broadcast()
+	_broadcast()                                  # bez sygnału sukcesu: sukces ogłasza kadencja wyniku w raporcie (result_screen.gd)
 
 ## Zapis ukończonej misji do dziennika kampanii (ściana wyników). Każdy peer robi to sam, raz na sukces.
 func _record_result() -> void:
@@ -1178,9 +1177,6 @@ func _event(kind: String) -> void:
 	match kind:
 		"objective":
 			Audio.play("radio_beep", Audio.BUS_UI, -6.0)          # muzyka: uderzenie i odwrót na siatce (E4), bez stingera
-		"success":
-			Audio.play("ui_confirm", Audio.BUS_UI, -4.0)
-			Audio.play("tape_stop", Audio.BUS_UI, -10.0)
 		"rumble":
 			Feel.shake(4.0)
 			Audio.play("quake", Audio.BUS_UI, -6.0)

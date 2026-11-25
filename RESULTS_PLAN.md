@@ -138,24 +138,29 @@ Wipe w kampanii nadal nie pokazuje raportu (odliczanie do powtórki) — bez zmi
 
 | t [s] | Co | Ruch | Dźwięk |
 |---|---|---|---|
-| 0,00 | faza SUCCESS: świat przygasa, HUD rozgrywki znika | ściemnienie 0 → 0,65 w 0,4 s; HUD alfa → 0 w 0,3 s | `tape_stop` (jest), muzyka i ambient −8 dB |
-| 0,25 | nagłówek A + tytuł B | tytuł „przybity”: skala 1,18 → 1,0 i alfa 0 → 1 w 0,16 s (ease-out), panel drgnie o 2 px | `ui_stamp` (nowy) |
-| 0,55 | podpis | maszynopis: litera po literze 0,45 s | ciche stuknięcia co 3 litery (`ui_type`, nowy, −18 dB) |
-| 0,90 | pieczątki C, co 0,22 s | ✓: pieczątka skala 1,3 → 1,0, obrót −3°; ✗: wjazd szary bez akcentu | ✓ `ui_stamp` (wysokość +1 półton za każdą); ✗ suchy klik |
-| 1,90 | ZŁOM DRUŻYNY | licznik 0 → wartość w 0,9 s (ease-out cubic), wiersze rozbicia pojawiają się, gdy licznik minie ich sumę | `ui_tick` max 20/s, wysokość rośnie z postępem |
-| 2,80 | TWOJE XP + pasek | licznik i pasek 1,6 s (logika `_drive_xp`); wiersze XP jak przy złomie | `ui_tick` niżej o kwintę |
-| przy przelaniu | **AWANS** | pasek dobiega do końca, krótko rozjaśnia się (0,12 s, bez stroboskopu), zeruje i dolicza; pieczątka „AWANS · POZIOM n” + „Odblokowano: …” | `ui_levelup` (nowy: niski akord z „wow” taśmy, 1,2 s); muzyka −12 dB na 1,5 s |
+| 0,00 | faza SUCCESS: świat przygasa, HUD rozgrywki znika | ściemnienie 0 → 0,65 w 0,4 s; HUD alfa → 0 w 0,3 s | kadencja wyniku `mus_result_win` — jedyny sygnał sukcesu (od 1.7.680 bez `ui_confirm` i `tape_stop`) |
+| 0,25 | nagłówek A + tytuł B | tytuł „przybity”: skala 1,18 → 1,0 i alfa 0 → 1 w 0,16 s (ease-out), panel drgnie o 2 px | — (wejście kadencji) |
+| 0,55 | podpis | maszynopis: litera po literze 0,45 s | — |
+| 0,90 | pieczątki C, co 0,22 s | ✓: pieczątka skala 1,3 → 1,0, obrót −3°; ✗: wjazd szary bez akcentu | jeden `ui_stamp` przy pierwszej ✓; ✗ bez dźwięku |
+| 1,90 | ZŁOM DRUŻYNY | licznik 0 → wartość w 0,9 s (ease-out cubic), wiersze rozbicia pojawiają się, gdy licznik minie ich sumę | jeden `ui_tick` na końcu licznika (gdy zysk > 0) |
+| 2,80 | TWOJE XP + pasek | licznik i pasek 1,6 s (logika `_drive_xp`); wiersze XP jak przy złomie | jeden `ui_tick` niżej na końcu licznika; przy awansie zamiast niego `ui_levelup` |
+| przy przelaniu | **AWANS** | pasek dobiega do końca, krótko rozjaśnia się (0,12 s, bez stroboskopu), zeruje i dolicza; pieczątka „AWANS · POZIOM n” + „Odblokowano: …” | `ui_levelup` raz (przy pierwszym awansie); kadencja wyniku −6 dB na 1,6 s |
 | 4,40 | karty drużyny | wjazd z dołu 12 px + alfa, co 0,10 s | ciche szuranie papieru |
-| 4,70 | wyróżnienia na kartach | pieczątka na karcie co 0,15 s | `ui_stamp` −8 dB, niżej |
-| 5,00 | znaleziska, rekord, pierwsze przejście | pieczątki | rekord: `ui_stamp` + `radio_beep` |
+| 4,70 | wyróżnienia na kartach | pieczątka na karcie co 0,15 s | jeden `ui_stamp` (niżej) przy pierwszym wyróżnieniu |
+| 5,00 | znaleziska, rekord, pierwsze przejście | pieczątki | jeden sygnał: `radio_beep` przy rekordzie, inaczej `ui_stamp` |
 | 5,20 | stopka F aktywna | podpowiedzi rozjaśniają się | — |
+
+**Dźwięk od 1.7.680** (uwaga z gry: za dużo sygnałów i nachodziły na siebie — sukces grał `ui_confirm` + `tape_stop` w tej samej klatce
+co kadencja wyniku, potem maszynopis ×6 i do ~50 cyknięć liczników): emocję niesie muzyka, raport daje **jeden sygnał na sekcję**
+(cele, złom, XP / awans, wyróżnienia, znaleziska) z odstępem co najmniej `CUE_GAP` = 0,4 s. Przy zderzeniu bliższych sygnałów zostaje
+ważniejszy (`CUE_PRIO`: rekord > awans > pieczątka > licznik). Od 1 dźwięku (sama kadencja) do ok. 6 w najbogatszym raporcie.
 
 - **Pominięcie**: pierwsze naciśnięcie dowolnej akcji raportu (albo klik) w trakcie sekwencji → stan końcowy od razu (liczniki na wartościach
   końcowych, wszystkie pieczątki, jeden `ui_confirm`). Drugie naciśnięcie wykonuje akcję.
 - **Blokada przypadkowego wyjścia**: przez pierwsze 0,6 s raport ignoruje wejście (E z podnoszenia, Enter z czatu). Akcje hosta działają
   dopiero po końcu sekwencji albo po pominięciu.
 - **„Ogranicz efekty”** (`Settings.fx_mult() == 0`): stan końcowy od razu, bez skali, drgania, rozjaśnienia i maszynopisu; dźwięk tylko
-  `tape_stop` + jeden `ui_stamp`. To samo zachowanie co dzisiejszy `_drive_xp`.
+  kadencja wyniku.
 - **Dane spóźnione**: etap XP (i złomu u klienta) czeka na dane do 1,5 s; licznik pokazuje „…”. Jeśli nie przyjdą — etap się pomija,
   a wartość dolicza się bez animacji, gdy dojdzie. Sekwencja nigdy nie stoi.
 - Wszystkie czasy w jednej tablicy stałych (`STAGES`) — strojenie bez szukania po kodzie.
@@ -198,10 +203,10 @@ Polski jest dłuższy o ok. 20–30 % — pieczątki C i karty mają stałą sze
 ## 8. Dźwięk
 Nowe krótkie efekty z generatora UI (`tools/bake_sfx.py`, tam gdzie `ui_click` / `ui_confirm`; na szynę `Audio.BUS_UI`, wpis w `audio_manifest.gd`):
 - `ui_stamp` — głuche uderzenie gumowej pieczątki w papier na blacie (0,15 s, nisko, bez pogłosu).
-- `ui_tick` — klik przekaźnika / licznika mechanicznego (20 ms); wysokość zmienia kod (`pitch_scale`), limit 20/s.
-- `ui_type` — pojedyncze stuknięcie maszyny do pisania (cicho, rzadko).
+- `ui_tick` — klik przekaźnika / licznika mechanicznego (20 ms); od 1.7.680 raz na koniec licznika, wysokość zmienia kod (`pitch_scale`).
+- `ui_type` — pojedyncze stuknięcie maszyny do pisania; od 1.7.680 raport go nie używa.
 - `ui_levelup` — niski akord (smyczki/organy syntezatora z lat 80.) z lekkim „wow” taśmy, 1,2 s. Nie dzwonek, nie fanfara.
-Muzyka: `tape_stop` zostaje sygnałem końca; ambient (deszcz, las) trwa przyciszony — cisza po akcji jest częścią tonu. Odsłuch A/B
+Muzyka: sygnałem końca jest kadencja wyniku (`tape_stop` tylko przy wipe'ie i końcu serii); ambient (deszcz, las) trwa przyciszony — cisza po akcji jest częścią tonu. Odsłuch A/B
 przed scaleniem (jak w AUDIO_PLAN.md).
 
 ## 9. Dostępność
