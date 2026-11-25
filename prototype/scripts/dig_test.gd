@@ -102,6 +102,10 @@ func run(m: Node2D) -> void:
 		await _submerge_k3d()
 		_finish()
 		return
+	if "--digonly=resurface" in OS.get_cmdline_user_args():  # powrót zanurzonego do kopiącego obok (LUPACZ_PLAN.md L0)
+		await _resurface_l0()
+		_finish()
+		return
 	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48 + 16 — komora DigZone4 to powietrze)" % dig0, dig0 == 192 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
@@ -119,6 +123,7 @@ func run(m: Node2D) -> void:
 	await _wake_k3()
 	await _claw_k3c()
 	await _submerge_k3d()
+	await _resurface_l0()
 	await _minimap_k5()
 	await _chamber_k5b()
 	await _signals()
@@ -265,6 +270,100 @@ func _submerge_k3d() -> void:
 		await get_tree().physics_frame
 		t += 1.0 / float(Engine.physics_ticks_per_second)
 	check("K3d: gracz wchodzi do strefy — Łupacz od razu drapie przy nim (%.2f s)" % t, int(mole._sp) == Mole.SP_RISE)
+	mole.queue_free()
+	rock.reset_to(PackedByteArray())
+	player.hp = player.MAX_HP
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	await _frames(0.2)
+
+## LUPACZ_PLAN.md L0 — przypadek z playtestu 1.7.685 (z1_m1): Łupacz w chodniku strefy 20 px od kopiącego gracza dostaje kulę w kark
+## przy HP 25% i zanurza się (`hurt`); gracz dalej kopie obok. Zanurzony ma wrócić w ≤ 4 s (SUB_TIME + RISE_TIME) i dojść do gracza.
+## Dziennik sesji: `mole_under`, `mole_rise`, `mole_emerge`, `mole_hit` i licznik `mission_end.mole`.
+func _resurface_l0() -> void:
+	var Mole := preload("res://scripts/enemy_mole.gd")
+	rock.reset_to(PackedByteArray())
+	level.clear_pickups()
+	await _frames(0.1)
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "lupacz_l0"})
+	var rr: Rect2 = rock.rect_px()
+	var floor_y := rr.end.y - 6.0
+	var gallery := Vector2(rr.position.x + 56.0, floor_y - 9.0)            # chodnik 80 × 18 px przy dnie skały
+	rock.apply_dig(gallery, Vector2(40.0, 9.0), 2.0, DigMats.Tool.BLAST)
+	await _frames(0.1)
+	_place_player(Vector2(gallery.x + 18.0, floor_y))
+	player.hp = player.MAX_HP
+	await _frames(0.3)
+	var names: Array = Director.spawn_at(["lupacz"], Vector2(gallery.x - 2.0, floor_y), player.global_position)
+	await _frames(0.4)
+	var mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	check("L0: Łupacz w chodniku obok gracza (%.0f px)" % (mole.global_position.distance_to(player.global_position) if mole != null else -1.0),
+		mole != null and bool(mole.active) and mole.global_position.distance_to(player.global_position) < 30.0)
+	if mole == null:
+		return
+	var beh = mole._beh
+	mole.hp = mole._max_hp * 0.3
+	mole.take_hit({"type": "bullet", "amount": 200.0, "pos": mole.global_position + Vector2(mole._facing * 6.0, -6.0), "dir": Vector2(-mole._facing, 0.0), "shooter": 1})
+	mole.hp = mole._max_hp * 0.25                                            # kark rozbity kulą, HP 25%
+	mole._ignite(3.0)                                                        # płonie (np. lampa z płyty zadu)
+	var t := 0.0
+	while t < 1.5 and int(mole._sp) > Mole.SP_UNDER:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	check("L0: po rozbitym karku przy HP 25%% zanurza się (%.2f s, płyt %d)" % [t, beh.intact()], int(mole._sp) == Mole.SP_UNDER and beh.intact() == 2)
+	# przyczyna z playtestu: granat 40 mm (i pył ćm) w otwarty dołek zabijał ukrytego Łupacza pod ziemią, ogień palił go dalej w skale
+	var hp_under: float = mole.hp
+	await _frames(0.3)
+	var gl := Weapons.index_of("gniew4")
+	Combat.explode(get_tree(), mole.global_position + Vector2(0.0, -6.0), Weapons.def(gl).blast_radius, Weapons.def(gl).blast_damage, 1, gl)
+	mole.take_bullet(mole.global_position + Vector2(8.0, -4.0), 40.0)           # wybuch beczki i obrażenia otoczenia
+	await _frames(0.3)
+	player.hp = player.MAX_HP                                                # odłamki granatu drasnęły gracza
+	check("L0: w skale nietykalny — ogień gaśnie, wybuch granatu i beczki nie rani (HP %.0f → %.0f, płonie %.1f s, żyje %s)" % [hp_under, mole.hp, float(mole._burn), str(mole.alive)],
+		bool(mole.alive) and is_equal_approx(float(mole.hp), hp_under) and float(mole._burn) <= 0.0 and int(mole._sp) <= Mole.SP_UNDER)
+	# gracz kopie dalej obok (cios kilofem w czoło chodnika co 0,45 s) — Łupacz ma wrócić i dojść do niego
+	var hp0: int = player.hp
+	t = 0.0
+	var swing_t := 0.0
+	var rise_t := -1.0
+	var emerge_t := -1.0
+	var max_d := 0.0
+	while t < 12.0 and player.hp >= hp0 and is_instance_valid(mole) and bool(mole.alive):
+		await get_tree().physics_frame
+		var dt := 1.0 / float(Engine.physics_ticks_per_second)
+		t += dt
+		swing_t += dt
+		if swing_t >= 0.45 and emerge_t < 0.0:
+			swing_t = 0.0
+			player.weapons._server_melee(player.global_position + Vector2(0, -9), Vector2.RIGHT, pick, player.player_id)
+		if rise_t < 0.0 and int(mole._sp) == Mole.SP_RISE:
+			rise_t = t
+		if emerge_t < 0.0 and int(mole._sp) > Mole.SP_UNDER and not beh.is_hidden():
+			emerge_t = t
+		if emerge_t >= 0.0:
+			max_d = maxf(max_d, mole.global_position.distance_to(player.global_position))
+	info("L0: drapanie po %.2f s, wyjście po %.2f s, HP gracza %d → %d po %.1f s, Łupacz %s, gracz %s, _sp %d, AI %s" % [rise_t, emerge_t, hp0, player.hp, t,
+		str(mole.global_position.round()), str(player.global_position.round()), int(mole._sp), mole.ai_name()])
+	check("L0: zanurzony wraca do kopiącego obok — drapie po %.2f s i wychodzi po %.2f s (≤ 4 s)" % [rise_t, emerge_t],
+		rise_t >= 0.0 and emerge_t >= 0.0 and emerge_t <= 4.0)
+	check("L0: po wyjściu dochodzi do gracza i uderza (HP %d → %d w %.1f s)" % [hp0, player.hp, t], player.hp < hp0)
+	mole.take_hit({"type": "blast", "amount": 999.0, "pos": mole.global_position + Vector2(0.0, -6.0), "dir": Vector2.UP, "shooter": 1})
+	await _frames(0.1)
+	SessionLog.mission_end({"result": "test"})
+	var rises := _log_events("mole_rise")
+	var emerges := _log_events("mole_emerge")
+	var hits := _log_events("mole_hit")
+	var ends := _log_events("mission_end")
+	var sum: Dictionary = (ends[-1] as Dictionary).get("mole", {}) if not ends.is_empty() else {}
+	check("L0: dziennik — mole_under, mole_rise, mole_emerge, mole_hit (komu, ile, czym) i mission_end.mole (%s)" % str(sum),
+		_log_events("mole_under").size() == 1 and rises.size() == 1 and emerges.size() == 1 and hits.size() >= 1
+		and String((hits[0] as Dictionary).get("to", "")) == "P1" and String((hits[0] as Dictionary).get("by", "")) == "swipe" and int((hits[0] as Dictionary).get("dmg", 0)) >= 1
+		and int(sum.get("rises", 0)) == 1 and int(sum.get("emerges", 0)) == 1 and int(sum.get("hits", 0)) >= 1 and int(sum.get("deaths", 0)) == 1)
+	var deaths := _log_events("mole_death")
+	check("L0: dziennik — mole_death czym i z iloma płytami (%s)" % str(deaths),
+		not bool(mole.alive) and deaths.size() == 1 and String((deaths[0] as Dictionary).get("by", "")) == "blast" and (deaths[0] as Dictionary).has("plates"))
+	SessionLog.enabled = false
 	mole.queue_free()
 	rock.reset_to(PackedByteArray())
 	player.hp = player.MAX_HP

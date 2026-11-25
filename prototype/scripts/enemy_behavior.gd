@@ -235,6 +235,11 @@ func on_ready() -> void:
 func is_hidden() -> bool:
 	return false
 
+## Serwer: czy trafienie `info` (też wybuch, beczka, obrażenia otoczenia) w ogóle nie dochodzi do wroga — Łupacz w skale (LUPACZ_PLAN.md L0).
+## Zamaskowany Żerca zostaje trafialny wybuchem (ujawnia się), więc to nie to samo co `is_hidden`.
+func immune(_info: Dictionary) -> bool:
+	return false
+
 ## Czy obudzenie tego wroga budzi sąsiada `other` (i odwrotnie — rdzeń pyta obie strony); domyślnie cała okolica budzi się razem. Ćma budzi tylko ćmy.
 func sibling_wake_ok(_other) -> bool:
 	return true

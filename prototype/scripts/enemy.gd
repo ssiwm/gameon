@@ -1464,6 +1464,8 @@ func take_hit(info: Dictionary) -> Dictionary:
 		return {}
 	if bool(_def.get("melee_only", false)) and info.get("type", "bullet") != "melee":
 		return {}                        # Ćma: ogień, wybuch, płomień i pocisk nie robią nic (bez trafienia, bez budzenia)
+	if _beh.immune(info):
+		return {}                        # Łupacz w skale: wybuch w dołek nad nim go nie sięga
 	var dmg: float = info["amount"]
 	var silent: bool = info.get("silent", false)
 	_alert = 0.0                                                       # trafiony nie stoi i nie patrzy — walczy (i nie dostaje reakcji przy budzeniu od tego trafienia)
@@ -1553,7 +1555,7 @@ func _ignite_fx(seconds: float) -> void:
 ## Trafienie pociskiem (tylko serwer). Odrzut i krótkie ogłuszenie dają
 ## „mięso" strzałowi (GDD §23).
 func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
-	if not NoiseMgr.is_server() or not alive or bool(_def.get("melee_only", false)):
+	if not NoiseMgr.is_server() or not alive or bool(_def.get("melee_only", false)) or _beh.immune({"type": "blast", "pos": from_pos}):
 		return
 	dmg = _beh.absorb({"type": "blast", "pos": from_pos}, dmg)          # wybuch beczki i inne obrażenia otoczenia: jak wybuch (skorupa Łupacza)
 	hp -= dmg * _beh.damage_mult()

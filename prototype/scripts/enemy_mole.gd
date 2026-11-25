@@ -98,6 +98,14 @@ var sub_zone = null
 var rise_src := Vector2.INF
 var rise_side := 1.0
 var submerges := 0                      ## serwer: zanurzenia od wczytania (test, dziennik)
+var under_t := 0.0                      ## serwer: s pod ziemią w tym zanurzeniu (dziennik `mole_rise`)
+
+## Dziennik spotkań (LUPACZ_PLAN.md L0): `mole_stuck`, gdy po wyjściu z kieszeni STUCK_LOG s goni cel bez postępu — raz na wyjście.
+const STUCK_LOG := 3.0
+var stuck_t := 0.0
+var _stuck_at := Vector2.INF
+var _stuck_logged := false
+var _last_by := ""                      ## serwer: czym dostał ostatnio (dziennik `mole_death`)
 var _was_active := false                ## serwer: był aktywny w poprzednim tiku — przejście w sen po szukaniu = zanurzenie
 
 var dig_cd := 0.0
@@ -140,6 +148,11 @@ func reset() -> void:
 	rise_src = Vector2.INF
 	_was_active = false
 	token_dropped = false
+	under_t = 0.0
+	stuck_t = 0.0
+	_stuck_at = Vector2.INF
+	_stuck_logged = false
+	_last_by = ""
 
 # ---------------------------------------------------------------- skorupa
 
@@ -212,6 +225,11 @@ func threat_ok() -> bool:
 func may_attack() -> bool:
 	return not is_hidden()
 
+## W skale (zanurzony i drapiący) nic go nie rani. Playtest 1.7.685: granat 40 mm w otwarty dołek nad nim (i pył ćm) zabijał rannego
+## Łupacza pod ziemią — niewidocznie, więc wyglądało, jakby nie wrócił (LUPACZ_PLAN.md L0).
+func immune(_info: Dictionary) -> bool:
+	return is_hidden()
+
 ## Serwer: strefa, w której Łupacz ma się zanurzyć teraz, albo null. Tylko na podłożu, poza ciosem, w samej strefie.
 func _wants_under(went_idle := false):
 	if sub_cd > 0.0 or (not e.active and not went_idle) or e._windup > 0.0 or recovery_left > 0.0 or not e.is_on_floor():
@@ -227,6 +245,7 @@ func _wants_under(went_idle := false):
 func _go_under(zone) -> void:
 	sub_zone = zone
 	sub_t = 0.0
+	under_t = 0.0
 	sub_cd = SUB_CD
 	submerges += 1
 	var why := "hurt" if e.hp < e._max_hp * SUB_HP and intact() < PLATES else "lost"
@@ -235,6 +254,7 @@ func _go_under(zone) -> void:
 	e._sp = SP_UNDER
 	e.velocity = Vector2.ZERO
 	e._windup = 0.0
+	e._burn = 0.0                                              # skała dusi ogień (lampa z płyty zadu, plama) — inaczej dopalał się pod ziemią
 	zone.claw_dig(e.global_position + Vector2(0.0, 2.0), Vector2(7.0, 5.0), DIG_ROUND, Vector2.UP)      # dołek po zanurzeniu
 	var log_s: GDScript = load(SESSION_LOG_PATH)
 	log_s.event("mole_under", {"why": why, "hp": roundi(e.hp), "plates": intact(), "pos": log_s.xy(e.global_position)})
@@ -242,6 +262,7 @@ func _go_under(zone) -> void:
 
 func _tick_under(delta: float) -> void:
 	sub_t += delta
+	under_t += delta
 	e.velocity = Vector2.ZERO
 	if sub_zone == null or not is_instance_valid(sub_zone):
 		e._sp = 0                                              # strefa zniknęła (zmiana mapy) — wraca tam, gdzie był
@@ -255,11 +276,21 @@ func _tick_under(delta: float) -> void:
 			rise_side = float(spot[2])
 			e.global_position = Vector2(rise_src.x + rise_side * 4.0, rise_src.y + float(sub_zone.WAKE_POCKET.y) - 1.0)
 			e._sp = SP_RISE
+			var log_r: GDScript = load(SESSION_LOG_PATH)
+			log_r.event("mole_rise", {"to": _who(who), "spot": log_r.xy(rise_src), "behind": bool(spot[1]), "under": snappedf(under_t, 0.1)})
+			log_r.note_mole("rises")
 			sub_t = 0.0
 			e.behavior_fx("rise:%d:%d" % [roundi(rise_src.x), roundi(rise_src.y)])
 	elif sub_t >= RISE_TIME:
 		sub_zone.open_pocket(rise_src)
-		_regrow(String(sub_zone.material_at_px(rise_src)))
+		var mat := String(sub_zone.material_at_px(rise_src))
+		var grown := _regrow(mat)
+		var log_e: GDScript = load(SESSION_LOG_PATH)
+		log_e.event("mole_emerge", {"pos": log_e.xy(e.global_position), "mat": mat, "grow": grown, "plates": intact(), "under": snappedf(under_t, 0.1)})
+		log_e.note_mole("emerges")
+		_stuck_logged = false
+		stuck_t = 0.0
+		_stuck_at = Vector2.INF
 		lost_t = 0.0
 		e._sp = 0
 		begin_entry(-rise_side, 0.0)                           # wyjście z kieszeni przodem do chodnika (jak K3)
@@ -278,13 +309,56 @@ func _rise_target() -> Node2D:
 			best = pn
 	return best
 
-## Odrasta pierwsza rozbita płyta (od karku): z żyły pirytowa, inaczej łupkowa.
-func _regrow(material: String) -> void:
+## Odrasta pierwsza rozbita płyta (od karku): z żyły pirytowa, inaczej łupkowa. Zwraca numer płyty albo −1.
+func _regrow(material: String) -> int:
 	for i in PLATES:
 		if plates[i] <= 0.0:
 			plates[i] = PYRITE_HP if material == "vein" else PLATE_HP
 			e.behavior_fx("grow%d" % i)
-			return
+			return i
+	return -1
+
+## Gracz w dzienniku: P<n> (bot jak człowiek — pole `bot` mówi resztę).
+static func _who(p: Node) -> String:
+	return "P%d" % int(p.get("display_id")) if p != null and p.get("display_id") != null else String(p.name) if p != null else ""
+
+## Serwer, cios w zasięgu (te same warunki co `enemy.gd: _resolve_attack`): wpis `mole_hit` — komu, ile, czym. Cios zadaje rdzeń.
+func strike(pp: Node2D) -> bool:
+	if pp != null and is_instance_valid(pp) and not bool(pp.get("dead")) and e._in_reach(pp, 6.0) and not e._wall_between(pp):
+		var dmg: int = e._scaled_damage(int(e._def["damage"]))
+		var log_s: GDScript = load(SESSION_LOG_PATH)
+		log_s.event("mole_hit", {"to": _who(pp), "bot": bool(pp.get("is_bot")), "dmg": dmg, "by": "swipe", "hp": int(pp.get("hp")), "pos": log_s.xy(e.global_position)})
+		log_s.note_mole("hits")
+		log_s.note_mole("dmg", float(dmg))
+	return false
+
+func took_hit(info: Dictionary, _dmg: float) -> void:
+	_last_by = String(info.get("type", ""))
+	if int(info.get("w", -1)) == Weapons.KILOF and _last_by == "melee":
+		_last_by = "pick"
+
+func on_death() -> void:
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("mole_death", {"by": _last_by, "plates": intact(), "submerges": submerges, "pos": log_s.xy(e.global_position)})
+	log_s.note_mole("deaths")
+
+## Serwer, po wyjściu z kieszeni: STUCK_LOG s pościgu bez postępu (ruch < STALL_MOVE px) — wpis `mole_stuck` raz na wyjście.
+func _watch_stuck(delta: float) -> void:
+	if _stuck_logged or not e.active or (e._target == null and not e._has_lead) or e._windup > 0.0 or recovery_left > 0.0 			or (e._target != null and e._in_reach(e._target, 0.0)):
+		stuck_t = 0.0
+		_stuck_at = e.global_position
+		return
+	if _stuck_at.distance_to(e.global_position) > STALL_MOVE:
+		_stuck_at = e.global_position
+		stuck_t = 0.0
+		return
+	stuck_t += delta
+	if stuck_t >= STUCK_LOG:
+		_stuck_logged = true
+		var goal: Vector2 = e._target.global_position if e._target != null else e._last_known
+		var log_s: GDScript = load(SESSION_LOG_PATH)
+		log_s.event("mole_stuck", {"pos": log_s.xy(e.global_position), "goal": log_s.xy(goal), "target": _who(e._target) if e._target != null else "", "ai": e.ai_name()})
+		log_s.note_mole("stuck")
 
 ## Serwer: hełm z płyty karku spada — w nim marka lampowa górnika z tej mapy, której gospodarz jeszcze nie ma (lamp_tokens.gd `for_map`).
 func _drop_token() -> void:
@@ -377,6 +451,7 @@ func tick_special(delta: float) -> bool:
 		lost_t = 0.0 if (e._target != null or e._has_lead or not e.active) else lost_t + delta
 		var went_idle: bool = _was_active and not e.active
 		_was_active = e.active
+		_watch_stuck(delta)
 		var zone = _wants_under(went_idle)
 		if zone != null:
 			_go_under(zone)

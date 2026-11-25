@@ -99,6 +99,7 @@ static var _scrap_drop := 0            ## złom wyrzucony przez wrogów i bossa 
 static var _battery := {}              ## baterie w tej próbie: dropped / picked / empty (mission_end.battery)
 static var _items := {}                ## rodzaj przedmiotu → użycia w tej próbie (mission_end.items)
 static var _dig := {}                  ## strefa wydobycia → {hits, clink, blasts, s, ore, finds, first_hit, first_find, enter_P<n>} w tej próbie (mission_end.dig, DIG_LOOT_PLAN.md K0)
+static var _mole := {}                 ## Łupacz w tej próbie: rises / emerges / hits / dmg / stuck / deaths (mission_end.mole, LUPACZ_PLAN.md L0)
 static var _kills_by := {}             ## id gracza → {rodzaj wroga → zabójstwa} (tylko zabójstwa dające XP: ludzie)
 static var _xp_by := {}                ## id gracza → XP za zabójstwa w tej próbie
 static var _build := ""
@@ -189,6 +190,7 @@ static func mission_start(data: Dictionary) -> void:
 	_battery = {"dropped": 0, "picked": 0, "empty": 0}
 	_items = {}
 	_dig = {}
+	_mole = {}
 	_kills_by = {}
 	_xp_by = {}
 	row.merge(data)
@@ -226,6 +228,11 @@ static func mission_end(data: Dictionary) -> void:
 	var dig := dig_summary()
 	if not dig.is_empty():
 		row["dig"] = dig
+	if not _mole.is_empty():
+		var mole := {}
+		for k in _mole:
+			mole[k] = roundi(float(_mole[k]))
+		row["mole"] = mole
 	_write("mission_end", row)
 	_in_mission = false
 
@@ -313,6 +320,12 @@ static func note_dig(zone: String, field: String, amount := 1.0) -> void:
 	var z: Dictionary = _dig.get(zone, {})
 	z[field] = float(z.get(field, 0.0)) + amount
 	_dig[zone] = z
+
+## Łupacz (LUPACZ_PLAN.md L0): dolicza `amount` do licznika `field` w tej próbie (mission_end.mole).
+static func note_mole(field: String, amount := 1.0) -> void:
+	if not recording():
+		return
+	_mole[field] = float(_mole.get(field, 0.0)) + amount
 
 ## Strefa wydobycia (K0): zapisuje czas od startu próby w polu `field`, jeśli jeszcze go nie ma. True — to był pierwszy raz.
 static func note_dig_first(zone: String, field: String) -> bool:
@@ -463,3 +476,4 @@ static func reset_for_test() -> void:
 	_weapons = {}
 	_dmg_by = {}
 	_dig = {}
+	_mole = {}
