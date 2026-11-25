@@ -106,6 +106,10 @@ func run(m: Node2D) -> void:
 		await _resurface_l0()
 		_finish()
 		return
+	if "--digonly=tremor" in OS.get_cmdline_user_args():     # zmysł drgań, tempo i zryw Łupacza (LUPACZ_PLAN.md L1)
+		await _tremor_l1()
+		_finish()
+		return
 	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48 + 16 — komora DigZone4 to powietrze)" % dig0, dig0 == 192 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
@@ -124,6 +128,7 @@ func run(m: Node2D) -> void:
 	await _claw_k3c()
 	await _submerge_k3d()
 	await _resurface_l0()
+	await _tremor_l1()
 	await _minimap_k5()
 	await _chamber_k5b()
 	await _signals()
@@ -236,6 +241,7 @@ func _submerge_k3d() -> void:
 	while t < Mole.SUB_TIME + 0.5 and int(mole._sp) != Mole.SP_RISE:
 		await get_tree().physics_frame
 		t += 1.0 / float(Engine.physics_ticks_per_second)
+		_tremor_every(t, 0.5, "dig")                                     # gracz kopie — od L1 zanurzony wychodzi tylko do poczutego
 	check("K3d: po %.1f s drapie za czołem wykopu gracza (%.0f px od niego), wciąż ukryty" % [t, mole.global_position.distance_to(player.global_position)],
 		int(mole._sp) == Mole.SP_RISE and beh.is_hidden() and mole.global_position.distance_to(player.global_position) < 70.0)
 	var src: Vector2 = beh.rise_src
@@ -269,6 +275,7 @@ func _submerge_k3d() -> void:
 	while t < 2.0 and int(mole._sp) != Mole.SP_RISE:
 		await get_tree().physics_frame
 		t += 1.0 / float(Engine.physics_ticks_per_second)
+		_tremor_every(t, 0.5, "run")                                     # wchodzi biegiem
 	check("K3d: gracz wchodzi do strefy — Łupacz od razu drapie przy nim (%.2f s)" % t, int(mole._sp) == Mole.SP_RISE)
 	mole.queue_free()
 	rock.reset_to(PackedByteArray())
@@ -296,7 +303,7 @@ func _resurface_l0() -> void:
 	player.hp = player.MAX_HP
 	await _frames(0.3)
 	var names: Array = Director.spawn_at(["lupacz"], Vector2(gallery.x - 2.0, floor_y), player.global_position)
-	await _frames(0.4)
+	await get_tree().physics_frame                                       # od razu ranny — od L1 (30 px/s) zdążyłby uderzyć, zanim się zanurzy
 	var mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
 	check("L0: Łupacz w chodniku obok gracza (%.0f px)" % (mole.global_position.distance_to(player.global_position) if mole != null else -1.0),
 		mole != null and bool(mole.active) and mole.global_position.distance_to(player.global_position) < 30.0)
@@ -315,11 +322,13 @@ func _resurface_l0() -> void:
 	# przyczyna z playtestu: granat 40 mm (i pył ćm) w otwarty dołek zabijał ukrytego Łupacza pod ziemią, ogień palił go dalej w skale
 	var hp_under: float = mole.hp
 	await _frames(0.3)
+	var stand: Vector2 = player.global_position
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))                           # gracz poza promieniem wybuchu
 	var gl := Weapons.index_of("gniew4")
 	Combat.explode(get_tree(), mole.global_position + Vector2(0.0, -6.0), Weapons.def(gl).blast_radius, Weapons.def(gl).blast_damage, 1, gl)
 	mole.take_bullet(mole.global_position + Vector2(8.0, -4.0), 40.0)           # wybuch beczki i obrażenia otoczenia
 	await _frames(0.3)
-	player.hp = player.MAX_HP                                                # odłamki granatu drasnęły gracza
+	_place_player(stand)
 	check("L0: w skale nietykalny — ogień gaśnie, wybuch granatu i beczki nie rani (HP %.0f → %.0f, płonie %.1f s, żyje %s)" % [hp_under, mole.hp, float(mole._burn), str(mole.alive)],
 		bool(mole.alive) and is_equal_approx(float(mole.hp), hp_under) and float(mole._burn) <= 0.0 and int(mole._sp) <= Mole.SP_UNDER)
 	# gracz kopie dalej obok (cios kilofem w czoło chodnika co 0,45 s) — Łupacz ma wrócić i dojść do niego
@@ -337,6 +346,7 @@ func _resurface_l0() -> void:
 		if swing_t >= 0.45 and emerge_t < 0.0:
 			swing_t = 0.0
 			player.weapons._server_melee(player.global_position + Vector2(0, -9), Vector2.RIGHT, pick, player.player_id)
+		_tremor_every(t, 0.45, "dig")                                    # kopie (cios w czoło chodnika; gdy czoło za daleko — drganie jak od ciosu)
 		if rise_t < 0.0 and int(mole._sp) == Mole.SP_RISE:
 			rise_t = t
 		if emerge_t < 0.0 and int(mole._sp) > Mole.SP_UNDER and not beh.is_hidden():
@@ -346,7 +356,7 @@ func _resurface_l0() -> void:
 	info("L0: drapanie po %.2f s, wyjście po %.2f s, HP gracza %d → %d po %.1f s, Łupacz %s, gracz %s, _sp %d, AI %s" % [rise_t, emerge_t, hp0, player.hp, t,
 		str(mole.global_position.round()), str(player.global_position.round()), int(mole._sp), mole.ai_name()])
 	check("L0: zanurzony wraca do kopiącego obok — drapie po %.2f s i wychodzi po %.2f s (≤ 4 s)" % [rise_t, emerge_t],
-		rise_t >= 0.0 and emerge_t >= 0.0 and emerge_t <= 4.0)
+		rise_t >= 0.0 and emerge_t >= 0.0 and emerge_t <= 4.0 and not bool(player.dead))
 	check("L0: po wyjściu dochodzi do gracza i uderza (HP %d → %d w %.1f s)" % [hp0, player.hp, t], player.hp < hp0)
 	mole.take_hit({"type": "blast", "amount": 999.0, "pos": mole.global_position + Vector2(0.0, -6.0), "dir": Vector2.UP, "shooter": 1})
 	await _frames(0.1)
@@ -369,6 +379,199 @@ func _resurface_l0() -> void:
 	player.hp = player.MAX_HP
 	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
 	await _frames(0.2)
+
+var _tremors: Array = []                  ## [siła, pozycja, tag] z NoiseMgr.tremor_added (L1)
+
+func _on_tremor(strength: float, pos: Vector2, tag: String) -> void:
+	_tremors.append([strength, pos, tag])
+
+const MOLE_ENTRY := 2.0
+
+## Śpiący Łupacz w `at` (bez celu i śladu, bez zanurzania).
+func _sleeping_mole(at: Vector2) -> Node2D:
+	var names: Array = Director.spawn_at(["lupacz"], at, at)
+	await _frames(MOLE_ENTRY + 0.3)
+	var mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	if mole != null:
+		mole.active = false
+		mole._target = null
+		mole._has_lead = false
+		mole._seen_serial = NoiseMgr.noise_serial
+		mole._beh.sub_cd = 99.0
+	return mole
+
+## LUPACZ_PLAN.md L1: drgania gruntu (`NoiseMgr.tremor`) bez Uwagi, Łupacz czuje je przez skałę do 260 px, powietrze słyszy do 40 px,
+## kucającego bez ruchu nie widzi poza 20 px, zanurzony wychodzi tylko do poczutego, 30 px/s i zryw 70 px/s po wyjściu z kieszeni.
+func _tremor_l1() -> void:
+	var Mole := preload("res://scripts/enemy_mole.gd")
+	var Defs := preload("res://scripts/enemy_defs.gd")
+	rock.reset_to(PackedByteArray())
+	level.clear_pickups()
+	await _frames(0.1)
+	if not NoiseMgr.tremor_added.is_connected(_on_tremor):
+		NoiseMgr.tremor_added.connect(_on_tremor)
+	player._invuln = 999.0                                                  # tu liczą się zmysły Łupacza, nie ciosy — powalony gracz psułby dalsze sekcje
+	# kanał drgań: bez Uwagi; hałas gruntu daje drganie tej samej siły, strzał nie
+	_tremors.clear()
+	var lv0: float = NoiseMgr.level
+	var far := Vector2(-4000.0, 0.0)
+	NoiseMgr.tremor(1.5, far, "land")
+	var lv1: float = NoiseMgr.level
+	await get_tree().physics_frame
+	NoiseMgr.add_noise(0.8, far, "dig")
+	await get_tree().physics_frame
+	NoiseMgr.add_noise(3.0, far, "shot:m83")
+	await get_tree().physics_frame
+	NoiseMgr.add_noise(0.25, far, "run")
+	var tags: Array = _tremors.map(func(r: Array) -> String: return String(r[2]))
+	check("L1: drganie bez Uwagi (%.2f → %.2f); kopanie i bieg dają drganie tej samej siły, strzał nie (%s)" % [lv0, lv1, str(tags)],
+		is_equal_approx(lv0, lv1) and tags == ["land", "dig", "run"] and is_equal_approx(float(_tremors[1][0]), 0.8))
+	var ld: Dictionary = Defs.DEFS["lupacz"]
+	check("L1: zasięg drgań — 260 px przy sile ≥ 1, bieg (0,25) 130 px, kopanie (0,95) ~250 px; powietrze 40 px, 30 px/s",
+		is_equal_approx(Mole.tremor_reach(1.0), 260.0) and is_equal_approx(Mole.tremor_reach(0.25), 130.0) and Mole.tremor_reach(0.95) > 240.0
+		and is_equal_approx(float(ld["hear"]), 40.0) and is_equal_approx(float(ld["speed"]), 30.0))
+	# śpiący w komorze na dnie skały; gracz daleko poza strefą
+	var rr: Rect2 = rock.rect_px()
+	var cell := Vector2(rr.position.x + 22.0, rr.end.y - 14.0)
+	rock.apply_dig(cell, Vector2(12.0, 7.0), 2.0, DigMats.Tool.BLAST)
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	await _frames(0.3)
+	var mole = await _sleeping_mole(Vector2(cell.x, cell.y + 6.0))
+	check("L1: Łupacz śpi w komorze", mole != null and not bool(mole.active))
+	if mole == null:
+		return
+	var feet: Vector2 = mole.global_position
+	NoiseMgr.add_noise(3.0, feet + Vector2(100.0, -20.0), "shot:m83")
+	await _frames(0.3)
+	var shot_slept: bool = not bool(mole.active)
+	NoiseMgr.add_noise(3.0, feet + Vector2(18.0, -6.0), "shot:m83")
+	await _frames(0.3)
+	check("L1: strzał ze 100 px go nie budzi, z 19 px tak (powietrze tylko z bliska)", shot_slept and bool(mole.active))
+	mole.queue_free()
+	await _frames(0.1)
+	mole = await _sleeping_mole(Vector2(cell.x, cell.y + 6.0))
+	var src := feet + Vector2(120.0, -40.0)
+	NoiseMgr.add_noise(0.25, src, "run")
+	await _frames(0.2)
+	check("L1: bieg 126 px dalej, przez skałę, budzi i prowadzi do źródła (ślad %s, źródło %s)" % [str(mole._last_known.round()), str(src.round())],
+		bool(mole.active) and bool(mole._has_lead) and absf(float(mole._last_known.x) - src.x) <= 48.0)
+	mole.queue_free()
+	await _frames(0.1)
+	mole = await _sleeping_mole(Vector2(cell.x, cell.y + 6.0))
+	NoiseMgr.add_noise(0.25, feet + Vector2(200.0, -40.0), "run")
+	await _frames(0.2)
+	var run_far: bool = not bool(mole.active)
+	NoiseMgr.add_noise(0.95, feet + Vector2(200.0, -40.0), "dig")
+	await _frames(0.2)
+	check("L1: bieg z 204 px nie, kopanie z tej samej odległości budzi", run_far and bool(mole.active))
+	mole.queue_free()
+	await _frames(0.1)
+	# lądowanie z wysoka: drganie „land”
+	_tremors.clear()
+	_place_player(Vector2(2.5 * 16.0, TOP - 44.0))
+	await _frames(1.0)
+	var lands: Array = _tremors.filter(func(r: Array) -> bool: return String(r[2]) == "land")
+	_tremors.clear()
+	_place_player(Vector2(2.5 * 16.0, TOP - 12.0))
+	await _frames(0.8)
+	var low: Array = _tremors.filter(func(r: Array) -> bool: return String(r[2]) == "land")
+	check("L1: lądowanie po spadku ~44 px daje drganie „land” (%s), spadek z 12 px nie" % str(lands), lands.size() == 1 and float(lands[0][0]) >= 1.0 and low.is_empty())
+	# kucający bez ruchu znika z celu poza 20 px
+	var hall := Vector2((zone.rect_px().end.x + rock.rect_px().position.x) * 0.5 + 30.0, TOP - 2.0)      # hala między strefami
+	_place_player(hall)
+	await _frames(0.5)
+	hall = player.global_position
+	var names: Array = Director.spawn_at(["lupacz"], hall + Vector2(-30.0, 0.0), hall)
+	await _frames(MOLE_ENTRY + 0.3)
+	mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	if mole == null:
+		check("L1: Łupacz w hali", false)
+		return
+	mole._beh.sub_cd = 99.0
+	var t := 0.0
+	while t < 0.5:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		mole.global_position = hall + Vector2(-30.0, 0.0)               # trzymany 30 px od gracza (kucającego widać z 37 px) — liczy się wzrok, nie dojście
+		mole.velocity = Vector2.ZERO
+	var saw: bool = mole._target == player
+	Input.action_press("crouch")
+	t = 0.0
+	var lost_at := -1.0
+	while t < 1.5 and lost_at < 0.0:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		mole.global_position = hall + Vector2(-30.0, 0.0)
+		mole.velocity = Vector2.ZERO
+		if mole._target == null:
+			lost_at = t
+	check("L1: kucający bez ruchu znika z celu Łupacza z 30 px (ruszający się kucający — nie) (po %.2f s; widział stojącego: %s)" % [lost_at, str(saw)], saw and lost_at > 0.25 and lost_at < 1.0)
+	t = 0.0
+	while t < 0.4:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		mole.global_position = hall + Vector2(-16.0, 0.0)
+		mole.velocity = Vector2.ZERO
+	var close_seen: bool = mole._target == player
+	Input.action_release("crouch")
+	t = 0.0
+	while t < 0.4:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		mole.global_position = hall + Vector2(-30.0, 0.0)
+		mole.velocity = Vector2.ZERO
+	check("L1: z 16 px widzi kucającego, wstającego znów z 30 px", close_seen and mole._target == player)
+	mole.queue_free()
+	await _frames(0.1)
+	# zanurzony: cichy gracz w strefie — czeka; kopiący — wychodzi do niego
+	var cell_b := Vector2(rr.end.x - 26.0, rr.end.y - 14.0)
+	rock.apply_dig(cell_b, Vector2(14.0, 8.0), 2.0, DigMats.Tool.BLAST)
+	await _frames(0.1)
+	_place_player(Vector2(cell_b.x, cell_b.y + 6.0))
+	Input.action_press("crouch")
+	await _frames(0.3)
+	names = Director.spawn_at(["lupacz"], Vector2(cell.x, cell.y + 6.0), Vector2(cell.x, cell.y + 6.0))
+	await _frames(MOLE_ENTRY + 0.3)
+	mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	if mole == null:
+		Input.action_release("crouch")
+		return
+	mole._beh._go_under(rock)
+	t = 0.0
+	while t < Mole.SUB_TIME + 2.0 and int(mole._sp) == Mole.SP_UNDER:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	var quiet_wait: bool = int(mole._sp) == Mole.SP_UNDER
+	Input.action_release("crouch")
+	t = 0.0
+	while t < 2.0 and int(mole._sp) != Mole.SP_RISE:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		if fmod(t, 0.45) < 1.0 / float(Engine.physics_ticks_per_second):
+			player.weapons._server_melee(player.global_position + Vector2(0, -9), Vector2.RIGHT, pick, player.player_id)
+	check("L1: zanurzony przy cichym graczu w strefie czeka w skale (%.1f s), przy kopiącym drapie po %.2f s (%.0f px od niego)" % [Mole.SUB_TIME + 2.0, t,
+		mole.global_position.distance_to(player.global_position)], quiet_wait and int(mole._sp) == Mole.SP_RISE and mole.global_position.distance_to(player.global_position) < 70.0)
+	# zryw po wyjściu z kieszeni
+	t = 0.0
+	while t < Mole.RISE_TIME + Mole.ENTRY_SECONDS + 0.5 and (int(mole._sp) != 0 or float(mole._beh.burst_t) <= 0.0):
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	var burst: float = float(mole._beh.speed_mult()) * float(mole._def["speed"])
+	await _frames(Mole.BURST_TIME + 0.1)
+	var walk: float = float(mole._beh.speed_mult()) * float(mole._def["speed"])
+	check("L1: po wyjściu z kieszeni zryw %.0f px/s przez %.1f s, potem %.0f px/s" % [burst, Mole.BURST_TIME, walk],
+		is_equal_approx(burst, Mole.BURST_SPEED) and is_equal_approx(walk, 30.0))
+	player._invuln = 0.0
+	mole.queue_free()
+	rock.reset_to(PackedByteArray())
+	player.hp = player.MAX_HP
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	await _frames(0.2)
+
+## Drganie gruntu (NoiseMgr.tremor) przy graczu co `every` s pętli testu z czasem `t` — gracz kopie albo biegnie (Łupacz czuje grunt, L1).
+func _tremor_every(t: float, every: float, tag: String, strength := 1.0) -> void:
+	if fmod(t, every) < 1.0 / float(Engine.physics_ticks_per_second):
+		NoiseMgr.tremor(strength, player.global_position, tag)
 
 func _on_noise(amount: float, pos: Vector2, tag: String) -> void:
 	if tag == "dig":

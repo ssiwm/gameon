@@ -39,8 +39,10 @@ const Mole := preload("res://scripts/enemy_mole.gd")
 const DEFS := {
 	"lupacz": {
 		"behavior": "mole", "sheet": "trzosek", "frontal": true,
-		"hp": 72.0, "speed": 16.0, "damage": 2, "windup": Mole.CONTACT, "reach": 13.0,
-		"cooldown": 1.55, "leap": false, "hear": 220.0, "wake_near": 35.0, "sight": 62.0, "hear_error": 32.0,
+		# L1 (LUPACZ_PLAN.md): 30 px/s (zryw 70 po wyjściu z kieszeni — Mole.BURST_SPEED); powietrze słyszy tylko do 40 px, resztę czuje
+		# gruntem (drgania, Mole.TREMOR_RANGE); kucającego bez ruchu nie widzi poza Mole.STILL_SEE
+		"hp": 72.0, "speed": 30.0, "damage": 2, "windup": Mole.CONTACT, "reach": 13.0,
+		"cooldown": 1.55, "leap": false, "hear": 40.0, "wake_near": 35.0, "sight": 62.0, "hear_error": 32.0,
 		"color": Color(0.42, 0.39, 0.34), "size": Vector2(13, 10), "hurt_w": 17.0, "hurt_h": 12.0,
 		"knock": 40.0, "knock_mult": 0.65, "head": 0.0,
 		"xp": 4, "scrap": 4,          # bez nabojów i baterii z trupa (1.7.682): łupem jest urobek z płyt skorupy (enemy_mole.gd PLATE_ORE)

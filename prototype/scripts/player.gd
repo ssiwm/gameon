@@ -241,6 +241,9 @@ var _beam: Lights.GameLight
 var _overlay: Node2D
 var _jump_buf := 0.0
 var _was_on_floor := true
+var _air_top_y := INF                    ## najwyższy punkt stóp w locie (lądowanie z wysoka = drganie gruntu, LUPACZ_PLAN.md L1)
+## Lądowanie po spadku od LAND_TREMOR_PX daje drganie gruntu (`NoiseMgr.tremor`, „land”) — czuje je Łupacz, Uwaga bez zmian.
+const LAND_TREMOR_PX := 24.0
 var _spawn_point := Vector2.ZERO
 var _base_spawn := Vector2.ZERO        ## start mapy, gdy `_spawn_point` wskazuje punkt kontrolny bossa (FUN_PLAN.md P0.3)
 var _at_checkpoint := false
@@ -1147,9 +1150,14 @@ func _local_brain(delta: float) -> void:
 			Audio.play_at("land_hard", global_position, Audio.BUS_PLAYER,
 				lerpf(-24.0, -8.0, clampf(drop / 1.2, 0.0, 1.0)))
 			Feel.shake(clampf(drop * 2.0, 0.0, 2.0))
+		var fall_px := global_position.y - _air_top_y
+		if fall_px >= LAND_TREMOR_PX:
+			NoiseMgr.tremor(minf(fall_px / 32.0, 3.0), global_position, "land")
 		_air_time_accum = 0.0
+		_air_top_y = INF
 	elif not is_on_floor():
 		_air_time_accum += delta
+		_air_top_y = minf(_air_top_y, global_position.y)
 	_was_on_floor = is_on_floor()
 
 	move_and_slide()

@@ -15,6 +15,7 @@ signal lure_used(by: Node)                  ## serwer: udane Q (nie „zwietrza�
 signal lured(lock: float)                   ## każdy peer: Stalker przytrzymany na wabiku przez `lock` s (0 = przytrzymanie przerwane)
 signal lure_broken_by_light                  ## każdy peer: Stalker dostrzegł światło w trakcie przytrzymania
 signal noise_added(amount: float, pos: Vector2, tag: String)   ## serwer: każde zdarzenie hałasu po mnożnikach (mission.gd: hałas graczy)
+signal tremor_added(strength: float, pos: Vector2, tag: String)   ## serwer: drganie gruntu (`tremor`) — test, dziennik
 signal peak_released                        ## każdy peer: Uwaga za długo na 100 — sama opadła do PEAK_RELEASE (hud.gd: komunikat „oddech”)
 
 const MAX_LEVEL := 100.0
@@ -68,6 +69,17 @@ var last_noise_amount := 0.0
 ## porównują go z własnym, żeby wiedzieć, że usłyszeli COŚ NOWEGO.
 var noise_serial := 0
 var _noise_frame := -1                ## klatka fizyki ostatniego zapisanego zdarzenia (patrz `_apply`)
+
+## Drgania gruntu (LUPACZ_PLAN.md L1, D1): osobny kanał obok hałasu, czytany tylko przez Łupacza (enemy_mole.gd `_feel`). Bez Uwagi — nie zmienia
+## innych wrogów, Stalkera ani muzyki. Hałas z tagów gruntu (TREMOR_TAGS) daje też drganie tej samej siły; lądowanie gracza po spadku ≥ 24 px
+## (player.gd, tag „land”) daje samo drganie. W jednej klatce fizyki zostaje najsilniejsze (jak `last_noise_*`).
+const TREMOR_TAGS := ["run", "dig", "prop", "explosive", "wall", "barricade", "handcar"]
+const MAX_TREMOR := 6.0              ## najsilniejsze drganie, jakie klient może zgłosić (lądowanie z dużej wysokości)
+var last_tremor_pos := Vector2.ZERO
+var last_tremor_strength := 0.0
+var last_tremor_tag := ""
+var tremor_serial := 0
+var _tremor_frame := -1
 var stalker_awake := false
 ## Serwer: walka w hali Żyły przed fazą 3 (`VEIN_PLAN.md` §12) — hałas nie budzi Stalkera, a obudzony wcześniej wraca do legowiska.
 ## Ustawia mission.gd przy starcie walki, zdejmuje krzyk fazy 3, śmierć Żyły i każdy restart (`reset_mission`).
@@ -143,6 +155,31 @@ func add_noise(amount: float, pos: Vector2, tag := "") -> void:
 			_push.rpc(level, last_noise_pos, stalker_awake, overcharge_charges)
 	else:
 		_report.rpc_id(1, amount, pos, tag)
+
+## Drganie gruntu o sile `strength` w `pos` (`tag` jak w hałasie: "land", "run", "dig"…) — bez Uwagi. Klient zgłasza serwerowi.
+func tremor(strength: float, pos: Vector2, tag := "") -> void:
+	if is_server():
+		_apply_tremor(strength, pos, tag)
+	elif has_network():
+		_report_tremor.rpc_id(1, strength, pos, tag)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _report_tremor(strength: float, pos: Vector2, tag := "") -> void:
+	if multiplayer.is_server() and is_finite(strength):
+		_apply_tremor(clampf(strength, 0.0, MAX_TREMOR), sane_pos(pos), tag)
+
+func _apply_tremor(strength: float, pos: Vector2, tag: String) -> void:
+	if safe_zone or strength <= 0.0:
+		return
+	var frame := Engine.get_physics_frames()
+	if frame == _tremor_frame and strength < last_tremor_strength:
+		return
+	_tremor_frame = frame
+	last_tremor_pos = pos
+	last_tremor_strength = strength
+	last_tremor_tag = tag
+	tremor_serial += 1
+	tremor_added.emit(strength, pos, tag)
 
 ## Przesterowanie: celowy +12 Uwagi i przekierowanie stalkera na to źródło.
 ## Zwraca true, jeśli ładunek był dostępny.
@@ -245,6 +282,8 @@ func reset_mission() -> void:
 	level = NightShift.start_noise(20.0)
 	stalker_awake = level >= NightShift.awake_threshold(AWAKE_THRESHOLD)
 	last_noise_pos = Vector2.ZERO
+	last_tremor_pos = Vector2.ZERO
+	last_tremor_strength = 0.0
 	overcharge_charges = 2
 	flares = FLARE_START
 	hot_spots.clear()
@@ -336,6 +375,8 @@ func _apply(amount: float, pos: Vector2, track := true, tag := "") -> void:
 	if amount > 0.0:
 		SessionLog.note_noise(tag, add)
 		noise_added.emit(add, pos, tag)
+		if tag.get_slice(":", 0) in TREMOR_TAGS:
+			_apply_tremor(amount, pos, tag)                     # surowa siła, jak próg budzenia — nie zależy od trudności
 	if level >= NightShift.awake_threshold(AWAKE_THRESHOLD):
 		stalker_awake = true
 	level_changed.emit(level, stalker_awake)

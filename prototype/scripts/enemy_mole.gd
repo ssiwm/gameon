@@ -36,6 +36,9 @@ const CLIMB_GRIP := 10.0                ## px od środka ciała: skała tak blis
 const DIG_Y_TOL := 8.0                  ## px różnicy wysokości do celu, przy której kopie płasko
 const SHAFT_X := 10.0                   ## px: cel bliżej w poziomie i niżej — kopie w dół pod sobą
 const DIG_PUSH := 0.8                   ## część prędkości, z jaką napiera na czoło wyrwy
+## px/s: najwyższe tempo napierania na czoło i wspinaczki — pazur wybiera skałę w stałym rytmie (DIG_EVERY), więc szybszy chód (L1: 30 px/s)
+## wbijał ciało w niewybraną skałę i klinował je we własnym szybie (test K3c). W otwartym chodniku idzie pełną prędkością.
+const DIG_SPEED := 16.0
 const STEP_UP := 9.0                    ## px: najwyższy stopień, na który wchodzi bez skoku (rampa wyrwy w górę ma 6 px)
 const STEP_FWD := 4.0                   ## px: przesunięcie na stopień
 const HOP_V := -150.0                   ## przeskok na wyższy próg, do ok. 12 px (poza skałą strefy)
@@ -108,6 +111,27 @@ var _stuck_logged := false
 var _last_by := ""                      ## serwer: czym dostał ostatnio (dziennik `mole_death`)
 var _was_active := false                ## serwer: był aktywny w poprzednim tiku — przejście w sen po szukaniu = zanurzenie
 
+## Zmysł drgań (LUPACZ_PLAN.md L1, D1–D2): słuch zwykły tylko do 40 px (`hear` w enemy_defs.gd), za to drgania gruntu (`NoiseMgr.tremor`:
+## bieg, kopanie, stempel, wybuch, rozbijana przegroda, drezyna, lądowanie z wysoka) czuje przez skałę, bez drogi dźwięku, do TREMOR_RANGE px
+## przy sile ≥ 1 (słabsze bliżej, najmniej TREMOR_FLOOR zasięgu). Zanurzony wychodzi tylko do gracza, którego poczuł w ostatnich FELT_KEEP s.
+## Wzrok bez zmian, ale gracza kucającego bez ruchu od STILL_HIDE s nie widzi dalej niż STILL_SEE px. Po wyjściu z kieszeni zryw.
+const TREMOR_RANGE := 260.0
+const TREMOR_FLOOR := 0.5
+const FELT_KEEP := 2.5                  ## s: tak długo po drganiu zanurzony pamięta, skąd szło
+const FELT_NEAR := 40.0                 ## px: gracz tak blisko miejsca drgania jest jego źródłem
+const STILL_HIDE := 0.5
+const STILL_SEE := 20.0
+const STILL_MOVE := 1.5                 ## px od kotwicy: dalej — gracz się ruszył
+const BURST_SPEED := 70.0               ## px/s przez BURST_TIME s po wyjściu z kieszeni (K3 i wynurzenie)
+const BURST_TIME := 1.0
+var burst_t := 0.0
+var tremors := 0                        ## serwer: poczute drgania od wczytania (test)
+var felt_pos := Vector2.INF             ## serwer: ostatnie poczute drganie
+var felt_t := -100.0                    ## serwer: czas symulacji (`_clock`) ostatniego poczutego drgania
+var _clock := 0.0
+var _tremor_seen := -1
+var _still := {}                        ## serwer: id gracza → [kotwica, s bez ruchu]
+
 var dig_cd := 0.0
 var digs := 0                           ## serwer: wyrw od wczytania (test, dziennik)
 var stall := 0.0                        ## s bez postępu
@@ -153,6 +177,10 @@ func reset() -> void:
 	_stuck_at = Vector2.INF
 	_stuck_logged = false
 	_last_by = ""
+	burst_t = 0.0
+	felt_pos = Vector2.INF
+	felt_t = -100.0
+	_still.clear()
 
 # ---------------------------------------------------------------- skorupa
 
@@ -297,17 +325,79 @@ func _tick_under(delta: float) -> void:
 		e.behavior_fx("emerge")
 	e._send_state(delta)
 
-## Najbliższy żywy gracz w strefie zanurzenia (do SUB_RANGE px od jej brzegu) albo null.
+## Gracz w strefie zanurzenia (do SUB_RANGE px od jej brzegu), którego Łupacz poczuł w ostatnich FELT_KEEP s — najbliższy miejscu drgania
+## (do FELT_NEAR px od niego) — albo null. Kto stoi albo kuca cicho, tego nie znajdzie (L1: „przestań kopać i kucnij”).
 func _rise_target() -> Node2D:
+	if felt_pos == Vector2.INF or _clock - felt_t > FELT_KEEP:
+		return null
 	var area: Rect2 = (sub_zone.rect_px() as Rect2).grow(SUB_RANGE)
 	var best: Node2D = null
 	for p in e.get_tree().get_nodes_in_group("players"):
 		var pn := p as Node2D
-		if pn == null or bool(pn.get("dead")) or not area.has_point(pn.global_position):
+		if pn == null or bool(pn.get("dead")) or not area.has_point(pn.global_position) or pn.global_position.distance_to(felt_pos) > FELT_NEAR:
 			continue
-		if best == null or pn.global_position.distance_to(e.global_position) < best.global_position.distance_to(e.global_position):
+		if best == null or pn.global_position.distance_to(felt_pos) < best.global_position.distance_to(felt_pos):
 			best = pn
 	return best
+
+## Zasięg odczuwania drgania o sile `strength` (px, przed mnożnikiem słuchu z trudności).
+static func tremor_reach(strength: float) -> float:
+	return TREMOR_RANGE * clampf(strength, TREMOR_FLOOR, 1.0)
+
+## Serwer: nowe drganie gruntu (`NoiseMgr.tremor`) w zasięgu — zapamiętuje miejsce (wynurzenie), śpiącego budzi i prowadzi do źródła
+## (z błędem jak słuch), obudzonego bez celu w oku prowadzi. Przez skałę: odległość w linii prostej.
+func _feel() -> void:
+	var nm := _autoload("NoiseMgr")
+	if nm == null or int(nm.tremor_serial) == _tremor_seen:
+		return
+	_tremor_seen = int(nm.tremor_serial)
+	var pos: Vector2 = nm.last_tremor_pos
+	var strength := float(nm.last_tremor_strength)
+	var diff := _autoload("Difficulty")
+	var reach := tremor_reach(strength) * (float(diff.m("enemy_hear")) if diff != null else 1.0)
+	var d: float = e.global_position.distance_to(pos)
+	if d >= reach:
+		return
+	tremors += 1
+	felt_pos = pos
+	felt_t = _clock
+	if is_hidden():
+		return
+	var lead: Vector2 = e._heard_pos(pos, d, reach, strength)
+	if not e.active:
+		e._lead_at(lead)
+		e.wake("tremor")
+	elif e._target == null:
+		e._lead_at(lead)
+
+## Serwer: ile s każdy gracz kuca bez ruchu (`sees`).
+func _track_still(delta: float) -> void:
+	for p in e.get_tree().get_nodes_in_group("players"):
+		var pn := p as Node2D
+		if pn == null:
+			continue
+		var id := pn.get_instance_id()
+		var s: Array = _still.get(id, [pn.global_position, 0.0])
+		if not bool(pn.get("crouching")) or (s[0] as Vector2).distance_to(pn.global_position) > STILL_MOVE:
+			s = [pn.global_position, 0.0]
+		else:
+			s[1] = float(s[1]) + delta
+		_still[id] = s
+
+## Czy gracz `pp` kuca bez ruchu od STILL_HIDE s.
+func still_hidden(pp: Node2D) -> bool:
+	var s: Array = _still.get(pp.get_instance_id(), [])
+	return not s.is_empty() and bool(pp.get("crouching")) and float(s[1]) >= STILL_HIDE
+
+func sees(pp: Node2D, d: float) -> bool:
+	return d <= STILL_SEE or not still_hidden(pp)
+
+func speed_mult() -> float:
+	return BURST_SPEED / maxf(1.0, float(e._def["speed"])) if burst_t > 0.0 else 1.0
+
+## Zanurzony nie śpi płytko — nie zwalnia tików (drgania nie zmieniają `noise_serial`, więc LOD rdzenia by ich nie zauważył).
+func asleep_lod() -> bool:
+	return false
 
 ## Odrasta pierwsza rozbita płyta (od karku): z żyły pirytowa, inaczej łupkowa. Zwraca numer płyty albo −1.
 func _regrow(material: String) -> int:
@@ -443,6 +533,9 @@ func fx(event: String) -> void:
 	au.play_variant_at("lupacz_squeal", 2, at, au.BUS_WORLD, -4.0, randf_range(0.95, 1.08))
 
 func tick_special(delta: float) -> bool:
+	_clock += delta
+	_track_still(delta)
+	_feel()
 	if e._sp <= SP_UNDER:
 		_tick_under(delta)
 		return true
@@ -466,6 +559,7 @@ func tick_special(delta: float) -> bool:
 	if entry_time >= ENTRY_SECONDS:
 		e._sp = 0
 		e.velocity.x = 0.0
+		burst_t = BURST_TIME                                   # zryw spod ściany — wyjście nie jest darmowym oknem na ostrzał
 	e._send_state(delta)
 	return true
 
@@ -497,6 +591,7 @@ func after_attack() -> void:
 
 func tick_prelude(delta: float) -> void:
 	recovery_left = maxf(0.0, recovery_left - delta)
+	burst_t = maxf(0.0, burst_t - delta)
 	dig_cd = maxf(0.0, dig_cd - delta)
 	if e._sp < 0 and (not e.active or e._windup > 0.0):
 		e._sp = 0
@@ -516,7 +611,8 @@ func drive(delta: float, target: Node2D, speed: float) -> bool:
 		_stop_dig()
 		stall = 0.0
 		return false
-	if target != null and e._in_reach(target, 0.0) and not e._wall_between(target):
+	# cios oddaje rdzeniowi dopiero na podłożu: w szybie, wisząc na pazurach 18 px pod celem, przerywał wspinaczkę dla ciosu, spadał i chybiał (K3c)
+	if target != null and e._in_reach(target, 0.0) and not e._wall_between(target) and (e.is_on_floor() or e._sp != -Dig.CLIMB):
 		_stop_dig()
 		return false
 	var d: Vector2 = goal - pos
@@ -540,7 +636,7 @@ func drive(delta: float, target: Node2D, speed: float) -> bool:
 	if dir == Dig.UP and stall >= STALL_DIG and not _cut_has_rock(zone, dir, face):
 		dir = Dig.CLIMB                                      # komora pod celem bez stopnia — rampa nie ma czego wyciąć
 	if dir == Dig.CLIMB and _grip(zone):
-		_climb(zone, d, face, speed, delta)
+		_climb(zone, d, face, minf(speed, DIG_SPEED), delta)
 		return true
 	if dir != Dig.NONE and dir != Dig.CLIMB and _cut_has_rock(zone, dir, face):
 		e._sp = -dir
@@ -551,7 +647,7 @@ func drive(delta: float, target: Node2D, speed: float) -> bool:
 			dig_cd = DIG_EVERY
 			zone.claw_dig(cut_center(dir, face), cut_half(dir), DIG_ROUND, Vector2.UP if dir == Dig.SHAFT else Vector2(-face, -0.5).normalized())
 			digs += 1
-		e.velocity.x = 0.0 if dir == Dig.SHAFT else face * speed * DIG_PUSH
+		e.velocity.x = 0.0 if dir == Dig.SHAFT else face * minf(speed, DIG_SPEED) * DIG_PUSH
 		return true
 	_stop_dig()
 	if stall >= STALL_NAV:
