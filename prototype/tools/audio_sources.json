@@ -153,6 +153,14 @@
    "supplier": "Tovusound",
    "license": "sonniss-gdc-2.0"
   },
+  "boulder_stones_14": {
+   "kind": "lib",
+   "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 5of8/Soundrangers - Foley Elements Rocks, Dirt And Stone/boulder_impact_on_stones_14.wav",
+   "sha256": "193834e5c5ccb5c9d349480c91ab34151427bf46d4a890920c5a0bb85a669d94",
+   "pack": "Sonniss GDC 2018 — Foley Elements Rocks, Dirt And Stone",
+   "supplier": "Soundrangers",
+   "license": "sonniss-gdc-2.0"
+  },
   "bow_midflight": {
    "kind": "lib",
    "file": "sonniss/2019/Sonniss.com - GDC 2019 - Game Audio Bundle Part 2of8/Eiravaein Works - Nocked/Nocked,archery,firing,loose,Vaeyanbow,midflight,wide,mythic,sleek,swirl,rattle,alt14.wav",
@@ -239,6 +247,14 @@
    "sha256": "a72002a8e4a1b01f33343c131448d6b6688dd891d37815a22b6672561b491f7b",
    "pack": "Sonniss GDC 2019 — Ghosts Return",
    "supplier": "Articulated Sounds",
+   "license": "sonniss-gdc-2.0"
+  },
+  "claws_anf003": {
+   "kind": "lib",
+   "file": "sonniss/2023/TheWorkRoom Audio Post - Animal Footsteps Foley - Paws With Claws/ANF003.wav",
+   "sha256": "21eb164219f59d2f851a0918418b327809382266bd9b2baa90ccb86d83d5bcde",
+   "pack": "Sonniss GDC 2023 — Animal Footsteps Foley - Paws With Claws",
+   "supplier": "TheWorkRoom Audio Post",
    "license": "sonniss-gdc-2.0"
   },
   "cop_cough_11": {
@@ -745,6 +761,14 @@
    "supplier": "The Soundcatcher",
    "license": "sonniss-gdc-2.0"
   },
+  "pig_squeal_18": {
+   "kind": "lib",
+   "file": "sonniss/2024/Mechanical Wave - Farm Animals/ANMLFarm_Pig Squeal and Snort-18_MWSFX_FA.wav",
+   "sha256": "59a32eb923386fd8449011bcbf164ba712b74c13a201890d661d9e51ac67fc26",
+   "pack": "Sonniss GDC 2024 — Farm Animals",
+   "supplier": "Mechanical Wave",
+   "license": "sonniss-gdc-2.0"
+  },
   "puddle_splashes": {
    "kind": "lib",
    "file": "sonniss/2020/Wav Junction Sound Effects - Footsteps/0014_Footsteps_water_puddle_single_splashes.wav",
@@ -897,6 +921,22 @@
    "supplier": "SoundMorph",
    "license": "sonniss-gdc-2.0"
   },
+  "rock_drag_003": {
+   "kind": "lib",
+   "file": "sonniss/2020/Wav Junction Sound Effects - Rocks/0093_Rock_Quick_Drag_On_Rock_003.wav",
+   "sha256": "2ca08b277d67c7f59c2e350c5db16f3215d1fa43024c1419d1cc59fd286417c0",
+   "pack": "Sonniss GDC 2020 — Rocks",
+   "supplier": "Wav Junction Sound Effects",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rock_drag_029": {
+   "kind": "lib",
+   "file": "sonniss/2020/Wav Junction Sound Effects - Rocks/0119_Rock_Quick_Drag_On_Rock_029.wav",
+   "sha256": "daf1f81d9d098e5c8fac1b3bcb4d0ba591925091759f1824cf0b0e665695f7c7",
+   "pack": "Sonniss GDC 2020 — Rocks",
+   "supplier": "Wav Junction Sound Effects",
+   "license": "sonniss-gdc-2.0"
+  },
   "rock_hit_dirt_07": {
    "kind": "lib",
    "file": "sonniss/2017/Sonniss.com - GDC 2017 - Game Audio Bundle Part 5of9/Mechanical Wave - Rock,Brick and Dirt - Part 02/Multiple Rock Hit Dirt_RBDII 07.wav",
@@ -977,6 +1017,14 @@
    "supplier": "Epic Stock Media",
    "license": "sonniss-gdc-2.0"
   },
+  "seabeast_pain_04": {
+   "kind": "lib",
+   "file": "sonniss/2026/Epic Stock Media - Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets/CREAMnstr_Designed Sea Beast Creature Pain Intense Yell Long 04_ESM_HC4.wav",
+   "sha256": "63e6c8de4ba3b7231197158bc4b9e0f96cf9e50cb019f7bb6d05debea6281841",
+   "pack": "Sonniss GDC 2026 — Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets",
+   "supplier": "Epic Stock Media",
+   "license": "sonniss-gdc-2.0"
+  },
   "shell_bounce_wood_05": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gamemaster Audio - Silenced Gun Sounds/bullet_shell_bounce_wood2_05.wav",
@@ -1045,6 +1093,14 @@
    "kind": "lib",
    "file": "sonniss/2024/BluezoneCorp - Stone Impact/Bluezone_BC0297_stone_impact_015.wav",
    "sha256": "6db60f6559e180ffcb0addeacfa3394bb5734ec8ff0025f77dafb8d121de05cb",
+   "pack": "Sonniss GDC 2024 — Stone Impact",
+   "supplier": "BluezoneCorp",
+   "license": "sonniss-gdc-2.0"
+  },
+  "stone_impact_041": {
+   "kind": "lib",
+   "file": "sonniss/2024/BluezoneCorp - Stone Impact/Bluezone_BC0297_stone_impact_041.wav",
+   "sha256": "5fc936f32689e387cd14545d9f805dfe1363b7b30a26e015938155f12ef0e3fd",
    "pack": "Sonniss GDC 2024 — Stone Impact",
    "supplier": "BluezoneCorp",
    "license": "sonniss-gdc-2.0"
@@ -1151,6 +1207,22 @@
    "sha256": "9761f1b47f73027f5e409b5c4b2faff8bd2736b0bd54fd9fe84f104c338f4ac4",
    "pack": "Sonniss GDC 2023 — Essentials 01 Thunder",
    "supplier": "InspectorJ",
+   "license": "sonniss-gdc-2.0"
+  },
+  "tile_crack_roof": {
+   "kind": "lib",
+   "file": "sonniss/2023/Justsoundeffects - Stones and Debris/CERMBrk_Ceramic Roof Tile Cracking_JSE_SD.wav",
+   "sha256": "1c774c12b911c86c0d741fca3b4ff6031a7abab525f92c3e59d958970b8ad237",
+   "pack": "Sonniss GDC 2023 — Stones and Debris",
+   "supplier": "Justsoundeffects",
+   "license": "sonniss-gdc-2.0"
+  },
+  "tile_smash_04": {
+   "kind": "lib",
+   "file": "sonniss/2023/Eneas Mentzel - Debris & Rubble/DESTRCrsh_Smashing a ceramics tile on concrete  exterior_Eneas Mentzel_Debris & Rubble_04.wav",
+   "sha256": "d131718a27a829c020fc6924dc88310d7c204f4496f1dd53c8637c64914eed63",
+   "pack": "Sonniss GDC 2023 — Debris & Rubble",
+   "supplier": "Eneas Mentzel",
    "license": "sonniss-gdc-2.0"
   },
   "troll_death_01": {
