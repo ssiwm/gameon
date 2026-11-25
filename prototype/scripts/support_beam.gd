@@ -8,6 +8,7 @@ extends Node2D
 ## Stopy w (0, 0) = podłoga, środek kafla w poziomie; `rows` = wysokość w kaflach do stropu.
 
 const Breakable := preload("res://scripts/breakable.gd")
+const Combat := preload("res://scripts/combat.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 
@@ -15,7 +16,7 @@ const TILE := 16.0
 const WIDTH := 5.0                     ## px — belka ok. 30 cm (cel dla kul: wąski, trzeba celować)
 const MAT := "support"
 
-## Ciało belki: cel dla kul na warstwie obiektów (32, grupa „shootables” — jak klosz lampy misji): pocisk ją rani i leci dalej.
+## Ciało belki: cel dla kul w grupie „shootables”. Pocisk ją rani i leci dalej, a postacie przechodzą przed nią.
 class BeamBody extends StaticBody2D:
 	var beam: Node2D
 	func take_hit(info: Dictionary) -> Dictionary:
@@ -42,8 +43,8 @@ func _ready() -> void:
 	_body = BeamBody.new()
 	_body.beam = self
 	_body.name = "Beam"
-	_body.collision_layer = 32
 	_body.collision_mask = 0
+	_set_body(intact)
 	_body.add_to_group("shootables")
 	var cs := CollisionShape2D.new()
 	var rs := RectangleShape2D.new()
@@ -52,7 +53,6 @@ func _ready() -> void:
 	cs.position = Vector2(0, -TILE * float(rows) * 0.5)
 	_body.add_child(cs)
 	add_child(_body)
-	_set_body(intact)
 
 func _process(delta: float) -> void:
 	if _flash > 0.0:
@@ -137,7 +137,7 @@ func restore() -> void:
 func _set_body(on: bool) -> void:
 	if _body == null:
 		return
-	_body.collision_layer = 32 if on else 0
+	_body.collision_layer = Combat.LAYER_SUPPORT if on else 0
 
 func _draw() -> void:
 	var h := TILE * float(rows)

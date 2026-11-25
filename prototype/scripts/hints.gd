@@ -13,7 +13,6 @@ const SHOW_S := 7.0                  ## ile sekund wisi podpowiedź
 const GAP_S := 2.5                   ## przerwa między podpowiedziami
 const FADE_S := 0.5
 const DIG_TIP_PX := 96.0             ## porada o kopaniu i skanerze (1.1): tak blisko strefy wydobycia
-const PROP_TIP_PX := 120.0           ## porada o stemplu (W5): tak blisko całego stempla w poziomie
 
 ## [id, tekst]; kolejność = priorytet, gdy kilka warunków spełnia się naraz
 const TIPS := [
@@ -36,7 +35,6 @@ const TIPS := [
 	["battery_low", "The flashlight battery is running low. Flat 4.5 V batteries lie around the map, drop from enemies and from smashed moth nests — and the light slowly recharges while switched off"],
 	["moths", "Moths nest under the watchtower roof and swarm any light they can see — your flashlight, even muzzle flashes. Bullets and fire do not touch them: throw a flare ({flare}) away from you to draw the swarm off, or cut them down with your blade ({melee})"],
 	["adit", "An old drainage adit runs west under the camp and comes up through a hatch in its hollow. Board this opening up behind you (hold {interact}) — whatever hunts you will have to smash through"],
-	["prop", "A timber prop holds up the roof here. On the way out, get past it and break it — shoot it, swing the pickaxe or blow it — and the roof comes down between you and whatever follows"],
 	["vault", "A reinforced door — only explosives open it: two grenades or a demolition charge ({throw}). Shoot the barrel beside it from a distance first and one grenade will do. Whatever is locked inside was worth the steel"],
 	["moths_on", "Moths are smothering your flashlight: the beam dims, the battery drains and their fluttering is loud. Swing your blade ({melee}) through them or switch the light off ({flashlight}) to shake them — killed at your face, they raise dust that makes you cough"],
 	["flare", "{flare} throws a flare: bait that draws enemies with light instead of noise"],
@@ -202,14 +200,6 @@ func _collect(p: Node) -> void:
 				adit_open = true
 				break
 	_queue("adit", adit_open, false)
-	# stempel (DESTRUCTION_CONTENT_PLAN.md W5, support_beam.gd): przy całym stemplu, póki strop stoi — że złamany za sobą zasypuje pościg
-	# (do 1.7.665 gracz musiał sam zauważyć belkę; na kampanii jest tylko w sztolni 1.1)
-	var prop_near := false
-	for sb in p.get_tree().get_nodes_in_group("supports"):
-		if sb is Node2D and sb.get("intact") == true and absf((sb as Node2D).global_position.x - p.global_position.x) < PROP_TIP_PX 				and absf((sb as Node2D).global_position.y - p.global_position.y) < 48.0:
-			prop_near = true
-			break
-	_queue("prop", prop_near, false)
 	# drzwi zbrojone z łupem za nimi (DESTRUCTION_CONTENT_PLAN.md W2b): raz, przy bunkrze łączności 1.2 — czym je otworzyć i po co beczka
 	var vault_near := false
 	if lvl_n != null and String(lvl_n.get("map_id")) == "z1_m2" and lvl_n.has_method("door_defs"):
