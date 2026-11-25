@@ -300,7 +300,7 @@ i przycisk hosta. Synteza `ui_confirm` w repo też jest teraz mechaniczna.
 Szósty: finał misji 1.1 — wstrząs i zawał dostały własne klucze `quake` i `collapse` (wcześniej dzwon alarmowy
 i zatrzymanie taśmy), oba z nagrań; sygnał radia `radio_beep` to klik nadawania i sam szum zamiast pisku 880 Hz z fali
 prostokątnej (także w syntezie w repo). Bank ma 201 assetów. Wersja z nagrań sygnału radia jest ok. 5 dB cichsza od
-dawnego pisku — szumu nie da się tak ścisnąć. `tape_stop` (sukces misji, zapowiedź porażki, koniec Nocnego Dyżuru)
+dawnego pisku — szumu nie da się tak ścisnąć. `tape_stop` (zapowiedź porażki, koniec Nocnego Dyżuru; do 1.7.679 także sukces misji)
 z nagrań: przycisk STOP magnetofonu kasetowego i prawdziwy silnik elektryczny zwalniający do zera.
 Ustawienia: muzyka i otoczenie mają osobne suwaki głośności (`settings.gd: VOLUME_BUSES`); zapis sprzed zmiany daje
 otoczeniu tę samą wartość co muzyce.

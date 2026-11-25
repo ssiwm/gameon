@@ -42,7 +42,11 @@ const FADE_DUR := 0.22
 const HUD_FADE := 0.3                 ## s, w których HUD rozgrywki gaśnie pod raportem
 const INPUT_LOCK := 0.6               ## s od otwarcia, przez które raport ignoruje wejście (E z ekstrakcji, Enter z czatu)
 const DATA_WAIT := 1.5                ## s, które etap złomu / XP czeka na dane od serwera, zanim pójdzie dalej bez nich
-const TICK_GAP_MS := 50               ## licznik cyka najwyżej 20 razy na sekundę
+const CUE_GAP := 0.4                  ## s: najmniejszy odstęp sygnałów raportu; z bliższych zostaje ważniejszy (CUE_PRIO)
+## Waga sygnału przy zderzeniu w CUE_GAP: rekord > awans > pieczątka > licznik.
+const CUE_PRIO := {"record": 3, "levelup": 2, "stamp": 1, "tick": 0}
+const LEVELUP_DUCK_DB := -6.0         ## przyciszenie kadencji wyniku pod `ui_levelup`
+const LEVELUP_DUCK_S := 1.6
 const LEVEL_FLASH := 0.12             ## s rozjaśnienia paska przy awansie
 const DIM := 0.65                     ## ściemnienie świata pod raportem
 
@@ -54,7 +58,7 @@ const LOCKED := Color(0.42, 0.41, 0.37)        ## nagroda, której nie zdobyto
 
 ## Dźwięki raportu: [klucz manifestu, głośność dB] — wysokość podaje etap. Generator: tools/bake_sfx.py (build_ui).
 const SND := {
-	"stamp": ["ui_stamp", -6.0], "tick": ["ui_tick", -14.0], "type": ["ui_type", -18.0],
+	"stamp": ["ui_stamp", -6.0], "tick": ["ui_tick", -14.0],
 	"levelup": ["ui_levelup", -4.0], "skip": ["ui_confirm", -8.0], "record": ["radio_beep", -10.0],
 }
 ## Kolory slotów graczy — te same co w HUD (hud.gd SLOT_COLORS, kurtki postaci).
@@ -120,9 +124,7 @@ var _ctx_t := 0.0
 var _anims: Array = []                ## [{node, t, kind}] — „fade” (alfa), „stamp” (alfa + skala), „title”
 var _cues: Array = []                 ## [{t, snd, pitch}] — dźwięki etapów, każdy raz
 var _cue_i := 0
-var _last_tick_ms := 0
-var _scrap_shown := -1
-var _xp_shown := -1
+var _cued := {}                       ## sekcje raportu, które mają już swój sygnał (jeden na sekcję)
 
 var _panel: PanelContainer
 var _sub: Label
@@ -152,8 +154,6 @@ func open(m: Node) -> void:
 	_waited = 0.0
 	_skipped = Settings.fx_mult() <= 0.0
 	_cue_i = 0
-	_scrap_shown = -1
-	_xp_shown = -1
 	var ctx := collect(m)
 	_ctx_sig = hash(_sig_of(ctx))
 	model = build_model(ctx)
@@ -586,6 +586,7 @@ func _rebuild() -> void:
 		c.queue_free()
 	_anims.clear()
 	_cues.clear()
+	_cued.clear()
 	_scrap_rows.clear()
 	_xp_rows.clear()
 	_panel = PanelContainer.new()
@@ -618,12 +619,9 @@ func _rebuild() -> void:
 	# B — tytuł (bohater pierwszych 0,6 s) i podpis maszynopisem
 	var title := UiTheme.heading(String(model["title"]), _f(34), Color(model["color"]).lightened(0.12), HORIZONTAL_ALIGNMENT_CENTER)
 	col.add_child(title)
-	_anim(title, T_TITLE, "title")
-	_cue(T_TITLE, "stamp", 0.85)
+	_anim(title, T_TITLE, "title")                 # bez dźwięku: tytuł i podpis niesie wejście kadencji wyniku (Audio.music_result)
 	_sub = UiTheme.whisper(UiTheme.label(String(model["sub"]), _f(10), UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
 	col.add_child(_sub)
-	for i in 6:
-		_cue(T_SUB + SUB_DUR * float(i) / 6.0, "type", 0.9 + 0.05 * float(i % 3))
 	# C — pieczątki celów
 	var tiles: Array = model["tiles"]
 	if not tiles.is_empty():
@@ -688,7 +686,9 @@ func _rebuild() -> void:
 		col.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", _f(8), UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 		if Settings.STORE_URL != "":
 			col.add_child(UiTheme.label(tr("[%s]  Open the Steam page") % Actions.key("open_store"), _f(8), UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+	_cue_counters()
 	_cues.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["t"]) < float(b["t"]))
+	_cues = thin_cues(_cues)
 	_layout()
 
 func _tile(td: Dictionary, i: int) -> Control:
@@ -726,7 +726,7 @@ func _tile(td: Dictionary, i: int) -> Control:
 		box.add_child(UiTheme.label(String(td["what"]), _f(7), UiTheme.MUTED))
 	_anim(tile, float(td["t"]), "fade")
 	if ok:
-		_cue(float(td["t"]) + 0.08, "stamp", 1.0 + 0.06 * float(i))
+		_cue_once("tiles", float(td["t"]) + 0.08, "stamp", 1.0)
 	return tile
 
 func _build_squad(box: VBoxContainer) -> void:
@@ -785,7 +785,7 @@ func _build_squad(box: VBoxContainer) -> void:
 				st.rotation = deg_to_rad(-2.5)
 				flow.add_child(st)
 				_anim(st, float(ad["t"]), "stamp")
-				_cue(float(ad["t"]), "stamp", 0.8)
+				_cue_once("awards", float(ad["t"]), "stamp", 0.8)
 			mid.add_child(flow)
 		hb.add_child(mid)
 		var nums := UiTheme.mono(UiTheme.label("%d · %d · %d" % [int(pd["kills"]), int(pd["downs"]), int(pd["revives"])], _f(11), UiTheme.WARM, HORIZONTAL_ALIGNMENT_RIGHT))
@@ -866,7 +866,7 @@ func _build_loot(box: VBoxContainer) -> void:
 			st.rotation = deg_to_rad(-3.0)
 			lr.add_child(st)
 			_anim(st, float(ld["t"]) + 0.05, "stamp")
-			_cue(float(ld["t"]), "levelup", 1.0)
+			_cue_once("levelup", float(ld["t"]), "levelup", 1.0)
 			var un: Array = ld["unlocks"]
 			if not un.is_empty():
 				var ul := UiTheme.label(tr("Unlocked: %s") % ", ".join(un), _f(8), UiTheme.TEXT)
@@ -889,7 +889,7 @@ func _build_loot(box: VBoxContainer) -> void:
 				n = _stamp(String(fd["text"]), Color(fd["color"]), _f(8), 1, String(fd.get("why", "")))
 				n.rotation = deg_to_rad(-4.0)
 				_anim(n, float(fd["t"]), "stamp")
-				_cue(float(fd["t"]), String(fd.get("snd", "stamp")), 0.95)
+				_cue_once("finds", float(fd["t"]), String(fd.get("snd", "stamp")), 0.95)
 			else:
 				n = UiTheme.label("◆ " + String(fd["text"]), _f(8), Color(fd["color"]))
 				_anim(n, float(fd["t"]), "fade")
@@ -973,6 +973,35 @@ func _anim(n: Control, t0: float, kind: String) -> void:
 func _cue(t0: float, snd: String, pitch: float) -> void:
 	_cues.append({"t": t0, "snd": snd, "pitch": pitch})
 
+## Jeden sygnał na sekcję raportu (cele, awans, wyróżnienia, znaleziska): gra pierwsza pozycja, reszta tylko się animuje.
+func _cue_once(section: String, t0: float, snd: String, pitch: float) -> void:
+	if _cued.has(section):
+		return
+	_cued[section] = true
+	_cue(t0, snd, pitch)
+
+## Liczniki złomu i XP: jedno cyknięcie, gdy licznik dojdzie do końca (zamiast cyknięcia na każdy krok).
+## Przy awansie licznik XP milczy — jego sygnałem jest `ui_levelup`.
+func _cue_counters() -> void:
+	var sc: Dictionary = model["scrap"]
+	if bool(sc["show"]) and bool(sc["ready"]) and int(sc["total"]) > 0:
+		_cue(T_SCRAP + SCRAP_DUR, "tick", 1.3)
+	var xd: Dictionary = model["xp"]
+	if bool(xd["show"]) and bool(xd["ready"]) and int(xd["earned"]) > 0 and Array(xd["levels"]).is_empty():
+		_cue(T_XP + XP_DUR, "tick", 0.96)
+
+## Odstęp sygnałów (posortowanych po czasie): dwa bliżej niż CUE_GAP nie grają oba — zostaje ten z wyższym CUE_PRIO,
+## przy równym wcześniejszy.
+static func thin_cues(cues: Array) -> Array:
+	var kept: Array = []
+	for c in cues:
+		var cd: Dictionary = c
+		if kept.is_empty() or float(cd["t"]) - float(kept.back()["t"]) >= CUE_GAP - 0.0001:
+			kept.append(cd)
+		elif int(CUE_PRIO.get(String(cd["snd"]), 0)) > int(CUE_PRIO.get(String(kept.back()["snd"]), 0)):
+			kept[kept.size() - 1] = cd
+	return kept
+
 # ---------------------------------------------------------------- klatka
 
 ## Rozmiar i pozycja panelu: środek ekranu HUD, pomniejszony, gdy duża skala UI by go wypchnęła poza ekran.
@@ -1026,10 +1055,6 @@ func _drive_counters() -> void:
 		_scrap_val.text = ("+%d" % v) if bool(sc["ready"]) else "…"
 		for r in _scrap_rows:
 			(r[0] as Control).modulate.a = 1.0 if v > int(r[1]) else 0.0
-		if v != _scrap_shown:
-			if _scrap_shown >= 0 and v > _scrap_shown:
-				_tick(0.9 + 0.4 * p)
-			_scrap_shown = v
 	var xd: Dictionary = model["xp"]
 	if bool(xd["show"]) and _xp_val != null:
 		var p := _ease(clampf((t - T_XP) / XP_DUR, 0.0, 1.0))
@@ -1052,19 +1077,6 @@ func _drive_counters() -> void:
 		_xp_bar.queue_redraw()
 		for r in _xp_rows:
 			(r[0] as Control).modulate.a = 1.0 if gained > int(r[1]) else 0.0
-		if gained != _xp_shown:
-			if _xp_shown >= 0 and gained > _xp_shown:
-				_tick(0.66 + 0.3 * p)
-			_xp_shown = gained
-
-func _tick(pitch: float) -> void:
-	if _skipped:
-		return
-	var now := Time.get_ticks_msec()
-	if now - _last_tick_ms < TICK_GAP_MS:
-		return
-	_last_tick_ms = now
-	_play("tick", pitch)
 
 func _fire_cues() -> void:
 	while _cue_i < _cues.size() and float(_cues[_cue_i]["t"]) <= t:
@@ -1078,6 +1090,8 @@ func _play(id: String, pitch := 1.0) -> void:
 		return
 	var spec: Array = SND[id]
 	Audio.play(String(spec[0]), Audio.BUS_UI, float(spec[1]), pitch)
+	if id == "levelup":
+		Audio.duck_result(LEVELUP_DUCK_DB, LEVELUP_DUCK_S)      # awans słychać nad kadencją wyniku
 
 static func _f(n: int) -> int:
 	return int(round(float(n) * FS))

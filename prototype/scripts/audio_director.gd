@@ -260,7 +260,9 @@ var _menu_t := 0.0
 var _menu_x := 0.0                                         # postęp wejścia pętli tematu
 var _menu_out := 0.0                                       # 1 gra, 0 wyciszony (zatrzymany)
 var _one_p: AudioStreamPlayer                              # kadencja wyniku / wipe'u (poza siatką)
-var _tape := -1.0                                          # s od zatrzymania taśmy; -1 = gra normalnie
+var _one_duck_db := 0.0                                    # przyciszenie kadencji wyniku pod awansem w raporcie (duck_result)
+var _one_duck_hold := 0.0
+var _tape := -1.0                                         # s od zatrzymania taśmy; -1 = gra normalnie
 var _tape_gain := 1.0
 var _tape_cut := false
 
@@ -930,6 +932,8 @@ func stop_all() -> void:
 	_drop_at = -1.0
 	_deaf = 0.0
 	_duck_db = 0.0
+	_one_duck_db = 0.0
+	_one_duck_hold = 0.0
 	_wduck_db = 0.0
 	_wduck_hold = 0.0
 
@@ -1515,6 +1519,7 @@ func _update_palette(delta: float) -> void:
 func _update_music(delta: float) -> void:
 	_update_menu(delta)
 	_update_tape(delta)
+	_update_one_duck(delta)
 	_update_palette(delta)
 	if not _music_started:
 		return
@@ -1666,6 +1671,23 @@ func music_result(win: bool) -> void:
 	_play_one("mus_result_win" if win else "mus_result_fail")
 
 
+## Raport po akcji: chwilowe przyciszenie kadencji wyniku (np. pod `ui_levelup`), wraca po `hold` sekundach.
+## Osobne od `duck_music` — tamto dotyczy muzyki rozgrywki, a kadencja gra na `_one_p` obok niej.
+func duck_result(db: float, hold: float) -> void:
+	_one_duck_db = minf(_one_duck_db, db)
+	_one_duck_hold = maxf(_one_duck_hold, hold)
+
+
+func _update_one_duck(delta: float) -> void:
+	if _one_duck_hold > 0.0:
+		_one_duck_hold -= delta
+	elif _one_duck_db < 0.0:
+		_one_duck_db = minf(0.0, _one_duck_db + delta * 6.0)       # ~1 s powrotu z -6 dB
+	else:
+		return
+	_one_p.volume_db = _one_duck_db
+
+
 ## Wipe (E5): muzyka zwalnia jak zatrzymywana taśma — „dźwięk zostaje w taśmie”.
 func music_tape_stop() -> void:
 	if not _enabled or _tape >= 0.0:
@@ -1748,6 +1770,8 @@ func _cut_game_music(now: bool) -> void:
 func _play_one(key: String) -> void:
 	_one_p.stream = stream(key)
 	_one_p.volume_db = 0.0
+	_one_duck_db = 0.0
+	_one_duck_hold = 0.0
 	_one_p.pitch_scale = 1.0
 	if _one_p.stream != null:
 		_one_p.play()
