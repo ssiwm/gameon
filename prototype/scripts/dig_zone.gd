@@ -1500,12 +1500,25 @@ func _face_point(r: Rect2, origin: Vector2, dir: Vector2, reach: float) -> Vecto
 		t += 2.0
 	return _rock_center(r)
 
-## Czy w zasięgu ciosu z `origin` w kierunku `dir` jest skała strefy (dowolne narzędzie) i której nie bierze broń biała — wybór kilofa
-## (weapon_controller.gd `melee_for_target`). Zwraca [jest skała, broń biała jej nie bierze].
+## Czy w zasięgu ciosu z `origin` w kierunku `dir` jest skała strefy (dowolne narzędzie) i czy leży w niej coś, czego nie bierze broń
+## biała — wybór kilofa (weapon_controller.gd `melee_for_target`). Zwraca [jest skała, w wyrwie jest materiał tylko dla kilofa].
+## Wyrwa mieszana (ziemia przy skale, brzeg starego wykopu) bierze kilof: do 1.7.678 wystarczyła jedna komórka ziemi, by wyszła maczeta,
+## która zbierała samą ziemię, a skała zostawała (cios wyglądał na zmarnowany). Czysta ziemia i żwir — dalej broń biała, ciszej.
 func cut_needs(origin: Vector2, dir: Vector2) -> Array:
 	var r := cut_rect(origin, dir)
 	var any := _rock_in(r, Mats.Tool.PICK) >= 0
-	return [any, any and _rock_in(r, Mats.Tool.BLADE) < 0]
+	return [any, any and _pick_only_in(r)]
+
+## Czy we wnętrzu prostokąta (jak `_rock_in`) jest skała, którą bierze kilof, a broń biała nie.
+func _pick_only_in(r: Rect2) -> bool:
+	var a := (r.position - global_position) / CELL + Vector2(1, 1)
+	var b := (r.end - global_position) / CELL + Vector2(1, 1)
+	for j in range(maxi(1, roundi(a.y) + 1), mini(_h - 2, roundi(b.y) - 1) + 1):
+		for i in range(maxi(1, roundi(a.x) + 1), mini(_w - 2, roundi(b.x) - 1) + 1):
+			var k := j * _w + i
+			if _fixed[k] == 0 and _d[k] >= ISO and Mats.power(_m[k], Mats.Tool.PICK) > 0 and Mats.power(_m[k], Mats.Tool.BLADE) <= 0:
+				return true
+	return false
 
 ## Prostokąt wyrwy ciosu (px świata) z miejsca postaci (`origin` = stopy − 9) w kierunku `dir`, wyrównany do siatki komórek strefy.
 func cut_rect(origin: Vector2, dir: Vector2) -> Rect2:

@@ -637,6 +637,16 @@ func _materials() -> void:
 		wc._server_melee(player.global_position + Vector2(0, -9), Vector2.DOWN, blade, player.player_id)
 		await _frames(0.05)
 		check("maczeta nie bierze skały, a cios w skałę bierze kilof (%s)" % Weapons.def(auto_rock).key, rock.digs == d0 and auto_rock == Weapons.TOOL)
+		# wyrwa mieszana: jedna komórka ziemi w skale (granica warstw, brzeg wykopu) nie przełącza na maczetę (do 1.7.678 przełączała)
+		var cr: Rect2 = rock.cut_rect(player.global_position + Vector2(0, -9), Vector2.DOWN)
+		var ci := roundi((cr.get_center().x - rock.global_position.x) / DigZone.CELL) + 1
+		var cj := roundi((cr.get_center().y - rock.global_position.y) / DigZone.CELL) + 1
+		var ck: int = cj * rock._w + ci
+		var m0: int = rock._m[ck]
+		rock._m[ck] = DigMats.code("dirt")
+		var auto_mixed: int = wc.melee_for_target()
+		rock._m[ck] = m0
+		check("wyrwa mieszana (ziemia przy skale) bierze kilof (%s)" % Weapons.def(auto_mixed).key, auto_mixed == Weapons.TOOL)
 		player.soil = 0.0
 		player.winded = 0.0
 		var hr: Array = await _hits_down(rock, rock_x, pick)
