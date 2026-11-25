@@ -132,6 +132,42 @@ var _clock := 0.0
 var _tremor_seen := -1
 var _still := {}                        ## serwer: id gracza → [kotwica, s bez ruchu]
 
+## Chwyt spod ziemi (LUPACZ_PLAN.md L2, D3–D4): zanurzony, do poczutego gracza stojącego na gruncie strefy (stopy na jej skale — nie na deskach,
+## pomoście ani betonie), najwyżej raz na zanurzenie i GRAB_GAP px od ostatniego chwytu. Bot nie jest celem chwytu (wynurza się obok jak dotąd).
+## Zapowiedź (`_sp` = SP_GWARN, wciąż ukryty) GRAB_WARN s × trudność: miejsce zablokowane pod stopami celu, pęka grunt i drapią pazury,
+## u celu drży kamera i pada napis. Cel, który odszedł GRAB_DODGE px albo jest w skoku, uniknął: Łupacz wychodzi w pustą kieszeń i chwieje się
+## DODGE_STAGGER s z odsłoniętym łbem (EXPOSED_MULT). Inaczej chwyt (`_sp` = SP_GRAB, widoczny): gracz przypięty z nogą w gruncie
+## (`deliver_grab(…, true)`), GRAB_DMG na początku i po GRAB_S s, potem puszcza i wraca pod ziemię. Uwalnia: cios wręcz chwyconego
+## (kilof od razu, inne GRAB_CUTS ciosów), ogłuszenie, GRAB_FREE_DMG od innych, śmierć — wtedy wychodzi i chwieje się FREED_STAGGER s.
+## W chwycie nad gruntem jest tylko łeb: płyty go nie osłaniają.
+const SP_GWARN := -22
+const SP_GRAB := -30                    ## jedyny stan ≤ SP_UNDER, w którym jest widoczny (`is_hidden`)
+const GRAB_WARN := 1.0
+const GRAB_S := 3.0
+const GRAB_DMG := 1
+const GRAB_DODGE := 14.0
+const GRAB_JUMP := 4.0                  ## px nad miejscem chwytu: cel w skoku
+const GRAB_GAP := 30.0
+const GRAB_FREE_DMG := 20.0
+const GRAB_CUTS := 2
+const GRAB_REACH := 8.0                 ## px: łeb wychodzi obok stóp chwyconego (w zasięgu jego ciosu)
+const GRAB_HOLE := Vector2(5.0, 4.0)    ## px: połowy boków dołka, z którego wystaje łeb
+const DODGE_STAGGER := 1.2
+const FREED_STAGGER := 1.0
+const EXPOSED_MULT := 1.5
+var grab_victim: Node2D = null          ## serwer: cel zapowiedzi albo chwycony
+var grab_spot := Vector2.INF            ## serwer: miejsce chwytu (stopy celu w chwili zapowiedzi)
+var grab_t := 0.0                       ## serwer: s do końca zapowiedzi / chwytu
+var grab_done := false                  ## serwer: w tym zanurzeniu już chwytał (albo zapowiadał)
+var grab_on := true                     ## testy sprzed L2 (dig_test.gd K3d, L0, L1) wyłączają chwyt — sprawdzają zwykłe wynurzenie
+var last_grab := Vector2.INF
+var exposed_t := 0.0                    ## serwer: s odsłoniętego łba po uniku albo uwolnieniu
+var grabs := 0                          ## serwer: chwyty od wczytania (test)
+var dodges := 0
+var _grab_dealt := 0
+var _grab_team := 0.0
+var _grab_cuts := 0
+
 var dig_cd := 0.0
 var digs := 0                           ## serwer: wyrw od wczytania (test, dziennik)
 var stall := 0.0                        ## s bez postępu
@@ -181,6 +217,14 @@ func reset() -> void:
 	felt_pos = Vector2.INF
 	felt_t = -100.0
 	_still.clear()
+	if grab_victim != null and is_instance_valid(grab_victim) and bool(grab_victim.get("grabbed")):
+		grab_victim.deliver_grab(false, Vector2.ZERO)
+	grab_victim = null
+	grab_spot = Vector2.INF
+	grab_t = 0.0
+	grab_done = false
+	last_grab = Vector2.INF
+	exposed_t = 0.0
 
 # ---------------------------------------------------------------- skorupa
 
@@ -209,6 +253,11 @@ func absorb(info: Dictionary, dmg: float) -> float:
 		return dmg * SHELL_BLAST_BODY
 	if t != "bullet" and t != "beam" and t != "rail" and t != "melee":
 		return dmg                                           # ogień, płomień i inne: skorupa nie chroni
+	if e._sp == SP_GRAB:
+		return dmg                                           # chwyt: nad gruntem sam łeb, płyty w ziemi
+	if exposed_t > 0.0:
+		info["crit"] = true                                  # po uniku albo uwolnieniu: wychylony łeb
+		return dmg * EXPOSED_MULT
 	var pos: Vector2 = info.get("pos", e.global_position)
 	if e._windup > 0.0 and pos.y < e.global_position.y - BELLY_Y:
 		info["crit"] = true                                  # brzuch podniesiony do ciosu
@@ -245,7 +294,7 @@ func _break(i: int, by: String, shooter: int) -> void:
 # ---------------------------------------------------------------- zanurzenie
 
 func is_hidden() -> bool:
-	return e._sp <= SP_UNDER
+	return e._sp <= SP_UNDER and e._sp != SP_GRAB
 
 func threat_ok() -> bool:
 	return not is_hidden()
@@ -275,6 +324,7 @@ func _go_under(zone) -> void:
 	sub_t = 0.0
 	under_t = 0.0
 	sub_cd = SUB_CD
+	grab_done = false
 	submerges += 1
 	var why := "hurt" if e.hp < e._max_hp * SUB_HP and intact() < PLATES else "lost"
 	e.active = true                                            # w skale czuwa: wyjdzie do gracza, który wejdzie do strefy
@@ -293,11 +343,19 @@ func _tick_under(delta: float) -> void:
 	under_t += delta
 	e.velocity = Vector2.ZERO
 	if sub_zone == null or not is_instance_valid(sub_zone):
+		if grab_victim != null:
+			_end_grab("lost")
 		e._sp = 0                                              # strefa zniknęła (zmiana mapy) — wraca tam, gdzie był
 		return
-	if e._sp == SP_UNDER:
+	if e._sp == SP_GWARN:
+		_tick_grab_warn(delta)
+	elif e._sp == SP_GRAB:
+		_tick_grab(delta)
+	elif e._sp == SP_UNDER:
 		var who: Node2D = _rise_target() if sub_t >= SUB_TIME else null
-		if who != null:
+		if who != null and grab_on and _grabbable(who):
+			_begin_grab_warn(who)
+		elif who != null:
 			var dir := Vector2(signf(who.global_position.x - e.global_position.x), 0.0)
 			var spot: Array = sub_zone.wake_spot(who.global_position, dir)
 			rise_src = spot[0]
@@ -339,6 +397,132 @@ func _rise_target() -> Node2D:
 		if best == null or pn.global_position.distance_to(felt_pos) < best.global_position.distance_to(felt_pos):
 			best = pn
 	return best
+
+## Czy stopy `feet` stoją na skale strefy `zone` (nie na deskach, pomoście, betonie ani nad pustką wykopu).
+static func feet_on_zone(zone, feet: Vector2) -> bool:
+	return zone != null and bool(zone.solid_at_px(feet + Vector2(0.0, 3.0)))
+
+## Serwer: czy gracza `p` chwyta spod ziemi — człowiek (D4), żywy i wolny, w tym zanurzeniu jeszcze bez chwytu, GRAB_GAP px od ostatniego,
+## stopami na skale strefy zanurzenia.
+func _grabbable(p: Node2D) -> bool:
+	if grab_done or p == null or not is_instance_valid(p) or bool(p.get("is_bot")) or bool(p.get("dead")) or bool(p.get("grabbed")) or bool(p.get("taken")):
+		return false
+	if last_grab != Vector2.INF and last_grab.distance_to(p.global_position) < GRAB_GAP:
+		return false
+	return feet_on_zone(sub_zone, p.global_position)
+
+func _begin_grab_warn(who: Node2D) -> void:
+	grab_done = true
+	grab_victim = who
+	grab_spot = who.global_position
+	_grab_dealt = 0
+	_grab_team = 0.0
+	_grab_cuts = 0
+	var diff := _autoload("Difficulty")
+	grab_t = GRAB_WARN * (float(diff.m("enemy_windup")) if diff != null else 1.0)
+	e._sp = SP_GWARN
+	sub_t = 0.0
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("mole_rise", {"to": _who(who), "spot": log_s.xy(grab_spot), "grab": true, "under": snappedf(under_t, 0.1)})
+	log_s.note_mole("rises")
+	e.behavior_fx("gwarn:%d:%d:%d" % [roundi(grab_spot.x), roundi(grab_spot.y), int(who.get("player_id"))])
+
+## Koniec zapowiedzi: cel GRAB_DODGE px dalej albo w skoku — unik; inaczej chwyt.
+func _tick_grab_warn(delta: float) -> void:
+	grab_t -= delta
+	if grab_t > 0.0:
+		return
+	var v := grab_victim
+	var ok := v != null and is_instance_valid(v) and not bool(v.get("dead")) and not bool(v.get("grabbed")) and not bool(v.get("taken"))
+	if not ok or v.global_position.distance_to(grab_spot) >= GRAB_DODGE or v.global_position.y < grab_spot.y - GRAB_JUMP:
+		dodges += 1
+		last_grab = grab_spot
+		grab_victim = null
+		e.global_position = grab_spot
+		e._phys_x = grab_spot.x
+		_surface(DODGE_STAGGER)
+		_log_grab(v if ok else null, "dodge", 0.0)
+		e.behavior_fx("gdodge")
+		return
+	_begin_grab(v)
+
+func _begin_grab(v: Node2D) -> void:
+	grabs += 1
+	grab_t = GRAB_S
+	last_grab = grab_spot
+	var aim = v.get("aim_dir")
+	var s: float = signf(aim.x) if aim is Vector2 and absf(aim.x) > 0.1 else 1.0
+	for side: float in [s, -s]:
+		if not sub_zone.solid_at_px(grab_spot + Vector2(side * GRAB_REACH, -5.0)):
+			s = side                                           # łeb wychodzi tam, gdzie chwycony patrzy (w zasięgu jego ciosu), chyba że tam ściana
+			break
+	e.global_position = grab_spot + Vector2(s * GRAB_REACH, 0.0)
+	e._phys_x = e.global_position.x                            # teleport spod ziemi to nie ruch: `_update_facing` odwróciłby go plecami do chwyconego
+	e._facing = -s
+	e._net_face = -s
+	e._view_facing = -s
+	e._sp = SP_GRAB
+	sub_zone.claw_dig(e.global_position + Vector2(0.0, 2.0), GRAB_HOLE, DIG_ROUND, Vector2.UP)
+	v.deliver_grab(true, v.global_position, true)
+	e.behavior_fx("grab")
+	_grab_hit(v)
+
+func _grab_hit(v: Node2D) -> void:
+	if not is_instance_valid(v) or bool(v.get("dead")):
+		return
+	var n: int = e._scaled_damage(GRAB_DMG)
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("mole_hit", {"to": _who(v), "bot": bool(v.get("is_bot")), "dmg": n, "by": "grab", "hp": int(v.get("hp")), "pos": log_s.xy(e.global_position)})
+	log_s.note_mole("hits")
+	log_s.note_mole("dmg", float(n))
+	_grab_dealt += n
+	v.deliver_hit(n, e.global_position, e.kind, true)
+
+## Trzyma chwyconego; po GRAB_S s drugi cios i puszcza. Powalony wypada z chwytu.
+func _tick_grab(delta: float) -> void:
+	var v := grab_victim
+	if v == null or not is_instance_valid(v) or v.is_queued_for_deletion() or bool(v.get("dead")):
+		_end_grab("down")
+		return
+	grab_t -= delta
+	if grab_t <= 0.0:
+		_grab_hit(v)
+		_end_grab("time")
+
+## Serwer: koniec chwytu. time / down / lost — puszcza i wraca pod ziemię (`lost`: strefa zniknęła); melee / stun / team — uwolniony,
+## wychodzi z dołka i chwieje się; death — zginął w chwycie.
+func _end_grab(how: String) -> void:
+	var v := grab_victim
+	grab_victim = null
+	if v != null and is_instance_valid(v) and bool(v.get("grabbed")):
+		v.deliver_grab(false, Vector2.ZERO)
+	_log_grab(v, how, GRAB_S - maxf(grab_t, 0.0))
+	if how in ["melee", "stun", "team"]:
+		_surface(FREED_STAGGER)
+		e.behavior_fx("gfree")
+	elif how == "time" or how == "down":
+		e._sp = SP_UNDER
+		sub_t = 0.0
+		e.behavior_fx("under")
+
+## Serwer: wychodzi z dołka w miejscu chwytu na powierzchnię strefy i chwieje się `stagger` s z odsłoniętym łbem.
+func _surface(stagger: float) -> void:
+	sub_zone.claw_dig(e.global_position + Vector2(0.0, 2.0), GRAB_HOLE, DIG_ROUND, Vector2.UP)
+	e._sp = 0
+	e.velocity = Vector2.ZERO
+	e._stagger = maxf(e._stagger, stagger)
+	exposed_t = stagger
+	lost_t = 0.0
+	_stuck_logged = false
+	stuck_t = 0.0
+	_stuck_at = Vector2.INF
+
+func _log_grab(v: Node2D, how: String, held: float) -> void:
+	var ok := v != null and is_instance_valid(v)
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("mole_grab", {"who": _who(v) if ok else "", "how": how, "freed": how in ["melee", "stun", "team"], "dmg": _grab_dealt,
+		"held": snappedf(held, 0.1), "team": roundi(_grab_team), "pos": log_s.xy(grab_spot)})
+	log_s.note_mole("dodges" if how == "dodge" else "grabs")
 
 ## Zasięg odczuwania drgania o sile `strength` (px, przed mnożnikiem słuchu z trudności).
 static func tremor_reach(strength: float) -> float:
@@ -422,12 +606,27 @@ func strike(pp: Node2D) -> bool:
 		log_s.note_mole("dmg", float(dmg))
 	return false
 
-func took_hit(info: Dictionary, _dmg: float) -> void:
+func took_hit(info: Dictionary, dmg: float) -> void:
 	_last_by = String(info.get("type", ""))
 	if int(info.get("w", -1)) == Weapons.KILOF and _last_by == "melee":
 		_last_by = "pick"
+	if grab_victim == null or e._sp != SP_GRAB or e.hp <= 0.0 or not is_instance_valid(grab_victim):
+		return
+	var mine := int(info.get("shooter", -1)) == int(grab_victim.get("player_id"))
+	if mine and String(info.get("type", "")) == "melee":
+		_grab_cuts += GRAB_CUTS if _last_by == "pick" else 1
+		if _grab_cuts >= GRAB_CUTS:
+			_end_grab("melee")
+	elif float(info.get("stun", 0.0)) >= e.WINDUP_INTERRUPT_STUN:
+		_end_grab("stun")
+	elif not mine:
+		_grab_team += dmg
+		if _grab_team >= GRAB_FREE_DMG:
+			_end_grab("team")
 
 func on_death() -> void:
+	if grab_victim != null:
+		_end_grab("death")
 	var log_s: GDScript = load(SESSION_LOG_PATH)
 	log_s.event("mole_death", {"by": _last_by, "plates": intact(), "submerges": submerges, "pos": log_s.xy(e.global_position)})
 	log_s.note_mole("deaths")
@@ -494,6 +693,38 @@ func _burrow_fx(event: String) -> void:
 	else:
 		au.play_variant_at("dig_gravel", 3, at, au.BUS_WORLD, -6.0, 0.5)
 
+## Każdy peer: chwyt spod ziemi (L2). Zapowiedź — pęka grunt pod stopami celu (okruchy, pył, drapanie pazurów), a u samego celu drży
+## kamera i pada napis; chwyt — chrupnięcie gruntu i mokre złapanie; unik i uwolnienie — wychodzi z dołka z piskiem.
+func _grab_fx(event: String) -> void:
+	var vfx: GDScript = load(VFX_PATH)
+	var au := _autoload("Audio")
+	var rock := Color(0.36, 0.32, 0.27)
+	if event.begins_with("gwarn:"):
+		var xy := event.split(":")
+		var spot := Vector2(float(xy[1]), float(xy[2]))
+		vfx.chips(e.get_parent(), spot + Vector2(0.0, -1.0), Vector2.UP, rock, 10, "chip", 70.0, Vector2(0.6, 1.4))
+		vfx.dust(e.get_parent(), spot, 0.6)
+		if au != null:
+			au.play_variant_at("claw_scrape", 3, spot, au.BUS_WORLD, -1.0, randf_range(1.05, 1.15))     # bliżej niż przy wynurzeniu: tuż pod butami
+		for p in e.get_tree().get_nodes_in_group("players"):
+			if int(p.get("player_id")) == int(xy[3]) and p.is_multiplayer_authority() and not bool(p.get("is_bot")):
+				var feel := _autoload("Feel")
+				if feel != null:
+					feel.shake(2.5)
+				var msg := _autoload("Msg")
+				if msg != null:
+					msg.post("mole.gwarn", msg.Ch.ALERT, tr_ui("[Ground cracks under your feet]"), {"style": msg.Style.DANGER, "ttl": 1.4, "prio": 60, "log": false})
+		return
+	var at: Vector2 = e.global_position
+	vfx.chips(e.get_parent(), at + Vector2(0.0, -4.0), Vector2.UP, rock, 12, "chip", 110.0, Vector2(0.8, 2.0))
+	if au == null:
+		return
+	if event == "grab":
+		au.play_variant_at("mole_grab", 2, at, au.BUS_WORLD, -2.0, randf_range(0.95, 1.05))
+	else:
+		au.play_variant_at("dig_gravel", 3, at, au.BUS_WORLD, -4.0, 0.6)
+		au.play_variant_at("lupacz_squeal", 2, at, au.BUS_WORLD, -3.0, randf_range(0.9, 1.0))
+
 ## Tłumaczenie tekstu UI (zachowanie to RefCounted bez `tr`).
 func tr_ui(text: String) -> String:
 	return e.tr(text)
@@ -513,6 +744,9 @@ func apply_net_bits(bits: int) -> void:
 func fx(event: String) -> void:
 	if event == "under" or event == "emerge" or event.begins_with("rise:") or event.begins_with("grow"):
 		_burrow_fx(event)
+		return
+	if event.begins_with("gwarn:") or event == "grab" or event == "gdodge" or event == "gfree":
+		_grab_fx(event)
 		return
 	if event == "ore":
 		var msg := _autoload("Msg")
@@ -578,7 +812,9 @@ func view_extra(d: Dictionary) -> void:
 		d["burrow_time"] = entry_time
 	if recovery_left > 0.0:
 		d["swipe_recovery"] = recovery_left
-	d["shell"] = net_bits()                                  # maska całych płyt — dla modelu ze skorupą
+	d["shell"] = net_bits()
+	if e._sp == SP_GRAB:
+		d["grab_hold"] = true                                # chwyt spod ziemi: łeb i barki nad gruntem                                  # maska całych płyt — dla modelu ze skorupą
 
 func server_facing() -> bool:
 	return true
@@ -592,6 +828,7 @@ func after_attack() -> void:
 func tick_prelude(delta: float) -> void:
 	recovery_left = maxf(0.0, recovery_left - delta)
 	burst_t = maxf(0.0, burst_t - delta)
+	exposed_t = maxf(0.0, exposed_t - delta)
 	dig_cd = maxf(0.0, dig_cd - delta)
 	if e._sp < 0 and (not e.active or e._windup > 0.0):
 		e._sp = 0
@@ -761,4 +998,4 @@ func _fit_hurt(remaining: float, duration: float) -> void:
 		hurt.position.y = -0.5 * height
 
 func holds_still() -> bool:
-	return recovery_left > 0.0
+	return recovery_left > 0.0 or exposed_t > 0.0

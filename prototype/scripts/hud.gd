@@ -2437,6 +2437,8 @@ func _prompt_candidates() -> Array:
 		var held := _grabbed_player()
 		if held == _player:
 			add.call(Actions.fmt(tr("GRABBED — hit it ({melee}) to break free")), -1.0, UiTheme.DANGER)
+		elif held != null and bool(held.grab_ground):
+			add.call(tr("Teammate grabbed — shoot the Shalebreaker's head!"), -1.0, UiTheme.DANGER)       # chwyt spod ziemi (LUPACZ_PLAN.md L2)
 		elif held != null:
 			add.call(tr("Teammate grabbed — shoot the mimic!"), -1.0, UiTheme.DANGER)
 	if tide_boss != null and alive:

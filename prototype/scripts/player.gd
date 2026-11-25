@@ -147,6 +147,7 @@ var grabbed := false            ## chwycony przez Pijawkę (leech.gd): przypięt
 var taken := false               ## porwany (leżący) przez Żercę (F4d): ciągnięty z pozycją `grab_pos`, wykrwawianie wstrzymane, nie da się go podnieść; replikowane
 var taken_t := 0.0               ## s do „zjedzenia” (kary), ustawia Żerca co tik — widzi je HUD wszystkich graczy
 var grab_pos := Vector2.ZERO
+var grab_ground := false        ## chwyt spod ziemi (Łupacz, enemy_mole.gd L2): noga w gruncie, model zapada się zamiast wisieć; replikowane
 var pumping := false            ## drezyna (handcar.gd): gracz pompuje — nie chodzi, nie skacze i nie strzela
 var bleed_left := 0.0
 var weapon := 0                 ## id broni w ręku (replikowane); ustawia kontroler
@@ -582,6 +583,7 @@ func _update_char3d() -> void:
 	c3d.back_run = absf(vx) > 10.0 and signf(vx) != _facing and grounded
 	c3d.push_strain = absi(push_state) == 2
 	c3d.grabbed = grabbed
+	c3d.grab_ground = grab_ground
 	c3d.dying = clampf(1.0 - bleed_left / 1.0, 0.0, 1.0) if dead else 0.0     # ostatnia sekunda wykrwawiania: drgawki i zapadanie się
 	if not is_bot:
 		c3d.set_look(_char3d_name())                   # wymiana modelu przy zmianie wyglądu (replikowane `look`); porównanie nazw jest tanie
@@ -629,7 +631,7 @@ func _setup_sync() -> void:
 	sync.replication_interval = 0.05
 	sync.delta_interval = 0.05
 	var cfg := SceneReplicationConfig.new()
-	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_action", ":w_action_clock", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":taken", ":taken_t", ":is_reviving", ":push_state", ":in_range", ":range_pose", ":range_shots"]:
+	for path in [":position", ":velocity", ":aim_dir", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":display_id", ":is_bot", ":bleed_left", ":weapon", ":flashlight", ":w_state", ":w_action", ":w_action_clock", ":w_charge", ":w_firing", ":w_hot", ":notches", ":kit", ":perks", ":fits", ":look", ":grabbed", ":grab_ground", ":taken", ":taken_t", ":is_reviving", ":push_state", ":in_range", ":range_pose", ":range_shots"]:
 		cfg.add_property(path)
 		cfg.property_set_replication_mode(path, SceneReplicationConfig.REPLICATION_MODE_ALWAYS)
 	for path in [":position", ":velocity", ":hp", ":chip", ":stun_t", ":crouching", ":dead", ":is_bot", ":display_id"]:
@@ -1509,6 +1511,7 @@ func _revive_time() -> float:
 
 func _go_down() -> void:
 	grabbed = false
+	grab_ground = false
 	is_reviving = false
 	hp = 0
 	chip = 0.0
@@ -1645,6 +1648,7 @@ func _respawn(hp_amount: int, quiet := false, bled := false) -> void:
 	taken = false
 	taken_t = 0.0
 	grabbed = false                 # chwyt (Pijawka, Mimik) nie przeżywa odrodzenia ani zmiany mapy — chwytający mógł zniknąć bez puszczenia
+	grab_ground = false
 	bleed_left = 0.0
 	revive_progress = 0.0
 	global_position = _respawn_at() if bled else _spawn_point
@@ -2518,18 +2522,19 @@ func apply_close_call() -> void:
 	Audio.on_close_call()
 	Msg.post("hud.close_call", Msg.Ch.TOAST, tr("CLOSE CALL"), {"ttl": 1.6, "style": Msg.Style.WARN, "prio": 40, "log": false})
 
-## Chwyt Pijawki (serwer → właściciel postaci): `on` przypina gracza w `pos`, wyłączenie go uwalnia.
-func deliver_grab(on: bool, pos: Vector2) -> void:
+## Chwyt Pijawki (serwer → właściciel postaci): `on` przypina gracza w `pos`, wyłączenie go uwalnia. `ground` — chwyt spod ziemi (Łupacz).
+func deliver_grab(on: bool, pos: Vector2, ground := false) -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
-		apply_grab(on, pos)
+		apply_grab(on, pos, ground)
 	else:
-		apply_grab.rpc_id(get_multiplayer_authority(), on, pos)
+		apply_grab.rpc_id(get_multiplayer_authority(), on, pos, ground)
 
 @rpc("any_peer", "call_remote", "reliable")
-func apply_grab(on: bool, pos: Vector2) -> void:
+func apply_grab(on: bool, pos: Vector2, ground := false) -> void:
 	if not is_multiplayer_authority() or not _from_server():
 		return
 	grabbed = on and not dead
+	grab_ground = grabbed and ground
 	grab_pos = pos
 	if grabbed:
 		velocity = Vector2.ZERO

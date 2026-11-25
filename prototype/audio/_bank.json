@@ -527,6 +527,14 @@
   "sfx/ui/mission_start",
   0
  ],
+ "mole_grab_1": [
+  "sfx/enemies/mole_grab_1",
+  0
+ ],
+ "mole_grab_2": [
+  "sfx/enemies/mole_grab_2",
+  0
+ ],
  "moth_crack_1": [
   "sfx/enemies/moth_crack_1",
   0

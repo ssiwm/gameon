@@ -285,6 +285,10 @@ var _parts_pose_n: PartsPose
 var recoil_px := 0.0                         ## px odrzutu broni (to samo co gun_kick_px, ale także po strzale poza przeładowaniem): wznos lufy i cofnięcie ciała
 var grabbed := false                         ## chwycony przez Pijawkę (player.gd): szamocze się, nogi dyndają nad ziemią
 var _grab_w := 0.0                           ## 0..1 waga pozy chwycenia (płynne wejście i wyjście)
+var grab_ground := false                     ## chwyt spod ziemi (Łupacz): nogi w gruncie, ciało zapada się zamiast wisieć
+const GROUND_SINK := 0.35                    ## m: o tyle zapada się chwycony spod ziemi przez cały chwyt (enemy_mole.gd GRAB_S)
+const GROUND_SINK_S := 3.0
+var _sink := 0.0
 var air_vy := 0.0                            ## px/s prędkość pionowa w locie (− w górę): steruje pozą skoku (wyprost, podciągnięte kolana, sięganie do ziemi)
 var climb_t := -1.0                          ## 0..1 podciągnięcia przy wskakiwaniu przez kratę `=` (player.gd), <0 = brak
 var mantle_h := NAN                          ## m: wierzch pomostu `-` nad stopami przy wspinaniu od dołu (player.gd `_mantle_h`), NAN = brak
@@ -1483,6 +1487,8 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		if land_t >= 1.0:
 			land_t = -1.0
 	_grab_w = move_toward(_grab_w, 1.0 if (grabbed and _down < 0.2) else 0.0, delta / 0.18)
+	var sinking := grabbed and grab_ground and _down < 0.2
+	_sink = move_toward(_sink, GROUND_SINK if sinking else 0.0, delta * GROUND_SINK / (GROUND_SINK_S if sinking else 0.2))
 	if climb_t >= 0.0:
 		climb_t += delta / 0.40
 		if climb_t >= 1.0:
@@ -1702,11 +1708,16 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		drop += 0.24 * kl
 		lean += 10.0 * kl
 	var jit := Vector3.ZERO
-	if _grab_w > 0.001:                                           # chwycony: tułów zgięty, szarpie się na boki, biodra uniesione (nogi dyndają)
+	if _grab_w > 0.001 and grab_ground:                           # chwycony spod ziemi: nogi w gruncie, tułów szarpie się w górę, by wyrwać nogę
+		lean += 9.0 * _grab_w + 5.0 * maxf(0.0, sin(_time * 6.0)) * _grab_w
+		jit = Vector3(0.025 * sin(_time * 13.0) * _grab_w, 0.0, 0.0)
+		head_hit += 9.0 * sin(_time * 12.0) * _grab_w
+	elif _grab_w > 0.001:                                         # chwycony: tułów zgięty, szarpie się na boki, biodra uniesione (nogi dyndają)
 		lean += 14.0 * _grab_w
 		drop -= 0.10 * _grab_w
 		jit = Vector3(0.035 * sin(_time * 17.0) * _grab_w, 0.0, 0.0)
 		head_hit += 12.0 * sin(_time * 14.0) * _grab_w
+	drop += _sink
 	if climb_t >= 0.0:                                            # podciągnięcie na platformę: pochylenie i ugięcie nad krawędzią
 		var cw := sin(PI * climb_t)
 		lean += 15.0 * cw
@@ -1893,7 +1904,10 @@ func _pose_legs(e: float) -> void:
 		var mix := _leg_mix(side)
 		var off: Vector3 = mix[0]
 		var tilt: float = mix[1]
-		if _grab_w > 0.001:                                       # chwycony: nogi nad ziemią, kopią naprzemiennie
+		off.y -= _sink                                            # chwycony spod ziemi: stopy w gruncie razem z ciałem
+		if _grab_w > 0.001 and grab_ground:                       # szarpie nogą, której nie może wyrwać
+			off.x += 0.04 * sin(_time * 7.0 + (0.0 if side == "Right" else PI)) * _grab_w
+		elif _grab_w > 0.001:                                     # chwycony: nogi nad ziemią, kopią naprzemiennie
 			var kp := _time * 9.0 + (0.0 if side == "Right" else PI)
 			off.y += (0.12 + 0.22 * maxf(0.0, sin(kp))) * _grab_w
 			off.x += 0.12 * sin(kp) * _grab_w
