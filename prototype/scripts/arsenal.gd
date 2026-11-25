@@ -22,7 +22,7 @@ const Ammo := preload("res://scripts/ammo.gd")
 const Parts := preload("res://scripts/parts.gd")
 
 ## Materiał trafionego celu — dobiera efekt i dźwięk uderzenia. DUST: Ćma (pyłek ze skrzydeł zamiast krwi; nie liczy się do wprawy).
-enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD, DUST }
+enum Mat { FLESH, ARMOR, WOOD, METAL, WORLD, DUST, SLATE }      ## SLATE (1.7.685): płyta skorupy Łupacza — iskry, okruchy łupka, rykoszet o kamień
 ## Co strzelec widzi po trafieniu (hitmarker).
 enum Confirm { HIT, CRIT, KILL, ARMOR }
 

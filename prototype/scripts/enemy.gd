@@ -1481,7 +1481,7 @@ func take_hit(info: Dictionary) -> Dictionary:
 	var mat := Arsenal.Mat.DUST if String(_def.get("hit_mat", "")) == "dust" else Arsenal.Mat.FLESH
 	dmg = _beh.absorb(info, dmg)                                       # skorupa Łupacza: płyta zjada kulę, brzuch przy ciosie ×1,5
 	if bool(info.get("shell", false)):
-		mat = 1                                                         # Arsenal.Mat.ARMOR: iskry i szary hitmarker
+		mat = Arsenal.Mat.SLATE                                         # płyta łupka: iskry, okruchy, rykoszet o kamień i szary hitmarker
 	var armor: float = _def.get("armor", 0.0)
 	if armor > 0.0 and (info.get("type", "bullet") == "bullet" or info.get("type", "") == "beam"):
 		# pancerz: stała redukcja na trafienie (min. 40% obrażeń) — rozrzut i seria słabną, ciężkie trafienia nie

@@ -425,8 +425,105 @@ def build_enemies() -> None:
         thud = d.filt(d.colored(n, r, 1.0), "bp", 160.0, .9) * d.env_pts(n, [(0, 0), (.003, 1), (.04, 0), (n / SR, 0)])
         finalize("moth_crack_%d" % (i + 1), d.mix([(x, 1.0), (thud, .35)], n), lufs=-22.0, fade_out_ms=40)
 
+    _build_shell()
     _build_sleep()
     bake_hybrid.enemies()                                  # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
+
+
+def _build_shell() -> None:
+    """Łupacz w skorupie z łupka (1.7.685, enemy_mole.gd): rykoszet kuli o płytę, pęknięcie płyty, pisk i drapanie pazurów.
+    Do 1.7.684 skorupa grała dźwięki pożyczone (metalowy rykoszet `ricochet`, `collapse`, `dig_gravel`, głos Wołka wyżej) — trafienie
+    w łupek brzmiało jak w blachę, a Łupacza nie dało się rozpoznać po uchu."""
+    # Rykoszet o łupek: suchy trzask odłupanego kamienia (bez dzwonienia blachy), krótki świst odbitej kuli opadający w dół
+    # i sypnięcie okruchów. Kamień nie dzwoni: zamiast modów stali — dwa krótkie, nisko strojone stuknięcia płyty.
+    for i in range(3):
+        r = Rng(0xF100 + i * 1451)
+        n = ms(520)
+        snap = burst(ms(90), r, vary(r, 8500, .1), 2200.0, .009, color=.15)
+        plate = ring(r, [vary(r, 820, .12), vary(r, 1730, .12)], [.03, .018], [1.0, .5], dur=.12, jitter=.03)
+        nw = ms(vary(r, 230, .2))
+        whiz = d.osc("sine", d.glide_exp(vary(r, 2900, .12), vary(r, 1250, .15), nw, .09), nw)
+        whiz = whiz * d.env_pts(nw, [(0, 0), (.006, 1), (nw / SR * .5, .45), (nw / SR, 0)])
+        whiz = whiz + .3 * d.filt(d.white(nw, r), "bp", 3200.0, 2.0) * d.env_perc(nw, .002, .06)
+        grit = np.zeros(n)
+        for _ in range(9 + 3 * i):
+            k = ms(r.uniform(.01, .26) * 1000)
+            c = tick(r, r.uniform(2600, 6800), 1.6, 6, .0011)
+            grit[k:k + len(c)] += c[:n - k] * r.uniform(.15, .6)
+        x = d.mix([(snap, 1.0), (plate, .55), (whiz, .32, .012 + .01 * i), (grit, .45)], n)
+        finalize("shell_ricochet_%d" % (i + 1), d.reverb(x / (d.peak(x) + 1e-9), ir("room"), wet=.14), lufs=-20.0, fade_out_ms=80)
+
+    # Pęknięcie płyty: łupek pęka wzdłuż warstw — dwa, trzy szybkie trzaski (rozwarstwienie), głuchy łomot odpadającej płyty o grunt
+    # i grzechot drobnych płytek, które się z niej sypią. Głębiej i dłużej niż rykoszet: to nagroda za serię albo cios kilofem.
+    for i in range(2):
+        r = Rng(0xF200 + i * 2111)
+        n = ms(1300)
+        x = np.zeros(n)
+        for at, g, f in [(0.0, 1.0, 7800.0), (vary(r, .035, .2), .8, 6200.0), (vary(r, .075, .2), .55, 9000.0)]:
+            c = burst(ms(110), r, vary(r, f, .1), 1600.0, .012, color=.25)
+            k = ms(at * 1000)
+            x[k:k + len(c)] += c[:n - k] * g
+        knock = ring(r, [vary(r, 340, .1), vary(r, 690, .1), vary(r, 1310, .1)], [.07, .045, .025], [1.0, .5, .25], dur=.3, jitter=.03)
+        slab = thump(.35, vary(r, 135, .1), 60, .02, .09)
+        rattle = np.zeros(n)
+        for _ in range(16 + 4 * i):
+            at = r.uniform(.28, 1.0)
+            k = ms(at * 1000)
+            if k >= n:
+                continue
+            tap = d.mix([(tick(r, r.uniform(1400, 5200), 1.5, 10, .0018), 1.0), (thump(.04, r.uniform(220, 420), 150, .008, .012), .3)])
+            rattle[k:k + len(tap)] += tap[:n - k] * r.uniform(.2, .7) * (1.0 - .6 * (at - .28) / .72)
+        x = d.mix([(x, 1.0), (knock, .6, .01), (slab, .9, .26), (rattle, .6)], n)
+        finalize("shell_crack_%d" % (i + 1), d.limiter(d.reverb(x / (d.peak(x) + 1e-9), ir("cave"), wet=.22), -4.0), lufs=-15.5, fade_out_ms=200)
+
+    # Pisk Łupacza (płyta odpadła, wynurzenie): wysoki, piskliwy skrzek ryjówki/kreta przepuszczony przez wąskie „i” — nie warknięcie
+    # dużego zwierzęcia. Wysokość skacze w górę i drży; na końcu parsknięcie przez ryj-gwiazdę (mokry szum nosowy).
+    for i in range(2):
+        r = Rng(0xF300 + i * 1789)
+        n = ms(vary(r, 520, .12))
+        t = np.arange(n) / SR
+        f0 = d.env_pts(n, [(0, vary(r, 780, .1)), (.06, vary(r, 1350, .08)), (n / SR * .6, vary(r, 1180, .1)), (n / SR, vary(r, 820, .1))])
+        f0 = f0 * (1.0 + .05 * np.sin(TAU * vary(r, 31.0, .2) * t))
+        voice = _voice(n, f0, r, [("i", .8), ("e", .35)], jitter=.04, shimmer=.35, breath=.25, rough_hz=48.0, rough=.35, bw=5.0)
+        voice *= d.env_pts(n, [(0, 0), (.012, 1), (n / SR * .7, .7), (n / SR, 0)])
+        ns = ms(160)
+        snort = d.filt(d.colored(ns, r, .4), "bp", vary(r, 2100, .15), 1.1) * d.env_pts(ns, [(0, 0), (.01, 1), (.16, 0)])
+        x = d.mix([(voice / (d.peak(voice) + 1e-9), 1.0), (snort / (d.peak(snort) + 1e-9), .35, n / SR - .03)], n + ns)
+        finalize("lupacz_squeal_%d" % (i + 1), d.reverb(x, ir("room"), wet=.2), lufs=-18.0, fade_out_ms=80)
+
+    # Drapanie pazurów za ścianą (zapowiedź wynurzenia, zanurzenie): sygnatura Łupacza — rytm trzech pociągnięć pazurami po skale,
+    # stłumionych skałą (dolnoprzepustowo). Każde pociągnięcie to ziarnisty szmer z serią zaczepień pazura o nierówności.
+    for i in range(3):
+        r = Rng(0xF400 + i * 1201)
+        n = ms(1250)
+        x = np.zeros(n)
+        for j, at in enumerate([0.0, vary(r, .26, .1), vary(r, .55, .08)]):
+            m = ms(vary(r, 230, .15))
+            scrape = d.filt(d.colored(m, r, .5), "bp", vary(r, 1500 - 120 * j, .12), .8)
+            scrape *= d.env_pts(m, [(0, 0), (.02, 1), (m / SR * .6, .75), (m / SR, 0)])
+            catches = np.zeros(m)
+            for _ in range(7):
+                k = ms(r.uniform(.01, m / SR - .02) * 1000)
+                c = tick(r, r.uniform(900, 2600), 1.3, 9, .002)
+                catches[k:k + len(c)] += c[:m - k] * r.uniform(.3, .9)
+            stroke = d.mix([(scrape / (d.peak(scrape) + 1e-9), .7), (catches, .8)], m)
+            k = ms(at * 1000)
+            x[k:k + m] += stroke[:n - k] * (1.0 - .12 * j)
+        x = d.mix([(x, 1.0), (_crumbs_fall(r, n), .3)], n)
+        finalize("claw_scrape_%d" % (i + 1), d.reverb(d.lp(x / (d.peak(x) + 1e-9), 2600.0, order=2), ir("cave"), wet=.2), lufs=-21.0, fade_out_ms=150)
+
+
+def _crumbs_fall(r: Rng, n: int) -> np.ndarray:
+    """Kilka okruchów osypujących się po drapaniu (miękkie, stłumione)."""
+    y = np.zeros(n)
+    for _ in range(6):
+        at = r.uniform(.15, 1.1)
+        k = ms(at * 1000)
+        if k >= n:
+            continue
+        tap = d.mix([(tick(r, r.uniform(700, 1800), 1.2, 14, .003), .7), (thump(.05, r.uniform(140, 260), 90, .01, .02), .5)])
+        y[k:k + len(tap)] += tap[:n - k] * r.uniform(.2, .5)
+    return y
 
 
 def _snore(n: int, r: Rng, f_flut: float, vowels, *, voiced: float = .5, breath_f: float = 700.0,
