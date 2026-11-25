@@ -4,6 +4,8 @@ extends Node
 ## Dane (6 taśm, po 2 na mapę, źródła zgodne z danymi map, tłumaczenia PL), taśma zakopana w głębokiej strefie 1.1 (miejsce z ziarna,
 ## wypada jako przedmiot), podniesienie (tylko człowiek, archiwum profilu, komunikat u każdego peera, dziennik `tape`, drugi raz bez
 ## duplikatu), sejf patrolu daje taśmę, skrytka 1.1 nie, karta ARCHIWUM (zakryta → zebrana, znacznik „nowe”), zapis i odczyt profilu.
+## Marki lampowe (1.7.684, lamp_tokens.gd): dane i tłumaczenia, wybór marki dla mapy, rozbicie płyty karku Łupacza zrzuca markę (raz na życie,
+## kolejny Łupacz — następna marka mapy, komplet — nic), podniesienie (archiwum profilu, komunikat), wpis w ARCHIWUM (zakryty → zebrany), zapis profilu.
 ## W oknie z `--tapeshots=KATALOG`: zrzuty `k4_tape_ground` (kaseta na ziemi przy postaci) i `k4_archive` (karta ARCHIWUM).
 
 const Tapes := preload("res://scripts/tapes.gd")
@@ -12,6 +14,7 @@ const CodexPage := preload("res://scripts/codex_page.gd")
 const DigZone := preload("res://scripts/dig_zone.gd")
 const Mats := preload("res://scripts/dig_materials.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
+const LampTokens := preload("res://scripts/lamp_tokens.gd")
 const LOG_DIR := "user://test_tape_sessions"
 
 var main: Node2D
@@ -21,6 +24,7 @@ var failed := 0
 var total := 0
 var _tapes0: Dictionary = {}
 var _seen0: Dictionary = {}
+var _tokens0: Dictionary = {}
 
 func check(label: String, ok: bool) -> void:
 	total += 1
@@ -45,7 +49,9 @@ func run(m: Node2D) -> void:
 	Director.set_process(false)
 	_tapes0 = Profile.tapes.duplicate()
 	_seen0 = Profile.seen.duplicate()
+	_tokens0 = Profile.lamp_tokens.duplicate()
 	Profile.tapes.clear()
+	Profile.lamp_tokens.clear()
 	Profile._seen_baseline = false
 	SessionLog.enabled = true
 	SessionLog.dir = LOG_DIR
@@ -57,6 +63,7 @@ func run(m: Node2D) -> void:
 	await _strongbox()
 	await _stash()
 	await _archive()
+	await _tokens()
 	_save_load()
 	await _sets()
 	await _shots()
@@ -65,6 +72,7 @@ func run(m: Node2D) -> void:
 func _finish() -> void:
 	Profile.tapes = _tapes0
 	Profile.seen = _seen0
+	Profile.lamp_tokens = _tokens0
 	print("[TAPE-TEST] ==== %s (%d/%d) ====" % ["PASS" if failed == 0 else "FAIL", total - failed, total])
 	Audio.quit_game(1 if failed > 0 else 0)
 
@@ -360,7 +368,7 @@ func _archive() -> void:
 	var groups := {}
 	for e in ar:
 		groups[String(e["group"])] = true
-	check("archiwum: 6 wpisów w 3 grupach map", ar.size() == 6 and groups.size() == 3)
+	check("archiwum: 6 taśm i 4 marki lampowe w 4 grupach (%d, %d)" % [ar.size(), groups.size()], ar.size() == 10 and groups.size() == 4)
 	var hid := Codex.tape_view(ar[Tapes.index_of("m2_box")])
 	var got := Codex.tape_view(ar[Tapes.index_of("m1_dig")])
 	check("archiwum: niezebrana taśma zakryta (??? i gdzie szukać: %s)" % String(hid["stats"][0][1]), String(hid["title"]) == "???"
@@ -379,12 +387,80 @@ func _archive() -> void:
 		and not String(page._buttons[1].text).ends_with("•") and not String(page._buttons[2].text).ends_with("•"))
 	page.queue_free()
 
+# ---------------------------------------------------------------- 5a. marki lampowe
+
+## Przedmioty „lamptoken” leżące teraz na mapie.
+func _token_items() -> Array:
+	return level.get_children().filter(func(n: Node) -> bool: return n.get("kind") == "lamptoken" and not n.is_queued_for_deletion())
+
+## Łupacz obok gracza z rozbitą płytą karku; zwraca nowe przedmioty „lamptoken”.
+func _break_helmet() -> Array:
+	var before := _token_items()
+	var names: Array = Director.spawn_at(["lupacz"], player.global_position + Vector2(60.0, -2.0), player.global_position)
+	await _frames(0.1)
+	var mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	if mole == null:
+		return []
+	mole.set_physics_process(false)
+	mole._beh._break(0, "pick", int(player.player_id))
+	mole._beh._break(0, "pick", int(player.player_id))     # drugi raz ta sama płyta — bez drugiej marki
+	await _frames(0.1)
+	mole.queue_free()
+	return _token_items().filter(func(n: Node) -> bool: return not before.has(n))
+
+func _tokens() -> void:
+	var p0: Vector2 = player.global_position
+	var tr_pl := TranslationServer.get_translation_object("pl")
+	check("marki: 4 w ORDER i TOKENS, po dwie na 1.1 i 1.2", LampTokens.ORDER.size() == 4 and LampTokens.TOKENS.size() == 4
+		and LampTokens.ORDER.filter(func(id: String) -> bool: return String(LampTokens.TOKENS[id]["map"]) == "z1_m1").size() == 2
+		and LampTokens.ORDER.filter(func(id: String) -> bool: return String(LampTokens.TOKENS[id]["map"]) == "z1_m2").size() == 2)
+	var miss: Array = []
+	for id in LampTokens.ORDER:
+		for k in ["title", "who", "text"]:
+			var src := String(LampTokens.TOKENS[id][k])
+			if tr_pl == null or String(tr_pl.get_message(src)) in ["", src]:
+				miss.append("%s.%s" % [id, k])
+	for k in [LampTokens.MAP_GROUP, LampTokens.where("m1_214"), LampTokens.where("m2_3105"), "A miner's lamp token. Break the helmet off a Shalebreaker's shell to find it."]:
+		if tr_pl == null or String(tr_pl.get_message(k)) == "":
+			miss.append(k)
+	check("marki: tłumaczenia PL%s" % ("" if miss.is_empty() else " — brak: " + str(miss)), miss.is_empty())
+	check("marki: wybór dla mapy — pierwsza niezebrana, komplet i 1.3 bez marki", LampTokens.for_map("z1_m1", {}) == "m1_214"
+		and LampTokens.for_map("z1_m1", {"m1_214": true}) == "m1_227" and LampTokens.for_map("z1_m1", {"m1_214": true, "m1_227": true}) == ""
+		and LampTokens.for_map("z1_m3", {}) == "")
+	var drop1: Array = await _break_helmet()
+	check("marki: rozbita płyta karku Łupacza zrzuca jedną markę 214 (%d)" % drop1.size(), drop1.size() == 1
+		and int(drop1[0].arg) == LampTokens.index_of("m1_214"))
+	if drop1.is_empty():
+		return
+	var ar := Codex.archive()
+	var e_tok: Dictionary = ar.filter(func(x: Dictionary) -> bool: return String(x.get("token", "")) == "m1_214")[0]
+	var hid := Codex.token_view(e_tok)
+	check("marki: niezebrana zakryta w archiwum (??? i gdzie: %s)" % String(hid["stats"][0][1]), String(hid["title"]) == "???"
+		and String(hid["stats"][0][1]).ends_with("1.1"))
+	var fx0: int = level.tokens_fx
+	_place_player((drop1[0] as Node2D).global_position)
+	await _frames(0.4)
+	check("marki: podniesiona — w archiwum profilu, komunikat, przedmiot znika", Profile.has_lamp_token("m1_214") and level.tokens_fx == fx0 + 1
+		and Msg.has("level.token.m1_214") and _token_items().is_empty())
+	var got := Codex.token_view(e_tok)
+	check("marki: zebrana w archiwum z tytułem, właścicielem i zapisem", String(got["title"]) == String(LampTokens.TOKENS["m1_214"]["title"])
+		and String(got["tag"]) != "" and String(got["text"]) == String(LampTokens.TOKENS["m1_214"]["text"]) and Profile.is_new("token:m1_214"))
+	var drop2: Array = await _break_helmet()
+	check("marki: następny Łupacz na 1.1 nosi markę 227", drop2.size() == 1 and int(drop2[0].arg) == LampTokens.index_of("m1_227"))
+	if not drop2.is_empty():
+		_place_player((drop2[0] as Node2D).global_position)
+		await _frames(0.4)
+	var drop3: Array = await _break_helmet()
+	check("marki: komplet 1.1 — kolejny Łupacz bez marki", Profile.has_lamp_token("m1_227") and drop3.is_empty())
+	_place_player(p0)
+
 func _save_load() -> void:
 	var path := "user://test_tape_profile.cfg"
 	Profile.save_to(path)
 	Profile.tapes.clear()
 	Profile.load_from(path)
 	check("zapis profilu: taśmy wracają po odczycie (%s)" % str(Profile.tapes.keys()), Profile.has_tape("m1_dig") and Profile.has_tape("m1_box") and Profile.tapes.size() == 2)
+	check("zapis profilu: marki lampowe wracają po odczycie (%s)" % str(Profile.lamp_tokens.keys()), Profile.has_lamp_token("m1_214") and Profile.has_lamp_token("m1_227"))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 # ---------------------------------------------------------------- 5b. zestawy taśm (K4): pamiątki w kwaterach

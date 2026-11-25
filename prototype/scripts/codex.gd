@@ -16,6 +16,7 @@ const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 const EnemyDefs := preload("res://scripts/enemy_defs.gd")
 const Tapes := preload("res://scripts/tapes.gd")
+const LampTokens := preload("res://scripts/lamp_tokens.gd")
 
 const PX_PER_M := 16.0               ## lights.gd: 1 m projektowy = 16 px (w świecie 3D ok. 1,31 m)
 const PORTRAITS := "res://art/portraits/"
@@ -155,7 +156,33 @@ static func archive() -> Array:
 		var t: Dictionary = Tapes.TAPES[id]
 		out.append({"title": t["title"], "tag": "", "accent": TAPE_ACCENT, "portrait": {"type": "image", "path": TAPE_PORTRAIT}, "tape": String(id),
 			"group": String(Tapes.MAP_GROUP.get(t["map"], "")), "stats": [], "text": t["text"], "tip": "", "plain_stats": true})
+	for id in LampTokens.ORDER:                                  # marki lampowe (lamp_tokens.gd) — po taśmach, osobna grupa
+		var k: Dictionary = LampTokens.TOKENS[id]
+		out.append({"title": k["title"], "tag": "", "accent": TOKEN_ACCENT, "portrait": {"type": "image", "path": TOKEN_PORTRAIT}, "token": String(id),
+			"group": LampTokens.MAP_GROUP, "stats": [], "text": k["text"], "tip": "", "plain_stats": true})
 	return out
+
+const TOKEN_ACCENT := Color(0.98, 0.74, 0.34)
+const TOKEN_PORTRAIT := "res://art/items/tag.png"
+
+## Wpis marki lampowej taki, jak go widzi gracz: niezebrana — sylwetka, „???” i gdzie szukać; zebrana — czyja i zapis z lampowni.
+static func token_view(e: Dictionary) -> Dictionary:
+	var id := String(e.get("token", ""))
+	var k := LampTokens.data(id)
+	var v := e.duplicate()
+	if not Profile.has_lamp_token(id):
+		var p: Dictionary = (e["portrait"] as Dictionary).duplicate()
+		p["unknown"] = true
+		v["title"] = "???"
+		v["tag"] = "Not found yet"
+		v["accent"] = Color(0.45, 0.45, 0.42)
+		v["portrait"] = p
+		v["stats"] = [["Where", LampTokens.where(id)]]
+		v["text"] = "A miner's lamp token. Break the helmet off a Shalebreaker's shell to find it."
+		return v
+	v["tag"] = _t(String(k["who"]))
+	v["stats"] = [["Found", LampTokens.where(id)]]
+	return v
 
 ## Wpis archiwum taki, jak go widzi gracz: niezebrana taśma — sylwetka, „???” i miejsce, gdzie szukać; zebrana — kto, kiedy i zapis.
 static func tape_view(e: Dictionary) -> Dictionary:

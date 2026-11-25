@@ -58,6 +58,7 @@ const FIRE_PATCH := preload("res://scripts/fire_patch.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Tapes := preload("res://scripts/tapes.gd")
+const LampTokens := preload("res://scripts/lamp_tokens.gd")
 const Combat := preload("res://scripts/combat.gd")
 const BREAKABLE := preload("res://scripts/breakable.gd")
 const DIG_ZONE := preload("res://scripts/dig_zone.gd")
@@ -2680,6 +2681,28 @@ func _tape_rpc(idx: int) -> void:
 		{"sub": tr("New in the Archive (pause menu)") if fresh else tr("Already in your Archive"), "style": Msg.Style.LORE, "ttl": 4.0, "prio": 50})
 	if fresh:
 		_tape_set_msg(id)
+
+var tokens_fx := 0                      ## u każdego peera: ogłoszonych znalezisk marek lampowych (test)
+
+## Serwer: człowiek `who` podniósł markę lampową nr `idx` (lamp_tokens.gd) — jak taśma: każdy peer dopisuje ją do archiwum swojego profilu.
+func lamp_token_found(idx: int, who: Node2D, pos: Vector2) -> void:
+	if not NoiseMgr.is_server() or LampTokens.id_at(idx) == "":
+		return
+	SessionLog.event("lamp_token", {"id": LampTokens.id_at(idx), "who": "P%d" % int(who.display_id) if who != null else "", "pos": SessionLog.xy(pos)})
+	if NoiseMgr.has_network():
+		_lamp_token_rpc.rpc(idx)
+	else:
+		_lamp_token_rpc(idx)
+
+@rpc("authority", "call_local", "reliable")
+func _lamp_token_rpc(idx: int) -> void:
+	var id := LampTokens.id_at(idx)
+	if id == "":
+		return
+	tokens_fx += 1
+	var fresh: bool = Profile.add_lamp_token(id)
+	Msg.post("level.token.%s" % id, Msg.Ch.TOAST, tr(String(LampTokens.data(id)["title"])),
+		{"sub": tr("New in the Archive (pause menu)") if fresh else tr("Already in your Archive"), "style": Msg.Style.LORE, "ttl": 4.0, "prio": 50})
 
 ## Nowa taśma domknęła zestaw (K4): komplet mapy — pamiątka na ścianie kwater, wszystkie sześć — magnetofon na stole kwater.
 func _tape_set_msg(id: String) -> void:

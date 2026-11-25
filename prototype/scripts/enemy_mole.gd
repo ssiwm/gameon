@@ -54,6 +54,7 @@ const NAV_TIME := 2.0                   ## …na tyle s
 ## (`_fit_hurt`), a trafienie powyżej BELLY_Y bierze ×BELLY_MULT. Kilof łupie łupek (płyta z jednego ciosu), maczeta tylko ją rysuje (jak kula).
 ## Wybuch zrywa wszystkie płyty, ciało bierze część. Ogień skorupa przepuszcza (podpalenie rani ciało, `enemy.gd: _tick_burn`).
 const Weapons := preload("res://scripts/weapons.gd")
+const LampTokens := preload("res://scripts/lamp_tokens.gd")
 ## vfx.gd i session_log.gd (autoloady w ciele) ładowane w chwili użycia — patrz `_autoload`.
 const VFX_PATH := "res://scripts/vfx.gd"
 const SESSION_LOG_PATH := "res://scripts/session_log.gd"
@@ -70,6 +71,8 @@ const RICOCHET_NOISE := 0.4             ## Uwagi za kulę odbitą od płyty (ost
 const LAMP_PLATE := 2                   ## płyta z lampą benzynową górnika (zad): rozbita tłucze lampę…
 const LAMP_FIRE := 3.0                  ## …i grzbiet płonie tyle s (8 HP/s, enemy.gd BURN_DPS — ogień rani ciało przez skorupę)
 const PLATE_ORE := 0.5                  ## szansa na 1 złom (urobek z płyty łupka z pirytem) do łupu misji za rozbitą płytę
+const HELMET_PLATE := 0                 ## płyta karku z hełmem górnika: rozbita zrzuca markę lampową (lamp_tokens.gd), raz na życie Łupacza
+var token_dropped := false
 const PLATE_LIFT := [Vector2(5.0, -10.0), Vector2(0.0, -11.0), Vector2(-5.0, -10.0)]   ## środki płyt (x wzdłuż patrzenia) — efekty
 var plates := PackedFloat32Array([PLATE_HP, PLATE_HP, PLATE_HP])   ## serwer: HP płyt; klient: 0 / PLATE_HP z migawki
 
@@ -136,6 +139,7 @@ func reset() -> void:
 	sub_zone = null
 	rise_src = Vector2.INF
 	_was_active = false
+	token_dropped = false
 
 # ---------------------------------------------------------------- skorupa
 
@@ -187,6 +191,8 @@ func _break(i: int, by: String, shooter: int) -> void:
 	e._stagger = maxf(e._stagger, PLATE_STAGGER)
 	if i == LAMP_PLATE:
 		e._ignite(LAMP_FIRE)                                   # lampa pęka, benzyna zapala grzbiet
+	if i == HELMET_PLATE:
+		_drop_token()
 	var scrap := _autoload("Scrap")
 	if scrap != null and scrap.enabled() and randf() < PLATE_ORE:
 		scrap.add_loot(1)                                      # urobek z płyty (Nocny Dyżur: Scrap.enabled() = false)
@@ -279,6 +285,21 @@ func _regrow(material: String) -> void:
 			plates[i] = PYRITE_HP if material == "vein" else PLATE_HP
 			e.behavior_fx("grow%d" % i)
 			return
+
+## Serwer: hełm z płyty karku spada — w nim marka lampowa górnika z tej mapy, której gospodarz jeszcze nie ma (lamp_tokens.gd `for_map`).
+func _drop_token() -> void:
+	if token_dropped:
+		return
+	var lvl: Node = e.get_tree().get_first_node_in_group("level")
+	var prof: Node = _autoload("Profile")
+	if lvl == null or prof == null or not lvl.has_method("spawn_item"):
+		return
+	var id := LampTokens.for_map(String(lvl.get("map_id")), prof.lamp_tokens)
+	if id == "":
+		return
+	token_dropped = true
+	var off: Vector2 = PLATE_LIFT[HELMET_PLATE]
+	lvl.spawn_item("lamptoken", LampTokens.index_of(id), e.global_position + Vector2(off.x * e._facing, off.y))
 
 ## Autoload z drzewa w chwili użycia: `enemy_defs.gd` wczytuje ten plik (`Mole`) także w skryptach `-s` bez autoloadów
 ## (test_enemy_surface.gd), więc odwołanie wprost do `NoiseMgr` / `Audio` (i preload skryptów, które ich używają) nie skompilowałoby się tam.
