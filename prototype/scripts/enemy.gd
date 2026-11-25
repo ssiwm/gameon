@@ -931,7 +931,7 @@ func _perceive(delta: float) -> void:
 		if score >= best_score:
 			continue
 		if not omniscient:
-			if d > sight * _sight_mult(pp) or not _clear_line(pp):
+			if d > sight * _sight_mult(pp) or not _clear_line(pp) or not _beh.sees(pp, d):
 				continue
 		best = pp
 		best_score = score
@@ -980,7 +980,7 @@ func _can_see(pp: Node2D, sight: float) -> bool:
 	if omniscient:
 		return true
 	var d := global_position.distance_to(pp.global_position)
-	return d <= sight * _sight_mult(pp) and _clear_line(pp)
+	return d <= sight * _sight_mult(pp) and _clear_line(pp) and _beh.sees(pp, d)
 
 ## Mnożnik zasięgu wzroku wobec gracza `pp`: kucanie (CROUCH_SIGHT), a kucanie w trzcinie przy cieczy jeszcze REED_SIGHT. Stojącego trzcina nie kryje.
 func _sight_mult(pp: Node2D) -> float:

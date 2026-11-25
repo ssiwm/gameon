@@ -235,6 +235,10 @@ func on_ready() -> void:
 func is_hidden() -> bool:
 	return false
 
+## Serwer: czy widzi gracza `pp` z odległości `d` (po zasięgu wzroku i linii). Łupacz nie widzi kucającego bez ruchu poza 20 px.
+func sees(_pp: Node2D, _d: float) -> bool:
+	return true
+
 ## Serwer: czy trafienie `info` (też wybuch, beczka, obrażenia otoczenia) w ogóle nie dochodzi do wroga — Łupacz w skale (LUPACZ_PLAN.md L0).
 ## Zamaskowany Żerca zostaje trafialny wybuchem (ujawnia się), więc to nie to samo co `is_hidden`.
 func immune(_info: Dictionary) -> bool:
