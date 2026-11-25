@@ -190,6 +190,19 @@ func after_attack() -> void:
 func strike(_pp: Node2D) -> bool:
 	return false
 
+## Serwer, przed pancerzem z `enemy_defs`: obrażenia trafienia `info`, które dochodzą do ciała (skorupa Łupacza). Zachowanie może
+## ustawić `info["shell"]` (trafienie zjadł pancerz: iskry i szary hitmarker) i `info["crit"]` (słaby punkt). Domyślnie bez zmian.
+func absorb(_info: Dictionary, dmg: float) -> float:
+	return dmg
+
+## Stan zachowania w migawce `enemy.gd: _sync` dla klientów i dołączających (skorupa Łupacza: maska całych płyt); -1 = brak.
+func net_bits() -> int:
+	return -1
+
+## Klient: stan z migawki (`net_bits` serwera).
+func apply_net_bits(_bits: int) -> void:
+	pass
+
 ## Wróg dostał obrażenia (`dmg` po pancerzu i polu, przed sprawdzeniem śmierci), z pełnym `info` trafienia: uwolnienie z chwytu Mimika.
 func took_hit(_info: Dictionary, _dmg: float) -> void:
 	pass

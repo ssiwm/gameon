@@ -47,6 +47,29 @@ const STALL_MOVE := 2.0                 ## px od kotwicy: dalej — robi postęp
 const STALL_NAV := 1.5                  ## s bez postępu i bez skały do kopania, po których oddaje ruch grafowi nawigacji…
 const NAV_TIME := 2.0                   ## …na tyle s
 
+## Skorupa z urobku (1.7.681, `reports/lupacz-pancerz-2026-11-25`): trzy płyty łupka na grzbiecie — 0 kark (hełm górnika), 1 środek
+## (nakładka szyny), 2 zad (lampa). Płyta wybierana z punktu trafienia wzdłuż ciała, więc ogień od przodu bije w kark, od tyłu w zad.
+## Kula w całą płytę: płyta bierze SHELL_BULLET obrażeń (amunicja przeciwpancerna więcej), ciało nic, rykoszet hałasuje. Rozbita płyta
+## odsłania tę tercję ciała (pełne obrażenia). Brzuch: przy zapowiedzi ciosu (staje na tylnych łapach) strefa trafień rośnie w górę
+## (`_fit_hurt`), a trafienie powyżej BELLY_Y bierze ×BELLY_MULT. Kilof łupie łupek (płyta z jednego ciosu), maczeta tylko ją rysuje (jak kula).
+## Wybuch zrywa wszystkie płyty, ciało bierze część. Ogień skorupa przepuszcza (podpalenie rani ciało, `enemy.gd: _tick_burn`).
+const Weapons := preload("res://scripts/weapons.gd")
+## vfx.gd i session_log.gd (autoloady w ciele) ładowane w chwili użycia — patrz `_autoload`.
+const VFX_PATH := "res://scripts/vfx.gd"
+const SESSION_LOG_PATH := "res://scripts/session_log.gd"
+const PLATES := 3
+const PLATE_HP := 60.0
+const SHELL_BULLET := 0.3               ## część obrażeń kuli i ostrza, którą przyjmuje płyta
+const SHELL_PICK := 1.5                 ## kilof w płytę (55 × 1,5 > 60 — łupek pęka od jednego ciosu)
+const SHELL_BLAST_BODY := 0.5           ## wybuch ze skorupą: ciało dostaje tę część (płyty zjadają resztę i odpadają)
+const BELLY_MULT := 1.5
+const BELLY_Y := 12.5                   ## px nad stopami: zwykła strefa trafień ma 12 px, wyżej jest tylko brzuch podniesiony do ciosu
+const PLATE_EDGE := 2.8                 ## px od środka ciała wzdłuż osi: dalej w przód — kark, w tył — zad (bok strefy trafień 17 px)
+const PLATE_STAGGER := 0.4              ## s chwiania po rozbiciu płyty
+const RICOCHET_NOISE := 0.4             ## Uwagi za kulę odbitą od płyty (ostrzał skorupy jest głośny)
+const PLATE_LIFT := [Vector2(5.0, -10.0), Vector2(0.0, -11.0), Vector2(-5.0, -10.0)]   ## środki płyt (x wzdłuż patrzenia) — efekty
+var plates := PackedFloat32Array([PLATE_HP, PLATE_HP, PLATE_HP])   ## serwer: HP płyt; klient: 0 / PLATE_HP z migawki
+
 var dig_cd := 0.0
 var digs := 0                           ## serwer: wyrw od wczytania (test, dziennik)
 var stall := 0.0                        ## s bez postępu
@@ -79,6 +102,93 @@ func reset() -> void:
 	nav_t = 0.0
 	_last_pos = Vector2.INF
 	_fit_hurt(0.0, 0.0)
+	plates = PackedFloat32Array([PLATE_HP, PLATE_HP, PLATE_HP])          # wipe, restart: skorupa cała
+
+# ---------------------------------------------------------------- skorupa
+
+## Płyta pod punktem trafienia `pos` u wroga w `feet`, zwróconego w stronę `face`: 0 kark, 1 środek, 2 zad.
+static func plate_at(pos: Vector2, feet: Vector2, face: float) -> int:
+	var along := (pos.x - feet.x) * (face if face != 0.0 else 1.0)
+	if along > PLATE_EDGE:
+		return 0
+	return 2 if along < -PLATE_EDGE else 1
+
+func intact() -> int:
+	var n := 0
+	for hp in plates:
+		if hp > 0.0:
+			n += 1
+	return n
+
+func absorb(info: Dictionary, dmg: float) -> float:
+	var t := String(info.get("type", "bullet"))
+	if t == "blast":
+		if intact() == 0:
+			return dmg
+		for i in PLATES:
+			if plates[i] > 0.0:
+				_break(i, "blast", int(info.get("shooter", -1)))
+		return dmg * SHELL_BLAST_BODY
+	if t != "bullet" and t != "beam" and t != "rail" and t != "melee":
+		return dmg                                           # ogień, płomień i inne: skorupa nie chroni
+	var pos: Vector2 = info.get("pos", e.global_position)
+	if e._windup > 0.0 and pos.y < e.global_position.y - BELLY_Y:
+		info["crit"] = true                                  # brzuch podniesiony do ciosu
+		return dmg * BELLY_MULT
+	var i := plate_at(pos, e.global_position, e._facing)
+	if plates[i] <= 0.0:
+		return dmg                                           # rozbita płyta: ta tercja ciała jest odsłonięta
+	info["shell"] = true
+	var pick := t == "melee" and int(info.get("w", -1)) == Weapons.KILOF
+	var mult := SHELL_PICK if pick else lerpf(SHELL_BULLET, 1.0, clampf(float(info.get("ap", 0.0)), 0.0, 1.0))
+	plates[i] = maxf(0.0, plates[i] - dmg * mult)
+	if plates[i] <= 0.0:
+		_break(i, "pick" if pick else t, int(info.get("shooter", -1)))
+	elif t != "melee":
+		_autoload("NoiseMgr").add_noise(RICOCHET_NOISE, pos, "ricochet")
+	return 0.0
+
+## Serwer: płyta `i` odpada — chwianie, efekt u wszystkich, dziennik.
+func _break(i: int, by: String, shooter: int) -> void:
+	plates[i] = 0.0
+	e._stagger = maxf(e._stagger, PLATE_STAGGER)
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("shell_break", {"plate": i, "by": by, "p": shooter, "left": intact(), "pos": log_s.xy(e.global_position)})
+	e.behavior_fx("plate%d" % i)
+
+## Autoload z drzewa w chwili użycia: `enemy_defs.gd` wczytuje ten plik (`Mole`) także w skryptach `-s` bez autoloadów
+## (test_enemy_surface.gd), więc odwołanie wprost do `NoiseMgr` / `Audio` (i preload skryptów, które ich używają) nie skompilowałoby się tam.
+func _autoload(n: String) -> Node:
+	return e.get_node_or_null("/root/" + n)
+
+func net_bits() -> int:
+	var m := 0
+	for i in PLATES:
+		if plates[i] > 0.0:
+			m |= 1 << i
+	return m
+
+func apply_net_bits(bits: int) -> void:
+	for i in PLATES:
+		plates[i] = PLATE_HP if bits & (1 << i) else 0.0
+
+## Każdy peer: płyta odpada — odłamki łupka z jej miejsca, trzask kamienia i pisk.
+func fx(event: String) -> void:
+	if not event.begins_with("plate"):
+		return
+	var i := clampi(int(event.substr(5)), 0, PLATES - 1)
+	plates[i] = 0.0
+	var off: Vector2 = PLATE_LIFT[i]
+	var at: Vector2 = e.global_position + Vector2(off.x * e._facing, off.y)
+	(load(VFX_PATH) as GDScript).chips(e.get_parent(), at, Vector2(-e._facing * 0.4, -1.0).normalized(), Color(0.27, 0.29, 0.31), 14, "chip", 140.0, Vector2(1.0, 2.4))
+	var au := _autoload("Audio")
+	if au == null:
+		return
+	au.play_at("collapse", at, au.BUS_WORLD, -9.0, 1.7)
+	au.play_variant_at("dig_gravel", 3, at, au.BUS_WORLD, -4.0, 0.8)
+	var v: Array = (e._def.get("voice", {}) as Dictionary).get("attack", [])    # enemy_defs.gd wczytuje ten plik — bez preloadu w drugą stronę
+	if not v.is_empty():
+		au.play_variant_at(v[0], v[1], at, au.BUS_WORLD, float(v[2]) - 2.0, float(v[3]) * 1.45)
 
 func tick_special(delta: float) -> bool:
 	if e._sp <= 0:
@@ -110,6 +220,7 @@ func view_extra(d: Dictionary) -> void:
 		d["burrow_time"] = entry_time
 	if recovery_left > 0.0:
 		d["swipe_recovery"] = recovery_left
+	d["shell"] = net_bits()                                  # maska całych płyt — dla modelu ze skorupą
 
 func server_facing() -> bool:
 	return true

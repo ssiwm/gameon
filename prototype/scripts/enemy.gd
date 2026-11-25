@@ -1479,6 +1479,9 @@ func take_hit(info: Dictionary) -> Dictionary:
 		dmg = maxf(dmg, hp + 1.0)        # dobicie: maczeta z ulepszeniem „Executioner”
 		info["crit"] = true
 	var mat := Arsenal.Mat.DUST if String(_def.get("hit_mat", "")) == "dust" else Arsenal.Mat.FLESH
+	dmg = _beh.absorb(info, dmg)                                       # skorupa Łupacza: płyta zjada kulę, brzuch przy ciosie ×1,5
+	if bool(info.get("shell", false)):
+		mat = 1                                                         # Arsenal.Mat.ARMOR: iskry i szary hitmarker
 	var armor: float = _def.get("armor", 0.0)
 	if armor > 0.0 and (info.get("type", "bullet") == "bullet" or info.get("type", "") == "beam"):
 		# pancerz: stała redukcja na trafienie (min. 40% obrażeń) — rozrzut i seria słabną, ciężkie trafienia nie
@@ -1552,6 +1555,7 @@ func _ignite_fx(seconds: float) -> void:
 func take_bullet(from_pos: Vector2, dmg: float = 8.0) -> void:
 	if not NoiseMgr.is_server() or not alive or bool(_def.get("melee_only", false)):
 		return
+	dmg = _beh.absorb({"type": "blast", "pos": from_pos}, dmg)          # wybuch beczki i inne obrażenia otoczenia: jak wybuch (skorupa Łupacza)
 	hp -= dmg * _beh.damage_mult()
 	_note_elite_dmg(dmg * _beh.damage_mult(), "blast")       # bez strzelca i pancerza: wybuch beczki (prop.gd) i inne obrażenia otoczenia
 	_alert = 0.0
@@ -1651,11 +1655,13 @@ func _send_state(delta: float) -> void:
 		return
 	_net_timer = 0.05
 	var info := view_info()
-	_sync.rpc(global_position, hp, active, alive, winding, _sp, _ai, _facing, float(info["windup_remaining"]), float(info["windup_duration"]), bool(info["grounded"]))
+	_sync.rpc(global_position, hp, active, alive, winding, _sp, _ai, _facing, float(info["windup_remaining"]), float(info["windup_duration"]), bool(info["grounded"]), _beh.net_bits())
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0, new_ai := -1, new_face := 0.0, wind_remaining := 0.0, wind_duration := 0.0, grounded := true) -> void:
+func _sync(pos: Vector2, new_hp: float, is_active: bool, is_alive: bool, is_winding: bool, new_sp := 0, new_ai := -1, new_face := 0.0, wind_remaining := 0.0, wind_duration := 0.0, grounded := true, beh_bits := -1) -> void:
 	_remote_pos = pos
+	if beh_bits >= 0:
+		_beh.apply_net_bits(beh_bits)     # stan zachowania (skorupa Łupacza) — także u dołączającego w trakcie walki
 	if new_hp < hp - 0.01:
 		_flash = 0.1
 		if String(_def.get("hit_mat", "")) != "dust":                   # Ćma nie krwawi (pyłek daje _death_fx)
