@@ -28,7 +28,8 @@ extends "res://scripts/stalker_test.gd"
 ##    do nich z swojej strony; szarża Wołka łamie deski, Rzeźnika — nie kratkę (rozbieg przez deski tak, przez kratkę nie); bot rąbie deski
 ##    razem z dowódcą, a kratki (maczeta) nie rusza.
 ## 12. Dziury w deskach (D2). 13. Barykadowanie pustego otworu `:` (D2b).
-## 14. Zawał (D3, support_beam.gd, level.gd `cave_in`) na mapie testowej t_mine (1.1–1.3 bez stref od 1.7.494): stempel `!` trzyma strefę gruzu `^` obok; kula, śrut, wybuch i kilof go ranią,
+## 14. Zawał (D3, support_beam.gd, level.gd `cave_in`) na mapie testowej t_mine: cały stempel `!` przepuszcza gracza i ma podpowiedź w pasku akcji.
+##    Stempel trzyma strefę gruzu `^` obok; kula, śrut, wybuch i kilof go ranią,
 ##    maczeta nie; po złamaniu strefa zapada się po CAVE_DELAY s (nawigacja zamknięta, hałas), zwykły wróg ginie, Stalker i gracz lądują
 ##    obok; gruz odkopuje kilof, kula nie; wipe w czasie trzeszczenia odwołuje zawał; wipe, punkt kontrolny bossa i wstrząs finału.
 ## 15. Dziennik sesji (DESTRUCTION_PLAN.md „Pomiar po wdrożeniu”): po sekcjach 1–14 w pliku są wiersze `break` (materiał, czym, kto,
@@ -71,6 +72,7 @@ const Sight := preload("res://scripts/sight.gd")
 const Projectile := preload("res://scripts/projectile.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Throwables := preload("res://scripts/throwables.gd")
+const Actions := preload("res://scripts/actions.gd")
 const LOG_DIR := "user://test_destruction_sessions"
 
 func check(label: String, ok: bool) -> void:
@@ -1123,15 +1125,19 @@ func _cave_body() -> void:
 	_place_player(feet + Vector2(-260.0, 0.0))
 	await _frames(0.1)
 	check("przed zawałem droga wiedzie przez strefę", _cave_path_through(a, b, rc))
-	# porada „prop” (hints.gd, 1.7.666): przy całym stemplu tak, daleko nie; po złamaniu nie (niżej)
-	var tips: RefCounted = load("res://scripts/hints.gd").new()
-	Settings.seen_tips.erase("prop")
-	tips._collect(player)
-	var tip_far := bool(tips._queued.has("prop"))
-	_place_player(Vector2(sb.global_position.x - 60.0, sb.global_position.y))
-	tips._collect(player)
-	check("porada przy stemplu: z bliska tak (%s), 260 px dalej nie (%s)" % [str(tips._queued.has("prop")), str(tip_far)], tips._queued.has("prop") and not tip_far)
+	var near_support := sb.global_position + Vector2(20.0, -1.0)
+	_place_player(near_support)
+	check("cały stempel przepuszcza gracza", not player.test_move(player.global_transform, Vector2(-40.0, 0.0)))
+	var expected_hint := Actions.fmt(tr("Timber prop · Pass it, then break it with gunfire, pickaxe [{tool}] or explosives to collapse the tunnel"))
+	var prop_prompt := func() -> bool: return String(Msg.current(Msg.Ch.ACTION).get("text", "")) == expected_hint
+	var old_hints: bool = Settings.hints_on
+	Settings.hints_on = false
+	await _frames(0.25)
+	check("podpowiedź w pasku akcji przy całym stemplu, nawet z wyłączonym samouczkiem", prop_prompt.call())
+	Settings.hints_on = old_hints
 	_place_player(feet + Vector2(-260.0, 0.0))
+	await _frames(0.25)
+	check("podpowiedź gaśnie po odejściu od stempla", not prop_prompt.call())
 
 	# trafienia: maczeta odbija się, kula i śrut ranią (pocisk leci dalej), wybuch rani, cios w stożku sięga belki
 	var r_blade: Dictionary = _hit(sb, Weapons.MACZETA, 30.0, "melee", c)
@@ -1158,9 +1164,9 @@ func _cave_body() -> void:
 		picks += 1
 	check("kilof łamie stempel (%d ciosy): kula przez niego przelatuje, złamany u wszystkich (%s), strefa jeszcze wolna (trzeszczy)" % [picks, str(level._supports_down)],
 		not sb.intact and level._supports_down.has("Support1") and level._opened_walls.has(zn) and int(sb.get_node("Beam").collision_layer) == 0)
-	_place_player(Vector2(sb.global_position.x - 60.0, sb.global_position.y))
-	tips._collect(player)
-	check("porada przy stemplu: złamany — już nie (%s)" % str(tips._queued.has("prop")), not tips._queued.has("prop"))
+	_place_player(near_support)
+	await _frames(0.25)
+	check("podpowiedź znika przy złamanym stemplu", not prop_prompt.call())
 	_place_player(feet + Vector2(-260.0, 0.0))
 	var tz := _enemy("trzosek", feet + Vector2(-2.0, -1.0))
 	tz.set_physics_process(false)

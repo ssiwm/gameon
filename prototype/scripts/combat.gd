@@ -24,7 +24,8 @@ const Hurtbox := preload("res://scripts/hurtbox.gd")
 const Sight := preload("res://scripts/sight.gd")
 const LAYER_WORLD := 1
 const LAYER_PLAYER := 2
-const LAYER_TARGET := 4 | 32      ## wrogowie, gniazda, boss, Stalker (4) i obiekty (32)
+const LAYER_SUPPORT := 1 << 10    ## stemple: cele pocisków poza maskami ruchu postaci
+const LAYER_TARGET := 4 | 32 | LAYER_SUPPORT      ## wrogowie, gniazda, boss, Stalker (4), obiekty (32) i stemple
 
 ## Obrażenia wybuchu rosną do środka: na brzegu zostaje ta część.
 const BLAST_EDGE := 0.5

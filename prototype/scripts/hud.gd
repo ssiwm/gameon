@@ -2352,6 +2352,21 @@ func _door_prompt() -> Array:
 		return [tr("Reinforced door  ·  explosives only"), UiTheme.MUTED]
 	return []
 
+const SUPPORT_PROMPT_PX := 120.0     ## zasięg w poziomie podpowiedzi o stemplu w pasku akcji
+
+## Cały stempel zawału (D3) blisko gracza na poziomie chodnika.
+func _support_prompt() -> String:
+	if _player == null or _player.dead:
+		return ""
+	var feet: Vector2 = _player.global_position
+	for support in get_tree().get_nodes_in_group("supports"):
+		if not support.intact or support.is_queued_for_deletion():
+			continue
+		var offset: Vector2 = support.global_position - feet
+		if absf(offset.x) <= SUPPORT_PROMPT_PX and absf(offset.y) < 16.0:
+			return Actions.fmt(tr("Timber prop · Pass it, then break it with gunfire, pickaxe [{tool}] or explosives to collapse the tunnel"))
+	return ""
+
 func _on_dig_swing(_w: int) -> void:
 	if _dig_hint_key != "":
 		_dig_learned[_dig_hint_key] = int(_dig_learned.get(_dig_hint_key, 0)) + 1
@@ -2572,6 +2587,9 @@ func _prompt_candidates() -> Array:
 				add.call(tr("EVACUATING…"), m.extract_progress, UiTheme.OK)
 			else:
 				add.call(tr("Hold here — the whole squad must reach the flare"), -1.0, UiTheme.ACCENT)
+	var support := _support_prompt()
+	if support != "":
+		add.call(support, -1.0, UiTheme.ACCENT)
 	return out
 
 ## Kolor akcji -> styl komunikatu (do dziennika i spójnego wyglądu).
