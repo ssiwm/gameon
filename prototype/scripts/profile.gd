@@ -13,6 +13,7 @@ const Weapons := preload("res://scripts/weapons.gd")
 const Parts := preload("res://scripts/parts.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Tapes := preload("res://scripts/tapes.gd")
+const LampTokens := preload("res://scripts/lamp_tokens.gd")
 
 signal xp_gained(amount: int, reason: String)
 signal leveled_up(level: int)
@@ -62,6 +63,7 @@ var history: Dictionary = {}                  ## klucz broni → {"k": zabójstw
 var seen: Dictionary = {}                     ## znaczniki „nowe” (od 1.7.409): "perk:<id>" / "part:<id>" / "beast:<id>" → gracz już to obejrzał
 var _seen_baseline := true                    ## profil bez listy obejrzanych: pierwsze zapytanie uznaje wszystko, co już jest, za obejrzane
 var tapes: Dictionary = {}                    ## zebrane taśmy (tapes.gd, K4, od 1.7.606): id → true; karta ARCHIWUM w menu pauzy
+var lamp_tokens: Dictionary = {}              ## zebrane marki lampowe (lamp_tokens.gd, od 1.7.684): id → true; karta ARCHIWUM
 var bestiary: Dictionary = {}                 ## id wpisu bestiariusza → zabójstwa tego gracza; wpis jest = gracz spotkał tego wroga (od 1.7.407)
 var map_best: Dictionary = {}                 ## rekord osobisty misji kampanii (raport po akcji, RESULTS_PLAN.md P1): id mapy → {"time": s}
 var last_record: Dictionary = {}              ## ostatni wynik misji wobec rekordu: {map, time, prev, best, new, first} (raport)
@@ -327,6 +329,18 @@ func add_tape(id: String) -> bool:
 	tape_found.emit(id)
 	return true
 
+## Marka lampowa w archiwum gracza (lamp_tokens.gd).
+func has_lamp_token(id: String) -> bool:
+	return lamp_tokens.has(id)
+
+## Nowa marka: dopisuje do archiwum i zwraca true; znana albo nieistniejąca — false.
+func add_lamp_token(id: String) -> bool:
+	if lamp_tokens.has(id) or not LampTokens.has(id):
+		return false
+	lamp_tokens[id] = true
+	_cond_dirty = true
+	return true
+
 func beast_kills(id: String) -> int:
 	return int(bestiary.get(id, 0))
 
@@ -345,6 +359,8 @@ func is_new(key: String) -> bool:
 			return bestiary.has(id) and not id in BESTIARY_ALWAYS
 		"tape":
 			return tapes.has(id)
+		"token":
+			return lamp_tokens.has(id)
 	return false
 
 func mark_seen(key: String) -> void:
@@ -699,6 +715,7 @@ func save_to(path: String) -> void:
 	cfg.set_value("profile", "map_best", map_best)
 	cfg.set_value("profile", "bestiary", bestiary)
 	cfg.set_value("profile", "tapes", tapes.keys())
+	cfg.set_value("profile", "lamp_tokens", lamp_tokens.keys())
 	if not _seen_baseline:
 		cfg.set_value("profile", "seen", seen.keys())
 	cfg.save(path)
@@ -778,6 +795,10 @@ func load_from(path: String) -> void:
 	for k in Array(cfg.get_value("profile", "tapes", [])):
 		if Tapes.has(String(k)):
 			tapes[String(k)] = true
+	lamp_tokens = {}
+	for k in Array(cfg.get_value("profile", "lamp_tokens", [])):
+		if LampTokens.has(String(k)):
+			lamp_tokens[String(k)] = true
 	seen = {}
 	_seen_baseline = not cfg.has_section_key("profile", "seen")
 	for k in Array(cfg.get_value("profile", "seen", [])):
@@ -822,6 +843,7 @@ func reset_for_test() -> void:
 	_snap_valid = false
 	bestiary = {}
 	tapes = {}
+	lamp_tokens = {}
 	seen = {}
 	_seen_baseline = false
 	_cond_dirty = false

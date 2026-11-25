@@ -151,6 +151,8 @@ func _view(i: int) -> Dictionary:
 		return Codex.perk_entry(String(e["perk_id"]))           # świeży status perku (poziom, założone sloty)
 	if e.has("tape"):
 		return Codex.tape_view(e)                                # archiwum: zakryta albo zebrana taśma
+	if e.has("token"):
+		return Codex.token_view(e)                               # archiwum: zakryta albo zebrana marka lampowa
 	return Codex.beast_view(e)
 
 ## Klucz znacznika „nowe” wpisu (Profile.is_new): spotkany wróg albo zebrana taśma; "" — wpis bez znacznika.
@@ -160,11 +162,13 @@ func _new_key(i: int) -> String:
 		return "beast:" + String(e["beast"])
 	if String(e.get("tape", "")) != "":
 		return "tape:" + String(e["tape"])
+	if String(e.get("token", "")) != "":
+		return "token:" + String(e["token"])
 	return ""
 
 func _refresh_list() -> void:
 	for i in _buttons.size():
-		var e := Codex.tape_view(_entries[i]) if _entries[i].has("tape") else Codex.beast_view(_entries[i])
+		var e := Codex.tape_view(_entries[i]) if _entries[i].has("tape") else (Codex.token_view(_entries[i]) if _entries[i].has("token") else Codex.beast_view(_entries[i]))
 		var nk := _new_key(i)
 		# nowy wpis — kropka do pierwszego obejrzenia; tr() przed sklejeniem, inaczej przycisk nie znajduje klucza i zostaje po angielsku
 		_buttons[i].text = tr(String(e["title"])) + ("  •" if nk != "" and Profile.is_new(nk) else "")
