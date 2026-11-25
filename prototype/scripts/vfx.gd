@@ -275,6 +275,11 @@ static func hit(parent: Node, pos: Vector2, dir: Vector2, mat: int, crit: bool, 
 			if snd:
 				Audio.play_variant_at("impact_hard", 3, pos, Audio.BUS_WORLD, -12.0, 1.25)
 				Audio.play_variant_at("ricochet", 2, pos, Audio.BUS_WORLD, -17.0, 1.1, 0.12)
+		Arsenal.Mat.SLATE:
+			sparks(parent, pos, dir)
+			chips(parent, pos, -dir, Color(0.3, 0.32, 0.35), 3 + (2 if heavy else 0), "chip", 120.0, Vector2(0.6, 1.3))
+			if snd:
+				Audio.play_variant_at("shell_ricochet", 3, pos, Audio.BUS_WORLD, -11.0 + (2.0 if heavy else 0.0), 1.0, 0.08)
 		Arsenal.Mat.WOOD:
 			burst(parent, pos, Color(0.55, 0.38, 0.2), 7, 30.0, 90.0, -dir, 70.0, 420.0, 0.35, Vector2(1.0, 2.0))
 			chips(parent, pos, -dir, Color(0.6, 0.45, 0.28), 4 + (2 if heavy else 0), "splinter", 110.0, Vector2(0.6, 1.3))

@@ -2421,8 +2421,8 @@ func _test_mole_shell() -> void:
 	var hp0: float = e.hp
 	var noise0: float = NoiseMgr.level
 	var r1: Dictionary = shot.call(front, m83)
-	check("skorupa: kula w całą płytę — ciało bez obrażeń, płyta −30%%, iskry pancerza (%.1f HP płyty)" % beh.plates[0],
-		is_equal_approx(e.hp, hp0) and is_equal_approx(beh.plates[0], Mole.PLATE_HP - m83 * Mole.SHELL_BULLET) and int(r1.get("mat", -1)) == 1)
+	check("skorupa: kula w całą płytę — ciało bez obrażeń, płyta −30%%, iskry i rykoszet o łupek (%.1f HP płyty)" % beh.plates[0],
+		is_equal_approx(e.hp, hp0) and is_equal_approx(beh.plates[0], Mole.PLATE_HP - m83 * Mole.SHELL_BULLET) and int(r1.get("mat", -1)) == Arsenal.Mat.SLATE)
 	check("skorupa: rykoszet hałasuje (Uwaga %.1f → %.1f)" % [noise0, NoiseMgr.level], NoiseMgr.level > noise0)
 	var n := 1
 	while beh.plates[0] > 0.0 and n < 60:
@@ -2430,7 +2430,7 @@ func _test_mole_shell() -> void:
 		n += 1
 	check("skorupa: płyta karku pęka po %d kulach M-83 (60 HP ÷ 2,4 = 25), chwianie" % n, n == 25 and beh.intact() == 2 and e._stagger >= Mole.PLATE_STAGGER - 0.001)
 	var r2: Dictionary = shot.call(front, m83)
-	check("skorupa: rozbita płyta odsłania kark — pełne obrażenia kuli (%.1f)" % float(r2.get("dealt", 0.0)), is_equal_approx(float(r2.get("dealt", 0.0)), m83) and int(r2.get("mat", -1)) != 1)
+	check("skorupa: rozbita płyta odsłania kark — pełne obrażenia kuli (%.1f)" % float(r2.get("dealt", 0.0)), is_equal_approx(float(r2.get("dealt", 0.0)), m83) and int(r2.get("mat", -1)) != Arsenal.Mat.SLATE)
 	var mag: int = Weapons.def(Weapons.M83).mag
 	var kills_at := n + int(ceil((hp0 - m83) / m83)) + 1
 	check("skorupa: seria M-83 w przód potrzebuje %d kul — więcej niż magazynek (%d), dziś 9" % [kills_at, mag], kills_at > mag)

@@ -1336,7 +1336,9 @@ func _wake_rpc(key: String, stage: int, at: Vector2, kind: String) -> void:
 	if lvl == null or not lvl.is_inside_tree():
 		return
 	var tree := get_tree()
-	var scrapes := 4 if stage == 1 else 6
+	var scrapes := 0 if kind == "lupacz" else (4 if stage == 1 else 6)
+	if kind == "lupacz" and stage < 3:                            # Łupacz: jego sygnatura — trzy pociągnięcia pazurów po skale (bake_sfx.py)
+		Audio.play_variant_at("claw_scrape", 3, at, Audio.BUS_WORLD, -14.0 if stage == 1 else -7.0, 0.85 if stage == 1 else 0.95)
 	for k in scrapes:                                            # drapanie zza ściany: stłumione, niskie zgrzyty żwiru w nierównym rytmie
 		var db := (-17.0 if stage == 1 else -10.0) + randf_range(-2.0, 1.0)
 		var pitch := (0.5 if stage == 1 else 0.6) * randf_range(0.92, 1.08)

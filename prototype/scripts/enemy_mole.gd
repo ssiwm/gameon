@@ -318,17 +318,14 @@ func _burrow_fx(event: String) -> void:
 	if event == "under":
 		vfx.chips(e.get_parent(), at, Vector2.UP, Color(0.36, 0.32, 0.27), 12, "chip", 90.0, Vector2(0.8, 1.8))
 		au.play_variant_at("dig_gravel", 3, at, au.BUS_WORLD, -3.0, 0.62)
+		au.play_variant_at("claw_scrape", 3, at, au.BUS_WORLD, -8.0, 0.9)
 	elif event.begins_with("rise:"):
 		var xy := event.split(":")
 		var spot := Vector2(float(xy[1]), float(xy[2]))
-		var tree: SceneTree = e.get_tree()
-		for k in 5:                                            # drapanie zza ściany jak zapowiedź K3, krócej i bliżej
-			var db := -8.0 + randf_range(-2.0, 1.0)
-			var pitch := 0.58 * randf_range(0.92, 1.08)
-			tree.create_timer(0.2 * float(k) + randf_range(0.0, 0.06)).timeout.connect(
-				func() -> void: au.play_variant_at("dig_gravel", 3, spot, au.BUS_WORLD, db, pitch))
+		au.play_variant_at("claw_scrape", 3, spot, au.BUS_WORLD, -4.0, randf_range(0.95, 1.05))      # sygnatura: trzy pociągnięcia pazurów
 	elif event == "emerge":
 		au.play_at("collapse", at, au.BUS_WORLD, -5.0, 1.35)
+		au.play_variant_at("lupacz_squeal", 2, at, au.BUS_WORLD, -3.0, randf_range(0.9, 1.0))
 		vfx.chips(e.get_parent(), at + Vector2(0.0, -8.0), Vector2.UP, Color(0.36, 0.32, 0.27), 12, "chip", 120.0, Vector2(1.0, 2.2))
 	else:
 		au.play_variant_at("dig_gravel", 3, at, au.BUS_WORLD, -6.0, 0.5)
@@ -368,11 +365,8 @@ func fx(event: String) -> void:
 	var au := _autoload("Audio")
 	if au == null:
 		return
-	au.play_at("collapse", at, au.BUS_WORLD, -9.0, 1.7)
-	au.play_variant_at("dig_gravel", 3, at, au.BUS_WORLD, -4.0, 0.8)
-	var v: Array = (e._def.get("voice", {}) as Dictionary).get("attack", [])    # enemy_defs.gd wczytuje ten plik — bez preloadu w drugą stronę
-	if not v.is_empty():
-		au.play_variant_at(v[0], v[1], at, au.BUS_WORLD, float(v[2]) - 2.0, float(v[3]) * 1.45)
+	au.play_variant_at("shell_crack", 2, at, au.BUS_WORLD, -2.0, randf_range(0.94, 1.06))      # łupek pęka wzdłuż warstw (bake_sfx.py `_build_shell`)
+	au.play_variant_at("lupacz_squeal", 2, at, au.BUS_WORLD, -4.0, randf_range(0.95, 1.08))
 
 func tick_special(delta: float) -> bool:
 	if e._sp <= SP_UNDER:

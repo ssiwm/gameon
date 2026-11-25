@@ -40,6 +40,7 @@ heart_slow_loop, revive; amb_air, amb_drips. Zostały syntetyczne: kaplan_scream
 Odsłuch 2026-11-14, z nagrań: dig_dirt, dig_gravel, dig_rock (cios kilofem w strefie wydobycia).
 Odsłuch 2026-11-15, z nagrań: cała pogoda (WEATHER_PLAN.md W2–W4) — tło deszczu, krople na materiałach, dach, okap, kaptur, wiatr,
 podmuch, świst w oknie, grzmot (trzask, toczenie, drżenie szyb).
+Odsłuch 2026-11-25, z nagrań: Łupacz w skorupie — shell_ricochet, shell_crack, lupacz_squeal, claw_scrape.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
@@ -995,8 +996,89 @@ def _moth_dust_bake() -> None:
         finalize("moth_dust_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15, keep_len=True), lufs=-17.0, fade_out_ms=120)
 
 
+# --- Łupacz w skorupie z łupka (1.7.685): ten sam gest co synteza z bake_sfx._build_shell, ale na nagraniach kamienia, dachówki,
+# kwiku i pazurów (werdykt odsłuchu 2026-11-25: wszystkie cztery z nagrań). Łupek jest grubszy od dachówki, więc trzaski ceramiki idą w dół; kamień nie dzwoni jak blacha.
+SHELL_RICOCHET_SRC = (("impact_rock_4", 0.30), ("stone_impact_041", 0.15), ("stone_impact_015", 0.10))
+SHELL_RICOCHET_NEEDS = [sid for sid, _ in SHELL_RICOCHET_SRC] + ["crushed_rock_drop"]
+SHELL_CRACK_NEEDS = ["tile_crack_roof", "tile_smash_04", "boulder_stones_14", "rock_into_gravel_06"]
+LUPACZ_SQUEAL_NEEDS = ["pig_squeal_18", "screech_breath_05", "seabeast_pain_04"]
+CLAW_SCRAPE_NEEDS = ["rock_drag_003", "rock_drag_029", "claws_anf003", "soil_debris_13"]
+
+
+def _whiz(r: Rng) -> np.ndarray:
+    """Świst odbitej kuli opadający w dół — ta sama synteza co w wersji publicznej (nagranego rykoszetu o kamień nie mamy)."""
+    nw = ms(vary(r, 230, .2))
+    w = d.osc("sine", d.glide_exp(vary(r, 2900, .12), vary(r, 1250, .15), nw, .09), nw)
+    w = w * d.env_pts(nw, [(0, 0), (.006, 1), (nw / d.SR * .5, .45), (nw / d.SR, 0)])
+    return _unit(w + .3 * d.filt(d.white(nw, r), "bp", 3200.0, 2.0) * d.env_perc(nw, .002, .06))
+
+
+def _shell_ricochet_bake() -> None:
+    for i, (sid, t0) in enumerate(SHELL_RICOCHET_SRC):
+        r = Rng(0xF110 + i * 1451)
+        hit = _fade(d.from_onset(bc.src(sid, t0, 0.6), 1.0, thr_db=-10.0), 0.05 + .03 * i, 0.30)
+        hit = _unit(d.filt(hit, "hp", 160.0, order=2))
+        grit = d.filt(_clip("crushed_rock_drop", 1.6 + 1.1 * i, 0.5, 0.0, 0.35, tail=.2, onset=False), "hp", 2200.0, order=2)
+        x = d.mix([(hit, 1.0), (_whiz(r), .30, .012 + .01 * i), (_unit(grit), .22, .03)], ms(520))
+        x = d.limiter(d.saturate(_unit(x), 1.4), -6.0)
+        finalize("shell_ricochet_%d" % (i + 1), d.reverb(x, ir("room"), wet=.14), lufs=-20.0, fade_out_ms=80)
+
+
+def _shell_crack_bake() -> None:
+    # dwa skupiska trzasków dachówki (rozwarstwienie płyty), łomot głazu o kamienie (płyta o grunt), grzechot okruchów
+    for i, (t0, slab_semis) in enumerate(((1.50, -3.0), (3.20, -5.0))):
+        crack = _clip("tile_crack_roof", t0, 0.5, -5.0, 0.55, tail=.2, onset=False)
+        slab = _clip("boulder_stones_14", 0.15, 0.7, slab_semis, 0.70, tail=.3)
+        shard = _clip("tile_smash_04", 0.30, 1.0, -4.0, 0.95, tail=.4) if i == 0 else \
+            _clip("rock_into_gravel_06", 0.15, 0.8, -2.0, 0.80, tail=.4)
+        x = d.mix([(crack, 1.0), (slab, .85, .24), (d.filt(shard, "hp", 400.0, order=2), .45, .30),
+                   (thump(.3, 120, 55, .02, .08), .4, .25)], ms(1300))
+        x = d.limiter(_unit(d.filt(x, "hp", 40.0, order=2)), -6.0)
+        finalize("shell_crack_%d" % (i + 1), d.limiter(d.reverb(x, ir("cave"), wet=.22), -4.0), lufs=-19.6, fade_out_ms=200)
+
+
+def _lupacz_squeal_bake() -> None:
+    # kwik świni podniesiony jak taśma (krócej i wyżej — piskliwe „i” ryjówki), pod spodem skrzek i bolesny wrzask stwora;
+    # parsknięcie na końcu niesie samo nagranie świni
+    a = d.mix([(_clip("pig_squeal_18", 0.27, 0.8, 3.0, 0.62, tail=.15), 1.0),
+               (_clip("screech_breath_05", 0.10, 0.6, 4.0, 0.45, tail=.2, onset=False), .3, .02)], ms(700))
+    b = d.mix([(_clip("pig_squeal_18", 0.55, 0.7, 5.0, 0.52, tail=.15), 1.0),
+               (_clip("seabeast_pain_04", 1.20, 0.8, 5.0, 0.50, tail=.25, onset=False), .3, .02)], ms(620))
+    for i, x in enumerate((a, b)):
+        x = d.saturate(_unit(d.filt(x, "hp", 250.0, order=2)), 1.5)
+        finalize("lupacz_squeal_%d" % (i + 1), d.reverb(x, ir("room"), wet=.2), lufs=-18.0, fade_out_ms=80)
+
+
+# pociągnięcia kamienia po kamieniu (start, długość) i zaczepienia pazurów w claws_anf003 (górne pasmo, bez tąpnięcia łapy)
+_DRAGS = (("rock_drag_003", 0.55, 0.28), ("rock_drag_029", 0.75, 0.30), ("rock_drag_003", 1.15, 0.30))
+_CLAW_CLICKS = (0.15, 0.65, 1.10, 1.55, 2.00, 2.45, 2.90, 3.35)
+
+
+def _claw_scrape_bake() -> None:
+    for i in range(3):
+        r = Rng(0xF410 + i * 1201)
+        n = ms(1250)
+        x = np.zeros(n)
+        for j, at in enumerate((0.0, vary(r, .26, .1), vary(r, .55, .08))):
+            sid, t0, dur = _DRAGS[(i + j) % len(_DRAGS)]
+            drag = _clip(sid, t0, dur + .05, -2.0 - 1.5 * j + r.bipolar(1.0), dur, tail=.08, onset=False)
+            claw = d.filt(_clip("claws_anf003", _CLAW_CLICKS[(3 * i + j) % len(_CLAW_CLICKS)], .25, -3.0, .2, tail=.1), "hp", 1200.0, order=2)
+            stroke = d.mix([(drag, .8), (_unit(claw), .6, .01)], ms(dur * 1000 + 60))
+            k = ms(at * 1000)
+            x[k:k + len(stroke)] += stroke[:n - k] * (1.0 - .12 * j)
+        crumbs = _clip("soil_debris_13", 0.9 + .2 * i, 0.6, -3.0, 0.5, tail=.3, onset=False)
+        x = d.mix([(_unit(x), 1.0), (_unit(crumbs), .25, .75)], n)
+        x = d.lp(d.filt(x, "hp", 120.0, order=2), 2600.0, order=2)                   # za skałą: bez góry, jak w syntezie
+        x = d.limiter(d.saturate(_unit(x), 1.5), -9.0)                              # zaczepienia pazurów nie zjadają zapasu szczytu
+        finalize("claw_scrape_%d" % (i + 1), d.reverb(x, ir("cave"), wet=.2), lufs=-21.0, fade_out_ms=150)
+
+
 def enemies() -> None:
     """Wersje z nagrań dla głosów wrogów — wołane na końcu bake_sfx.build_enemies()."""
+    bc.hybrid(_keys("shell_ricochet", 3), _shell_ricochet_bake, SHELL_RICOCHET_NEEDS)
+    bc.hybrid(_keys("shell_crack", 2), _shell_crack_bake, SHELL_CRACK_NEEDS)
+    bc.hybrid(_keys("lupacz_squeal", 2), _lupacz_squeal_bake, LUPACZ_SQUEAL_NEEDS)
+    bc.hybrid(_keys("claw_scrape", 3), _claw_scrape_bake, CLAW_SCRAPE_NEEDS)
     bc.hybrid(_keys("trzosek_attack", 3), _trzosek_attack_bake, TRZOSEK_NEEDS)
     bc.hybrid(_keys("trzosek_death", 2), _trzosek_death_bake, TRZOSEK_NEEDS)
     bc.hybrid(_keys("wolek_attack", 2), _wolek_attack_bake, WOLEK_ATTACK_NEEDS)
