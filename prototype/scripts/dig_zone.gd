@@ -464,7 +464,13 @@ const PROP_NOISE_PER_S := 0.8          ## Uwaga na sekundę klinowania (młotek)
 const PROP_REACH_X := 14.0             ## px: serwer przyjmuje pracę, póki gracz stoi tak blisko miejsca stempla
 
 var props: Array[Vector3] = []         ## stemple u każdego peera: (x, y stropu, y stóp) px świata (`_props_rpc`)
-var warns: Array = []                  ## ostrzeżenia [j, i0, i1, t (s do zawału), materiał] — serwer liczy, klienci kopiują (`_warn_rpc`)
+var warns: Array = []                  ## ostrzeżenia [j, i0, i1, t (s do zawału), materiał(, sprawca)] — serwer liczy, klienci kopiują (`_warn_rpc`)
+## Podkop Łupacza (LUPACZ_PLAN.md L3, enemy_mole.gd): `force_warn` stawia ostrzeżenie także pod stabilnym przęsłem (szóste pole: sprawca).
+## Takie ostrzeżenie trwa, dopóki nikt nie podeprze przęsła stemplem (`_update_warns` je przenosi), potem zwykły `_collapse`.
+const FORCED_MIN_W := 2.0 * TILE       ## px: najwęższe przęsło, które da się podkopać
+const FORCED_HALF := 40.0              ## px: podkop obejmuje najwyżej tyle w każdą stronę od punktu (nie cały długi chodnik)
+const FORCED_CD := 30.0                ## s między podkopami w jednej strefie
+var forced_cd := 0.0                   ## serwer
 var collapses := 0                     ## serwer: zawałów od wczytania / resetu (test, pomiar)
 var prop_progress := 0.0               ## postęp stawiania stempla w tej strefie (serwer → klienci; HUD)
 var local_prop := ""                   ## lokalny człowiek: "" — nic, "ok" — może stawiać, "nomat" — brak desek i złomu (HUD)
@@ -663,6 +669,61 @@ func _validate_props(blast := Vector3.INF) -> void:
 		_send_props()
 		_check_spans = true
 
+## Serwer: podkop — ostrzeżenie o zawale przęsła nad punktem `feet` (stopy celu albo miejsce za nim), także stabilnego, na `warn_s` s,
+## najwyżej `half` px w każdą stronę od punktu.
+## Zwraca "" (ostrzeżenie trwa) albo powód odmowy: cd (przerwa FORCED_CD), noroof (nad punktem nie ma stropu strefy), narrow (węższe niż
+## FORCED_MIN_W), prop (przęsło podparte stemplem), busy (już siada).
+func force_warn(feet: Vector2, by: String, warn_s: float, half := FORCED_HALF) -> String:
+	if forced_cd > 0.0:
+		return "cd"
+	var top := _roof_y(feet)
+	if top == INF:
+		return "noroof"
+	var p := (Vector2(feet.x, top) - global_position) / CELL + Vector2(1, 1)
+	var j := ceili(p.y)
+	var i := roundi(p.x)
+	if j < 2 or j >= _h - 1 or i < 1 or i >= _w - 1 or _d[j * _w + i] >= ISO:
+		return "noroof"
+	var reach := roundi(half / CELL)
+	var a := i
+	while a > 1 and a > i - reach and _d[j * _w + a - 1] < ISO:
+		a -= 1
+	var b := i
+	while b < _w - 2 and b < i + reach and _d[j * _w + b + 1] < ISO:
+		b += 1
+	for c in range(a, b + 1):
+		if _prop_at(c, j):
+			return "prop"
+	if float(b - a + 1) * CELL < FORCED_MIN_W:
+		return "narrow"
+	var roof := 0
+	var cnt := {}
+	for c in range(a, b + 1):
+		var mk := _roof_mat(c, j)
+		if mk != "":
+			roof += 1
+			cnt[mk] = int(cnt.get(mk, 0)) + 1
+	if float(roof) < SPAN_COVER * float(b - a + 1):
+		return "noroof"
+	var mat := ""
+	for mk in cnt:
+		if mat == "" or int(cnt[mk]) > int(cnt[mat]):
+			mat = mk
+	for w in warns:
+		if int(w[1]) <= b and int(w[2]) >= a and absi(int(w[0]) - j) <= SPAN_TOL * 2:
+			return "busy"
+	warns.append([j, a, b, warn_s, mat, by])
+	forced_cd = FORCED_CD
+	_send_warns()
+	return ""
+
+## Czy przęsło ostrzeżenia `w` ma już stempel.
+func _warn_propped(w: Array) -> bool:
+	for c in range(int(w[1]), int(w[2]) + 1):
+		if _prop_at(c, int(w[0])):
+			return true
+	return false
+
 ## Serwer: ostrzeżenia z bieżących przęseł — trwające liczą dalej (odliczanie nie startuje od nowa przy każdym ciosie), nowe dostają `warn`
 ## materiału, podparte znikają. Zmiana idzie do wszystkich.
 func _update_warns() -> void:
@@ -675,6 +736,14 @@ func _update_warns() -> void:
 				t = minf(t, float(w[3]))
 				break
 		nw.append([sp[0], sp[1], sp[2], t, sp[3]])
+	for w in warns:                                               # podkop (L3): przęsło stabilne, ostrzeżenie trwa do stempla
+		if w.size() < 6 or _warn_propped(w):
+			continue
+		var free := true
+		for o in nw:
+			free = free and not (int(o[1]) <= int(w[2]) and int(o[2]) >= int(w[1]) and absi(int(o[0]) - int(w[0])) <= SPAN_TOL * 2)
+		if free:
+			nw.append(w)
 	var same := nw.size() == warns.size()
 	if same:
 		for c in nw.size():
@@ -747,12 +816,13 @@ func _collapse(w: Array) -> void:
 			info["knock"] = 0.0
 			info["stun"] = 0.0
 			info["heavy"] = true
+			info["crush"] = true                                   # skorupa Łupacza bierze zawał na płytę (enemy_mole.gd `absorb`, L3 D6)
 			if bool(Combat.apply(en, info).get("killed", false)):
 				crushed += 1
 	last_collapse = {"hurt": hurt, "crushed": crushed, "width": float(i1 - i0 + 1) * CELL, "pos": c}
 	NoiseMgr.add_noise(NoiseMgr.N_GRENADE, c, "dig")
 	SessionLog.event("dig_collapse", {"zone": String(name), "width": (i1 - i0 + 1) * int(CELL), "mat": String(w[4]), "pos": SessionLog.xy(c),
-		"hurt": hurt, "crushed": crushed, "props": props.size()})
+		"hurt": hurt, "crushed": crushed, "props": props.size(), "by": String(w[5]) if w.size() > 5 else ""})
 	var d := PackedByteArray()
 	var m := PackedByteArray()
 	for k in idx:
@@ -1826,6 +1896,7 @@ func _state_rpc(key: String, s: PackedByteArray) -> void:
 		crack = Vector2i(-1, -1)
 		crack_ver += 1
 	warns.clear()
+	forced_cd = 0.0
 	prop_progress = 0.0
 	_prop_workers.clear()
 	tape_progress = 0.0
@@ -1914,6 +1985,7 @@ func _physics_process(delta: float) -> void:
 	_tick_prop_work(delta)
 	_tick_tape_work(delta)
 	_tick_warns(delta)
+	forced_cd = maxf(0.0, forced_cd - delta)
 	_tick_wake(delta)
 	if _check_spans and is_settled():
 		_check_spans = false
