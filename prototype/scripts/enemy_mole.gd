@@ -67,6 +67,9 @@ const BELLY_Y := 12.5                   ## px nad stopami: zwykła strefa trafie
 const PLATE_EDGE := 2.8                 ## px od środka ciała wzdłuż osi: dalej w przód — kark, w tył — zad (bok strefy trafień 17 px)
 const PLATE_STAGGER := 0.4              ## s chwiania po rozbiciu płyty
 const RICOCHET_NOISE := 0.4             ## Uwagi za kulę odbitą od płyty (ostrzał skorupy jest głośny)
+const LAMP_PLATE := 2                   ## płyta z lampą benzynową górnika (zad): rozbita tłucze lampę…
+const LAMP_FIRE := 3.0                  ## …i grzbiet płonie tyle s (8 HP/s, enemy.gd BURN_DPS — ogień rani ciało przez skorupę)
+const PLATE_ORE := 0.5                  ## szansa na 1 złom (urobek z płyty łupka z pirytem) do łupu misji za rozbitą płytę
 const PLATE_LIFT := [Vector2(5.0, -10.0), Vector2(0.0, -11.0), Vector2(-5.0, -10.0)]   ## środki płyt (x wzdłuż patrzenia) — efekty
 var plates := PackedFloat32Array([PLATE_HP, PLATE_HP, PLATE_HP])   ## serwer: HP płyt; klient: 0 / PLATE_HP z migawki
 
@@ -152,6 +155,12 @@ func absorb(info: Dictionary, dmg: float) -> float:
 func _break(i: int, by: String, shooter: int) -> void:
 	plates[i] = 0.0
 	e._stagger = maxf(e._stagger, PLATE_STAGGER)
+	if i == LAMP_PLATE:
+		e._ignite(LAMP_FIRE)                                   # lampa pęka, benzyna zapala grzbiet
+	var scrap := _autoload("Scrap")
+	if scrap != null and scrap.enabled() and randf() < PLATE_ORE:
+		scrap.add_loot(1)                                      # urobek z płyty (Nocny Dyżur: Scrap.enabled() = false)
+		e.behavior_fx("ore")
 	var log_s: GDScript = load(SESSION_LOG_PATH)
 	log_s.event("shell_break", {"plate": i, "by": by, "p": shooter, "left": intact(), "pos": log_s.xy(e.global_position)})
 	e.behavior_fx("plate%d" % i)
@@ -160,6 +169,10 @@ func _break(i: int, by: String, shooter: int) -> void:
 ## (test_enemy_surface.gd), więc odwołanie wprost do `NoiseMgr` / `Audio` (i preload skryptów, które ich używają) nie skompilowałoby się tam.
 func _autoload(n: String) -> Node:
 	return e.get_node_or_null("/root/" + n)
+
+## Tłumaczenie tekstu UI (zachowanie to RefCounted bez `tr`).
+func tr_ui(text: String) -> String:
+	return e.tr(text)
 
 func net_bits() -> int:
 	var m := 0
@@ -174,6 +187,11 @@ func apply_net_bits(bits: int) -> void:
 
 ## Każdy peer: płyta odpada — odłamki łupka z jej miejsca, trzask kamienia i pisk.
 func fx(event: String) -> void:
+	if event == "ore":
+		var msg := _autoload("Msg")
+		if msg != null:
+			msg.post("mole.ore", msg.Ch.TOAST, tr_ui("Shale plate: +1 scrap"), {"sub": tr_ui("Ore from the shell goes to the mission loot"), "style": msg.Style.SUCCESS, "ttl": 2.0, "prio": 25})
+		return
 	if not event.begins_with("plate"):
 		return
 	var i := clampi(int(event.substr(5)), 0, PLATES - 1)
