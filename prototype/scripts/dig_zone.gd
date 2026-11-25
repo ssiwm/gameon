@@ -1255,9 +1255,7 @@ func _wake_hit(feet: Vector2, dir: Vector2) -> void:
 	var src: Vector2 = spot[0]
 	wake_side = float(spot[2])                                  # bot pilnuje strony kieszeni (cios w pionie też ją ma)
 	if stage == 3:
-		_pocket_blast = true
-		_send(src, WAKE_POCKET, 3.0, Mats.Tool.BLAST)          # kieszeń za czołem: ściana pęka, z niej wychodzą (taśma wypada cała)
-		_pocket_blast = false
+		open_pocket(src)                                        # kieszeń za czołem: ściana pęka, z niej wychodzą (taśma wypada cała)
 		var kinds := wake_kinds(map_key)
 		var h: float = spot[2]
 		var mole := kinds.has("lupacz")
@@ -1270,6 +1268,13 @@ func _wake_hit(feet: Vector2, dir: Vector2) -> void:
 		_wake_rpc.rpc(map_key, stage, src, kind)
 	else:
 		_wake_rpc(map_key, stage, src, kind)
+
+## Serwer: kieszeń wyjścia wroga za czołem wykopu (K3, zanurzenie Łupacza — enemy_mole.gd): ściana pęka jak od wybuchu, ale taśma
+## w niej wypada cała (`_pocket_blast`).
+func open_pocket(src: Vector2) -> void:
+	_pocket_blast = true
+	_send(src, WAKE_POCKET, 3.0, Mats.Tool.BLAST)
+	_pocket_blast = false
 
 ## Etap budzenia przy `hits` ciosach: 0 — cisza, 1 — drapanie, 2 — bliżej, 3 — wychodzą.
 static func wake_stage_for(hits: float) -> int:
