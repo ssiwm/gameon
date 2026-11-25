@@ -98,6 +98,10 @@ func run(m: Node2D) -> void:
 		await _claw_k3c()
 		_finish()
 		return
+	if "--digonly=submerge" in OS.get_cmdline_user_args():  # samo zanurzenie Łupacza
+		await _submerge_k3d()
+		_finish()
+		return
 	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48 + 16 — komora DigZone4 to powietrze)" % dig0, dig0 == 192 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
@@ -114,6 +118,7 @@ func run(m: Node2D) -> void:
 	await _signals_k2()
 	await _wake_k3()
 	await _claw_k3c()
+	await _submerge_k3d()
 	await _minimap_k5()
 	await _chamber_k5b()
 	await _signals()
@@ -186,6 +191,82 @@ func _claw_k3c() -> void:
 	mole.queue_free()
 	rock.reset_to(PackedByteArray())
 	zone.reset_to(PackedByteArray())
+	player.hp = player.MAX_HP
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	await _frames(0.2)
+
+## Zanurzenie Łupacza (1.7.683, enemy_mole.gd `_go_under` / `_tick_under`): ranny z rozbitą płytą wraca w skałę — ukryty i nietrafialny,
+## po SUB_TIME s drapie za czołem wykopu gracza (wciąż ukryty), ściana pęka, wychodzi z odrośniętą płytą; bez celu też się zanurza i czeka
+## w skale, dopóki nikt nie wejdzie do strefy.
+func _submerge_k3d() -> void:
+	var Mole := preload("res://scripts/enemy_mole.gd")
+	rock.reset_to(PackedByteArray())
+	await _frames(0.1)
+	var rr: Rect2 = rock.rect_px()
+	var cell_a := Vector2(rr.position.x + 22.0, rr.end.y - 14.0)          # komora Łupacza
+	var cell_b := Vector2(rr.end.x - 26.0, rr.end.y - 14.0)               # wykop gracza
+	rock.apply_dig(cell_a, Vector2(12.0, 7.0), 2.0, DigMats.Tool.BLAST)
+	rock.apply_dig(cell_b, Vector2(14.0, 8.0), 2.0, DigMats.Tool.BLAST)
+	await _frames(0.1)
+	_place_player(Vector2(cell_b.x, cell_b.y + 6.0))
+	player.hp = player.MAX_HP
+	var names: Array = Director.spawn_at(["lupacz"], Vector2(cell_a.x, cell_a.y + 6.0), player.global_position)
+	await _frames(0.3)
+	var mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	check("K3d: Łupacz w komorze w skale", mole != null and bool(mole.active))
+	if mole == null:
+		return
+	var beh = mole._beh
+	beh.plates[0] = 0.0
+	mole.hp = mole._max_hp * 0.3                                         # ranny, z rozbitym karkiem
+	var t := 0.0
+	while t < 1.0 and int(mole._sp) > Mole.SP_UNDER:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	await _frames(0.05)
+	var hs: CollisionShape2D = mole.get_meta("hurt_shape")
+	check("K3d: ranny z rozbitą płytą zanurza się (%.2f s) — ukryty, bez strefy trafień, nie bije, boty go nie widzą" % t,
+		int(mole._sp) == Mole.SP_UNDER and beh.is_hidden() and not mole.visible and hs.disabled and not beh.may_attack() and not beh.threat_ok())
+	t = 0.0
+	while t < Mole.SUB_TIME + 0.5 and int(mole._sp) != Mole.SP_RISE:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	check("K3d: po %.1f s drapie za czołem wykopu gracza (%.0f px od niego), wciąż ukryty" % [t, mole.global_position.distance_to(player.global_position)],
+		int(mole._sp) == Mole.SP_RISE and beh.is_hidden() and mole.global_position.distance_to(player.global_position) < 70.0)
+	var src: Vector2 = beh.rise_src
+	t = 0.0
+	while t < Mole.RISE_TIME + 0.5 and int(mole._sp) <= Mole.SP_UNDER:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	await _frames(0.05)
+	check("K3d: ściana pęka, wychodzi z kieszeni (wyjście jak K3), widoczny", int(mole._sp) >= 0 and mole.visible and not hs.disabled
+		and not rock.solid_at_px(src))
+	check("K3d: wraca z odrośniętą płytą karku (%.0f HP — łupek 60, piryt z żyły 90)" % float(beh.plates[0]),
+		beh.intact() == 3 and (is_equal_approx(float(beh.plates[0]), Mole.PLATE_HP) or is_equal_approx(float(beh.plates[0]), Mole.PYRITE_HP)) and int(beh.submerges) == 1)
+	# bez celu: gracz daleko poza strefą, ślad wygasł
+	await _frames(Mole.ENTRY_SECONDS + 0.2)
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	beh.sub_cd = 0.0
+	mole._target = null
+	mole._has_lead = false
+	mole.global_position = Vector2(cell_a.x, cell_a.y + 6.0)
+	t = 0.0
+	while t < Mole.SUB_LOST + 2.0 and int(mole._sp) > Mole.SP_UNDER:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		mole._target = null
+		mole._has_lead = false
+	check("K3d: bez celu i śladu zanurza się po %.1f s (zamiast zasnąć w wykopie, najpóźniej po %.0f s)" % [t, Mole.SUB_LOST], int(mole._sp) == Mole.SP_UNDER and t <= Mole.SUB_LOST + 0.1)
+	await _frames(Mole.SUB_TIME + 1.0)
+	check("K3d: nikogo w strefie — czeka w skale", int(mole._sp) == Mole.SP_UNDER)
+	_place_player(Vector2(cell_b.x, cell_b.y + 6.0))
+	t = 0.0
+	while t < 2.0 and int(mole._sp) != Mole.SP_RISE:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	check("K3d: gracz wchodzi do strefy — Łupacz od razu drapie przy nim (%.2f s)" % t, int(mole._sp) == Mole.SP_RISE)
+	mole.queue_free()
+	rock.reset_to(PackedByteArray())
 	player.hp = player.MAX_HP
 	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
 	await _frames(0.2)

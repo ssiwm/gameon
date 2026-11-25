@@ -73,6 +73,30 @@ const PLATE_ORE := 0.5                  ## szansa na 1 złom (urobek z płyty ł
 const PLATE_LIFT := [Vector2(5.0, -10.0), Vector2(0.0, -11.0), Vector2(-5.0, -10.0)]   ## środki płyt (x wzdłuż patrzenia) — efekty
 var plates := PackedFloat32Array([PLATE_HP, PLATE_HP, PLATE_HP])   ## serwer: HP płyt; klient: 0 / PLATE_HP z migawki
 
+## Zanurzenie (1.7.683): w strefie wydobycia Łupacz wraca w skałę, gdy jest ranny (HP < SUB_HP z rozbitą płytą), gdy SUB_LOST s nie ma celu
+## ani śladu albo gdy rdzeń odsyła go do snu po szukaniu (zamiast zasnąć na środku wykopu). Pod ziemią (`_sp` = SP_UNDER) jest niewidoczny i nietrafialny (enemy.gd: `is_hidden` chowa model i strefę trafień u każdego
+## peera); po SUB_TIME s wybiera najbliższego gracza w strefie (do SUB_RANGE px od jej brzegu; bez nikogo czeka w skale), staje w kieszeni
+## za czołem jego wykopu (`DigZone.wake_spot`, jak wyjście K3) i przez RISE_TIME s drapie (`_sp` = SP_RISE, wciąż ukryty), potem ściana
+## pęka (`DigZone.open_pocket`) i wychodzi zwykłym wyjściem z kieszeni. Wraca z jedną odrośniętą płytą z tego, przez co kopał: z żyły
+## pirytową (PYRITE_HP), ze skały i ziemi łupkową. Przerwa SUB_CD s między zanurzeniami.
+const SP_UNDER := -20
+const SP_RISE := -21
+const SUB_HP := 0.4
+const SUB_LOST := 4.0
+const SUB_TIME := 2.5
+const RISE_TIME := 1.2
+const SUB_CD := 14.0
+const SUB_RANGE := 48.0
+const PYRITE_HP := 90.0
+var sub_t := 0.0
+var sub_cd := 0.0
+var lost_t := 0.0
+var sub_zone = null
+var rise_src := Vector2.INF
+var rise_side := 1.0
+var submerges := 0                      ## serwer: zanurzenia od wczytania (test, dziennik)
+var _was_active := false                ## serwer: był aktywny w poprzednim tiku — przejście w sen po szukaniu = zanurzenie
+
 var dig_cd := 0.0
 var digs := 0                           ## serwer: wyrw od wczytania (test, dziennik)
 var stall := 0.0                        ## s bez postępu
@@ -106,6 +130,12 @@ func reset() -> void:
 	_last_pos = Vector2.INF
 	_fit_hurt(0.0, 0.0)
 	plates = PackedFloat32Array([PLATE_HP, PLATE_HP, PLATE_HP])          # wipe, restart: skorupa cała
+	sub_t = 0.0
+	sub_cd = 0.0
+	lost_t = 0.0
+	sub_zone = null
+	rise_src = Vector2.INF
+	_was_active = false
 
 # ---------------------------------------------------------------- skorupa
 
@@ -165,10 +195,122 @@ func _break(i: int, by: String, shooter: int) -> void:
 	log_s.event("shell_break", {"plate": i, "by": by, "p": shooter, "left": intact(), "pos": log_s.xy(e.global_position)})
 	e.behavior_fx("plate%d" % i)
 
+# ---------------------------------------------------------------- zanurzenie
+
+func is_hidden() -> bool:
+	return e._sp <= SP_UNDER
+
+func threat_ok() -> bool:
+	return not is_hidden()
+
+func may_attack() -> bool:
+	return not is_hidden()
+
+## Serwer: strefa, w której Łupacz ma się zanurzyć teraz, albo null. Tylko na podłożu, poza ciosem, w samej strefie.
+func _wants_under(went_idle := false):
+	if sub_cd > 0.0 or (not e.active and not went_idle) or e._windup > 0.0 or recovery_left > 0.0 or not e.is_on_floor():
+		return null
+	var hurt: bool = e.hp < e._max_hp * SUB_HP and intact() < PLATES
+	if not hurt and lost_t < SUB_LOST and not went_idle:
+		return null
+	var zone = _zone_near()
+	if zone == null or not (zone.rect_px() as Rect2).has_point(e.global_position + Vector2(0.0, -4.0)):
+		return null
+	return zone
+
+func _go_under(zone) -> void:
+	sub_zone = zone
+	sub_t = 0.0
+	sub_cd = SUB_CD
+	submerges += 1
+	var why := "hurt" if e.hp < e._max_hp * SUB_HP and intact() < PLATES else "lost"
+	e.active = true                                            # w skale czuwa: wyjdzie do gracza, który wejdzie do strefy
+	_was_active = true
+	e._sp = SP_UNDER
+	e.velocity = Vector2.ZERO
+	e._windup = 0.0
+	zone.claw_dig(e.global_position + Vector2(0.0, 2.0), Vector2(7.0, 5.0), DIG_ROUND, Vector2.UP)      # dołek po zanurzeniu
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("mole_under", {"why": why, "hp": roundi(e.hp), "plates": intact(), "pos": log_s.xy(e.global_position)})
+	e.behavior_fx("under")
+
+func _tick_under(delta: float) -> void:
+	sub_t += delta
+	e.velocity = Vector2.ZERO
+	if sub_zone == null or not is_instance_valid(sub_zone):
+		e._sp = 0                                              # strefa zniknęła (zmiana mapy) — wraca tam, gdzie był
+		return
+	if e._sp == SP_UNDER:
+		var who: Node2D = _rise_target() if sub_t >= SUB_TIME else null
+		if who != null:
+			var dir := Vector2(signf(who.global_position.x - e.global_position.x), 0.0)
+			var spot: Array = sub_zone.wake_spot(who.global_position, dir)
+			rise_src = spot[0]
+			rise_side = float(spot[2])
+			e.global_position = Vector2(rise_src.x + rise_side * 4.0, rise_src.y + float(sub_zone.WAKE_POCKET.y) - 1.0)
+			e._sp = SP_RISE
+			sub_t = 0.0
+			e.behavior_fx("rise:%d:%d" % [roundi(rise_src.x), roundi(rise_src.y)])
+	elif sub_t >= RISE_TIME:
+		sub_zone.open_pocket(rise_src)
+		_regrow(String(sub_zone.material_at_px(rise_src)))
+		lost_t = 0.0
+		e._sp = 0
+		begin_entry(-rise_side, 0.0)                           # wyjście z kieszeni przodem do chodnika (jak K3)
+		e.behavior_fx("emerge")
+	e._send_state(delta)
+
+## Najbliższy żywy gracz w strefie zanurzenia (do SUB_RANGE px od jej brzegu) albo null.
+func _rise_target() -> Node2D:
+	var area: Rect2 = (sub_zone.rect_px() as Rect2).grow(SUB_RANGE)
+	var best: Node2D = null
+	for p in e.get_tree().get_nodes_in_group("players"):
+		var pn := p as Node2D
+		if pn == null or bool(pn.get("dead")) or not area.has_point(pn.global_position):
+			continue
+		if best == null or pn.global_position.distance_to(e.global_position) < best.global_position.distance_to(e.global_position):
+			best = pn
+	return best
+
+## Odrasta pierwsza rozbita płyta (od karku): z żyły pirytowa, inaczej łupkowa.
+func _regrow(material: String) -> void:
+	for i in PLATES:
+		if plates[i] <= 0.0:
+			plates[i] = PYRITE_HP if material == "vein" else PLATE_HP
+			e.behavior_fx("grow%d" % i)
+			return
+
 ## Autoload z drzewa w chwili użycia: `enemy_defs.gd` wczytuje ten plik (`Mole`) także w skryptach `-s` bez autoloadów
 ## (test_enemy_surface.gd), więc odwołanie wprost do `NoiseMgr` / `Audio` (i preload skryptów, które ich używają) nie skompilowałoby się tam.
 func _autoload(n: String) -> Node:
 	return e.get_node_or_null("/root/" + n)
+
+## Każdy peer: dźwięk i odłamki zanurzenia — wejście w skałę, drapanie w miejscu wyjścia (zapowiedź), pęknięcie ściany, odrośnięta płyta.
+func _burrow_fx(event: String) -> void:
+	if event.begins_with("grow"):
+		plates[clampi(int(event.substr(4)), 0, PLATES - 1)] = PLATE_HP
+	var au := _autoload("Audio")
+	if au == null:
+		return
+	var vfx: GDScript = load(VFX_PATH)
+	var at: Vector2 = e.global_position
+	if event == "under":
+		vfx.chips(e.get_parent(), at, Vector2.UP, Color(0.36, 0.32, 0.27), 12, "chip", 90.0, Vector2(0.8, 1.8))
+		au.play_variant_at("dig_gravel", 3, at, au.BUS_WORLD, -3.0, 0.62)
+	elif event.begins_with("rise:"):
+		var xy := event.split(":")
+		var spot := Vector2(float(xy[1]), float(xy[2]))
+		var tree: SceneTree = e.get_tree()
+		for k in 5:                                            # drapanie zza ściany jak zapowiedź K3, krócej i bliżej
+			var db := -8.0 + randf_range(-2.0, 1.0)
+			var pitch := 0.58 * randf_range(0.92, 1.08)
+			tree.create_timer(0.2 * float(k) + randf_range(0.0, 0.06)).timeout.connect(
+				func() -> void: au.play_variant_at("dig_gravel", 3, spot, au.BUS_WORLD, db, pitch))
+	elif event == "emerge":
+		au.play_at("collapse", at, au.BUS_WORLD, -5.0, 1.35)
+		vfx.chips(e.get_parent(), at + Vector2(0.0, -8.0), Vector2.UP, Color(0.36, 0.32, 0.27), 12, "chip", 120.0, Vector2(1.0, 2.2))
+	else:
+		au.play_variant_at("dig_gravel", 3, at, au.BUS_WORLD, -6.0, 0.5)
 
 ## Tłumaczenie tekstu UI (zachowanie to RefCounted bez `tr`).
 func tr_ui(text: String) -> String:
@@ -187,6 +329,9 @@ func apply_net_bits(bits: int) -> void:
 
 ## Każdy peer: płyta odpada — odłamki łupka z jej miejsca, trzask kamienia i pisk.
 func fx(event: String) -> void:
+	if event == "under" or event == "emerge" or event.begins_with("rise:") or event.begins_with("grow"):
+		_burrow_fx(event)
+		return
 	if event == "ore":
 		var msg := _autoload("Msg")
 		if msg != null:
@@ -209,7 +354,18 @@ func fx(event: String) -> void:
 		au.play_variant_at(v[0], v[1], at, au.BUS_WORLD, float(v[2]) - 2.0, float(v[3]) * 1.45)
 
 func tick_special(delta: float) -> bool:
+	if e._sp <= SP_UNDER:
+		_tick_under(delta)
+		return true
 	if e._sp <= 0:
+		sub_cd = maxf(0.0, sub_cd - delta)
+		lost_t = 0.0 if (e._target != null or e._has_lead or not e.active) else lost_t + delta
+		var went_idle: bool = _was_active and not e.active
+		_was_active = e.active
+		var zone = _wants_under(went_idle)
+		if zone != null:
+			_go_under(zone)
+			return true
 		return false
 	var before := entry_travel(entry_time)
 	entry_time = minf(ENTRY_SECONDS, entry_time + delta)
