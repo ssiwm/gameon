@@ -1,9 +1,15 @@
 """Rig i klipy Łupacza. Uruchom z katalogu repozytorium (Blender 5.2):
-blender -b -P prototype/tools/rig_lupacz.py -- art_src/enemies/meshy/lupacz_retopped.glb katalog_wynikowy
+blender -b -P prototype/tools/rig_lupacz.py -- art_src/enemies/meshy/lupacz_shell_retopped.glb katalog_wynikowy [--variant=shell|fur]
 Wejście po prep_enemy3d.py: przód +X, stopy na Z=0, --rot=90 --faces=30000 --tex=2048 --uvkeep.
 Jednostki punktów szkieletu odpowiadają źródłu Meshy. Kształt i ruch eksportujemy razem w metrach.
+
+Warianty (`VARIANTS`): „shell” (od 1.7.682, domyślny) — łysy kret bez oczu w skorupie z łupka (lupacz_shell_retopped.glb, wizualizacja
+`reports/lupacz-pancerz-2026-11-25`): niższe ciało, krótsze łapy, dłuższy ogon; skorupa dzielona na trzy powierzchnie płyt `Plate0`
+(kark z hełmem), `Plate1` (środek), `Plate2` (zad) — `enemy3d.gd` zamienia rozbitą płytę w surowe ciało (enemy_mole.gd, maska `shell`).
+„fur” — pierwszy model w futrze (lupacz_retopped.glb, 1.7.647–1.7.681), bez płyt.
 """
 from pathlib import Path
+import colorsys
 import math
 import sys
 
@@ -16,8 +22,44 @@ TAU = math.tau
 AX = Vector((1, 0, 0))
 AY = Vector((0, 1, 0))
 AZ = Vector((0, 0, 1))
-source, destination = map(Path, sys.argv[sys.argv.index('--') + 1:])
+_args = sys.argv[sys.argv.index('--') + 1:]
+source, destination = map(Path, [a for a in _args if not a.startswith('--')][:2])
 destination.mkdir(exist_ok=True, parents=True)
+VARIANT_NAME = next((a.split('=')[1] for a in _args if a.startswith('--variant=')), 'shell')
+
+# Punkty szkieletu, wagi i zasięg ruchu łap dla każdej siatki. `spine`: (kość, rodzic, głowa, ogon); `front` / `hind`: bark, łokieć,
+# nadgarstek, czubek pazura (strona +y); `axis`: kości tułowia wzdłuż osi x; `limb`: progi wag nóg; `reach`: mnożnik drogi przednich
+# łap w ciosie i kopaniu (krótsze łapy), `stride`: mnożnik kroku. Wartości „shell” zmierzone z przekrojów siatki (2026-11-25).
+VARIANTS = {
+    'fur': {
+        'spine': [('Hips','Root',(-.46,0,.47),(-.27,0,.58)), ('Spine','Hips',(-.27,0,.58),(.02,0,.72)), ('Chest','Spine',(.02,0,.72),(.30,0,.79)),
+                  ('Neck','Chest',(.30,0,.79),(.51,0,.80)), ('Head','Neck',(.51,0,.80),(.93,0,.56)), ('Tail','Hips',(-.47,0,.42),(-.72,0,.24)),
+                  ('TailEnd','Tail',(-.72,0,.24),(-.93,.015,.18))],
+        'front': [(.24,.285,.66),(.17,.368,.365),(.435,.327,.106),(.665,.330,.040)],
+        'hind': [(-.37,.280,.56),(-.13,.352,.325),(-.245,.345,.096),(-.035,.370,.040)],
+        'axis': [(-.90,'TailEnd'),(-.65,'Tail'),(-.39,'Hips'),(-.12,'Spine'),(.18,'Chest'),(.42,'Neck'),(.64,'Head')],
+        'tail_clamp': (.51, -.49),
+        'limb': {'lateral': (.065,.27), 'low': (.38,.75), 'x_in': (-.61,-.38), 'x_out': (.66,.86), 'front_mix': (.002,.15),
+                 'upper_front': (.23,.52), 'upper_hind': (.21,.47), 'wrist_front': .425, 'wrist_hind': -.245, 'paw_z': (.075,.195), 'paw_x': (.12,.045)},
+        'reach': 1.0, 'stride': 1.0, 'plates': False,
+    },
+    'shell': {
+        'spine': [('Hips','Root',(-.45,0,.36),(-.25,0,.42)), ('Spine','Hips',(-.25,0,.42),(.05,0,.46)), ('Chest','Spine',(.05,0,.46),(.38,0,.48)),
+                  ('Neck','Chest',(.38,0,.48),(.58,0,.48)), ('Head','Neck',(.58,0,.48),(.96,0,.52)), ('Tail','Hips',(-.52,0,.30),(-.74,0,.17)),
+                  ('TailEnd','Tail',(-.74,0,.17),(-.95,0,.10))],
+        'front': [(.26,.24,.38),(.23,.29,.20),(.40,.30,.07),(.62,.31,.03)],
+        'hind': [(-.37,.21,.35),(-.20,.25,.20),(-.30,.25,.075),(-.14,.26,.03)],
+        'axis': [(-.90,'TailEnd'),(-.68,'Tail'),(-.42,'Hips'),(-.15,'Spine'),(.20,'Chest'),(.48,'Neck'),(.66,'Head')],
+        'tail_clamp': (.30, -.55),
+        'limb': {'lateral': (.10,.24), 'low': (.24,.40), 'x_in': (-.60,-.46), 'x_out': (.70,.80), 'front_mix': (-.04,.08),
+                 'upper_front': (.13,.30), 'upper_hind': (.12,.30), 'wrist_front': .40, 'wrist_hind': -.30, 'paw_z': (.05,.13), 'paw_x': (.10,.04)},
+        'reach': .62, 'stride': .75, 'plates': True,
+        # skorupa: ciemny, chłodny łupek (jasność < SHELL_V albo niebieskawy odcień) nad krawędzią `skirt` i przed szyją;
+        # grzbiet ponad `top` zawsze; podział na płyty po x (zad | środek | kark)
+        'shell': {'skirt': .26, 'x': (-.66, .52), 'top': .62, 'top_x': .42, 'v': .36, 'split': (-.25, .12)},
+    },
+}
+V = VARIANTS[VARIANT_NAME]
 
 def vec(x, y, z):
     return Vector((x, y, z)) * UNIT
@@ -73,22 +115,17 @@ def bone(name, parent, head, tail, deform=True):
     parts[name] = parent
 
 bone('Root', None, (0,0,0), (0,0,.16), False)
-bone('Hips','Root',(-.46,0,.47),(-.27,0,.58))
-bone('Spine','Hips',(-.27,0,.58),(.02,0,.72))
-bone('Chest','Spine',(.02,0,.72),(.30,0,.79))
-bone('Neck','Chest',(.30,0,.79),(.51,0,.80))
-bone('Head','Neck',(.51,0,.80),(.93,0,.56))
-bone('Tail','Hips',(-.47,0,.42),(-.72,0,.24))
-bone('TailEnd','Tail',(-.72,0,.24),(-.93,.015,.18))
+for name, parent, head, tail in V['spine']:
+    bone(name, parent, head, tail)
 
 legs = []
 for suffix, sign in [('R',-1),('L',1)]:
     for front in (True, False):
         if front:
-            pts = [( .24,.285,.66),(.17,.368,.365),(.435,.327,.106),(.665,.330,.040)]
+            pts = V['front']
             ids = ['UpperArm','Forearm','Forepaw']
         else:
-            pts = [(-.37,.280,.56),(-.13,.352,.325),(-.245,.345,.096),(-.035,.370,.040)]
+            pts = V['hind']
             ids = ['Thigh','Shin','Hindpaw']
         pts=[(x,y*sign,z) for x,y,z in pts]
         chain=[n+'.'+suffix for n in ids]
@@ -104,10 +141,65 @@ mod.object = arm
 mod.use_deform_preserve_volume = False
 body.parent = arm
 groups = {name:body.vertex_groups.new(name=name) for name in parts if name!='Root'}
-axis_keys = [(-.90,'TailEnd'),(-.65,'Tail'),(-.39,'Hips'),(-.12,'Spine'),(.18,'Chest'),(.42,'Neck'),(.64,'Head')]
+axis_keys = V['axis']
+
+# ---------------------------------------------------------------- skorupa: powierzchnie płyt (wariant „shell”)
+# Ściana należy do skorupy, gdy ma kolor łupka (ciemny albo chłodny) nad krawędzią skorupy, albo leży wysoko na grzbiecie; potem
+# wygładzanie większością sąsiadów (porosty na płytach są jasne jak skóra). Płyty dzieli x: zad | środek | kark. Materiały „Plate0–2”
+# to kopie materiału ciała (ta sama tekstura) — w Godocie osobne powierzchnie siatki, które `enemy3d.gd` przełącza po rozbiciu.
+shell_vertices = set()
+if V['plates']:
+    import numpy as np
+    cfg = V['shell']
+    base = body.data.materials[0]
+    bsdf = next(n for n in base.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')
+    img = bsdf.inputs['Base Color'].links[0].from_node.image
+    W, H = img.size
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(H, W, 4)
+    uv = body.data.uv_layers.active.data
+    polys = body.data.polygons
+    def looks_like_slate(f):
+        u = sum(uv[i].uv.x for i in f.loop_indices) / f.loop_total
+        v = sum(uv[i].uv.y for i in f.loop_indices) / f.loop_total
+        r, g, b = px[min(H-1, max(0, int(v % 1.0 * H))), min(W-1, max(0, int(u % 1.0 * W))), :3]
+        h, s, val = colorsys.rgb_to_hsv(float(r), float(g), float(b))
+        return val < cfg['v'] or (.45 < h < .75 and s > .05)
+    shell = []
+    for f in polys:
+        c = f.center / UNIT
+        inside = cfg['x'][0] < c.x < cfg['x'][1] and c.z > cfg['skirt']
+        shell.append(inside and (looks_like_slate(f) or (c.z > cfg['top'] and c.x < cfg['top_x'])))
+    neighbours = [[] for _ in polys]
+    by_edge = {}
+    for f in polys:
+        for key in f.edge_keys:
+            by_edge.setdefault(key, []).append(f.index)
+    for faces in by_edge.values():
+        for a in faces:
+            neighbours[a].extend(b for b in faces if b != a)
+    for _ in range(4):
+        shell = [(sum(shell[n] for n in neighbours[i]) * 2 > len(neighbours[i])) if neighbours[i] else shell[i] for i in range(len(polys))]
+    for i in range(3):
+        m = base.copy()
+        m.name = 'Plate%d' % i
+        body.data.materials.append(m)
+    base.name = 'Body'
+    counts = [0, 0, 0, 0]
+    for f in polys:
+        if not shell[f.index]:
+            f.material_index = 0
+            counts[0] += 1
+            continue
+        x = f.center.x / UNIT
+        plate = 2 if x < cfg['split'][0] else (1 if x < cfg['split'][1] else 0)
+        f.material_index = 1 + plate
+        counts[1 + plate] += 1
+        shell_vertices.update(f.vertices)
+    print('SHELL faces body/plate0/plate1/plate2:', counts)
 
 def body_weights(x,z):
-    coord=max(x,-.49) if z>.51 and x<-.49 else x
+    tz, tx = V['tail_clamp']
+    coord=max(x,tx) if z>tz and x<tx else x
     if coord<=axis_keys[0][0]: return {axis_keys[0][1]:1.0}
     for (a,left),(b,right) in zip(axis_keys,axis_keys[1:]):
         if coord<=b:
@@ -115,21 +207,24 @@ def body_weights(x,z):
             return {left:1-f,right:f}
     return {'Head':1.0}
 
+L = V['limb']
 for vertex in body.data.vertices:
     x,y,z=vertex.co / UNIT
     side='R' if y<0 else 'L'
-    lateral=ramp(abs(y),.065,.27)
-    low=1-ramp(z,.38,.75)
+    lateral=ramp(abs(y),*L['lateral'])
+    low=1-ramp(z,*L['low'])
     limb=low*(lateral+(1-lateral)*(1-ramp(z,.15,.34)))
-    limb*=ramp(x,-.61,-.38)*(1-ramp(x,.66,.86))
-    front_mix=ramp(x,.002,.15)
+    limb*=ramp(x,*L['x_in'])*(1-ramp(x,*L['x_out']))
+    if vertex.index in shell_vertices:
+        limb=0.0                                     # skorupa jest sztywna z tułowiem — krawędź nad łapą nie idzie za łapą
+    front_mix=ramp(x,*L['front_mix'])
     weights={k:v*(1-limb) for k,v in body_weights(x,z).items()}
     for front, influence in [(True,limb*front_mix),(False,limb*(1-front_mix))]:
         if influence < .0001: continue
         names = ('UpperArm','Forearm','Forepaw') if front else ('Thigh','Shin','Hindpaw')
-        wrist = .425 if front else -.245
-        upper=ramp(z,.23 if front else .21,.52 if front else .47)
-        paw=(1-ramp(z,.075,.195))*ramp(x,wrist-.12,wrist+.045)
+        wrist = L['wrist_front'] if front else L['wrist_hind']
+        upper=ramp(z,*(L['upper_front'] if front else L['upper_hind']))
+        paw=(1-ramp(z,*L['paw_z']))*ramp(x,wrist-L['paw_x'][0],wrist+L['paw_x'][1])
         for n,w in zip(names,(upper,(1-upper)*(1-paw),(1-upper)*paw)):
             weights[n+'.'+side]=influence*w
     keep=sorted([(v,k) for k,v in weights.items() if v>.00001], reverse=True)[:4]
@@ -165,12 +260,12 @@ def solve_leg(out, chain, points, target, toe_angle, toe_yaw):
 def gait(t,offset):
     phase=(t+offset)%1.0
     stance=.61
-    extent=.175
+    extent=.175*V['stride']
     if phase < stance:
         return extent-2*extent*phase/stance,0.0,0.0,0.0
     f=(phase-stance)/(1-stance)
     s=math.sin(math.pi*f)
-    return -extent+2*extent*ease(f),.118*s*s,.047*s,(-15*math.sin(TAU*f))
+    return -extent+2*extent*ease(f),.118*V['stride']*s*s,.047*V['stride']*s,(-15*math.sin(TAU*f))
 
 ATTACK_FRAMES = 32
 # Klatka, następnie przesunięcie bioder (x, y, z), pochylenie bioder,
@@ -259,6 +354,7 @@ def build_pose(action,t):
         attack_frame = t * ATTACK_FRAMES
         (dx, dy, dz, pelvis_pitch, chest_pitch, chest_yaw, chest_roll,
          head_pitch, head_yaw) = attack_pose(attack_frame, ATTACK_BODY)
+        dx *= V['reach']; dy *= V['reach']; dz *= V['reach']        # wypad tułowia w zasięgu krótszych tylnych łap
         tail_yaw = -.65 * chest_yaw
     elif action=='dig':
         stroke=math.sin(2*TAU*t)
@@ -306,12 +402,14 @@ def build_pose(action,t):
             if front:
                 keys = ATTACK_STRIKE_PAW if sign < 0 else ATTACK_BRACE_PAW
                 fx, fy, fz, toe, toe_yaw = attack_pose(attack_frame, keys)
+                fx *= V['reach']; fy *= V['reach']; fz *= V['reach']       # krótsze łapy skorupiaka: ta sama droga w skali łapy
             # Tylne łapy odpychają ciało, a przeciwległy nadgarstek łapie ciężar przed ciosem.
             fx -= dx
         elif action=='dig':
             if front:
                 fx, fz, toe = dig_paw(t + (0.0 if sign < 0 else .5))
                 fy = .03 * (1 - fz / .25)
+                fx *= V['reach']; fz *= V['reach']
             # Tylne łapy stoją, a przednia w podporze trzyma ciężar pochylonego ciała.
             fx -= dx
         elif action=='emerge':
@@ -375,4 +473,4 @@ settings=dict(filepath=str(destination/'lupacz.glb'),export_format='GLB',use_sel
               export_animation_mode='ACTIONS',export_image_format='JPEG',export_jpeg_quality=92,
               export_skins=True,export_all_influences=False)
 bpy.ops.export_scene.gltf(**settings)
-print('LUPACZ',len(body.data.vertices),'vertices,',len(arm.data.bones),'bones, clips:',[a.name for a in bpy.data.actions])
+print('LUPACZ',VARIANT_NAME,len(body.data.vertices),'vertices,',len(arm.data.bones),'bones, clips:',[a.name for a in bpy.data.actions])

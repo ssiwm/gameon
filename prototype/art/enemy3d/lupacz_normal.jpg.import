@@ -2,20 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://kkcksvluhunk"
-path.s3tc="res://.godot/imported/lupacz_Image_2.jpg-add36ca7084a8426db4c302df6ded14c.s3tc.ctex"
+uid="uid://cnktl3dyo2ovu"
+path.s3tc="res://.godot/imported/lupacz_normal.jpg-829e6404503030cca9fc3cb034b1239b.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "bb882e224194351580d3a897881b4855"
+"md5": "bbaa51fffc9ee3c361b00763af6d3b8d"
 }
 
 [deps]
 
-source_file="res://art/enemy3d/lupacz_Image_2.jpg"
-dest_files=["res://.godot/imported/lupacz_Image_2.jpg-add36ca7084a8426db4c302df6ded14c.s3tc.ctex"]
+source_file="res://art/enemy3d/lupacz_normal.jpg"
+dest_files=["res://.godot/imported/lupacz_normal.jpg-829e6404503030cca9fc3cb034b1239b.s3tc.ctex"]
 
 [params]
 

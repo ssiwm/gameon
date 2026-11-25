@@ -2464,17 +2464,41 @@ func _test_mole_shell() -> void:
 	e.hp = hp0
 	var r4: Dictionary = shot.call(pos + Vector2(0.0, -6.0), 40.0, "blast")
 	check("skorupa: wybuch zrywa ostatnią płytę, ciało dostaje połowę (%.1f)" % float(r4.get("dealt", 0.0)), beh.intact() == 0 and is_equal_approx(float(r4.get("dealt", 0.0)), 20.0))
+	check("skorupa: rozbity zad tłucze lampę benzynową — grzbiet płonie (%.1f s)" % float(e._burn), float(e._burn) > 0.0)
+	e._burn = 0.0
+	beh.fx("ore")                                           # komunikat o urobku z płyty (u każdego peera) — bez błędu
+	check("skorupa: łup bez nabojów i baterii z trupa", float(EnemyDefs.DEFS["lupacz"].get("ammo", 0.0)) == 0.0 and float(EnemyDefs.DEFS["lupacz"].get("battery", 0.0)) == 0.0)
 	var r5: Dictionary = shot.call(pos + Vector2(0.0, -6.0), 10.0, "blast")
 	check("skorupa: bez płyt wybuch w pełni", is_equal_approx(float(r5.get("dealt", 0.0)), 10.0))
 	beh.reset()
 	check("skorupa: restart przywraca trzy płyty", beh.intact() == 3 and beh.net_bits() == 7)
+	# model 3D ze skorupą (1.7.682): trzy powierzchnie płyt; rozbita płyta (bit maski zgaszony) — surowe ciało (`raw`)
+	var model := preload("res://scripts/enemy3d.gd").new()
+	level.add_child(model)
+	if model.setup("lupacz"):
+		model.motion_context({"shell": 5, "grounded": true})
+		var raws: Array = []
+		for i in 3:
+			raws.append(float((model._plate_mats.get(i, ShaderMaterial.new()) as ShaderMaterial).get_shader_parameter("raw")))
+		check("skorupa: model ma trzy powierzchnie płyt, rozbita środkowa jako surowe ciało (%s)" % str(raws),
+			model._plate_mats.size() == 3 and raws == [0.0, 1.0, 0.0])
+		model.pose(1.0 / 60.0, "idle", false, Color.WHITE)
+		check("skorupa: lampa na zadzie świeci przy całej płycie zadu", model._back_lamp != null and model._back_lamp.visible)
+		model.motion_context({"shell": 3, "grounded": true})
+		model.pose(1.0 / 60.0, "idle", false, Color.WHITE)
+		check("skorupa: rozbity zad — lampa zgasła", model._back_lamp != null and not model._back_lamp.visible)
+		model.motion_context({"shell": 7, "grounded": true})
+		check("skorupa: restart — wszystkie płyty znów z łupka", float((model._plate_mats[1] as ShaderMaterial).get_shader_parameter("raw")) == 0.0)
+	else:
+		check("skorupa: model Łupacza się buduje", false)
+	model.queue_free()
 	e.queue_free()
 	floor_body.queue_free()
 	await get_tree().physics_frame
 
 ## Wartości sprzed przeniesienia do `enemy_defs.gd` (SUPPLY_DROP, AMMO_DROP, HEALTH_DROP, KILL_XP, Scrap.DROP, VOICES): przeniesienie nie zmienia balansu.
 const GOLDEN := {
-	"lupacz": {"xp": 4, "scrap": 4, "supply": 0.0, "ammo": 0.36, "health": 0.0, "voice": ["wolek_attack", 2, -5.0, 0.86]},
+	"lupacz": {"xp": 4, "scrap": 4, "supply": 0.0, "ammo": 0.0, "health": 0.0, "voice": ["wolek_attack", 2, -5.0, 0.86]},     # 1.7.682: bez nabojów — łup z płyt skorupy
 	"trzosek": {"xp": 2, "scrap": 2, "supply": 0.0, "ammo": 0.22, "health": 0.0, "voice": ["trzosek_attack", 3, -6.0, 1.0]},
 	"cma": {"xp": 1, "scrap": 0, "supply": 0.0, "ammo": 0.0, "health": 0.0, "voice": []},            # rój od 1.7.442 (było 3 / 4); od 1.7.445 12 ćm w gnieździe, złom tylko za gniazdo (`nest_scrap`)
 	"skoczek": {"xp": 5, "scrap": 5, "supply": 0.08, "ammo": 0.25, "health": 0.0, "voice": ["trzosek_attack", 3, -5.0, 0.8]},

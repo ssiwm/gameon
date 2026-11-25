@@ -18,6 +18,8 @@ const GunModel := preload("res://scripts/gun_model.gd")
 const Char3D := preload("res://scripts/char3d.gd")
 const DIR := "res://art/enemy3d/"
 const PRE := "mixamorig_"
+const BACK_LAMP_RANGE := 1.6               ## m: lampa górnicza na skorupie Łupacza oświetla tylko jego grzbiet i najbliższy chodnik
+const BACK_LAMP_ENERGY := 0.7
 const PX := 1.8 / 22.0                     ## metrów na piksel świata (jak Level3D.PX)
 const WING_HZ := 12.6                      ## Ćma: machnięcia skrzydeł na sekundę w locie (duże ćmy 8–20 Hz; 1.7.446: 14 → 12,6, tempo −10%)
 const WING_HZ_FAST := 18.9                 ## …przy zapowiedzi, nurkowaniu i na szkle latarki (`_sp` ≠ 0)
@@ -30,8 +32,10 @@ const LIT_GLOW := 1.6                      ## Ćma: emisja ciała w snopie latar
 ## walk_clip: zestaw klipów chodu z char_clips.gd — „zombie" (powłóczysty krok) albo „human" (zwykły chód: Mimik udaje człowieka);
 ## bez tego klucza rodzaj chodzi pozą z kodu. attack_clip: zapowiedź i cios z klipu (zestaw musi je mieć), ręce wtedy z klipu.
 const SPEC := {
+	# `back_lamp` (1.7.682): lampa górnicza na skorupie — punkt w przestrzeni szkieletu (rig_lupacz.py „shell”: źródło (−0,24; 0,33; 0,70) × UNIT,
+	# osie glTF) i kość, z którą się rusza; świeci, dopóki płyta zadu (bit 2 maski `shell`) jest cała.
 	"lupacz": {"fit": ["length", EnemyDefs.Mole.LENGTH_PX], "quad": true, "clips": true, "burrow_clips": true,
-		"cycle": 0.38, "eye_glow": 0.0},
+		"cycle": 0.38, "eye_glow": 0.0, "back_lamp": {"bone": "Spine", "at": Vector3(-0.208, 0.607, -0.286)}},
 	# Chód z kodu (`gait: heavy`, `_heavy_gait`): ciężki, kołyszący krok goryli z wymachem długich rąk. Klip `zombie` dawał drobny
 	# krok na palcach z głową opuszczoną pod barki (krótkie nogi Wołka). Cykl 0.62 s: podpora przesuwa stopę z prędkością ciała z DEFS.
 	# Oczy: tekstura ma ledwie kilka ciepłych pikseli, więc maska HSV nie dawała zapowiedzi — świecą kulki przy kości głowy (`eye_lamp`:
@@ -108,6 +112,7 @@ uniform float eye_glow = 1.4;
 uniform float sil = 0.06;              // słaba, chłodna sylwetka widoczna w całkowitej ciemności (jak warstwa `Silhouette` arkuszy HD w 2D)
 uniform float flare = 0.0;             // 0..1: ciepła obwódka ciała tuż przed ciosem (SPEC `flare`), czytelna także w ciemności
 uniform float lit = 0.0;               // ciało świeci własnym kolorem (Ćma w snopie latarki — pył na skrzydłach)
+uniform float raw = 0.0;               // 0..1: powierzchnia jako surowe, mokre ciało (rozbita płyta skorupy Łupacza, `_plate_mats`)
 //VERTEX
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -130,6 +135,7 @@ void fragment() {
 	EMISSION = c * eye * eye_glow + max(mod.rgb - vec3(1.0), vec3(0.0)) * 0.28 + c * vec3(0.55, 0.70, 1.0) * sil;
 	EMISSION += vec3(1.0, 0.42, 0.12) * flare * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
 	EMISSION += c * lit;
+	ALBEDO = mix(ALBEDO, vec3(0.30, 0.06, 0.06) * (0.45 + 1.3 * dot(c, vec3(0.333))), raw);
 	//ALPHA
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).xyz;
@@ -144,6 +150,8 @@ void fragment() {
 		ROUGHNESS = 0.85;
 		METALLIC = metallic_factor;
 	}
+	ROUGHNESS = mix(ROUGHNESS, 0.32, raw);
+	METALLIC *= 1.0 - raw;
 }
 """
 
@@ -263,6 +271,12 @@ var _mesh: MeshInstance3D
 var _ap: AnimationPlayer
 var _ap_name := ""
 var _mats: Array = []
+var _plate_mats: Dictionary = {}
+var _back_lamp: OmniLight3D                  ## SPEC `back_lamp`: lampa górnicza na skorupie Łupacza (pod węzłem bez skali — zasięg w metrach)
+var _back_glow: MeshInstance3D               ## żarzący się klosz w miejscu lampy
+var _back_bone := -1
+var _back_on := true                         ## płyta zadu cała (maska `shell`)
+var _back_t := 0.0             ## numer płyty skorupy → materiał jej powierzchni (Łupacz, rig_lupacz.py wariant „shell”)
 var _b := {}                               ## nazwa kości (bez przedrostka) → indeks
 var _leg_len := {}
 var _arm_len := {}
@@ -325,6 +339,11 @@ var _blade: Array = []                       ## SPEC `death_blade`: [kość dło
 
 ## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
 func motion_context(info: Dictionary) -> void:
+	if not _plate_mats.is_empty():
+		var mask := int(info.get("shell", 7))                             # enemy_mole.gd `view_extra`: bit = płyta cała
+		for i in _plate_mats:
+			(_plate_mats[i] as ShaderMaterial).set_shader_parameter("raw", 0.0 if mask & (1 << int(i)) else 1.0)
+		_back_on = (mask & 4) != 0
 	if _spec.get("burrow_clips", false):
 		_burrow_time = float(info.get("burrow_time", -1.0))
 		_swipe_recovery = float(info.get("swipe_recovery", 0.0))
@@ -1019,6 +1038,30 @@ func setup(k: String, translucent := false) -> bool:
 			_eye_light.shadow_enabled = false
 			_eye_light.visible = false
 			add_child(_eye_light)                     # pod węzłem bez skali: zasięg w metrach świata
+	if _spec.has("back_lamp"):
+		_back_bone = _sk.find_bone(String(_spec["back_lamp"]["bone"]))
+		if _back_bone >= 0:
+			_back_lamp = OmniLight3D.new()
+			_back_lamp.light_color = Color(1.0, 0.6, 0.24)
+			_back_lamp.omni_range = BACK_LAMP_RANGE
+			_back_lamp.light_energy = BACK_LAMP_ENERGY
+			_back_lamp.shadow_enabled = false
+			add_child(_back_lamp)
+			_back_glow = MeshInstance3D.new()
+			var sph := SphereMesh.new()
+			sph.radius = 0.025
+			sph.height = 0.05
+			sph.radial_segments = 8
+			sph.rings = 4
+			_back_glow.mesh = sph
+			var gm := StandardMaterial3D.new()
+			gm.albedo_color = Color.BLACK
+			gm.emission_enabled = true
+			gm.emission = Color(1.0, 0.6, 0.24)
+			gm.emission_energy_multiplier = 2.5
+			_back_glow.material_override = gm
+			_back_glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(_back_glow)
 	_build_carry()
 	return true
 
@@ -1064,6 +1107,8 @@ func _prepare_materials(translucent: bool) -> void:
 				sm.set_shader_parameter("has_orm", true)
 		_mesh.set_surface_override_material(i, sm)
 		_mats.append(sm)
+		if src != null and String(src.resource_name).begins_with("Plate"):
+			_plate_mats[int(String(src.resource_name).substr(5))] = sm      # skorupa Łupacza: Plate0 kark, Plate1 środek, Plate2 zad (rig_lupacz.py)
 
 # ---------------------------------------------------------------- narzędzia kostne (jak w char3d.gd)
 
@@ -1213,6 +1258,8 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 	if _spec.get("burrow_clips", false) and not _dead:
 		if not skip_skeleton:
 			_pose_burrower(anim)
+		if _back_lamp != null:
+			_place_back_lamp(delta)
 		_prev_anim = anim
 		return
 	_advance_motion(delta, anim)
@@ -1225,6 +1272,8 @@ func pose(delta: float, anim: String, flip: bool, mod: Color, fr := 0.0, nfr := 
 		_pose_deform(delta, anim, fr, nfr, loop)
 	elif _spec.get("quad", false):
 		_pose_quad(anim, delta)
+		if _back_lamp != null:
+			_place_back_lamp(delta)
 	elif _spec.get("crawler", false):
 		_pose_crawler(anim)
 	else:
@@ -1302,6 +1351,20 @@ func revive() -> void:
 		_morph_reset()
 
 ## Oczy Mimika: dwie świecące kulki przy głowie (model gracza nie ma świecących pikseli w teksturze).
+## Lampa na skorupie (SPEC `back_lamp`): punkt z pozy spoczynkowej kości przeniesiony do jej bieżącej pozy; płomień benzyny lekko
+## migocze. Gaśnie po rozbiciu płyty zadu (lampa pęka, grzbiet płonie — enemy_mole.gd) i z martwym ciałem.
+func _place_back_lamp(delta: float) -> void:
+	_back_t += delta
+	var rest := _sk.get_bone_global_rest(_back_bone)
+	var pose := _sk.get_bone_global_pose(_back_bone)
+	var at: Vector3 = _sk.global_transform * (pose * (rest.affine_inverse() * (_spec["back_lamp"]["at"] as Vector3)))
+	var on := _back_on and (not _dead or _dead_t < 0.35)
+	_back_lamp.visible = on
+	_back_glow.visible = on
+	_back_lamp.global_position = at
+	_back_glow.global_position = at
+	_back_lamp.light_energy = BACK_LAMP_ENERGY * (0.86 + 0.1 * sin(_back_t * 9.3) + 0.06 * sin(_back_t * 23.1))
+
 func _place_eyes() -> void:
 	# oczy: przesunięcie względem kości głowy w pozie spoczynkowej (przód, góra, rozstaw — wg modelu), obracane razem z głową,
 	# przeliczone z przestrzeni szkieletu do węzła modelu (szkielet w GLB może mieć własną transformację)
