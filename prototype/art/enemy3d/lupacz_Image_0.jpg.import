@@ -2,14 +2,14 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cfl35d6gen0o5"
+uid="uid://dnpho7as873sh"
 path.s3tc="res://.godot/imported/lupacz_Image_0.jpg-b3562bc76577885e05ed395a36e7977b.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
 }
 generator_parameters={
-"md5": "228d9106c0b789dcc0606fe43ed8a6d8"
+"md5": "299e90da20a875bae4ae51434321deab"
 }
 
 [deps]

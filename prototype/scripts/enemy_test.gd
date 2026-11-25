@@ -2468,6 +2468,21 @@ func _test_mole_shell() -> void:
 	check("skorupa: bez płyt wybuch w pełni", is_equal_approx(float(r5.get("dealt", 0.0)), 10.0))
 	beh.reset()
 	check("skorupa: restart przywraca trzy płyty", beh.intact() == 3 and beh.net_bits() == 7)
+	# model 3D ze skorupą (1.7.682): trzy powierzchnie płyt; rozbita płyta (bit maski zgaszony) — surowe ciało (`raw`)
+	var model := preload("res://scripts/enemy3d.gd").new()
+	level.add_child(model)
+	if model.setup("lupacz"):
+		model.motion_context({"shell": 5, "grounded": true})
+		var raws: Array = []
+		for i in 3:
+			raws.append(float((model._plate_mats.get(i, ShaderMaterial.new()) as ShaderMaterial).get_shader_parameter("raw")))
+		check("skorupa: model ma trzy powierzchnie płyt, rozbita środkowa jako surowe ciało (%s)" % str(raws),
+			model._plate_mats.size() == 3 and raws == [0.0, 1.0, 0.0])
+		model.motion_context({"shell": 7, "grounded": true})
+		check("skorupa: restart — wszystkie płyty znów z łupka", float((model._plate_mats[1] as ShaderMaterial).get_shader_parameter("raw")) == 0.0)
+	else:
+		check("skorupa: model Łupacza się buduje", false)
+	model.queue_free()
 	e.queue_free()
 	floor_body.queue_free()
 	await get_tree().physics_frame

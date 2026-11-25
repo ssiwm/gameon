@@ -108,6 +108,7 @@ uniform float eye_glow = 1.4;
 uniform float sil = 0.06;              // słaba, chłodna sylwetka widoczna w całkowitej ciemności (jak warstwa `Silhouette` arkuszy HD w 2D)
 uniform float flare = 0.0;             // 0..1: ciepła obwódka ciała tuż przed ciosem (SPEC `flare`), czytelna także w ciemności
 uniform float lit = 0.0;               // ciało świeci własnym kolorem (Ćma w snopie latarki — pył na skrzydłach)
+uniform float raw = 0.0;               // 0..1: powierzchnia jako surowe, mokre ciało (rozbita płyta skorupy Łupacza, `_plate_mats`)
 //VERTEX
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -130,6 +131,7 @@ void fragment() {
 	EMISSION = c * eye * eye_glow + max(mod.rgb - vec3(1.0), vec3(0.0)) * 0.28 + c * vec3(0.55, 0.70, 1.0) * sil;
 	EMISSION += vec3(1.0, 0.42, 0.12) * flare * pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
 	EMISSION += c * lit;
+	ALBEDO = mix(ALBEDO, vec3(0.30, 0.06, 0.06) * (0.45 + 1.3 * dot(c, vec3(0.333))), raw);
 	//ALPHA
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).xyz;
@@ -144,6 +146,8 @@ void fragment() {
 		ROUGHNESS = 0.85;
 		METALLIC = metallic_factor;
 	}
+	ROUGHNESS = mix(ROUGHNESS, 0.32, raw);
+	METALLIC *= 1.0 - raw;
 }
 """
 
@@ -263,6 +267,7 @@ var _mesh: MeshInstance3D
 var _ap: AnimationPlayer
 var _ap_name := ""
 var _mats: Array = []
+var _plate_mats: Dictionary = {}             ## numer płyty skorupy → materiał jej powierzchni (Łupacz, rig_lupacz.py wariant „shell”)
 var _b := {}                               ## nazwa kości (bez przedrostka) → indeks
 var _leg_len := {}
 var _arm_len := {}
@@ -325,6 +330,10 @@ var _blade: Array = []                       ## SPEC `death_blade`: [kość dło
 
 ## Migawka zapowiedzi z symulacji. Zegar modelu nie rozstrzyga trafień.
 func motion_context(info: Dictionary) -> void:
+	if not _plate_mats.is_empty():
+		var mask := int(info.get("shell", 7))                             # enemy_mole.gd `view_extra`: bit = płyta cała
+		for i in _plate_mats:
+			(_plate_mats[i] as ShaderMaterial).set_shader_parameter("raw", 0.0 if mask & (1 << int(i)) else 1.0)
 	if _spec.get("burrow_clips", false):
 		_burrow_time = float(info.get("burrow_time", -1.0))
 		_swipe_recovery = float(info.get("swipe_recovery", 0.0))
@@ -1064,6 +1073,8 @@ func _prepare_materials(translucent: bool) -> void:
 				sm.set_shader_parameter("has_orm", true)
 		_mesh.set_surface_override_material(i, sm)
 		_mats.append(sm)
+		if src != null and String(src.resource_name).begins_with("Plate"):
+			_plate_mats[int(String(src.resource_name).substr(5))] = sm      # skorupa Łupacza: Plate0 kark, Plate1 środek, Plate2 zad (rig_lupacz.py)
 
 # ---------------------------------------------------------------- narzędzia kostne (jak w char3d.gd)
 
