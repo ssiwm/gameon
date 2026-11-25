@@ -110,6 +110,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | organic_texture_041 | nagranie | Sonniss GDC 2023 — Biohazard - Organic Textures and Ambiences | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0280_biohazard_creature_organic_texture_041.wav |
 | paper_crumple_02 | nagranie | Sonniss GDC 2016 — Paper Sound Effects | Sounds Hunter | sonniss-gdc-2.0 | Short Crumple 02.wav |
 | paper_rustle_50 | nagranie | Sonniss GDC 2017 — Paperlife | The Soundcatcher | sonniss-gdc-2.0 | Paper_Rustling_Movement_Handling_50.wav |
+| pebbles_tumbling | nagranie | Sonniss GDC 2020 — Rocks and Debris | Tatak Audio | sonniss-gdc-2.0 | Tatak_ROCKS_Pebbles Dust Tumbling Rolling Debris.wav |
 | pig_squeal_18 | nagranie | Sonniss GDC 2024 — Farm Animals | Mechanical Wave | sonniss-gdc-2.0 | ANMLFarm_Pig Squeal and Snort-18_MWSFX_FA.wav |
 | puddle_splashes | nagranie | Sonniss GDC 2020 — Footsteps | Wav Junction Sound Effects | sonniss-gdc-2.0 | 0014_Footsteps_water_puddle_single_splashes.wav |
 | quake_rumble | nagranie | Sonniss GDC 2024 — Alien Tripod | BluezoneCorp | sonniss-gdc-2.0 | Bluezone_BC0292_alien_tripod_debris_rock_collapse_earthquake_rumble_large_005.wav |
@@ -134,6 +135,7 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | rock_drag_029 | nagranie | Sonniss GDC 2020 — Rocks | Wav Junction Sound Effects | sonniss-gdc-2.0 | 0119_Rock_Quick_Drag_On_Rock_029.wav |
 | rock_hit_dirt_07 | nagranie | Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02 | Mechanical Wave | sonniss-gdc-2.0 | Multiple Rock Hit Dirt_RBDII 07.wav |
 | rock_into_gravel_06 | nagranie | Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02 | Mechanical Wave | sonniss-gdc-2.0 | Hit Rock into Gravel_RBDII 06.wav |
+| rock_roll_movement | nagranie | Sonniss GDC 2020 — Rocks and Debris | Tatak Audio | sonniss-gdc-2.0 | Tatak_ROCKS_Rock Roll Movement.wav |
 | rockslide_02 | nagranie | Sonniss GDC 2018 — Foley Elements Rocks, Dirt And Stone | Soundrangers | sonniss-gdc-2.0 | rockslide_02.wav |
 | rusty_metal_collapse_08 | nagranie | Sonniss GDC 2016 — Black Metal | Alexander Kopeikin | sonniss-gdc-2.0 | dry rusty metal impact with collapse 08.wav |
 | saiga12_close_1m | nagranie | Sonniss GDC 2016 — Saiga-12 12g solid slug | Pole Position Production | sonniss-gdc-2.0 | SAIGA-12_12g_solid_slug_1m_left_off_axis_MKH416_clean_Single_shots_x_5.wav |

@@ -41,6 +41,7 @@ Odsłuch 2026-11-14, z nagrań: dig_dirt, dig_gravel, dig_rock (cios kilofem w s
 Odsłuch 2026-11-15, z nagrań: cała pogoda (WEATHER_PLAN.md W2–W4) — tło deszczu, krople na materiałach, dach, okap, kaptur, wiatr,
 podmuch, świst w oknie, grzmot (trzask, toczenie, drżenie szyb).
 Odsłuch 2026-11-25, z nagrań: Łupacz w skorupie — shell_ricochet, shell_crack, lupacz_squeal, claw_scrape.
+Odsłuch 2026-11-26, z nagrań: pancerna kula Łupacza (LUPACZ_PLAN.md L4) — shell_curl, shell_roll_loop.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
@@ -1073,8 +1074,60 @@ def _claw_scrape_bake() -> None:
         finalize("claw_scrape_%d" % (i + 1), d.reverb(x, ir("cave"), wet=.2), lufs=-21.0, fade_out_ms=150)
 
 
+# --- Pancerna kula Łupacza (LUPACZ_PLAN.md L4, 1.7.690): ten sam gest co synteza z bake_sfx._build_shell. Zwinięcie — krótkie
+# przeciągnięcia kamienia po kamieniu (tarcie z poślizgiem, coraz gęściej i wyżej) i stuk zamkniętej kopuły; toczenie — kamień toczony
+# po kamieniu i sypiący się żwir (pętla ze szwem), pod spodem takt krawędzi płyt z syntezy (14 na sekundę, nagranie nie ma rytmu kłębka).
+# Głośność = zmierzona głośność syntezy (zwinięcie −24,5 LUFS — ogranicza ją szczyt stuku; pętla −18). Werdykt odsłuchu 2026-11-26: obie z nagrań.
+SHELL_CURL_NEEDS = ["rock_drag_003", "rock_drag_029", "stone_impact_041", "stone_impact_015"]
+SHELL_ROLL_NEEDS = ["rock_roll_movement", "pebbles_tumbling"]
+SHELL_CURL_LUFS = -21.5                                              # finalize mierzy inaczej niż plik z ogonem: −21,5 daje zmierzone −24,5 jak synteza
+
+
+def _shell_curl_bake() -> None:
+    for i in range(2):
+        r = Rng(0xF610 + i * 1777)
+        n = ms(700)
+        grind = np.zeros(n)
+        times = sorted(.48 * r.uniform(0.0, 1.0) ** .7 for _ in range(10 + 2 * i))       # gęściej pod koniec
+        for j, at in enumerate(times):
+            sid, t0, dur = _DRAGS[(i + j) % len(_DRAGS)]
+            m = vary(r, .055, .3)
+            g = _clip(sid, t0 + r.uniform(0.0, dur - m), m, 1.0 + 3.0 * j / len(times) + r.bipolar(.7), m, tail=m * .6, onset=False)
+            k = ms(at * 1000)
+            grind[k:k + len(g)] += g[:n - k] * (.45 + .55 * j / len(times))
+        clack = _clip(("stone_impact_041", "stone_impact_015")[i], 0.0, 0.3, -3.0, 0.22, tail=.15)
+        x = d.mix([(_unit(d.filt(grind, "hp", 300.0, order=2)), .85), (d.filt(clack, "hp", 120.0, order=2), .9, .52)], n)
+        x = d.limiter(d.saturate(_unit(x), 1.3), -6.0)
+        finalize("shell_curl_%d" % (i + 1), d.reverb(x, ir("cave"), wet=.14), lufs=SHELL_CURL_LUFS, fade_out_ms=100)
+
+
+def _plate_knocks(n: int, r: Rng) -> np.ndarray:
+    """Takt krawędzi płyt (jak w syntezie): 14 głuchych stuknięć na pętlę, co trzecie mocniej; okresowy w n próbkach."""
+    y = np.zeros(n)
+    for b in range(14):
+        k = ms(((b + r.uniform(-.12, .12)) / 14) % 1.0 * 1000)
+        hit = thump(.06, vary(r, 170, .15), 90, .01, .018) * (.75 + .25 * r.uniform(0.0, 1.0)) * (1.0 if b % 3 else 1.25)
+        idx = (k + np.arange(len(hit))) % n
+        np.add.at(y, idx, hit)
+    return _unit(y)
+
+
+def _shell_roll_loop_bake() -> None:
+    xf = ms(200)                                                     # zakładka szwu pętli
+    n = d.sec(1.0)
+    roll = d.repitch(bc.src("rock_roll_movement", 5.45, 1.35), -2.0)[:n + xf]        # cięższy: wolniej i niżej
+    peb = d.filt(bc.src("pebbles_tumbling", 1.5, 1.0 + .2)[:n + xf], "hp", 300.0, order=2)
+    m = min(len(roll), len(peb))
+    x = roll[:m] / (np.std(roll) + 1e-9) + .45 * peb[:m] / (np.std(peb) + 1e-9)
+    x = d.seam_xfade(d.filt(x, "hp", 35.0, order=2), xf)[:n]
+    y = d.mix([(_unit(x), 1.0), (_plate_knocks(n, Rng(0xF710)), .35)], n)
+    finalize("shell_roll_loop", d.limiter(_unit(y), -9.0), loop=True, lufs=-18.0)        # stuki płyt ścięte, inaczej szczyt nie pozwala na −18 jak synteza
+
+
 def enemies() -> None:
     """Wersje z nagrań dla głosów wrogów — wołane na końcu bake_sfx.build_enemies()."""
+    bc.hybrid(_keys("shell_curl", 2), _shell_curl_bake, SHELL_CURL_NEEDS)
+    bc.hybrid(["shell_roll_loop"], _shell_roll_loop_bake, SHELL_ROLL_NEEDS)
     bc.hybrid(_keys("shell_ricochet", 3), _shell_ricochet_bake, SHELL_RICOCHET_NEEDS)
     bc.hybrid(_keys("shell_crack", 2), _shell_crack_bake, SHELL_CRACK_NEEDS)
     bc.hybrid(_keys("lupacz_squeal", 2), _lupacz_squeal_bake, LUPACZ_SQUEAL_NEEDS)
