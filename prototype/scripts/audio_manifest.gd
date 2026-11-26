@@ -309,6 +309,7 @@ const PATHS := {
 	"ui_confirm": "res://audio/sfx/ui/ui_confirm.wav",
 	"ui_deny": "res://audio/sfx/ui/ui_deny.wav",
 	"ui_levelup": "res://audio/sfx/ui/ui_levelup.wav",
+	"ui_radio_rx": "res://audio/sfx/ui/ui_radio_rx.wav",
 	"ui_stamp": "res://audio/sfx/ui/ui_stamp.wav",
 	"ui_tick": "res://audio/sfx/ui/ui_tick.wav",
 	"ui_type": "res://audio/sfx/ui/ui_type.wav",

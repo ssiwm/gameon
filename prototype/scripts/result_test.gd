@@ -99,6 +99,10 @@ func _model_checks() -> void:
 	check("nagłówek bez „AFTER-ACTION REPORT”, czas bez „TIME”, próba dopiero od drugiej (%s | %s)" % [md["header_l"], md["header_r"]],
 		not String(md["header_l"]).contains(tr("AFTER-ACTION REPORT").to_upper()) and String(md["header_r"]) == "5:12"
 		and String(ResultScreen.build_model(_ctx({"attempts": 2}))["header_r"]).contains("2"))
+	check("wpis radiowy: baza odebrała, kanał stały dla mapy (%s)" % md["radio"]["text"], bool(md["radio"]["ok"])
+		and String(md["radio"]["text"]) == String(ResultScreen.build_model(_ctx())["radio"]["text"]) and String(md["radio"]["text"]).contains(" · "))
+	check("nieśmiertelnik: portret ze stroju gracza (%s)" % md["squad"][0]["portrait"], String(md["squad"][0]["portrait"]) != ""
+		and ResourceLoader.exists(String(md["squad"][0]["portrait"])))
 	check("podpis: 1.1 bez, B1 z podpisem (D1)", String(md["sub"]) == "" and String(ResultScreen.build_model(_ctx({"kind": "boss", "silent_counts": false}))["sub"]) != "")
 	var bonus_of := {}
 	for b in Array(_ctx()["scrap_info"]["bonus"]):
@@ -145,6 +149,7 @@ func _model_checks() -> void:
 	night["success"] = false
 	night["night"]["cleared"] = 2
 	var mf: Dictionary = ResultScreen.build_model(night)
+	check("Nocny Dyżur, porażka: wpis radiowy „cisza w eterze”", not bool(mf["radio"]["ok"]) and String(mf["radio"]["text"]) != String(mn["radio"]["text"]))
 	check("Nocny Dyżur, porażka: SERIA PRZERWANA na czerwono, bez XP", String(mf["title"]) == tr("SERIES BROKEN") and Color(mf["color"]) == ResultScreen.UiTheme.DANGER
 		and not bool(mf["xp"]["show"]) and String(mf["prompts"][0]["kind"]) == "continue")
 	night["success"] = true
@@ -312,6 +317,7 @@ func _cue_checks(rs: Node) -> void:
 	var cues: Array = rs._cues
 	var snds: Array = cues.map(func(c: Dictionary) -> String: return String(c["snd"]))
 	print("[RESULT-TEST] sygnały raportu: %s" % str(cues.map(func(c: Dictionary) -> String: return "%.2f %s" % [float(c["t"]), String(c["snd"])])))
+	check("dźwięki raportu: szum odbioru radia na początku (wpis nad tytułem)", snds.size() > 0 and snds[0] == "radio")
 	check("dźwięki raportu: bez maszynopisu i bez stempla tytułu", not snds.has("type") and cues.all(func(c: Dictionary) -> bool: return float(c["t"]) > ResultScreen.T_TITLE + 0.01))
 	check("dźwięki raportu: najwyżej 6 sygnałów, po jednym na sekcję (%d)" % cues.size(), cues.size() <= 6 and snds.count("stamp") <= 3 and snds.count("levelup") <= 1 and snds.count("tick") <= 2)
 	var gap_ok := true
