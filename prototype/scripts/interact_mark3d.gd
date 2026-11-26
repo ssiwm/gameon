@@ -6,7 +6,8 @@ extends MeshInstance3D
 ## Stan oferty → wygląd: możliwa — bursztyn z oddechem jasności (stały przy „Reduce effects”), trwa przytrzymanie — narożniki stałe, pasek
 ## zieleni postępu, niemożliwa (brak desek, broń zablokowana) — szary bez oddechu. Znacznik pojawia się po DWELL_S przy tym samym celu
 ## (przejście obok nie miga) i gaśnie w FADE_S. Ukrywa go widok 3D (`view3d._sync_interact_mark`): wyłączona opcja, oględziny, strzelnica.
-## Prostokąt obiektu przychodzi w pikselach świata 2D (`box` oferty); w 3D leży w płaszczyźnie gry (z = 0).
+## Prostokąt obiektu w pikselach świata 2D: rzut bryły modelu 3D obiektu na płaszczyznę gry (`project_box`, liczy go view3d.gd), a gdy
+## obiekt nie ma modelu — ręczny `box` oferty. W 3D znacznik leży w płaszczyźnie gry (z = 0).
 
 const Level3D := preload("res://scripts/level3d.gd")
 
@@ -54,10 +55,29 @@ func _ready() -> void:
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	visible = false
 
-## Co klatkę: `node` — cel (null — brak), `offer` — jego oferta (interact.gd), `show` — czy znacznik może być widoczny, `calm` — bez oddechu.
-func tick(delta: float, node: Node, offer: Dictionary, show: bool, calm: bool) -> void:
+## Rzut brył `boxes` (AABB w metrach świata 3D) z oka kamery `eye` na płaszczyznę gry (z = 0) — prostokąt w pikselach świata 2D, który
+## na ekranie dokładnie obejmuje bryły (perspektywa: model w głębi wychodzi mniejszy, przed płaszczyzną — większy). Pusty bez brył albo
+## gdy całe leżą za okiem.
+static func project_box(boxes: Array, eye: Vector3) -> Rect2:
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for b in boxes:
+		var bb: AABB = b
+		for i in 8:
+			var p := bb.get_endpoint(i)
+			if p.z >= eye.z - 0.01:
+				continue
+			var q := eye + (p - eye) * (eye.z / (eye.z - p.z))
+			var px := Vector2(q.x, -q.y) / Level3D.PX
+			lo = lo.min(px)
+			hi = hi.max(px)
+	return Rect2(lo, hi - lo) if lo.x <= hi.x else Rect2()
+
+## Co klatkę: `node` — cel (null — brak), `offer` — jego oferta (interact.gd), `show` — czy znacznik może być widoczny, `calm` — bez oddechu,
+## `fit` — rzut modelu celu (`project_box`; pusty — ramka z `box` oferty).
+func tick(delta: float, node: Node, offer: Dictionary, show: bool, calm: bool, fit := Rect2()) -> void:
 	_t += delta
-	var box: Rect2 = offer.get("box", Rect2()) if node != null else Rect2()
+	var box: Rect2 = (fit if fit.size != Vector2.ZERO else offer.get("box", Rect2())) if node != null else Rect2()
 	var want := show and node != null and box.size != Vector2.ZERO
 	if node != target:
 		target = node
@@ -77,7 +97,7 @@ func tick(delta: float, node: Node, offer: Dictionary, show: bool, calm: bool) -
 	var holding := prog > 0.0
 	var breath := 1.0 if (calm or muted or holding) else 0.7 + 0.3 * (0.5 + 0.5 * sin(_t * TAU / PULSE_S))
 	_sm.set_shader_parameter("fade", alpha * breath)
-	var key := "%s|%s|%.2f" % [box, muted, prog]
+	var key := "%.1f,%.1f,%.1f,%.1f|%s|%.2f" % [box.position.x, box.position.y, box.size.x, box.size.y, muted, prog]     # rzut modelu drga o setne piksela
 	if key != _key:
 		_key = key
 		_build(box, TINT_MUTED if muted else TINT, prog)

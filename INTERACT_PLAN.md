@@ -1,6 +1,6 @@
 # Interakcja [E] i [H] — jeden cel na klatkę (INTERACT_PLAN)
 
-Stan: **wdrożone w 1.7.691** (etapy I0–I5 w jednym PR), dokończone w 1.7.692 (niżej „Po wdrożeniu”). Wizualizacja planu i symulator zasięgów: artefakt „Plan interakcji E i H”.
+Stan: **wdrożone w 1.7.691** (etapy I0–I5 w jednym PR), dokończone w 1.7.692 i 1.7.693 (niżej „Po wdrożeniu”). Wizualizacja planu i symulator zasięgów: artefakt „Plan interakcji E i H”.
 
 ## Problem (przed 1.7.691)
 
@@ -66,9 +66,22 @@ Decyzje (rekomendacje planu, przyjęte): stanowiska ustępują broni; remis rozs
   prasa w kryjówce.
 - Warunki etapów sprawdzone po wdrożeniu: `test_net_session.sh` (I1), `test_front.gd` i `test_shadow_casts.gd` (I3).
 
+## Ramka z bryły modelu (1.7.693)
+
+- Widok 3D liczy ramkę znacznika z modeli celu: AABB jego siatek rzutowane z oka kamery na płaszczyznę gry
+  (`interact_mark3d.project_box`, `view3d._target_box`). Ramka obejmuje to, co widać na ekranie — także sejf i meble stojące w głębi
+  (perspektywa) — i idzie za ruchomym modelem. Modele celu: przedmioty HD jego poddrzewa (`_items`: sejf, generator, tablica narzędzi,
+  drezyna), wyposażenie stanowisk kryjówki (`_station_props3d`: szafki z ławką, ława z tablicą narzędzi i skrzynią, prasa z regałem,
+  stół pirotechniczny z szafą) i model broni (`_guns`).
+- `box` oferty zostaje zapasem dla obiektów bez modelu (zwłoki, pusty otwór pod barykadę, strefa wydobycia, powalony kolega) i dla
+  oferty z `"fit": false` — gablota w zbrojowni ma ramkę całej szafy, nie broni w środku.
+- Zrzuty w oknie: sejf 1.1, broń na ziemi, generator i pusty otwór 1.2; w kryjówce szafki, warsztat, prasa, stół pirotechniczny, gablota.
+  Test: `test_interact.gd` (rzut w płaszczyźnie gry bez zmian, w głębi mniejszy i bliżej osi oka, gruba bryła = obrys obu; gablota bez `fit`).
+
 ## Granice
 
-- Prostokąty znacznika (`box` oferty) podaje ręcznie każdy rodzaj obiektu (nowy obiekt — własny), nie z AABB modelu 3D. Bez zrzutu do
-  akceptacji: drezyna, taśma i stempel w strefie wydobycia, tablica, drzwi strzelnicy, tokarka, szafki, stół pirotechniczny, powalony kolega.
+- Bez zrzutu do akceptacji: drezyna (cel dopiero po uruchomieniu generatorów), taśma i stempel w strefie wydobycia, tablica misji i
+  stanowiska kryjówki jeszcze nieodblokowane na świeżym profilu (konserwacja, laboratorium, tokarka), drzwi strzelnicy, powalony kolega.
+- Ramka stanowiska obejmuje całe jego wyposażenie (np. tokarka z wózkiem, szlifierką i skrzynią) — tak wygląda „stanowisko” na ekranie.
 - Arbiter wybiera cel tylko dla lokalnego człowieka. Boty mają własną logikę (`player._bot_brain`).
 - Wygląd znacznika wymaga oceny w oknie gry (testy headless nie renderują).
