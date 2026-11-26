@@ -1,6 +1,6 @@
 # Interakcja [E] i [H] — jeden cel na klatkę (INTERACT_PLAN)
 
-Stan: **wdrożone w 1.7.691** (etapy I0–I5 w jednym PR). Wizualizacja planu i symulator zasięgów: artefakt „Plan interakcji E i H”.
+Stan: **wdrożone w 1.7.691** (etapy I0–I5 w jednym PR), dokończone w 1.7.692 (niżej „Po wdrożeniu”). Wizualizacja planu i symulator zasięgów: artefakt „Plan interakcji E i H”.
 
 ## Problem (przed 1.7.691)
 
@@ -54,8 +54,21 @@ Decyzje (rekomendacje planu, przyjęte): stanowiska ustępują broni; remis rozs
   (`hud._weapon_prompt`); `tr()` w „Healing %s…”.
 - **I5** dokumenty: `CONTROLS.md`, `GDD.md` §5, `prototype/README.md`, `CLAUDE.md`, `CHANGELOG.md`.
 
+## Po wdrożeniu (1.7.692)
+
+- **I2 dokończone:** pasek akcji czyta cel arbitra przez jeden pomocnik `hud._target_in(group)`; 13 funkcji `_near_*` (i
+  `_brief_choices`) z osobnymi pętlami po grupach i własnym sprawdzaniem zasięgu zniknęło. Zasięg, panel kryjówki i liczba misji na
+  tablicy żyją tylko w ofercie obiektu.
+- **I4 dokończone:** `Actions.fmt` pomija nawias akcji bez wiązania na bieżącym urządzeniu, gdy stoi przed drugim klawiszem — stopka
+  oględzin na padzie Classic to „[START]  Close”, nie „[—] [START]  Close”. Sprawdza to `test_interact.gd`.
+- **I3, prostokąty z zrzutów:** sejf (dawna strefa 2D 26 × 20 px obejmowała gracza) i broń na ziemi (leży płasko, ~13 × 2 px) mają
+  prostokąty modeli 3D. Zrzuty w oknie (z latarką i bez): sejf i zwłoki 1.1, broń na ziemi, generator i pusty otwór 1.2, ława, gablota i
+  prasa w kryjówce.
+- Warunki etapów sprawdzone po wdrożeniu: `test_net_session.sh` (I1), `test_front.gd` i `test_shadow_casts.gd` (I3).
+
 ## Granice
 
-- Prostokąty znacznika (`box` oferty) są przybliżone ręcznie dla każdego rodzaju obiektu; nowy obiekt podaje własny.
+- Prostokąty znacznika (`box` oferty) podaje ręcznie każdy rodzaj obiektu (nowy obiekt — własny), nie z AABB modelu 3D. Bez zrzutu do
+  akceptacji: drezyna, taśma i stempel w strefie wydobycia, tablica, drzwi strzelnicy, tokarka, szafki, stół pirotechniczny, powalony kolega.
 - Arbiter wybiera cel tylko dla lokalnego człowieka. Boty mają własną logikę (`player._bot_brain`).
 - Wygląd znacznika wymaga oceny w oknie gry (testy headless nie renderują).

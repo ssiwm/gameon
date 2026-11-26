@@ -349,13 +349,18 @@ static func _join(parts: Array, sep := " / ") -> String:
 	return sep.join(out)
 
 ## Podstawia `{id}` nazwą klawisza akcji (wersaliki, pierwsze wiązanie): "Press {overcharge}" → "Press Q".
-## Dodatkowy znacznik `{move}` = ruch („WASD”, pad: „L-STICK”).
+## Dodatkowy znacznik `{move}` = ruch („WASD”, pad: „L-STICK”). Akcja bez wiązania na bieżącym urządzeniu stojąca przed drugim
+## klawiszem tej samej podpowiedzi znika razem z nawiasem: "[{inspect_weapon}] [{pause}]  Close" na padzie Classic → "[START]  Close",
+## nie „[—] [START]” (INTERACT_PLAN.md I4).
 static func fmt(template: String) -> String:
 	var out := template.replace("{move}", cluster(MOVE_IDS, "", true).to_upper())
 	for id in DEFS:
 		var token := "{%s}" % id
 		if out.contains(token):
-			out = out.replace(token, key(id))
+			var k := key(id)
+			if k == "—":
+				out = out.replace("[%s] [" % token, "[")
+			out = out.replace(token, k)
 	return out
 
 ## Czy akcja ma teraz wiązanie na bieżącym urządzeniu (`pad_mode`) — albo na wskazanym (`device`).

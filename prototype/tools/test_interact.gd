@@ -182,7 +182,12 @@ func _run() -> void:
 	A.pad_mode = true
 	var hold_pad: bool = A.inspect_by_hold()
 	var pad_inspect: bool = A.bound("inspect_weapon")
+	var pad_close: String = A.fmt("[{inspect_weapon}] [{pause}]  Close")
 	A.pad_mode = false
+	var key_close: String = A.fmt("[{inspect_weapon}] [{pause}]  Close")
+	_check("stopka oględzin bez „[—]”: pad „%s”, klawiatura „%s”" % [pad_close, key_close],
+		not pad_close.contains("—") and pad_close.begins_with("[") and pad_close.ends_with("Close")
+		and key_close.begins_with("[%s] [" % A.key("inspect_weapon")))
 	var hold_key: bool = A.inspect_by_hold()
 	_check("pad (Classic, oględziny bez przycisku): oględziny przytrzymaniem [B]; klawiatura — [H] (%s)" % A.key("inspect_weapon"),
 		hold_pad and not pad_inspect and not hold_key and A.bound("inspect_weapon") and A.INSPECT_HOLD_S > 0.2 and A.INSPECT_HOLD_S < 0.8)
