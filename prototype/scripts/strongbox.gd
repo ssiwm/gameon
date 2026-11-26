@@ -62,7 +62,8 @@ func _ready() -> void:
 func interact_offer(me: Node2D) -> Dictionary:
 	if opened or me.dead or not _in_reach(me.global_position):
 		return {}
-	return Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_WORK, true, Rect2(global_position + Vector2(-13.0, -20.0), Vector2(26.0, 20.0)), progress)
+	# prostokąt z modelu 3D skrzyni (zrzut 1.1: ~13 × 7 px nad podłogą), nie z dawnej strefy 2D
+	return Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_WORK, true, Rect2(global_position + Vector2(-6.5, -9.0), Vector2(13.0, 7.5)), progress)
 
 func _in_reach(p: Vector2, mult := 1.0) -> bool:
 	return absf(p.x - global_position.x) <= REACH_X * mult and absf(p.y - global_position.y) <= REACH_Y * mult

@@ -2212,72 +2212,12 @@ func _fill_brief(info: Dictionary, c := {}) -> void:
 		rows.append([Color(0, 0, 0, 0), "+%d more" % extra, "", "see the bestiary (Esc)"])
 	_fill_info(c, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
 
-## Czy lokalny gracz stoi przy ławie warsztatu (kryjówka) i panel jest zamknięty.
-func _near_workshop() -> Node2D:
-	for w in get_tree().get_nodes_in_group("workshop"):
-		if w.local_in_range and Interact.is_target(w):
-			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return w if ui == null or not ui.is_open() else null
-	return null
-
-## Czy lokalny gracz stoi przy tokarce (kryjówka) i panel jest zamknięty.
-func _near_lathe() -> bool:
-	for w in get_tree().get_nodes_in_group("lathe_bench"):
-		if w.local_in_range and Interact.is_target(w):
-			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return ui == null or not ui.is_open()
-	return false
-
-## Czy lokalny gracz stoi przy pracowni (kryjówka, badania) i panel jest zamknięty.
-func _near_lab() -> bool:
-	for w in get_tree().get_nodes_in_group("lab_bench"):
-		if w.local_in_range and Interact.is_target(w):
-			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return ui == null or not ui.is_open()
-	return false
-
-## Czy lokalny gracz stoi przy stole pirotechnicznym (kryjówka) i panel jest zamknięty.
-func _near_pyro() -> bool:
-	for w in get_tree().get_nodes_in_group("pyro_bench"):
-		if w.local_in_range and Interact.is_target(w):
-			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return ui == null or not ui.is_open()
-	return false
-
-## Czy lokalny gracz stoi przy prasie elaboracyjnej (kryjówka, zamówienia amunicji specjalnej) i panel jest zamknięty.
-func _near_press() -> bool:
-	for w in get_tree().get_nodes_in_group("press_bench"):
-		if w.local_in_range and Interact.is_target(w):
-			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return ui == null or not ui.is_open()
-	return false
-
-## Czy lokalny gracz stoi przy stole konserwacji (kryjówka, czyszczenie i części eksploatacyjne) i panel jest zamknięty.
-func _near_service() -> bool:
-	for w in get_tree().get_nodes_in_group("service_bench"):
-		if w.local_in_range and Interact.is_target(w):
-			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return ui == null or not ui.is_open()
-	return false
-
-## Czy lokalny gracz stoi przy szafkach osobistych (kryjówka, perki i wygląd) i panel jest zamknięty.
-## Przy tablicy odpraw: ile misji kampanii można wybrać (0 — gracz nie stoi przy tablicy albo panel jest otwarty).
-func _brief_choices() -> int:
-	var main := get_tree().current_scene
-	if main == null or not main.has_method("campaign_unlocked") or NightShift.active:
-		return 0
-	for b in get_tree().get_nodes_in_group("board"):
-		if b.local_in_range and Interact.is_target(b):
-			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return main.campaign_unlocked().size() if ui == null or not ui.is_open() else 0
-	return 0
-
-func _near_lockers() -> bool:
-	for w in get_tree().get_nodes_in_group("locker_station"):
-		if w.local_in_range and Interact.is_target(w):
-			var ui := get_tree().get_first_node_in_group("workshop_ui")
-			return ui == null or not ui.is_open()
-	return false
+## Cel [E] lokalnego gracza (interact.gd, INTERACT_PLAN.md I2), jeśli należy do grupy `group`, albo null. Arbiter rozstrzyga już
+## kolejność i zasięg (oferta obiektu), więc pasek akcji nie powtarza ich dla każdego obiektu osobno; stanowiska kryjówki i tablica
+## nie oferują [E] przy otwartym panelu.
+func _target_in(group: String) -> Node:
+	var t := Interact.target(self)
+	return t if t != null and t.is_in_group(group) else null
 
 ## Pijawka trzymająca teraz kogoś (chwyt, QTE) albo null.
 ## Boss z trwającą falą przypływu (zapowiedź albo wysoka woda) — pasek ostrzeżenia w HUD.
@@ -2386,33 +2326,6 @@ func _dig_tape_zone() -> Node:
 			return z
 	return null
 
-## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
-func _near_strongbox() -> Node:
-	for sb in get_tree().get_nodes_in_group("strongboxes"):
-		if bool(sb.get("local_in_range")) and Interact.is_target(sb):
-			return sb
-	return null
-
-## Zwłoki (corpse.gd, MIMIC_PLAN.md M4), przy których stoi lokalny gracz, albo null.
-func _near_corpse() -> Node:
-	for cp in get_tree().get_nodes_in_group("corpses"):
-		if bool(cp.get("local_in_range")) and Interact.is_target(cp):
-			return cp
-	return null
-
-## Miejsce przybijania desek (barricade_spot.gd, D2b), przy którym stoi lokalny gracz, albo null.
-func _near_barricade() -> Node:
-	for sp in get_tree().get_nodes_in_group("barricade_spots"):
-		if bool(sp.get("local_in_range")) and Interact.is_target(sp):
-			return sp
-	return null
-
-func _near_generator() -> Node:
-	for g in get_tree().get_nodes_in_group("generators"):
-		if g.local_in_range and Interact.is_target(g):
-			return g
-	return null
-
 ## Podpowiedź przy broni na ziemi albo na stojaku. Oględziny: [H] (albo własny klawisz); na padzie bez przycisku oględzin — przytrzymanie
 ## interakcji (Actions.inspect_by_hold, INTERACT_PLAN.md I4); bez żadnego przypisania podpowiedź pomija oględziny zamiast „[—]”.
 func _weapon_prompt(it: Node2D) -> String:
@@ -2453,7 +2366,7 @@ func _prompt_candidates() -> Array:
 		out.append({"text": text, "prog": prog, "col": col, "station": station})
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
-	var gen := _near_generator()
+	var gen := _target_in("generators")
 	var car := get_tree().get_first_node_in_group("handcar")
 	var grab_boss := _grab_boss()
 	var tide_boss := _tide_boss()
@@ -2506,21 +2419,21 @@ func _prompt_candidates() -> Array:
 			add.call(tr("Starting the generator…"), gen.progress, UiTheme.OK)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
-	var box := _near_strongbox()
+	var box := _target_in("strongboxes")
 	if box != null and _player != null:
 		# sejf (FUN_PLAN.md P2.2): łup za świadomy hałas
 		if box.progress > 0.0:
 			add.call(tr("Prying the strongbox open…  it's loud"), box.progress, UiTheme.ACCENT)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Pry open the strongbox  (LOUD · +%d scrap)")) % int(box.value), -1.0, UiTheme.ACCENT)
-	var body := _near_corpse()
+	var body := _target_in("corpses")
 	if body != null and _player != null:
 		# zwłoki (MIMIC_PLAN.md M4): drobny łup albo nic, cichy szelest
 		if float(body.progress) > 0.0:
 			add.call(tr("Searching the body…"), float(body.progress), UiTheme.OK)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Search the body")), -1.0, UiTheme.OK)
-	var bar := _near_barricade()
+	var bar := _target_in("barricade_spots")
 	if bar != null and _player != null:
 		# barykadowanie (D2b): ile desek już stoi, zapas desek drużyny albo cena w złomie
 		var lvl := get_tree().get_first_node_in_group("level")
@@ -2563,30 +2476,31 @@ func _prompt_candidates() -> Array:
 			add.call(tr("THE CEILING IS GIVING WAY — get out!") + ("  " + tr("(no boards or scrap for a prop)") if String(dz.local_prop) == "nomat" else ""), -1.0, UiTheme.DANGER)
 		elif String(dz.local_prop) == "nomat" and prop_tgt:
 			add.call(tr("Wide ceiling — no boards for a prop (break crates, or carry %d scrap)") % int(dz.PROP_SCRAP), -1.0, UiTheme.MUTED)
-	var workshop := _near_workshop()
+	var workshop := _target_in("workshop") as Node2D
 	if workshop != null:
 		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT, workshop)
-	if _near_lathe():
+	if _target_in("lathe_bench") != null:
 		add.call(tr("[%s]  Lathe and grinder  ·  %d schematics") % [Actions.key("interact"), Scrap.schematics.size()], -1.0, UiTheme.ACCENT)
-	if _near_lab() and Scrap.geodes > 0:                                     # geody z żyły (DIG_LOOT_PLAN.md K4): otwiera się je w karcie pracowni
+	var lab := _target_in("lab_bench") != null
+	if lab and Scrap.geodes > 0:                                     # geody z żyły (DIG_LOOT_PLAN.md K4): otwiera się je w karcie pracowni
 		add.call(tr("[%s]  Lab  ·  %d geodes to crack open") % [Actions.key("interact"), Scrap.geodes], -1.0, UiTheme.ACCENT)
-	elif _near_lab():
+	elif lab:
 		if Scrap.has_lab_weapon():
 			add.call(tr("[%s]  Lab  ·  %d samples  ·  research for special weapons") % [Actions.key("interact"), Scrap.samples], -1.0, UiTheme.ACCENT)
 		else:
 			add.call(tr("[%s]  Lab  ·  %d samples  ·  buy a special weapon at the workshop first") % [Actions.key("interact"), Scrap.samples], -1.0, UiTheme.ACCENT)
-	if _near_pyro():
+	if _target_in("pyro_bench") != null:
 		add.call(tr("[%s]  Pyrotechnics  ·  grenades, mines, fuses") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
-	if _near_press():
+	if _target_in("press_bench") != null:
 		add.call(tr("[%s]  Reloading press  ·  %d / %d batches ordered") % [Actions.key("interact"), Scrap.orders.size(), Scrap.PRESS_SLOTS], -1.0, UiTheme.ACCENT)
-	if _near_service():
+	if _target_in("service_bench") != null:
 		add.call(tr("[%s]  Maintenance  ·  clean, barrels, springs") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
-	if _near_lockers():
+	if _target_in("locker_station") != null:
 		add.call(tr("[%s]  Locker  ·  perks and look") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
-	var brief_opts := _brief_choices()
-	if brief_opts > 1:
+	if _target_in("board") != null:                                    # tablica oferuje [E] tylko przy ≥ 2 odblokowanych misjach (board.gd)
+		var brief_opts: int = get_tree().current_scene.campaign_unlocked().size()
 		add.call(tr("[%s]  Change mission  ·  %d unlocked") % [Actions.key("interact"), brief_opts], -1.0, UiTheme.ACCENT)
-	var rdoor := _near_range_door()
+	var rdoor := _target_in("range_door")
 	if rdoor != null:
 		var rb := float(rdoor.best())
 		add.call((tr("[%s]  Shooting range  ·  squad record %.2f s") % [Actions.key("interact"), rb]) if rb >= 0.0 else tr("[%s]  Shooting range") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
@@ -2701,13 +2615,6 @@ func _drive_prompt() -> void:
 		_prompt_card.scale = Vector2.ONE * MSG_SCALE
 		var card_size := _prompt_card.size * MSG_SCALE
 		_prompt_card.position = Vector2((size.x - card_size.x) * 0.5, _gear_card.position.y - card_size.y - 8.0)
-
-## Drzwi strzelnicy FPP, przy których stoi lokalny gracz (range_door.gd), albo null.
-func _near_range_door() -> Node:
-	for d in get_tree().get_nodes_in_group("range_door"):
-		if bool(d.local_in_range) and Interact.is_target(d):
-			return d
-	return null
 
 ## Lokalny gracz jest na strzelnicy FPP (scripts/range3d/fp_mode.gd).
 func _in_range() -> bool:

@@ -600,7 +600,9 @@ func interact_offer(me: Node2D) -> Dictionary:
 		return {}
 	var hand: Vector2 = me.global_position + Vector2(0, -8)
 	var point := global_position + Vector2(0, -6)
-	var box := Rect2(global_position + Vector2(-12.0, -12.0), Vector2(24.0, 11.0))
+	# prostokąt znacznika z modelu 3D (zrzuty 1.2: broń na ziemi leży płasko ~13 × 2 px, środek ~5 px nad punktem); stojak — wyżej i większy
+	var box := Rect2(global_position + Vector2(-12.0, -12.0), Vector2(24.0, 11.0)) if static_display \
+		else Rect2(global_position + Vector2(-9.0, -7.0), Vector2(18.0, 4.0))
 	if has_meta("cab_x"):
 		var cx := float(get_meta("cab_x"))
 		point = Cabinet.interaction_point(Vector2(cx, global_position.y + 2))
