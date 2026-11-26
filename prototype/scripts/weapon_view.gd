@@ -16,6 +16,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const Motion := preload("res://scripts/weapon_motion.gd")
+const ResultScreen := preload("res://scripts/result_screen.gd")
 
 const HAND := Vector2(13, 14)         ## dłoń w klatce broni 72×28 w pikselach arkusza (obrót wokół niej; y = środek klatki, więc flip_v nie przesuwa); zgodne z tools/gun_icons_hd.py
 const FLASH_TIME := 0.055
@@ -407,7 +408,7 @@ func _draw_fx() -> void:
 	if player == null or player.dead:
 		return
 	var d := Weapons.def(player.weapon)
-	if _local and not Settings.dev_nohud:
+	if _local and not Settings.dev_nohud and not ResultScreen.showing():      # pod raportem po akcji celownik znika (scena drużyny)
 		_draw_crosshair(d)
 
 # ---------------------------------------------------------------- celownik (tylko lokalny człowiek)

@@ -14,6 +14,8 @@ extends Node
 ## 5. Rekordy osobiste (Profile.map_best): pierwsze przejście, lepszy czas, gorszy czas, zapis i odczyt.
 ## 6. Mieszczenie: 1 i 4 graczy, angielski i polski, trzy skale UI — panel na ekranie, żaden napis nie wystaje.
 ## 7. Wejście: akcja w pierwszych INPUT_LOCK s nic nie robi; pierwsze naciśnięcie pomija, drugie (host) — od razu następna misja.
+## 9. Scena (S3): kamera lokalnego gracza odjeżdża pod raportem i wraca po zmianie mapy, sylwetka Stalkera tylko po udanej misji
+##    z przebudzonym Stalkerem (poza Nocnym Dyżurem), `showing()` przy otwartym raporcie, kolumny skrótu nie wchodzą na nieśmiertelniki.
 ## 8. Skrót i Szczegóły (RESULTS_PLAN.md §15): nagłówek bez „AFTER-ACTION REPORT”, podpis tylko przy bossie i w Nocnym Dyżurze,
 ##    nagroda kafelka = premia w rozbiciu złomu, chipy XP tylko za to, czego nie ma na kafelkach, pierwsze przejście raz;
 ##    `result_details` w trakcie pomija, potem przełącza warstwy; skrót ≤ WORDS_MAX słów (EN i PL, 4 graczy); obie warstwy mieszczą się.
@@ -405,6 +407,7 @@ func _fit_one(rs: Node, what: String) -> void:
 		var need := l.get_theme_font("font").get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.get_theme_font_size("font_size")).x
 		if need > l.size.x + 1.5:
 			bad.append("„%s” %.0f > %.0f" % [l.text.left(30), need, l.size.x])
+	bad.append_array(rs.scene_overlaps())                 # skrót jako scena: kolumny nie wchodzą na nieśmiertelniki
 	for n in panel.find_children("*", "Control", true, false):
 		var c := n as Control
 		if c.is_visible_in_tree() and c.get_global_rect().end.x > pr.end.x + 1.5:
@@ -439,6 +442,11 @@ func _texts(rs: Node) -> Array:
 			if s != "":
 				out.append(s)
 	return out
+
+func night_ctx_for_lurk() -> Dictionary:
+	var c := _ctx({"stalker_woke": true, "scrap_enabled": false})
+	c["night"] = {"active": true, "stage": 2, "missions": 5, "cleared": 2, "time": 600.0, "downs": 0, "record": false, "complete": false, "best_c": 0, "best_t": 0.0}
+	return c
 
 func _layer_checks() -> void:
 	var rs := _report()
@@ -492,6 +500,15 @@ func _layer_checks() -> void:
 	rs.skip()
 	check("… a po sekwencji Szczegóły", rs.details_shown())
 	ResultScreen.details_pref = false
+	# 9. scena: kamera, sylwetka Stalkera, widoczność raportu
+	var pl: Node = main.get_node("Players").get_node_or_null(str(NoiseMgr.local_id()))
+	await get_tree().create_timer(0.3).timeout
+	check("scena: kamera pod raportem odjeżdża (postęp %.2f, zoom %.2f < %.2f)" % [float(pl.result_cam_k()), float(pl._camera.zoom.x), Settings.cam_zoom()],
+		pl != null and float(pl.result_cam_k()) > 0.0 and float(pl._camera.zoom.x) < Settings.cam_zoom())
+	check("scena: raport na ekranie (celownik i plakietki schowane)", ResultScreen.showing())
+	check("scena: sylwetka Stalkera tylko po przebudzeniu, nie w Nocnym Dyżurze",
+		bool(ResultScreen.build_model(_ctx({"stalker_woke": true}))["lurk"]) and not bool(ResultScreen.build_model(_ctx())["lurk"])
+		and not bool(ResultScreen.build_model(night_ctx_for_lurk())["lurk"]))
 	var keys: Array = []
 	for e in InputMap.action_get_events("result_details") if InputMap.has_action("result_details") else []:
 		if e is InputEventKey:
@@ -517,3 +534,8 @@ func _input_checks() -> void:
 	check("drugie (host): od razu następna misja", rs.press("next") == "act")
 	await get_tree().create_timer(0.6).timeout
 	check("następna misja %s załadowana, raport zamknięty" % nxt, level.map_id == nxt and main.mission.phase == Mission.Phase.OBJECTIVE and not rs.visible)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var pl: Node = main.get_node("Players").get_node_or_null(str(NoiseMgr.local_id()))
+	check("scena: po zmianie mapy kamera wraca do ustawień gracza (postęp %s, zoom %.2f)" % [str(pl.result_cam_k()) if pl else "?", float(pl._camera.zoom.x) if pl else 0.0],
+		pl != null and float(pl.result_cam_k()) < 0.0 and is_equal_approx(float(pl._camera.zoom.x), Settings.cam_zoom()) and not ResultScreen.showing())

@@ -11,6 +11,7 @@ extends Control
 ## Plakietka gracza: imię w kolorze slotu i pod nim te same kreski życia co na karcie drużyny w HUD-zie (bez ramki).
 
 const UiTheme := preload("res://scripts/ui_theme.gd")
+const ResultScreen := preload("res://scripts/result_screen.gd")
 
 const SHOW_S := 4.0                 ## s widoczności paska wroga po ostatnim trafieniu
 const FADE_S := 0.6                 ## s gaśnięcia
@@ -79,7 +80,7 @@ func _process(delta: float) -> void:
 	for id in _st.keys():
 		if not live.has(id):
 			_st.erase(id)
-	if not Settings.dev_nohud:
+	if not Settings.dev_nohud and not ResultScreen.showing():           # pod raportem po akcji drużynę podpisują nieśmiertelniki
 		for p in get_tree().get_nodes_in_group("players"):
 			if is_instance_valid(p) and not p.is_queued_for_deletion() and p.has_method("plate_state") and (p as CanvasItem).is_visible_in_tree():
 				_player(p, cx, zoom)

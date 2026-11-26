@@ -11,6 +11,9 @@ extends Control
 ## miernik hałasu, awans przyszywa naszywkę, a karty mają fakturę papieru i mosiężną krawędź (materiał deski HUD-u).
 ## Od S2: nad tytułem wpis radiowy („KANAŁ n · BAZA ODEBRAŁA”, przy przerwanej serii „CISZA W ETERZE”) z krótkim szumem odbioru,
 ## a gracz to nieśmiertelnik — portret w stroju (art/portraits/look_*) i stalowa blaszka z wytłoczonym kryptonimem i liczbami.
+## Od S3 skrót jest sceną: cele w lewej kolumnie, łup w prawej, nieśmiertelniki u dołu, a środek ekranu zostaje dla drużyny w 3D
+## (kamera powoli odjeżdża nad wyjście — player.gd `_result_camera`; gdy Stalker się obudził, jego sylwetka staje na chwilę w linii
+## drzew — view3d.gd `_sync_lurker`, czas z `lurk_t`). Szczegóły zostają panelem na środku.
 ##
 ## Dane: `collect(mission)` zbiera wszystko z węzłów i autoloadów do słownika `ctx`, a statyczne `build_model(ctx)` liczy z niego
 ## czysty model (tytuł, kafelki, liczniki, drużyna, czasy etapów) — test `--resulttest` sprawdza go bez rysowania.
@@ -57,9 +60,15 @@ const CUE_PRIO := {"record": 3, "levelup": 2, "radio": 1, "stamp": 1, "tick": 0}
 const LEVELUP_DUCK_DB := -6.0         ## przyciszenie kadencji wyniku pod `ui_levelup`
 const LEVELUP_DUCK_S := 1.6
 const LEVEL_FLASH := 0.12             ## s rozjaśnienia paska przy awansie
-const DIM := 0.65                     ## ściemnienie świata pod raportem
+const DIM := 0.65                     ## ściemnienie świata pod Szczegółami
+const DIM_SCENE := 0.18               ## ściemnienie świata pod skrótem — środek ma być widać (drużyna w 3D); krawędzie przyciemnia Scrim
+const DESIGN := Vector2(1344, 756)    ## płótno raportu w jednostkach HUD (ekran HUD przy skali NORMAL); większa skala UI je pomniejsza
+const EDGE := 36.0                    ## margines płótna
+const COL_W := 330.0                  ## szerokość kolumn celów i łupu
+const DET_W := 900.0                  ## szerokość panelu Szczegółów
+const TAG_W := 300.0                  ## szerokość karty nieśmiertelnika
+const TAG_GAP := 10
 
-const PANEL_W := 880.0                ## szerokość panelu (jednostki logiczne HUD, ok. 2/3 ekranu przy skali NORMAL); większa skala UI zmniejsza raport, żeby się zmieścił
 const PAD := 24.0
 const FS := 1.4                       ## mnożnik krojów: HUD rysuje w ~0,48 (UI_SCALE × NORMAL), a raport ma mieć min. ~14 px przy 1080p
 const XP_COL := Color(0.902, 0.886, 0.769)     ## liczba XP: kość (WARM)
@@ -94,6 +103,20 @@ const MARK_NAMES := {"objective": "objective", "boss": "boss", "woke": "Stalker 
 
 ## Warstwa Szczegóły (§15.2): wybór trwa do końca sesji (następny raport otwiera się w tej samej warstwie po sekwencji).
 static var details_pref := false
+static var _inst: WeakRef               ## bieżący raport (jeden na HUD) — dla `showing()` i `lurk_age()` bez szukania po drzewie
+
+## Czy raport jest teraz na ekranie (celownik i plakietki graczy chowają się pod sceną raportu).
+static func showing() -> bool:
+	var n: Node = _inst.get_ref() if _inst != null else null
+	return n != null and is_instance_valid(n) and (n as CanvasItem).is_visible_in_tree()
+
+## Czas od otwarcia raportu, w którym Stalker może stanąć w linii drzew (view3d.gd `_sync_lurker`); −1 = nie teraz. Tylko po udanej
+## misji z przebudzonym Stalkerem, poza Nocnym Dyżurem i bez „Ogranicz efekty”.
+static func lurk_age() -> float:
+	if not showing():
+		return -1.0
+	var n: Node = _inst.get_ref()
+	return float(n.get("_age")) if bool((n.get("model") as Dictionary).get("lurk", false)) and Settings.fx_mult() > 0.0 else -1.0
 
 ## Karta raportu: ciemny papier z lekką fakturą i mosiężną górną krawędzią (materiał deski HUD-u i stanowisk kryjówki).
 class Card extends PanelContainer:
@@ -306,6 +329,27 @@ class Patch extends Control:
 		var ss := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		draw_string(font, Vector2((w - ss.x) * 0.5, h * 0.5 + font.get_ascent(fs) * 0.38), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UiTheme.ACCENT.lightened(0.35))
 
+## Tło sceny: ciemne pasy gradientu przy krawędziach (pod kolumnami, nieśmiertelnikami i tytułem); środek przezroczysty.
+class Scrim extends Control:
+	var col_w := 0.0
+	var bottom_h := 0.0
+	var top_h := 0.0
+	var a := 1.0
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _band(r: Rect2, c0: Color, c1: Color, horizontal: bool) -> void:
+		var pts := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+		var cols := PackedColorArray([c0, c1, c1, c0]) if horizontal else PackedColorArray([c0, c0, c1, c1])
+		draw_polygon(pts, cols)
+	func _draw() -> void:
+		var dark := Color(0.012, 0.016, 0.012, 0.8 * a)
+		var clear := Color(dark, 0.0)
+		var w := col_w * 1.3
+		_band(Rect2(0, 0, w, size.y), dark, clear, true)
+		_band(Rect2(size.x - w, 0, w, size.y), clear, dark, true)
+		_band(Rect2(0, size.y - bottom_h * 1.35, size.x, bottom_h * 1.35), clear, dark, false)
+		_band(Rect2(0, 0, size.x, top_h * 1.2), Color(dark, 0.7 * a), clear, false)
+
 ## Dioda odbioru przy wpisie radiowym (zielona: baza odebrała, czerwona: cisza w eterze).
 class Lamp extends Control:
 	var col: Color = UiTheme.CALM
@@ -410,9 +454,14 @@ var _cues: Array = []                 ## [{t, snd, pitch}] — dźwięki etapów
 var _cue_i := 0
 var _cued := {}                       ## sekcje raportu, które mają już swój sygnał (jeden na sekcję)
 var _det_on := false                  ## czy widać teraz warstwę Szczegóły
-var _top_y := -1.0                    ## górna krawędź panelu w skrócie — Szczegóły trzymają ją, więc tytuł i kafelki nie skaczą
 
-var _panel: PanelContainer
+var _panel: Control                   ## płótno raportu (DESIGN), skalowane do ekranu
+var _scrim: Scrim
+var _top: VBoxContainer
+var _left: VBoxContainer
+var _right: VBoxContainer
+var _tags: HBoxContainer
+var _foot: HBoxContainer
 var _sub: Label
 var _scrap_val: Odometer
 var _xp_val: Odometer
@@ -420,8 +469,8 @@ var _xp_bar: XpBar
 var _lv_lo: Label
 var _lv_hi: Label
 var _strip: RunStrip
-var _sum_box: Control                 ## dolna część skrótu (drużyna | łup)
-var _det_box: Control                 ## dolna część Szczegółów (rozbicie | wyróżnienia, przebieg)
+var _sum_box: Control                 ## skrót jako scena: kolumny celów i łupu, nieśmiertelniki
+var _det_box: Control                 ## panel Szczegółów (rozbicie | wyróżnienia, przebieg)
 var _det_btn: Button
 var _foot_l: Label
 var _prompt_box: HBoxContainer
@@ -431,6 +480,7 @@ var _ready_note: Label
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
+	_inst = weakref(self)
 
 # ---------------------------------------------------------------- otwieranie i stan
 
@@ -471,11 +521,12 @@ func hud_fade() -> float:
 		return 1.0
 	return 0.0 if _skipped else 1.0 - clampf(_age / HUD_FADE, 0.0, 1.0)
 
-## Ściemnienie świata pod raportem (0..DIM).
+## Ściemnienie świata pod raportem: pod skrótem lekkie (środek zostaje dla drużyny), pod Szczegółami pełne.
 func dim_alpha() -> float:
 	if not visible:
 		return 0.0
-	return DIM if _skipped else DIM * clampf(_age / 0.4, 0.0, 1.0)
+	var full := DIM if _det_on else DIM_SCENE
+	return full if _skipped else full * clampf(_age / 0.4, 0.0, 1.0)
 
 ## Krok sekwencji. Etap złomu / XP czeka do DATA_WAIT s na dane od serwera; potem idzie dalej, a wartość dolicza się bez animacji.
 func advance(delta: float) -> void:
@@ -603,6 +654,7 @@ func collect(m: Node) -> Dictionary:
 		"timeline": (m.result_info as Dictionary).get("timeline", []),
 		"companion": main == null or main.get("companion_on") != false, "server": not multiplayer.has_multiplayer_peer() or multiplayer.is_server(),
 		"local_ready": bool((m.result_ready as Dictionary).get(NoiseMgr.local_id(), false)), "demo_last": demo_last,
+		"stalker_woke": bool(m.stalker_woke),
 	}
 
 func _open_ms() -> int:
@@ -645,6 +697,7 @@ static func build_model(ctx: Dictionary) -> Dictionary:
 	# wpis radiowy (§15 pomysł 5): kanał z mapy (stały dla mapy); przerwana seria Nocnego Dyżuru — cisza w eterze („dead air”)
 	var ch: int = absi(hash(String(ctx["map_id"]))) % 9 + 1
 	var heard: bool = success or not bool(night["active"])
+	md["lurk"] = success and not bool(night["active"]) and bool(ctx.get("stalker_woke", false))
 	md["radio"] = {"text": (_tr("CHANNEL %d · BASE RECEIVED") if heard else _tr("CHANNEL %d · DEAD AIR")) % ch, "ok": heard}
 	md["color"] = col
 	var head := []
@@ -908,32 +961,23 @@ func _rebuild() -> void:
 	_anims.clear()
 	_cues.clear()
 	_cued.clear()
-	_top_y = -1.0
 	_strip = null
 	_sub = null
 	_scrap_val = null
 	_xp_val = null
-	_panel = PanelContainer.new()
+	# tło sceny: ciemne pasy przy krawędziach (kolumny, nieśmiertelniki), środek zostaje dla drużyny w 3D
+	_scrim = Scrim.new()
+	add_child(_scrim)
+	# płótno projektu (DESIGN): całość skalowana jednym mnożnikiem, żeby zmieścić się przy każdej skali UI
+	_panel = Control.new()
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_panel.custom_minimum_size = Vector2(PANEL_W, 0)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.043, 0.047, 0.043, 0.96)
-	sb.border_color = UiTheme.PANEL_EDGE
-	sb.set_border_width_all(1)
-	sb.border_width_bottom = 2
-	sb.content_margin_left = PAD
-	sb.content_margin_right = PAD
-	sb.content_margin_top = 14
-	sb.content_margin_bottom = 10
-	sb.shadow_color = Color(0, 0, 0, 0.55)
-	sb.shadow_size = 18
-	_panel.add_theme_stylebox_override("panel", sb)
+	_panel.size = DESIGN
 	add_child(_panel)
 	_anim(_panel, 0.1, "fade")
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 9)
-	_panel.add_child(col)
-	# A — nagłówek: mapa · trudność … czas (w okienku jak licznik taśmy)
+	# A + B — u góry: nagłówek (mapa · trudność … czas), wpis radiowy, tytuł, podpis
+	_top = VBoxContainer.new()
+	_top.add_theme_constant_override("separation", 6)
+	_panel.add_child(_top)
 	var head := HBoxContainer.new()
 	var hl := UiTheme.mono(UiTheme.label(String(model["header_l"]), _f(7), UiTheme.MUTED))
 	hl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -950,8 +994,7 @@ func _rebuild() -> void:
 	tape.add_theme_stylebox_override("panel", tsb)
 	tape.add_child(UiTheme.mono(UiTheme.label(String(model["header_r"]), _f(8), UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_RIGHT)))
 	head.add_child(tape)
-	col.add_child(head)
-	col.add_child(_rule())
+	_top.add_child(head)
 	# wpis radiowy nad tytułem: dioda odbioru i kanał; szum odbioru gra pod wejściem kadencji wyniku
 	var rd: Dictionary = model["radio"]
 	var rrow := HBoxContainer.new()
@@ -962,72 +1005,82 @@ func _rebuild() -> void:
 	var rl := UiTheme.mono(UiTheme.label(String(rd["text"]), _f(7), rcol))
 	rl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	rrow.add_child(rl)
-	col.add_child(rrow)
+	_top.add_child(rrow)
 	_anim(rrow, T_RADIO, "fade")
 	_cue(T_RADIO, "radio", 1.0)
-	# B — tytuł (bohater pierwszych 0,6 s); podpis tylko przy bossie i w Nocnym Dyżurze
 	var title := UiTheme.heading(String(model["title"]), _f(34), Color(model["color"]).lightened(0.12), HORIZONTAL_ALIGNMENT_CENTER)
-	col.add_child(title)
+	_top.add_child(title)
 	_anim(title, T_TITLE, "title")                 # bez dźwięku: tytuł niesie wejście kadencji wyniku (Audio.music_result)
 	if String(model["sub"]) != "":
 		_sub = UiTheme.whisper(UiTheme.label(String(model["sub"]), _f(10), UiTheme.BONE_DIM, HORIZONTAL_ALIGNMENT_CENTER))
-		col.add_child(_sub)
-	# C — kafelki celów
+		_top.add_child(_sub)
+	if bool(model["demo_footer"]):
+		_top.add_child(UiTheme.heading("THANKS FOR PLAYING THE DEMO", _f(8), UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+		_top.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", _f(8), UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+		if Settings.STORE_URL != "":
+			_top.add_child(UiTheme.label(tr("[%s]  Open the Steam page") % Actions.key("open_store"), _f(8), UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+	# skrót jako scena: C — cele w lewej kolumnie, D — łup w prawej, nieśmiertelniki u dołu; środek wolny
+	_sum_box = Control.new()
+	_sum_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_panel.add_child(_sum_box)
+	_left = VBoxContainer.new()
+	_left.add_theme_constant_override("separation", 8)
 	var tiles: Array = model["tiles"]
-	if not tiles.is_empty():
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		for i in tiles.size():
-			row.add_child(_tile(tiles[i], i))
-		col.add_child(row)
-	# D — skrót (drużyna | łup) albo Szczegóły (rozbicie | wyróżnienia, przebieg)
-	var lower := HBoxContainer.new()
-	lower.add_theme_constant_override("separation", 20)
-	var left := VBoxContainer.new()
-	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.size_flags_stretch_ratio = 1.18
-	left.add_theme_constant_override("separation", 4)
-	_build_squad(left)
-	lower.add_child(left)
-	var right := VBoxContainer.new()
-	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right.add_theme_constant_override("separation", 6)
-	_build_loot(right)
-	if right.get_child_count() > 0:
-		lower.add_child(right)
+	for i in tiles.size():
+		_left.add_child(_tile(tiles[i], i))
+	_sum_box.add_child(_left)
+	_right = VBoxContainer.new()
+	_right.add_theme_constant_override("separation", 6)
+	var rc := Card.new(Color(CARD_BG, 0.92), UiTheme.LINE, 12)
+	var rbox := VBoxContainer.new()
+	rbox.add_theme_constant_override("separation", 6)
+	_build_loot(rbox)
+	if rbox.get_child_count() > 0:
+		rc.add_child(rbox)
+		_right.add_child(rc)
 	else:
-		right.free()
-	_sum_box = lower
-	col.add_child(lower)
-	_det_box = _build_details()
-	col.add_child(_det_box)
+		rbox.free()
+		rc.free()
+	_sum_box.add_child(_right)
+	_tags = HBoxContainer.new()
+	_tags.alignment = BoxContainer.ALIGNMENT_CENTER
+	_tags.add_theme_constant_override("separation", TAG_GAP)
+	_build_squad(_tags)
+	_sum_box.add_child(_tags)
+	# Szczegóły: panel na środku (rozbicie | wyróżnienia, przebieg misji)
+	_det_box = PanelContainer.new()
+	_det_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dsb := StyleBoxFlat.new()
+	dsb.bg_color = Color(0.043, 0.047, 0.043, 0.96)
+	dsb.border_color = UiTheme.PANEL_EDGE
+	dsb.set_border_width_all(1)
+	dsb.border_width_bottom = 2
+	dsb.set_content_margin_all(PAD * 0.75)
+	dsb.shadow_color = Color(0, 0, 0, 0.55)
+	dsb.shadow_size = 18
+	_det_box.add_theme_stylebox_override("panel", dsb)
+	_det_box.add_child(_build_details())
+	_panel.add_child(_det_box)
 	# F — stopka: [V] Szczegóły, (w Szczegółach) próba · towarzysz AI · gracze, gotowość, akcje
-	col.add_child(_rule())
-	var foot := HBoxContainer.new()
-	foot.add_theme_constant_override("separation", 12)
+	_foot = HBoxContainer.new()
+	_foot.add_theme_constant_override("separation", 12)
 	_det_btn = _prompt_button("result_details", tr("Details"), "details")
-	foot.add_child(_det_btn)
+	_foot.add_child(_det_btn)
 	_foot_l = UiTheme.mono(UiTheme.label(String(model["foot_l"]), _f(7), UiTheme.MUTED))
 	_foot_l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	foot.add_child(_foot_l)
-	foot.add_child(_spacer())
+	_foot.add_child(_foot_l)
+	_foot.add_child(_spacer())
 	_ready_note = UiTheme.mono(UiTheme.label(String(model["ready_note"]), _f(7), UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT))
 	_ready_note.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	foot.add_child(_ready_note)
+	_foot.add_child(_ready_note)
 	_skip_hint = UiTheme.label("[%s]  %s" % [Actions.key("result_continue"), tr("Skip")], _f(9), UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	foot.add_child(_skip_hint)
+	_foot.add_child(_skip_hint)
 	_prompt_box = HBoxContainer.new()
 	_prompt_box.add_theme_constant_override("separation", 14)
 	for p in Array(model["prompts"]):
 		_prompt_box.add_child(_prompt_button(String(p["action"]), String(p["label"]), String(p["kind"])))
-	foot.add_child(_prompt_box)
-	col.add_child(foot)
-	if bool(model["demo_footer"]):
-		col.add_child(_rule())
-		col.add_child(UiTheme.heading("THANKS FOR PLAYING THE DEMO", _f(8), UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-		col.add_child(UiTheme.label("Wishlist DEAD AIR '87 on Steam — more zones, weapons and monsters are coming.", _f(8), UiTheme.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
-		if Settings.STORE_URL != "":
-			col.add_child(UiTheme.label(tr("[%s]  Open the Steam page") % Actions.key("open_store"), _f(8), UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER))
+	_foot.add_child(_prompt_box)
+	_panel.add_child(_foot)
 	_cue_counters()
 	_cues.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["t"]) < float(b["t"]))
 	_cues = thin_cues(_cues)
@@ -1056,6 +1109,8 @@ func _apply_layer(force := false) -> void:
 		_sum_box.visible = not want
 	if _det_box != null:
 		_det_box.visible = want
+	if _scrim != null:
+		_scrim.visible = not want
 	if _foot_l != null:
 		_foot_l.visible = want and _foot_l.text != ""
 	if _det_btn != null:
@@ -1118,14 +1173,16 @@ func _tile(td: Dictionary, i: int) -> Control:
 		_cue_once("tiles", float(td["t"]) + 0.08, "stamp", 1.0)
 	return tile
 
-func _build_squad(box: VBoxContainer) -> void:
+func _build_squad(box: BoxContainer) -> void:
 	var squad: Array = model["squad"]
 	if squad.is_empty():
 		return
 	for p in squad:
 		var pd: Dictionary = p
-		var row := Card.new(Color("10110f"), UiTheme.LINE, 0)
+		var row := Card.new(Color(0.063, 0.067, 0.059, 0.92), UiTheme.LINE, 0)
 		row.edge = Color(0, 0, 0, 0)
+		row.custom_minimum_size = Vector2(TAG_W, 0)
+		row.size_flags_vertical = Control.SIZE_SHRINK_END
 		var sb: StyleBoxFlat = row.get_theme_stylebox("panel")
 		sb.content_margin_left = 5
 		sb.content_margin_right = 6
@@ -1373,7 +1430,6 @@ func _build_details() -> Control:
 	var tl: Dictionary = model["timeline"]
 	if bool(tl["show"]):
 		outer.add_child(_build_strip(tl))
-	outer.visible = false
 	return outer
 
 func _det_head(cap: String, val: String, col: Color) -> Control:
@@ -1514,21 +1570,67 @@ static func thin_cues(cues: Array) -> Array:
 
 # ---------------------------------------------------------------- klatka
 
-## Rozmiar i pozycja panelu: środek ekranu HUD, pomniejszony, gdy duża skala UI by go wypchnęła poza ekran.
+## Płótno raportu (DESIGN) na środku ekranu HUD, pomniejszone, gdy duża skala UI by je wypchnęła; w środku układ sceny: góra (tytuł),
+## lewa kolumna (cele), prawa (łup), dół (nieśmiertelniki, stopka); Szczegóły — panel na środku między tytułem a stopką.
 func _layout() -> void:
 	var host := get_parent() as Control
 	var area: Vector2 = host.size if host != null else get_viewport_rect().size
 	size = area
 	position = Vector2.ZERO
-	_panel.reset_size()
-	var ps := _panel.get_combined_minimum_size()
-	var k := minf(1.0, minf((area.x - 16.0) / maxf(1.0, ps.x), (area.y - 16.0) / maxf(1.0, ps.y)))
+	var k := minf(1.0, minf(area.x / DESIGN.x, area.y / DESIGN.y))
+	_panel.size = DESIGN
 	_panel.scale = Vector2(k, k)
-	_panel.position = ((area - ps * k) * 0.5).floor()
-	if not _det_on:
-		_top_y = _panel.position.y
-	elif _top_y >= 0.0 and _top_y + ps.y * k <= area.y:
-		_panel.position.y = _top_y
+	_panel.position = ((area - DESIGN * k) * 0.5).floor()
+	var inner := DESIGN.x - 2.0 * EDGE
+	_top.size = Vector2(inner, 0)
+	_top.reset_size()
+	_top.size.x = inner
+	_top.position = Vector2(EDGE, 14.0)
+	var top_end := _top.position.y + _top.size.y + 14.0
+	_foot.size = Vector2(inner, 0)
+	_foot.reset_size()
+	_foot.size.x = inner
+	_foot.position = Vector2(EDGE, DESIGN.y - _foot.size.y - 10.0)
+	_sum_box.position = Vector2.ZERO
+	_sum_box.size = DESIGN
+	_tags.size = Vector2(inner, 0)
+	_tags.reset_size()
+	_tags.size.x = inner
+	_tags.position = Vector2(EDGE, _foot.position.y - _tags.size.y - 10.0)
+	for side in [_left, _right]:
+		var c: Control = side
+		c.size = Vector2(COL_W, 0)
+		c.reset_size()
+		c.size.x = COL_W
+	_left.position = Vector2(EDGE, top_end)
+	_right.position = Vector2(DESIGN.x - EDGE - COL_W, top_end)
+	_det_box.reset_size()
+	var dw := minf(inner, DET_W)
+	_det_box.size = Vector2(dw, 0)
+	_det_box.reset_size()
+	_det_box.size.x = dw
+	var room := _foot.position.y - 12.0 - top_end
+	_det_box.position = Vector2((DESIGN.x - dw) * 0.5, top_end + maxf(0.0, (room - _det_box.size.y) * 0.5))
+	if _scrim != null:
+		_scrim.size = area
+		_scrim.col_w = (EDGE + COL_W + 24.0) * k
+		_scrim.bottom_h = (DESIGN.y - _tags.position.y + 16.0) * k + (area.y - DESIGN.y * k) * 0.5
+		_scrim.top_h = top_end * k + (area.y - DESIGN.y * k) * 0.5
+		_scrim.queue_redraw()
+
+## Czy kolumny skrótu nie wchodzą na nieśmiertelniki ani tytuł (test mieszczenia).
+func scene_overlaps() -> Array:
+	var bad: Array = []
+	if _sum_box == null or not _sum_box.visible:
+		return bad
+	var tags_top := _tags.position.y if _tags.get_child_count() > 0 else _foot.position.y
+	for side in [_left, _right]:
+		var c: Control = side
+		if c.get_child_count() > 0 and c.position.y + c.size.y > tags_top - 4.0:
+			bad.append("%s do %.0f, nieśmiertelniki od %.0f" % ["lewa kolumna" if c == _left else "prawa kolumna", c.position.y + c.size.y, tags_top])
+	if _tags.size.x > DESIGN.x - 2.0 * EDGE + 1.0:
+		bad.append("nieśmiertelniki szersze niż ekran (%.0f)" % _tags.size.x)
+	return bad
 
 func _animate() -> void:
 	if model.is_empty() or _panel == null:
@@ -1555,6 +1657,9 @@ func _animate() -> void:
 				n.scale = Vector2.ONE * lerpf(1.35, 1.0, p)
 	if _sub != null:
 		_sub.visible_ratio = clampf((t - T_SUB) / SUB_DUR, 0.0, 1.0)
+	if _scrim != null:
+		_scrim.a = 1.0 if _skipped else clampf(_age / 0.4, 0.0, 1.0)
+		_scrim.queue_redraw()
 	_drive_counters()
 	var done := is_done()
 	_prompt_box.modulate.a = 1.0 if done else 0.35
