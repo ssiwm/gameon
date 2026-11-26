@@ -262,8 +262,14 @@ steruje podparciem broni; zmiana stanowiska lub otwarcie nakładki wyłącza prz
 
 **Cel interakcji (od 1.7.691, [`INTERACT_PLAN.md`](../INTERACT_PLAN.md)):** [E] / [B] dotyczy jednego obiektu naraz — wybiera go
 `scripts/interact.gd` z ofert obiektów (`interact_offer`, grupa `interactables`) wg priorytetu i odległości; trzymane [E] zostaje przy
-zaczętej akcji. HUD pokazuje podpowiedź tylko dla celu, widok 3D obrysowuje go narożnikami (`interact_mark3d.gd`, opcja
-„Interaction highlight”) wokół rzutu bryły jego modelu (od 1.7.693; obiekt bez modelu — prostokąt `box` z oferty). Tekst podpowiedzi podaje cel (`interact_hint`, od 1.7.694). Na padzie bez przycisku oględzin przytrzymanie [B] 0,4 s przy broni otwiera oględziny.
+zaczętej akcji. HUD pokazuje podpowiedź tylko dla celu, a widok 3D kładzie na jego wierzchu klawisz (`interact_mark3d.gd`, opcja
+„Interaction highlight”; od 1.7.699 zamiast narożników, [`INTERACT_KEY_PLAN.md`](../INTERACT_KEY_PLAN.md)): model nakładki z Meshy
+(`art/world3d/interact/key_cap.glb`, `tools/blender_key_cap.py`) z literą `Label3D` z wiązania, drut kolczasty przytrzymania
+(`key_ring.png`, `tools/blender_barbed_ring.py` + `tools/gen_interact_key.py`), wybuch i zakłócenie w shaderach. Oś klawisza = środek rzutu
+modeli celu (od 1.7.693), wysokość = wierzch strefy `box` oferty, najwyżej 11 px nad podłogą; klawisz w obrazie świata, pod postacią
+gracza. Przy broni i gablocie z przypisanymi oględzinami para [E] + [H] (`alt` w ofercie), na padzie Classic [B] z drutem przytrzymania
+(`alt_hold`, `weapon_controller.pad_look_progress`). Zrzuty stanów w oknie: `--ekeyshots=KATALOG [--ekeystation=GRUPA] [--ekeyside=PX]`
+(`tools/shot_interact_key.gd`; z `--write-movie` i `--fixed-fps 30` klatki animacji). Tekst podpowiedzi podaje cel (`interact_hint`, od 1.7.694). Na padzie bez przycisku oględzin przytrzymanie [B] 0,4 s przy broni otwiera oględziny.
 
 Regresje: `godot --headless --path prototype -s tools/test_input_bindings.gd`,
 `godot --headless --path prototype -s tools/test_interact.gd` oraz

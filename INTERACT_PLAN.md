@@ -47,7 +47,7 @@ Decyzje (rekomendacje planu, przyjęte): stanowiska ustępują broni; remis rozs
 - **I1** arbiter i przeniesienie obiektów (lista w tabeli).
 - **I2** pasek akcji (`hud._prompt_candidates`) pokazuje podpowiedź obiektu tylko wtedy, gdy jest celem; ostrzeżenia bez [E] (zawał,
   drezyna bez zasilania, „wejdź na drezynę”) zostają.
-- **I3** `interact_mark3d.gd`: cztery bursztynowe narożniki wokół celu w widoku 3D (bez światła, mgły i cienia, bez testu głębi), pasek
+- **I3** (od 1.7.699 zastąpione klawiszem w świecie — `INTERACT_KEY_PLAN.md`) `interact_mark3d.gd`: cztery bursztynowe narożniki wokół celu w widoku 3D (bez światła, mgły i cienia, bez testu głębi), pasek
   postępu przy przytrzymaniu, szary przy ofercie niemożliwej, pojawia się po 0,15 s, gaśnie w 0,2 s, oddech jasności (stały przy
   „Reduce effects”). Ukryty w oględzinach i na strzelnicy. Opcja „Interaction highlight” w menu pauzy (GAMEPLAY), domyślnie włączona.
 - **I4** pad: `Actions.inspect_by_hold()` — krótkie [B] bierze broń, przytrzymanie 0,4 s otwiera oględziny; podpowiedź bez „[—]”

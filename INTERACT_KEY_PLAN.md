@@ -1,6 +1,6 @@
 # Klawisze [E], [H] i [B] w świecie zamiast ramki (INTERACT_KEY_PLAN)
 
-Stan: **prototyp na gałęzi `feat/interact-key-mark`** (zrzuty z gry do akceptacji). Poprzednik: `INTERACT_PLAN.md` I3 (ramka z narożników).
+Stan: **wdrożone w 1.7.699** (etapy K1–K5, PR #831); do zrobienia — zrzuty z listy K4. Poprzednik: `INTERACT_PLAN.md` I3 (ramka z narożników).
 
 ## Problem
 
@@ -92,23 +92,23 @@ przykrywa go kolejność rysowania przezroczystych (render_priority) albo poświ
 
 ## Etapy
 
-- **K1 zasoby**: Meshy → `blender_key_cap.py`, `blender_barbed_ring.py` → `gen_interact_key.py`, import + `tex_vram.py`. ✔ (prototyp)
+- **K1 zasoby**: Meshy → `blender_key_cap.py`, `blender_barbed_ring.py` → `gen_interact_key.py`, import + `tex_vram.py`. ✔
 - **K2 znacznik**: `interact_mark3d.gd` — model, litera, poświata, drut, wybuch w płaszczyźnie gry; to samo API `tick()` (+ `pressed`);
-  `view3d._sync_interact_mark` podaje naciśnięcie [E] i ustawia warstwy (`set_view_layers`). ✔ (prototyp)
+  `view3d._sync_interact_mark` podaje naciśnięcie [E] i ustawia warstwy (`set_view_layers`). ✔
 - **K2b [H] i [B]**: `pickup.gd` (`alt`, `alt_hold` w ofercie), `weapon_controller.pad_look_progress()`, para klawiszy i pierścień
-  przytrzymania 0,4 s w `interact_mark3d.gd`, `pressed_alt` w `view3d.gd`.
+  przytrzymania 0,4 s w `interact_mark3d.gd`, `pressed_alt` w `view3d.gd`. ✔
 - **K2c decyzje**: podkład 2,2 × / 0,7; usunięcie wariantu płaskiego (kod `flat`,
-  `--ekeyflat`, `key_cap.png`; `gen_interact_key.py` zostaje tylko dla pierścienia).
+  `--ekeyflat`, `key_cap.png`; `gen_interact_key.py` robi pierścień i obraz wejściowy dla Meshy). ✔
 - **K3 test**: `tools/test_interact.gd` — stan znacznika (ok / muted / hold / burst) z wymuszonej oferty, wybuch tylko po pełnym
   przytrzymaniu (nie po puszczeniu w połowie), zakłócenie tylko przy niemożliwej ofercie, warstwy dzieci; [H]: para tylko przy
   przypisanym `inspect_weapon`, broń zablokowana = [E] szary i [H] aktywny, gablota z parą; pad Classic: jeden klawisz, drut dopiero
-  po 0,1 s, pełny przy 0,4 s, krótkie naciśnięcie bez drutu; pozycja stała: ruch gracza wzdłuż obiektu nie zmienia położenia klawisza.
-- **K4 zrzuty**: `tools/shot_interact_key.gd` (`--ekeyshots=KATALOG`, `--ekeyflat`, `--ekeystation=GRUPA`) — wszystkie stany przy
-  stanowisku kryjówki, z Movie Makerem Godota klatki animacji ze stałym krokiem. ✔ Do zrobienia przed PR: sejf 1.1 w ciemności i w snopie
-  latarki, zwłoki, pusty otwór 1.2 (prawdziwe przytrzymanie), broń na ziemi z parą [E] + [H] (wolna i zablokowana), gablota,
-  pad Classic z przytrzymaniem [B], gracz w osi ławy (klawisz pod postacią), kamera kryjówki WIDE / CLOSE.
-- **K5 dokumenty**: `INTERACT_PLAN.md` (I3 → odnośnik tutaj), `CONTROLS.md`, `GDD.md` §5, `prototype/README.md`, `CLAUDE.md`
-  (linia `--ekeyshots`), `CHANGELOG.md`, wersja.
+  po 0,1 s, pełny przy 0,4 s, krótkie naciśnięcie bez drutu; pozycja stała: ruch gracza wzdłuż obiektu nie zmienia położenia klawisza. ✔
+- **K4 zrzuty**: `tools/shot_interact_key.gd` (`--ekeyshots=KATALOG`, `--ekeystation=GRUPA`, `--ekeyside=PX`) — stany przy stanowisku
+  kryjówki i przy broni (`pickups`: para [E] + [H], broń zablokowana, pad Classic), z Movie Makerem Godota klatki animacji ze stałym
+  krokiem. ✔ Zrobione: warsztat, gablota w zbrojowni, sejf 1.1 nocą. Zostało: zwłoki (przeniesienie gracza na 1.1 zostawia planszę
+  wczytywania), sejf w snopie latarki, pusty otwór 1.2 (prawdziwe przytrzymanie), broń na ziemi, gracz w osi ławy, kamera WIDE / CLOSE.
+- **K5 dokumenty**: `INTERACT_PLAN.md` (I3 → odnośnik tutaj), `prototype/CONTROLS.md`, `GDD.md` §5, `prototype/README.md`, `CLAUDE.md`
+  (linia `--ekeyshots`), `CHANGELOG.md`, wersja 1.7.699. ✔
 
 ## Decyzje (przyjęte)
 
