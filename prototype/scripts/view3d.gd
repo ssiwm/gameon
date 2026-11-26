@@ -288,6 +288,7 @@ var _spawn_burst_until := 2.0           ## s `_life`: do tej chwili modele wrog�
 var _life := 0.0
 var _saved := false
 var _imark: MeshInstance3D                 ## znacznik celu [E] (interact_mark3d.gd), tworzony w `_sync_interact_mark`
+var ekey_force := {}                          ## dev: nadpisanie oferty celu dla zrzutów znacznika (tools/shot_interact_key.gd)
 var _imark_src: Node = null                ## cel, dla którego zebrano siatki modelu (`_target_box`)
 var _imark_meshes: Array = []              ## MeshInstance3D modeli tego celu
 var _imark_scan := 0.0                     ## s do ponownego szukania modelu, gdy go nie ma (zwłoki, otwór) albo jest w drodze
@@ -9304,7 +9305,7 @@ const LOOT_GLINT_UP := 7.0                  ## iskra tyle px nad stopami przedmi
 const LOOT_GLINT_Z := 0.18                  ## przed przedmiotem [m]
 var _loot_glints := {}                      ## id pickupu → [pickup, MeshInstance3D, faza]
 
-## Znacznik celu [E] lokalnego gracza (INTERACT_PLAN.md I3, interact_mark3d.gd): narożniki wokół obiektu wybranego przez interact.gd.
+## Znacznik celu [E] lokalnego gracza (INTERACT_KEY_PLAN.md, interact_mark3d.gd): klawisz w środku obiektu wybranego przez interact.gd.
 ## Wyłączony opcją „Interaction highlight”, w oględzinach broni (widok z oczu) i na strzelnicy; „Reduce effects” zatrzymuje oddech jasności.
 func _sync_interact_mark(delta: float) -> void:
 	if _world == null or not is_instance_valid(_world):
@@ -9313,11 +9314,20 @@ func _sync_interact_mark(delta: float) -> void:
 		_imark = InteractMark.new()
 		_imark.name = "InteractMark"
 		_world.add_child(_imark)
+		_imark.set_view_layers(LAYER_WORLD, LAYER_ACTORS)
 	var tgt := Interact.target(self)
 	var show: bool = Settings.interact_mark and _fp <= 0.0 and _rp <= 0.0
 	var off: Dictionary = Interact.current(self) if tgt != null else {}
 	var fit := _target_box(tgt, delta) if tgt != null and show and bool(off.get("fit", true)) else Rect2()
-	_imark.tick(delta, tgt, off, show, Settings.reduce_fx, fit)
+	var pressed := Input.is_action_just_pressed(&"interact") and tgt != null
+	if not ekey_force.is_empty() and tgt != null:
+		off = off.duplicate()                                  # dev (--ekeyshots, tools/shot_interact_key.gd): wymuszony stan oferty
+		for k in ekey_force:
+			if k != "pressed":
+				off[k] = ekey_force[k]
+		pressed = pressed or bool(ekey_force.get("pressed", false))
+		ekey_force.erase("pressed")                            # naciśnięcie trwa jedną klatkę
+	_imark.tick(delta, tgt, off, show, Settings.reduce_fx, fit, pressed)
 
 ## Ramka znacznika z bryły celu: rzut jego modeli 3D z oka kamery na płaszczyznę gry (interact_mark3d.gd `project_box`), więc ramka obejmuje
 ## to, co widać na ekranie, także sejf i meble w głębi. Modele celu to przedmioty HD jego poddrzewa (`_items`: sejf, generator, tablica
