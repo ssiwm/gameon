@@ -1796,6 +1796,11 @@ func _tick_inspect() -> void:
 		else:
 			_try_pickup(inspect_item)
 
+## Przytrzymanie [B] przy broni na padzie Classic (oględziny przytrzymaniem, Actions.inspect_by_hold): 0..1 z Actions.INSPECT_HOLD_S,
+## −1 — nie trzymane. Czyta je znacznik celu (interact_mark3d.gd: drut kolczasty wokół [B], INTERACT_KEY_PLAN.md).
+func pad_look_progress() -> float:
+	return clampf(_pad_look_t / Actions.INSPECT_HOLD_S, 0.0, 1.0) if _pad_look_t >= 0.0 else -1.0
+
 ## Zamyka oględziny (Esc / Start w pause_menu.gd). false — nic nie było otwarte.
 func close_inspect() -> bool:
 	if inspect_item == null:
