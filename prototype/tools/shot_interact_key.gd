@@ -3,7 +3,8 @@ extends Node
 ## warsztatu; `pickups` — broń), a znacznik przechodzi po kolei przez stany — spoczynek, naciśnięcie, przytrzymanie 25 / 50 / 75 / 97%,
 ## wybuch, okruchy, oferta niemożliwa i „zakłócenie” po [E]. Przy broni dodatkowo: para [E] + [H], wciśnięte [H], broń zablokowana z parą,
 ## pad Classic — stuknięcie [B] (bez drutu), przytrzymanie [B] 50 / 97% i wybuch przy otwarciu oględzin.
-## Stany są wymuszone (`view3d.ekey_force`) — chodzi o wygląd, nie o zachowanie obiektu.
+## Stany są wymuszone (`view3d.ekey_force`) — chodzi o wygląd, nie o zachowanie obiektu. `--ekeylight` — latarka gracza włączona, `--ekeyquiet` — bez wrogów na mapie,
+## `--ekeyside=PX` — gracz tyle px w bok od węzła obiektu; kamera kryjówki: `--camidx=0` (WIDE) / `2` (CLOSE).
 ## Okno, override.cfg z QA. Z Movie Makerem Godota (`--write-movie`, `--fixed-fps`) daje też klatki animacji ze stałym krokiem czasu:
 ##
 ##   godot --path prototype --resolution 1600x900 --fixed-fps 30 --write-movie C:/tmp/ekey/frames/f.png -- --host --nobot --mission=z1_hub --lang=pl --ekeyshots=C:/tmp/ekey [--ekeystation=workshop]
@@ -45,22 +46,26 @@ func _shot(name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(dir.path_join("ekey_%s.png" % name))
 	var mark: Node3D = _v3d.get("_imark")
-	var cam: Camera3D = get_viewport().get_camera_3d()
+	var cam: Camera3D = _v3d.get("_cam_a")                            # kamera świata widoku 3D (główny viewport nie ma kamery 3D)
 	var sp := Vector2(-1, -1)
-	if mark != null and cam != null:
-		sp = cam.unproject_position(mark.global_position)
+	if mark != null and cam != null and cam.is_inside_tree():
+		sp = cam.unproject_position(mark.global_position) / Vector2(cam.get_viewport().get_visible_rect().size) * Vector2(img.get_size())
 	print("[EKEY] %s %d %.0f %.0f %s" % [name, Engine.get_frames_drawn(), sp.x, sp.y, String(mark.get("state")) if mark != null else "-"])
 
 func _run() -> void:
+	var cands: Array = []
 	for i in 40:                                                       # poziom i widok 3D wstają pod planszą — czekaj do 20 s
 		await _wait(0.5)
 		_v3d = get_tree().current_scene.get_node_or_null("View3D") if get_tree().current_scene else null
 		_p = Interact.local_player(get_tree())
+		cands.clear()
 		for n in get_tree().get_nodes_in_group(Interact.GROUP):
 			if n.is_in_group(station) and (station != "pickups" or String(n.get("kind")) == "weapon"):
-				_st = n
-		if _v3d != null and _p != null and _st != null:
-			break
+				cands.append(n)
+		_st = cands.back() if not cands.is_empty() else null
+		var curtain: CanvasLayer = _v3d.get("_curtain") if _v3d != null else null
+		if _v3d != null and _p != null and _st != null and (curtain == null or not curtain.visible):
+			break                                                      # plansza wczytywania zeszła — inaczej zrzuty łapią planszę
 	if _v3d == null or _p == null or _st == null:
 		push_error("[EKEY] brak widoku 3D (%s), gracza (%s) albo stanowiska %s (%s)" % [_v3d, _p, station, _st])
 		get_tree().quit(1)
@@ -69,9 +74,22 @@ func _run() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--ekeyside="):
 			side = float(a.substr("--ekeyside=".length()))      # gracz tyle px w bok od węzła obiektu (przy krawędzi ławy: ~34)
+	if "--ekeyquiet" in OS.get_cmdline_user_args():
+		for e in get_tree().get_nodes_in_group("enemies"):
+			e.queue_free()                                             # misja bez wrogów — nic nie przerywa przebiegu (zwłoki, otwór)
+	# pierwszy obiekt grupy, który arbiter rzeczywiście wybiera (np. pusty otwór niezabity deskami, nie „full”)
+	for c in cands:
+		_p.global_position = (c as Node2D).global_position + Vector2(side, -14.0)
+		_p.velocity = Vector2.ZERO
+		await _wait(0.6)
+		if Interact.target(self) == c:
+			_st = c
+			break
 	_p.global_position = _st.global_position + Vector2(side, -14.0)
 	_p.velocity = Vector2.ZERO
-	print("[EKEY] start", " ", _st.global_position)
+	if "--ekeylight" in OS.get_cmdline_user_args():
+		_p.set("flashlight", true)                                     # znacznik w snopie latarki (nocą)
+	print("[EKEY] start %s %s cel=%s" % [_st.name, _st.global_position, Interact.target(self) == _st])
 	await _wait(3.0)
 	if _st.is_in_group("pickups"):
 		await _weapon_states()

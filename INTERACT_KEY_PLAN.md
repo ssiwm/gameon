@@ -16,14 +16,14 @@ Stany wg arkusza inspiracji (`art_src/ui/interact_key_ref.png`, 8 klatek):
 | Stan | Wygląd | Klatka arkusza |
 |---|---|---|
 | pojawienie | po 0,15 s przy tym samym celu klawisz wskakuje ze skali 0,6 z przestrzeleniem (0,22 s) | — |
-| możliwa | bursztynowa poświata z oddechem jasności 1,2 s, lekkie kołysanie bryły | 1 |
+| możliwa | stała bursztynowa poświata, klawisz nieruchomy (pulsowanie, kołysanie i odblask krawędzi mrugały przy ~20 px — usunięte) | 1 |
 | naciśnięcie (stanowiska, broń) | klawisz wciśnięty w głąb i do 0,86, litera rozżarzona, mały błysk | 7 (słabiej) |
 | przytrzymanie | drut kolczasty owija klawisz od góry zgodnie z postępem, poświata i drut z bursztynu w czerwień, litera i lico się rozżarzają, iskry na końcu drutu | 3–6 |
 | koniec przytrzymania | wybuch: błysk, promienie, 26 iskier z grawitacją, fala; okruchy | 7–8 |
 | niemożliwa | klawisz wyszarzony, bez poświaty | — |
 | [E] przy niemożliwej | czerwone „zakłócenie”: pasy bryły przesunięte w bok, czerwona poświata (0,32 s) | 2 |
 
-„Reduce effects”: bez oddechu, kołysania, wskakiwania, iskier, promieni i zakłócenia (zostaje kolor, drut postępu i błysk).
+„Reduce effects”: bez wskakiwania, iskier, promieni i zakłócenia (zostaje kolor, drut postępu i błysk).
 
 Rozmiar: **4 px świata** (ok. 18 % wzrostu postaci; 10 i 6 px po ocenie — za duże). Drut 1,85 ×, poświata 2,6 ×, wybuch 4 × boku klawisza.
 
@@ -103,17 +103,18 @@ przykrywa go kolejność rysowania przezroczystych (render_priority) albo poświ
   przytrzymaniu (nie po puszczeniu w połowie), zakłócenie tylko przy niemożliwej ofercie, warstwy dzieci; [H]: para tylko przy
   przypisanym `inspect_weapon`, broń zablokowana = [E] szary i [H] aktywny, gablota z parą; pad Classic: jeden klawisz, drut dopiero
   po 0,1 s, pełny przy 0,4 s, krótkie naciśnięcie bez drutu; pozycja stała: ruch gracza wzdłuż obiektu nie zmienia położenia klawisza. ✔
-- **K4 zrzuty**: `tools/shot_interact_key.gd` (`--ekeyshots=KATALOG`, `--ekeystation=GRUPA`, `--ekeyside=PX`) — stany przy stanowisku
-  kryjówki i przy broni (`pickups`: para [E] + [H], broń zablokowana, pad Classic), z Movie Makerem Godota klatki animacji ze stałym
-  krokiem. ✔ Zrobione: warsztat, gablota w zbrojowni, sejf 1.1 nocą. Zostało: zwłoki (przeniesienie gracza na 1.1 zostawia planszę
-  wczytywania), sejf w snopie latarki, pusty otwór 1.2 (prawdziwe przytrzymanie), broń na ziemi, gracz w osi ławy, kamera WIDE / CLOSE.
+- **K4 zrzuty**: `tools/shot_interact_key.gd` (`--ekeyshots=KATALOG`, `--ekeystation=GRUPA` — pierwszy obiekt grupy, który arbiter
+  wybiera, `--ekeyside=PX`, `--ekeylight` — latarka, `--ekeyquiet` — bez wrogów; czeka na zejście planszy wczytywania) — stany przy
+  stanowisku kryjówki i przy broni (`pickups`: para [E] + [H], broń zablokowana, pad Classic), z Movie Makerem Godota klatki animacji
+  ze stałym krokiem. ✔ Zrobione: warsztat (kamera NORMAL / WIDE / CLOSE), gablota w zbrojowni, sejf 1.1 nocą w snopie latarki, zwłoki
+  1.1, pusty otwór 1.2 (szary — świeży profil bez desek), broń na 1.2.
 - **K5 dokumenty**: `INTERACT_PLAN.md` (I3 → odnośnik tutaj), `prototype/CONTROLS.md`, `GDD.md` §5, `prototype/README.md`, `CLAUDE.md`
   (linia `--ekeyshots`), `CHANGELOG.md`, wersja 1.7.699. ✔
 
 ## Decyzje (przyjęte)
 
 1. **Klawisz nie zmienia pozycji** — stoi na wierzchu obiektu niezależnie od gracza; gracz w osi obiektu może go przykryć.
-2. **Model 3D z Meshy**, nie płaska tekstura — łapie kołysanie i wciśnięcie w głąb; wariant płaski znika przed PR (K2c).
+2. **Model 3D z Meshy**, nie płaska tekstura — bryła z fazowaniem i wciśnięcie w głąb; wariant płaski znika przed PR (K2c).
 3. **Kontrast** — mocniejszy ciemny podkład pod klawiszem (2,2 × boku, krycie 0,7), sprawdzony na tablicy narzędzi i w ciemnym lesie.
 4. **Bez podpisu** pod klawiszem — nazwa akcji i koszt w pasku akcji.
 5. **Rozmiar 4 px**, plan obrazu **pomiędzy meblem a graczem**.

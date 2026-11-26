@@ -42,7 +42,7 @@ do puszczenia klawisza. Pasek akcji i znacznik 3D pokazują ten sam cel.
 
 - Znacznik celu: zardzewiały klawisz [E] na wierzchu obiektu w świecie 3D; przy przytrzymaniu owija go drut kolczasty (postęp), szary,
   gdy akcja jest niemożliwa (brak desek, broń zablokowana). Przy broni i gablocie obok [H] (oględziny); na padzie klawisz pokazuje
-  przycisk pada. Opcja „Interaction highlight” w menu pauzy; „Reduce effects” wyłącza oddech, kołysanie, iskry i zakłócenie.
+  przycisk pada. Opcja „Interaction highlight” w menu pauzy; „Reduce effects” wyłącza wskakiwanie, iskry i zakłócenie.
 - Pad bez przycisku oględzin (Classic): krótkie [B] bierze broń, przytrzymanie [B] 0,4 s otwiera oględziny. Podpowiedź pokazuje
   „Hold [B]  Inspect”, a bez żadnego przypisania pomija oględziny (bez „[—]”).
 

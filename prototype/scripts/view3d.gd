@@ -9307,7 +9307,7 @@ var _loot_glints := {}                      ## id pickupu → [pickup, MeshInsta
 
 ## Znacznik celu interakcji lokalnego gracza (INTERACT_KEY_PLAN.md, interact_mark3d.gd): klawisz [E] (przy broni para [E] + [H], na
 ## padzie Classic [B] z przytrzymaniem) na wierzchu obiektu wybranego przez interact.gd. Wyłączony opcją „Interaction highlight”, w oględzinach
-## broni (widok z oczu) i na strzelnicy; „Reduce effects” zatrzymuje oddech jasności i efekty.
+## broni (widok z oczu) i na strzelnicy; „Reduce effects” wyłącza wskakiwanie, iskry i zakłócenie.
 func _sync_interact_mark(delta: float) -> void:
 	if _world == null or not is_instance_valid(_world):
 		return

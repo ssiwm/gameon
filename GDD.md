@@ -117,7 +117,7 @@ Tabela opisuje stan gry; źródłem prawdy jest rejestr `prototype/scripts/actio
 **Cel interakcji (od 1.7.691, `INTERACT_PLAN.md`):** przy kilku obiektach w zasięgu [E] dotyczy jednego — ważniejszego (podnoszenie kolegi >
 drezyna > broń > taśma i stempel > sejf, generator, barykada > zwłoki > stanowiska kryjówki > tablica i drzwi strzelnicy), a przy równej
 wadze bliższego. Trzymane [E] zostaje przy tym, co się zaczęło. Na wierzchu wybranego obiektu leży mały, zardzewiały klawisz [E]
-(od 1.7.699, `INTERACT_KEY_PLAN.md`): oddycha bursztynową poświatą, przy przytrzymaniu owija go drut kolczasty z bursztynu w czerwień, na
+(od 1.7.699, `INTERACT_KEY_PLAN.md`): świeci stałą bursztynową poświatą, przy przytrzymaniu owija go drut kolczasty z bursztynu w czerwień, na
 końcu wybucha iskrami; szary, gdy akcja jest niemożliwa (naciśnięcie daje czerwone zakłócenie). Przy broni i gablocie obok stoi [H]
 (oględziny), na padzie Classic przytrzymanie [B] owija klawisz drutem w 0,4 s. Opcja „Interaction highlight” w menu pauzy.
 Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.

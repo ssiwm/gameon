@@ -6,7 +6,7 @@ extends MeshInstance3D
 ##
 ## Stany (klatki arkusza inspiracji art_src/ui/interact_key_ref.png):
 ## - pojawienie — po DWELL_S przy tym samym celu klawisz wskakuje ze skali 0,6 z lekkim przestrzeleniem (APPEAR_S);
-## - możliwa — bursztynowa poświata z oddechem jasności, lekkie kołysanie bryły (bez obu przy „Reduce effects”);
+## - możliwa — stała bursztynowa poświata; klawisz nieruchomy (pulsowanie, kołysanie i odblask obwódki mrugały — usunięte);
 ## - niemożliwa (brak desek, broń zablokowana) — klawisz wyszarzony, bez poświaty; naciśnięcie daje czerwone „zakłócenie” (GLITCH_S);
 ## - naciśnięcie (stanowiska, broń, oględziny) — klawisz wciśnięty w głąb i do 0,86, litera rozżarzona, mały błysk;
 ## - przytrzymanie — drut kolczasty owija klawisz od góry zgodnie z zegarem do postępu, poświata i drut z bursztynu w czerwień, litera
@@ -37,7 +37,6 @@ const LETTER_GLITCH := Color(1.4, 0.3, 0.2)
 const DWELL_S := 0.15                         ## s przy tym samym celu, zanim znacznik się pokaże
 const FADE_S := 0.2
 const APPEAR_S := 0.22
-const PULSE_S := 1.2                          ## okres oddechu jasności
 const GLITCH_S := 0.32
 const PRESS_S := 0.18
 const BURST_S := 0.9
@@ -135,7 +134,6 @@ const MODEL_SHADER := """
 shader_type spatial;
 render_mode unshaded, depth_draw_opaque, cull_back, shadows_disabled, fog_disabled;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
-uniform float fade = 1.0;
 uniform float muted = 0.0;
 uniform float glitch = 0.0;
 uniform float heat = 0.0;
@@ -154,8 +152,7 @@ void fragment() {
 	vec4 c = texture(albedo_tex, UV);
 	vec3 n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	float d = max(dot(n, normalize(vec3(-0.45, 0.7, 0.6))), 0.0);
-	float rim = pow(1.0 - max(dot(NORMAL, VIEW), 0.0), 3.0);
-	vec3 col = c.rgb * (0.42 + 1.05 * d) + vec3(1.0, 0.8, 0.55) * rim * 0.18;
+	vec3 col = c.rgb * (0.42 + 1.05 * d);                       // bez odblasku obwódki — przy 20 px na ekranie mrugał
 	// górna ścianka: Meshy nie widział jej na obrazku i wymyślił jaskrawą fakturę — przyciemniona do koloru stali
 	float topw = smoothstep(0.45, 0.85, v_n.y);
 	col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))) * 0.45, topw);
@@ -164,11 +161,6 @@ void fragment() {
 	col = mix(col, col * vec3(1.8, 0.4, 0.35), glitch * 0.75);
 	col += vec3(0.55, 0.12, 0.02) * heat * smoothstep(0.6, 1.0, n.z);
 	ALBEDO = col;
-	// zanikanie bez przezroczystości (nieprzezroczysta bryła sortuje się sama): dithering po pikselach ekranu
-	float dither = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
-	if (dither > fade) {
-		discard;
-	}
 }
 """
 
@@ -214,7 +206,7 @@ void fragment() {
 ## Jeden klawisz znacznika: model nakładki z literą, poświata i drut przytrzymania, stan efektów. [E] / [B] i [H] to dwa egzemplarze.
 class MarkKey:
 	var root: Node3D                           ## miejsce klawisza w parze (x)
-	var pivot: Node3D                          ## odchylenie, kołysanie, wciśnięcie
+	var pivot: Node3D                          ## odchylenie i wciśnięcie
 	var letter: Label3D
 	var mats: Array = []                       ## ShaderMaterial modelu
 	var glow: MeshInstance3D
@@ -233,7 +225,7 @@ static var _model_sh: Shader
 static var _shade_sh: Shader
 
 var target: Node = null                       ## obiekt, przy którym stoi znacznik (test, view3d)
-var alpha := 0.0                              ## bieżąca widoczność 0..1 (bez oddechu)
+var alpha := 0.0                              ## bieżąca widoczność 0..1
 var state := "hidden"                         ## hidden / ok / muted / hold / burst — stan klawisza [E] dla testu i zrzutów
 var pair := false                             ## widać parę [E] + [H]
 var keys: Array = []                          ## [MarkKey [E] / [B], MarkKey [H]]
@@ -321,7 +313,8 @@ func _make_key(action: String) -> MarkKey:
 	k.letter.shaded = false
 	k.letter.double_sided = true
 	k.letter.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	k.letter.position = Vector3(-0.01, 0.01, 0.212)                     # na licu modelu (układ modelu: szerokość 1, lico na z ≈ 0,2)
+	k.letter.position = Vector3(-0.01, 0.01, 0.23)                      # przed licem modelu (układ modelu: szerokość 1, lico na z ≈ 0,2)
+	k.letter.no_depth_test = true                                       # zawsze na nakładce — z testem głębi „przegryzała” się z nierównym licem
 	k.pivot.add_child(k.letter)
 	k.ring = _quad_mi(RING_PX * px, _mat(_ring_sh, 11))
 	(k.ring.material_override as ShaderMaterial).set_shader_parameter("ring", RING_TEX)
@@ -360,7 +353,7 @@ static func look_ring(look: float) -> float:
 	return -1.0 if look < LOOK_RING_FROM else clampf((look - LOOK_RING_FROM) / (1.0 - LOOK_RING_FROM), 0.0, 1.0)
 
 ## Co klatkę: `node` — cel (null — brak), `offer` — jego oferta (interact.gd; broń: `alt` — akcja drugiego klawisza, `alt_hold` —
-## oględziny przytrzymaniem [B]), `show` — czy znacznik może być widoczny, `calm` — bez oddechu i efektów („Reduce effects”), `fit` — rzut
+## oględziny przytrzymaniem [B]), `show` — czy znacznik może być widoczny, `calm` — bez efektów („Reduce effects”), `fit` — rzut
 ## modeli celu (`project_box`), `pressed` — w tej klatce wciśnięto [E] / [B], `pressed_alt` — [H], `look` — przytrzymanie [B] na padzie
 ## Classic (weapon_controller.pad_look_progress).
 func tick(delta: float, node: Node, offer: Dictionary, show: bool, calm: bool, fit := Rect2(), pressed := false, pressed_alt := false, look := -1.0) -> void:
@@ -435,7 +428,7 @@ func tick(delta: float, node: Node, offer: Dictionary, show: bool, calm: bool, f
 ## Stan jednego klawisza: `muted` — oferta niemożliwa, `prog` — drut 0..1 (< 0 — bez przytrzymania), `press` — wciśnięcie w tej klatce,
 ## `glitch` — naciśnięcie przy niemożliwej.
 func _tick_key(k: MarkKey, delta: float, calm: bool, muted: bool, prog: float, press: bool, glitch: bool) -> void:
-	var holding := prog >= 0.0
+	var holding := prog > 0.0                       # zwłoki i sejf podają 0, zanim ktoś zacznie trzymać
 	if glitch:
 		k.glitch = GLITCH_S
 	elif press and not muted:
@@ -449,20 +442,18 @@ func _tick_key(k: MarkKey, delta: float, calm: bool, muted: bool, prog: float, p
 	var dip := 1.0 - 0.14 * sin(PI * (1.0 - k.press / PRESS_S)) if k.press > 0.0 else 1.0
 	k.pivot.scale = Vector3.ONE * KEY_PX * Level3D.PX * dip
 	k.pivot.position.z = -0.25 * KEY_PX * Level3D.PX * (1.0 - dip) / 0.14
-	k.pivot.rotation.y = 0.0 if calm else 0.09 * sin(_t * 1.4 + (0.0 if k == keys[0] else 0.9))     # lekkie kołysanie — klawisz jest bryłą
+	# bez kołysania: obrót bryły ~20 px zmieniał co klatkę jasność ścianek i aliasing drutu — klawisz mrugał
 	var gl := 0.0 if calm else k.glitch / GLITCH_S
 	for mm in k.mats:
 		var smm := mm as ShaderMaterial
-		smm.set_shader_parameter("fade", alpha)
 		smm.set_shader_parameter("muted", 1.0 if muted else 0.0)
 		smm.set_shader_parameter("glitch", gl)
 		smm.set_shader_parameter("heat", k.heat)
 		smm.set_shader_parameter("t", _t)
-	var breath := 1.0 if (calm or muted or holding) else 0.75 + 0.25 * (0.5 + 0.5 * sin(_t * TAU / PULSE_S))
 	var col := TINT_MUTED if muted else TINT.lerp(TINT_HOT, smoothstep(0.15, 0.95, k.heat))
 	var gm := k.glow.material_override as ShaderMaterial
 	gm.set_shader_parameter("tint", TINT_GLITCH if k.glitch > 0.0 else col)
-	gm.set_shader_parameter("k", alpha * (0.0 if muted and k.glitch <= 0.0 else (0.45 + 0.6 * k.heat) * breath))
+	gm.set_shader_parameter("k", alpha * (0.0 if muted and k.glitch <= 0.0 else (0.45 + 0.6 * k.heat)))   # stała poświata — bez pulsowania
 	var rm := k.ring.material_override as ShaderMaterial
 	k.ring.visible = holding
 	rm.set_shader_parameter("prog", clampf(prog, 0.0, 1.0))

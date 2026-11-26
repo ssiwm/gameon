@@ -290,6 +290,9 @@ func _mark_checks(M: GDScript) -> void:
 	run.call(1, base, true)
 	_check("naciśnięcie przy możliwej: wciśnięcie bez zakłócenia", float(k0.press) > 0.0 and float(k0.glitch) <= 0.0)
 	run.call(60, base)
+	run.call(3, base.merged({"kind": 1, "prog": 0.0}, true))
+	_check("oferta przytrzymania z postępem 0 (zwłoki, sejf przed [E]): stan „ok”, bez drutu",
+		String(mk.state) == "ok" and not (k0.ring as Node3D).visible)
 	var hold := base.merged({"kind": 1, "prog": 0.5}, true)
 	run.call(3, hold)
 	_check("przytrzymanie: stan „hold”, drut widoczny", String(mk.state) == "hold" and (k0.ring as Node3D).visible)
