@@ -41,7 +41,7 @@ Odsłuch 2026-11-14, z nagrań: dig_dirt, dig_gravel, dig_rock (cios kilofem w s
 Odsłuch 2026-11-15, z nagrań: cała pogoda (WEATHER_PLAN.md W2–W4) — tło deszczu, krople na materiałach, dach, okap, kaptur, wiatr,
 podmuch, świst w oknie, grzmot (trzask, toczenie, drżenie szyb).
 Odsłuch 2026-11-25, z nagrań: Łupacz w skorupie — shell_ricochet, shell_crack, lupacz_squeal, claw_scrape.
-Odsłuch 2026-11-26, z nagrań: pancerna kula Łupacza (LUPACZ_PLAN.md L4) — shell_curl, shell_roll_loop.
+Odsłuch 2026-11-26, z nagrań: pancerna kula Łupacza (LUPACZ_PLAN.md L4) — shell_curl, shell_roll_loop; chwyt spod ziemi (L2) — mole_grab.
 Odrzucone na rzecz syntezy (przepisy usunięte, zostają w historii repo): p64_shot, sokol6_shot, whizz,
 dry_fire, hkm9_ignite, kilof_swing, slepiec_attack, zyla_growl. Po odsłuchu w grze
 wymienione: Trzosek (owadzi terkot był za wysoki → pies z warkotem ogara), lądowanie (upadek ciała → buty na obie stopy).
@@ -1101,6 +1101,29 @@ def _shell_curl_bake() -> None:
         finalize("shell_curl_%d" % (i + 1), d.reverb(x, ir("cave"), wet=.14), lufs=SHELL_CURL_LUFS, fade_out_ms=100)
 
 
+# --- Chwyt spod ziemi (LUPACZ_PLAN.md L2, 1.7.688): ten sam gest co synteza mole_grab z bake_sfx._build_shell — grunt pęka od spodu
+# (kamień w ziemię, głuche tąpnięcie z syntezy, sypiący się żwir), zaraz po nim mokre złapanie (błotnisty krok stwora i uderzenie
+# w ciało), szarpnięcie pazurami i krótki, zduszony pisk spod ziemi (kwik świni wyżej, przyciemniony). Werdykt odsłuchu 2026-11-26: z nagrań.
+MOLE_GRAB_NEEDS = ["rock_hit_dirt_07", "soil_debris_13", "creature_step_mud", "impact_body_flesh_25", "claws_anf003", "pig_squeal_18"]
+MOLE_GRAB_LUFS = -19.0                                               # zmierzone −22,8 jak synteza
+
+
+def _mole_grab_bake() -> None:
+    for i in range(2):
+        n = ms(900)
+        crunch = d.filt(_clip("rock_hit_dirt_07", (0.55, 1.15)[i], 0.5, -3.0, 0.4, tail=.2), "hp", 70.0, order=2)
+        heave = thump(.3, vary(Rng(0xF510 + i), 95, .1), 48, .03, .12)
+        gravel = d.filt(_clip("soil_debris_13", 0.4 + .5 * i, 0.6, -2.0, 0.5, tail=.3, onset=False), "hp", 250.0, order=2)
+        wet = _clip("creature_step_mud", (0.05, 0.75)[i], 0.3, -1.0, 0.22, tail=.12)
+        grip = _clip("impact_body_flesh_25", 0.1, 0.4, -4.0 - 2.0 * i, 0.25, tail=.15)
+        tug = d.filt(_clip("claws_anf003", _CLAW_CLICKS[2 + 3 * i], .25, -4.0, .2, tail=.1), "hp", 900.0, order=2)
+        squeak = d.lp(_clip("pig_squeal_18", (0.27, 0.55)[i], 0.3, 4.0, 0.14, tail=.08), 1600.0, order=2)
+        x = d.mix([(crunch, 1.0), (heave, .8), (_unit(gravel), .45), (wet, .8, .07), (grip, .6, .08), (_unit(tug), .4, .33),
+                   (_unit(squeak), .22, .4)], n)
+        x = d.limiter(d.saturate(_unit(d.filt(x, "hp", 35.0, order=2)), 1.4), -6.0)
+        finalize("mole_grab_%d" % (i + 1), d.limiter(d.reverb(x, ir("cave"), wet=.18), -4.0), lufs=MOLE_GRAB_LUFS, fade_out_ms=120)
+
+
 def _plate_knocks(n: int, r: Rng) -> np.ndarray:
     """Takt krawędzi płyt (jak w syntezie): 14 głuchych stuknięć na pętlę, co trzecie mocniej; okresowy w n próbkach."""
     y = np.zeros(n)
@@ -1128,6 +1151,7 @@ def enemies() -> None:
     """Wersje z nagrań dla głosów wrogów — wołane na końcu bake_sfx.build_enemies()."""
     bc.hybrid(_keys("shell_curl", 2), _shell_curl_bake, SHELL_CURL_NEEDS)
     bc.hybrid(["shell_roll_loop"], _shell_roll_loop_bake, SHELL_ROLL_NEEDS)
+    bc.hybrid(_keys("mole_grab", 2), _mole_grab_bake, MOLE_GRAB_NEEDS)
     bc.hybrid(_keys("shell_ricochet", 3), _shell_ricochet_bake, SHELL_RICOCHET_NEEDS)
     bc.hybrid(_keys("shell_crack", 2), _shell_crack_bake, SHELL_CRACK_NEEDS)
     bc.hybrid(_keys("lupacz_squeal", 2), _lupacz_squeal_bake, LUPACZ_SQUEAL_NEEDS)
