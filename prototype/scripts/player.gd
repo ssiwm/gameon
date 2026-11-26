@@ -772,6 +772,48 @@ func _arena_camera(delta: float) -> void:
 		_camera.position = _cam_home
 		_apply_cam_zoom()
 
+const RESULT_CAM_T := 6.5               ## s odjazdu kamery nad drużynę pod raportem po akcji (RESULTS_PLAN.md §15 pomysł 1)
+const RESULT_CAM_ZOOM := 0.8             ## zoom na końcu odjazdu względem ustawienia gracza
+const RESULT_CAM_R := 160.0              ## px: kto stoi bliżej, ten wchodzi do środka kadru drużyny
+const RESULT_CAM_UP := 10.0              ## px: środek kadru nad stopami drużyny (pod tytułem, nad nieśmiertelnikami)
+var _result_k := -1.0                    ## postęp odjazdu 0..1; −1 = poza raportem
+var _result_at := Vector2.ZERO           ## środek drużyny względem gracza, liczony raz przy otwarciu raportu
+
+## Kamera pod raportem po akcji: powolny odjazd (zoom w dół, ease-out) nad środek drużyny stojącej przy wyjściu, żeby raport był sceną,
+## a nie tabelą. Tylko lokalnie i tylko u człowieka z aktywną kamerą; „Ogranicz efekty” trzyma kadr bez ruchu. Wyjście z fazy wyniku
+## (zmiana mapy, następna misja) oddaje kamerę ustawieniom gracza. Kamera areny Żyły ma pierwszeństwo.
+func _result_camera(delta: float) -> void:
+	var mis := get_tree().get_first_node_in_group("mission")
+	var on: bool = mis != null and (int(mis.phase) == int(mis.Phase.SUCCESS) or int(mis.phase) == int(mis.Phase.FAILED)) and _arena_k <= 0.0
+	if not on:
+		if _result_k >= 0.0:
+			_result_k = -1.0
+			_camera.position = _cam_home
+			_apply_cam_zoom()
+		return
+	if not _cam_home.is_finite():
+		_cam_home = _camera.position
+	if _result_k < 0.0:
+		_result_k = 0.0
+		var sum := Vector2.ZERO
+		var n := 0
+		for p in get_tree().get_nodes_in_group("players"):
+			if p is Node2D and not (p as Node).is_queued_for_deletion() and (p as Node2D).global_position.distance_to(global_position) <= RESULT_CAM_R:
+				sum += (p as Node2D).global_position
+				n += 1
+		_result_at = (sum / float(n) - global_position) if n > 0 else Vector2.ZERO
+	if Settings.fx_mult() <= 0.0:
+		return
+	_result_k = minf(1.0, _result_k + delta / RESULT_CAM_T)
+	var k := 1.0 - pow(1.0 - _result_k, 3.0)
+	var z := Settings.cam_zoom() * lerpf(1.0, RESULT_CAM_ZOOM, k)
+	_camera.zoom = Vector2(z, z)
+	_camera.position = _cam_home.lerp(_cam_home + _result_at + Vector2(0.0, -RESULT_CAM_UP), k)
+
+## Postęp odjazdu kamery pod raportem (test `--resulttest`): −1 poza raportem.
+func result_cam_k() -> float:
+	return _result_k
+
 ## Czy kamera lokalnego gracza trzyma teraz kadr hali Żyły (test `--veintest`).
 func arena_cam_on() -> bool:
 	return _arena_k >= 1.0
@@ -797,6 +839,7 @@ func _process(delta: float) -> void:
 		_camera.offset = Feel.shake_offset()
 		_lock_camera_band()
 		_arena_camera(delta)
+		_result_camera(delta)
 	if _is_remote or is_bot:
 		_update_footsteps_passive()
 	_update_lights()

@@ -343,4 +343,11 @@ Czego nie robimy: oceny literą ani MVP (zasada „drużyna, nie ranking”), VH
   a nie żywy `Char3D` — cztery podglądy 3D w raporcie kosztowałyby cztery SubViewporty bez zysku dla czytelności. Kanał radia jest
   stały dla mapy; przerwana seria Nocnego Dyżuru to „CISZA W ETERZE” na czerwono. Szum odbioru `ui_radio_rx` z `tools/bake_sfx.py`
   (0,45 s, −20 LUFS) gra pod wejściem kadencji wyniku; przełączanie warstw stuka `ui_click` zamiast `ui_confirm`.
-- **S3**: kamera i układ sceny, sylwetka Stalkera (1).
+- **S3 (1.7.697, wdrożone)**: kamera i układ sceny, sylwetka Stalkera (1). Skrót to płótno 1344 × 756 jednostek HUD (`DESIGN`,
+  pomniejszane przy większej skali UI): tytuł u góry, cele w lewej kolumnie, łup w prawej, nieśmiertelniki u dołu, środek wolny; pod
+  skrótem świat przyciemniony tylko o 0,18, a krawędzie ciemnią pasy gradientu (`Scrim`). Szczegóły zostają panelem na środku z pełnym
+  ściemnieniem. Kamera lokalnego gracza (`player._result_camera`) w 6,5 s odjeżdża do 0,8 zoomu nad środek drużyny stojącej w promieniu
+  160 px i wraca do ustawień po zmianie mapy; kamera areny Żyły ma pierwszeństwo, „Ogranicz efekty” trzyma kadr. Gdy Stalker się
+  obudził (poza Nocnym Dyżurem), po 5,6 s od otwarcia raportu w linii drzew (6,5 m za płaszczyzną gry, 5 m w bok) staje jego model
+  z połyskiem oczu, po 4 s cofa się w las (`view3d._sync_lurker`, czas z `ResultScreen.lurk_age()`). Pod raportem znikają celownik
+  i plakietki graczy (`ResultScreen.showing()`).

@@ -24,6 +24,7 @@ const DigGround := preload("res://scripts/dig_ground.gd")
 const DigEntrance3D := preload("res://scripts/dig_entrance3d.gd")
 const Vfx := preload("res://scripts/vfx.gd")
 const Enemy3D := preload("res://scripts/enemy3d.gd")
+const ResultScreen := preload("res://scripts/result_screen.gd")
 const Corpse3D := preload("res://scripts/corpse3d.gd")
 const GaitSpeed := preload("res://scripts/gait_speed.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
@@ -610,6 +611,7 @@ func _tick(delta: float) -> void:
 	_sync_rigs()
 	tp = _tp("rigs", tp)
 	_sync_enemies(delta)
+	_sync_lurker(delta)
 	_sync_corpses()
 	_sync_downed()
 	tp = _tp("enemies", tp)
@@ -1517,6 +1519,68 @@ func _sync_enemies(delta: float) -> void:
 		e.set("lit", float(info.get("lit", 0.0)))                        # Ćma w snopie latarki świeci (enemy_moth.gd: view_extra)
 		e.set("heed", info.get("heed", Vector3.ZERO))                     # śpiący „prawie usłyszał” hałas: głowa w stronę źródła (IDLE_PLAN.md A5)
 		e.call("pose", enemy_dt, anim, body.flip_h, md, float(body.frame) + body.frame_progress, nfr, lp, float(st["vy"]), int(info["sp"]), bool(info.get("alert", false)), vx_now, float(st["gd"]))      # faza kroku z przebytej drogi, także u obserwatora sieciowego
+
+## Sylwetka Stalkera w linii drzew pod raportem po akcji (RESULTS_PLAN.md §15 pomysł 1, zasada grozy nr 3 — obecność na krawędziach,
+## nigdy nagły skok): po udanej misji, w której Stalker się obudził, po LURK_FROM s od otwarcia raportu staje kilka metrów za płaszczyzną
+## gry, z boku drużyny, z połyskiem oczu; po LURK_HOLD s cofa się w las i znika. Czysta kosmetyka u każdego peera osobno (czas z
+## `ResultScreen.lurk_age()`), bez wpływu na symulację; „Ogranicz efekty” i Nocny Dyżur — bez sylwetki.
+const LURK_FROM := 5.6                     ## s od otwarcia raportu (po nieśmiertelnikach i znaleziskach)
+const LURK_HOLD := 4.0                     ## s, przez które stoi
+const LURK_BACK := 1.6                     ## s cofania się w las przed zniknięciem
+const LURK_Z := -6.5                       ## m za płaszczyzną gry: linia drzew
+const LURK_DX := 5.0                       ## m w bok od lokalnego gracza
+const LURK_EYE := Color(1.0, 0.78, 0.45)   ## połysk oczu w mroku (ciepły, jak odblask latarki)
+var _lurker: Node3D
+var _lurk_x0 := 0.0
+
+func _sync_lurker(delta: float) -> void:
+	var age := ResultScreen.lurk_age()
+	var end := LURK_FROM + LURK_HOLD + LURK_BACK
+	if age < LURK_FROM or age > end:
+		if _lurker != null and is_instance_valid(_lurker):
+			_lurker.queue_free()
+		_lurker = null
+		return
+	if _lurker == null:
+		var me: Node2D = null
+		for p in get_tree().get_nodes_in_group("players"):
+			if is_instance_valid(p) and p.get("is_bot") == false and (p as Node).is_multiplayer_authority():
+				me = p as Node2D
+				break
+		if me == null:
+			return
+		var e := Enemy3D.new()
+		e.life_seed = 87
+		if not e.setup("stalker", true):
+			e.free()
+			return
+		var side := 1.0 if (hash(String(get_tree().get_first_node_in_group("level").get("map_id"))) & 1) == 0 else -1.0
+		var at := Level3D.px_to_m(me.global_position)
+		_lurk_x0 = side
+		e.position = Vector3(at.x + side * LURK_DX, at.y, LURK_Z)
+		e.name = "ResultLurker"
+		var em := StandardMaterial3D.new()
+		em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		em.albedo_color = LURK_EYE
+		em.emission_enabled = true
+		em.emission = LURK_EYE
+		em.emission_energy_multiplier = 3.0
+		var sm := SphereMesh.new()
+		sm.radius = 0.035
+		sm.height = 0.07
+		for ex in [-0.09, 0.09]:
+			var eye := MeshInstance3D.new()
+			eye.mesh = sm
+			eye.material_override = em
+			eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			eye.position = Vector3(ex, 54.0 * Level3D.PX * 0.9, 0.3)
+			e.add_child(eye)
+		_set_layer(e, LAYER_WORLD)
+		_world.add_child(e)
+		_lurker = e
+	var back := clampf((age - LURK_FROM - LURK_HOLD) / LURK_BACK, 0.0, 1.0)
+	_lurker.position.z = LURK_Z - 2.5 * back * back             # cofa się w las, zanim zniknie
+	_lurker.call("pose", delta, "walk" if back > 0.0 else "idle", _lurk_x0 > 0.0, Color.WHITE, 0.0, 1, true, 0.0, 0, false, 0.6 if back > 0.0 else 0.0)
 
 ## Sfera (środek, promień w m) choć częściowo w bryle widzenia (`Camera3D.get_frustum`: normalne płaszczyzn na zewnątrz).
 func _in_frustum(c: Vector3, r: float, planes: Array[Plane]) -> bool:
