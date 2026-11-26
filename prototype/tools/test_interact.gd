@@ -2,7 +2,8 @@ extends SceneTree
 ## Wybór celu [E] (INTERACT_PLAN.md I0–I4, interact.gd): reguły wyboru (możliwe przed niemożliwymi, priorytet, odległość, strona spojrzenia
 ## przy remisie, blokada trzymanego celu), prawdziwe obiekty obok siebie (sejf i zwłoki — jedno [E] to jedna akcja, broń wygrywa z sejfem
 ## i stanowiskiem, martwy gracz bez celu), odstępy zasięgów stanowisk w kryjówce (z1_hub), oględziny przytrzymaniem na padzie
-## (Actions.inspect_by_hold) i wiersze tłumaczeń nowych podpowiedzi.
+## (Actions.inspect_by_hold), ramka znacznika z rzutu bryły modelu (interact_mark3d.project_box; gablota zostaje przy ramce szafy) i wiersze
+## tłumaczeń nowych podpowiedzi.
 ##   godot --headless --path prototype -s tools/test_interact.gd     → ostatni wiersz: [INTERACT] PASS / FAIL
 
 var _fails := 0
@@ -191,6 +192,31 @@ func _run() -> void:
 	var hold_key: bool = A.inspect_by_hold()
 	_check("pad (Classic, oględziny bez przycisku): oględziny przytrzymaniem [B]; klawiatura — [H] (%s)" % A.key("inspect_weapon"),
 		hold_pad and not pad_inspect and not hold_key and A.bound("inspect_weapon") and A.INSPECT_HOLD_S > 0.2 and A.INSPECT_HOLD_S < 0.8)
+
+	# ---------------------------------------------------------------- ramka z bryły modelu (interact_mark3d.gd project_box)
+	var M: GDScript = load("res://scripts/interact_mark3d.gd")
+	var L3: GDScript = load("res://scripts/level3d.gd")
+	var px: float = L3.PX
+	var eye := Vector3(10.0 * px, -10.0 * px, 12.0)
+	var flat: Rect2 = M.project_box([AABB(Vector3(0.0, -8.0 * px, 0.0), Vector3(20.0 * px, 8.0 * px, 0.0))], eye)
+	var deep: Rect2 = M.project_box([AABB(Vector3(0.0, -8.0 * px, -1.0), Vector3(20.0 * px, 8.0 * px, 0.0))], eye)
+	var thick: Rect2 = M.project_box([AABB(Vector3(0.0, -8.0 * px, -1.0), Vector3(20.0 * px, 8.0 * px, 1.0))], eye)
+	var near := func(a: Rect2, b: Rect2) -> bool: return a.position.distance_to(b.position) < 0.01 and a.size.distance_to(b.size) < 0.01
+	var ctr_d: Vector2 = deep.get_center() - flat.get_center()
+	_check("rzut bryły: w płaszczyźnie gry bez zmian %s, w głębi mniejszy i bliżej osi oka %s, gruba = obrys obu %s" % [flat, deep, thick],
+		near.call(flat, Rect2(0.0, 0.0, 20.0, 8.0)) and deep.size.x < 20.0 and deep.size.x > 18.0 and ctr_d.y > 0.0 and absf(ctr_d.x) < 0.01
+		and near.call(thick, flat.merge(deep)) and M.project_box([], eye) == Rect2()
+		and M.project_box([AABB(Vector3(0.0, 0.0, 13.0), Vector3.ONE)], eye) == Rect2())
+	var cab_gun := _add("res://scripts/pickup.gd", "GunCab", 500.0)
+	cab_gun.kind = "weapon"
+	var me2 := _fake_player(500.0)
+	var og: Dictionary = cab_gun.interact_offer(me2)
+	cab_gun.set_meta("cab_x", 500.0)
+	var oc2: Dictionary = cab_gun.interact_offer(me2)
+	_check("broń na ziemi: ramka z modelu (fit), gablota: ramka szafy z oferty (bez fit)",
+		bool(og.get("fit", false)) and (oc2.is_empty() or not bool(oc2.get("fit", true))))
+	cab_gun.free()
+	me2.free()
 
 	# ---------------------------------------------------------------- tłumaczenia nowych podpowiedzi
 	var csv := FileAccess.get_file_as_string("res://translations/ui.csv")

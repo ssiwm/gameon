@@ -614,6 +614,7 @@ func interact_offer(me: Node2D) -> Dictionary:
 	var lvl := _level()
 	var o := Interact.offer(self, me, Interact.Kind.PRESS, Interact.P_WEAPON, true, box, -1.0, point.distance_to(hand))
 	o["muted"] = lvl != null and lvl.is_locked_item(self)
+	o["fit"] = not has_meta("cab_x")                        # gablota: ramka na całą szafę, nie na broń w środku
 	return o
 
 ## Broń leży na ziemi i czeka na E — czy ten gracz stoi dość blisko?

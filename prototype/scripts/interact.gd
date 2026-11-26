@@ -40,10 +40,12 @@ static var _locked: Node = null
 ## Testy: wymuszony stan klawisza (−1 — czytaj Input; 0/1 — puszczony / trzymany). Nie dotyczy `pressed` (just_pressed z Input).
 static var sim_held := -1
 
-## Oferta obiektu `node` dla gracza `me` (pomocnik do `interact_offer`).
+## Oferta obiektu `node` dla gracza `me` (pomocnik do `interact_offer`). `box` — prostokąt obiektu w pikselach świata; widok 3D zastępuje go
+## rzutem bryły modelu obiektu (view3d.gd `_target_box`), a obiekt bez modelu albo z `"fit": false` w ofercie (gablota: ramka na całą szafę)
+## zostaje przy `box`.
 static func offer(node: Node2D, me: Node2D, kind: int, prio: int, ok := true, box := Rect2(), prog := -1.0, dist := -1.0) -> Dictionary:
 	var dx := node.global_position.x - me.global_position.x
-	return {"kind": kind, "prio": prio, "ok": ok, "muted": not ok, "dist": absf(dx) if dist < 0.0 else dist, "dx": dx, "box": box, "prog": prog}
+	return {"kind": kind, "prio": prio, "ok": ok, "muted": not ok, "dist": absf(dx) if dist < 0.0 else dist, "dx": dx, "box": box, "prog": prog, "fit": true}
 
 ## Lokalny człowiek (właściciel postaci, nie bot) albo null.
 static func local_player(tree: SceneTree) -> Node2D:

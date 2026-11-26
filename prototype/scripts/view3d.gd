@@ -287,6 +287,9 @@ var _spawn_burst_until := 2.0           ## s `_life`: do tej chwili modele wrog�
 var _life := 0.0
 var _saved := false
 var _imark: MeshInstance3D                 ## znacznik celu [E] (interact_mark3d.gd), tworzony w `_sync_interact_mark`
+var _imark_src: Node = null                ## cel, dla którego zebrano siatki modelu (`_target_box`)
+var _imark_meshes: Array = []              ## MeshInstance3D modeli tego celu
+var _imark_scan := 0.0                     ## s do ponownego szukania modelu, gdy go nie ma (zwłoki, otwór) albo jest w drodze
 var label_fade := 1.0                     ## 1 = paski i plakietki nad postaciami widoczne; gasną w widoku z oczu (oględziny, strzelnica)
 var _bars_layer: CanvasLayer              ## warstwa ekranu z paskami życia i plakietkami (world_bars.gd), tuż pod HUD-em
 
@@ -9248,7 +9251,54 @@ func _sync_interact_mark(delta: float) -> void:
 		_world.add_child(_imark)
 	var tgt := Interact.target(self)
 	var show: bool = Settings.interact_mark and _fp <= 0.0 and _rp <= 0.0
-	_imark.tick(delta, tgt, Interact.current(self) if tgt != null else {}, show, Settings.reduce_fx)
+	var off: Dictionary = Interact.current(self) if tgt != null else {}
+	var fit := _target_box(tgt, delta) if tgt != null and show and bool(off.get("fit", true)) else Rect2()
+	_imark.tick(delta, tgt, off, show, Settings.reduce_fx, fit)
+
+## Ramka znacznika z bryły celu: rzut jego modeli 3D z oka kamery na płaszczyznę gry (interact_mark3d.gd `project_box`), więc ramka obejmuje
+## to, co widać na ekranie, także sejf i meble w głębi. Modele celu to przedmioty HD jego poddrzewa (`_items`: sejf, generator, tablica
+## narzędzi, drezyna), wyposażenie stanowisk kryjówki (`_station_props3d`) i broń (`_guns`). Pusty prostokąt (zwłoki, pusty otwór, strefa wydobycia, powalony kolega) — znacznik bierze ręczny `box` oferty.
+func _target_box(n: Node, delta: float) -> Rect2:
+	if n != _imark_src:
+		_imark_src = n
+		_imark_meshes.clear()
+		_imark_scan = 0.0
+	for mi in _imark_meshes:
+		if not is_instance_valid(mi):
+			_imark_meshes.clear()                              # model przebudowany (sterta skrzyni, nowy egzemplarz) — zbierz od nowa
+			_imark_scan = 0.0
+			break
+	if _imark_meshes.is_empty():
+		_imark_scan -= delta
+		if _imark_scan > 0.0:
+			return Rect2()
+		_imark_scan = 0.5
+		_imark_meshes = _target_meshes(n)
+	var boxes := []
+	for mi in _imark_meshes:
+		var m := mi as MeshInstance3D
+		if m.mesh != null and m.is_visible_in_tree():
+			boxes.append(m.global_transform * m.get_aabb())
+	return InteractMark.project_box(boxes, _cam_a.global_position)
+
+func _target_meshes(n: Node) -> Array:
+	var roots: Array = []
+	var g = _guns.get(n.get_instance_id())
+	if g != null and is_instance_valid(g[5]):
+		roots.append(g[5])                                     # sam model broni, bez kłódki i tabliczki stojaka
+	var st = _station_props3d.get(n.get_instance_id())
+	if st != null and is_instance_valid(st):
+		roots.append(st)                                       # wyposażenie stanowiska kryjówki (ława, szafki, tokarka…)
+	for id in _items:
+		var it: Array = _items[id]
+		if is_instance_valid(it[0]) and is_instance_valid(it[1]) and n.is_ancestor_of(it[0]):
+			roots.append(it[1])
+	var out: Array = []
+	for r in roots:
+		if r is MeshInstance3D:
+			out.append(r)                                      # karta zastępcza przedmiotu bez modelu
+		out.append_array((r as Node).find_children("*", "MeshInstance3D", true, false))
+	return out
 
 func _sync_loot_glints() -> void:
 	var t := float(Time.get_ticks_msec()) * 0.001
