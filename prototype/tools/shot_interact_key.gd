@@ -1,7 +1,9 @@
 extends Node
-## Zrzuty znacznika [E] w świecie (INTERACT_KEY_PLAN.md K4): gracz staje przy stanowisku kryjówki, a znacznik przechodzi po kolei przez
-## wszystkie stany — spoczynek, naciśnięcie, przytrzymanie 25 / 50 / 75 / 97%, wybuch, okruchy, oferta niemożliwa i „zakłócenie” po [E].
-## Stan przytrzymania i niemożliwej oferty jest wymuszony (`view3d.ekey_force`) — stanowisko kryjówki to obiekt „naciśnij”, a chodzi o wygląd.
+## Zrzuty znacznika celu w świecie (INTERACT_KEY_PLAN.md K4): gracz staje przy obiekcie (`--ekeystation=GRUPA`, domyślnie stanowisko
+## warsztatu; `pickups` — broń), a znacznik przechodzi po kolei przez stany — spoczynek, naciśnięcie, przytrzymanie 25 / 50 / 75 / 97%,
+## wybuch, okruchy, oferta niemożliwa i „zakłócenie” po [E]. Przy broni dodatkowo: para [E] + [H], wciśnięte [H], broń zablokowana z parą,
+## pad Classic — stuknięcie [B] (bez drutu), przytrzymanie [B] 50 / 97% i wybuch przy otwarciu oględzin.
+## Stany są wymuszone (`view3d.ekey_force`) — chodzi o wygląd, nie o zachowanie obiektu.
 ## Okno, override.cfg z QA. Z Movie Makerem Godota (`--write-movie`, `--fixed-fps`) daje też klatki animacji ze stałym krokiem czasu:
 ##
 ##   godot --path prototype --resolution 1600x900 --fixed-fps 30 --write-movie C:/tmp/ekey/frames/f.png -- --host --nobot --mission=z1_hub --lang=pl --ekeyshots=C:/tmp/ekey [--ekeystation=workshop]
@@ -20,8 +22,6 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--ekeyshots="):
 			dir = a.substr("--ekeyshots=".length())
-		elif a == "--ekeyflat":
-			load("res://scripts/interact_mark3d.gd").flat = true            # płaska nakładka zamiast modelu (porównanie)
 		elif a.begins_with("--ekeystation="):
 			station = a.substr("--ekeystation=".length())
 	DirAccess.make_dir_recursive_absolute(dir)
@@ -29,6 +29,13 @@ func _ready() -> void:
 
 func _wait(s: float) -> void:
 	await get_tree().create_timer(s, true, false, false).timeout
+
+## Krótki stan (naciśnięcie, zakłócenie, wybuch): czas i co najmniej 3 klatki — przy wolnych klatkach okna sam czas mija w jednej klatce,
+## zanim animacja ruszy.
+func _settle(s: float) -> void:
+	await _wait(s)
+	for i in 3:
+		await get_tree().process_frame
 
 func _force(d: Dictionary) -> void:
 	_v3d.set("ekey_force", d)
@@ -50,7 +57,7 @@ func _run() -> void:
 		_v3d = get_tree().current_scene.get_node_or_null("View3D") if get_tree().current_scene else null
 		_p = Interact.local_player(get_tree())
 		for n in get_tree().get_nodes_in_group(Interact.GROUP):
-			if n.is_in_group(station):
+			if n.is_in_group(station) and (station != "pickups" or String(n.get("kind")) == "weapon"):
 				_st = n
 		if _v3d != null and _p != null and _st != null:
 			break
@@ -66,10 +73,15 @@ func _run() -> void:
 	_p.velocity = Vector2.ZERO
 	print("[EKEY] start", " ", _st.global_position)
 	await _wait(3.0)
+	if _st.is_in_group("pickups"):
+		await _weapon_states()
+		print("[EKEY] PASS")
+		get_tree().quit()
+		return
 	await _shot("01_ok")
 	await _wait(0.9)
 	_force({"pressed": true})
-	await _wait(0.07)
+	await _settle(0.07)
 	await _shot("02_press")
 	_force({})
 	await _wait(0.9)
@@ -89,7 +101,7 @@ func _run() -> void:
 	_force({"prog": 0.99, "kind": Interact.Kind.HOLD})
 	await get_tree().process_frame
 	_force({"prog": -1.0, "kind": Interact.Kind.HOLD})                  # koniec przytrzymania → wybuch
-	await _wait(0.06)
+	await _settle(0.06)
 	await _shot("07_burst")
 	await _wait(0.18)
 	await _shot("08_burst_sparks")
@@ -100,7 +112,7 @@ func _run() -> void:
 	await _wait(0.8)
 	await _shot("10_muted")
 	_force({"muted": true, "pressed": true})
-	await _wait(0.05)
+	await _settle(0.05)
 	await _shot("11_denied")
 	_force({"muted": true})
 	await _wait(0.6)
@@ -109,3 +121,54 @@ func _run() -> void:
 	await _shot("12_ok_again")
 	print("[EKEY] PASS")
 	get_tree().quit()
+
+## Broń: para [E] + [H] (klawiatura), [H] wciśnięte, broń zablokowana, pad Classic — stuknięcie i przytrzymanie [B].
+func _weapon_states() -> void:
+	_force({"muted": false, "alt": "inspect_weapon", "alt_hold": false})
+	await _wait(0.8)
+	await _shot("w01_pair")
+	_force({"muted": false, "alt": "inspect_weapon", "alt_hold": false, "pressed": true})
+	await _settle(0.07)
+	await _shot("w02_take")
+	await _wait(0.8)
+	_force({"muted": false, "alt": "inspect_weapon", "alt_hold": false, "pressed_alt": true})
+	await _settle(0.07)
+	await _shot("w03_inspect")
+	await _wait(0.8)
+	_force({"muted": true, "alt": "inspect_weapon", "alt_hold": false})
+	await _wait(0.5)
+	await _shot("w04_locked_pair")
+	_force({"muted": true, "alt": "inspect_weapon", "alt_hold": false, "pressed": true})
+	await _settle(0.05)
+	await _shot("w05_locked_denied")
+	await _wait(0.8)
+	# pad Classic: jeden [B]; stuknięcie (0,06 s) bez drutu = wzięcie, przytrzymanie 0,4 s = oględziny
+	var pad := {"muted": false, "alt": "", "alt_hold": true}
+	_force(pad.merged({"look": -1.0}))
+	await _wait(0.6)
+	await _shot("w06_pad")
+	_force(pad.merged({"look": 0.15}))
+	await _settle(0.05)
+	await _shot("w07_pad_tap")
+	_force(pad.merged({"look": -1.0}))
+	await _settle(0.07)
+	await _shot("w08_pad_tap_take")
+	await _wait(0.8)
+	var t := 0.0
+	var shots := [[0.62, "w09_pad_hold50"], [0.9, "w10_pad_hold90"]]
+	var si := 0
+	while t < 0.4:
+		var lk := t / 0.4
+		_force(pad.merged({"look": lk}))
+		if si < shots.size() and lk >= float(shots[si][0]):
+			await _shot(String(shots[si][1]))
+			si += 1
+		await get_tree().process_frame
+		t += get_process_delta_time()
+	_force(pad.merged({"look": 0.99}))
+	await get_tree().process_frame
+	_force(pad.merged({"look": -1.0}))                                # oględziny otwarte → wybuch
+	await _settle(0.06)
+	await _shot("w11_pad_burst")
+	await _wait(1.0)
+	_force({})

@@ -658,7 +658,10 @@ func interact_offer(me: Node2D) -> Dictionary:
 	var lvl := _level()
 	var o := Interact.offer(self, me, Interact.Kind.PRESS, Interact.P_WEAPON, true, box, -1.0, point.distance_to(hand))
 	o["muted"] = lvl != null and lvl.is_locked_item(self)
-	o["fit"] = not has_meta("cab_x")                        # gablota: ramka na całą szafę, nie na broń w środku
+	o["fit"] = not has_meta("cab_x")                        # gablota: znacznik na szafie, nie na broni w środku
+	# znacznik celu (INTERACT_KEY_PLAN.md): drugi klawisz [H] przy przypisanych oględzinach; pad Classic — oględziny przytrzymaniem [B]
+	o["alt"] = "inspect_weapon" if Actions.bound("inspect_weapon") else ""
+	o["alt_hold"] = o["alt"] == "" and Actions.inspect_by_hold() and not has_meta("cabinet")
 	return o
 
 ## Broń leży na ziemi i czeka na E — czy ten gracz stoi dość blisko?

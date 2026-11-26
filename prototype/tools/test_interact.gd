@@ -231,8 +231,16 @@ func _run() -> void:
 	var oc2: Dictionary = cab_gun.interact_offer(me2)
 	_check("broń na ziemi: ramka z modelu (fit), gablota: ramka szafy z oferty (bez fit)",
 		bool(og.get("fit", false)) and (oc2.is_empty() or not bool(oc2.get("fit", true))))
+	var A2: GDScript = load("res://scripts/actions.gd")
+	_check("oferta broni dla znacznika: [H] przy przypisanych oględzinach (alt), pad Classic — przytrzymanie [B] (alt_hold), gablota bez przytrzymania",
+		String(og.get("alt", "?")) == ("inspect_weapon" if A2.bound("inspect_weapon") else "")
+		and bool(og.get("alt_hold", true)) == (String(og["alt"]) == "" and A2.inspect_by_hold())
+		and (oc2.is_empty() or not bool(oc2.get("alt_hold", true)) or not cab_gun.has_meta("cabinet")))
 	cab_gun.free()
 	me2.free()
+
+	# ---------------------------------------------------------------- klawisz w świecie (INTERACT_KEY_PLAN.md K3, interact_mark3d.gd)
+	_mark_checks(M)
 
 	# ---------------------------------------------------------------- tłumaczenia nowych podpowiedzi
 	var csv := FileAccess.get_file_as_string("res://translations/ui.csv")
@@ -243,3 +251,92 @@ func _run() -> void:
 
 	print("[INTERACT] %s" % ("PASS" if _fails == 0 else "FAIL (%d)" % _fails))
 	quit(1 if _fails > 0 else 0)
+
+## Znacznik celu: położenie, stany, para [E] + [H], przytrzymanie [B] na padzie, wybuch, warstwy (INTERACT_KEY_PLAN.md K3).
+func _mark_checks(M: GDScript) -> void:
+	var dt := 1.0 / 60.0
+	var station_box := Rect2(Vector2(78.0, 174.0), Vector2(44.0, 26.0))               # strefa stanowiska: 44 × 26 px nad podłogą y = 200
+	var props_fit := Rect2(Vector2(90.0, 150.0), Vector2(60.0, 40.0))                 # rzut mebli (z tablicą na ścianie, w głębi)
+	var a: Vector2 = M.anchor_px({"box": station_box}, props_fit)
+	var gun_box := Rect2(Vector2(291.0, 193.0), Vector2(18.0, 4.0))
+	var ag: Vector2 = M.anchor_px({"box": gun_box}, Rect2())
+	var top_gap: float = M.KEY_PX * 0.5 + M.TOP_GAP_PX
+	_check("położenie: oś z rzutu mebli %.1f, wysokość z wierzchu strefy (najwyżej %.0f px nad podłogą) %.1f; broń na ziemi nad bronią; anchor oferty" % [a.x, M.SURFACE_PX, a.y],
+		is_equal_approx(a.x, props_fit.get_center().x) and is_equal_approx(a.y, 200.0 - M.SURFACE_PX - top_gap)
+		and is_equal_approx(ag.x, 300.0) and is_equal_approx(ag.y, 193.0 - top_gap)
+		and M.anchor_px({"box": station_box, "anchor": Vector2(5.0, 6.0)}, props_fit) == Vector2(5.0, 6.0))
+	_check("przytrzymanie [B] na padzie: drut dopiero od %.2f (0,1 z 0,4 s), pełny przy 1" % M.LOOK_RING_FROM,
+		M.look_ring(-1.0) < 0.0 and M.look_ring(0.2) < 0.0 and is_equal_approx(M.look_ring(M.LOOK_RING_FROM), 0.0)
+		and is_equal_approx(M.look_ring(1.0), 1.0) and is_equal_approx(M.look_ring(0.625), 0.5))
+
+	var mk: MeshInstance3D = M.new()
+	_root.add_child(mk)
+	var obj := Node2D.new()
+	_root.add_child(obj)
+	var base := {"box": station_box, "kind": 0, "muted": false, "prog": -1.0}
+	var run := func(n: int, off: Dictionary, pressed := false, pressed_alt := false, look := -1.0) -> void:
+		for i in n:
+			mk.tick(dt, obj, off, true, false, props_fit, pressed and i == 0, pressed_alt and i == 0, look)
+	run.call(30, base)
+	var pos0: Vector3 = mk.position
+	run.call(5, base)
+	_check("klawisz pojawia się po %.2f s, stan „ok”, pozycja stała między klatkami (%s)" % [M.DWELL_S, mk.position],
+		mk.visible and String(mk.state) == "ok" and mk.position.is_equal_approx(pos0) and not bool(mk.pair))
+	run.call(1, base.merged({"muted": true}, true), true)
+	var k0 = mk.keys[0]
+	_check("oferta niemożliwa: stan „muted”, [E] daje zakłócenie zamiast wciśnięcia",
+		String(mk.state) == "muted" and float(k0.glitch) > 0.0 and float(k0.press) <= 0.0)
+	run.call(30, base)
+	run.call(1, base, true)
+	_check("naciśnięcie przy możliwej: wciśnięcie bez zakłócenia", float(k0.press) > 0.0 and float(k0.glitch) <= 0.0)
+	run.call(60, base)
+	var hold := base.merged({"kind": 1, "prog": 0.5}, true)
+	run.call(3, hold)
+	_check("przytrzymanie: stan „hold”, drut widoczny", String(mk.state) == "hold" and (k0.ring as Node3D).visible)
+	run.call(1, base.merged({"kind": 1, "prog": -1.0}, true))
+	var no_burst: bool = float(mk._burst) < 0.0
+	run.call(1, base.merged({"kind": 1, "prog": 0.95}, true))
+	run.call(1, base.merged({"kind": 1, "prog": -1.0}, true))
+	_check("wybuch tylko po pełnym przytrzymaniu (puszczenie w połowie — bez wybuchu)", no_burst and float(mk._burst) >= 0.0)
+	run.call(80, base)
+
+	var gun := {"box": gun_box, "kind": 0, "muted": false, "prog": -1.0, "alt": "inspect_weapon", "alt_hold": false}
+	run.call(3, gun)
+	var k1 = mk.keys[1]
+	_check("broń z przypisanymi oględzinami: para [E] + [H], [H] z wiązania „%s”" % (k1.letter as Label3D).text,
+		bool(mk.pair) and (k1.root as Node3D).visible and String(k1.action) == "inspect_weapon"
+		and (k0.root as Node3D).position.x < 0.0 and (k1.root as Node3D).position.x > 0.0)
+	run.call(1, gun, false, true)
+	_check("[H] wciśnięte: wciśnięcie [H], [E] bez zmian", float(k1.press) > 0.0 and float(k0.press) <= 0.0)
+	run.call(30, gun)
+	run.call(1, gun.merged({"muted": true}, true), true)
+	_check("broń zablokowana: [E] szary z zakłóceniem, [H] aktywny",
+		String(k0.state) == "muted" and float(k0.glitch) > 0.0 and String(k1.state) == "ok")
+	run.call(30, gun)
+
+	var pad := gun.merged({"alt": "", "alt_hold": true}, true)
+	run.call(3, pad)
+	_check("pad Classic: jeden klawisz [B] (bez pary)", not bool(mk.pair) and not (k1.root as Node3D).visible)
+	run.call(1, pad, true, false, 0.1)
+	var pressed_early: bool = float(k0.press) > 0.0
+	run.call(2, pad, false, false, 0.15)
+	var ring_early: bool = (k0.ring as Node3D).visible
+	run.call(1, pad, false, false, -1.0)
+	_check("pad Classic: [B] wciśnięte nie błyska od razu, krótkie stuknięcie bez drutu, puszczenie = wzięcie (wciśnięcie)",
+		not pressed_early and not ring_early and float(k0.press) > 0.0)
+	run.call(30, pad)
+	run.call(1, pad, false, false, 0.7)
+	var ring_hold: bool = (k0.ring as Node3D).visible
+	run.call(1, pad, false, false, 0.99)
+	mk._burst = -1.0
+	run.call(1, pad, false, false, -1.0)
+	_check("pad Classic: przytrzymanie — drut, otwarcie oględzin — wybuch", ring_hold and float(mk._burst) >= 0.0)
+
+	mk.set_view_layers(1)
+	var layers_ok := mk.layers == 1
+	for n in mk.find_children("*", "", true, false):
+		if n is VisualInstance3D and (n as VisualInstance3D).layers != 1:
+			layers_ok = false
+	_check("warstwy: cały znacznik w obrazie świata (pod postacią gracza)", layers_ok)
+	mk.free()
+	obj.free()

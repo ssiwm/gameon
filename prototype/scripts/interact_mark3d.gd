@@ -1,37 +1,39 @@
 extends MeshInstance3D
-## Znacznik celu [E] w widoku 3D (INTERACT_KEY_PLAN.md, wcześniej INTERACT_PLAN.md I3): zardzewiały klawisz w środku obiektu, który wybrał
-## arbiter interakcji (interact.gd), zamiast czterech narożników wokół niego. Bez podpisu — nazwa akcji zostaje w pasku akcji HUD.
-## Wszystko w płaszczyźnie gry (z = 0), bez światła sceny, mgły i cienia, bez testu
-## głębi, żeby model obiektu nie zasłaniał klawisza.
+## Znacznik celu interakcji w widoku 3D (INTERACT_KEY_PLAN.md; wcześniej ramka z narożników, INTERACT_PLAN.md I3): mały, zardzewiały
+## klawisz na wierzchu obiektu, który wybrał arbiter interakcji (interact.gd). Przy broni i gablocie z przypisanymi oględzinami — para
+## [E] + [H]; na padzie Classic (oględziny przytrzymaniem) — jeden [B] z drutem przytrzymania 0,4 s. Bez podpisu: nazwa akcji i koszt
+## zostają w pasku akcji HUD. Bez światła sceny, mgły i cienia (światło udawane w shaderze modelu).
 ##
 ## Stany (klatki arkusza inspiracji art_src/ui/interact_key_ref.png):
 ## - pojawienie — po DWELL_S przy tym samym celu klawisz wskakuje ze skali 0,6 z lekkim przestrzeleniem (APPEAR_S);
-## - możliwa — bursztynowa poświata z oddechem jasności (stała przy „Reduce effects”);
-## - niemożliwa (brak desek, broń zablokowana) — klawisz wyszarzony, bez poświaty, opis powodu szary; [E] wtedy daje czerwone „zakłócenie”
-##   (paski obrazu przesunięte w bok, GLITCH_S);
-## - naciśnięcie (stanowiska, broń) — klawisz wciśnięty (skala 0,86), litera rozżarzona, mały błysk;
-## - przytrzymanie — drut kolczasty owija się wokół klawisza zgodnie z postępem (od góry, zgodnie z zegarem), poświata i drut przechodzą
-##   z bursztynu w czerwień, litera się rozżarza, na końcu drutu iskrzy;
+## - możliwa — bursztynowa poświata z oddechem jasności, lekkie kołysanie bryły (bez obu przy „Reduce effects”);
+## - niemożliwa (brak desek, broń zablokowana) — klawisz wyszarzony, bez poświaty; naciśnięcie daje czerwone „zakłócenie” (GLITCH_S);
+## - naciśnięcie (stanowiska, broń, oględziny) — klawisz wciśnięty w głąb i do 0,86, litera rozżarzona, mały błysk;
+## - przytrzymanie — drut kolczasty owija klawisz od góry zgodnie z zegarem do postępu, poświata i drut z bursztynu w czerwień, litera
+##   i lico się rozżarzają, na końcu drutu iskrzy;
 ## - koniec przytrzymania — wybuch: błysk, promienie, iskry i fala (BURST_S), potem żarzące się okruchy.
-## Miejsce klawisza (INTERACT_KEY_PLAN.md „Położenie”): oś pozioma = środek rzutu modeli celu (jak środek dawnej ramki; bez modelu —
-## strefa `box` oferty), wysokość = wierzch obiektu ze strefy oferty (podłoga gry): górna krawędź strefy, ale najwyżej SURFACE_PX nad
-## podłogą — nad blatem ławy, nad zwłokami, nad sejfem. Wysokości nie bierzemy z rzutu modeli: meble stoją w głębi, więc ich podłoga
-## rzutuje się wyżej, a stanowisko to ława, tablica na ścianie i skrzynia naraz (środek ich sumy wisiał w powietrzu).
-## Oferta może podać własny punkt `anchor` (px świata, środek klawisza).
+##
+## Położenie (INTERACT_KEY_PLAN.md „Położenie”): oś pozioma = środek rzutu modeli celu (`fit`, bez modelu — strefa `box` oferty),
+## wysokość = wierzch obiektu ze strefy oferty w płaszczyźnie gry: górna krawędź strefy, najwyżej SURFACE_PX nad podłogą. Pozycja stała —
+## nie reaguje na gracza. Oferta może podać własny punkt `anchor` (px świata, środek klawisza albo pary).
+## Plan obrazu: cały znacznik w obrazie świata, MODEL_Z_M przed płaszczyzną gry (przed meblami w głębi); postać gracza rysuje kamera graczy
+## na wierzchu — klawisz leży „pomiędzy” meblem a graczem.
 
 const Level3D := preload("res://scripts/level3d.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Actions := preload("res://scripts/actions.gd")
 
-const CAP_TEX := preload("res://art/world3d/interact/key_cap.png")
 const RING_TEX := preload("res://art/world3d/interact/key_ring.png")
 const CAP_GLB := "res://art/world3d/interact/key_cap.glb"   ## model nakładki z Meshy (tools/blender_key_cap.py), bez litery
 
 const TINT := Color(1.0, 0.72, 0.30)          ## bursztyn podpowiedzi (jak door_hint3d.gd TINT)
 const TINT_HOT := Color(1.0, 0.22, 0.08)      ## czerwień pełnego przytrzymania
 const TINT_MUTED := Color(0.62, 0.6, 0.55)
+const TINT_GLITCH := Color(1.0, 0.2, 0.1)
 const LETTER := Color(0.93, 0.87, 0.74)
 const LETTER_HOT := Color(1.6, 0.62, 0.26)    ## rozżarzona litera (HDR — łapie poświatę środowiska)
+const LETTER_MUTED := Color(0.55, 0.53, 0.5)
+const LETTER_GLITCH := Color(1.4, 0.3, 0.2)
 const DWELL_S := 0.15                         ## s przy tym samym celu, zanim znacznik się pokaże
 const FADE_S := 0.2
 const APPEAR_S := 0.22
@@ -40,48 +42,24 @@ const GLITCH_S := 0.32
 const PRESS_S := 0.18
 const BURST_S := 0.9
 const KEY_PX := 4.0                           ## bok klawisza w pikselach świata (gracz ma ok. 22 px; 10 i 6 px były za duże)
+const PAIR_GAP_PX := 1.0                      ## odstęp klawiszy pary [E] + [H]
 const RING_PX := KEY_PX * 1.85                ## bok tekstury pierścienia (drut z kolcami)
 const GLOW_PX := KEY_PX * 2.6
+const SHADE_PX := KEY_PX * 2.2                ## ciemny podkład pod klawiszem (decyzja 3)
+const SHADE_ALPHA := 0.7
 const BURST_PX := KEY_PX * 4.0
 const TOP_GAP_PX := 0.8                       ## odstęp spodu klawisza od wierzchu obiektu
 const SURFACE_PX := 11.0                      ## najwyższy „wierzch” obiektu nad podłogą (ok. 0,9 m — blat ławy)
-const Z_M := 0.05                             ## przed płaszczyzną gry [m] (płaska nakładka)
-const MODEL_Z_M := 0.6                        ## środek modelu przed płaszczyzną gry [m]: przed meblami (z testem głębi); gracza rysuje kamera graczy na wierzchu
+const MODEL_Z_M := 0.6                        ## środek klawisza przed płaszczyzną gry [m]: przed meblami (z testem głębi)
 const MODEL_TILT := -20.0                     ## stopnie: lico odchylone w górę, widać dolne fazowanie jak na arkuszu
-
-const CAP_SHADER := """
-shader_type spatial;
-render_mode unshaded, blend_mix, depth_test_disabled, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
-uniform sampler2D cap : source_color, filter_linear_mipmap;
-uniform float fade = 1.0;
-uniform float muted = 0.0;
-uniform float glitch = 0.0;
-uniform float heat = 0.0;
-uniform float t = 0.0;
-float h1(float x) { return fract(sin(x * 91.7) * 43758.5453); }
-void fragment() {
-	vec2 uv = UV;
-	float shift = 0.0;
-	if (glitch > 0.0) {
-		float band = floor(uv.y * 16.0);
-		float r = h1(band + floor(t * 30.0) * 7.0);
-		shift = (r - 0.5) * 0.22 * glitch * step(0.5, r);
-	}
-	vec4 c = texture(cap, uv + vec2(shift, 0.0));
-	float cr = texture(cap, uv + vec2(shift + 0.025 * glitch, 0.0)).r;      // rozjechany kanał czerwieni przy zakłóceniu
-	vec3 col = vec3(mix(c.r, cr, glitch), c.g, c.b);
-	float l = dot(col, vec3(0.3, 0.59, 0.11));
-	col = mix(col, vec3(l) * 0.62, muted);
-	col = mix(col, col * vec3(1.7, 0.45, 0.4), glitch * 0.7);
-	col += vec3(0.5, 0.12, 0.02) * heat * (1.0 - smoothstep(0.0, 0.55, length(uv - 0.5)));   // nagrzana nakładka wokół litery
-	ALBEDO = col;
-	ALPHA = c.a * fade;
-}
-"""
+## Przytrzymanie [B] na padzie Classic (`look`, 0..1 z Actions.INSPECT_HOLD_S): drut dopiero od tej części czasu (0,1 z 0,4 s), żeby
+## szybkie stuknięcie (wzięcie broni) nie migało drutem.
+const LOOK_RING_FROM := 0.25
+const PRESS_BURST := 0.55                     ## siła małego błysku naciśnięcia (pełny wybuch przytrzymania — 1)
 
 const GLOW_SHADER := """
 shader_type spatial;
-render_mode unshaded, blend_add, depth_test_disabled, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 uniform vec4 tint : source_color = vec4(1.0, 0.72, 0.3, 1.0);
 uniform float k = 0.0;
 void fragment() {
@@ -92,22 +70,25 @@ void fragment() {
 }
 """
 
-## Ciemny podkład pod klawiszem: miękkie przyciemnienie tła, żeby klawisz i poświata były czytelne także na jasnej ścianie i tablicy narzędzi.
+## Ciemny podkład pod klawiszem (albo parą): miękkie przyciemnienie tła, żeby klawisz był czytelny na jasnej ścianie i tablicy narzędzi.
+## Za modelem z testem głębi (model go zasłania) i rysowany po poświacie (render_priority wyżej): poświata większa od podkładu zostaje
+## bursztynową obwódką wokół ciemnej plamy.
 const SHADE_SHADER := """
 shader_type spatial;
-render_mode unshaded, blend_mix, depth_test_disabled, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 uniform float k = 0.0;
 void fragment() {
-	float d = length(UV - 0.5) * 2.0;
+	vec2 q = (UV - 0.5) * 2.0;
+	float d = length(q);
 	ALBEDO = vec3(0.02, 0.015, 0.01);
-	ALPHA = (1.0 - smoothstep(0.25, 1.0, d)) * k;
+	ALPHA = (1.0 - smoothstep(0.35, 1.0, d)) * k;
 }
 """
 
 ## Pierścień: tekstura z Blendera (R jasność, G krycie, B poświata), odsłaniana po kącie od góry zgodnie z zegarem do `prog`.
 const RING_SHADER := """
 shader_type spatial;
-render_mode unshaded, blend_premul_alpha, depth_test_disabled, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+render_mode unshaded, blend_premul_alpha, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 uniform sampler2D ring : filter_linear_mipmap;
 uniform vec4 tint : source_color = vec4(1.0, 0.72, 0.3, 1.0);
 uniform float prog = 0.0;
@@ -230,94 +211,55 @@ void fragment() {
 }
 """
 
-static var _cap_sh: Shader
+## Jeden klawisz znacznika: model nakładki z literą, poświata i drut przytrzymania, stan efektów. [E] / [B] i [H] to dwa egzemplarze.
+class MarkKey:
+	var root: Node3D                           ## miejsce klawisza w parze (x)
+	var pivot: Node3D                          ## odchylenie, kołysanie, wciśnięcie
+	var letter: Label3D
+	var mats: Array = []                       ## ShaderMaterial modelu
+	var glow: MeshInstance3D
+	var ring: MeshInstance3D
+	var action := "interact"                   ## akcja z actions.gd — litera klawisza
+	var glitch := 0.0                          ## s zakłócenia
+	var press := 0.0                           ## s wciśnięcia
+	var heat := 0.0                            ## wygładzony postęp przytrzymania
+	var last_prog := -1.0                      ## postęp drutu z poprzedniej klatki (koniec przytrzymania → wybuch)
+	var state := "ok"                          ## ok / muted / hold
+
 static var _glow_sh: Shader
 static var _ring_sh: Shader
 static var _burst_sh: Shader
 static var _model_sh: Shader
 static var _shade_sh: Shader
-## Płaska nakładka (tekstura) zamiast modelu 3D — porównanie wariantów (`--ekeyflat`, tools/shot_interact_key.gd).
-static var flat := false
 
 var target: Node = null                       ## obiekt, przy którym stoi znacznik (test, view3d)
 var alpha := 0.0                              ## bieżąca widoczność 0..1 (bez oddechu)
-var state := "hidden"                         ## hidden / ok / muted / hold / burst — dla testu i zrzutów
+var state := "hidden"                         ## hidden / ok / muted / hold / burst — stan klawisza [E] dla testu i zrzutów
+var pair := false                             ## widać parę [E] + [H]
+var keys: Array = []                          ## [MarkKey [E] / [B], MarkKey [H]]
 var _dwell := 0.0
 var _t := 0.0
 var _shown_t := 0.0                           ## s od pojawienia się (wskakiwanie)
-var _glitch := 0.0
-var _press := 0.0
 var _burst := -1.0                            ## s od początku wybuchu (< 0 — bez wybuchu)
 var _burst_pos := Vector3.ZERO
-var _last_prog := -1.0
-var _heat := 0.0                              ## wygładzony postęp przytrzymania (kolor, litera)
-var _cap_m: ShaderMaterial
-var _glow: MeshInstance3D
+var _look_last := -1.0                        ## przytrzymanie [B] (pad Classic) z poprzedniej klatki — puszczenie przed czasem = naciśnięcie
 var _shade: MeshInstance3D
-var _ring: MeshInstance3D
 var _burst_mi: MeshInstance3D
-var _letter: Label3D
-var _pivot: Node3D                            ## model nakładki (odchylenie, kołysanie, wciśnięcie)
-var _model_mats: Array = []
 
 func _ready() -> void:
-	if _cap_sh == null:
-		_cap_sh = _shader(CAP_SHADER)
-		var depth := "depth_test_disabled, " if flat else ""          # model ma test głębi — poświata i drut też, żeby leżały za nakładką
-		_glow_sh = _shader(GLOW_SHADER.replace("depth_test_disabled, ", depth))
-		_ring_sh = _shader(RING_SHADER.replace("depth_test_disabled, ", depth))
+	if _model_sh == null:
+		_glow_sh = _shader(GLOW_SHADER)
+		_ring_sh = _shader(RING_SHADER)
 		_burst_sh = _shader(BURST_SHADER)
 		_model_sh = _shader(MODEL_SHADER)
 		_shade_sh = _shader(SHADE_SHADER)
-	var px := Level3D.PX
-	var key_m := KEY_PX * px
-	_cap_m = _mat(_cap_sh, 12)
-	_cap_m.set_shader_parameter("cap", CAP_TEX)
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	if flat:
-		mesh = _quad(key_m)
-		material_override = _cap_m
-	else:
-		_pivot = Node3D.new()
-		_pivot.scale = Vector3.ONE * key_m
-		_pivot.rotation_degrees.x = MODEL_TILT
-		add_child(_pivot)
-		var sc := (load(CAP_GLB) as PackedScene).instantiate()
-		_pivot.add_child(sc)
-		for mi in sc.find_children("*", "MeshInstance3D", true, false):
-			var m3 := mi as MeshInstance3D
-			m3.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			for si in m3.mesh.get_surface_count():
-				var sm := m3.mesh.surface_get_material(si) as BaseMaterial3D
-				var mm := _mat(_model_sh, 0)
-				mm.set_shader_parameter("albedo_tex", sm.albedo_texture if sm != null else null)
-				m3.set_surface_override_material(si, mm)
-				_model_mats.append(mm)
-	_shade = _child(GLOW_PX * px * 0.9, _mat(_shade_sh, 9))
-	_glow = _child(GLOW_PX * px, _mat(_glow_sh, 10))
-	_ring = _child(RING_PX * px, _mat(_ring_sh, 11))
-	if not flat:
-		_glow.position.z = -0.3 * key_m                               # za nakładką
-	(_ring.material_override as ShaderMaterial).set_shader_parameter("ring", RING_TEX)
-	_letter = Label3D.new()
-	_letter.font = load(UiTheme.FONT_BODY_BOLD)
-	_letter.font_size = 128
-	_letter.outline_size = 18
-	_letter.outline_modulate = Color(0.12, 0.07, 0.04, 0.85)
-	_letter.render_priority = 13
-	_letter.outline_render_priority = 12
-	_setup_label3d(_letter)
-	if flat:
-		_letter.position = Vector3(0.0, KEY_PX * 0.06 * px, 0.002)       # środek pola nakładki (fazowanie klawisza jest niżej)
-		add_child(_letter)
-	else:
-		_letter.position = Vector3(-0.01, 0.01, 0.212)                   # na licu modelu (układ modelu: szerokość 1, lico na z ≈ 0,2)
-		_letter.no_depth_test = false
-		_pivot.add_child(_letter)
-	_burst_mi = MeshInstance3D.new()
-	_burst_mi.mesh = _quad(BURST_PX * px)
-	_burst_mi.material_override = _mat(_burst_sh, 14)
-	_burst_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var px := Level3D.PX
+	_shade = _quad_mi(SHADE_PX * px, _mat(_shade_sh, 11))
+	_shade.position.z = -0.35 * KEY_PX * px                             # za nakładką, przed poświatą
+	add_child(_shade)
+	keys = [_make_key("interact"), _make_key("inspect_weapon")]
+	_burst_mi = _quad_mi(BURST_PX * px, _mat(_burst_sh, 14))
 	_burst_mi.top_level = true                                          # zostaje w miejscu celu, gdy znacznik gaśnie albo przechodzi dalej
 	_burst_mi.visible = false
 	add_child(_burst_mi)
@@ -328,31 +270,63 @@ static func _shader(code: String) -> Shader:
 	s.code = code
 	return s
 
-func _quad(side_m: float) -> QuadMesh:
-	var q := QuadMesh.new()
-	q.size = Vector2(side_m, side_m)
-	return q
-
 func _mat(sh: Shader, prio: int) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	m.render_priority = prio
 	return m
 
-func _child(side_m: float, m: ShaderMaterial) -> MeshInstance3D:
+func _quad_mi(side_m: float, m: ShaderMaterial) -> MeshInstance3D:
+	var q := QuadMesh.new()
+	q.size = Vector2(side_m, side_m)
 	var mi := MeshInstance3D.new()
-	mi.mesh = _quad(side_m)
+	mi.mesh = q
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
 	return mi
 
-func _setup_label3d(l: Label3D) -> void:
-	l.shaded = false
-	l.no_depth_test = true
-	l.double_sided = true
-	l.fixed_size = false
-	l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+## Klawisz: model z Meshy (litera Label3D na licu), poświata za nim i drut przytrzymania wokół.
+func _make_key(action: String) -> MarkKey:
+	var px := Level3D.PX
+	var key_m := KEY_PX * px
+	var k := MarkKey.new()
+	k.action = action
+	k.root = Node3D.new()
+	add_child(k.root)
+	k.glow = _quad_mi(GLOW_PX * px, _mat(_glow_sh, 10))
+	k.glow.position.z = -0.3 * key_m                                    # za nakładką (z testem głębi)
+	k.root.add_child(k.glow)
+	k.pivot = Node3D.new()
+	k.pivot.scale = Vector3.ONE * key_m
+	k.pivot.rotation_degrees.x = MODEL_TILT
+	k.root.add_child(k.pivot)
+	var sc := (load(CAP_GLB) as PackedScene).instantiate()
+	k.pivot.add_child(sc)
+	for mi in sc.find_children("*", "MeshInstance3D", true, false):
+		var m3 := mi as MeshInstance3D
+		m3.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		for si in m3.mesh.get_surface_count():
+			var sm := m3.mesh.surface_get_material(si) as BaseMaterial3D
+			var mm := _mat(_model_sh, 0)
+			mm.set_shader_parameter("albedo_tex", sm.albedo_texture if sm != null else null)
+			m3.set_surface_override_material(si, mm)
+			k.mats.append(mm)
+	k.letter = Label3D.new()
+	k.letter.font = load(UiTheme.FONT_BODY_BOLD)
+	k.letter.font_size = 128
+	k.letter.outline_size = 18
+	k.letter.outline_modulate = Color(0.12, 0.07, 0.04, 0.85)
+	k.letter.render_priority = 13
+	k.letter.outline_render_priority = 12
+	k.letter.shaded = false
+	k.letter.double_sided = true
+	k.letter.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	k.letter.position = Vector3(-0.01, 0.01, 0.212)                     # na licu modelu (układ modelu: szerokość 1, lico na z ≈ 0,2)
+	k.pivot.add_child(k.letter)
+	k.ring = _quad_mi(RING_PX * px, _mat(_ring_sh, 11))
+	(k.ring.material_override as ShaderMaterial).set_shader_parameter("ring", RING_TEX)
+	k.root.add_child(k.ring)
+	return k
 
 ## Rzut brył `boxes` (AABB w metrach świata 3D) z oka kamery `eye` na płaszczyznę gry (z = 0) — prostokąt w pikselach świata 2D, który
 ## na ekranie dokładnie obejmuje bryły (perspektywa: model w głębi wychodzi mniejszy, przed płaszczyzną — większy). Pusty bez brył albo
@@ -372,24 +346,46 @@ static func project_box(boxes: Array, eye: Vector3) -> Rect2:
 			hi = hi.max(px)
 	return Rect2(lo, hi - lo) if lo.x <= hi.x else Rect2()
 
-## Co klatkę: `node` — cel (null — brak), `offer` — jego oferta (interact.gd), `show` — czy znacznik może być widoczny, `calm` — bez oddechu
-## i efektów („Reduce effects”), `fit` — rzut modelu celu (`project_box`; pusty — `box` oferty), `pressed` — w tej klatce wciśnięto [E].
-func tick(delta: float, node: Node, offer: Dictionary, show: bool, calm: bool, fit := Rect2(), pressed := false) -> void:
+## Punkt klawisza (albo środka pary) w pikselach świata: `anchor` oferty albo oś `fit` na wierzchu strefy `zone` (INTERACT_KEY_PLAN.md
+## „Położenie”). Statyczne — sprawdza test_interact.gd.
+static func anchor_px(offer: Dictionary, fit: Rect2) -> Vector2:
+	var zone: Rect2 = offer.get("box", fit)
+	var axis: Rect2 = fit if fit.size != Vector2.ZERO else zone
+	var surface := zone.end.y - minf(zone.size.y, SURFACE_PX)
+	return offer.get("anchor", Vector2(axis.get_center().x, surface - KEY_PX * 0.5 - TOP_GAP_PX))
+
+## Postęp drutu przy przytrzymaniu [B] na padzie Classic: `look` (0..1 z Actions.INSPECT_HOLD_S, < 0 — nie trzymane) → drut 0..1 od
+## LOOK_RING_FROM; przed progiem −1 (krótkie stuknięcie bez drutu).
+static func look_ring(look: float) -> float:
+	return -1.0 if look < LOOK_RING_FROM else clampf((look - LOOK_RING_FROM) / (1.0 - LOOK_RING_FROM), 0.0, 1.0)
+
+## Co klatkę: `node` — cel (null — brak), `offer` — jego oferta (interact.gd; broń: `alt` — akcja drugiego klawisza, `alt_hold` —
+## oględziny przytrzymaniem [B]), `show` — czy znacznik może być widoczny, `calm` — bez oddechu i efektów („Reduce effects”), `fit` — rzut
+## modeli celu (`project_box`), `pressed` — w tej klatce wciśnięto [E] / [B], `pressed_alt` — [H], `look` — przytrzymanie [B] na padzie
+## Classic (weapon_controller.pad_look_progress).
+func tick(delta: float, node: Node, offer: Dictionary, show: bool, calm: bool, fit := Rect2(), pressed := false, pressed_alt := false, look := -1.0) -> void:
 	_t += delta
 	var box: Rect2 = (fit if fit.size != Vector2.ZERO else offer.get("box", Rect2())) if node != null else Rect2()
-	var zone: Rect2 = offer.get("box", box) if node != null else Rect2()   # strefa oferty: podłoga i wysokość w płaszczyźnie gry
 	var want := show and node != null and box.size != Vector2.ZERO
+	var alt := String(offer.get("alt", "")) if node != null else ""
+	var alt_hold := bool(offer.get("alt_hold", false)) if node != null else false
+	# [E] / [B]: postęp drutu z oferty (przytrzymanie) albo z przytrzymania [B] na padzie; puszczenie [B] przed czasem = naciśnięcie
 	var prog := float(offer.get("prog", -1.0)) if node != null else -1.0
-	# koniec przytrzymania: postęp był prawie pełny, a w tej klatce zniknął (cel skończony, zdjęty albo inny) — wybuch w miejscu klawisza
-	if _last_prog >= 0.9 and prog < 0.0 and visible and show:
-		_start_burst(global_position)
-	_last_prog = prog
+	var press_e := pressed and int(offer.get("kind", 0)) == 0 and not alt_hold
+	var glitch_e := pressed and bool(offer.get("muted", false)) and not alt_hold
+	if alt_hold:
+		prog = look_ring(look)
+		if _look_last >= 0.0 and look < 0.0 and _look_last < 1.0 and keys[0].last_prog < 0.9:
+			press_e = true                                            # krótkie [B]: wzięcie broni
+			glitch_e = bool(offer.get("muted", false))
+	_look_last = look if alt_hold else -1.0
 	if node != target:
 		target = node
 		_dwell = 0.0
 		alpha = 0.0                               # nowy cel: bez przesuwania starego klawisza — pojawia się od nowa
 		_shown_t = 0.0
-		_heat = 0.0
+		for k in keys:
+			(k as MarkKey).heat = 0.0
 	if want:
 		_dwell += delta
 		if _dwell >= DWELL_S:
@@ -397,89 +393,103 @@ func tick(delta: float, node: Node, offer: Dictionary, show: bool, calm: bool, f
 			_shown_t += delta
 	else:
 		alpha = move_toward(alpha, 0.0, delta / FADE_S)
+	var was_visible := visible
 	visible = alpha > 0.001
+	# koniec przytrzymania: drut był prawie pełny, a w tej klatce zniknął (cel skończony, zdjęty, oględziny otwarte) — wybuch w miejscu klawisza
+	for k in keys:
+		var kk := k as MarkKey
+		var kp := prog if kk == keys[0] else -1.0
+		if kk.last_prog >= 0.9 and kp < 0.0 and was_visible and kk.root.visible:
+			_start_burst(kk.root.global_position, 1.0)
+		kk.last_prog = kp
 	_tick_burst(delta, calm)
 	if not visible or box.size == Vector2.ZERO:
 		state = "burst" if _burst >= 0.0 else "hidden"
 		return
-	var muted := bool(offer.get("muted", false))
-	var holding := prog > 0.0
-	if pressed and muted:
-		_glitch = GLITCH_S
-	elif pressed and int(offer.get("kind", 0)) == 0:
-		_press = PRESS_S
-		if not calm:
-			_start_burst(global_position, 0.55)
-	_glitch = maxf(0.0, _glitch - delta)
-	_press = maxf(0.0, _press - delta)
-	_heat = move_toward(_heat, clampf(prog, 0.0, 1.0) if holding else 0.0, delta * 4.0)
-	state = "muted" if muted else ("hold" if holding else "ok")
-	# środek prostokąta w płaszczyźnie gry, przesunięty po promieniu z oka do `z` przed płaszczyzną — na ekranie dalej w środku celu
-	var surface := zone.end.y - minf(zone.size.y, SURFACE_PX)
-	var anchor: Vector2 = offer.get("anchor", Vector2(box.get_center().x, surface - KEY_PX * 0.5 - TOP_GAP_PX))
-	var p0 := Level3D.px_to_m(anchor)
-	var z := Z_M if flat else MODEL_Z_M
+	# położenie: punkt w płaszczyźnie gry przesunięty po promieniu z oka do MODEL_Z_M przed płaszczyzną — na ekranie zostaje na miejscu
+	var p0 := Level3D.px_to_m(anchor_px(offer, fit))
 	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
-	if cam != null and cam.global_position.z > z + 0.5:
+	if cam != null and cam.global_position.z > MODEL_Z_M + 0.5:
 		var eye := cam.global_position
-		position = eye + (p0 - eye) * ((eye.z - z) / eye.z)
+		position = eye + (p0 - eye) * ((eye.z - MODEL_Z_M) / eye.z)
 	else:
-		position = p0 + Vector3(0.0, 0.0, z)
-	# wskakiwanie: skala 0,6 → 1 z przestrzeleniem; wciśnięcie: chwilowo 0,86
+		position = p0 + Vector3(0.0, 0.0, MODEL_Z_M)
+	pair = alt != ""
+	var half := (KEY_PX + PAIR_GAP_PX) * 0.5 * Level3D.PX if pair else 0.0
+	keys[0].root.position.x = -half
+	keys[1].root.position.x = half
+	keys[1].root.visible = pair
+	keys[1].action = alt if pair else "inspect_weapon"
+	_shade.scale = Vector3(2.0 * half / (KEY_PX * Level3D.PX) + 1.0 if pair else 1.0, 1.0, 1.0)
+	(_shade.material_override as ShaderMaterial).set_shader_parameter("k", alpha * SHADE_ALPHA)
+	# wskakiwanie: skala 0,6 → 1 z przestrzeleniem
 	var u := clampf(_shown_t / APPEAR_S, 0.0, 1.0)
 	var pop := 1.0 if calm else 0.6 + 0.4 * (1.0 + 2.2 * pow(u - 1.0, 3.0) + 1.2 * pow(u - 1.0, 2.0))
-	var dip := 1.0 - 0.14 * sin(PI * (1.0 - _press / PRESS_S)) if _press > 0.0 else 1.0
-	var s := pop * dip
-	scale = Vector3(s, s, 1.0 if flat else s)
-	if _pivot != null:
-		_pivot.rotation.y = 0.0 if calm else 0.09 * sin(_t * 1.4)                 # lekkie kołysanie — klawisz jest bryłą
-		_pivot.position.z = -0.25 * KEY_PX * Level3D.PX * (1.0 - dip) / 0.14
-		for mm in _model_mats:
-			var smm := mm as ShaderMaterial
-			smm.set_shader_parameter("fade", alpha)
-			smm.set_shader_parameter("muted", 1.0 if muted else 0.0)
-			smm.set_shader_parameter("glitch", 0.0 if calm else _glitch / GLITCH_S)
-			smm.set_shader_parameter("heat", _heat)
-			smm.set_shader_parameter("t", _t)
+	scale = Vector3.ONE * pop
+	_tick_key(keys[0], delta, calm, bool(offer.get("muted", false)), prog, press_e, glitch_e)
+	if pair:
+		# [H]: oględziny są dozwolone także przy broni zablokowanej — klawisz zostaje aktywny
+		_tick_key(keys[1], delta, calm, false, -1.0, pressed_alt, false)
+	state = keys[0].state
+
+## Stan jednego klawisza: `muted` — oferta niemożliwa, `prog` — drut 0..1 (< 0 — bez przytrzymania), `press` — wciśnięcie w tej klatce,
+## `glitch` — naciśnięcie przy niemożliwej.
+func _tick_key(k: MarkKey, delta: float, calm: bool, muted: bool, prog: float, press: bool, glitch: bool) -> void:
+	var holding := prog >= 0.0
+	if glitch:
+		k.glitch = GLITCH_S
+	elif press and not muted:
+		k.press = PRESS_S
+		if not calm:
+			_start_burst(k.root.global_position, PRESS_BURST)
+	k.glitch = maxf(0.0, k.glitch - delta)
+	k.press = maxf(0.0, k.press - delta)
+	k.heat = move_toward(k.heat, clampf(prog, 0.0, 1.0) if holding else 0.0, delta * 4.0)
+	k.state = "muted" if muted else ("hold" if holding else "ok")
+	var dip := 1.0 - 0.14 * sin(PI * (1.0 - k.press / PRESS_S)) if k.press > 0.0 else 1.0
+	k.pivot.scale = Vector3.ONE * KEY_PX * Level3D.PX * dip
+	k.pivot.position.z = -0.25 * KEY_PX * Level3D.PX * (1.0 - dip) / 0.14
+	k.pivot.rotation.y = 0.0 if calm else 0.09 * sin(_t * 1.4 + (0.0 if k == keys[0] else 0.9))     # lekkie kołysanie — klawisz jest bryłą
+	var gl := 0.0 if calm else k.glitch / GLITCH_S
+	for mm in k.mats:
+		var smm := mm as ShaderMaterial
+		smm.set_shader_parameter("fade", alpha)
+		smm.set_shader_parameter("muted", 1.0 if muted else 0.0)
+		smm.set_shader_parameter("glitch", gl)
+		smm.set_shader_parameter("heat", k.heat)
+		smm.set_shader_parameter("t", _t)
 	var breath := 1.0 if (calm or muted or holding) else 0.75 + 0.25 * (0.5 + 0.5 * sin(_t * TAU / PULSE_S))
-	var col := TINT_MUTED if muted else TINT.lerp(TINT_HOT, smoothstep(0.15, 0.95, _heat))
-	_cap_m.set_shader_parameter("fade", alpha)
-	_cap_m.set_shader_parameter("muted", 1.0 if muted else 0.0)
-	_cap_m.set_shader_parameter("glitch", 0.0 if calm else _glitch / GLITCH_S)
-	_cap_m.set_shader_parameter("heat", _heat)
-	_cap_m.set_shader_parameter("t", _t)
-	var gm := _glow.material_override as ShaderMaterial
-	gm.set_shader_parameter("tint", Color(1.0, 0.2, 0.1) if _glitch > 0.0 else col)
-	gm.set_shader_parameter("k", alpha * (0.0 if muted and _glitch <= 0.0 else (0.55 + 0.6 * _heat) * breath))
-	(_shade.material_override as ShaderMaterial).set_shader_parameter("k", alpha * 0.55)
-	var rm := _ring.material_override as ShaderMaterial
-	_ring.visible = holding
+	var col := TINT_MUTED if muted else TINT.lerp(TINT_HOT, smoothstep(0.15, 0.95, k.heat))
+	var gm := k.glow.material_override as ShaderMaterial
+	gm.set_shader_parameter("tint", TINT_GLITCH if k.glitch > 0.0 else col)
+	gm.set_shader_parameter("k", alpha * (0.0 if muted and k.glitch <= 0.0 else (0.45 + 0.6 * k.heat) * breath))
+	var rm := k.ring.material_override as ShaderMaterial
+	k.ring.visible = holding
 	rm.set_shader_parameter("prog", clampf(prog, 0.0, 1.0))
 	rm.set_shader_parameter("tint", col)
-	rm.set_shader_parameter("hot", smoothstep(0.0, 0.6, _heat))
+	rm.set_shader_parameter("hot", smoothstep(0.0, 0.6, k.heat))
 	rm.set_shader_parameter("fade", alpha)
 	rm.set_shader_parameter("t", _t)
 	rm.set_shader_parameter("sparks", 0.0 if calm else 1.0)
-	_letter.text = Actions.key("interact")
-	_letter.pixel_size = (KEY_PX * Level3D.PX if flat else 1.0) * (0.0042 if _letter.text.length() <= 1 else 0.0042 * 1.6 / float(_letter.text.length()))
-	var lc := LETTER.lerp(LETTER_HOT, maxf(_heat, _press / PRESS_S))
+	k.letter.text = Actions.key(k.action)
+	k.letter.pixel_size = 0.0042 if k.letter.text.length() <= 1 else 0.0042 * 1.6 / float(k.letter.text.length())
+	var lc := LETTER.lerp(LETTER_HOT, maxf(k.heat, k.press / PRESS_S))
 	if muted:
-		lc = Color(0.55, 0.53, 0.5)
-	if _glitch > 0.0:
-		lc = Color(1.4, 0.3, 0.2)
-	_letter.modulate = Color(lc, alpha)
-	_letter.outline_modulate = Color(0.12, 0.07, 0.04, 0.85 * alpha)
+		lc = LETTER_MUTED
+	if k.glitch > 0.0:
+		lc = LETTER_GLITCH
+	k.letter.modulate = Color(lc, alpha)
+	k.letter.outline_modulate = Color(0.12, 0.07, 0.04, 0.85 * alpha)
 
 ## Warstwy kamer widoku 3D (view3d.gd): cały znacznik w obrazie świata. Kamera graczy (postacie, pierwszy plan) rysuje się na wierzchu,
-## więc klawisz leży „pomiędzy” — nad meblami celu, pod postacią gracza (INTERACT_KEY_PLAN.md „Plan obrazu”). `_actors` zostaje w podpisie
-## na wypadek wariantu przed graczem.
-func set_view_layers(world: int, _actors: int) -> void:
+## więc klawisz leży „pomiędzy” — nad meblami celu, pod postacią gracza (INTERACT_KEY_PLAN.md „Plan obrazu”).
+func set_view_layers(world: int) -> void:
 	layers = world
 	for n in find_children("*", "", true, false):
 		if n is VisualInstance3D:
 			(n as VisualInstance3D).layers = world
 
-func _start_burst(at: Vector3, power := 1.0) -> void:
+func _start_burst(at: Vector3, power: float) -> void:
 	_burst = 0.0
 	_burst_pos = at
 	var bm := _burst_mi.material_override as ShaderMaterial
@@ -501,4 +511,3 @@ func _tick_burst(delta: float, calm: bool) -> void:
 	var bm := _burst_mi.material_override as ShaderMaterial
 	bm.set_shader_parameter("bt", bt)
 	bm.set_shader_parameter("rays", 0.0 if calm else 1.0)
-
