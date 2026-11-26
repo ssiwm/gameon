@@ -761,6 +761,14 @@
    "supplier": "The Soundcatcher",
    "license": "sonniss-gdc-2.0"
   },
+  "pebbles_tumbling": {
+   "kind": "lib",
+   "file": "sonniss/2020/Tatak Audio - Rocks and Debris/Tatak_ROCKS_Pebbles Dust Tumbling Rolling Debris.wav",
+   "sha256": "c589efc291124ab2e2e4eb5309be117ee4019d91441956da6edf4a30c6b5db60",
+   "pack": "Sonniss GDC 2020 — Rocks and Debris",
+   "supplier": "Tatak Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "pig_squeal_18": {
    "kind": "lib",
    "file": "sonniss/2024/Mechanical Wave - Farm Animals/ANMLFarm_Pig Squeal and Snort-18_MWSFX_FA.wav",
@@ -951,6 +959,14 @@
    "sha256": "7a79f805c2663d533ff01556abe3309cf2f9c39c56dc6776e158825142fcb7ff",
    "pack": "Sonniss GDC 2017 — Rock,Brick and Dirt - Part 02",
    "supplier": "Mechanical Wave",
+   "license": "sonniss-gdc-2.0"
+  },
+  "rock_roll_movement": {
+   "kind": "lib",
+   "file": "sonniss/2020/Tatak Audio - Rocks and Debris/Tatak_ROCKS_Rock Roll Movement.wav",
+   "sha256": "df50ff53e5f21596c4a6480df3e0b66b22b5c1c66c9b75f1c68ae8fe8c3e14ed",
+   "pack": "Sonniss GDC 2020 — Rocks and Debris",
+   "supplier": "Tatak Audio",
    "license": "sonniss-gdc-2.0"
   },
   "rockslide_02": {

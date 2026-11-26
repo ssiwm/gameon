@@ -2507,6 +2507,19 @@ func apply_hit(amount: int, _from_pos: Vector2, force := false) -> void:
 	if hp <= 0:
 		_go_down()
 
+## Odrzut od uderzenia (serwer → właściciel postaci): `vx` px/s w poziomie, wygasa KICK_DECAY (pancerna kula Łupacza, LUPACZ_PLAN.md L4).
+func deliver_knock(vx: float) -> void:
+	if not NoiseMgr.has_network() or is_multiplayer_authority():
+		apply_knock(vx)
+	else:
+		apply_knock.rpc_id(get_multiplayer_authority(), vx)
+
+@rpc("any_peer", "call_remote", "reliable")
+func apply_knock(vx: float) -> void:
+	if not is_multiplayer_authority() or dead or not _from_server():
+		return
+	_kick = vx
+
 ## Ucieczka o włos (FUN_PLAN.md P0.1, serwer → właściciel postaci): Stalker chybił tuż obok. Efekt widzi i słyszy tylko ten gracz.
 func deliver_close_call() -> void:
 	if not NoiseMgr.has_network() or is_multiplayer_authority():
