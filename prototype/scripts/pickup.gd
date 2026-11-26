@@ -32,6 +32,8 @@ const Cabinet := preload("res://scripts/cabinet.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Tapes := preload("res://scripts/tapes.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const HEAL := 1
 const PICK_R := 12.0
@@ -591,6 +593,48 @@ func _try_cache() -> void:
 	if added > 0:
 		NoiseMgr.add_flare()          # skrzynia z mapy zawiera też flarę
 		_level().take_item(name)
+
+## Podpowiedź paska akcji, gdy broń (albo gablota) jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst i kolor.
+## Gablota (1.7.431): [E] ją otwiera. Oględziny: [H] (albo własny klawisz); na padzie bez przycisku oględzin — przytrzymanie interakcji
+## (Actions.inspect_by_hold, INTERACT_PLAN.md I4); bez żadnego przypisania podpowiedź pomija oględziny zamiast „[—]”.
+func interact_hint(me: Node2D) -> Dictionary:
+	var lvl := _level()
+	var take_key := Actions.key("interact")
+	if has_meta("cabinet"):
+		var cab_rows: Array = lvl.cabinet_rows(int(get_meta("cabinet"))) if lvl != null else []
+		var ready := cab_rows.filter(func(r: Dictionary) -> bool: return not bool(r["locked"]) and String(r["issued"]) == "").size()
+		return {"text": tr("[%s]  Open the cabinet  ·  %d of %d ready to take") % [take_key, ready, cab_rows.size()], "col": UiTheme.ACCENT}
+	var nd: RefCounted = Weapons.def(arg)
+	var look := "key" if Actions.bound("inspect_weapon") else ("hold" if Actions.inspect_by_hold() else "")
+	var look_key := Actions.key("inspect_weapon") if look == "key" else take_key
+	if lvl != null and lvl.is_locked_item(self):
+		var lock := Scrap.lock_text(arg)
+		match look:
+			"key":
+				return {"text": tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [lock, look_key], "col": UiTheme.MUTED}
+			"hold":
+				return {"text": tr("LOCKED  ·  %s   ·   Hold [%s]  Inspect") % [lock, look_key], "col": UiTheme.MUTED}
+		return {"text": tr("LOCKED  ·  %s") % lock, "col": UiTheme.MUTED}
+	var wc: Node = me.weapons
+	var text := ""
+	if wc.carries(arg):
+		match look:
+			"key":
+				text = tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key]
+			"hold":
+				text = tr("[%s]  Take ammo for %s   ·   Hold [%s]  Inspect") % [take_key, nd.name, look_key]
+			_:
+				text = tr("[%s]  Take ammo for %s") % [take_key, nd.name]
+		return {"text": text, "col": UiTheme.ACCENT}
+	var swap_out: String = Weapons.def(wc.loadout[wc.slot if wc.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc.melee_id).name
+	match look:
+		"key":
+			text = tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key]
+		"hold":
+			text = tr("[%s]  Take %s  (drops %s)   ·   Hold [%s]  Inspect") % [take_key, nd.name, swap_out, look_key]
+		_:
+			text = tr("[%s]  Take %s  (drops %s)") % [take_key, nd.name, swap_out]
+	return {"text": text, "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): broń w zasięgu ręki. Odległość jak w level.gd `weapon_item_near` (najbliższa broń wygrywa), przy gablocie —
 ## od wspólnego punktu interakcji. Broń zablokowana (kryjówka, nie kupiona) zostaje celem — [E] odmawia z komunikatem — ale znacznik

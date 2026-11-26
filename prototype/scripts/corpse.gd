@@ -19,6 +19,8 @@ extends Node2D
 const SessionLog := preload("res://scripts/session_log.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const SEARCH_TIME := 1.2             ## s trzymania [E] (jak wyjmowanie taśmy, K4b — krócej, bo to tylko kieszenie)
 const REACH_X := 24.0                ## px od środka ciała (ciało ma ok. 26 px długości)
@@ -74,6 +76,13 @@ static func pick_mimic(defs: Array, n: int, seed_v: int) -> Array:
 		nests[i] = nests[j]
 		nests[j] = t
 	return nests.slice(0, mini(n, nests.size()))
+
+## Podpowiedź paska akcji, gdy ciało jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	# drobny łup albo nic, cichy szelest (MIMIC_PLAN.md M4)
+	if float(progress) > 0.0:
+		return {"text": tr("Searching the body…"), "prog": float(progress), "col": UiTheme.OK}
+	return {"text": Actions.fmt(tr("Hold [{interact}]  Search the body")), "col": UiTheme.OK}
 
 ## Oferta [E] (interact.gd): przeszukanie ciała, które leży i nie było przeszukane (Mimik-zwłoki oferuje to samo — to jego pułapka).
 func interact_offer(me: Node2D) -> Dictionary:

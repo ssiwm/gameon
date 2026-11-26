@@ -8,6 +8,8 @@ extends Node2D
 ## i wraca, miejsce zostaje. Stopy w (0, 0) jak przegroda.
 
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 const NAIL_TIME := 2.0              ## s trzymania [E] na jedną deskę
 const REACH_X := 30.0               ## px od środka otworu: stoisz tuż obok albo w nim
 const REACH_Y := 20.0
@@ -33,6 +35,24 @@ var _knock_t := 0.0
 func _ready() -> void:
 	add_to_group("barricade_spots")
 	add_to_group(Interact.GROUP)
+
+## Podpowiedź paska akcji, gdy pusty otwór jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	# ile desek już stoi, zapas desek drużyny albo cena w złomie (D2b); desek tyle, ile pasów (kafli) ma otwór (S2)
+	var lvl := get_tree().get_first_node_in_group("level")
+	if lvl == null:
+		return {}
+	var have := boards()
+	var total := int(lvl.board_total(String(wall_name)))
+	if float(progress) > 0.0:
+		return {"text": tr("Nailing a board…  %d/%d  ·  loud") % [have + 1, total], "prog": float(progress), "col": UiTheme.OK}
+	match String(local_reason):
+		"blocked":
+			return {"text": tr("Something is in the opening — can't board it up"), "col": UiTheme.MUTED}
+		"nomat":
+			return {"text": tr("No boards — break crates for planks (or carry %d scrap)") % int(lvl.NAIL_SCRAP), "col": UiTheme.MUTED}
+	var cost := (tr("boards: %d") % int(lvl.plank_stock)) if int(lvl.plank_stock) > 0 else (tr("%d scrap") % int(lvl.NAIL_SCRAP))
+	return {"text": Actions.fmt(tr("Hold [{interact}]  Board up  %d/%d  (loud · %s)")) % [have, total, cost], "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): przybijanie deski. Bez desek i złomu albo z czymś w otworze — oferta niemożliwa (pasek akcji podaje powód,
 ## znacznik jest szary, [E] trafia do innego celu, jeśli jest).

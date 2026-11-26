@@ -12,6 +12,8 @@ const FpRange := preload("res://scripts/range3d/fp_mode.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const REACH_X := 34.0
 const REACH_Y := 40.0
@@ -38,6 +40,12 @@ func _ready() -> void:
 func _request() -> void:
 	if NoiseMgr.has_network():
 		_request_rpc.rpc_id(1)
+
+## Podpowiedź paska akcji, gdy wejście na strzelnicę jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	var rb := float(best())
+	var k := Actions.key("interact")
+	return {"text": (tr("[%s]  Shooting range  ·  squad record %.2f s") % [k, rb]) if rb >= 0.0 else tr("[%s]  Shooting range") % k, "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): wejście na strzelnicę FPP (priorytet P_EXIT — ustępuje broni i stanowiskom).
 func interact_offer(me: Node2D) -> Dictionary:

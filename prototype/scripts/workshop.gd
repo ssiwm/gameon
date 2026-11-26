@@ -5,6 +5,8 @@ extends Node2D
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const REACH_X := 44.0
 const REACH_Y := 40.0
@@ -42,6 +44,10 @@ func _ready() -> void:
 				tw.position = Vector2(4.4 * 0.8, -26.0)
 		if not models:
 			ItemsHd.make("workshop", self)
+
+## Podpowiedź paska akcji, gdy warsztat jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	return {"text": tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], "col": UiTheme.ACCENT, "station": true}
 
 ## Oferta [E] (interact.gd): stanowisko otwiera kartę, gdy gracz stoi w zasięgu, a panel stanowisk jest zamknięty. Ustępuje broni,
 ## ratowaniu i pracom w misji (priorytet P_STATION).

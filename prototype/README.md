@@ -252,7 +252,7 @@ steruje podparciem broni; zmiana stanowiska lub otwarcie nakładki wyłącza prz
 **Cel interakcji (od 1.7.691, [`INTERACT_PLAN.md`](../INTERACT_PLAN.md)):** [E] / [B] dotyczy jednego obiektu naraz — wybiera go
 `scripts/interact.gd` z ofert obiektów (`interact_offer`, grupa `interactables`) wg priorytetu i odległości; trzymane [E] zostaje przy
 zaczętej akcji. HUD pokazuje podpowiedź tylko dla celu, widok 3D obrysowuje go narożnikami (`interact_mark3d.gd`, opcja
-„Interaction highlight”) wokół rzutu bryły jego modelu (od 1.7.693; obiekt bez modelu — prostokąt `box` z oferty). Na padzie bez przycisku oględzin przytrzymanie [B] 0,4 s przy broni otwiera oględziny.
+„Interaction highlight”) wokół rzutu bryły jego modelu (od 1.7.693; obiekt bez modelu — prostokąt `box` z oferty). Tekst podpowiedzi podaje cel (`interact_hint`, od 1.7.694). Na padzie bez przycisku oględzin przytrzymanie [B] 0,4 s przy broni otwiera oględziny.
 
 Regresje: `godot --headless --path prototype -s tools/test_input_bindings.gd`,
 `godot --headless --path prototype -s tools/test_interact.gd` oraz

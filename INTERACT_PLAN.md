@@ -1,6 +1,6 @@
 # Interakcja [E] i [H] — jeden cel na klatkę (INTERACT_PLAN)
 
-Stan: **wdrożone w 1.7.691** (etapy I0–I5 w jednym PR), dokończone w 1.7.692 i 1.7.693 (niżej „Po wdrożeniu”). Wizualizacja planu i symulator zasięgów: artefakt „Plan interakcji E i H”.
+Stan: **wdrożone w 1.7.691** (etapy I0–I5 w jednym PR), dokończone w 1.7.692–1.7.694 (niżej „Po wdrożeniu”). Wizualizacja planu i symulator zasięgów: artefakt „Plan interakcji E i H”.
 
 ## Problem (przed 1.7.691)
 
@@ -56,7 +56,7 @@ Decyzje (rekomendacje planu, przyjęte): stanowiska ustępują broni; remis rozs
 
 ## Po wdrożeniu (1.7.692)
 
-- **I2 dokończone:** pasek akcji czyta cel arbitra przez jeden pomocnik `hud._target_in(group)`; 13 funkcji `_near_*` (i
+- **I2 dokończone:** pasek akcji czyta cel arbitra przez jeden pomocnik `hud._target_in(group)` (w 1.7.694 zastąpiony przez `interact_hint`); 13 funkcji `_near_*` (i
   `_brief_choices`) z osobnymi pętlami po grupach i własnym sprawdzaniem zasięgu zniknęło. Zasięg, panel kryjówki i liczba misji na
   tablicy żyją tylko w ofercie obiektu.
 - **I4 dokończone:** `Actions.fmt` pomija nawias akcji bez wiązania na bieżącym urządzeniu, gdy stoi przed drugim klawiszem — stopka
@@ -77,6 +77,17 @@ Decyzje (rekomendacje planu, przyjęte): stanowiska ustępują broni; remis rozs
   oferty z `"fit": false` — gablota w zbrojowni ma ramkę całej szafy, nie broni w środku.
 - Zrzuty w oknie: sejf 1.1, broń na ziemi, generator i pusty otwór 1.2; w kryjówce szafki, warsztat, prasa, stół pirotechniczny, gablota.
   Test: `test_interact.gd` (rzut w płaszczyźnie gry bez zmian, w głębi mniejszy i bliżej osi oka, gruba bryła = obrys obu; gablota bez `fit`).
+
+## Podpowiedź od obiektu (1.7.694)
+
+- Pełny wariant I2: tekst, postęp i kolor podpowiedzi podaje sam obiekt (`interact_hint(me)` obok `interact_offer`), a pasek akcji
+  (`hud._prompt_candidates`) bierze je od celu arbitra. Mają ją generator, sejf, zwłoki, pusty otwór pod barykadę, osiem stanowisk
+  kryjówki z tablicą misji, wejście na strzelnicę i broń / gablota (`pickup.gd`). HUD nie zna już stanu tych obiektów — nowy obiekt
+  dopisuje ofertę i podpowiedź u siebie.
+- Kolejność ważności bez zmian: podpowiedź celu stoi tam, gdzie dawny generator (pod ratowaniem, narzędziami i drezyną), broń i gablota —
+  niżej, pod ostrzeżeniami stropu strefy wydobycia. Strefa wydobycia (taśma, stempel, ostrzeżenie), drezyna, ratowanie i drzwi zostają
+  w HUD: mieszają podpowiedź celu z ostrzeżeniami, które nie zależą od [E].
+- `test_interact.gd`: podpowiedź sejfu przed i w trakcie wyważania, zwłoki, `interact_hint` w każdym obiekcie z podpowiedzią.
 
 ## Granice
 

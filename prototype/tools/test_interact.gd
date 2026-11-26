@@ -2,7 +2,8 @@ extends SceneTree
 ## Wybór celu [E] (INTERACT_PLAN.md I0–I4, interact.gd): reguły wyboru (możliwe przed niemożliwymi, priorytet, odległość, strona spojrzenia
 ## przy remisie, blokada trzymanego celu), prawdziwe obiekty obok siebie (sejf i zwłoki — jedno [E] to jedna akcja, broń wygrywa z sejfem
 ## i stanowiskiem, martwy gracz bez celu), odstępy zasięgów stanowisk w kryjówce (z1_hub), oględziny przytrzymaniem na padzie
-## (Actions.inspect_by_hold), ramka znacznika z rzutu bryły modelu (interact_mark3d.project_box; gablota zostaje przy ramce szafy) i wiersze
+## (Actions.inspect_by_hold), ramka znacznika z rzutu bryły modelu (interact_mark3d.project_box; gablota zostaje przy ramce szafy), podpowiedź od
+## obiektu (interact_hint) i wiersze
 ## tłumaczeń nowych podpowiedzi.
 ##   godot --headless --path prototype -s tools/test_interact.gd     → ostatni wiersz: [INTERACT] PASS / FAIL
 
@@ -93,6 +94,21 @@ func _run() -> void:
 	_check("sejf i zwłoki w zasięgu oferują [E] (przytrzymanie, z prostokątem znacznika)",
 		not ob.is_empty() and not oc.is_empty() and int(ob["kind"]) == I.Kind.HOLD and (ob["box"] as Rect2).size.x > 0.0)
 	_check("jedno [E] to jedna akcja: celem jest sejf (P_WORK), nie zwłoki", I.target(box) == box and not I.is_target(body))
+	var hb: Dictionary = box.interact_hint(me)
+	var hc: Dictionary = body.interact_hint(me)
+	box.progress = 0.4
+	var hb2: Dictionary = box.interact_hint(me)
+	box.progress = 0.0
+	_check("podpowiedź podaje cel (I2): sejf „%s”, w trakcie „%s” (postęp %.1f), zwłoki „%s”" % [hb.get("text"), hb2.get("text"), float(hb2.get("prog", -1.0)), hc.get("text")],
+		String(hb.get("text", "")).contains("strongbox") and float(hb.get("prog", -1.0)) < 0.0 and is_equal_approx(float(hb2.get("prog", -1.0)), 0.4)
+		and String(hb2.get("text", "")) != String(hb.get("text", "")) and String(hc.get("text", "")).contains("body") and hb.get("col") is Color)
+	var no_hint: Array = []
+	for sp in ["generator.gd", "strongbox.gd", "corpse.gd", "barricade_spot.gd", "workshop.gd", "lathe_bench.gd", "lab_bench.gd", "pyro_bench.gd",
+			"press_bench.gd", "service_bench.gd", "locker_station.gd", "board.gd", "range3d/range_door.gd", "pickup.gd"]:
+		var gs: GDScript = load("res://scripts/" + sp)
+		if not gs.get_script_method_list().any(func(md: Dictionary) -> bool: return String(md["name"]) == "interact_hint"):
+			no_hint.append(sp)
+	_check("każdy obiekt z podpowiedzią w pasku akcji ma interact_hint %s" % str(no_hint), no_hint.is_empty())
 	I.sim_held = 1
 	box.opened = true                                          # sejf otwarty: oferuje już tylko ciało
 	I.update(self, true)

@@ -6,6 +6,8 @@ extends Node2D
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const REACH_X := 40.0
 const REACH_Y := 40.0
@@ -35,6 +37,10 @@ func _ready() -> void:
 			holder.position = Vector2(float(dx) * TILE * 0.9, 0.0)
 			add_child(holder)
 			ItemsHd.make("locker", holder)                     # widok 3D zamienia przedmiot HD na model art/items3d/locker.glb
+
+## Podpowiedź paska akcji, gdy szafka jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	return {"text": tr("[%s]  Locker  ·  perks and look") % Actions.key("interact"), "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): stanowisko otwiera kartę, gdy gracz stoi w zasięgu, a panel stanowisk jest zamknięty. Ustępuje broni,
 ## ratowaniu i pracom w misji (priorytet P_STATION).
