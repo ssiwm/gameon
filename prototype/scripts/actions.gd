@@ -89,6 +89,8 @@ const DEFS := {
 	# następna misja. „Następna misja” na Y, nie na B (B w menu znaczy „wstecz”, a tu to akcja nieodwracalna). Kontekst „result” (bindings_policy).
 	"result_continue": {"keys": [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE], "pad": [JOY_BUTTON_A]},
 	"result_next": {"keys": [KEY_E], "pad": [JOY_BUTTON_Y]},
+	# warstwa Szczegóły raportu (RESULTS_PLAN.md §15.2): V jak pełna karta na ławie, Tab; pad X (BACK zostaje „dalej” jak `restart`)
+	"result_details": {"keys": [KEY_V, KEY_TAB], "pad": [JOY_BUTTON_X]},
 }
 
 ## Akcje, które gracz może przypisywać, w kolejności ekranu CONTROLS: id → etykieta. (Celowanie prawym drążkiem i akcje

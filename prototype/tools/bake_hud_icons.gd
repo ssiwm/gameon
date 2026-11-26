@@ -3,8 +3,12 @@ extends SceneTree
 ## Duże, bo służą też kartom kodeksu (codex_portrait.gd); HUD zmniejsza je z mipmapami (import: mipmaps/generate=true).
 ## Bronie: art/char3d/gun_<klucz>.glb (lufa w prawo), sprzęt: art/items3d/<klucz>.glb (lure i flashlight: tools/make_hud_models.py).
 ##   godot --path prototype --rendering-driver opengl3 --script tools/bake_hud_icons.gd [-- --only=m83,frag]
+## Części broni (raport po akcji, RESULTS_PLAN.md §15 pomysł 3): `-- --parts` → art/hud/parts/<id części>.png z art/char3d/gunpart_*.glb
+## (mniejsze, PARTS_SIZE — w raporcie zajmują ok. 60 px szerokości).
 ## Wynik wymaga importu: godot --headless --path prototype --import
 const OUT := "res://art/hud/"
+const OUT_PARTS := "res://art/hud/parts/"
+const PARTS_SIZE := 256
 const SIZE := 1024
 ## [klucz ikony, plik, kierunek kamery, obrót wokół osi Z w stopniach, maks. dłuższy bok po przycięciu]
 const JOBS := [
@@ -47,9 +51,17 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--only="):
 			only = a.substr(7).split(",")
-	for j in JOBS:
-		if only.is_empty() or String(j[0]) in only:
-			_jobs.append(j)
+	if "--parts" in OS.get_cmdline_user_args():
+		for f in DirAccess.get_files_at("res://art/char3d/"):
+			if f.begins_with("gunpart_") and f.ends_with(".glb"):
+				var pid := f.trim_prefix("gunpart_").trim_suffix(".glb")
+				if only.is_empty() or pid in only:
+					_jobs.append([pid, "res://art/char3d/" + f, Vector3(0.12, 0.30, 1.0), 0.0, PARTS_SIZE, OUT_PARTS])
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_PARTS))
+	else:
+		for j in JOBS:
+			if only.is_empty() or String(j[0]) in only:
+				_jobs.append(j)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	root.size = Vector2i(SIZE, SIZE)
 	_vp = SubViewport.new()
@@ -121,7 +133,7 @@ func _process(_d: float) -> bool:
 			var k := float(j[4]) / float(maxi(img.get_width(), img.get_height()))
 			if k < 1.0:
 				img.resize(maxi(1, roundi(img.get_width() * k)), maxi(1, roundi(img.get_height() * k)), Image.INTERPOLATE_LANCZOS)
-		img.save_png(ProjectSettings.globalize_path(OUT) + "%s.png" % j[0])
+		img.save_png(ProjectSettings.globalize_path(String(j[5]) if j.size() > 5 else OUT) + "%s.png" % j[0])
 		print(j[0], " ", img.get_size())
 		_next()
 	return false
