@@ -338,5 +338,9 @@ Czego nie robimy: oceny literą ani MVP (zasada „drużyna, nie ranking”), VH
 - **S1 (1.7.695, wdrożone)**: skrót 15.1, Szczegóły 15.2, pomysły 3, 4, 6, 7. Testy w `--resulttest`: limit słów skrótu (EN i PL, 4 graczy, awans,
   znaleziska), nagroda kafelka = premia w rozbiciu, Szczegóły z pełnymi sumami, `result_details` (pomija w trakcie, potem przełącza),
   mieszczenie obu warstw w trzech skalach UI.
-- **S2**: nieśmiertelniki z portretami (2), nagłówek radiowy z dźwiękiem (5).
+- **S2 (1.7.696, wdrożone)**: nieśmiertelniki z portretami (2), nagłówek radiowy z dźwiękiem (5). Portret to górny kadr renderu stroju
+  gracza (`art/portraits/look_<płeć>_<strój>.png`, ten sam co w szafce wyglądu; replikowany `player.look`, domyślny wg numeru gracza),
+  a nie żywy `Char3D` — cztery podglądy 3D w raporcie kosztowałyby cztery SubViewporty bez zysku dla czytelności. Kanał radia jest
+  stały dla mapy; przerwana seria Nocnego Dyżuru to „CISZA W ETERZE” na czerwono. Szum odbioru `ui_radio_rx` z `tools/bake_sfx.py`
+  (0,45 s, −20 LUFS) gra pod wejściem kadencji wyniku; przełączanie warstw stuka `ui_click` zamiast `ui_confirm`.
 - **S3**: kamera i układ sceny, sylwetka Stalkera (1).

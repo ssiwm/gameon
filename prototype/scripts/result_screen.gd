@@ -9,6 +9,8 @@ extends Control
 ## `result_details` (pełne rozbicie złomu i XP, uzasadnienia wyróżnień, przebieg misji z legendą, próba, towarzysz AI). Tytuł, kafelki
 ## i stopka są wspólne, więc panel nie skacze. Liczniki złomu i XP to bębenki jak w liczniku magnetofonu, pasek XP jest „diodowy” jak
 ## miernik hałasu, awans przyszywa naszywkę, a karty mają fakturę papieru i mosiężną krawędź (materiał deski HUD-u).
+## Od S2: nad tytułem wpis radiowy („KANAŁ n · BAZA ODEBRAŁA”, przy przerwanej serii „CISZA W ETERZE”) z krótkim szumem odbioru,
+## a gracz to nieśmiertelnik — portret w stroju (art/portraits/look_*) i stalowa blaszka z wytłoczonym kryptonimem i liczbami.
 ##
 ## Dane: `collect(mission)` zbiera wszystko z węzłów i autoloadów do słownika `ctx`, a statyczne `build_model(ctx)` liczy z niego
 ## czysty model (tytuł, kafelki, liczniki, drużyna, czasy etapów) — test `--resulttest` sprawdza go bez rysowania.
@@ -29,6 +31,7 @@ const Look := preload("res://scripts/look.gd")
 ## Czasy sekwencji (s od otwarcia) — wszystkie w jednym miejscu (RESULTS_PLAN.md §4).
 const T_TITLE := 0.25
 const T_SUB := 0.55
+const T_RADIO := 0.5                  ## wpis radiowy nad tytułem i szum odbioru (§15 pomysł 5)
 const SUB_DUR := 0.45
 const T_TILES := 0.9
 const TILE_GAP := 0.22
@@ -50,7 +53,7 @@ const INPUT_LOCK := 0.6               ## s od otwarcia, przez które raport igno
 const DATA_WAIT := 1.5                ## s, które etap złomu / XP czeka na dane od serwera, zanim pójdzie dalej bez nich
 const CUE_GAP := 0.4                  ## s: najmniejszy odstęp sygnałów raportu; z bliższych zostaje ważniejszy (CUE_PRIO)
 ## Waga sygnału przy zderzeniu w CUE_GAP: rekord > awans > pieczątka > licznik.
-const CUE_PRIO := {"record": 3, "levelup": 2, "stamp": 1, "tick": 0}
+const CUE_PRIO := {"record": 3, "levelup": 2, "radio": 1, "stamp": 1, "tick": 0}
 const LEVELUP_DUCK_DB := -6.0         ## przyciszenie kadencji wyniku pod `ui_levelup`
 const LEVELUP_DUCK_S := 1.6
 const LEVEL_FLASH := 0.12             ## s rozjaśnienia paska przy awansie
@@ -67,11 +70,15 @@ const XP_SEGS := 24
 const UNLOCKS_SHORT := 2              ## odblokowania awansu w skrócie (reszta jako „+N”, pełna lista w Szczegółach)                   ## segmenty „diodowego” paska XP (jak miernik hałasu, §15 pomysł 6)
 const PART_ICON := "res://art/hud/parts/%s.png"    ## ikony części z modeli (tools/bake_hud_icons.gd --parts)
 const HUD_ICON := "res://art/hud/%s.png"
+const LOOK_PORTRAIT := "res://art/portraits/look_%s_%s.png"   ## render stroju (tools/bake_look_portraits.gd) — portret na nieśmiertelniku
+const STEEL := Color(0.56, 0.58, 0.59)          ## blacha nieśmiertelnika
+const EMBOSS := Color(0.13, 0.14, 0.15)         ## wytłoczenie na blasze (z jasnym cieniem pod spodem)
 
 ## Dźwięki raportu: [klucz manifestu, głośność dB] — wysokość podaje etap. Generator: tools/bake_sfx.py (build_ui).
 const SND := {
 	"stamp": ["ui_stamp", -6.0], "tick": ["ui_tick", -14.0],
 	"levelup": ["ui_levelup", -4.0], "skip": ["ui_confirm", -8.0], "record": ["radio_beep", -10.0],
+	"radio": ["ui_radio_rx", -8.0], "toggle": ["ui_click", -10.0],
 }
 ## Kolory slotów graczy — te same co w HUD (hud.gd SLOT_COLORS, kurtki postaci).
 const SLOT_COLORS := [Color(0.91, 0.62, 0.22), Color(0.25, 0.72, 0.85), Color(0.86, 0.28, 0.36), Color(0.45, 0.80, 0.30)]
@@ -299,6 +306,69 @@ class Patch extends Control:
 		var ss := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		draw_string(font, Vector2((w - ss.x) * 0.5, h * 0.5 + font.get_ascent(fs) * 0.38), s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UiTheme.ACCENT.lightened(0.35))
 
+## Dioda odbioru przy wpisie radiowym (zielona: baza odebrała, czerwona: cisza w eterze).
+class Lamp extends Control:
+	var col: Color = UiTheme.CALM
+	func _init(c: Color, s: float) -> void:
+		col = c
+		custom_minimum_size = Vector2(s, s)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	func _draw() -> void:
+		var c := size * 0.5
+		var r := minf(size.x, size.y) * 0.5
+		draw_circle(c, r, Color(col, 0.25))
+		draw_circle(c, r * 0.6, col.lightened(0.2))
+
+## Portret na nieśmiertelniku: głowa i ramiona z renderu stroju (górny kwadrat obrazka), w ramce koloru slotu.
+class Portrait extends Control:
+	var tex: Texture2D
+	var slot_col: Color = UiTheme.MUTED
+	var gone := false
+	func _init(t: Texture2D, c: Color, s: float, is_gone: bool) -> void:
+		tex = t
+		slot_col = c
+		gone = is_gone
+		custom_minimum_size = Vector2(s, s)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color("15161a"))
+		if tex != null:
+			var w := tex.get_width()
+			var src := Rect2(w * 0.14, 0.0, w * 0.68, w * 0.68)
+			var mod := Color(0.5, 0.5, 0.5, 0.8) if gone else Color(0.9, 0.88, 0.84)
+			draw_texture_rect_region(tex, Rect2(Vector2(2, 1), size - Vector2(3, 2)), src, mod)
+		draw_rect(Rect2(Vector2.ZERO, size), UiTheme.LINE2, false, 1.0)
+		draw_rect(Rect2(0, 0, 2, size.y), slot_col if not gone else UiTheme.MUTED)
+
+## Stalowa blaszka nieśmiertelnika: zaokrąglona z lewej, z otworem na łańcuszek i jaśniejszym połyskiem u góry.
+class DogTag extends PanelContainer:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = STEEL
+		sb.set_corner_radius_all(3)
+		sb.corner_radius_top_left = 9
+		sb.corner_radius_bottom_left = 9
+		sb.border_color = STEEL.lightened(0.25)
+		sb.border_width_top = 1
+		sb.border_width_bottom = 1
+		sb.content_margin_left = 17
+		sb.content_margin_right = 8
+		sb.content_margin_top = 2
+		sb.content_margin_bottom = 2
+		sb.shadow_color = Color(0, 0, 0, 0.5)
+		sb.shadow_size = 2
+		sb.shadow_offset = Vector2(0, 1)
+		add_theme_stylebox_override("panel", sb)
+	func _draw() -> void:
+		draw_rect(Rect2(8, 1, size.x - 10, size.y * 0.35), Color(1, 1, 1, 0.08))
+		var hc := Vector2(8.0, size.y * 0.5)
+		draw_circle(hc, 3.2, Color("101112"))
+		draw_arc(hc, 3.4, PI * 0.1, PI * 0.9, 8, Color(1, 1, 1, 0.35), 1.0, true)
+
 ## Przebieg misji jako taśma: oś czasu i znaki zdarzeń (RESULTS_PLAN.md P2, wzór: dziennik Hunt: Showdown).
 class RunStrip extends Control:
 	var length := 1.0
@@ -446,7 +516,7 @@ func press(kind: String) -> String:
 		return "skipped"
 	if kind == "details":
 		details_pref = not details_pref
-		_play("skip")
+		_play("toggle")
 		_animate()
 		return "details"
 	var main := get_tree().current_scene
@@ -502,12 +572,15 @@ func collect(m: Node) -> Dictionary:
 	var ids: Array = (m.player_stats as Dictionary).keys()
 	ids.sort()
 	var peers: Array = Array(multiplayer.get_peers()) if multiplayer.has_multiplayer_peer() else []
+	var pnodes: Node = get_tree().current_scene.get_node_or_null("Players") if get_tree().current_scene != null else null
 	for id in ids:
 		var st: Dictionary = m.player_stats[id]
 		var nm := String(st.get("name", "P1"))
+		var pn: Node = pnodes.get_node_or_null(str(id)) if pnodes != null else null
+		var look_c: int = int(pn.get("look")) if pn != null and pn.get("look") != null else -1
 		players.append({"id": int(id), "call": String(st.get("call", nm)), "slot": clampi(int(nm.substr(1)) - 1, 0, 3) if nm.begins_with("P") else 0,
 			"kills": int(st.get("kills", 0)), "downs": int(st.get("downs", 0)), "revives": int(st.get("revives", 0)),
-			"me": int(id) == NoiseMgr.local_id(), "host": int(id) == 1, "ready": bool((m.result_ready as Dictionary).get(int(id), false)),
+			"me": int(id) == NoiseMgr.local_id(), "host": int(id) == 1, "ready": bool((m.result_ready as Dictionary).get(int(id), false)), "look": look_c,
 			"gone": int(id) != 1 and int(id) != NoiseMgr.local_id() and not peers.is_empty() and not peers.has(int(id))})
 	var main := get_tree().current_scene
 	var demo_last := false
@@ -569,6 +642,10 @@ static func build_model(ctx: Dictionary) -> Dictionary:
 		sub = "The hall is quiet again — only the water drips."
 	md["title"] = _tr(title)
 	md["sub"] = _tr(sub) if sub != "" else ""
+	# wpis radiowy (§15 pomysł 5): kanał z mapy (stały dla mapy); przerwana seria Nocnego Dyżuru — cisza w eterze („dead air”)
+	var ch: int = absi(hash(String(ctx["map_id"]))) % 9 + 1
+	var heard: bool = success or not bool(night["active"])
+	md["radio"] = {"text": (_tr("CHANNEL %d · BASE RECEIVED") if heard else _tr("CHANNEL %d · DEAD AIR")) % ch, "ok": heard}
 	md["color"] = col
 	var head := []
 	if String(ctx["map_title"]) != "":
@@ -707,7 +784,7 @@ static func build_model(ctx: Dictionary) -> Dictionary:
 			if bool(p["ready"]):
 				ready_n += 1
 		var nm := String(p["call"])
-		squad.append({"id": int(p["id"]), "name": nm, "slot": int(p["slot"]), "me": bool(p["me"]),
+		squad.append({"id": int(p["id"]), "name": nm, "slot": int(p["slot"]), "me": bool(p["me"]), "portrait": portrait_of(int(p.get("look", -1)), int(p["slot"])),
 			"kills": int(p["kills"]), "downs": int(p["downs"]), "revives": int(p["revives"]), "status": status, "status_col": scol,
 			"gone": bool(p["gone"]), "awards": aws, "t": T_SQUAD + SQUAD_GAP * float(i)})
 	md["squad"] = squad
@@ -801,6 +878,12 @@ static func build_model(ctx: Dictionary) -> Dictionary:
 	md["end_t"] = end
 	return md
 
+## Portret gracza na nieśmiertelniku: render jego stroju; nieznany wygląd → domyślny wg numeru gracza (jak player._look_code).
+static func portrait_of(look_c: int, slot: int) -> String:
+	var c := look_c if Look.is_valid(look_c) else Look.code(0 if slot % 2 == 0 else 1, 0)
+	var path := LOOK_PORTRAIT % [Look.gender_id(c), Look.outfit_id(c)]
+	return path if ResourceLoader.exists(path) else ""
+
 ## Co odblokowuje poziom `lv`: slot perka, perki, stroje i barwy (te same tabele co menu PERKS i ekran wyglądu).
 static func unlocks_at(lv: int) -> Array:
 	var out: Array = []
@@ -869,6 +952,19 @@ func _rebuild() -> void:
 	head.add_child(tape)
 	col.add_child(head)
 	col.add_child(_rule())
+	# wpis radiowy nad tytułem: dioda odbioru i kanał; szum odbioru gra pod wejściem kadencji wyniku
+	var rd: Dictionary = model["radio"]
+	var rrow := HBoxContainer.new()
+	rrow.alignment = BoxContainer.ALIGNMENT_CENTER
+	rrow.add_theme_constant_override("separation", 7)
+	var rcol: Color = UiTheme.CALM if bool(rd["ok"]) else UiTheme.DANGER
+	rrow.add_child(Lamp.new(rcol, float(_f(5))))
+	var rl := UiTheme.mono(UiTheme.label(String(rd["text"]), _f(7), rcol))
+	rl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rrow.add_child(rl)
+	col.add_child(rrow)
+	_anim(rrow, T_RADIO, "fade")
+	_cue(T_RADIO, "radio", 1.0)
 	# B — tytuł (bohater pierwszych 0,6 s); podpis tylko przy bossie i w Nocnym Dyżurze
 	var title := UiTheme.heading(String(model["title"]), _f(34), Color(model["color"]).lightened(0.12), HORIZONTAL_ALIGNMENT_CENTER)
 	col.add_child(title)
@@ -1026,41 +1122,54 @@ func _build_squad(box: VBoxContainer) -> void:
 	var squad: Array = model["squad"]
 	if squad.is_empty():
 		return
-	var head := UiTheme.mono(UiTheme.label(tr("SQUAD"), _f(7), UiTheme.MUTED))
-	box.add_child(head)
-	_anim(head, T_SQUAD - 0.05, "fade")
 	for p in squad:
 		var pd: Dictionary = p
 		var row := Card.new(Color("10110f"), UiTheme.LINE, 0)
 		row.edge = Color(0, 0, 0, 0)
 		var sb: StyleBoxFlat = row.get_theme_stylebox("panel")
-		sb.content_margin_right = 8
-		sb.content_margin_top = 4
-		sb.content_margin_bottom = 4
+		sb.content_margin_left = 5
+		sb.content_margin_right = 6
+		sb.content_margin_top = 5
+		sb.content_margin_bottom = 5
 		var slot_col: Color = SLOT_COLORS[clampi(int(pd["slot"]), 0, 3)]
-		var strip := ColorRect.new()                    # pasek koloru slotu przy lewej krawędzi
-		strip.color = slot_col if not bool(pd["gone"]) else UiTheme.MUTED
-		strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		strip.custom_minimum_size = Vector2(3, 0)
 		var hb := HBoxContainer.new()
 		hb.add_theme_constant_override("separation", 8)
-		hb.add_child(strip)
+		var ptex: Texture2D = load(String(pd["portrait"])) as Texture2D if String(pd["portrait"]) != "" else null
+		hb.add_child(Portrait.new(ptex, slot_col, float(_f(27)), bool(pd["gone"])))
 		var mid := VBoxContainer.new()
 		mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		mid.add_theme_constant_override("separation", 2)
-		var top := HBoxContainer.new()
-		top.add_theme_constant_override("separation", 6)
+		mid.add_theme_constant_override("separation", 3)
+		# blaszka: ▸ kryptonim (własna — kolor lampy), gotowość, liczby z ikonami — wszystko „wytłoczone”
+		var tag := DogTag.new()
+		var trow := HBoxContainer.new()
+		trow.add_theme_constant_override("separation", 6)
 		var me: bool = pd["me"]
-		var nm := UiTheme.label(("▸ " if me else "") + String(pd["name"]), _f(10), UiTheme.ACCENT if me else (UiTheme.MUTED if bool(pd["gone"]) else UiTheme.TEXT))
+		var nm := _emboss(UiTheme.mono(UiTheme.label(("▸ " if me else "") + String(pd["name"]).to_upper(), _f(9), Color("6a3a00") if me else EMBOSS)))
 		nm.clip_text = true
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		top.add_child(nm)
+		nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		trow.add_child(nm)
 		if String(pd["status"]) != "":
-			var stl := UiTheme.mono(UiTheme.label(String(pd["status"]), _f(7), Color(pd["status_col"]), HORIZONTAL_ALIGNMENT_RIGHT))
+			var stc: Color = Color("1d4a22") if Color(pd["status_col"]) == UiTheme.OK else Color("6e1410")
+			var stl := _emboss(UiTheme.mono(UiTheme.label(String(pd["status"]), _f(7), stc, HORIZONTAL_ALIGNMENT_RIGHT)))
 			stl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			top.add_child(stl)
+			trow.add_child(stl)
 			_anim(stl, T_DONE, "fade")
-		mid.add_child(top)
+		var nums := HBoxContainer.new()
+		nums.add_theme_constant_override("separation", 3)
+		nums.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		for s in ["kills", "downs", "revives"]:
+			if s != "kills":
+				nums.add_child(_gap(6))
+			var ic := StatIcon.new(String(s), float(_f(6)))
+			ic.col = EMBOSS
+			nums.add_child(ic)
+			nums.add_child(_emboss(UiTheme.mono(UiTheme.label(str(int(pd[s])), _f(9), EMBOSS))))
+		trow.add_child(nums)
+		tag.add_child(trow)
+		if bool(pd["gone"]):
+			tag.modulate = Color(0.6, 0.6, 0.6, 0.8)
+		mid.add_child(tag)
 		var aws: Array = pd["awards"]
 		if not aws.is_empty():
 			var flow := HFlowContainer.new()
@@ -1076,15 +1185,6 @@ func _build_squad(box: VBoxContainer) -> void:
 				_cue_once("awards", float(ad["t"]), "stamp", 0.8)
 			mid.add_child(flow)
 		hb.add_child(mid)
-		var nums := HBoxContainer.new()
-		nums.add_theme_constant_override("separation", 3)
-		nums.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		for s in [["kills", "kills"], ["downs", "downs"], ["revives", "revives"]]:
-			if s[0] != "kills":
-				nums.add_child(_gap(7))
-			nums.add_child(StatIcon.new(String(s[0]), float(_f(7))))
-			nums.add_child(UiTheme.mono(UiTheme.label(str(int(pd[s[1]])), _f(11), UiTheme.WARM)))
-		hb.add_child(nums)
 		row.add_child(hb)
 		box.add_child(row)
 		_anim(row, float(pd["t"]), "fade")
@@ -1361,6 +1461,15 @@ func _spacer() -> Control:
 	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	s.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return s
+
+## Napis wytłoczony w blasze: ciemna litera z jasnym cieniem o piksel niżej.
+func _emboss(l: Label) -> Label:
+	l.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.38))
+	l.add_theme_constant_override("shadow_offset_x", 0)
+	l.add_theme_constant_override("shadow_offset_y", 1)
+	l.add_theme_constant_override("shadow_outline_size", 0)
+	l.add_theme_constant_override("outline_size", 0)
+	return l
 
 func _gap(w: int) -> Control:
 	var s := Control.new()

@@ -98,7 +98,9 @@ Co-op horror run-and-gun (retro Contra) w Godot 4.7 (Forward+). Rozgrywka to sym
   rozłączony, część z ikoną modelu z `art/hud/parts/`; ≤ 100 słów przy 4 graczach, wcześniej ok. 184) i **Szczegóły** pod akcją
   `result_details` (V / Tab / pad X): pełne rozbicie złomu i XP, wyróżnienia z uzasadnieniem, przebieg misji z legendą, próba
   i towarzysz AI. Liczniki to bębenki jak w liczniku magnetofonu, pasek XP jest „diodowy”, awans przyszywa naszywkę, karty mają
-  fakturę papieru i mosiężną krawędź.
+  fakturę papieru i mosiężną krawędź. **Od 1.7.696** nad tytułem wpis radiowy („KANAŁ n · BAZA ODEBRAŁA”, przy przerwanej serii
+  „CISZA W ETERZE”) z krótkim szumem odbioru (`ui_radio_rx`), a każdy gracz to nieśmiertelnik: portret z renderu jego stroju
+  i stalowa blaszka z wytłoczonym kryptonimem, gotowością i liczbami.
 - **Czcionki** (`art/fonts/`, licencje w `art/fonts/licenses/`): Big Shoulders Stencil Display (nagłówki), IBM Plex Sans Condensed
   (opisy i ustawienia), IBM Plex Mono (liczby i przyrządy) — SIL OFL; Special Elite („szept”: ostrzeżenia, podpowiedzi) — Apache-2.0;
   Silkscreen tylko w klasycznej grafice. Wczytuje je `ui_theme.gd`; bez plików wraca do czcionek systemowych.

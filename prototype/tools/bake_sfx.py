@@ -1304,6 +1304,17 @@ def build_ui() -> None:
     chord = d.sweep(chord, "lp", d.env_pts(n, [(0, 300), (.35, 1800), (1.3, 700)]), 1.0)
     x = chord * d.env_pts(n, [(0, 0), (.08, 1), (.7, .7), (1.3, 0)])
     finalize("ui_levelup", d.reverb(x, ir("room"), wet=.25), lufs=-16.0, fade_out_ms=200)
+    # Odbiór radia (RESULTS_PLAN.md §15 pomysł 5): baza odebrała raport — stuk przełącznika nadawania, krótka fala szumu eteru
+    # w paśmie krótkofalówki i „squelch” na końcu. Krótko (0,45 s) i cicho: pod kadencją wyniku, nie zamiast niej.
+    rr = Rng(0xA0A8)
+    n = ms(450)
+    t = np.arange(n) / SR
+    hiss = d.sweep(d.colored(n, rr, .35), "bp", d.env_pts(n, [(0, 1900), (.2, 1300), (.45, 900)]), 1.6)
+    hiss *= d.env_pts(n, [(0, 0), (.02, 1), (.28, .55), (.36, .9), (.42, 0)]) * (0.8 + 0.2 * np.sin(TAU * 23.0 * t))
+    key = d.mix([(thump(.05, 180, 90, .01, .02), .6), (tick(rr, 1500, 1.5, 12, .003), .9)], ms(80))
+    tail = d.mix([(tick(rr, 2100, 1.6, 10, .0025), .7), (thump(.03, 220, 120, .006, .01), .3)], ms(60))
+    x = d.mix([(key, .8), (hiss / (d.peak(hiss) + 1e-9), .5, .015), (tail, .7, .4)], n)
+    finalize("ui_radio_rx", d.reverb(d.lp(x, 4000.0), ir("dead"), wet=.06), lufs=-20.0, fade_out_ms=40)
 
     # Znajdźki (DIG_LOOT_PLAN.md K6, pickup.gd `rarity`): krótki akcent, gdy w trakcie gry wypada rzadka albo fabularna rzecz.
     # Rzadka: miękkie stuknięcie i jasny, cichy brzęk mosiądzu (jak łuska o blachę) — nie dzwonek ani fanfara.

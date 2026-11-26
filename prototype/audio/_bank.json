@@ -1223,6 +1223,10 @@
   "sfx/ui/ui_levelup",
   0
  ],
+ "ui_radio_rx": [
+  "sfx/ui/ui_radio_rx",
+  0
+ ],
  "ui_stamp": [
   "sfx/ui/ui_stamp",
   0
