@@ -503,8 +503,10 @@ func _layer_checks() -> void:
 	# 9. scena: kamera, sylwetka Stalkera, widoczność raportu
 	var pl: Node = main.get_node("Players").get_node_or_null(str(NoiseMgr.local_id()))
 	await get_tree().create_timer(0.3).timeout
-	check("scena: kamera pod raportem odjeżdża (postęp %.2f, zoom %.2f < %.2f)" % [float(pl.result_cam_k()), float(pl._camera.zoom.x), Settings.cam_zoom()],
-		pl != null and float(pl.result_cam_k()) > 0.0 and float(pl._camera.zoom.x) < Settings.cam_zoom())
+	var cz := Settings.cam_zoom()
+	check("scena: kamera pod raportem w planie drużyny — zbliżenie, które powoli odjeżdża (postęp %.2f, zoom %.2f w %.2f..%.2f)" % [float(pl.result_cam_k()),
+		float(pl._camera.zoom.x), cz * pl.RESULT_CAM_ZOOM1, cz * pl.RESULT_CAM_ZOOM0], pl != null and float(pl.result_cam_k()) > 0.0
+		and float(pl._camera.zoom.x) >= cz * pl.RESULT_CAM_ZOOM1 - 0.001 and float(pl._camera.zoom.x) < cz * pl.RESULT_CAM_ZOOM0)
 	check("scena: raport na ekranie (celownik i plakietki schowane)", ResultScreen.showing())
 	check("scena: sylwetka Stalkera tylko po przebudzeniu, nie w Nocnym Dyżurze",
 		bool(ResultScreen.build_model(_ctx({"stalker_woke": true}))["lurk"]) and not bool(ResultScreen.build_model(_ctx())["lurk"])

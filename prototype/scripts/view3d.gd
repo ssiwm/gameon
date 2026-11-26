@@ -7622,7 +7622,7 @@ func _sync_world_fx(delta: float) -> void:
 	# --- oczy w mroku
 	var dread := get_tree().root.find_child("Dread", true, false)
 	var eyes = dread.get("_eyes") if dread != null else null
-	if eyes != null and is_instance_valid(eyes):
+	if eyes != null and is_instance_valid(eyes) and not ResultScreen.showing():     # pod raportem po akcji oczy w lesie należą do Stalkera (_sync_lurker)
 		if (eyes as Node2D).visible and float(dread.get("_eyes_life")) > 0.0:
 			var el := float(dread.get("_eyes_life"))
 			var ea := minf(float(dread.get("_eyes_age")) / 0.6, 1.0) * 0.55

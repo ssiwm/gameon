@@ -346,8 +346,9 @@ Czego nie robimy: oceny literą ani MVP (zasada „drużyna, nie ranking”), VH
 - **S3 (1.7.697, wdrożone)**: kamera i układ sceny, sylwetka Stalkera (1). Skrót to płótno 1344 × 756 jednostek HUD (`DESIGN`,
   pomniejszane przy większej skali UI): tytuł u góry, cele w lewej kolumnie, łup w prawej, nieśmiertelniki u dołu, środek wolny; pod
   skrótem świat przyciemniony tylko o 0,18, a krawędzie ciemnią pasy gradientu (`Scrim`). Szczegóły zostają panelem na środku z pełnym
-  ściemnieniem. Kamera lokalnego gracza (`player._result_camera`) w 6,5 s odjeżdża do 0,8 zoomu nad środek drużyny stojącej w promieniu
-  160 px i wraca do ustawień po zmianie mapy; kamera areny Żyły ma pierwszeństwo, „Ogranicz efekty” trzyma kadr. Gdy Stalker się
+  ściemnieniem. Kamera lokalnego gracza (`player._result_camera`) w 6,5 s odjeżdża z 1,75 do 1,4 zoomu gracza nad środek drużyny stojącej
+  w promieniu 160 px (stopy na ok. 65% wysokości ekranu; od 1.7.698 — w 1.7.697 odjeżdżała do 0,8 i drużyna ginęła między kolumnami)
+  i wraca do ustawień po zmianie mapy; kamera areny Żyły ma pierwszeństwo, „Ogranicz efekty” trzyma kadr. Gdy Stalker się
   obudził (poza Nocnym Dyżurem), po 5,6 s od otwarcia raportu w linii drzew (6,5 m za płaszczyzną gry, 5 m w bok) staje jego model
   z połyskiem oczu, po 4 s cofa się w las (`view3d._sync_lurker`, czas z `ResultScreen.lurk_age()`). Pod raportem znikają celownik
   i plakietki graczy (`ResultScreen.showing()`).

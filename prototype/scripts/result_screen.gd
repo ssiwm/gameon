@@ -66,7 +66,9 @@ const DESIGN := Vector2(1344, 756)    ## płótno raportu w jednostkach HUD (ekr
 const EDGE := 36.0                    ## margines płótna
 const COL_W := 330.0                  ## szerokość kolumn celów i łupu
 const DET_W := 900.0                  ## szerokość panelu Szczegółów
-const TAG_W := 300.0                  ## szerokość karty nieśmiertelnika
+const TAG_W := 310.0                  ## szerokość karty nieśmiertelnika
+const TITLE_FS := 48                  ## tytuł sceny (przed _f): ok. 1/3 szerokości ekranu, jak w makiecie §15 (1.7.697: 34 — ok. 1/4)
+const PORTRAIT := 50                  ## bok portretu na nieśmiertelniku (przed _f); 1.7.697: 27 — portret ginął przy 1080p
 const TAG_GAP := 10
 
 const PAD := 24.0
@@ -1008,7 +1010,7 @@ func _rebuild() -> void:
 	_top.add_child(rrow)
 	_anim(rrow, T_RADIO, "fade")
 	_cue(T_RADIO, "radio", 1.0)
-	var title := UiTheme.heading(String(model["title"]), _f(34), Color(model["color"]).lightened(0.12), HORIZONTAL_ALIGNMENT_CENTER)
+	var title := UiTheme.heading(String(model["title"]), _f(TITLE_FS), Color(model["color"]).lightened(0.12), HORIZONTAL_ALIGNMENT_CENTER)
 	_top.add_child(title)
 	_anim(title, T_TITLE, "title")                 # bez dźwięku: tytuł niesie wejście kadencji wyniku (Audio.music_result)
 	if String(model["sub"]) != "":
@@ -1121,18 +1123,22 @@ func _tile(td: Dictionary, i: int) -> Control:
 	var ladder: bool = model["ladder"]
 	var tile := Card.new(CARD_BG, Color(UiTheme.OK, 0.45) if ok else UiTheme.LINE, 9)
 	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tile.custom_minimum_size = Vector2(0, 40 if ladder else 64)
+	tile.custom_minimum_size = Vector2(0, 40 if ladder else 0)
 	if not ok:
 		tile.edge = Color(BRASS, 0.35)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	tile.add_child(box)
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 6)
+	var outer := HBoxContainer.new()
+	outer.add_theme_constant_override("separation", 10)
+	tile.add_child(outer)
 	var show_mark: bool = ok or bool(td.get("stamp", true))
 	if show_mark:
-		top.add_child(Mark.new(ok, float(_f(10))))
-	var lab := UiTheme.heading(String(td["label"]), _f(9), UiTheme.TEXT if ok else UiTheme.MUTED)
+		outer.add_child(Mark.new(ok, float(_f(14 if not ladder else 10))))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer.add_child(box)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 6)
+	var lab := UiTheme.heading(String(td["label"]), _f(10), UiTheme.TEXT if ok else UiTheme.MUTED)
 	lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lab.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	lab.clip_text = true
@@ -1143,9 +1149,12 @@ func _tile(td: Dictionary, i: int) -> Control:
 		top.add_child(stamp)
 		stamp.rotation = deg_to_rad(-6.0 + 2.0 * float(i % 3))
 		_anim(stamp, float(td["t"]) + 0.08, "stamp")
+	if not ladder:
+		var val := UiTheme.mono(UiTheme.label(String(td["value"]).replace(" / ", "/"), _f(12), UiTheme.WARM if ok else UiTheme.MUTED, HORIZONTAL_ALIGNMENT_RIGHT))
+		val.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(val)
 	box.add_child(top)
 	if not ladder:
-		box.add_child(UiTheme.mono(UiTheme.label(String(td["value"]), _f(12), UiTheme.WARM if ok else UiTheme.MUTED)))
 		var rx: int = td["reward_xp"]
 		var rs: int = td["reward_scrap"]
 		if rx > 0 or rs > 0:
@@ -1156,12 +1165,12 @@ func _tile(td: Dictionary, i: int) -> Control:
 			var rew := HBoxContainer.new()
 			rew.add_theme_constant_override("separation", 3)
 			if rx > 0:
-				rew.add_child(UiTheme.mono(UiTheme.label("+%d XP" % rx, _f(7), rc)))
+				rew.add_child(UiTheme.mono(UiTheme.label("+%d XP" % rx, _f(8), rc)))
 			if rs > 0:
 				if rx > 0:
 					rew.add_child(_gap(6))
-				rew.add_child(UiTheme.mono(UiTheme.label("+%d" % rs, _f(7), rc)))
-				rew.add_child(Coin.new(float(_f(6)), not ok))
+				rew.add_child(UiTheme.mono(UiTheme.label("+%d" % rs, _f(8), rc)))
+				rew.add_child(Coin.new(float(_f(7)), not ok))
 			wrap.add_child(rew)
 			if not ok:
 				wrap.add_child(Strike.new(LOCKED))
@@ -1192,7 +1201,7 @@ func _build_squad(box: BoxContainer) -> void:
 		var hb := HBoxContainer.new()
 		hb.add_theme_constant_override("separation", 8)
 		var ptex: Texture2D = load(String(pd["portrait"])) as Texture2D if String(pd["portrait"]) != "" else null
-		hb.add_child(Portrait.new(ptex, slot_col, float(_f(27)), bool(pd["gone"])))
+		hb.add_child(Portrait.new(ptex, slot_col, float(_f(PORTRAIT)), bool(pd["gone"])))
 		var mid := VBoxContainer.new()
 		mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mid.add_theme_constant_override("separation", 3)
@@ -1201,14 +1210,14 @@ func _build_squad(box: BoxContainer) -> void:
 		var trow := HBoxContainer.new()
 		trow.add_theme_constant_override("separation", 6)
 		var me: bool = pd["me"]
-		var nm := _emboss(UiTheme.mono(UiTheme.label(("▸ " if me else "") + String(pd["name"]).to_upper(), _f(9), Color("6a3a00") if me else EMBOSS)))
+		var nm := _emboss(UiTheme.mono(UiTheme.label(("▸ " if me else "") + String(pd["name"]).to_upper(), _f(11), Color("6a3a00") if me else EMBOSS)))
 		nm.clip_text = true
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		trow.add_child(nm)
 		if String(pd["status"]) != "":
 			var stc: Color = Color("1d4a22") if Color(pd["status_col"]) == UiTheme.OK else Color("6e1410")
-			var stl := _emboss(UiTheme.mono(UiTheme.label(String(pd["status"]), _f(7), stc, HORIZONTAL_ALIGNMENT_RIGHT)))
+			var stl := _emboss(UiTheme.mono(UiTheme.label(String(pd["status"]), _f(8), stc, HORIZONTAL_ALIGNMENT_RIGHT)))
 			stl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			trow.add_child(stl)
 			_anim(stl, T_DONE, "fade")
@@ -1218,12 +1227,15 @@ func _build_squad(box: BoxContainer) -> void:
 		for s in ["kills", "downs", "revives"]:
 			if s != "kills":
 				nums.add_child(_gap(6))
-			var ic := StatIcon.new(String(s), float(_f(6)))
+			var ic := StatIcon.new(String(s), float(_f(8)))
 			ic.col = EMBOSS
 			nums.add_child(ic)
-			nums.add_child(_emboss(UiTheme.mono(UiTheme.label(str(int(pd[s])), _f(9), EMBOSS))))
-		trow.add_child(nums)
-		tag.add_child(trow)
+			nums.add_child(_emboss(UiTheme.mono(UiTheme.label(str(int(pd[s])), _f(11), EMBOSS))))
+		var tcol := VBoxContainer.new()                  # dwa wiersze wytłoczenia jak na prawdziwym nieśmiertelniku: kryptonim, liczby
+		tcol.add_theme_constant_override("separation", 0)
+		tcol.add_child(trow)
+		tcol.add_child(nums)
+		tag.add_child(tcol)
 		if bool(pd["gone"]):
 			tag.modulate = Color(0.6, 0.6, 0.6, 0.8)
 		mid.add_child(tag)
