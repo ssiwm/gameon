@@ -23,6 +23,7 @@ const RunLog := preload("res://scripts/run_log.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const WeatherSound := preload("res://scripts/weather_sound.gd")
 const MISSION_SCRIPT := preload("res://scripts/mission.gd")
+const RESULT_SCREEN_SCRIPT := preload("res://scripts/result_screen.gd")
 const WEAPON_TEST := preload("res://scripts/weapon_test.gd")
 const WORKSHOP_TEST := preload("res://scripts/workshop_test.gd")
 const CABINET_TEST := preload("res://scripts/cabinet_test.gd")
@@ -1389,7 +1390,7 @@ func _handle_cmdline() -> void:
 			shot_codex = true
 		elif a == "--shotboss":
 			shot_boss = true
-		elif a == "--shotresult" or a == "--shotresult4" or a.begins_with("--shotresultt="):
+		elif a == "--shotresult" or a == "--shotresult4" or a.begins_with("--shotresultt=") or a == "--shotresultdetails":
 			shot_result = true
 		elif a == "--shotws":
 			shot_ws = true
@@ -3155,7 +3156,7 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				level.spawn_fire_patch(fp.global_position + Vector2(44.0 + 22.0 * float(i), -1.0), Weapons.HKM9, 1)
 	if result:
 		# podgląd raportu po akcji (RESULTS_PLAN.md): --shotresult (2 graczy), --shotresult4 (4 graczy, gotowość, awans kolegi),
-		# --shotresultt=S — sekwencja zatrzymana w chwili S (zrzut z połowy animacji)
+		# --shotresultt=S — sekwencja zatrzymana w chwili S (zrzut z połowy animacji), --shotresultdetails — warstwa Szczegóły
 		mission.elapsed = 312.0
 		mission.peak_noise = 41.0
 		var me := NoiseMgr.local_id()
@@ -3179,6 +3180,8 @@ func _take_shot(path: String, col: int, delay: float = 1.5, depart := false, fli
 				var rs_node := get_tree().root.find_child("ResultScreen", true, false)
 				if rs_node != null:
 					rs_node.set("hold_at", float(sa.substr("--shotresultt=".length())))
+		if "--shotresultdetails" in OS.get_cmdline_user_args():
+			RESULT_SCREEN_SCRIPT.details_pref = true            # warstwa Szczegóły po sekwencji (RESULTS_PLAN.md §15.2)
 		mission._success()
 		if "--shotresult4" in OS.get_cmdline_user_args():
 			mission.result_ready = {2: true, 4: true}

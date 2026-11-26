@@ -288,3 +288,55 @@ przed scaleniem (jak w AUDIO_PLAN.md).
 - **Nie zrobione:** oddalenie kamery 3D w czasie raportu (opcja z P2) i pomiar w dzienniku czasu od SUCCESS do akcji hosta (§13).
 - Testy: `--resulttest` (62 sprawdzenia), `tools/test_net_session.sh` sekcja „raport po akcji” (`--resultnet=N`), zrzuty
   `--shotresult`, `--shotresult4`, `--shotresultt=S`.
+
+## 15. Odchudzenie i „scena” (projekt 2026-11-26 na 1.7.694)
+
+Uwaga z gry: za dużo tekstu na podsumowaniu misji. Zrzut `--shotresult4 --lang=pl` (1.1, 4 graczy, awans, znalezisko) miał ok. 184 słowa
+w 91 osobnych napisach. Przyczyna to głównie dublowanie: każda premia była na pieczątce celu **i** w rozbiciu złomu albo XP; cel miał dwie linie
+(„CEL GŁÓWNY” + „Nieśmiertelniki”); pierwsze przejście było pieczątką w znaleziskach i wierszem XP; liczby wyróżnień powtarzały kolumny.
+Makiety: skrót kontra obecny ekran i warstwa Szczegóły, potem „scena” z pomysłami 1–7 (pliki HTML poza repozytorium, z rozmowy).
+
+### 15.1 Skrót (domyślny widok) — cel ≤ 100 słów przy 4 graczach (dziś ok. 184)
+| # | Teraz | Skrót |
+|---|---|---|
+| 1 | „RAPORT PO AKCJI · mapa · trudność”, „PRÓBA NR 1 · CZAS 5:12” | mapa · trudność … 5:12; próba dopiero od drugiej |
+| 2 | podpis maszynopisem pod tytułem | tylko przy bossie i w Nocnym Dyżurze (D1) |
+| 3 | kategoria + nazwa celu, pieczątka ZALICZONE na każdym | jedna etykieta — nazwa celu; zaliczony: rysowany ✓; pieczątka tylko STRACONE (D3) |
+| 4 | nagroda na pieczątce i 8 wierszy rozbicia | nagroda tylko na kafelku: „+100 XP +30◉” (moneta zamiast „złomu”), stracona przekreślona; pod złomem „łup 158 · premie 70” |
+| 5 | wyróżnienie + uzasadnienie | sam tytuł; uzasadnienie w Szczegółach |
+| 6 | HOST / „czyta…” / GOTOWY | tylko GOTOWY i „rozłączony” |
+| 7 | „P1 (ty)”, nagłówek „ZAB. · UPADKI · PODNIESIENIA” | ▸ i kolor akcentu; nagłówek z trzech ikon |
+| 8 | pieczątka PIERWSZE PRZEJŚCIE + wiersz XP | jedna pieczątka „PIERWSZE PRZEJŚCIE +100” przy XP; obok „walka +155” |
+| 9 | „NOWA CZĘŚĆ: Tłumik PBS-1” | ikona modelu + nazwa (pomysł 3) |
+| 10 | przebieg misji z legendą | w Szczegółach (D2) |
+| 11 | „Towarzysz AI · N graczy”, „Od razu następna misja” | w Szczegółach; „Następna misja” |
+
+### 15.2 Warstwa Szczegóły
+Akcja `result_details` (kontekst „result”): **V** (jak pełna karta na ławie) i **Tab**, pad **X** (D4). Przełącza dolną część panelu: pełne
+rozbicie złomu i XP, wyróżnienia z uzasadnieniem, przebieg misji z legendą, próba, towarzysz AI i liczba graczy. Tytuł, kafelki i stopka
+zostają na miejscu. W trakcie sekwencji pierwsze naciśnięcie pomija ją (jak każda akcja raportu); potem przełącza; klik w podpowiedź działa
+tak samo. Wybór trwa do końca sesji.
+
+### 15.3 Scena (bardziej „growo”, w tonie gry)
+1. **Drużyna w 3D za raportem** — kamera powoli odjeżdża nad wyjście, panele schodzą na boki, środek zostaje dla postaci; gdy Stalker się
+   obudził, na kilka sekund jego sylwetka w linii drzew (zasada grozy nr 3). `view3d.gd`, układ ekranu. *Etap S3.*
+2. **Nieśmiertelniki** — karta gracza: portret w stroju (`Char3D` jak w szafce) i stalowa blaszka z wytłoczonym kryptonimem i liczbami;
+   wyróżnienia pieczątkami pod blaszką. *Etap S2.*
+3. **Znaleziska jako ikony** — model części z `bake_hud_icons.gd` (`art/hud/parts/`), bateria i wprawa z ikon HUD-u. *Etap S1.*
+4. **Licznik jak w magnetofonie** — złom i XP na bębenkach; wyższa cyfra obraca się przy przeniesieniu. *Etap S1.*
+5. **Nagłówek radiowy** — „KANAŁ 3 · BAZA ODEBRAŁA” z diodą i krótkim szumem odbioru. *Etap S2.*
+6. **Pasek diodowy i naszywka** — pasek XP z segmentów jak miernik hałasu; awans „przyszywa” naszywkę z numerem poziomu. *Etap S1.*
+7. **Materiał kryjówki** — karty z fakturą papieru i mosiężną górną krawędzią zamiast jednego płaskiego panelu. *Etap S1.*
+
+Czego nie robimy: oceny literą ani MVP (zasada „drużyna, nie ranking”), VHS (UI_PLAN.md), fajerwerków przy awansie.
+
+### 15.4 Decyzje (2026-11-26: według rekomendacji)
+- **D1** podpis tylko przy bossie i w Nocnym Dyżurze. **D2** przebieg misji w Szczegółach. **D3** zaliczony cel: ✓, pieczątka tylko STRACONE.
+  **D4** Szczegóły: V + Tab, pad X (BACK zostaje „dalej” jak `restart`).
+
+### 15.5 Etapy
+- **S1 (1.7.695, wdrożone)**: skrót 15.1, Szczegóły 15.2, pomysły 3, 4, 6, 7. Testy w `--resulttest`: limit słów skrótu (EN i PL, 4 graczy, awans,
+  znaleziska), nagroda kafelka = premia w rozbiciu, Szczegóły z pełnymi sumami, `result_details` (pomija w trakcie, potem przełącza),
+  mieszczenie obu warstw w trzech skalach UI.
+- **S2**: nieśmiertelniki z portretami (2), nagłówek radiowy z dźwiękiem (5).
+- **S3**: kamera i układ sceny, sylwetka Stalkera (1).

@@ -14,12 +14,16 @@ extends Node
 ## 5. Rekordy osobiste (Profile.map_best): pierwsze przejście, lepszy czas, gorszy czas, zapis i odczyt.
 ## 6. Mieszczenie: 1 i 4 graczy, angielski i polski, trzy skale UI — panel na ekranie, żaden napis nie wystaje.
 ## 7. Wejście: akcja w pierwszych INPUT_LOCK s nic nie robi; pierwsze naciśnięcie pomija, drugie (host) — od razu następna misja.
+## 8. Skrót i Szczegóły (RESULTS_PLAN.md §15): nagłówek bez „AFTER-ACTION REPORT”, podpis tylko przy bossie i w Nocnym Dyżurze,
+##    nagroda kafelka = premia w rozbiciu złomu, chipy XP tylko za to, czego nie ma na kafelkach, pierwsze przejście raz;
+##    `result_details` w trakcie pomija, potem przełącza warstwy; skrót ≤ WORDS_MAX słów (EN i PL, 4 graczy); obie warstwy mieszczą się.
 ## Wynik: linie [RESULT-TEST] i kod wyjścia.
 
 const Mission := preload("res://scripts/mission.gd")
 const ResultScreen := preload("res://scripts/result_screen.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const LOG_DIR := "user://test_result_sessions"
+const WORDS_MAX := 100                ## skrót raportu przy 4 graczach (RESULTS_PLAN.md §15.1; przed 1.7.695 ok. 184 słowa)
 
 var main: Node
 var total := 0
@@ -45,6 +49,7 @@ func run(m: Node) -> void:
 	await _sequence_checks()
 	await _late_xp_checks()
 	await _fit_checks()
+	await _layer_checks()
 	await _input_checks()
 	_finish()
 
@@ -90,14 +95,37 @@ func _model_checks() -> void:
 	check("taśma przebiegu z dwoma znakami", bool(md["timeline"]["show"]) and (md["timeline"]["marks"] as Array).size() == 2)
 	check("koniec sekwencji ≥ T_DONE i po ostatniej pieczątce", float(md["end_t"]) >= ResultScreen.T_DONE)
 	check("host: kryjówka i od razu następna misja", (md["prompts"] as Array).size() == 2 and String(md["prompts"][1]["kind"]) == "next")
-	check("solo: status SOLO, dwa wyróżnienia na karcie", String(md["squad"][0]["status"]) == tr("SOLO") and (md["squad"][0]["awards"] as Array).size() == 2)
+	check("solo: bez napisu statusu, dwa wyróżnienia na karcie", String(md["squad"][0]["status"]) == "" and (md["squad"][0]["awards"] as Array).size() == 2)
+	check("nagłówek bez „AFTER-ACTION REPORT”, czas bez „TIME”, próba dopiero od drugiej (%s | %s)" % [md["header_l"], md["header_r"]],
+		not String(md["header_l"]).contains(tr("AFTER-ACTION REPORT").to_upper()) and String(md["header_r"]) == "5:12"
+		and String(ResultScreen.build_model(_ctx({"attempts": 2}))["header_r"]).contains("2"))
+	check("podpis: 1.1 bez, B1 z podpisem (D1)", String(md["sub"]) == "" and String(ResultScreen.build_model(_ctx({"kind": "boss", "silent_counts": false}))["sub"]) != "")
+	var bonus_of := {}
+	for b in Array(_ctx()["scrap_info"]["bonus"]):
+		bonus_of[String(b[0])] = int(b[1])
+	var tile_bonus := {"main": "clear", "side": "side", "no_downs": "no_downs", "silent": "silent"}
+	var same := true
+	for tl in tiles:
+		same = same and int(tl["reward_scrap"]) == int(bonus_of.get(tile_bonus.get(String(tl["id"]), ""), 0))
+	check("nagroda złomu na kafelku = premia w rozbiciu (każdy kafelek)", same)
+	check("chipy XP: tylko walka (+155), bez wierszy z kafelków (%s)" % str(md["xp"]["chips"]),
+		(md["xp"]["chips"] as Array).size() == 1 and String(md["xp"]["chips"][0]["text"]) == tr("combat +%d") % 155)
+	var fc := _ctx({"record": {"map": "z1_m1", "time": 312.0, "prev": 0.0, "best": 312.0, "new": true, "first": true}})
+	fc["xp"] = {"ready": true, "mission": 275, "run": 0, "rows": [["Mission cleared", 100], ["Side objective", 50], ["No downs", 25], ["First clear", 100]], "end": 1810}
+	var mfc: Dictionary = ResultScreen.build_model(fc)
+	check("pierwsze przejście raz: pieczątka przy XP „FIRST CLEAR +100”, nie w znaleziskach",
+		(mfc["xp"]["chips"] as Array).any(func(c: Dictionary) -> bool: return bool(c["stamp"]) and String(c["text"]).contains("+100"))
+		and not (mfc["finds"] as Array).any(func(f: Dictionary) -> bool: return String(f["text"]) == tr("FIRST CLEAR")))
+	var parts: Array = (md["finds"] as Array).filter(func(f: Dictionary) -> bool: return f.has("icon") and String(f["icon"]).contains("m83_pbs1"))
+	check("znalezisko części z ikoną modelu (art/hud/parts) i samą nazwą", parts.size() == 1 and ResourceLoader.exists(String(parts[0]["icon"]))
+		and not String(parts[0]["text"]).contains(":"))
 	# utracony cichy cel
 	var lost := _ctx({"silent_ok": false, "peak": 78.0})
 	lost["scrap_info"] = {"gain": 213, "bonus": [["clear", 30], ["side", 15], ["no_downs", 10]], "finds": {}, "timeline": []}
 	var ml: Dictionary = ResultScreen.build_model(lost)
 	var sil: Dictionary = (ml["tiles"] as Array).filter(func(t: Dictionary) -> bool: return String(t["id"]) == "silent")[0]
-	check("cichy cel stracony: pieczątka ✕ ze szczytem 78, bez +30 w złomie", not bool(sil["ok"]) and String(sil["value"]) == "78"
-		and _sum(ml["scrap"]["rows"]) == 213 and String(sil["reward"]) == tr("missed: %s") % (tr("+%d scrap") % 30))
+	check("cichy cel stracony: ✕ ze szczytem 78 / 60, przekreślone +30, bez +30 w złomie", not bool(sil["ok"]) and String(sil["value"]) == "78 / 60"
+		and _sum(ml["scrap"]["rows"]) == 213 and int(sil["reward_scrap"]) == 30 and int(ml["scrap"]["bonus"]) == 55)
 	# warianty
 	var gen: Dictionary = ResultScreen.build_model(_ctx({"kind": "generators", "silent_counts": false, "side_done": false, "peak": 77.0}))
 	check("1.2: pieczątka UKRYCIE stracona (szczyt 77)", (gen["tiles"] as Array).size() == 3 and String(gen["tiles"][1]["id"]) == "side" and not bool(gen["tiles"][1]["ok"]))
@@ -146,8 +174,9 @@ func _model_checks() -> void:
 	check("drużyna: SANITARIUSZ u Sowy, RZEŹNIK u hosta", (sq[3]["awards"] as Array).size() == 1 and (sq[0]["awards"] as Array).size() == 1
 		and String(sq[3]["awards"][0]["title"]) == tr("MEDIC"))
 	check("awans kolegi na jego karcie (Wilk 4 → 5)", (sq[1]["awards"] as Array).any(func(a: Dictionary) -> bool: return String(a["kind"]) == "level"))
-	check("gotowość: Wilk GOTOWY, Kos czyta, Sowa rozłączony; host widzi 1 / 2", String(sq[1]["status"]) == tr("READY")
-		and String(sq[2]["status"]) == tr("reading…") and String(sq[3]["status"]) == tr("disconnected") and String(mt["ready_note"]) == tr("%d / %d ready") % [1, 2])
+	check("gotowość: Wilk GOTOWY, Kos bez napisu, Sowa rozłączony, host bez napisu; host widzi 1 / 2", String(sq[1]["status"]) == tr("READY")
+		and String(sq[2]["status"]) == "" and String(sq[0]["status"]) == "" and String(sq[3]["status"]) == tr("disconnected")
+		and String(mt["ready_note"]) == tr("%d / %d ready") % [1, 2])
 	var client := _ctx({"server": false})
 	check("klient: jedna akcja — Gotowy", (ResultScreen.build_model(client)["prompts"] as Array).size() == 1)
 	client["local_ready"] = true
@@ -343,11 +372,14 @@ func _fit_checks() -> void:
 			TranslationServer.set_locale(loc)
 			for squad in [keep_stats, four]:
 				m.player_stats = squad
-				rs.open(m)
-				rs.skip()
-				await get_tree().process_frame
-				rs._animate()
-				_fit_one(rs, "%s skala UI %d, %d graczy" % [loc, ui, (squad as Dictionary).size()])
+				for det in [false, true]:
+					ResultScreen.details_pref = det
+					rs.open(m)
+					rs.skip()
+					await get_tree().process_frame
+					rs._animate()
+					_fit_one(rs, "%s skala UI %d, %d graczy, %s" % [loc, ui, (squad as Dictionary).size(), "Szczegóły" if det else "skrót"])
+				ResultScreen.details_pref = false
 	TranslationServer.set_locale(keep_loc)
 	Settings.ui_idx = keep_ui
 	hud._apply_scale()
@@ -374,6 +406,95 @@ func _fit_one(rs: Node, what: String) -> void:
 			break
 	check("mieszczenie %s: panel na ekranie (%s w %s), %d wystających" % [what, pr, vp.size, bad.size()] + ("" if bad.is_empty() else " — " + ", ".join(bad.slice(0, 3))),
 		on_screen and bad.is_empty())
+
+# ---------------------------------------------------------------- 8. skrót i Szczegóły
+
+## Słowa w widocznych napisach panelu (Label i przyciski) — liczba, którą widzi gracz.
+func _words(rs: Node) -> int:
+	var re := RegEx.new()
+	re.compile("[\\p{L}\\p{N}]+")
+	var n := 0
+	for c in (rs._panel as Control).find_children("*", "Control", true, false):
+		if not (c as Control).is_visible_in_tree():
+			continue
+		var txt := ""
+		if c is Label:
+			txt = (c as Label).text
+		elif c is Button:
+			txt = (c as Button).text
+		n += re.search_all(txt).size()
+	return n
+
+func _texts(rs: Node) -> Array:
+	var out: Array = []
+	for c in (rs._panel as Control).find_children("*", "Control", true, false):
+		if (c as Control).is_visible_in_tree() and (c is Label or c is Button):
+			var s: String = (c as Label).text if c is Label else (c as Button).text
+			if s != "":
+				out.append(s)
+	return out
+
+func _layer_checks() -> void:
+	var rs := _report()
+	if rs == null:
+		return
+	var m: Node = main.mission
+	var keep_stats: Dictionary = m.player_stats.duplicate(true)
+	var keep_loc := TranslationServer.get_locale()
+	m.player_stats = {NoiseMgr.local_id(): {"name": "P1", "call": "macvv", "kills": 40, "downs": 0, "revived": 0, "revives": 0, "escapes": 0, "lures": 1, "noise": 64.0},
+		2: {"name": "P2", "call": "Wilk", "kills": 22, "downs": 0, "revived": 0, "revives": 0, "escapes": 0, "lures": 0, "noise": 12.0},
+		3: {"name": "P3", "call": "Kos", "kills": 9, "downs": 0, "revived": 0, "revives": 0, "escapes": 3, "lures": 0, "noise": 40.0},
+		4: {"name": "P4", "call": "Sowa", "kills": 14, "downs": 0, "revived": 0, "revives": 2, "escapes": 0, "lures": 0, "noise": 30.0}}
+	ResultScreen.details_pref = false
+	for loc in ["en", "pl"]:
+		TranslationServer.set_locale(loc)
+		rs.open(m)
+		rs.skip()
+		await get_tree().process_frame
+		rs._animate()
+		var w: int = _words(rs)
+		var aws := 0
+		for p in Array(rs.model["squad"]):
+			aws += (p["awards"] as Array).size()
+		if w > WORDS_MAX:
+			print("[RESULT-TEST] napisy skrótu: %s" % " | ".join(_texts(rs)))
+		check("skrót %s: %d słów ≤ %d (4 graczy, %d wyróżnień, %d znalezisk)" % [loc, w, WORDS_MAX, aws, (rs.model["finds"] as Array).size()],
+			w <= WORDS_MAX and aws >= 3)
+		rs._age = 1.0
+		rs.press("details")
+		await get_tree().process_frame
+		rs._animate()
+		var wd: int = _words(rs)
+		check("Szczegóły %s: więcej treści niż skrót (%d > %d słów)" % [loc, wd, w], wd > w)
+		ResultScreen.details_pref = false
+	TranslationServer.set_locale(keep_loc)
+	rs.open(m)
+	rs._age = 1.0
+	check("[Szczegóły] w trakcie sekwencji pomija ją, warstwa zostaje skrótem", rs.press("details") == "skipped" and rs.is_done() and not rs.details_shown())
+	await get_tree().process_frame
+	rs._animate()
+	var top0: float = (rs._panel as Control).position.y
+	check("[Szczegóły] po sekwencji przełącza na Szczegóły (rozbicie widać, drużyny nie)", rs.press("details") == "details" and rs.details_shown()
+		and rs._det_box.visible and not rs._sum_box.visible)
+	await get_tree().process_frame
+	rs._animate()
+	check("[Szczegóły] górna krawędź panelu na miejscu (%.0f → %.0f)" % [top0, (rs._panel as Control).position.y], is_equal_approx((rs._panel as Control).position.y, top0))
+	check("[Szczegóły] drugi raz wraca do skrótu", rs.press("details") == "details" and not rs.details_shown() and rs._sum_box.visible)
+	ResultScreen.details_pref = true
+	rs.open(m)
+	check("wybór Szczegółów trwa w sesji: nowy raport w trakcie sekwencji pokazuje skrót", not rs.details_shown())
+	rs.skip()
+	check("… a po sekwencji Szczegóły", rs.details_shown())
+	ResultScreen.details_pref = false
+	var keys: Array = []
+	for e in InputMap.action_get_events("result_details") if InputMap.has_action("result_details") else []:
+		if e is InputEventKey:
+			keys.append(maxi(int((e as InputEventKey).physical_keycode), int((e as InputEventKey).keycode)))
+		elif e is InputEventJoypadButton:
+			keys.append(-1 - int((e as InputEventJoypadButton).button_index))
+	check("akcja result_details: V, Tab i pad X (%s)" % str(keys), keys.has(KEY_V) and keys.has(KEY_TAB) and keys.has(-1 - JOY_BUTTON_X))
+	m.player_stats = keep_stats
+	rs.open(m)
 
 # ---------------------------------------------------------------- 7. wejście
 
