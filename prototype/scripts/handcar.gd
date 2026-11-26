@@ -19,6 +19,7 @@ extends AnimatableBody2D
 const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const Interact := preload("res://scripts/interact.gd")
 
 const HALF_W := 44.0                 ## połowa długości pokładu
 const LANTERN := Vector2(-HALF_W + 4.7, -28.0)   ## środek szkła latarni modelu 3D (słupek na lewym końcu pokładu) względem węzła
@@ -64,6 +65,7 @@ var _hd_lever: ItemsHd.ItemMark              ## HD: dźwignia pompy (kiwa się)
 
 func _ready() -> void:
 	add_to_group("handcar")
+	add_to_group(Interact.GROUP)
 	z_index = 3
 	collision_layer = 0              # bez kolizji: pokład jest równo z torem, pasażerów wozi _carry_riders
 	collision_mask = 0
@@ -111,6 +113,12 @@ func _init_track() -> void:
 		return
 	end_x = (lvl.exits[0] as Vector2).x + EXIT_GAP
 	_inited = true
+
+## Oferta [E] (interact.gd): pompowanie, gdy gracz stoi na zasilonej drezynie, która jeszcze nie dojechała.
+func interact_offer(me: Node2D) -> Dictionary:
+	if me.dead or not enabled or arrived or not aboard(me):
+		return {}
+	return Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_PUMP, true, Rect2(global_position + Vector2(-HALF_W, -14.0), Vector2(HALF_W * 2.0, 14.0)), -1.0, 0.0)
 
 func aboard(p: Node2D) -> bool:
 	if not (absf(p.global_position.x - global_position.x) <= HALF_W - 4.0 and p.global_position.y <= global_position.y + 6.0 \
@@ -174,7 +182,7 @@ func _update_local() -> void:
 			local_state = ""
 		elif aboard(me):
 			local_state = "aboard"
-			if Input.is_action_pressed("interact") and me.revive_hint() == "":
+			if Interact.held(self):                        # pierwszeństwo (ratowanie kolegi) rozstrzyga interact.gd
 				want = true
 				local_state = "pumping"
 		elif near:

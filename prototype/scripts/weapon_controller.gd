@@ -25,6 +25,8 @@ const Ammo := preload("res://scripts/ammo.gd")
 const Parts := preload("res://scripts/parts.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Motion := preload("res://scripts/weapon_motion.gd")
+const Interact := preload("res://scripts/interact.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 enum State { READY, DRAW, RELOAD, CHARGE, MELEE }
 
@@ -129,6 +131,7 @@ var slot := 0
 var inspect_item: Node2D               ## lokalnie: broń w oględzinach ([H]; widok z oczu gracza i panel HUD)
 var inspect_slot := 0                  ## docelowy slot broni głównej w oględzinach
 var _inspect_hp := 0.0                 ## zdrowie w chwili otwarcia oględzin (spadek je zamyka)
+var _pad_look_t := -1.0                ## pad bez przycisku oględzin: jak długo trzymane [B] przy broni (−1 — nie liczymy; Actions.inspect_by_hold)
 var mags: Dictionary = {}
 var burst_on: Dictionary = {}     ## id broni → true: wybrany tryb serii (klawisz B; lokalnie, serwer go nie potrzebuje)
 var loaded: Dictionary = {}       ## id broni → typ naboju w magazynku (ammo.gd; brak wpisu = zwykły) — właściciel magazynka, jak `mags`
@@ -1756,13 +1759,35 @@ func _tick_inspect() -> void:
 			inspect_slot = 0
 		elif Input.is_action_just_pressed("menu_slot_2"):
 			inspect_slot = 1
+	# [E] dotyczy broni tylko wtedy, gdy broń jest celem interakcji (interact.gd): ratowanie kolegi i drezyna mają pierwszeństwo,
+	# a stanowiska i prace w misji ustępują broni
+	var tgt := Interact.target(player)
+	var e_on_weapon: bool = tgt != null and tgt.is_in_group("pickups") and Interact.pressed(tgt)
+	# pad bez przycisku oględzin (Classic): krótkie [B] bierze broń, przytrzymanie Actions.INSPECT_HOLD_S otwiera oględziny (INTERACT_PLAN.md I4)
+	var pad_look: bool = inspect_item == null and not it.has_meta("cabinet") and Actions.inspect_by_hold() and tgt != null and tgt.is_in_group("pickups")
+	if not pad_look:
+		_pad_look_t = -1.0
 	if Input.is_action_just_pressed("inspect_weapon"):
 		var opening: bool = inspect_item == null or not (inspect_item == it or _same_cabinet(inspect_item, it))
 		inspect_item = (_cabinet_start(it) if it.has_meta("cabinet") else it) if opening else null
 		inspect_slot = slot if slot < 2 else 0
 		_inspect_hp = hp_now
 		Audio.play("ui_click", Audio.BUS_UI, -16.0)
-	elif Input.is_action_just_pressed("interact"):
+	elif pad_look:
+		if e_on_weapon:
+			_pad_look_t = 0.0
+		elif _pad_look_t >= 0.0 and Input.is_action_pressed("interact"):
+			_pad_look_t += get_physics_process_delta_time()
+			if _pad_look_t >= Actions.INSPECT_HOLD_S:
+				_pad_look_t = -1.0
+				inspect_item = it
+				inspect_slot = slot if slot < 2 else 0
+				_inspect_hp = hp_now
+				Audio.play("ui_click", Audio.BUS_UI, -16.0)
+		elif _pad_look_t >= 0.0:
+			_pad_look_t = -1.0                          # puszczone przed czasem: zwykłe wzięcie
+			_try_pickup(null)
+	elif e_on_weapon:
 		if inspect_item == null and it.has_meta("cabinet"):
 			inspect_item = _cabinet_start(it)                # gablota: [E] otwiera, dopiero w oględzinach bierze wybraną
 			inspect_slot = slot if slot < 2 else 0

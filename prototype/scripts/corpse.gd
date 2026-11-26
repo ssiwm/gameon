@@ -18,6 +18,7 @@ extends Node2D
 
 const SessionLog := preload("res://scripts/session_log.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Interact := preload("res://scripts/interact.gd")
 
 const SEARCH_TIME := 1.2             ## s trzymania [E] (jak wyjmowanie taśmy, K4b — krócej, bo to tylko kieszenie)
 const REACH_X := 24.0                ## px od środka ciała (ciało ma ok. 26 px długości)
@@ -52,6 +53,7 @@ var _start_ms := 0
 
 func _ready() -> void:
 	add_to_group("corpses")
+	add_to_group(Interact.GROUP)
 
 ## Ciało jest na ziemi: prawdziwe zawsze, Mimik-zwłoki — póki żyje, udaje i leży właśnie w nim (ciało `Y` tylko w solo, gdy Mimik nie stoi).
 func present() -> bool:
@@ -73,6 +75,12 @@ static func pick_mimic(defs: Array, n: int, seed_v: int) -> Array:
 		nests[j] = t
 	return nests.slice(0, mini(n, nests.size()))
 
+## Oferta [E] (interact.gd): przeszukanie ciała, które leży i nie było przeszukane (Mimik-zwłoki oferuje to samo — to jego pułapka).
+func interact_offer(me: Node2D) -> Dictionary:
+	if searched or me.dead or not present() or not _in_reach(me.global_position):
+		return {}
+	return Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_SEARCH, true, Rect2(global_position + Vector2(-14.0, -9.0), Vector2(28.0, 9.0)), progress)
+
 func _in_reach(p: Vector2, mult := 1.0) -> bool:
 	return absf(p.x - global_position.x) <= REACH_X * mult and absf(p.y - global_position.y) <= REACH_Y * mult
 
@@ -88,10 +96,7 @@ func _update_local() -> void:
 	var me := _local_human()
 	var near: bool = me != null and not searched and present() and not me.dead and _in_reach(me.global_position)
 	local_in_range = near
-	var want := false
-	if near and Input.is_action_pressed("interact"):
-		# ratowanie kolegi i podnoszenie broni mają pierwszeństwo przed zwłokami
-		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
+	var want: bool = near and Interact.held(self)          # pierwszeństwo (ratowanie, broń) rozstrzyga interact.gd
 	if want == _holding:
 		return
 	_holding = want

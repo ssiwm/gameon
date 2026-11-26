@@ -31,11 +31,13 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 const Cabinet := preload("res://scripts/cabinet.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Tapes := preload("res://scripts/tapes.gd")
+const Interact := preload("res://scripts/interact.gd")
 
 const HEAL := 1
 const PICK_R := 12.0
 const HURT_RESERVE_R := 120.0     ## ranny w tym promieniu ma pierwszeństwo przed kumulowaniem serc
 const WEAPON_R := 26.0            ## zasięg „E” po broń
+const CAB_H_PX := 25.7            ## wysokość gabloty w px świata (2,1 m — view3d.gd CAB_H) — prostokąt znacznika celu
 const FALL_G := 700.0
 
 const GLOW := {
@@ -113,6 +115,7 @@ func _ready() -> void:
 	# bez filtrowania liniowego: sprite broni 24×9 px rozmywał się przy skalowaniu okna
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	if kind == "weapon":
+		add_to_group(Interact.GROUP)              # broń nie podnosi się sama: [E] (interact.gd → weapon_controller.gd)
 		# tekstury broni wczytujemy przed pierwszym _draw (wczytanie w trakcie rysowania daje biały prostokąt)
 		Sprites.texture(Sprites.DIR + "guns.png")
 		Sprites.texture(Sprites.DIR + "guns_glow.png")
@@ -588,6 +591,28 @@ func _try_cache() -> void:
 	if added > 0:
 		NoiseMgr.add_flare()          # skrzynia z mapy zawiera też flarę
 		_level().take_item(name)
+
+## Oferta [E] (interact.gd): broń w zasięgu ręki. Odległość jak w level.gd `weapon_item_near` (najbliższa broń wygrywa), przy gablocie —
+## od wspólnego punktu interakcji. Broń zablokowana (kryjówka, nie kupiona) zostaje celem — [E] odmawia z komunikatem — ale znacznik
+## jest szary.
+func interact_offer(me: Node2D) -> Dictionary:
+	if kind != "weapon" or me.dead or is_queued_for_deletion() or not in_reach(me):
+		return {}
+	var hand: Vector2 = me.global_position + Vector2(0, -8)
+	var point := global_position + Vector2(0, -6)
+	var box := Rect2(global_position + Vector2(-12.0, -12.0), Vector2(24.0, 11.0))
+	if has_meta("cab_x"):
+		var cx := float(get_meta("cab_x"))
+		point = Cabinet.interaction_point(Vector2(cx, global_position.y + 2))
+		for c in get_tree().get_nodes_in_group("cabinets"):
+			if has_meta("cabinet") and int(c.get("index")) == int(get_meta("cabinet")):
+				var floor_y := (c as Node2D).global_position.y
+				box = Rect2(Vector2(cx - Cabinet.WIDTH_PX * 0.5, floor_y - CAB_H_PX), Vector2(Cabinet.WIDTH_PX, CAB_H_PX))
+				break
+	var lvl := _level()
+	var o := Interact.offer(self, me, Interact.Kind.PRESS, Interact.P_WEAPON, true, box, -1.0, point.distance_to(hand))
+	o["muted"] = lvl != null and lvl.is_locked_item(self)
+	return o
 
 ## Broń leży na ziemi i czeka na E — czy ten gracz stoi dość blisko?
 func in_reach(p: Node2D) -> bool:

@@ -77,6 +77,7 @@ var front_idx := 0                         ## indeks FRONT_NAMES (domyślnie ON)
 var ui_idx := 1
 var cam_idx := 1                       ## zbliżenie kamery: WIDE / NORMAL / CLOSE (CAM_ZOOM) — większe postacie kosztem pola widzenia
 var hints_on := true
+var interact_mark := true               ## znacznik celu [E] w widoku 3D (interact_mark3d.gd, INTERACT_PLAN.md I3)
 ## AI towarzysz (NOBOT_PLAN.md): host może grać bez bota — sam (upadek = wykrwawienie i powrót na start, druga śmierć w próbie = wipe)
 ## albo w dwie osoby. Decyduje host; zmiana tylko w lobby i w kryjówce (`Main.companion_editable`). Dev: `--nobot` (bez zapisu).
 var ai_companion := true
@@ -328,6 +329,10 @@ func cycle_colorblind() -> void:
 
 func toggle_hints() -> void:
 	hints_on = not hints_on
+	_commit()
+
+func toggle_interact_mark() -> void:
+	interact_mark = not interact_mark
 	_commit()
 
 func set_ai_companion(on: bool) -> void:
@@ -604,6 +609,7 @@ func _load_global() -> void:
 		if a.begins_with("--camidx="):
 			cam_idx = clampi(int(a.get_slice("=", 1)), 0, CAM_NAMES.size() - 1)
 	hints_on = bool(cf.get_value("game", "hints", true))
+	interact_mark = bool(cf.get_value("game", "interact_mark", true))
 	ai_companion = bool(cf.get_value("game", "ai_companion", true))
 	fullscreen = bool(cf.get_value("game", "fullscreen", false))
 	res_idx = clampi(int(cf.get_value("game", "res", 0)), 0, RES_LIST.size() - 1)
@@ -646,6 +652,7 @@ func _save() -> void:
 	cf.set_value("game", "ui", ui_idx)
 	cf.set_value("game", "cam", cam_idx)
 	cf.set_value("game", "hints", hints_on)
+	cf.set_value("game", "interact_mark", interact_mark)
 	cf.set_value("game", "ai_companion", ai_companion if _ai_saved == null else bool(_ai_saved))
 	cf.set_value("game", "fullscreen", fullscreen)
 	if _res_dirty:

@@ -195,6 +195,11 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_proportions.gd 2>&1 | tee proportions.log
           grep -a "^PASS" proportions.log
+      - name: Cel interakcji [E] (test_interact.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_interact.gd 2>&1 | tee interact.log
+          grep -a "\[INTERACT\] PASS$" interact.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error" interact.log
       - name: Klasy rzadkości znajdziek (test_loot_rarity.gd)
         run: |
           godot --headless --path prototype -s tools/test_loot_rarity.gd 2>&1 | tee loot-rarity.log

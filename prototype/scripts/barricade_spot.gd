@@ -7,6 +7,7 @@ extends Node2D
 ## serwer sam sprawdza zasięg, życie i koszt; postęp idzie do klientów przez `_sync`. Węzeł stoi przez całą misję — przegroda znika
 ## i wraca, miejsce zostaje. Stopy w (0, 0) jak przegroda.
 
+const Interact := preload("res://scripts/interact.gd")
 const NAIL_TIME := 2.0              ## s trzymania [E] na jedną deskę
 const REACH_X := 30.0               ## px od środka otworu: stoisz tuż obok albo w nim
 const REACH_Y := 20.0
@@ -31,6 +32,14 @@ var _knock_t := 0.0
 
 func _ready() -> void:
 	add_to_group("barricade_spots")
+	add_to_group(Interact.GROUP)
+
+## Oferta [E] (interact.gd): przybijanie deski. Bez desek i złomu albo z czymś w otworze — oferta niemożliwa (pasek akcji podaje powód,
+## znacznik jest szary, [E] trafia do innego celu, jeśli jest).
+func interact_offer(me: Node2D) -> Dictionary:
+	if me.dead or not _in_reach(me.global_position) or local_reason in ["", "full", "invalid"]:
+		return {}
+	return Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_WORK, local_reason == "ok", Rect2(global_position + Vector2(-10.0, -32.0), Vector2(20.0, 32.0)), progress)
 
 func _in_reach(p: Vector2, mult := 1.0) -> bool:
 	return absf(p.x - global_position.x) <= REACH_X * mult and absf(p.y - global_position.y) <= REACH_Y * mult
@@ -52,10 +61,7 @@ func _update_local() -> void:
 	var near: bool = me != null and not me.dead and _in_reach(me.global_position)
 	local_reason = String(get_parent().nail_reason(wall_name)) if near else ""
 	local_in_range = near and local_reason != "full" and local_reason != "invalid"
-	var want := false
-	if local_in_range and local_reason == "ok" and Input.is_action_pressed("interact"):
-		# ratowanie kolegi i podnoszenie broni mają pierwszeństwo przed młotkiem
-		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
+	var want: bool = local_in_range and local_reason == "ok" and Interact.held(self)    # pierwszeństwo rozstrzyga interact.gd
 	if want == _holding:
 		return
 	_holding = want

@@ -39,6 +39,7 @@ const BestiaryWatch := preload("res://scripts/bestiary_watch.gd")
 const RunLog := preload("res://scripts/run_log.gd")
 const WorkshopUi := preload("res://scripts/workshop_ui.gd")
 const Actions := preload("res://scripts/actions.gd")
+const Interact := preload("res://scripts/interact.gd")
 const Captions := preload("res://scripts/captions.gd")
 const W := preload("res://scripts/ui_widgets.gd")
 const HudIcon := preload("res://scripts/hud_icon.gd")
@@ -2214,7 +2215,7 @@ func _fill_brief(info: Dictionary, c := {}) -> void:
 ## Czy lokalny gracz stoi przy ławie warsztatu (kryjówka) i panel jest zamknięty.
 func _near_workshop() -> Node2D:
 	for w in get_tree().get_nodes_in_group("workshop"):
-		if w.local_in_range:
+		if w.local_in_range and Interact.is_target(w):
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
 			return w if ui == null or not ui.is_open() else null
 	return null
@@ -2222,7 +2223,7 @@ func _near_workshop() -> Node2D:
 ## Czy lokalny gracz stoi przy tokarce (kryjówka) i panel jest zamknięty.
 func _near_lathe() -> bool:
 	for w in get_tree().get_nodes_in_group("lathe_bench"):
-		if w.local_in_range:
+		if w.local_in_range and Interact.is_target(w):
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
 			return ui == null or not ui.is_open()
 	return false
@@ -2230,7 +2231,7 @@ func _near_lathe() -> bool:
 ## Czy lokalny gracz stoi przy pracowni (kryjówka, badania) i panel jest zamknięty.
 func _near_lab() -> bool:
 	for w in get_tree().get_nodes_in_group("lab_bench"):
-		if w.local_in_range:
+		if w.local_in_range and Interact.is_target(w):
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
 			return ui == null or not ui.is_open()
 	return false
@@ -2238,7 +2239,7 @@ func _near_lab() -> bool:
 ## Czy lokalny gracz stoi przy stole pirotechnicznym (kryjówka) i panel jest zamknięty.
 func _near_pyro() -> bool:
 	for w in get_tree().get_nodes_in_group("pyro_bench"):
-		if w.local_in_range:
+		if w.local_in_range and Interact.is_target(w):
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
 			return ui == null or not ui.is_open()
 	return false
@@ -2246,7 +2247,7 @@ func _near_pyro() -> bool:
 ## Czy lokalny gracz stoi przy prasie elaboracyjnej (kryjówka, zamówienia amunicji specjalnej) i panel jest zamknięty.
 func _near_press() -> bool:
 	for w in get_tree().get_nodes_in_group("press_bench"):
-		if w.local_in_range:
+		if w.local_in_range and Interact.is_target(w):
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
 			return ui == null or not ui.is_open()
 	return false
@@ -2254,7 +2255,7 @@ func _near_press() -> bool:
 ## Czy lokalny gracz stoi przy stole konserwacji (kryjówka, czyszczenie i części eksploatacyjne) i panel jest zamknięty.
 func _near_service() -> bool:
 	for w in get_tree().get_nodes_in_group("service_bench"):
-		if w.local_in_range:
+		if w.local_in_range and Interact.is_target(w):
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
 			return ui == null or not ui.is_open()
 	return false
@@ -2266,14 +2267,14 @@ func _brief_choices() -> int:
 	if main == null or not main.has_method("campaign_unlocked") or NightShift.active:
 		return 0
 	for b in get_tree().get_nodes_in_group("board"):
-		if b.local_in_range:
+		if b.local_in_range and Interact.is_target(b):
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
 			return main.campaign_unlocked().size() if ui == null or not ui.is_open() else 0
 	return 0
 
 func _near_lockers() -> bool:
 	for w in get_tree().get_nodes_in_group("locker_station"):
-		if w.local_in_range:
+		if w.local_in_range and Interact.is_target(w):
 			var ui := get_tree().get_first_node_in_group("workshop_ui")
 			return ui == null or not ui.is_open()
 	return false
@@ -2381,36 +2382,67 @@ func _dig_prop_zone() -> Node:
 ## K4b: strefa wydobycia, przy której odsłoniętej taśmie stoi lokalny gracz (dig_zone.gd `local_tape`), albo null.
 func _dig_tape_zone() -> Node:
 	for z in get_tree().get_nodes_in_group("dig_zones"):
-		if String(z.local_tape) != "" or bool(z._tape_holding):
+		if (String(z.local_tape) != "" or bool(z._tape_holding)) and Interact.is_target(z):
 			return z
 	return null
 
 ## Generator, przy którym stoi lokalny gracz (misja 1.2) albo null.
 func _near_strongbox() -> Node:
 	for sb in get_tree().get_nodes_in_group("strongboxes"):
-		if bool(sb.get("local_in_range")):
+		if bool(sb.get("local_in_range")) and Interact.is_target(sb):
 			return sb
 	return null
 
 ## Zwłoki (corpse.gd, MIMIC_PLAN.md M4), przy których stoi lokalny gracz, albo null.
 func _near_corpse() -> Node:
 	for cp in get_tree().get_nodes_in_group("corpses"):
-		if bool(cp.get("local_in_range")):
+		if bool(cp.get("local_in_range")) and Interact.is_target(cp):
 			return cp
 	return null
 
 ## Miejsce przybijania desek (barricade_spot.gd, D2b), przy którym stoi lokalny gracz, albo null.
 func _near_barricade() -> Node:
 	for sp in get_tree().get_nodes_in_group("barricade_spots"):
-		if bool(sp.get("local_in_range")):
+		if bool(sp.get("local_in_range")) and Interact.is_target(sp):
 			return sp
 	return null
 
 func _near_generator() -> Node:
 	for g in get_tree().get_nodes_in_group("generators"):
-		if g.local_in_range:
+		if g.local_in_range and Interact.is_target(g):
 			return g
 	return null
+
+## Podpowiedź przy broni na ziemi albo na stojaku. Oględziny: [H] (albo własny klawisz); na padzie bez przycisku oględzin — przytrzymanie
+## interakcji (Actions.inspect_by_hold, INTERACT_PLAN.md I4); bez żadnego przypisania podpowiedź pomija oględziny zamiast „[—]”.
+func _weapon_prompt(it: Node2D) -> String:
+	var nd: RefCounted = Weapons.def(it.arg)
+	var lvl := get_tree().get_first_node_in_group("level")
+	var take_key := Actions.key("interact")
+	var look := "key" if Actions.bound("inspect_weapon") else ("hold" if Actions.inspect_by_hold() else "")
+	var look_key := Actions.key("inspect_weapon") if look == "key" else take_key
+	if lvl != null and lvl.is_locked_item(it):
+		match look:
+			"key":
+				return tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), look_key]
+			"hold":
+				return tr("LOCKED  ·  %s   ·   Hold [%s]  Inspect") % [Scrap.lock_text(it.arg), look_key]
+		return tr("LOCKED  ·  %s") % Scrap.lock_text(it.arg)
+	var wc: Node = _player.weapons
+	if wc.carries(it.arg):
+		match look:
+			"key":
+				return tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key]
+			"hold":
+				return tr("[%s]  Take ammo for %s   ·   Hold [%s]  Inspect") % [take_key, nd.name, look_key]
+		return tr("[%s]  Take ammo for %s") % [take_key, nd.name]
+	var swap_out: String = Weapons.def(wc.loadout[wc.slot if wc.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc.melee_id).name
+	match look:
+		"key":
+			return tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key]
+		"hold":
+			return tr("[%s]  Take %s  (drops %s)   ·   Hold [%s]  Inspect") % [take_key, nd.name, swap_out, look_key]
+	return tr("[%s]  Take %s  (drops %s)") % [take_key, nd.name, swap_out]
 
 ## Pasek kontekstowy: wipe, leżenie, podnoszenie, ekstrakcja.
 ## Kandydaci paska akcji (kanał ACTION): kolejność na liście = waga (pierwszy najważniejszy), każdy z własnym warunkiem. Arbiter (Msg) wybiera
@@ -2453,7 +2485,7 @@ func _prompt_candidates() -> Array:
 			add.call(tr("You were taken — your squad must kill the creature in %ds, or you return to the start without your kit") % ceili(_player.taken_t), _player.taken_t / 20.0, UiTheme.DANGER)
 		else:
 			add.call(tr("You're down — a teammate can revive you (bleeding out in %ds)") % ceili(_player.bleed_left), _player.bleed_left / _player.bleed_time(), UiTheme.DANGER)
-	if _player != null and _player.revive_hint() != "":
+	if _player != null and Interact.is_target(_player) and _player.revive_hint() != "":
 		add.call(_player.revive_hint(), -1.0, UiTheme.OK)
 	if _player != null and _player.gear_text != "":
 		# narzędzia (lewy Alt): apteczka, defibrylator, skaner — podpowiedź albo trwające użycie
@@ -2465,30 +2497,31 @@ func _prompt_candidates() -> Array:
 			"near":
 				add.call(tr("Step onto the handcar"), -1.0, UiTheme.ACCENT)
 			"aboard":
-				add.call(Actions.fmt(tr("Hold [{interact}]  Pump  (you can't shoot while pumping)")), -1.0, UiTheme.ACCENT)
+				if Interact.is_target(car):                 # ratowanie kolegi ma pierwszeństwo (interact.gd)
+					add.call(Actions.fmt(tr("Hold [{interact}]  Pump  (you can't shoot while pumping)")), -1.0, UiTheme.ACCENT)
 			"pumping":
 				add.call(Actions.fmt(tr("Pumping…  release [{interact}] to shoot")), -1.0, UiTheme.OK)
-	if gen != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+	if gen != null and _player != null:
 		if gen.progress > 0.0:
 			add.call(tr("Starting the generator…"), gen.progress, UiTheme.OK)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
 	var box := _near_strongbox()
-	if box != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+	if box != null and _player != null:
 		# sejf (FUN_PLAN.md P2.2): łup za świadomy hałas
 		if box.progress > 0.0:
 			add.call(tr("Prying the strongbox open…  it's loud"), box.progress, UiTheme.ACCENT)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Pry open the strongbox  (LOUD · +%d scrap)")) % int(box.value), -1.0, UiTheme.ACCENT)
 	var body := _near_corpse()
-	if body != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+	if body != null and _player != null:
 		# zwłoki (MIMIC_PLAN.md M4): drobny łup albo nic, cichy szelest
 		if float(body.progress) > 0.0:
 			add.call(tr("Searching the body…"), float(body.progress), UiTheme.OK)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Search the body")), -1.0, UiTheme.OK)
 	var bar := _near_barricade()
-	if bar != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+	if bar != null and _player != null:
 		# barykadowanie (D2b): ile desek już stoi, zapas desek drużyny albo cena w złomie
 		var lvl := get_tree().get_first_node_in_group("level")
 		var have := int(bar.boards())
@@ -2505,20 +2538,22 @@ func _prompt_candidates() -> Array:
 					var cost := (tr("boards: %d") % int(lvl.plank_stock)) if int(lvl.plank_stock) > 0 else (tr("%d scrap") % int(lvl.NAIL_SCRAP))
 					add.call(Actions.fmt(tr("Hold [{interact}]  Board up  %d/%d  (loud · %s)")) % [have, total, cost], -1.0, UiTheme.ACCENT)
 	var tz := _dig_tape_zone()
-	if tz != null and _player != null and _player.weapons.nearby_weapon_item() == null:
+	if tz != null and _player != null:
 		# K4b: taśma odsłonięta w ścianie — dłońmi, bo kilof ją zniszczy (stempel czeka, aż taśma wyjdzie)
 		if bool(tz._tape_holding) and float(tz.tape_progress) > 0.0:
 			add.call(tr("Easing the tape out of the rock…"), float(tz.tape_progress), UiTheme.OK)
 		else:
 			add.call(Actions.fmt(tr("Hold [{interact}]  Take the tape out by hand  (a pick would destroy it)")), -1.0, UiTheme.ACCENT)
 	var dz := _dig_prop_zone() if tz == null else null
-	if dz != null and _player != null and _player.weapons.nearby_weapon_item() == null:
-		# zawał stropu i stemple (kopanie P2d): ostrzeżenie nad głową, stempel za deskę z zapasu drużyny albo złom
+	if dz != null and _player != null:
+		# zawał stropu i stemple (kopanie P2d): ostrzeżenie nad głową, stempel za deskę z zapasu drużyny albo złom. Stempel tylko jako cel
+		# interakcji (interact.gd — broń i ratowanie mają pierwszeństwo); samo ostrzeżenie zawsze.
 		var lvl_z := get_tree().get_first_node_in_group("level")
 		var warned := bool(dz.local_warned)
+		var prop_tgt := Interact.is_target(dz)
 		if bool(dz._prop_holding) and float(dz.prop_progress) > 0.0:
 			add.call(tr("Wedging a prop…  ·  loud"), float(dz.prop_progress), UiTheme.OK)
-		elif String(dz.local_prop) == "ok":
+		elif String(dz.local_prop) == "ok" and prop_tgt:
 			var pcost := (tr("boards: %d") % int(lvl_z.plank_stock)) if int(lvl_z.plank_stock) > 0 else (tr("%d scrap") % int(dz.PROP_SCRAP))
 			if warned:
 				add.call(Actions.fmt(tr("THE CEILING IS GIVING WAY — hold [{interact}]  Prop it  (%s)")) % pcost, -1.0, UiTheme.DANGER)
@@ -2526,7 +2561,7 @@ func _prompt_candidates() -> Array:
 				add.call(Actions.fmt(tr("Wide ceiling — hold [{interact}]  Prop it  (loud · %s)")) % pcost, -1.0, UiTheme.ACCENT)
 		elif warned:
 			add.call(tr("THE CEILING IS GIVING WAY — get out!") + ("  " + tr("(no boards or scrap for a prop)") if String(dz.local_prop) == "nomat" else ""), -1.0, UiTheme.DANGER)
-		elif String(dz.local_prop) == "nomat":
+		elif String(dz.local_prop) == "nomat" and prop_tgt:
 			add.call(tr("Wide ceiling — no boards for a prop (break crates, or carry %d scrap)") % int(dz.PROP_SCRAP), -1.0, UiTheme.MUTED)
 	var workshop := _near_workshop()
 	if workshop != null:
@@ -2557,25 +2592,18 @@ func _prompt_candidates() -> Array:
 		add.call((tr("[%s]  Shooting range  ·  squad record %.2f s") % [Actions.key("interact"), rb]) if rb >= 0.0 else tr("[%s]  Shooting range") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
 	if _player != null and _player.weapons.inspect_item != null:
 		add.call("")                                                      # klawisze są w panelu oględzin
-	if _player != null and _player.weapons.inspect_item == null and _player.weapons.nearby_weapon_item() != null \
+	var weapon_tgt: bool = _player != null and Interact.target(self) != null and Interact.target(self).is_in_group("pickups")
+	if weapon_tgt and _player.weapons.inspect_item == null and _player.weapons.nearby_weapon_item() != null \
 			and _player.weapons.nearby_weapon_item().has_meta("cabinet"):
 		# gablota (1.7.431): [E] ją otwiera — wcześniej podpowiedź i [E] dotyczyły broni najbliższej w poziomie, czyli zależnej od miejsca
 		var lvl_c := get_tree().get_first_node_in_group("level")
 		var cab_rows: Array = lvl_c.cabinet_rows(int(_player.weapons.nearby_weapon_item().get_meta("cabinet"))) if lvl_c != null else []
 		var ready := cab_rows.filter(func(r: Dictionary) -> bool: return not bool(r["locked"]) and String(r["issued"]) == "").size()
 		add.call(tr("[%s]  Open the cabinet  ·  %d of %d ready to take") % [Actions.key("interact"), ready, cab_rows.size()], -1.0, UiTheme.ACCENT)
-	elif _player != null and _player.weapons.nearby_weapon_item() != null:
+	elif weapon_tgt and _player.weapons.nearby_weapon_item() != null:
 		var it: Node2D = _player.weapons.nearby_weapon_item()
-		var nd: RefCounted = Weapons.def(it.arg)
 		var lvl_p := get_tree().get_first_node_in_group("level")
-		if lvl_p != null and lvl_p.is_locked_item(it):
-			add.call(tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), Actions.key("inspect_weapon")], -1.0, UiTheme.MUTED)
-		else:
-			var wc2: Node = _player.weapons
-			var swap_out: String = Weapons.def(wc2.loadout[wc2.slot if wc2.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc2.melee_id).name
-			var take_key := Actions.key("interact")
-			var look_key := Actions.key("inspect_weapon")
-			add.call(tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key] if not wc2.carries(it.arg) else tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key], -1.0, UiTheme.ACCENT)
+		add.call(_weapon_prompt(it), -1.0, UiTheme.MUTED if lvl_p != null and lvl_p.is_locked_item(it) else UiTheme.ACCENT)
 	var dig := _dig_prompt()
 	if dig != "":
 		add.call(dig, -1.0, UiTheme.ACCENT)
@@ -2677,7 +2705,7 @@ func _drive_prompt() -> void:
 ## Drzwi strzelnicy FPP, przy których stoi lokalny gracz (range_door.gd), albo null.
 func _near_range_door() -> Node:
 	for d in get_tree().get_nodes_in_group("range_door"):
-		if bool(d.local_in_range):
+		if bool(d.local_in_range) and Interact.is_target(d):
 			return d
 	return null
 

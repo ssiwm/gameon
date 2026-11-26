@@ -39,6 +39,7 @@ const Vfx := preload("res://scripts/vfx.gd")
 const Combat := preload("res://scripts/combat.gd")
 const Tapes := preload("res://scripts/tapes.gd")
 const Actions := preload("res://scripts/actions.gd")
+const Interact := preload("res://scripts/interact.gd")
 
 const TILE := 16.0
 const CELL := 4.0                     ## px komórki
@@ -241,6 +242,7 @@ static var _jag_noise: FastNoiseLite
 ## kafel mapy (poza strefą) jest bryłą; `zone_solid(c, r) -> bool` — czy kafel strefy był skałą w danych mapy (przed wycięciem).
 func setup(def: Array, solid_at: Callable, zone_solid: Callable) -> void:
 	add_to_group("dig_zones")
+	add_to_group(Interact.GROUP)
 	c0 = int(def[0])
 	r0 = int(def[1])
 	tiles = Vector2i(int(def[2]) - c0 + 1, int(def[3]) - r0 + 1)
@@ -898,6 +900,28 @@ func _collapse_fx(at: Vector2, width: float) -> void:
 
 # ---------------------------------------------------------------- stawianie stempla: peer zgłasza „trzymam”, serwer sprawdza i liczy
 
+## Oferta [E] strefy (interact.gd): odsłonięta taśma (dłońmi) ma pierwszeństwo przed stemplem; stempel bez desek i złomu — oferta
+## niemożliwa (pasek akcji podaje powód). Ostrzeżenie o zawale bez możliwości stempla nie jest ofertą.
+func interact_offer(me: Node2D) -> Dictionary:
+	if me.dead:
+		return {}
+	if local_tape == "ok":
+		var k := tape_find()
+		if k < 0:
+			return {}
+		var at: Vector2 = finds[k]["pos"]
+		var o := Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_TAPE, true, Rect2(at + Vector2(-7.0, -5.0), Vector2(14.0, 10.0)), tape_progress,
+				(me.global_position + Vector2(0, -10)).distance_to(at))
+		o["dx"] = at.x - me.global_position.x
+		return o
+	if local_prop in ["ok", "nomat"]:
+		var feet: Vector2 = me.global_position
+		var o := Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_PROP, local_prop == "ok", Rect2(feet + Vector2(-7.0, -44.0), Vector2(14.0, 44.0)),
+				prop_progress, 0.0)
+		o["dx"] = 0.0
+		return o
+	return {}
+
 func _local_human() -> Node2D:
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.is_bot and p.is_multiplayer_authority() and not p.is_queued_for_deletion():
@@ -923,9 +947,7 @@ func _update_local_prop(delta: float) -> void:
 			if local_warned or (float(sp[1]) > 0.0 and float(sp[0]) >= PROP_HINT * float(sp[1])):
 				var why := prop_reason(feet)
 				local_prop = why if why in ["ok", "nomat"] else ""
-	var want := false
-	if me != null and local_prop == "ok" and local_tape == "" and Input.is_action_pressed("interact"):
-		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
+	var want: bool = me != null and local_prop == "ok" and local_tape == "" and Interact.held(self)    # pierwszeństwo: interact.gd
 	if want == _prop_holding:
 		return
 	_prop_holding = want
@@ -1024,9 +1046,7 @@ func _update_local_tape() -> void:
 	var k := tape_find()
 	if me != null and not me.dead and k >= 0 and int(finds[k]["state"]) == Find.NEAR and tape_reach(me.global_position, finds[k]["pos"]):
 		local_tape = "ok"
-	var want := false
-	if local_tape == "ok" and Input.is_action_pressed("interact"):
-		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
+	var want: bool = local_tape == "ok" and Interact.held(self)          # pierwszeństwo: interact.gd
 	if want == _tape_holding:
 		return
 	_tape_holding = want

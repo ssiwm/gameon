@@ -8,6 +8,7 @@ extends CharacterBody2D
 
 const Weapons := preload("res://scripts/weapons.gd")
 const Actions := preload("res://scripts/actions.gd")
+const Interact := preload("res://scripts/interact.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
@@ -1066,7 +1067,8 @@ func _range_brain(delta: float) -> void:
 # ---------------------------------------------------------------- local input
 
 func _local_brain(delta: float) -> void:
-	var reviving := _handle_revive(delta, Input.is_action_pressed("interact"))
+	# [E] podnosi kolegę tylko wtedy, gdy to on jest celem interakcji (interact.gd — trzymany cel innej akcji nie przechodzi na kolegę)
+	var reviving := _handle_revive(delta, Interact.held(self))
 	is_reviving = reviving
 	var gear_busy := _gear_tick(delta)
 	var busy := reviving or pumping or gear_busy
@@ -1375,7 +1377,7 @@ func _tick_medkit(delta: float, held: bool) -> bool:
 		_med_hold = 0.0                         # oberwał w trakcie — przerwane
 		return false
 	_med_hold += delta
-	gear_text = "Healing %s…" % who
+	gear_text = tr("Healing %s…") % who
 	gear_progress = clampf(_med_hold / float(data["time"]), 0.0, 1.0)
 	if _med_hold >= float(data["time"]):
 		_med_hold = 0.0
@@ -1614,6 +1616,17 @@ func revive_hint() -> String:
 	if t.is_in_group(DOWNED_MIMICS):
 		return tr("Hold [%s] to revive %s") % [Actions.key("interact"), t._beh.down_name()]      # Mimik (M9): jak prawdziwy kolega
 	return tr("Hold [%s] to revive %s") % [Actions.key("interact"), "the bot" if t.is_bot else t.label()]
+
+## Oferta interakcji lokalnego gracza (interact.gd): podnoszenie najbliższego powalonego kolegi albo Mimika udającego kolegę.
+func interact_offer(me: Node2D) -> Dictionary:
+	if me != self or dead:
+		return {}
+	var t := _revive_target()
+	if t == null:
+		return {}
+	var box := Rect2(t.global_position + Vector2(-14.0, -10.0), Vector2(28.0, 10.0))
+	var prog := clampf(_revive_hold / _revive_time(), 0.0, 1.0) if _revive_target_ref == t else -1.0
+	return Interact.offer(t, self, Interact.Kind.HOLD, Interact.P_REVIVE, true, box, prog)
 
 ## Prośba o podniesienie — rozstrzyga właściciel leżącej postaci.
 func request_revive() -> void:

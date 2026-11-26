@@ -358,6 +358,17 @@ static func fmt(template: String) -> String:
 			out = out.replace(token, key(id))
 	return out
 
+## Czy akcja ma teraz wiązanie na bieżącym urządzeniu (`pad_mode`) — albo na wskazanym (`device`).
+static func bound(id: String, device := DEV_AUTO) -> bool:
+	return not _list(id, _device_for([id], device) == DEV_PAD).is_empty()
+
+## Oględziny przytrzymaniem interakcji (INTERACT_PLAN.md I4): gracz na padzie, a `inspect_weapon` nie ma przycisku pada (profil Classic) —
+## krótkie [B] bierze broń, przytrzymanie przez INSPECT_HOLD_S otwiera oględziny.
+const INSPECT_HOLD_S := 0.4
+
+static func inspect_by_hold() -> bool:
+	return pad_mode and not bound("inspect_weapon")
+
 ## Czy podłączony jest pad.
 static func pad_connected() -> bool:
 	return not Input.get_connected_joypads().is_empty()

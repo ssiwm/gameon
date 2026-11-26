@@ -276,6 +276,7 @@ func _build_settings(scroll: ScrollContainer) -> void:
 	_seg(left, tr("Weather effects"), Settings.WEATHER_FX_NAMES, func() -> int: return Settings.weather_fx_idx,
 		func(i: int) -> void: _to_idx(func() -> int: return Settings.weather_fx_idx, Settings.cycle_weather_fx, i, 3))
 	_toggle(left, tr("Tips for new players"), func() -> bool: return Settings.hints_on, Settings.toggle_hints)
+	_toggle(left, tr("Interaction highlight"), func() -> bool: return Settings.interact_mark, Settings.toggle_interact_mark)
 	_seg(left, tr("Sneak key"), ["HOLD", "TOGGLE"], func() -> int: return 1 if Settings.crouch_toggle else 0,
 		func(i: int) -> void:
 			if (i == 1) != Settings.crouch_toggle:
