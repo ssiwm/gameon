@@ -2212,13 +2212,6 @@ func _fill_brief(info: Dictionary, c := {}) -> void:
 		rows.append([Color(0, 0, 0, 0), "+%d more" % extra, "", "see the bestiary (Esc)"])
 	_fill_info(c, "BRIEFING  ·  " + String(info["title"]), "", rows, String(info["brief"]), UiTheme.ACCENT)
 
-## Cel [E] lokalnego gracza (interact.gd, INTERACT_PLAN.md I2), jeśli należy do grupy `group`, albo null. Arbiter rozstrzyga już
-## kolejność i zasięg (oferta obiektu), więc pasek akcji nie powtarza ich dla każdego obiektu osobno; stanowiska kryjówki i tablica
-## nie oferują [E] przy otwartym panelu.
-func _target_in(group: String) -> Node:
-	var t := Interact.target(self)
-	return t if t != null and t.is_in_group(group) else null
-
 ## Pijawka trzymająca teraz kogoś (chwyt, QTE) albo null.
 ## Boss z trwającą falą przypływu (zapowiedź albo wysoka woda) — pasek ostrzeżenia w HUD.
 func _tide_boss() -> Node:
@@ -2326,37 +2319,6 @@ func _dig_tape_zone() -> Node:
 			return z
 	return null
 
-## Podpowiedź przy broni na ziemi albo na stojaku. Oględziny: [H] (albo własny klawisz); na padzie bez przycisku oględzin — przytrzymanie
-## interakcji (Actions.inspect_by_hold, INTERACT_PLAN.md I4); bez żadnego przypisania podpowiedź pomija oględziny zamiast „[—]”.
-func _weapon_prompt(it: Node2D) -> String:
-	var nd: RefCounted = Weapons.def(it.arg)
-	var lvl := get_tree().get_first_node_in_group("level")
-	var take_key := Actions.key("interact")
-	var look := "key" if Actions.bound("inspect_weapon") else ("hold" if Actions.inspect_by_hold() else "")
-	var look_key := Actions.key("inspect_weapon") if look == "key" else take_key
-	if lvl != null and lvl.is_locked_item(it):
-		match look:
-			"key":
-				return tr("LOCKED  ·  %s   ·   [%s]  Inspect") % [Scrap.lock_text(it.arg), look_key]
-			"hold":
-				return tr("LOCKED  ·  %s   ·   Hold [%s]  Inspect") % [Scrap.lock_text(it.arg), look_key]
-		return tr("LOCKED  ·  %s") % Scrap.lock_text(it.arg)
-	var wc: Node = _player.weapons
-	if wc.carries(it.arg):
-		match look:
-			"key":
-				return tr("[%s]  Take ammo for %s   ·   [%s]  Inspect") % [take_key, nd.name, look_key]
-			"hold":
-				return tr("[%s]  Take ammo for %s   ·   Hold [%s]  Inspect") % [take_key, nd.name, look_key]
-		return tr("[%s]  Take ammo for %s") % [take_key, nd.name]
-	var swap_out: String = Weapons.def(wc.loadout[wc.slot if wc.slot < 2 else 0]).name if nd.slot == Weapons.Slot.PRIMARY else Weapons.def(wc.melee_id).name
-	match look:
-		"key":
-			return tr("[%s]  Take %s  (drops %s)   ·   [%s]  Inspect") % [take_key, nd.name, swap_out, look_key]
-		"hold":
-			return tr("[%s]  Take %s  (drops %s)   ·   Hold [%s]  Inspect") % [take_key, nd.name, swap_out, look_key]
-	return tr("[%s]  Take %s  (drops %s)") % [take_key, nd.name, swap_out]
-
 ## Pasek kontekstowy: wipe, leżenie, podnoszenie, ekstrakcja.
 ## Kandydaci paska akcji (kanał ACTION): kolejność na liście = waga (pierwszy najważniejszy), każdy z własnym warunkiem. Arbiter (Msg) wybiera
 ## najwyższą wagę — dawny łańcuch elif jako dane. Pusty tekst też bywa kandydatem: zagłusza niższe wagi (panel oględzin, wipe).
@@ -2366,7 +2328,6 @@ func _prompt_candidates() -> Array:
 		out.append({"text": text, "prog": prog, "col": col, "station": station})
 	var wipe_left: float = get_tree().current_scene.get("wipe_left") if get_tree().current_scene else 0.0
 	var m: Node = get_tree().current_scene.get("mission") if get_tree().current_scene else null
-	var gen := _target_in("generators")
 	var car := get_tree().get_first_node_in_group("handcar")
 	var grab_boss := _grab_boss()
 	var tide_boss := _tide_boss()
@@ -2414,42 +2375,15 @@ func _prompt_candidates() -> Array:
 					add.call(Actions.fmt(tr("Hold [{interact}]  Pump  (you can't shoot while pumping)")), -1.0, UiTheme.ACCENT)
 			"pumping":
 				add.call(Actions.fmt(tr("Pumping…  release [{interact}] to shoot")), -1.0, UiTheme.OK)
-	if gen != null and _player != null:
-		if gen.progress > 0.0:
-			add.call(tr("Starting the generator…"), gen.progress, UiTheme.OK)
-		else:
-			add.call(Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), -1.0, UiTheme.ACCENT)
-	var box := _target_in("strongboxes")
-	if box != null and _player != null:
-		# sejf (FUN_PLAN.md P2.2): łup za świadomy hałas
-		if box.progress > 0.0:
-			add.call(tr("Prying the strongbox open…  it's loud"), box.progress, UiTheme.ACCENT)
-		else:
-			add.call(Actions.fmt(tr("Hold [{interact}]  Pry open the strongbox  (LOUD · +%d scrap)")) % int(box.value), -1.0, UiTheme.ACCENT)
-	var body := _target_in("corpses")
-	if body != null and _player != null:
-		# zwłoki (MIMIC_PLAN.md M4): drobny łup albo nic, cichy szelest
-		if float(body.progress) > 0.0:
-			add.call(tr("Searching the body…"), float(body.progress), UiTheme.OK)
-		else:
-			add.call(Actions.fmt(tr("Hold [{interact}]  Search the body")), -1.0, UiTheme.OK)
-	var bar := _target_in("barricade_spots")
-	if bar != null and _player != null:
-		# barykadowanie (D2b): ile desek już stoi, zapas desek drużyny albo cena w złomie
-		var lvl := get_tree().get_first_node_in_group("level")
-		var have := int(bar.boards())
-		var total := int(lvl.board_total(String(bar.wall_name)))          # tyle desek, ile pasów (kafli) ma otwór (S2)
-		if float(bar.progress) > 0.0:
-			add.call(tr("Nailing a board…  %d/%d  ·  loud") % [have + 1, total], float(bar.progress), UiTheme.OK)
-		else:
-			match String(bar.local_reason):
-				"blocked":
-					add.call(tr("Something is in the opening — can't board it up"), -1.0, UiTheme.MUTED)
-				"nomat":
-					add.call(tr("No boards — break crates for planks (or carry %d scrap)") % int(lvl.NAIL_SCRAP), -1.0, UiTheme.MUTED)
-				_:
-					var cost := (tr("boards: %d") % int(lvl.plank_stock)) if int(lvl.plank_stock) > 0 else (tr("%d scrap") % int(lvl.NAIL_SCRAP))
-					add.call(Actions.fmt(tr("Hold [{interact}]  Board up  %d/%d  (loud · %s)")) % [have, total, cost], -1.0, UiTheme.ACCENT)
+	var tgt := Interact.target(self)
+	if tgt != null and (not is_instance_valid(tgt) or not tgt.is_inside_tree()):
+		tgt = null                                                        # cel zdjęty ze sceny w tej klatce (podniesiona broń u klienta)
+	if tgt != null and _player != null and not tgt.is_in_group("pickups") and tgt.has_method("interact_hint"):
+		# podpowiedź celu [E] (INTERACT_PLAN.md I2): tekst, postęp i kolor podaje sam obiekt (generator, sejf, zwłoki, pusty otwór,
+		# stanowiska kryjówki, tablica, strzelnica) — pasek nie zna ich stanu; broń i gablota niżej (ustępują ostrzeżeniom stropu)
+		var h: Dictionary = tgt.interact_hint(_player)
+		if not h.is_empty():
+			add.call(String(h["text"]), float(h.get("prog", -1.0)), h.get("col", UiTheme.ACCENT), tgt as Node2D if bool(h.get("station", false)) else null)
 	var tz := _dig_tape_zone()
 	if tz != null and _player != null:
 		# K4b: taśma odsłonięta w ścianie — dłońmi, bo kilof ją zniszczy (stempel czeka, aż taśma wyjdzie)
@@ -2476,48 +2410,12 @@ func _prompt_candidates() -> Array:
 			add.call(tr("THE CEILING IS GIVING WAY — get out!") + ("  " + tr("(no boards or scrap for a prop)") if String(dz.local_prop) == "nomat" else ""), -1.0, UiTheme.DANGER)
 		elif String(dz.local_prop) == "nomat" and prop_tgt:
 			add.call(tr("Wide ceiling — no boards for a prop (break crates, or carry %d scrap)") % int(dz.PROP_SCRAP), -1.0, UiTheme.MUTED)
-	var workshop := _target_in("workshop") as Node2D
-	if workshop != null:
-		add.call(tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], -1.0, UiTheme.ACCENT, workshop)
-	if _target_in("lathe_bench") != null:
-		add.call(tr("[%s]  Lathe and grinder  ·  %d schematics") % [Actions.key("interact"), Scrap.schematics.size()], -1.0, UiTheme.ACCENT)
-	var lab := _target_in("lab_bench") != null
-	if lab and Scrap.geodes > 0:                                     # geody z żyły (DIG_LOOT_PLAN.md K4): otwiera się je w karcie pracowni
-		add.call(tr("[%s]  Lab  ·  %d geodes to crack open") % [Actions.key("interact"), Scrap.geodes], -1.0, UiTheme.ACCENT)
-	elif lab:
-		if Scrap.has_lab_weapon():
-			add.call(tr("[%s]  Lab  ·  %d samples  ·  research for special weapons") % [Actions.key("interact"), Scrap.samples], -1.0, UiTheme.ACCENT)
-		else:
-			add.call(tr("[%s]  Lab  ·  %d samples  ·  buy a special weapon at the workshop first") % [Actions.key("interact"), Scrap.samples], -1.0, UiTheme.ACCENT)
-	if _target_in("pyro_bench") != null:
-		add.call(tr("[%s]  Pyrotechnics  ·  grenades, mines, fuses") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
-	if _target_in("press_bench") != null:
-		add.call(tr("[%s]  Reloading press  ·  %d / %d batches ordered") % [Actions.key("interact"), Scrap.orders.size(), Scrap.PRESS_SLOTS], -1.0, UiTheme.ACCENT)
-	if _target_in("service_bench") != null:
-		add.call(tr("[%s]  Maintenance  ·  clean, barrels, springs") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
-	if _target_in("locker_station") != null:
-		add.call(tr("[%s]  Locker  ·  perks and look") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
-	if _target_in("board") != null:                                    # tablica oferuje [E] tylko przy ≥ 2 odblokowanych misjach (board.gd)
-		var brief_opts: int = get_tree().current_scene.campaign_unlocked().size()
-		add.call(tr("[%s]  Change mission  ·  %d unlocked") % [Actions.key("interact"), brief_opts], -1.0, UiTheme.ACCENT)
-	var rdoor := _target_in("range_door")
-	if rdoor != null:
-		var rb := float(rdoor.best())
-		add.call((tr("[%s]  Shooting range  ·  squad record %.2f s") % [Actions.key("interact"), rb]) if rb >= 0.0 else tr("[%s]  Shooting range") % Actions.key("interact"), -1.0, UiTheme.ACCENT)
 	if _player != null and _player.weapons.inspect_item != null:
 		add.call("")                                                      # klawisze są w panelu oględzin
-	var weapon_tgt: bool = _player != null and Interact.target(self) != null and Interact.target(self).is_in_group("pickups")
-	if weapon_tgt and _player.weapons.inspect_item == null and _player.weapons.nearby_weapon_item() != null \
-			and _player.weapons.nearby_weapon_item().has_meta("cabinet"):
-		# gablota (1.7.431): [E] ją otwiera — wcześniej podpowiedź i [E] dotyczyły broni najbliższej w poziomie, czyli zależnej od miejsca
-		var lvl_c := get_tree().get_first_node_in_group("level")
-		var cab_rows: Array = lvl_c.cabinet_rows(int(_player.weapons.nearby_weapon_item().get_meta("cabinet"))) if lvl_c != null else []
-		var ready := cab_rows.filter(func(r: Dictionary) -> bool: return not bool(r["locked"]) and String(r["issued"]) == "").size()
-		add.call(tr("[%s]  Open the cabinet  ·  %d of %d ready to take") % [Actions.key("interact"), ready, cab_rows.size()], -1.0, UiTheme.ACCENT)
-	elif weapon_tgt and _player.weapons.nearby_weapon_item() != null:
-		var it: Node2D = _player.weapons.nearby_weapon_item()
-		var lvl_p := get_tree().get_first_node_in_group("level")
-		add.call(_weapon_prompt(it), -1.0, UiTheme.MUTED if lvl_p != null and lvl_p.is_locked_item(it) else UiTheme.ACCENT)
+	if tgt != null and _player != null and tgt.is_in_group("pickups") and _player.weapons.inspect_item == null:
+		var hw: Dictionary = tgt.interact_hint(_player)                   # broń na ziemi, na stojaku albo gablota (pickup.gd)
+		if not hw.is_empty():
+			add.call(String(hw["text"]), -1.0, hw.get("col", UiTheme.ACCENT))
 	var dig := _dig_prompt()
 	if dig != "":
 		add.call(dig, -1.0, UiTheme.ACCENT)

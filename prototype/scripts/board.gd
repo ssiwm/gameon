@@ -7,6 +7,8 @@ const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Interact := preload("res://scripts/interact.gd")
 const NightShift := preload("res://scripts/night_shift.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const REACH_X := 56.0
 const REACH_Y := 40.0
@@ -21,6 +23,13 @@ func _ready() -> void:
 	if Sprites.newitem and ItemsHd.has("board"):
 		_hd = true                                     # HD: korek w drewnianej ramie, kartki z pinezkami i czerwony sznurek
 		ItemsHd.make("board", self)
+
+## Podpowiedź paska akcji, gdy tablica misji jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	# tablica oferuje [E] tylko przy ≥ 2 odblokowanych misjach (interact_offer)
+	var main := get_tree().current_scene
+	var opts: int = main.campaign_unlocked().size() if main != null and main.has_method("campaign_unlocked") else 0
+	return {"text": tr("[%s]  Change mission  ·  %d unlocked") % [Actions.key("interact"), opts], "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): zmiana misji, gdy kampania ma więcej niż jedną odblokowaną (tak jak podpowiedź w HUD), a panel stanowisk
 ## jest zamknięty.

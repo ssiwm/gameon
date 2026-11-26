@@ -6,6 +6,8 @@ extends Node2D
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const REACH_X := 32.0
 const REACH_Y := 40.0
@@ -42,6 +44,10 @@ func _ready() -> void:
 ## i przygasza tabliczkę (view3d.gd `_sync_dormant`).
 func dormant() -> bool:
 	return not Scrap.lathe_open()
+
+## Podpowiedź paska akcji, gdy tokarka jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	return {"text": tr("[%s]  Lathe and grinder  ·  %d schematics") % [Actions.key("interact"), Scrap.schematics.size()], "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): stanowisko otwiera kartę, gdy gracz stoi w zasięgu, a panel stanowisk jest zamknięty. Ustępuje broni,
 ## ratowaniu i pracom w misji (priorytet P_STATION).

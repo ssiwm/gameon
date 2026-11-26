@@ -12,6 +12,8 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Tapes := preload("res://scripts/tapes.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 ## Stalowa skrzynia sprzętowa zaginionego patrolu (items_proc_bake.py: m_strongbox): zamknięta na kłódkę z łańcuchem; po otwarciu
 ## osobny model z odchylonym wiekiem i pustym wnętrzem. Modele są w naturalnej skali (1 jednostka = 1 piksel świata), stąd skala 1.
@@ -57,6 +59,13 @@ func _ready() -> void:
 	_light.position = Vector2(0, -10)
 	_light.no_shadow = true                               # poświata tuż nad sejfem: z cieniem kładłaby jego powiększony cień na ścianę
 	add_child(_light)
+
+## Podpowiedź paska akcji, gdy sejf jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	# łup za świadomy hałas (FUN_PLAN.md P2.2)
+	if progress > 0.0:
+		return {"text": tr("Prying the strongbox open…  it's loud"), "prog": progress, "col": UiTheme.ACCENT}
+	return {"text": Actions.fmt(tr("Hold [{interact}]  Pry open the strongbox  (LOUD · +%d scrap)")) % value, "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): wyważanie, póki sejf zamknięty, a gracz stoi w zasięgu.
 func interact_offer(me: Node2D) -> Dictionary:

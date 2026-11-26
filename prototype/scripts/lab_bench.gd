@@ -6,6 +6,8 @@ extends Node2D
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 
 const REACH_X := 32.0
 const REACH_Y := 40.0
@@ -43,6 +45,15 @@ func _ready() -> void:
 ## i przygasza tabliczkę (view3d.gd `_sync_dormant`).
 func dormant() -> bool:
 	return not Scrap.lab_open()
+
+## Podpowiedź paska akcji, gdy laboratorium jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	var k := Actions.key("interact")
+	if Scrap.geodes > 0:                                       # geody z żyły (DIG_LOOT_PLAN.md K4): otwiera się je w karcie pracowni
+		return {"text": tr("[%s]  Lab  ·  %d geodes to crack open") % [k, Scrap.geodes], "col": UiTheme.ACCENT}
+	if Scrap.has_lab_weapon():
+		return {"text": tr("[%s]  Lab  ·  %d samples  ·  research for special weapons") % [k, Scrap.samples], "col": UiTheme.ACCENT}
+	return {"text": tr("[%s]  Lab  ·  %d samples  ·  buy a special weapon at the workshop first") % [k, Scrap.samples], "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): stanowisko otwiera kartę, gdy gracz stoi w zasięgu, a panel stanowisk jest zamknięty. Ustępuje broni,
 ## ratowaniu i pracom w misji (priorytet P_STATION).

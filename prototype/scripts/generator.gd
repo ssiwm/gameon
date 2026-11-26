@@ -11,6 +11,8 @@ const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
 const Interact := preload("res://scripts/interact.gd")
+const UiTheme := preload("res://scripts/ui_theme.gd")
+const Actions := preload("res://scripts/actions.gd")
 const HD_SCALE := 0.85               ## model generatora (35 px szeroki) pomniejszony do dawnych ~30 px
 
 signal started(gen: Node)
@@ -53,6 +55,12 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	Audio.stop_loop(name)
+
+## Podpowiedź paska akcji, gdy generator jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
+func interact_hint(_me: Node2D) -> Dictionary:
+	if progress > 0.0:
+		return {"text": tr("Starting the generator…"), "prog": progress, "col": UiTheme.OK}
+	return {"text": Actions.fmt(tr("Hold [{interact}]  Start the generator  (loud)")), "col": UiTheme.ACCENT}
 
 ## Oferta [E] (interact.gd): rozruch, póki generator stoi, a gracz jest w zasięgu.
 func interact_offer(me: Node2D) -> Dictionary:
