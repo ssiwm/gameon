@@ -11,6 +11,7 @@ const Lights := preload("res://scripts/lights.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
 const Tapes := preload("res://scripts/tapes.gd")
+const Interact := preload("res://scripts/interact.gd")
 
 ## Stalowa skrzynia sprzętowa zaginionego patrolu (items_proc_bake.py: m_strongbox): zamknięta na kłódkę z łańcuchem; po otwarciu
 ## osobny model z odchylonym wiekiem i pustym wnętrzem. Modele są w naturalnej skali (1 jednostka = 1 piksel świata), stąd skala 1.
@@ -43,6 +44,7 @@ var _t := 0.0
 
 func _ready() -> void:
 	add_to_group("strongboxes")
+	add_to_group(Interact.GROUP)
 	z_index = 2
 	if ItemsHd.has(MODEL):
 		_hd = ItemsHd.make(MODEL, self, HD_SCALE, 0.15)
@@ -55,6 +57,12 @@ func _ready() -> void:
 	_light.position = Vector2(0, -10)
 	_light.no_shadow = true                               # poświata tuż nad sejfem: z cieniem kładłaby jego powiększony cień na ścianę
 	add_child(_light)
+
+## Oferta [E] (interact.gd): wyważanie, póki sejf zamknięty, a gracz stoi w zasięgu.
+func interact_offer(me: Node2D) -> Dictionary:
+	if opened or me.dead or not _in_reach(me.global_position):
+		return {}
+	return Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_WORK, true, Rect2(global_position + Vector2(-13.0, -20.0), Vector2(26.0, 20.0)), progress)
 
 func _in_reach(p: Vector2, mult := 1.0) -> bool:
 	return absf(p.x - global_position.x) <= REACH_X * mult and absf(p.y - global_position.y) <= REACH_Y * mult
@@ -71,10 +79,7 @@ func _update_local() -> void:
 	var me := _local_human()
 	var near: bool = me != null and not opened and not me.dead and _in_reach(me.global_position)
 	local_in_range = near
-	var want := false
-	if near and Input.is_action_pressed("interact"):
-		# ratowanie kolegi i podnoszenie broni mają pierwszeństwo przed sejfem
-		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
+	var want: bool = near and Interact.held(self)          # pierwszeństwo (ratowanie, broń) rozstrzyga interact.gd
 	if want == _holding:
 		return
 	_holding = want

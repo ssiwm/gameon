@@ -11,6 +11,7 @@ extends Node2D
 const FpRange := preload("res://scripts/range3d/fp_mode.gd")
 const RangeSim := preload("res://scripts/range3d/range_sim.gd")
 const Weapons := preload("res://scripts/weapons.gd")
+const Interact := preload("res://scripts/interact.gd")
 
 const REACH_X := 34.0
 const REACH_Y := 40.0
@@ -25,6 +26,7 @@ var rejected := 0                     ## serwer: odrzucone wyniki (testy)
 
 func _ready() -> void:
 	add_to_group("range_door")
+	add_to_group(Interact.GROUP)
 	if NoiseMgr.is_server():
 		board = Settings.range_board.duplicate(true)
 		if "--shotrangeboard" in OS.get_cmdline_user_args():             # dev: przykładowa tablica do zrzutów (bez zapisu)
@@ -37,13 +39,19 @@ func _request() -> void:
 	if NoiseMgr.has_network():
 		_request_rpc.rpc_id(1)
 
+## Oferta [E] (interact.gd): wejście na strzelnicę FPP (priorytet P_EXIT — ustępuje broni i stanowiskom).
+func interact_offer(me: Node2D) -> Dictionary:
+	if me.dead or me.get("fp") != null or absf(me.global_position.x - global_position.x) > REACH_X or absf(me.global_position.y - global_position.y) > REACH_Y:
+		return {}
+	return Interact.offer(self, me, Interact.Kind.PRESS, Interact.P_EXIT, true, Rect2(global_position + Vector2(-11.0, -38.0), Vector2(22.0, 38.0)))
+
 func _physics_process(_delta: float) -> void:
 	local_in_range = false
 	var me := _local_player()
 	if me == null or me.get("fp") != null:
 		return
 	local_in_range = absf(me.global_position.x - global_position.x) <= REACH_X and absf(me.global_position.y - global_position.y) <= REACH_Y
-	if local_in_range and Input.is_action_just_pressed("interact"):
+	if local_in_range and Interact.pressed(self):
 		enter(me)
 
 func _local_player() -> Node2D:

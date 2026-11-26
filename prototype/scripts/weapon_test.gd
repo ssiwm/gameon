@@ -3682,6 +3682,18 @@ func _t_pickups() -> void:
 	Input.action_release("inspect_weapon")
 	await wait(0.12)
 	check("drugie H zamyka oględziny", wc.inspect_item == null and wc.loadout[0] == old)
+	# pad bez przycisku oględzin (INTERACT_PLAN.md I4): przytrzymane [B] przez Actions.INSPECT_HOLD_S otwiera oględziny i niczego nie bierze
+	const Actions := preload("res://scripts/actions.gd")
+	Actions.pad_mode = true
+	Input.action_press("interact")
+	await wait(Actions.INSPECT_HOLD_S + 0.25)
+	check("pad: przytrzymane B przy broni otwiera oględziny, bez zamiany", wc.inspect_item != null and wc.loadout[0] == old)
+	Input.action_release("interact")
+	await wait(0.12)
+	check("pad: puszczenie B po otwarciu oględzin nie bierze broni", wc.inspect_item != null and wc.loadout[0] == old)
+	wc.close_inspect()
+	Actions.pad_mode = false
+	await wait(0.12)
 	Input.action_press("interact")
 	await wait(0.12)
 	Input.action_release("interact")

@@ -5,6 +5,7 @@ extends Node2D
 
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
+const Interact := preload("res://scripts/interact.gd")
 
 const REACH_X := 40.0
 const REACH_Y := 40.0
@@ -23,6 +24,7 @@ var local_in_range := false
 
 func _ready() -> void:
 	add_to_group("locker_station")
+	add_to_group(Interact.GROUP)
 	z_index = 0
 	if ResourceLoader.exists(MODEL_CHECK):
 		station_props = MODELS                                # modele 3D (view3d) zamiast przedmiotów HD
@@ -34,6 +36,16 @@ func _ready() -> void:
 			add_child(holder)
 			ItemsHd.make("locker", holder)                     # widok 3D zamienia przedmiot HD na model art/items3d/locker.glb
 
+## Oferta [E] (interact.gd): stanowisko otwiera kartę, gdy gracz stoi w zasięgu, a panel stanowisk jest zamknięty. Ustępuje broni,
+## ratowaniu i pracom w misji (priorytet P_STATION).
+func interact_offer(me: Node2D) -> Dictionary:
+	if me.dead or absf(me.global_position.x - global_position.x) > REACH_X or absf(me.global_position.y - global_position.y) > REACH_Y:
+		return {}
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	if ui != null and ui.is_open():
+		return {}
+	return Interact.offer(self, me, Interact.Kind.PRESS, Interact.P_STATION, true, Rect2(global_position + Vector2(-16.0, -36.0), Vector2(32.0, 36.0)))
+
 func _physics_process(_delta: float) -> void:
 	local_in_range = false
 	var me: Node2D = null
@@ -44,7 +56,7 @@ func _physics_process(_delta: float) -> void:
 	if me == null:
 		return
 	local_in_range = absf(me.global_position.x - global_position.x) <= REACH_X and absf(me.global_position.y - global_position.y) <= REACH_Y
-	if local_in_range and Input.is_action_just_pressed("interact"):
+	if local_in_range and Interact.pressed(self):
 		var ui := get_tree().get_first_node_in_group("workshop_ui")
 		if ui != null and not ui.is_open():
 			ui.open("locker")

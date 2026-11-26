@@ -23,6 +23,28 @@ zamianie ADS z RT jest odrzucane, ponieważ strzał i krzyk działałyby równoc
   celowania, a nie surowego odczytu kontrolera nr 0.
 - Podparcie na strzelnicy ma osobne HOLD/TOGGLE, niezależne od skradania. Zmiana stanowiska/nakładka zeruje Toggle.
 
+## Cel interakcji [E] (od 1.7.691, `INTERACT_PLAN.md`)
+
+Jedno [E] (pad: [B]) robi jedną rzecz. `scripts/interact.gd` co klatkę wybiera cel lokalnego gracza spośród ofert obiektów: najpierw
+możliwe, potem priorytet, potem odległość (przy różnicy < 4 px — strona, w którą patrzy postać). Cel trzymanego [E] nie zmienia się
+do puszczenia klawisza. Pasek akcji i znacznik 3D pokazują ten sam cel.
+
+| Priorytet | Cel |
+|---|---|
+| 100 | podnoszenie kolegi |
+| 90 | pompowanie drezyny |
+| 80 | broń na ziemi, na stojaku, gablota |
+| 70 / 65 | taśma w ścianie / stempel |
+| 60 | sejf, generator, barykada |
+| 50 | zwłoki |
+| 40 | stanowiska kryjówki |
+| 30 | tablica odprawy, drzwi strzelnicy |
+
+- Znacznik celu: bursztynowe narożniki wokół obiektu w świecie 3D, pasek postępu przy przytrzymaniu, szary, gdy akcja jest niemożliwa
+  (brak desek, broń zablokowana). Opcja „Interaction highlight” w menu pauzy; „Reduce effects” wyłącza oddech jasności.
+- Pad bez przycisku oględzin (Classic): krótkie [B] bierze broń, przytrzymanie [B] 0,4 s otwiera oględziny. Podpowiedź pokazuje
+  „Hold [B]  Inspect”, a bez żadnego przypisania pomija oględziny (bez „[—]”).
+
 ## Profile
 
 Classic jest domyślny i zachowuje dotychczasowy układ z osobnym H. Modern jest opcjonalny:
@@ -40,6 +62,7 @@ Nazwy PlayStation/Nintendo wynikają z nazwy kontrolera zwracanej przez Godota; 
 
 ## Weryfikacja i granice
 
+`tools/test_interact.gd` sprawdza wybór celu [E], obiekty obok siebie, odstępy zasięgów kryjówki i oględziny przytrzymaniem na padzie.
 `tools/test_input_bindings.gd` wykonuje regresje mapy zdarzeń, zapisów, rzeczywistego menu/HUD-u, oględzin i flary.
 `tools/test_controls_render.gd` sprawdza układ polskiego panelu, widoczność przycisków, fokus i działanie przycisków
 edycji; zapisuje zrzut viewportu. Oba testy blokują CI. Testy strzelnicy i broni pozostają w dotychczasowym CI.

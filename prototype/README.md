@@ -249,7 +249,13 @@ mapy; brak przypisania na padzie pokazują jako —. Oznaczenia Xbox / PlayStati
 przez sterownik (Steam Input może zgłaszać wirtualny Xbox). Na strzelnicy osobne **Range brace key: HOLD / TOGGLE**
 steruje podparciem broni; zmiana stanowiska lub otwarcie nakładki wyłącza przełączone podparcie.
 
-Regresje: `godot --headless --path prototype -s tools/test_input_bindings.gd` oraz
+**Cel interakcji (od 1.7.691, [`INTERACT_PLAN.md`](../INTERACT_PLAN.md)):** [E] / [B] dotyczy jednego obiektu naraz — wybiera go
+`scripts/interact.gd` z ofert obiektów (`interact_offer`, grupa `interactables`) wg priorytetu i odległości; trzymane [E] zostaje przy
+zaczętej akcji. HUD pokazuje podpowiedź tylko dla celu, widok 3D obrysowuje go narożnikami (`interact_mark3d.gd`, opcja
+„Interaction highlight”). Na padzie bez przycisku oględzin przytrzymanie [B] 0,4 s przy broni otwiera oględziny.
+
+Regresje: `godot --headless --path prototype -s tools/test_input_bindings.gd`,
+`godot --headless --path prototype -s tools/test_interact.gd` oraz
 `xvfb-run godot --path prototype --rendering-driver opengl3 -s tools/test_controls_render.gd`.
 Szczegóły zakresu i ograniczeń: [`CONTROLS.md`](CONTROLS.md).
 

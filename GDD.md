@@ -108,10 +108,16 @@ trudniejsze z założenia mapy, a nie ze skalowania z postępem (skaluje tylko N
 | Przedmiot (granat, mina, apteczka…) / zmiana przedmiotu | lewy Alt (rzut przy puszczeniu; Alt+Tab nie rzuca) / X | RB / D-pad ↑ |
 | Flara | F | D-pad → |
 | Latarka | L | D-pad ← |
-| Interakcja / dźwiganie | E | B |
+| Interakcja / dźwiganie (jeden cel naraz, od 1.7.691) | E | B |
+| Oględziny broni | H | — (Classic: przytrzymaj B przy broni) |
 | **Krzyk** (także mikrofon, jeśli włączony) | G | LT |
 
 Tabela opisuje stan gry; źródłem prawdy jest rejestr `prototype/scripts/actions.gd`, a gracz może zmienić przypisania w ustawieniach.
+
+**Cel interakcji (od 1.7.691, `INTERACT_PLAN.md`):** przy kilku obiektach w zasięgu [E] dotyczy jednego — ważniejszego (podnoszenie kolegi >
+drezyna > broń > taśma i stempel > sejf, generator, barykada > zwłoki > stanowiska kryjówki > tablica i drzwi strzelnicy), a przy równej
+wadze bliższego. Trzymane [E] zostaje przy tym, co się zaczęło. Wybrany obiekt ma w świecie bursztynowe narożniki (szare, gdy akcja jest
+niemożliwa), a przy przytrzymaniu pasek postępu; opcja „Interaction highlight” w menu pauzy.
 Ping drużyny i radio z pierwotnego projektu nie są zaimplementowane.
 
 **Ruch:** bieg, sprint, kucanie (hałas 0), wspinaczka po drabinach, chwyt krawędzi, unik w bok (i-frames 0.2 s), spadanie z platform.

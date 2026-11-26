@@ -35,6 +35,8 @@ const SessionLog := preload("res://scripts/session_log.gd")
 const GunModel := preload("res://scripts/gun_model.gd")
 const Parts := preload("res://scripts/parts.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
+const Interact := preload("res://scripts/interact.gd")
+const InteractMark := preload("res://scripts/interact_mark3d.gd")
 const HubSigns := preload("res://scripts/hub_signs.gd")
 const Weather := preload("res://scripts/weather.gd")
 const WeatherClock := preload("res://scripts/weather_clock.gd")
@@ -284,6 +286,7 @@ var _scan_t := 0.0
 var _spawn_burst_until := 2.0           ## s `_life`: do tej chwili modele wrogów powstają bez limitu (start widoku, nowa mapa)
 var _life := 0.0
 var _saved := false
+var _imark: MeshInstance3D                 ## znacznik celu [E] (interact_mark3d.gd), tworzony w `_sync_interact_mark`
 var label_fade := 1.0                     ## 1 = paski i plakietki nad postaciami widoczne; gasną w widoku z oczu (oględziny, strzelnica)
 var _bars_layer: CanvasLayer              ## warstwa ekranu z paskami życia i plakietkami (world_bars.gd), tuż pod HUD-em
 
@@ -622,6 +625,7 @@ func _tick(delta: float) -> void:
 	_tick_dig_drips(delta)
 	_sync_items()
 	_sync_loot_glints()
+	_sync_interact_mark(delta)
 	tp = _tp("items", tp)
 	if warm == 1:
 		return
@@ -9232,6 +9236,19 @@ func _sync_items() -> void:
 const LOOT_GLINT_UP := 7.0                  ## iskra tyle px nad stopami przedmiotu
 const LOOT_GLINT_Z := 0.18                  ## przed przedmiotem [m]
 var _loot_glints := {}                      ## id pickupu → [pickup, MeshInstance3D, faza]
+
+## Znacznik celu [E] lokalnego gracza (INTERACT_PLAN.md I3, interact_mark3d.gd): narożniki wokół obiektu wybranego przez interact.gd.
+## Wyłączony opcją „Interaction highlight”, w oględzinach broni (widok z oczu) i na strzelnicy; „Reduce effects” zatrzymuje oddech jasności.
+func _sync_interact_mark(delta: float) -> void:
+	if _world == null or not is_instance_valid(_world):
+		return
+	if _imark == null or not is_instance_valid(_imark) or _imark.get_parent() != _world:
+		_imark = InteractMark.new()
+		_imark.name = "InteractMark"
+		_world.add_child(_imark)
+	var tgt := Interact.target(self)
+	var show: bool = Settings.interact_mark and _fp <= 0.0 and _rp <= 0.0
+	_imark.tick(delta, tgt, Interact.current(self) if tgt != null else {}, show, Settings.reduce_fx)
 
 func _sync_loot_glints() -> void:
 	var t := float(Time.get_ticks_msec()) * 0.001

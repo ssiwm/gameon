@@ -10,6 +10,7 @@ const Lights := preload("res://scripts/lights.gd")
 const Sprites := preload("res://scripts/sprites.gd")
 const ItemsHd := preload("res://scripts/items_hd.gd")
 const SmokeCloud := preload("res://scripts/smoke_cloud.gd")
+const Interact := preload("res://scripts/interact.gd")
 const HD_SCALE := 0.85               ## model generatora (35 px szeroki) pomniejszony do dawnych ~30 px
 
 signal started(gen: Node)
@@ -41,6 +42,7 @@ var _hd: ItemsHd.ItemMark                    ## grafika HD (Sprites.newitem): mo
 
 func _ready() -> void:
 	add_to_group("generators")
+	add_to_group(Interact.GROUP)
 	z_index = 2
 	if Sprites.newitem and ItemsHd.has("generator"):
 		_hd = ItemsHd.make("generator", self, HD_SCALE)
@@ -51,6 +53,12 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	Audio.stop_loop(name)
+
+## Oferta [E] (interact.gd): rozruch, póki generator stoi, a gracz jest w zasięgu.
+func interact_offer(me: Node2D) -> Dictionary:
+	if running or me.dead or not _in_reach(me.global_position):
+		return {}
+	return Interact.offer(self, me, Interact.Kind.HOLD, Interact.P_WORK, true, Rect2(global_position + Vector2(-16.0, -26.0), Vector2(32.0, 26.0)), progress)
 
 func _in_reach(p: Vector2, mult := 1.0) -> bool:
 	return absf(p.x - global_position.x) <= REACH_X * mult and absf(p.y - global_position.y) <= REACH_Y * mult
@@ -67,10 +75,7 @@ func _update_local() -> void:
 	var me := _local_human()
 	var near: bool = me != null and not running and not me.dead and _in_reach(me.global_position)
 	local_in_range = near
-	var want := false
-	if near and Input.is_action_pressed("interact"):
-		# ratowanie kolegi i podnoszenie broni mają pierwszeństwo przed generatorem
-		want = me.revive_hint() == "" and me.weapons.nearby_weapon_item() == null
+	var want: bool = near and Interact.held(self)          # pierwszeństwo (ratowanie, broń) rozstrzyga interact.gd
 	if want == _holding:
 		return
 	_holding = want
