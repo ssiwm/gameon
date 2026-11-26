@@ -61,7 +61,7 @@ jobs:
           grep -a "\[DESTRUCTION-TEST\] ==== PASS" destructiontest.log
       - name: Strefy wydobycia — kopanie, materiały, narzędzia, nawigacja, wybuch, migawka i wipe (--digtest)
         run: |
-          godot --headless --path prototype -- --host --nobot --mission=t_dig --digtest --autoquit=300 2>&1 | tee digtest.log
+          godot --headless --path prototype -- --host --nobot --mission=t_dig --digtest --autoquit=400 2>&1 | tee digtest.log
           grep -a "\[DIG-TEST\] ==== PASS" digtest.log
       - name: Taśmy — znajdźki fabularne, archiwum profilu, karta ARCHIWUM (--tapetest)
         run: |

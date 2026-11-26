@@ -159,7 +159,21 @@ var grab_victim: Node2D = null          ## serwer: cel zapowiedzi albo chwycony
 var grab_spot := Vector2.INF            ## serwer: miejsce chwytu (stopy celu w chwili zapowiedzi)
 var grab_t := 0.0                       ## serwer: s do końca zapowiedzi / chwytu
 var grab_done := false                  ## serwer: w tym zanurzeniu już chwytał (albo zapowiadał)
-var grab_on := true                     ## testy sprzed L2 (dig_test.gd K3d, L0, L1) wyłączają chwyt — sprawdzają zwykłe wynurzenie
+var grab_on := true                     ## testy sprzed L2 (dig_test.gd K3d, L0, L1) wyłączają chwyt i podkop — sprawdzają zwykłe wynurzenie
+
+## Podkop stropu (LUPACZ_PLAN.md L3, D5–D6): zanurzony, do poczutego gracza stojącego w strefie pod stropem (`roof_over`) — zamiast chwytu
+## podkopuje przęsło (`DigZone.force_warn`, raz na FORCED_CD s w strefie): nad celem albo (CUT_CHANCE) CUT_DIST px za nim, między nim
+## a wejściem strefy (odcięcie; gruz to żwir, kilof ma każdy). Ostrzeżenie trwa UNDERMINE_WARN s × trudność —
+## krócej niż klinowanie stempla (2,5 s), więc zdąży tylko ten, kto już klinuje albo ma kolegę; poza tym trzeba wybiec spod przęsła.
+## Zawał przez zwykły `_collapse` (gruz, −1 serce, wyjście na wierzch z ogłuszeniem). W tym zanurzeniu już nie chwyta (jedna zdolność).
+## Zawał, który przygniata Łupacza na powierzchni, zrywa mu płytę i ogłusza CRUSH_STAGGER s zamiast zabijać (bez płyt — ginie jak dotąd).
+const UNDERMINE_WARN := 2.0
+const CUT_CHANCE := 0.5
+const CUT_DIST := 44.0                  ## px: środek odcięcia od stóp celu…
+const CUT_HALF := 24.0                  ## …i połowa jego przęsła — sam cel stoi poza nim
+const CRUSH_STAGGER := 2.0
+var undermines := 0                     ## serwer: podkopy od wczytania (test)
+var cut_roll := -1.0                    ## test: 0 — nad celem, 1 — odcięcie; < 0 — losowo
 var last_grab := Vector2.INF
 var exposed_t := 0.0                    ## serwer: s odsłoniętego łba po uniku albo uwolnieniu
 var grabs := 0                          ## serwer: chwyty od wczytania (test)
@@ -244,6 +258,15 @@ func intact() -> int:
 
 func absorb(info: Dictionary, dmg: float) -> float:
 	var t := String(info.get("type", "bullet"))
+	if bool(info.get("crush", false)) and intact() > 0:
+		for i in PLATES:                                     # zawał: płyta od karku bierze ciężar, Łupacz ogłuszony (D6)
+			if plates[i] > 0.0:
+				_break(i, "crush", -1)
+				break
+		e._stagger = maxf(e._stagger, CRUSH_STAGGER)
+		exposed_t = maxf(exposed_t, CRUSH_STAGGER)
+		info["shell"] = true
+		return 0.0
 	if t == "blast":
 		if intact() == 0:
 			return dmg
@@ -353,7 +376,9 @@ func _tick_under(delta: float) -> void:
 		_tick_grab(delta)
 	elif e._sp == SP_UNDER:
 		var who: Node2D = _rise_target() if sub_t >= SUB_TIME else null
-		if who != null and grab_on and _grabbable(who):
+		if who != null and grab_on and not grab_done and _try_undermine(who):
+			pass
+		elif who != null and grab_on and _grabbable(who):
 			_begin_grab_warn(who)
 		elif who != null:
 			var dir := Vector2(signf(who.global_position.x - e.global_position.x), 0.0)
@@ -397,6 +422,40 @@ func _rise_target() -> Node2D:
 		if best == null or pn.global_position.distance_to(felt_pos) < best.global_position.distance_to(felt_pos):
 			best = pn
 	return best
+
+## Serwer: podkop przęsła nad graczem `who` albo za nim (odcięcie). True — ostrzeżenie trwa.
+func _try_undermine(who: Node2D) -> bool:
+	var feet: Vector2 = who.global_position
+	if not bool(sub_zone.roof_over(feet)) or not (sub_zone.rect_px() as Rect2).has_point(feet + Vector2(0.0, -4.0)):
+		return false
+	var diff := _autoload("Difficulty")
+	var warn_s := UNDERMINE_WARN * (float(diff.m("enemy_windup")) if diff != null else 1.0)
+	var cut: bool = randf() < CUT_CHANCE if cut_roll < 0.0 else cut_roll >= 0.5
+	var at := feet + Vector2(_exit_side(feet) * CUT_DIST, 0.0) if cut else feet
+	var why := String(sub_zone.force_warn(at, "lupacz", warn_s, CUT_HALF if cut else sub_zone.FORCED_HALF))
+	if why != "" and cut:
+		cut = false                                          # za nim nie ma stropu (wylot chodnika) — nad celem
+		at = feet
+		why = String(sub_zone.force_warn(at, "lupacz", warn_s))
+	if why != "":
+		return false
+	undermines += 1
+	grab_done = true
+	sub_t = 0.0
+	var log_s: GDScript = load(SESSION_LOG_PATH)
+	log_s.event("mole_undermine", {"to": _who(who), "where": "cut" if cut else "over", "pos": log_s.xy(at), "warn": snappedf(warn_s, 0.1), "under": snappedf(under_t, 0.1)})
+	log_s.note_mole("undermines")
+	e.behavior_fx("roof:%d:%d" % [roundi(at.x), roundi(at.y - 24.0)])
+	return true
+
+## Strona (±1) wyjścia ze strefy zanurzenia od `feet`: ku wejściu strefy (`DigZone.entrance`, znak z kilofem), a bez niego ku bliższemu
+## pionowemu brzegowi strefy.
+func _exit_side(feet: Vector2) -> float:
+	var en: Dictionary = sub_zone.entrance()
+	if not en.is_empty() and absf(float(en["wall_x"]) - feet.x) > 4.0:
+		return signf(float(en["wall_x"]) - feet.x)
+	var r: Rect2 = sub_zone.rect_px()
+	return -1.0 if feet.x - r.position.x < r.end.x - feet.x else 1.0
 
 ## Czy stopy `feet` stoją na skale strefy `zone` (nie na deskach, pomoście, betonie ani nad pustką wykopu).
 static func feet_on_zone(zone, feet: Vector2) -> bool:
@@ -747,6 +806,12 @@ func fx(event: String) -> void:
 		return
 	if event.begins_with("gwarn:") or event == "grab" or event == "gdodge" or event == "gfree":
 		_grab_fx(event)
+		return
+	if event.begins_with("roof:"):
+		var xy := event.split(":")                           # podkop: drapanie pazurów w stropie nad przęsłem (dźwięk z góry)
+		var au := _autoload("Audio")
+		if au != null:
+			au.play_variant_at("claw_scrape", 3, Vector2(float(xy[1]), float(xy[2])), au.BUS_WORLD, 0.0, randf_range(0.85, 0.95))
 		return
 	if event == "ore":
 		var msg := _autoload("Msg")

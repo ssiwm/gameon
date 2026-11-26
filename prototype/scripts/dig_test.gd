@@ -114,6 +114,10 @@ func run(m: Node2D) -> void:
 		await _grab_l2()
 		_finish()
 		return
+	if "--digonly=undermine" in OS.get_cmdline_user_args():  # podkop stropu (LUPACZ_PLAN.md L3)
+		await _undermine_l3()
+		_finish()
+		return
 	check("kafle stref są na starcie bryłą dla nawigacji (%d kafli: 80 + 48 + 48 + 16 — komora DigZone4 to powietrze)" % dig0, dig0 == 192 and level._is_solid(5, 12) and level._is_solid(33, 12))
 	await _surface()
 	await _pit()
@@ -134,6 +138,7 @@ func run(m: Node2D) -> void:
 	await _resurface_l0()
 	await _tremor_l1()
 	await _grab_l2()
+	await _undermine_l3()
 	await _minimap_k5()
 	await _chamber_k5b()
 	await _signals()
@@ -732,6 +737,169 @@ func _grab_setup(x: float) -> Node2D:
 func _dig_until(mole: Node2D, states: Array, limit := 6.0) -> float:
 	var t := 0.0
 	while t < limit and not (int(mole._sp) in states):
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+		_tremor_every(t, 0.45, "dig")
+	return t
+
+## LUPACZ_PLAN.md L3: zanurzony Łupacz pod kopiącym w chodniku pod stabilnym stropem (skała) podkopuje przęsło — nad nim albo za nim
+## (odcięcie, gracz poza przęsłem); ostrzeżenie 2 s, podpowiedź stempla, zawał przez zwykły `_collapse` (−1 serce); stempel odwołuje
+## podkop i blokuje następny; przerwa 30 s w strefie; zawał na Łupaczu zrywa płytę i ogłusza zamiast zabijać (D6). Dziennik `mole_undermine`.
+func _undermine_l3() -> void:
+	var Mole := preload("res://scripts/enemy_mole.gd")
+	SessionLog.enabled = true
+	SessionLog.dir = LOG_DIR
+	SessionLog.mission_start({"map": level.map_id, "test": "lupacz_l3"})
+	var stock0: int = level.plank_stock
+	level.plank_stock = 0
+	var rr: Rect2 = rock.rect_px()
+	var gx := rr.position.x + 64.0                                         # chodnik 112 px, wejście strefy z lewej (wall_x 488)
+	var floor_y := rr.end.y - 6.0
+	# podkop nad celem
+	var mole = await _undermine_setup(gx, floor_y)
+	check("L3: zanurzony Łupacz, gracz w chodniku w skale pod stabilnym stropem (przęseł do zawału: %d)" % rock.unstable_spans().size(),
+		mole != null and int(mole._sp) == Mole.SP_UNDER and rock.unstable_spans().is_empty() and rock.roof_over(player.global_position))
+	if mole == null:
+		SessionLog.enabled = false
+		return
+	var beh = mole._beh
+	beh.cut_roll = 0.0
+	var feet: Vector2 = player.global_position
+	var hp0: int = player.hp
+	var t: float = await _until_warn(mole)
+	var w: Array = (rock.warns[0] as Array).duplicate() if rock.warns.size() == 1 else []
+	var a: float = rock._corner_px(int(w[1]), 0).x + rock.global_position.x if not w.is_empty() else 0.0
+	var b: float = rock._corner_px(int(w[2]), 0).x + rock.global_position.x if not w.is_empty() else 0.0
+	await _frames(0.3)
+	check("L3: kopiącego pod stropem podkopuje po %.2f s — ostrzeżenie Łupacza nad nim (%.0f–%.0f px, gracz %.0f), %.1f s, gracz je widzi (%s), Łupacz dalej w skale" % [t, a, b, feet.x, float(w[3]) if not w.is_empty() else -1.0, str(rock.local_warned)],
+		w.size() == 6 and String(w[5]) == "lupacz" and feet.x > a and feet.x < b and absf(float(w[3]) - Mole.UNDERMINE_WARN) < 0.1 and rock.local_warned
+		and int(mole._sp) == Mole.SP_UNDER and int(beh.undermines) == 1)
+	check("L3: drugi podkop w tej strefie dopiero po przerwie (%s)" % rock.force_warn(feet + Vector2(-30.0, 0.0), "test", 2.0), rock.force_warn(feet + Vector2(-30.0, 0.0), "test", 2.0) == "cd")
+	var c0: int = rock.collapses
+	t = 0.0
+	while t < Mole.UNDERMINE_WARN + 0.5 and rock.collapses == c0:
+		await get_tree().physics_frame
+		t += 1.0 / float(Engine.physics_ticks_per_second)
+	var lc: Dictionary = rock.last_collapse
+	check("L3: po %.2f s strop siada nad graczem — zawał %d → %d, −1 serce (%d → %d)" % [t + 0.3, c0, rock.collapses, hp0, player.hp],
+		rock.collapses == c0 + 1 and int(lc.get("hurt", 0)) == 1 and player.hp == hp0 - 1)
+	mole.queue_free()
+	await _frames(1.5)
+	# stempel odwołuje podkop; podparte przęsło Łupacz omija
+	player.hp = player.MAX_HP
+	mole = await _undermine_setup(gx, floor_y)
+	beh = mole._beh
+	beh.cut_roll = 0.0
+	feet = player.global_position
+	level.plank_stock = 2
+	await _until_warn(mole)
+	var warned: bool = rock.warns.size() == 1
+	var placed := String(rock.place_prop(feet))
+	await _frames(0.6)
+	c0 = rock.collapses
+	await _frames(Mole.UNDERMINE_WARN + 0.3)
+	check("L3: stempel pod podkopanym przęsłem (%s) odwołuje ostrzeżenie — strop stoi (ostrzeżeń %d, zawałów %d → %d)" % [placed, rock.warns.size(), c0, rock.collapses],
+		warned and placed == "ok" and rock.warns.is_empty() and rock.collapses == c0)
+	rock.forced_cd = 0.0
+	check("L3: podparte przęsło nie da się podkopać („%s”)" % rock.force_warn(feet + Vector2(6.0, 0.0), "test", 2.0), rock.force_warn(feet + Vector2(6.0, 0.0), "test", 2.0) == "prop")
+	mole.queue_free()
+	await _frames(0.2)
+	# odcięcie: przęsło za graczem, w stronę bliższego brzegu strefy; sam gracz poza nim
+	player.hp = player.MAX_HP
+	level.plank_stock = 0
+	mole = await _undermine_setup(gx, floor_y)
+	beh = mole._beh
+	beh.cut_roll = 1.0
+	feet = player.global_position
+	var side: float = beh._exit_side(feet)
+	await _until_warn(mole)
+	w = rock.warns[0] if rock.warns.size() == 1 else []
+	a = rock._corner_px(int(w[1]), 0).x + rock.global_position.x if not w.is_empty() else 0.0
+	b = rock._corner_px(int(w[2]), 0).x + rock.global_position.x if not w.is_empty() else 0.0
+	var mid := (a + b) * 0.5
+	check("L3: odcięcie — przęsło %.0f–%.0f px po stronie wyjścia (%+.0f), gracz %.0f poza nim" % [a, b, side, feet.x],
+		not w.is_empty() and (mid - feet.x) * side > 30.0 and (feet.x < a - 4.0 or feet.x > b + 4.0))
+	hp0 = player.hp
+	c0 = rock.collapses
+	await _frames(Mole.UNDERMINE_WARN + 0.6)
+	var near_x := feet.x
+	while absf(near_x - feet.x) < 90.0 and not rock.solid_at_px(Vector2(near_x, floor_y - 4.0)):
+		near_x += side * 2.0
+	var gravel_at := Vector2(near_x + side * 3.0, floor_y - 6.0)
+	check("L3: odcięcie siada — chodnik za graczem zasypany żwirem %.0f px od niego (%s), gracz cały (HP %d → %d)" % [absf(near_x - feet.x), rock.material_at_px(gravel_at), hp0, player.hp],
+		rock.collapses == c0 + 1 and player.hp == hp0 and absf(near_x - feet.x) < 70.0 and rock.solid_at_px(gravel_at) and rock.material_at_px(gravel_at) == "gravel")
+	_place_player(Vector2(near_x - side * 9.0, floor_y - 2.0))
+	await _frames(0.3)
+	var cuts := 0
+	for k in 6:
+		player.weapons._server_melee(player.global_position + Vector2(0, -6), Vector2(side, 0.0), pick, player.player_id)
+		cuts += 1
+		await _frames(0.3)
+		if not rock.solid_at_px(gravel_at):
+			break
+	check("L3: odcięcie da się przekopać kilofem (%d ciosów)" % cuts, not rock.solid_at_px(gravel_at))
+	mole.queue_free()
+	await _frames(0.2)
+	# D6: zawał na Łupaczu na powierzchni zrywa płytę i ogłusza, nie zabija
+	rock.reset_to(PackedByteArray())
+	await _frames(0.1)
+	rock.apply_dig(Vector2(gx, floor_y - 9.0), Vector2(40.0, 9.0), 2.0, DigMats.Tool.BLAST)
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	await _frames(0.3)
+	var names: Array = Director.spawn_at(["lupacz"], Vector2(gx, floor_y), Vector2(gx, floor_y))
+	await _frames(MOLE_ENTRY + 0.3)
+	mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	if mole == null:
+		check("L3: Łupacz w chodniku", false)
+		SessionLog.enabled = false
+		return
+	beh = mole._beh
+	beh.sub_cd = 99.0
+	mole.active = false
+	rock.forced_cd = 0.0
+	var why := String(rock.force_warn(mole.global_position, "test", 0.2))
+	var hpm: float = mole.hp
+	await _frames(0.6)
+	check("L3: zawał na Łupaczu (%s) zrywa płytę i ogłusza (płyt %d, chwiej %.1f s, HP %.0f → %.0f, żyje %s)" % [why, beh.intact(), float(mole._stagger), hpm, mole.hp, str(mole.alive)],
+		why == "" and bool(mole.alive) and beh.intact() == Mole.PLATES - 1 and float(mole._stagger) > 1.5 and is_equal_approx(float(mole.hp), hpm))
+	mole.queue_free()
+	await _frames(0.1)
+	SessionLog.mission_end({"result": "test"})
+	var ums: Array = _log_events("mole_undermine").map(func(r: Dictionary) -> String: return String(r["where"]))
+	var by: Array = _log_events("dig_collapse").map(func(r: Dictionary) -> String: return String(r.get("by", "")))
+	var ends := _log_events("mission_end")
+	var sum: Dictionary = (ends[-1] as Dictionary).get("mole", {}) if not ends.is_empty() else {}
+	check("L3: dziennik — mole_undermine gdzie (%s), dig_collapse ze sprawcą (%s), mission_end.mole undermines (%s)" % [str(ums), str(by), str(sum)],
+		ums == ["over", "over", "cut"] and by.slice(0, 2) == ["lupacz", "lupacz"] and int(sum.get("undermines", 0)) == 3)
+	SessionLog.enabled = false
+	level.plank_stock = stock0
+	rock.reset_to(PackedByteArray())
+	player.hp = player.MAX_HP
+	_place_player(Vector2(2.5 * 16.0, TOP - 2.0))
+	await _frames(0.2)
+
+## Chodnik 112 px w skale przy dnie strefy, gracz w nim, zanurzony Łupacz (L3).
+func _undermine_setup(gx: float, floor_y: float) -> Node2D:
+	rock.reset_to(PackedByteArray())
+	level.clear_pickups()
+	await _frames(0.1)
+	rock.apply_dig(Vector2(gx, floor_y - 9.0), Vector2(56.0, 9.0), 2.0, DigMats.Tool.BLAST)
+	_place_player(Vector2(gx + 36.0, floor_y - 2.0))
+	player.hp = player.MAX_HP
+	await _frames(0.4)
+	var rr: Rect2 = rock.rect_px()
+	var names: Array = Director.spawn_at(["lupacz"], Vector2(rr.end.x - 20.0, rr.position.y - 2.0), Vector2(rr.end.x - 20.0, rr.position.y - 2.0))
+	await get_tree().physics_frame
+	var mole = level.get_node_or_null(String(names[0])) if names.size() == 1 else null
+	if mole != null:
+		mole._beh._go_under(rock)
+	return mole
+
+## Kopie w miejscu (drganie co 0,45 s), aż w skale pojawi się ostrzeżenie albo Łupacz zacznie inne wyjście; zwraca czas.
+func _until_warn(mole: Node2D, limit := 6.0) -> float:
+	var Mole := preload("res://scripts/enemy_mole.gd")
+	var t := 0.0
+	while t < limit and rock.warns.is_empty() and int(mole._sp) == Mole.SP_UNDER:
 		await get_tree().physics_frame
 		t += 1.0 / float(Engine.physics_ticks_per_second)
 		_tremor_every(t, 0.45, "dig")
