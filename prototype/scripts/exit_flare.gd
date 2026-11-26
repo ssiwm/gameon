@@ -164,8 +164,8 @@ func _draw() -> void:
 	for p in humans:
 		if not p.dead and _inside(p):
 			inside += 1
-	# kto blokuje wyjście (tylko gdy ktoś już jest w strefie albo licznik biegnie)
-	if prog > 0.001 or inside > 0:
+	# kto blokuje wyjście (tylko gdy ktoś już jest w strefie albo licznik biegnie; po udanej ewakuacji — pod raportem — już nikt)
+	if (prog > 0.001 or inside > 0) and _m.phase == _m.Phase.EXTRACT:
 		for p in humans:
 			if not p.dead and _inside(p):
 				continue

@@ -772,12 +772,15 @@ func _arena_camera(delta: float) -> void:
 		_camera.position = _cam_home
 		_apply_cam_zoom()
 
-const RESULT_CAM_T := 6.5               ## s odjazdu kamery nad drużynę pod raportem po akcji (RESULTS_PLAN.md §15 pomysł 1)
-const RESULT_CAM_ZOOM := 0.8             ## zoom na końcu odjazdu względem ustawienia gracza
+const RESULT_CAM_T := 6.5               ## s ruchu kamery nad drużynę pod raportem po akcji (RESULTS_PLAN.md §15 pomysł 1)
+## Zoom względem ustawienia gracza: kamera zaczyna blisko drużyny i powoli odjeżdża do planu „portretu drużyny” — postacie zajmują ok.
+## 1/5 wysokości ekranu jak w makiecie (przy samym ustawieniu gracza ginęły między kolumnami raportu, 1.7.697: ok. 1/8).
+const RESULT_CAM_ZOOM0 := 1.75
+const RESULT_CAM_ZOOM1 := 1.4
 const RESULT_CAM_R := 160.0              ## px: kto stoi bliżej, ten wchodzi do środka kadru drużyny
-const RESULT_CAM_UP := 10.0              ## px: środek kadru nad stopami drużyny (pod tytułem, nad nieśmiertelnikami)
+const RESULT_CAM_FEET := 0.15            ## stopy drużyny o tyle wysokości kadru pod środkiem (ok. 65% ekranu: nad nieśmiertelnikami)
 var _result_k := -1.0                    ## postęp odjazdu 0..1; −1 = poza raportem
-var _result_at := Vector2.ZERO           ## środek drużyny względem gracza, liczony raz przy otwarciu raportu
+var _result_at := Vector2.ZERO           ## środek drużyny względem gracza (wygładzany — bot dochodzi do dowódcy jeszcze pod raportem)
 
 ## Kamera pod raportem po akcji: powolny odjazd (zoom w dół, ease-out) nad środek drużyny stojącej przy wyjściu, żeby raport był sceną,
 ## a nie tabelą. Tylko lokalnie i tylko u człowieka z aktywną kamerą; „Ogranicz efekty” trzyma kadr bez ruchu. Wyjście z fazy wyniku
@@ -790,25 +793,38 @@ func _result_camera(delta: float) -> void:
 			_result_k = -1.0
 			_camera.position = _cam_home
 			_apply_cam_zoom()
+			_result_view_quality(Settings.cam_zoom())
 		return
 	if not _cam_home.is_finite():
 		_cam_home = _camera.position
+	var sum := Vector2.ZERO
+	var n := 0
+	for p in get_tree().get_nodes_in_group("players"):
+		if p is Node2D and not (p as Node).is_queued_for_deletion() and (p as Node2D).global_position.distance_to(global_position) <= RESULT_CAM_R:
+			sum += (p as Node2D).global_position
+			n += 1
+	var at := (sum / float(n) - global_position) if n > 0 else Vector2.ZERO
 	if _result_k < 0.0:
 		_result_k = 0.0
-		var sum := Vector2.ZERO
-		var n := 0
-		for p in get_tree().get_nodes_in_group("players"):
-			if p is Node2D and not (p as Node).is_queued_for_deletion() and (p as Node2D).global_position.distance_to(global_position) <= RESULT_CAM_R:
-				sum += (p as Node2D).global_position
-				n += 1
-		_result_at = (sum / float(n) - global_position) if n > 0 else Vector2.ZERO
-	if Settings.fx_mult() <= 0.0:
-		return
-	_result_k = minf(1.0, _result_k + delta / RESULT_CAM_T)
+		_result_at = at
+		_result_view_quality(Settings.cam_zoom() * RESULT_CAM_ZOOM0)       # ostrość postaci 3D na zbliżenie (Char3D.ss_for_view)
+	_result_at = _result_at.lerp(at, 1.0 - exp(-2.5 * delta))
+	if Settings.fx_mult() > 0.0:
+		_result_k = minf(1.0, _result_k + delta / RESULT_CAM_T)
+	else:
+		_result_k = 1.0                                                    # „Ogranicz efekty”: od razu kadr końcowy, bez ruchu
 	var k := 1.0 - pow(1.0 - _result_k, 3.0)
-	var z := Settings.cam_zoom() * lerpf(1.0, RESULT_CAM_ZOOM, k)
+	var z := Settings.cam_zoom() * lerpf(RESULT_CAM_ZOOM0, RESULT_CAM_ZOOM1, k)
 	_camera.zoom = Vector2(z, z)
-	_camera.position = _cam_home.lerp(_cam_home + _result_at + Vector2(0.0, -RESULT_CAM_UP), k)
+	var view_h := get_viewport_rect().size.y / maxf(z, 0.01)
+	_camera.position = _result_at + Vector2(0.0, -RESULT_CAM_FEET * view_h)
+
+## Rozdzielczość renderu postaci 3D wszystkich graczy w kadrze raportu (zbliżenie bez rozmycia) i powrót po raporcie.
+func _result_view_quality(zoom: float) -> void:
+	for p in get_tree().get_nodes_in_group("players"):
+		var pc = p.get("c3d")
+		if pc != null and is_instance_valid(pc):
+			pc.apply_view(zoom, float(get_window().size.y))
 
 ## Postęp odjazdu kamery pod raportem (test `--resulttest`): −1 poza raportem.
 func result_cam_k() -> float:
