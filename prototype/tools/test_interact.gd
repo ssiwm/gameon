@@ -236,6 +236,10 @@ func _run() -> void:
 		String(og.get("alt", "?")) == ("inspect_weapon" if A2.bound("inspect_weapon") else "")
 		and bool(og.get("alt_hold", true)) == (String(og["alt"]) == "" and A2.inspect_by_hold())
 		and (oc2.is_empty() or not bool(oc2.get("alt_hold", true)) or not cab_gun.has_meta("cabinet")))
+	cab_gun.set_meta("cabinet", 0)
+	var oc3: Dictionary = cab_gun.interact_offer(me2)
+	_check("gablota: sam klawisz [E] bez [H] (oba otwierają ten sam panel), bez przytrzymania [B]",
+		not oc3.is_empty() and String(oc3.get("alt", "?")) == "" and not bool(oc3.get("alt_hold", true)))
 	cab_gun.free()
 	me2.free()
 
