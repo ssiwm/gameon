@@ -9,6 +9,12 @@ Uruchomienie (z korzenia repo, Blender w PATH):
         inną skalę, inny kierunek „przodu" i inną pozę spoczynkową. Domyślnie klip gra w miejscu; --keep-travel zostawia przemieszczanie się postaci;
         --step-sync (pętle kroku: bieg, chód) zaczyna klip od lądowania prawej stopy, żeby zgadzał się z fazą kroku gry
 
+    blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=PLIK.bvh --range=357:4227 --loop=0.4:1.2 --name=run [--step-sync]
+        mocap BVH (np. 100STYLE, szkielet Xsens; VOICE_MOCAP_PLAN.md B0): --range to klatki źródła (60 kl./s, `Frame_Cuts.csv`),
+        --loop to zakres długości jednej pętli (s) — skrypt sam wybiera w zakresie odcinek z prostym kierunkiem i stałym tempem
+        oraz szew o najmniejszym błędzie pozy (z --step-sync długość pętli to okres kroku z ruchu stóp), obraca klip przodem do +X
+        (średni kierunek miednicy w pętli; --yaw=STOPNIE dokłada obrót) i stawia go na podłodze. Źródła i polecenia klipów gry: `art_src/animations/100style/SOURCE.md`
+
 Źródło klipów gry: `art_src/animations/ual1/` (Quaternius, Universal Animation Library, CC0 — patrz SOURCE.md w tym katalogu), np.
     blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=art_src/animations/ual1/AnimationLibrary_Godot_Standard.glb --map=Sprint_Loop:run --step-sync
 
@@ -158,8 +164,19 @@ def norm(name):
     return "".join(ch for ch in n if ch.isalnum())
 
 
+# Szkielet Xsens (100STYLE): „Shoulder” to ramię, a nie obojczyk — ogólne ALIASES pomyliłyby kości, więc dopasowanie jest stałe.
+XSENS = {"Hips": "Hips", "Spine": "Chest", "Spine1": "Chest2", "Spine2": "Chest4", "Neck": "Neck", "Head": "Head",
+         "LeftShoulder": "LeftCollar", "LeftArm": "LeftShoulder", "LeftForeArm": "LeftElbow", "LeftHand": "LeftWrist",
+         "LeftUpLeg": "LeftHip", "LeftLeg": "LeftKnee", "LeftFoot": "LeftAnkle", "LeftToeBase": "LeftToe"}
+for _k in [k for k in XSENS if k.startswith("Left")]:
+    XSENS["Right" + _k[4:]] = "Right" + XSENS[_k][4:]
+
+
 def bone_map(src_arm):
     """Nasza kość → kość źródła (None, gdy brak). Każda kość źródła najwyżej raz; kolejność aliasów = pierwszeństwo."""
+    names = {b.name for b in src_arm.data.bones}
+    if all(v in names for v in XSENS.values()):
+        return dict(XSENS)
     have = {}
     for b in src_arm.data.bones:
         have.setdefault(norm(b.name), b.name)
@@ -171,8 +188,11 @@ def bone_map(src_arm):
     return out
 
 
-def retarget(src_arm, tgt_arm, action, keep_travel, step_sync):
-    """Przenosi `action` ze szkieletu źródła na nasz; zwraca nową akcję na `tgt_arm`."""
+def retarget(src_arm, tgt_arm, action, keep_travel, step_sync, rng=None, face=False, turn=0.0):
+    """Przenosi `action` ze szkieletu źródła na nasz; zwraca nową akcję na `tgt_arm`.
+    rng: (f0, f1) — wycinek klipu (pętla), zamiast całego zakresu akcji. face (mocap): obrót klipu tak, by średni kierunek miednicy
+    w wycinku patrzył w przód, biodra w środku postaci, podłoga klipu (najniższa kość) na naszej podłodze. turn: dodatkowy obrót klipu
+    wokół pionu (°, dodatni = w lewo) — postój mocap stoi przodem, a poza celowania gry zakłada barki skręcone jak w postoju UAL."""
     Z = Vector((0, 0, 1))
     sc = bpy.context.scene
     bm = {n: sn for n, sn in bone_map(src_arm).items() if sn}
@@ -181,7 +201,8 @@ def retarget(src_arm, tgt_arm, action, keep_travel, step_sync):
     use_action(src_arm, None)
     for arm in (src_arm, tgt_arm):
         for b in arm.pose.bones:
-            b.rotation_mode = "QUATERNION"
+            if arm is tgt_arm:                                   # źródło zostaje w swoim trybie (BVH: krzywe Eulera)
+                b.rotation_mode = "QUATERNION"
             b.matrix_basis = Matrix.Identity(4)
     update()
     sw = src_arm.matrix_world.copy()
@@ -224,8 +245,18 @@ def retarget(src_arm, tgt_arm, action, keep_travel, step_sync):
         ds, dt = direction(s_rest, n, True), direction(t_rest, n, False)
         fix[n] = dt.rotation_difference(ds).to_matrix() if (ds is not None and dt is not None) else Matrix.Identity(3)
     s_rest_r = {n: rot_of(m) for n, m in s_rest.items()}
-    f0, f1 = int(round(action.frame_range[0])), int(round(action.frame_range[1]))
+    f0, f1 = rng if rng else (int(round(action.frame_range[0])), int(round(action.frame_range[1])))
     use_action(src_arm, action)
+    floor_a, center = None, None
+    if face:
+        acc = Vector((0.0, 0.0, 0.0))
+        for f in range(f0, f1):
+            sc.frame_set(f)
+            update()
+            acc += forward(s_pose())
+        th = math.atan2(fs.y, fs.x) - math.atan2(acc.y, acc.x) + math.radians(turn)
+        sw = Matrix.Rotation(th, 4, Z) @ sw                      # s_pose() i hips_at() czytają sw — od teraz klip patrzy w przód spoczynku
+        print("FACE kierunek miednicy w pętli obrócony o %.1f°" % math.degrees(th))
 
     def hips_at(f):
         sc.frame_set(f)
@@ -238,6 +269,16 @@ def retarget(src_arm, tgt_arm, action, keep_travel, step_sync):
     hr = A @ s_rest["Hips"].translation
     travel = Vector((h1.x - h0.x, h1.y - h0.y, 0.0))
     print("TRAVEL %.2f m w klipie%s" % (travel.length * k, "" if keep_travel else " — zdjęte (klip w miejscu)"))
+    if face:
+        lows, cs = [], Vector((0.0, 0.0, 0.0))
+        for f in range(f0, f1):
+            sc.frame_set(f)
+            update()
+            lows.append(min(m.translation.z for m in s_pose().values()))
+            cs += hips_at(f) - travel * ((f - f0) / max(f1 - f0, 1))
+        floor_a = sorted(lows)[len(lows) // 10]                  # 10. percentyl najniższej kości: podłoga klipu (stopa w podporze)
+        center = cs / max(f1 - f0, 1)
+        print("FLOOR podłoga klipu %.1f nad zerem źródła (spoczynek: biodra %.1f nad najniższą kością), biodra w pętli %.1f nad podłogą klipu" % (floor_a, s_rest["Hips"].translation.z - floor_s, center.z - floor_a))
     # --step-sync (pętle kroku): klip zaczyna się w klatce, w której prawa stopa jest najdalej z przodu (ląduje) — tak jak faza kroku w grze
     shift = 0
     if step_sync and f1 > f0:
@@ -261,14 +302,18 @@ def retarget(src_arm, tgt_arm, action, keep_travel, step_sync):
         for n, b in tp.items():                                  # pose.bones idą od korzenia w dół hierarchii
             if n not in s_now:
                 continue
+            rot = rot_of(s_now[n]) @ s_rest_r[n].inverted() @ fix[n] @ t_rest[n].to_3x3()
             if n == "Hips":
                 off = A @ s_now[n].translation - hr
                 if not keep_travel:
                     off -= travel * ((f - f0) / max(f1 - f0, 1))
                 elif shift:
                     sys.exit("--step-sync działa tylko dla klipów w miejscu (bez --keep-travel)")
+                if face:
+                    v = A @ s_now[n].translation - travel * ((f - f0) / max(f1 - f0, 1)) - center
+                    off = Vector((v.x, v.y, (s_now[n].translation.z - floor_a) - (s_rest["Hips"].translation.z - floor_s)))
                 move(b, off * k)
-            set_basis(b, rot_of(s_now[n]) @ s_rest_r[n].inverted() @ fix[n] @ t_rest[n].to_3x3())
+            set_basis(b, rot)
         for n, b in tp.items():
             c = CHILD.get(n)
             if n in s_now and c in s_now and c in tp:
@@ -288,9 +333,91 @@ def retarget(src_arm, tgt_arm, action, keep_travel, step_sync):
     return tgt_arm.animation_data.action
 
 
+def find_cycle(src_arm, action, a, b, pmin, pmax, gait):
+    """Najlepsza pętla w klatkach [a, b] sceny: (start, długość). Liczy cechy pozy w układzie miednicy (stawy względem bioder, wysokość
+    i prędkość bioder) i szuka szwu o najmniejszej różnicy cech przy prostym kierunku i tempie bliskim mediany odcinka."""
+    import numpy as np
+    sc = bpy.context.scene
+    bm = bone_map(src_arm)
+    keys = ["LeftFoot", "RightFoot", "LeftLeg", "RightLeg", "LeftHand", "RightHand", "Head", "LeftToeBase", "RightToeBase", "LeftForeArm", "RightForeArm"]
+    use_action(src_arm, action)
+    sw = src_arm.matrix_world
+    feats, yaws, hips = [], [], []
+    for f in range(a, b + 1):
+        sc.frame_set(f)
+        pb = src_arm.pose.bones
+        P = {n: (sw @ pb[bm[n]].matrix).translation for n in keys + ["Hips", "LeftUpLeg", "RightUpLeg"]}
+        l = P["LeftUpLeg"] - P["RightUpLeg"]
+        fw = Vector((l.x, l.y, 0.0)).cross(Vector((0, 0, 1))).normalized()
+        yaw = math.atan2(fw.y, fw.x)
+        c, s_ = math.cos(-yaw), math.sin(-yaw)
+        row = []
+        for n in keys:
+            d = P[n] - P["Hips"]
+            row += [c * d.x - s_ * d.y, s_ * d.x + c * d.y, d.z]
+        row.append(P["Hips"].z)
+        feats.append(row)
+        yaws.append(yaw)
+        hips.append((P["Hips"].x, P["Hips"].y, P["Hips"].z))
+    F, Y, H = np.array(feats), np.unwrap(np.array(yaws)), np.array(hips)
+    n = len(F)
+    V = np.zeros((n, 3))
+    V[1:-1] = (H[2:] - H[:-2]) / 2.0
+    spd = np.linalg.norm(V[:, :2], axis=1)
+    med = np.median(spd)
+    scale = max(np.median(np.abs(F[:, :-1])), 1e-6)
+    if gait:
+        # okres kroku z autokorelacji wysunięcia stóp (lewa − prawa, w przód miednicy): pełny cykl = dwa kroki; szew szukamy przy nim ±1 klatka
+        sig = F[:, 0] - F[:, 3]
+        sig = sig - sig.mean()
+        ac = {p: float(np.dot(sig[:-p], sig[p:]) / (n - p)) for p in range(pmin, min(pmax, n - 3) + 1)}
+        pk = max(ac, key=ac.get)
+        print("GAIT okres kroku z autokorelacji: %d klatek (%.2f s)" % (pk, pk / FPS))
+        pmin, pmax = max(pk - 1, 2), pk + 1
+    best = (1e18, a, pmin)
+    for p in range(pmin, pmax + 1):
+        if p >= n - 2:
+            break
+        dd = np.linalg.norm(F[:n - p] - F[p:], axis=1) / scale    # różnica pozy klatki t i t + p
+        d_pose = dd[1:n - p - 1]
+        # okresowość całej pętli: średnia różnica t ↔ t + p w oknie [s, s + p) — odróżnia pełny cykl od pół kroku i przypadkowego szwu
+        cd = np.concatenate([[0.0], np.cumsum(dd)])
+        m = len(d_pose)
+        hi = np.minimum(np.arange(1, m + 1) + p, len(dd))
+        d_per = (cd[hi] - cd[np.arange(1, m + 1)]) / np.maximum(hi - np.arange(1, m + 1), 1)
+        d_vel = np.linalg.norm(V[1:n - p - 1] - V[1 + p:n - 1], axis=1) / max(med, scale * 0.02)
+        turn = np.abs(Y[1 + p:n - 1] - Y[1:n - p - 1])            # obrót w pętli (rad)
+        # prędkość w pętli (śr. droga/klatkę) względem mediany odcinka — odrzuca zwroty i rozpędzanie
+        cs = np.concatenate([[0.0], np.cumsum(spd)])
+        mean_spd = (cs[1 + p:n - 1] - cs[1:n - p - 1]) / p
+        d_spd = np.abs(mean_spd - med) / max(med, 1e-6) if med > scale * 0.01 else np.zeros_like(mean_spd)
+        cost = d_pose + 2.0 * d_per + 0.5 * d_vel + 20.0 * turn + 4.0 * d_spd
+        i = int(np.argmin(cost))
+        if cost[i] < best[0]:
+            best = (float(cost[i]), a + 1 + i, p)
+    print("CYCLE start %d, %d klatek (%.2f s), koszt %.3f, mediana prędkości %.2f/kl." % (best[1], best[2], best[2] / FPS, best[0], med))
+    return best[1], best[2]
+
+
 bpy.ops.wm.read_factory_settings(use_empty=True)
 src = arg("from")
-if src:
+if src and src.lower().endswith(".bvh"):
+    sc = bpy.context.scene
+    sc.render.fps = FPS
+    path = os.path.join(ROOT, src) if not os.path.isabs(src) else src
+    bpy.ops.import_anim.bvh(filepath=path, axis_forward="-Z", axis_up="Y", use_fps_scale=True, update_scene_fps=False,
+                            update_scene_duration=False, rotate_mode="NATIVE", frame_start=1)
+    src_arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    action = src_arm.animation_data.action
+    src_fps = 60.0
+    r = [float(x) for x in arg("range", "0:%d" % int((action.frame_range[1] - 1) * src_fps / FPS)).split(":")]
+    a, b = int(1 + r[0] * FPS / src_fps), int(1 + r[1] * FPS / src_fps)
+    cyc = [float(x) for x in arg("loop", "0.5:1.6").split(":")]
+    off = int(float(arg("skip", "0.15")) * (b - a))              # początek i koniec odcinka to rozpędzanie i zwroty
+    f0, p = find_cycle(src_arm, action, a + off, b - off, int(round(cyc[0] * FPS)), int(round(cyc[1] * FPS)), "--step-sync" in argv)
+    tgt = load_rig()
+    export(tgt, retarget(src_arm, tgt, action, False, "--step-sync" in argv, (f0, f0 + p), True, float(arg("yaw", "0"))), arg("name", "mocap"))
+elif src:
     bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, src) if not os.path.isabs(src) else src)
     src_arm = max((o for o in bpy.data.objects if o.type == "ARMATURE"), key=lambda o: len(o.data.bones))
     by_name = {a.name: a for a in bpy.data.actions}

@@ -20,6 +20,7 @@ const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixa
 ## hold: [t0, t1, t2, wejście] — poza trzymana: przez `wejście` s klip idzie od t0 do t1 (zejście do pozy), potem chodzi tam i z powrotem
 ##   między t1 a t2 (praca rąk), dopóki stan trwa; wyjście to zwykłe mieszanie stanów.
 ##   Bez `step`, `scrub` i `hold` klip idzie zegarem postaci.
+## rev: pętla kroku grana w drugą stronę fazy (klip biegu tyłem: w biegu tyłem faza kroku gry maleje).
 ## arms: ręce z klipu zamiast IK, broń schowana (stan bez strzelania).
 ## upper: ile ruchu tułowia i głowy z klipu zostaje (1 = cały, 0 = tułów jak w spoczynku) — klipy z biblioteki pochylają tułów i skręcają barki
 ##   o kilkadziesiąt stopni, co przy celowaniu rzuca bronią.
@@ -30,14 +31,15 @@ const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixa
 ## bounce: ile pionowego kołysania bioder z klipu zostaje (1 = całe). Sprint z biblioteki kołysze ciałem o 11 cm, a z barkiem idzie chwyt broni,
 ##   czyli punkt, z którego gra liczy celowanie i wylot pocisku; stopy zostają na torze z klipu (IK nóg).
 const CLIPS := {
-	"idle": {"file": "idle", "upper": 0.5},
+	# Postój i marsz w kucaniu z mocapu 100STYLE (Swat_ID, OnToesCrouched_FW; VOICE_MOCAP_PLAN.md B2, art_src/animations/100style/SOURCE.md).
+	"idle": {"file": "idle_swat", "upper": 0.5},
 	"run": {"file": "run", "step": true, "phase0": 0.0, "upper": 0.55, "bounce": 0.8},
 	# Podział stanu „run” (char3d.gd `_clip_ws`, CHARACTER_QUALITY_PLAN.md Q2): trucht przy niższej prędkości (krótszy krok, mniejsze
 	# pochylenie) i bieg tyłem — ten sam trucht wstecz fazą kroku, tułów prawie pionowo (sprint od tyłu wyglądał jak „moonwalk”).
 	"run_jog": {"file": "jog", "step": true, "phase0": 0.0, "upper": 0.45, "bounce": 0.8},
 	"run_back": {"file": "jog", "step": true, "phase0": 0.0, "upper": 0.25, "bounce": 0.7},
 	"crouch": {"file": "crouch", "upper": 0.35, "drop": 0.05},
-	"crouch_walk": {"file": "crouch_walk", "step": true, "phase0": 0.0, "upper": 0.5, "drop": 0.06},
+	"crouch_walk": {"file": "crouch_walk_toes", "step": true, "phase0": 0.0, "upper": 0.5, "drop": 0.56},   # nagranie skrada się wyżej niż hitbox kucania
 	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
 	"push": {"file": "push", "step": true, "phase0": 0.0, "arms": true},          # Push_Loop (UAL1): pchanie skrzyni oburącz, broń schowana
 	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05, "calm_legs": [0.85, 1.6]},
@@ -72,8 +74,8 @@ static var _src := {}                        ## plik → {"anim": Animation, "re
 static var _libs := {}                       ## nazwa modelu → AnimationLibrary (klipy przeliczone na ten szkielet + "rest")
 static var _means := {}                      ## nazwa modelu → {stan → średnie pionowe przesunięcie bioder w klipie względem spoczynku (m)}
 static var _blends := {}                     ## zestaw → AnimationNodeBlendTree
-static var _flat := {}                       ## kość stopy / palców → globalny obrót w 1. klatce klipu idle (stopa płasko na ziemi); {} = brak klipu
-static var _orders := {}                     ## zestaw → klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0, scrub albo null, hold albo null]
+static var _flat := {}                       ## kość stopy / palców → globalny obrót w 1. klatce klipu FLAT_REF (stopa płasko na ziemi); {} = brak klipu
+static var _orders := {}                     ## zestaw → klipy w kolejności grafu: [stan, ścieżka wagi, ścieżka czasu, długość (s), czy pętla kroku, phase0, scrub albo null, hold albo null, additive, rev]
 
 static func has(state: String, set_name := "player") -> bool:
 	return enabled and not _source(state, set_name).is_empty()
@@ -85,7 +87,24 @@ static func param(state: String, key: String, default: float, set_name := "playe
 ## Klip źródłowy stanu (pusty słownik, gdy stan nie ma klipu albo brak pliku).
 static func _source(state: String, set_name := "player") -> Dictionary:
 	var tab: Dictionary = SETS[set_name]
-	return _load(String((tab[state] as Dictionary)["file"])) if tab.has(state) else {}
+	if not tab.has(state):
+		return {}
+	var o := _override(state)
+	return _load(String(o[0]) if not o.is_empty() else String((tab[state] as Dictionary)["file"]))
+
+static var _over: Variant = null              ## stan → [plik, wstecz] z linii poleceń (null = jeszcze nie czytane)
+
+## Podmiana pliku klipu z linii poleceń (porównania klipów, tools/shot_mocap.gd): `--clipfile=stan:plik[:rev]`, można powtarzać.
+## `rev` gra pętlę kroku w drugą stronę fazy (prawdziwy bieg tyłem przy fazie kroku malejącej w biegu tyłem).
+static func _override(state: String) -> Array:
+	if _over == null:
+		_over = {}
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--clipfile="):
+				var p := a.substr(11).split(":")
+				if p.size() >= 2:
+					_over[p[0]] = [p[1], p.size() > 2 and p[2] == "rev"]
+	return (_over as Dictionary).get(state, [])
 
 ## Surowy klip z pliku `art/char3d/anim/<file>.glb` przeliczony na szkielet `sk` (bez dostrojenia) — do podglądów (tools/shot_clip3d.gd).
 static func clip(file: String, sk: Skeleton3D) -> Animation:
@@ -121,13 +140,17 @@ static func _load(file: String) -> Dictionary:
 	_src[file] = out
 	return out
 
-## Stopy i palce źródła w pozie „stoi płasko” (1. klatka klipu idle, globalnie w przestrzeni szkieletu źródła). Poza spoczynkowa
+## Klip, którego 1. klatka to „stoi płasko” dla poprawki stóp: postój z biblioteki UAL (klipy z `prep_anim3d.py` mają ten sam spoczynek
+## szkieletu, więc poprawka jest wspólna); postój w grze to od 1.7.709 mocap `idle_swat`, ale odniesienie stóp zostaje to samo.
+const FLAT_REF := "idle"
+
+## Stopy i palce źródła w pozie „stoi płasko” (1. klatka klipu FLAT_REF, globalnie w przestrzeni szkieletu źródła). Poza spoczynkowa
 ## szkieletu biblioteki ma stopy inaczej ustawione niż przy staniu — przeniesienie względem spoczynku wyprostowywało stopy o ~19°
 ## w każdym klipie (postać stała na palcach, czubki pod podłogą). Stopy przenosimy więc względem tej pozy.
 static func _flat_ref() -> Dictionary:
 	if not _flat.is_empty():
 		return _flat
-	var src := _load(String((CLIPS["idle"] as Dictionary)["file"]))
+	var src := _load(FLAT_REF)
 	if src.is_empty():
 		return _flat
 	var a: Animation = src["anim"]
@@ -327,7 +350,8 @@ static func _blend_tree(set_name: String) -> AnimationNodeBlendTree:
 		_blend.connect_node(StringName("mix_" + st), 1, StringName("seek_" + st))
 		prev = StringName("mix_" + st)
 		_order.append([st, StringName("parameters/mix_%s/%s" % [st, "add_amount" if additive else "blend_amount"]), StringName("parameters/seek_%s/seek_request" % st),
-				(_source(st, set_name)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub"), c.get("hold"), additive])
+				(_source(st, set_name)["anim"] as Animation).length, bool(c.get("step", false)), float(c.get("phase0", 0.0)), c.get("scrub"), c.get("hold"), additive,
+				bool(c.get("rev", false)) or (not _override(st).is_empty() and bool(_override(st)[1]))])
 	_blend.connect_node(&"output", 0, prev)
 	return _blend
 
@@ -410,5 +434,6 @@ static func drive(tree: AnimationTree, weights: Dictionary, phase: float, time: 
 				tree.set(o[2], lerpf(float(h[0]), float(h[1]), smoothstep(0.0, 1.0, s / t_in)) if s < t_in
 						else float(h[1]) + pingpong(s - t_in, float(h[2]) - float(h[1])))
 			else:
-				tree.set(o[2], fposmod(phase - 0.25 + float(o[5]), 1.0) * dur if o[4] else fposmod(time, dur))
+				var ph := (0.25 - phase) if bool(o[9]) else (phase - 0.25)
+				tree.set(o[2], fposmod(ph + float(o[5]), 1.0) * dur if o[4] else fposmod(time, dur))
 	tree.advance(0.0)
