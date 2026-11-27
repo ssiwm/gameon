@@ -317,3 +317,39 @@ class PerkTile extends CardTile:
 ## Kafel zaopatrzenia: cena z monetą w linii stanu, kropki = zapas drużyny.
 class SupplyTile extends CardTile:
 	var kind := ""
+
+## Tło pod kartą stanowiska (WORKSHOP_IMMERSION_PLAN.md R1.3): zamiast jednolitej zasłony 0,65 lekkie przyciemnienie i winieta, żeby
+## w wolnym pasie było widać stół w Kryjówce (kamera świata najeżdża na niego, view3d.gd). Ciemniej przy krawędziach ekranu i przy
+## brzegu karty (karta odcina się od sceny), środek wolnego pasa najjaśniejszy. `card` — prostokąt karty w układzie tego węzła;
+## `full` — stara zasłona (ława ARMS zajmuje cały ekran, nie ma wolnego pasa). Łapie mysz, żeby kliknięcie obok karty nie szło do gry.
+class StationScrim extends Control:
+	const DIM := 0.1                     ## przyciemnienie całości (dawniej 0,65)
+	const EDGE := 0.4                   ## krycie winiety przy krawędzi ekranu i przy brzegu karty
+	const FULL := 0.65                   ## zasłona bez wolnego pasa
+	var card := Rect2()
+	var full := true
+	var tint := Color(0.015, 0.018, 0.014)
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+	func _band(r: Rect2, c0: Color, c1: Color, horizontal: bool) -> void:
+		var pts := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+		var cols := PackedColorArray([c0, c1, c1, c0]) if horizontal else PackedColorArray([c0, c0, c1, c1])
+		draw_polygon(pts, cols)
+	func _draw() -> void:
+		if full:
+			draw_rect(Rect2(Vector2.ZERO, size), Color(tint, FULL))
+			return
+		draw_rect(Rect2(Vector2.ZERO, size), Color(tint, DIM))
+		var dark := Color(tint, EDGE)
+		var clear := Color(tint, 0.0)
+		var ew := size.x * 0.06
+		var eh := size.y * 0.1
+		_band(Rect2(0, 0, size.x, eh), dark, clear, false)
+		_band(Rect2(0, size.y - eh, size.x, eh), clear, dark, false)
+		var card_right := card.get_center().x > size.x * 0.5
+		if card_right:                                            # wolny pas po lewej: ciemno przy lewej krawędzi i przy karcie
+			_band(Rect2(0, 0, ew, size.y), dark, clear, true)
+			_band(Rect2(card.position.x - ew * 0.6, 0, ew * 0.6, size.y), clear, dark, true)
+		else:
+			_band(Rect2(size.x - ew, 0, ew, size.y), clear, dark, true)
+			_band(Rect2(card.end.x, 0, ew * 0.6, size.y), dark, clear, true)

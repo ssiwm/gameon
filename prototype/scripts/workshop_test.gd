@@ -36,6 +36,10 @@ func station(group: String) -> void:
 
 func run(m: Node) -> void:
 	main = m
+	# test resetuje profil i bank: także w oknie (np. sprawdzenie najazdu kamery R1) nie wolno zapisać tego w postaci gracza — w trybie
+	# okienkowym Profile.persist i Scrap.persist są domyślnie włączone (headless — wyłączone)
+	Profile.persist = false
+	Scrap.persist = false
 	await get_tree().create_timer(1.5).timeout
 	for p in get_tree().get_nodes_in_group("players"):
 		if not p.is_bot and p.is_multiplayer_authority():
@@ -67,9 +71,67 @@ func run(m: Node) -> void:
 	await _progression()
 	await _strip_frame()
 	await _hub_log()
+	await _station_focus()
 	await _layout()                                  # na końcu: przegląda wszystkie stanowiska i kafle, zmienia wybory w panelu
 	print("[WORKSHOP-TEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
 	Audio.quit_game(1 if failed else 0)
+
+## Kamera na stół stanowiska (WORKSHOP_IMMERSION_PLAN.md R1): panel podaje stanowisko i wolny pas, karta stoi z prawej, winieta zamiast
+## zasłony, HUD gaśnie zamiast ściemniać świat; ława ARMS na cały ekran zostaje przy zasłonie. Widok 3D (gdy jest): najazd w SP_TIME,
+## „Reduce effects” — cięcie, zamknięcie w trakcie najazdu — odwrót od bieżącej wagi.
+func _station_focus() -> void:
+	var ui := get_tree().get_first_node_in_group("workshop_ui")
+	var press := get_tree().get_first_node_in_group("press_bench")
+	var hud := ui.get_parent()
+	var v3: Node = null
+	for n in main.get_children():
+		if n.get("_sp") != null:
+			v3 = n
+	Settings.reduce_fx = false
+	station("press_bench")
+	await frames(3)
+	ui.open("press")
+	for i in 3:
+		await get_tree().process_frame
+	var band: Vector2 = ui.focus_band()
+	var cr := Rect2(ui._card.position, ui._card.size * ui._card.scale)
+	check("prasa: kamera patrzy na stanowisko, wolny pas z lewej %s, karta przy prawej krawędzi" % str(band),
+		ui.focus_station() == press and band.x == 0.0 and band.y > 0.2 and band.y <= 0.6 and absf(cr.end.x - (ui.size.x - ui.CARD_EDGE)) <= 1.0)
+	check("prasa: winieta zamiast zasłony, HUD gaśnie zamiast ściemnienia", not ui._shade.full and bool(hud.get("_ws_aside")) and not hud.get("_dim").visible)
+	if v3 != null:
+		var early := float(v3.get("_sp"))
+		await get_tree().create_timer(0.5).timeout
+		check("najazd na stół: w trakcie %.2f, po 0,5 s %.2f" % [early, float(v3.get("_sp"))], early < 1.0 and is_equal_approx(float(v3.get("_sp")), 1.0))
+		ui.close()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var back := float(v3.get("_sp"))
+		await get_tree().create_timer(0.5).timeout
+		check("zamknięcie: kamera odjeżdża od razu (%.2f) i wraca do kadru gry" % back, back < 1.0 and float(v3.get("_sp")) == 0.0)
+		Settings.reduce_fx = true
+		station("press_bench")
+		ui.open("press")
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var cut := float(v3.get("_sp"))
+		ui.close()
+		await get_tree().process_frame
+		await get_tree().process_frame
+		check("Reduce effects: cięcie na stół (%.2f) i z powrotem (%.2f)" % [cut, float(v3.get("_sp"))], cut == 1.0 and float(v3.get("_sp")) == 0.0)
+		Settings.reduce_fx = false
+	else:
+		ui.close()
+		print("[WORKSHOP-TEST] (bez widoku 3D — tempo najazdu i cięcie sprawdza tools/test_hub_camera.gd, StationShot.step)")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	check("po zamknięciu kamera nie ma stanowiska, HUD wraca", ui.focus_station() == null and not bool(hud.get("_ws_aside")))
+	station("workshop")
+	await frames(3)
+	ui.open("bench")
+	for i in 3:
+		await get_tree().process_frame
+	check("ława ARMS na cały ekran: bez wolnego pasa, pełna zasłona", ui.focus_band() == Vector2.ZERO and ui._shade.full)
+	ui.close()
 
 ## Dziennik kryjówki (plan układu kryjówki E0): wejście, próbka pozycji co HUB_POS_EVERY s i otwarty panel stanowiska; poza kryjówką cisza.
 func _hub_log() -> void:
