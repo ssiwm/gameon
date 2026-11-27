@@ -369,6 +369,7 @@ const CURL_RELAX := 0.25                     ## luźna dłoń: palce lekko zgię
 const CURL_HOLD := 0.7                       ## dłoń przednia pod łożem (szersze niż chwyt) / na chwycie pionowym
 const PISTOL_CLAVICLE_FOLLOW := 1.0          ## oburęczny chwyt z przodu: barki podążają za dłońmi także przy zwrocie i celowaniu w górę
 const PISTOL_CLAVICLE_MAX := 75.0            ## limit obrotu obojczyka; długości ramienia i przedramienia pozostają bez zmian
+const ELBOW_AIM_FWD := 1.0                   ## łokcie przy celowaniu w górę: dodatek „do przodu” kierunku wygięcia (× sin kąta), zob. `_pose_arms`
 const GRIP_HALF := 0.013                     ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
 const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy nominalnej przechodzi na broń (1 = broń sztywno przy barku, 0 = nieruchoma w pozie nominalnej)
 const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
@@ -2154,7 +2155,12 @@ func _pose_arms(theta: float) -> void:
 		if _gun_n != null:
 			_gun_n.transform = gx
 	var rh := _right_weapon_hand(gx, wp)
-	_grip_arm("Right", rh, Vector3(-0.35, -1.0, 0.55), pistol)
+	# łokcie pod bronią w jej układzie i do przodu: przy celowaniu w górę kierunek wygięcia obraca się razem z lufą i wychodzi przed tułów —
+	# ze stałym „w dół i do tyłu” łokieć przy stromym kącie przeskakiwał za głowę (prawy od ok. 65°, lewy od ok. 50°); w dół bez zmian
+	var up := maxf(theta, 0.0)
+	var elbow_b := Basis(Vector3.BACK, up)
+	var elbow_fwd := Vector3(ELBOW_AIM_FWD * sin(up), 0.0, 0.0)
+	_grip_arm("Right", rh, elbow_b * Vector3(-0.35, -1.0, 0.55) + elbow_fwd, pistol)
 	_set_hand("Right", rh.basis)
 	_curl["Right"] = 1.0                                          # dłoń tylna obejmuje chwyt / rękojeść
 	if swinging or _gun_key == "kilof":
@@ -2163,7 +2169,7 @@ func _pose_arms(theta: float) -> void:
 		var left_pose := _left_weapon_pose(gx, wp, pistol)
 		var lh: Transform3D = left_pose[0]
 		var keep: float = left_pose[1]
-		_grip_arm("Left", lh, Vector3(-0.25, -1.0, -0.4), pistol)
+		_grip_arm("Left", lh, elbow_b * Vector3(-0.25, -1.0, -0.4) + elbow_fwd, pistol)
 		_set_hand("Left", lh.basis, keep)
 		_curl["Left"] = lerpf(0.45, 1.0 if pistol else CURL_HOLD, keep)
 	else:
