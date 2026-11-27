@@ -107,6 +107,8 @@ const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press":
 const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench", "pyro": "pyro_bench", "lab": "lab_bench",
 	"lathe": "lathe_bench"}      ## grupa stanowiska: panel wiąże się przy otwarciu z jego węzłem i zamyka na `left_range` (station.gd)
 var _station: Node2D                 ## stanowisko otwartego panelu (station.gd); jego `left_range` zamyka panel
+var _open_ms := 0                    ## R5: chwila otwarcia panelu (Time.get_ticks_msec) — czas przy stanowisku do dziennika sesji
+var _first_act_ms := -1              ## R5: chwila pierwszej akcji (zakup, montaż, zamówienie, czyszczenie, perk, wygląd); -1 — jeszcze żadnej
 var _reach_check := false            ## pierwsza klatka po otwarciu: sprawdzić, czy gracz w ogóle stoi w zasięgu stanowiska
 const SERVICE_IDS := ["clean", "barrel", "springs"]
 const CARD_MAX_W := 0.64               ## R1.4: karta przy stanowisku z ujęciem zajmuje najwyżej tyle szerokości ekranu (reszta — stół)
@@ -450,6 +452,7 @@ func _select_look(i: int) -> void:
 
 ## Zob. stations/locker_view.gd.
 func _act_look() -> void:
+	_note_act()
 	_v_locker._act_look()
 
 ## Zob. stations/locker_view.gd.
@@ -482,6 +485,7 @@ func _perk_slot_of(id: String) -> int:
 
 ## Zob. stations/locker_view.gd.
 func _act_perk() -> void:
+	_note_act()
 	_v_locker._act_perk()
 
 ## Zob. stations/locker_view.gd.
@@ -495,6 +499,7 @@ func _select_supply(i: int) -> void:
 	_refresh()
 
 func _buy_selected_supply() -> void:
+	_note_act()
 	var k := String(_supply_kinds()[_sup_sel])
 	if int(Scrap.deliveries.get(k, 0)) > 0:
 		_claiming = true
@@ -742,6 +747,8 @@ func open(mode := "bench") -> void:
 	visible = true
 	_mode = mode if MODE_PAGES.has(mode) else "bench"
 	Scrap.note_station(_mode)                              # dziennik sesji: które stanowiska drużyna naprawdę otwiera (plan układu kryjówki E0)
+	_open_ms = Time.get_ticks_msec()
+	_first_act_ms = -1
 	_session += 1
 	_lab_tall = 0.0
 	_bench_slot = ""
@@ -810,6 +817,8 @@ func close() -> void:
 	if not _open:
 		return
 	_unbind_station()
+	# R5: ile gracz był przy stanowisku i po ilu sekundach zrobił pierwszą rzecz (-1 — nic) — czy zbliżenie kamery (R1) pomaga, czy spowalnia
+	Scrap.note_station_end(_mode, (Time.get_ticks_msec() - _open_ms) / 1000.0, (_first_act_ms - _open_ms) / 1000.0 if _first_act_ms >= 0 else -1.0)
 	_remembered[_mode] = _sel
 	_session += 1
 	_workbench.stage.cancel_mount()
@@ -1264,7 +1273,13 @@ func _fill_lab_chain(key: String, slot: String, id: String) -> void:
 	_v_lab._fill_lab_chain(key, slot, id)
 
 ## Akcja na wybranej broni: kup broń (zablokowana), a odblokowanej — kup część pod kursorem, zamontuj ją albo wróć do fabrycznej.
+## Pierwsza akcja w otwartym panelu (R5): zapamiętuje chwilę tylko raz na otwarcie.
+func _note_act() -> void:
+	if _open and _first_act_ms < 0:
+		_first_act_ms = Time.get_ticks_msec()
+
 func _act() -> void:
+	_note_act()
 	if not _pending_part.is_empty() or _buying >= 0:
 		return
 	var w: int = LIST[_sel]

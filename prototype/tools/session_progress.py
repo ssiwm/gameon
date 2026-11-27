@@ -17,6 +17,8 @@ i co daje. Cele z planu: kopanie w ≥ 40% prób, złom z rudy i pakunków na mi
 
 Sekcja „Kryjówka — ruch” (plan układu kryjówki E0, od 1.7.531): `hub_enter`, `hub_pos` (próbka co 1 s) i `hub_station` (otwarty panel) —
 długość pobytów, udział czasu na wierszach podłogi (poziomach), najdłuższe postoje (kafel × wiersz) i otwierane stanowiska.
+Od 1.7.702 `hub_station_end` (WORKSHOP_IMMERSION_PLAN.md R5): `station_time` — mediana czasu przy stanowisku, do pierwszej akcji
+i udział otwarć bez akcji, osobno dla każdego stanowiska (porównanie przed / po kamerze na stół z R1).
 
 Pola XP / poziomu / perków (`xp`, `level`, `perks` w `mission_start.equipment`, wiersz `xp`, `players[id].kinds` i `xp_kills`)
 oraz `hub_buy` są w dzienniku od 1.7.391 — starsze pliki dają tylko część raportu (wyniki, czasy, złom od 1.7.347).
@@ -106,6 +108,8 @@ def load(args):
                 hub[-1]["pos"].append(e)
             elif ev == "hub_station" and hub:
                 hub[-1]["stations"].append(e)
+            elif ev == "hub_station_end" and hub:
+                hub[-1].setdefault("ends", []).append(e)
         attempts = [a for a in attempts if keep(a, args)]
         if attempts or buys or hub:
             sessions.append({"file": name, "attempts": attempts, "buys": buys, "hints": hints, "hub": hub})
@@ -247,7 +251,8 @@ HUB_STILL_PX = 6.0                                         # ruch między próbk
 def hub_moves(visits):
     """Ruch w kryjówce z `hub_pos` / `hub_station` (plan układu kryjówki E0): pobyty, poziomy, postoje, panele."""
     visits = [v for v in visits if v["pos"]]
-    rows_s, spots, stations = Counter(), Counter(), Counter()
+    rows_s, spots, stations, idle = Counter(), Counter(), Counter(), Counter()
+    stay, first = defaultdict(list), defaultdict(list)
     lengths = []
     for v in visits:
         lengths.append(float(v["pos"][-1].get("s", 0.0)))
@@ -265,11 +270,22 @@ def hub_moves(visits):
                 last[q.get("who")] = (x, y)
         for e in v["stations"]:
             stations[e.get("station", "?")] += 1
+        for e in v.get("ends", []):
+            st = e.get("station", "?")
+            stay[st].append(float(e.get("time", 0.0)))
+            fa = float(e.get("first_act", -1.0))
+            if fa >= 0.0:
+                first[st].append(fa)
+            else:
+                idle[st] += 1
     total = sum(rows_s.values())
     return {"visits": len(visits), "seconds_median": med(lengths),
             "rows_share": {r: round(n / total, 2) for r, n in sorted(rows_s.items())} if total else {},
             "spots_top": [["%d×%d" % k, n] for k, n in spots.most_common(8)],
-            "stations": dict(stations.most_common())}
+            "stations": dict(stations.most_common()),
+            # R5 (od 1.7.702): mediana czasu przy stanowisku i do pierwszej akcji, ile otwarć bez żadnej akcji
+            "station_time": {st: {"median_s": med(v), "first_act_median_s": med(first[st]) if first[st] else None,
+                                  "no_act_rate": round(idle[st] / len(v), 2)} for st, v in sorted(stay.items())}}
 
 
 def digging(attempts):

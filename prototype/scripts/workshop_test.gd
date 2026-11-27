@@ -150,8 +150,16 @@ func _hub_log() -> void:
 	Scrap.note_station("nonsense")
 	var wui = get_tree().get_first_node_in_group("workshop_ui")
 	if wui != null:
+		station("press_bench")
+		await frames(3)
 		wui.open("press")
 		await frames(2)
+		wui.close()
+		wui.open("press")
+		await get_tree().create_timer(0.3).timeout
+		wui._note_act()                                  # R5: pierwsza akcja po ok. 0,3 s (zamówienie, zakup… idą przez _note_act)
+		wui._note_act()                                  # druga akcja nie przesuwa czasu pierwszej
+		await get_tree().create_timer(0.2).timeout
 		wui.close()
 	SessionLog.mission_start({"map": "z1_m1", "test": "hub_log"})
 	Scrap.note_station("lab")                        # po wyjściu na misję: nic
@@ -167,6 +175,11 @@ func _hub_log() -> void:
 	check("dziennik kryjówki: hub_enter, hub_pos z pozycją i `s` (%s)" % [kinds], kinds.has("hub_enter") and pos.size() >= 1 and (pos[0]["p"] as Array).size() >= 1
 		and (pos[0]["p"][0] as Dictionary).has("pos") and pos[0].has("s"))
 	check("dziennik kryjówki: panele tylko znane i tylko w kryjówce (%s)" % [st], st.has("bench") and not st.has("nonsense") and not st.has("lab") and (wui == null or st.has("press")))
+	var ends := rows.filter(func(r: Dictionary) -> bool: return r.get("ev") == "hub_station_end")
+	check("dziennik kryjówki R5: zamknięcie panelu z czasem przy stanowisku i do pierwszej akcji (%s)" % [ends],
+		wui == null or (ends.size() == 2 and String(ends[0]["station"]) == "press" and float(ends[0]["first_act"]) == -1.0
+		and float(ends[1]["first_act"]) >= 0.2 and float(ends[1]["first_act"]) <= 0.5 and float(ends[1]["time"]) >= float(ends[1]["first_act"]) + 0.1
+		and ends[1].has("who") and ends[1].has("s")))
 	check("odstęp próbek w kryjówce %.1f s" % SessionLog.HUB_POS_EVERY, SessionLog.HUB_POS_EVERY <= 1.0)
 	for fn in DirAccess.get_files_at(SessionLog.dir):
 		DirAccess.remove_absolute(SessionLog.dir.path_join(fn))

@@ -91,7 +91,7 @@ func _build_look() -> HBoxContainer:
 	ui._l_action = Button.new()
 	ui._l_action.focus_mode = Control.FOCUS_NONE
 	ui._l_action.add_theme_font_size_override("font_size", 10)
-	ui._l_action.pressed.connect(_act_look)
+	ui._l_action.pressed.connect(ui._act_look)                # przez panel: zapisuje pierwszą akcję (R5)
 	v.add_child(ui._l_action)
 	body.add_child(ui._paper(v))
 	return body
@@ -325,7 +325,7 @@ func _build_perk_detail() -> Control:
 	ui._p_action = Button.new()
 	ui._p_action.focus_mode = Control.FOCUS_NONE
 	ui._p_action.add_theme_font_size_override("font_size", 10)
-	ui._p_action.pressed.connect(_act_perk)
+	ui._p_action.pressed.connect(ui._act_perk)                # przez panel: zapisuje pierwszą akcję (R5)
 	v.add_child(ui._p_action)
 	return v
 

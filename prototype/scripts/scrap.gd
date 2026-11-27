@@ -167,6 +167,28 @@ func _station_rpc(mode: String) -> void:
 	if NoiseMgr.is_server():
 		_log_station(multiplayer.get_remote_sender_id(), mode)
 
+## Dziennik sesji (WORKSHOP_IMMERSION_PLAN.md R5): zamknięty panel stanowiska — `time` s przy stanowisku, `first_act` s do pierwszej
+## akcji (-1 — nic nie zrobił). Klient zgłasza hostowi jak `note_station`.
+func note_station_end(mode: String, time: float, first_act: float) -> void:
+	if not NoiseMgr.has_network() or NoiseMgr.is_server():
+		_log_station_end(NoiseMgr.local_id(), mode, time, first_act)
+	else:
+		_station_end_rpc.rpc_id(1, mode, time, first_act)
+
+@rpc("any_peer", "call_remote", "reliable")
+func _station_end_rpc(mode: String, time: float, first_act: float) -> void:
+	if NoiseMgr.is_server():
+		_log_station_end(multiplayer.get_remote_sender_id(), mode, time, first_act)
+
+func _log_station_end(peer_id: int, mode: String, time: float, first_act: float) -> void:
+	if not LOG_STATIONS.has(mode) or not SessionLog.hub_recording():
+		return
+	for p in get_tree().get_nodes_in_group("players"):
+		if not p.is_bot and int(p.player_id) == peer_id:
+			SessionLog.hub_note("hub_station_end", {"who": "P%d" % int(p.display_id), "station": mode,
+				"time": snappedf(clampf(time, 0.0, 3600.0), 0.1), "first_act": snappedf(clampf(first_act, -1.0, 3600.0), 0.1)})
+			return
+
 func _log_station(peer_id: int, mode: String) -> void:
 	if not LOG_STATIONS.has(mode) or not SessionLog.hub_recording():
 		return
