@@ -4,7 +4,7 @@ extends SceneTree
 ##   nie w kolumnie drzwi ±2, nie w strefie wydobycia, nie na sejfie; na 1.1 ciało przy każdym nieśmiertelniku (F) i najwyżej 2 bez,
 ##   na 1.2 i 1.3 po 5–7 ciał; gniazda Mimika-zwłok (`mimic`, M5): na 1.1 brak, na 1.2 i 1.3 ≥ 3, ≥ 4 prawdziwe na jednego, z dala od `Y`;
 ## - modele: każdy strój × ułożenie × strona leży na gruncie (najniższy punkt skóry FLOOR_GAP nad y = 0), nie dłuższy niż
-##   2,6 m (ręce za głową), biodra niżej niż 0,35 m, a uniesiona ręka czy kolano poniżej 0,9 m; sprzęt na plecach (`GEAR`) nie podpiera ciała; przeszukane odsuwa prawą dłoń (> 0,2 m), ziarno różnicuje dwa ciała w tym samym ułożeniu;
+##   2,6 m (ręce za głową), biodra niżej niż 0,37 m (szyty kombinezon hazmatu ma luz), a uniesiona ręka czy kolano poniżej 0,9 m; sprzęt na plecach (`GEAR`) nie podpiera ciała; przeszukane odsuwa prawą dłoń (> 0,2 m), ziarno różnicuje dwa ciała w tym samym ułożeniu;
 ## - Mimik-zwłoki (M5): ta sama poza co prawdziwe ciało w tym miejscu; w ciemności bez oczu i oddechu, w snopie połysk oczu przy głowie
 ##   od razu, oddech dopiero po ~1 s (klatka piersiowa się rusza), po zgaszeniu znów nieruchomy; prawdziwe zwłoki bez oczu i bez `_process`.
 ## - opadanie pod ciężarem (`_drape`): w każdym stroju, ułożeniu, stronie i po przeszukaniu głowa, dłonie, przedramiona, golenie, stopy
@@ -112,7 +112,7 @@ func _go() -> void:
 				if absf(low - Corpse3D.FLOOR_GAP) > 0.003:
 					bad.append("%s/%s/%d: dół %.3f" % [out, pose, int(flip), low])
 				var hips_y: float = c._node_pt(c._b["Hips"]).y
-				if hips_y > 0.35:
+				if hips_y > 0.37:                                   # szyty kombinezon hazmatu (luz 1,6–3,4 cm) podnosi biodra leżącego na boku o ok. 1 cm (Q4)
 					bad.append("%s/%s/%d: biodra %.2f" % [out, pose, int(flip), hips_y])
 				if bb.end.y > 0.9:
 					bad.append("%s/%s/%d: wysokość %.2f" % [out, pose, int(flip), bb.end.y])
@@ -120,7 +120,7 @@ func _go() -> void:
 					bad.append("%s/%s/%d: długość %.2f" % [out, pose, int(flip), bb.size.x])
 				c.queue_free()
 	_ok(bad.is_empty() and n == Corpse3D.OUTFITS.size() * Corpse3D.POSES.size() * 2,
-		"%d modeli: leżą na gruncie (%.3f m), biodra niżej niż 0,35 m, całość niżej niż 0,9 m (uniesiona ręka, kolano), krócej niż 2,6 m %s" % [n, Corpse3D.FLOOR_GAP, bad])
+		"%d modeli: leżą na gruncie (%.3f m), biodra niżej niż 0,37 m, całość niżej niż 0,9 m (uniesiona ręka, kolano), krócej niż 2,6 m %s" % [n, Corpse3D.FLOOR_GAP, bad])
 	# opadanie pod ciężarem (`_drape`): żadna część nie wisi — głowa, dłonie, przedramiona, golenie, stopy i tułów dotykają gruntu
 	var hang: Array = []
 	var worst := 0.0

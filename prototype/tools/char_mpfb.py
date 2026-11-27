@@ -742,7 +742,7 @@ def _add_gear(rig, gear):
         # torba medyczna na plecach z płótna w kolorze złamanej bieli, z czerwonym krzyżem, kieszeniami bocznymi i szelkami (Q4: ze skryptu)
         before = set(rig.children)
         top = neck.z - 0.08
-        h, w, d = 0.34 * ks, 0.30 * ks, 0.12 * ks          # ≤ 0,14 m z klapą (test_proportions)
+        h, w, d = 0.34 * ks, 0.30 * ks, 0.11 * ks          # ≤ 0,14 m z klapą i klamrami (test_proportions)
         zc = top - h * 0.5
         back = _section(pts, zc, y_max=0.12)[0]
         xc = back - d * 0.5 + 0.01
