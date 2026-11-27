@@ -54,6 +54,7 @@ const Pulse3D := preload("res://scripts/pulse3d.gd")
 
 const PX := Level3D.PX
 const FOV := 40.0
+const StationShot := preload("res://scripts/station_shot.gd")
 const ENEMY_MODELS_PER_FRAME := 1        ## nowe modele wrogów na klatkę poza budową mapy (`_sync_enemies`)
 const ENEMY_RESCAN_EVERY := 30           ## klatki: zapasowy przegląd grup wrogów (`_sync_enemies`), poza tym tylko po dodaniu węzła z `view_info`
 const OFFSCREEN_ENEMY_EVERY := 4          ## wróg poza kadrem: pełna synchronizacja co tyle klatek (rozłożona po wrogach), z zebraną deltą
@@ -230,6 +231,12 @@ const RP_TIME := 0.6                     ## s — najazd na drzwi (range_view.IN
 const RP_Z := 1.1                        ## m — oko przed płaszczyzną gry: drzwi w tylnej ścianie wypełniają kadr
 var _fp_item: Node                       ## broń na stojaku oglądana teraz albo przed chwilą (obraca się i ma własne światła)
 var _fp_lights: Array = []               ## światło kluczowe i kontra oględzin (SpotLight3D)
+var _sp := 0.0                           ## 0..1: najazd kamery na stół stanowiska warsztatu (R1, WORKSHOP_IMMERSION_PLAN.md)
+var _sp_station: Node2D                  ## stanowisko otwartego panelu albo ostatnie (kamera z niego odjeżdża po zamknięciu)
+var _sp_band := Vector2.ZERO             ## pas ekranu wolny od karty (workshop_ui.gd `focus_band`), zapamiętany na odjazd
+var _sp_light: SpotLight3D               ## lampa robocza nad stołem — zapala się z najazdem
+var _ws_ui: Node                         ## panel stanowisk (grupa „workshop_ui”)
+const SP_LIGHT := 0.8                    ## jasność lampy roboczej przy pełnym najeździe
 var _rack_probe: ReflectionProbe         ## sonda odbić przy stojakach kryjówki
 var _dots_mi: MeshInstance3D             ## świecące punkty (lampki, diody, oczy w mroku) i znaczniki na podłodze — jedna siatka
 var _hid2d: Array = []                   ## węzły 2D schowane przez `self_modulate` (do przywrócenia w widoku 2D)
@@ -749,11 +756,15 @@ class FocusFrame:
 
 ## Najazd kamery świata na ujęcie z wagą `w` (0..1, już po smoothstep; WORKSHOP_IMMERSION_PLAN.md R0.4): oko przechodzi z kadru gry do
 ## `eye`, odległość płaszczyzny gry do `dist_to`, kąt widzenia z FOV do `fov_to`, a „shift” obiektywu (EYE_UP_M) znika. Źródła: oględziny
-## broni i gablota (`_fp`) oraz drzwi strzelnicy (`_rp`) — nakładane po kolei; w R1 dochodzi stanowisko warsztatu.
-func _focus_shot(xf: Transform3D, dist: float, foff: Vector2, near: float, eye: Vector3, dist_to: float, fov_to: float, w: float) -> FocusFrame:
+## broni i gablota (`_fp`), drzwi strzelnicy (`_rp`) i stół stanowiska warsztatu (`_sp`, R1) — nakładane po kolei. `basis_to` — obrót
+## kamery w ujęciu (stanowisko patrzy lekko z góry); bez niego kamera patrzy prosto w głąb sceny jak w kadrze gry.
+func _focus_shot(xf: Transform3D, dist: float, foff: Vector2, near: float, eye: Vector3, dist_to: float, fov_to: float, w: float,
+		basis_to := Basis.IDENTITY) -> FocusFrame:
 	var fr := FocusFrame.new()
 	fr.xf = xf
 	fr.xf.origin = xf.origin.lerp(eye, w)
+	if basis_to != Basis.IDENTITY or xf.basis != Basis.IDENTITY:
+		fr.xf.basis = xf.basis.slerp(basis_to, w)                # stanowisko (R1): kamera pochyla się nad blat
 	fr.dist = lerpf(dist, dist_to, w)
 	fr.fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, fov_to, w) * 0.5))
 	fr.foff = foff * (1.0 - w)
@@ -821,7 +832,26 @@ func _sync_camera() -> void:
 		dist = fr.dist
 		fsize = fr.fsize
 		foff = fr.foff
-	var hide_2d := maxf(fe, re)
+	# stanowisko warsztatu (WORKSHOP_IMMERSION_PLAN.md R1): po [E] kamera dojeżdża do stołu w StationShot.TIME, karta stoi z boku, a stół trafia
+	# w wolny od niej pas ekranu (station_shot.gd); lampa robocza zapala się razem z najazdem. „Reduce effects” — cięcie zamiast najazdu;
+	# zamknięcie panelu w trakcie najazdu — odwrót od bieżącej wagi.
+	var ws_st := _focus_station()
+	if ws_st != null:
+		_sp_station = ws_st
+		_sp_band = _ws_ui.call("focus_band")
+	var sp_want := 1.0 if ws_st != null else 0.0
+	_sp = StationShot.step(_sp, sp_want, get_process_delta_time(), Settings.fx_mult() <= 0.0)
+	var se := smoothstep(0.0, 1.0, _sp)
+	if se > 0.0 and _sp_station != null and is_instance_valid(_sp_station):
+		var sf: Dictionary = _sp_station.call("focus_frame", win.x / maxf(win.y, 1.0), _sp_band)
+		var sp_eye: Vector3 = sf["eye"]
+		var fr := _focus_shot(xf, dist, foff, near, sp_eye, sp_eye.z, float(sf["fov"]), se, sf["basis"])
+		xf = fr.xf
+		dist = fr.dist
+		fsize = fr.fsize
+		foff = fr.foff
+	_place_work_light(_sp_station.call("focus_target") if _sp_station != null and is_instance_valid(_sp_station) else Vector3.ZERO, se)
+	var hide_2d := maxf(maxf(fe, re), se)
 	label_fade = 1.0 - hide_2d
 	for ci in [_level, _players]:                              # etykiety i paski 2D nad postaciami nie pasują do widoku z oczu — gasną
 		if ci is CanvasItem and absf((ci as CanvasItem).modulate.a - (1.0 - hide_2d)) > 0.001:
@@ -4155,6 +4185,38 @@ func _add_rack_probe() -> ReflectionProbe:
 	return probe
 
 ## Światła oględzin: ciepłe kluczowe z lewej od strony widza i chłodna kontra znad broni — przy kołysaniu przesuwają odblaski po krawędziach.
+## Stanowisko, na które patrzy otwarty panel (workshop_ui.gd `focus_station`), albo null.
+func _focus_station() -> Node2D:
+	if _ws_ui == null or not is_instance_valid(_ws_ui):
+		_ws_ui = get_tree().get_first_node_in_group("workshop_ui")
+		if _ws_ui == null:
+			return null
+	return _ws_ui.call("focus_station") as Node2D
+
+## Lampa robocza stanowiska (R1.5): ciepły stożek z góry na blat `at`, bez cienia (budżet cieni lamp — shadow_casts.gd) i bez mgły;
+## jasność rośnie i gaśnie z najazdem `k`. Tworzona przy pierwszym użyciu.
+func _place_work_light(at: Vector3, k: float) -> void:
+	if k <= 0.0:
+		if _sp_light != null:
+			_sp_light.visible = false
+		return
+	if _sp_light == null:
+		_sp_light = SpotLight3D.new()
+		_sp_light.light_color = Color(1.0, 0.84, 0.62)
+		_sp_light.spot_angle = 50.0
+		_sp_light.spot_range = 5.0
+		_sp_light.spot_attenuation = 0.35
+		_sp_light.light_specular = 0.4                  # bez olśnień na blasze szafek
+		_sp_light.shadow_enabled = false
+		_sp_light.light_cull_mask = LAYER_WORLD | LAYER_ACTORS
+		_sp_light.light_volumetric_fog_energy = 0.0
+		_sp_light.layers = LAYER_WORLD | LAYER_ACTORS
+		_world.add_child(_sp_light)
+	_sp_light.visible = true
+	_sp_light.global_position = at + Vector3(0.0, 1.5, 1.1)        # wisi nad krawędzią stołu od strony gracza
+	_sp_light.look_at(at, Vector3.UP)
+	_sp_light.light_energy = SP_LIGHT * k
+
 ## Świecą tylko na oglądaną broń (wąski stożek), jasność rośnie i gaśnie razem z najazdem kamery.
 func _place_inspect_lights(at: Vector3, k: float) -> void:
 	if _fp_lights.is_empty():

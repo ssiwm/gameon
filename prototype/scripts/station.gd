@@ -10,6 +10,7 @@ const ItemsHd := preload("res://scripts/items_hd.gd")
 const Interact := preload("res://scripts/interact.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Actions := preload("res://scripts/actions.gd")
+const StationShot := preload("res://scripts/station_shot.gd")
 const TILE := 16.0
 
 ## Lokalny gracz przestał być w zasięgu stanowiska (odszedł, zginął albo stanowisko zasnęło).
@@ -22,6 +23,8 @@ var models: Array = []                  ## modele 3D stanowiska: [model z art/it
 var model_check := ""                   ## model, którego obecność włącza modele 3D zamiast przedmiotów HD
 var props: Array = []                   ## zapas bez modeli 3D: [nazwa przedmiotu HD, przesunięcie w kaflach]
 var key_box := Rect2(-18.0, -24.0, 36.0, 24.0)   ## prostokąt klawisza [E] w świecie względem znacznika (interact.gd)
+## Ujęcie kamery na stół po otwarciu panelu (R1, station_shot.gd DEFAULT): nadpisane pola, np. {"main": 1, "eye_z": 2.4}
+var shot: Dictionary = {}
 
 var station_props: Array = []           ## modele 3D, gdy są (view3d.gd, grupa „station_props”)
 var local_in_range := false             ## lokalny człowiek stoi w zasięgu (HUD, main.gd)
@@ -53,6 +56,14 @@ func _build_props(has_models: bool) -> void:
 ## i nakrywa je plandeką (view3d.gd `_sync_dormant` — dlatego `dormant()` mają tylko stanowiska, które potrafią zasnąć).
 func is_awake() -> bool:
 	return not (has_method("dormant") and call("dormant"))
+
+## Kadr kamery świata na stół stanowiska (R1): {eye, basis, fov} dla proporcji ekranu i pasa wolnego od karty (view3d.gd).
+func focus_frame(aspect: float, band: Vector2) -> Dictionary:
+	return StationShot.frame(global_position, models, shot, aspect, band)
+
+## Punkt celowania ujęcia (blat stołu) w świecie 3D [m] — tu stoi lampa robocza.
+func focus_target() -> Vector3:
+	return StationShot.target(global_position, models, shot)
 
 func in_reach(p: Node2D) -> bool:
 	return absf(p.global_position.x - global_position.x) <= reach.x and absf(p.global_position.y - global_position.y) <= reach.y

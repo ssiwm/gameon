@@ -9,8 +9,18 @@ extends SceneTree
 ##     a przy zejściu pionem środek kadru przesuwa się co klatkę najwyżej o tyle, o ile gracz (bez skoków),
 ## (4) oko kamery 3D (`SectionCamera.eye_up_for`, view3d.gd): kryjówka bierze `EYE_UP`, misja `EYE_UP_M`; przy NORMAL i WIDE oko stoi wewnątrz parteru,
 ##     co najmniej EYE_ABOVE_FLOOR_M nad jego podłogą (podłoga czyta się jako pokład, a nie kreska), i ponad podłogą piwnicy.
+## (5) [STATION-SHOT] ujęcie kamery na stół stanowiska (WORKSHOP_IMMERSION_PLAN.md R1, station_shot.gd) dla każdego stanowiska kryjówki,
+##     proporcji 16:9, 21:9, 16:10 i szerokości karty (wolny pas 36% i 50% ekranu): blat w środku wolnego pasa i w kadrze w pionie,
+##     bryła stołu przed kamerą i w kadrze w pionie, gracz przy znaczniku nie zasłania blatu, oko przed płaszczyzną gry na wysokości
+##     stojącego; najazd ≤ 0,45 s i przerywalny, „Reduce effects” — cięcie (StationShot.step). Zbliżenie gry (Settings.CAM_ZOOM) nie zmienia ujęcia — kamera jedzie do stałego kadru.
 ## godot --headless --path prototype -s tools/test_hub_camera.gd   → ma wypisać PASS
 const SectionCamera := preload("res://scripts/section_camera.gd")
+const StationShot := preload("res://scripts/station_shot.gd")
+## Stanowiska kryjówki: znak mapy → skrypt (jak tools/test_interact.gd)
+const STATIONS := {"p": "res://scripts/locker_station.gd", "j": "res://scripts/service_bench.gd", "h": "res://scripts/workshop.gd",
+	"x": "res://scripts/press_bench.gd", "z": "res://scripts/pyro_bench.gd", "c": "res://scripts/lab_bench.gd", "d": "res://scripts/lathe_bench.gd"}
+const ASPECTS := {"16:9": 16.0 / 9.0, "21:9": 21.0 / 9.0, "16:10": 1.6}
+const BANDS := [Vector2(0.0, 0.36), Vector2(0.0, 0.5)]   ## wolny pas przy karcie z prawej (workshop_ui.gd CARD_MAX_W 0,64) i węższej karcie
 const Hub := preload("res://scripts/maps/z1_hub.gd")
 const Mission := preload("res://scripts/maps/z1_m1.gd")
 const TILE := 16.0
@@ -145,7 +155,75 @@ func _run() -> void:
 	_check(is_equal_approx(SectionCamera.eye_up_for(null), SectionCamera.EYE_UP_M), "eye_up_for: bez mapy → EYE_UP_M")
 	hub_lvl.free()
 	m_lvl.free()
+	_station_shots(rows)
 	_finish()
+
+## (5) Ujęcia stanowisk (R1): bryły w przybliżeniu — stół ±0,7 m wokół punktu celowania, od podłogi do blatu, ±0,35 m w głąb; gracz
+## ±0,25 m, 1,8 m wzrostu, na płaszczyźnie gry przy znaczniku.
+func _station_shots(rows: Array) -> void:
+	var bad: Array = []
+	var n := 0
+	for r in rows.size():
+		var line := String(rows[r])
+		for c in line.length():
+			if not STATIONS.has(line[c]):
+				continue
+			var st: Node2D = load(STATIONS[line[c]]).new()
+			var marker := Vector2(c * TILE + TILE * 0.5, (r + 1) * TILE)
+			var models: Array = st.get("models")
+			var shot: Dictionary = st.get("shot")
+			st.free()
+			var t := StationShot.target(marker, models, shot)
+			var floor_y := -marker.y * PX
+			for an in ASPECTS:
+				var asp: float = ASPECTS[an]
+				for band in BANDS:
+					n += 1
+					var tag := "%s %s pas %.2f" % [line[c], an, band.y]
+					var fr := StationShot.frame(marker, models, shot, asp, band)
+					var eye: Vector3 = fr["eye"]
+					var pt := StationShot.project(t, fr, asp)
+					var u := (pt.x + 1.0) * 0.5
+					if pt.z <= 0.0 or absf(u - StationShot.band_center(band)) > 0.01 or pt.y < -0.6 or pt.y > 0.3:
+						bad.append("%s: blat %.2f/%.2f" % [tag, u, pt.y])
+					var lo := Vector2(INF, INF)
+					var hi := Vector2(-INF, -INF)
+					for i in 8:
+						var p := AABB(Vector3(t.x - 0.7, floor_y, t.z - 0.35), Vector3(1.4, t.y - floor_y, 0.7)).get_endpoint(i)
+						var q := StationShot.project(p, fr, asp)
+						if q.z <= 0.0:
+							lo = Vector2(-INF, -INF)
+							break
+						lo = lo.min(Vector2(q.x, q.y))
+						hi = hi.max(Vector2(q.x, q.y))
+					var mid := ((lo.x + hi.x) * 0.5 + 1.0) * 0.5
+					if lo.y < -1.0 or hi.y > 1.0 or mid < band.x or mid > band.y:
+						bad.append("%s: stół %s–%s" % [tag, str(lo), str(hi)])
+					var plo := Vector2(INF, INF)
+					var phi := Vector2(-INF, -INF)
+					var px0 := marker.x * PX
+					for i in 8:
+						var q := StationShot.project(AABB(Vector3(px0 - 0.25, floor_y, -0.2), Vector3(0.5, 1.8, 0.4)).get_endpoint(i), fr, asp)
+						plo = plo.min(Vector2(q.x, q.y))
+						phi = phi.max(Vector2(q.x, q.y))
+					if Rect2(plo, phi - plo).has_point(Vector2(pt.x, pt.y)):
+						bad.append("%s: gracz zasłania blat" % tag)
+					if eye.z < 1.0 or eye.y - floor_y < 1.2 or eye.y - floor_y > 2.2:
+						bad.append("%s: oko %s" % [tag, str(eye)])
+	print("[STATION-SHOT] %d ujęć, najazd %.2f s" % [n, StationShot.TIME])
+	_check(n >= 7 * ASPECTS.size() * BANDS.size() and bad.is_empty(), "[STATION-SHOT] blat w wolnym pasie, stół w kadrze, gracz nie zasłania%s" % ("" if bad.is_empty() else " — " + "; ".join(bad.slice(0, 6))))
+	# waga najazdu z kroków 60 kl./s: pełny najazd w ≤ 0,45 s, odwrót od bieżącej wagi, „Reduce effects” — cięcie
+	var w := 0.0
+	var t_in := 0.0
+	while w < 1.0 and t_in < 2.0:
+		w = StationShot.step(w, 1.0, 1.0 / 60.0, false)
+		t_in += 1.0 / 60.0
+	var mid := 0.0
+	for i in 10:
+		mid = StationShot.step(mid, 1.0, 1.0 / 60.0, false)
+	var rev := StationShot.step(mid, 0.0, 1.0 / 60.0, false)
+	_check(t_in <= 0.45 + 0.02 and rev < mid and rev > 0.0, "[STATION-SHOT] najazd %.2f s (≤ 0,45 s z dokładnością do klatki), zamknięcie w trakcie — odwrót od %.2f do %.2f" % [t_in, mid, rev])
+	_check(StationShot.step(0.0, 1.0, 1.0 / 60.0, true) == 1.0 and StationShot.step(1.0, 0.0, 1.0 / 60.0, true) == 0.0, "[STATION-SHOT] Reduce effects — cięcie zamiast najazdu")
 
 ## Tablica stałej z settings.gd (autoload — skrypt `-s` go nie skompiluje, więc czytamy tekst źródła).
 func _settings_array(cname: String) -> Array:

@@ -19,6 +19,7 @@ func _init() -> void:
 	reach = Vector2(REACH_X, REACH_Y)
 	models = MODELS
 	model_check = MODEL_CHECK
+	shot = {"eye_z": 2.7}                     # tokarka to wysoka maszyna — dalej, żeby zmieściła się w wolnym pasie
 	props = PROPS
 
 ## Uśpione stanowisko (HUB_LAYOUT_PLAN.md E4): tokarka bez schematu i bez zużycia — [E] nic nie robi, a widok 3D gasi lampę nad nim, nakrywa je plandeką

@@ -431,6 +431,7 @@ var _calm_t := 0.0                    ## sekundy spokoju (poziomy HUD: T2 / T3 w
 var _tier_k := 1.0                    ## 1 = pełny HUD, ~0.5 = wyciszony w spokoju
 var _report: Control                  ## raport po akcji (result_screen.gd): sekwencja odsłaniania wyniku misji
 var _game_nodes: Array = []           ## karty HUD-u rozgrywki — gasną pod raportem
+var _ws_aside := false                ## karta stanowiska z boku, kamera na stole (R1): karty HUD-u gasną zamiast ściemnienia ekranu
 var _tier_nodes: Array = []           ## … z nich te, którym _drive_tiers co klatkę ustawia własną alfę
 var _hud_hidden := false
 var _captions := Captions.new()       ## napisy dla dźwięków (ustawienie „Sound captions”)
@@ -1349,7 +1350,10 @@ func _drive_tiers(delta: float) -> void:
 	# ściemnienie pod karta wyniku i warsztatem
 	var ws := get_tree().get_first_node_in_group("workshop_ui")
 	var bench: bool = ws != null and ws.is_open()
-	var modal: bool = _report.visible or bench
+	# karta stanowiska z boku i kamera na stole (WORKSHOP_IMMERSION_PLAN.md R1): świat w wolnym pasie zostaje jasny — karty HUD-u
+	# gasną (_drive_report_fade) zamiast ściemnienia całego ekranu; ława ARMS na cały ekran zostaje przy ściemnieniu
+	_ws_aside = bench and ws.focus_station() != null
+	var modal: bool = _report.visible or (bench and not _ws_aside)
 	_dim.visible = modal
 	_dim.color.a = 0.92 if bench and not _report.visible else (_report.dim_alpha() if _report.visible else 0.5)      # warsztat zakrywa cały ekran: karty HUD nie prześwitują przez panel
 	if modal:
@@ -1428,8 +1432,9 @@ func _build_result() -> void:
 	add_child(_report)
 
 ## Pod raportem HUD rozgrywki gaśnie (RESULTS_PLAN.md §3); po zamknięciu raportu wraca. Karty z własną alfą (_drive_tiers) mnożymy.
+## Tak samo przy karcie stanowiska z boku (R1): kamera pokazuje stół, a karty HUD-u nie wchodzą na kadr.
 func _drive_report_fade() -> void:
-	var k: float = _report.hud_fade()
+	var k: float = 0.0 if _ws_aside else _report.hud_fade()
 	if k >= 1.0 and not _hud_hidden:
 		return
 	_hud_hidden = k < 1.0

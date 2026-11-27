@@ -92,6 +92,7 @@ const LookPortrait := Widgets.LookPortrait
 const LookTile := Widgets.LookTile
 const PerkTile := Widgets.PerkTile
 const SupplyTile := Widgets.SupplyTile
+const StationScrim := Widgets.StationScrim
 
 var _open := false
 var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUPPLIES (granaty, miny, narzędzia), 2 = PERKS, 3 = LOOK
@@ -108,6 +109,9 @@ const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service":
 var _station: Node2D                 ## stanowisko otwartego panelu (station.gd); jego `left_range` zamyka panel
 var _reach_check := false            ## pierwsza klatka po otwarciu: sprawdzić, czy gracz w ogóle stoi w zasięgu stanowiska
 const SERVICE_IDS := ["clean", "barrel", "springs"]
+const CARD_MAX_W := 0.64               ## R1.4: karta przy stanowisku z ujęciem zajmuje najwyżej tyle szerokości ekranu (reszta — stół)
+const CARD_EDGE := 24.0                ## odstęp karty z boku od krawędzi ekranu
+const StationShot := preload("res://scripts/station_shot.gd")
 var _title: Label
 var _sup_sel := 0
 var _arms_body: HBoxContainer
@@ -233,7 +237,7 @@ var _bank_shown := -1                 ## kwota w portfelu na ekranie (odlicza do
 var _wallet_tween: Tween
 var _workbench: GunsmithPanel
 var _legacy_stage: GunStage
-var _shade: ColorRect
+var _shade: StationScrim              ## tło pod kartą: winieta z wolnym pasem na stół albo pełna zasłona (R1.3)
 var _bench_slot := ""
 var _session := 0
 var _selection_revision := 0
@@ -250,10 +254,8 @@ func _ready() -> void:
 	add_to_group("workshop_ui")
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_shade = ColorRect.new()
-	_shade.color = Color(0.015, 0.018, 0.014, 0.65)
+	_shade = StationScrim.new()
 	_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_shade)
 	_card = PanelContainer.new()
 	_card.add_theme_stylebox_override("panel", UiTheme.station_box())
@@ -782,6 +784,25 @@ func _unbind_station() -> void:
 		_station.disconnect("left_range", _on_left_range)
 	_station = null
 
+## Stanowisko, na które patrzy kamera świata (R1, view3d.gd): otwarte stanowisko z ujęciem, poza ławą ARMS na cały ekran; inaczej null.
+func focus_station() -> Node2D:
+	if not _open or _station == null or not is_instance_valid(_station) or not _station.has_method("focus_frame"):
+		return null
+	return _station
+
+## Wolny od karty pas ekranu (od–do w ułamku szerokości): tam kamera świata stawia stół. Ława ARMS (karta na cały ekran) — pusty pas.
+func focus_band() -> Vector2:
+	if not _open or (_mode == "bench" and _page == 0) or size.x <= 0.0:
+		return Vector2.ZERO
+	var r := Rect2(_card.position, _card.size * _card.scale)
+	return Vector2(0.0, clampf(r.position.x / size.x, 0.0, 1.0)) if _card_right() else Vector2(clampf(r.end.x / size.x, 0.0, 1.0), 1.0)
+
+## Strona karty przy stanowisku z ujęciem: z danych stanowiska (`shot.card`: „left” / „right”), domyślnie po prawej.
+func _card_right() -> bool:
+	if _station == null or not is_instance_valid(_station):
+		return true
+	return String((_station.get("shot") as Dictionary).get("card", "right")) != "left"
+
 func _on_left_range() -> void:
 	close()
 
@@ -821,7 +842,11 @@ func _process(delta: float) -> void:
 	# Ława 3D ma stałą skalę ×1,4; pozostałe stanowiska dostają tyle samo, ile zmieści szerokość ekranu (dawniej ×1 — drobny tekst
 	# w ~46% szerokości ekranu). Wysokość przewijanej treści liczona już w jednostkach skali, żeby karta nie wyszła poza ekran.
 	var immersive := _mode == "bench" and _page == 0
-	var card_scale := 1.4 if immersive else clampf((size.x - 48.0) / maxf(1.0, _card.get_combined_minimum_size().x), 1.0, 1.4)
+	# R1.4: przy stanowisku z ujęciem na stół karta stoi z boku (CARD_MAX_W szerokości ekranu), a w wolnym pasie kamera świata
+	# pokazuje stół (view3d.gd); ława ARMS wypełnia ekran jak dotąd. Skala nie schodzi poniżej ×1 (tekst ≥ 12 px, UI_PLAN.md).
+	var aside := not immersive and _station != null and _station.has_method("focus_frame")
+	var fit_w := size.x * CARD_MAX_W if aside else size.x - 48.0
+	var card_scale := 1.4 if immersive else clampf(fit_w / maxf(1.0, _card.get_combined_minimum_size().x), 1.0, 1.4)
 	for body in [_arms_body, _sup_body, _perk_body, _look_body]:
 		var tall := clampf(size.y / card_scale - 156.0, 150.0, 400.0)      # 156: nagłówek z tabliczką, dźwignia, komunikat, taśma, odstępy
 		if _mode == "lab" and body == _arms_body:
@@ -834,7 +859,14 @@ func _process(delta: float) -> void:
 	# Kontener sam się nie kurczy: po wyższej stronie (zaopatrzenie, inne stanowisko) karta ławy ×1,4 wychodziła poza ekran.
 	if not _card.size.is_equal_approx(_card.get_combined_minimum_size()):
 		_card.reset_size()
-	_card.position = ((size - _card.size * card_scale) * 0.5).round()
+	var centered := ((size - _card.size * card_scale) * 0.5).round()
+	if aside:
+		var cw := _card.size.x * card_scale
+		centered.x = roundf(size.x - cw - CARD_EDGE) if _card_right() else CARD_EDGE
+	_card.position = centered
+	_shade.full = not aside or focus_band().y - focus_band().x < StationShot.MIN_BAND
+	_shade.card = Rect2(_card.position, _card.size * card_scale)
+	_shade.queue_redraw()
 
 ## Zdarzenia Kryjówki na karcie (STATION_CARDS_PLAN.md §5): stuknięcie zza D-7 — papiery
 ## drgają, czerwony błysk od strony drzwi i napis dźwięku z kierunkiem. „Reduce effects” wyłącza migotanie, drganie i błysk (napis zostaje).
