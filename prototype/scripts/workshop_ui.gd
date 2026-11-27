@@ -33,6 +33,7 @@ const SupplyView := preload("res://scripts/stations/supply_view.gd")
 const ServiceView := preload("res://scripts/stations/service_view.gd")
 const LabView := preload("res://scripts/stations/lab_view.gd")
 const LockerView := preload("res://scripts/stations/locker_view.gd")
+const CardFx := preload("res://scripts/stations/card_fx.gd")
 const BenchView := preload("res://scripts/stations/bench_view.gd")
 const ServiceArt := preload("res://scripts/station_service_art.gd")
 const LabArt := preload("res://scripts/station_lab_art.gd")
@@ -251,6 +252,7 @@ var _v_service = ServiceView.new(self)          # widok stanowiska (stations/ser
 var _v_lab = LabView.new(self)          # widok stanowiska (stations/lab_view.gd)
 var _v_locker = LockerView.new(self)          # widok stanowiska (stations/locker_view.gd)
 var _v_bench = BenchView.new(self)          # widok stanowiska (stations/bench_view.gd)
+var _v_fx = CardFx.new(self)          # efekty karty: portfel, udana operacja, pukanie (stations/card_fx.gd)
 
 func _ready() -> void:
 	add_to_group("workshop_ui")
@@ -311,46 +313,7 @@ func _ready() -> void:
 	root.add_child(_scroll_body(_look_body))
 	_look_body.get_parent().visible = false
 	_look_body.visible = false
-	var left := VBoxContainer.new()
-	left.add_theme_constant_override("separation", 10)
-	body.add_child(left)
-	_arms_left = left
-	var grid := GridContainer.new()
-	grid.columns = COLS
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	left.add_child(grid)
-	for i in LIST.size():
-		var t := _make_tile(int(LIST[i]), i)
-		grid.add_child(t)
-		_tiles.append(t)
-	_svc_todo = UiTheme.label("", 9, UiTheme.MUTED)                   # stół konserwacji: lista „do zrobienia” pod kaflami (puste miejsce przy kilku broniach)
-	_svc_todo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_svc_todo.custom_minimum_size.x = COLS * TILE_W - 24.0
-	_svc_todo.visible = false
-	var scrawl := NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)
-	_svc_todo.add_theme_font_override("font", UiTheme.note_font(NotePaletteRef.Note.SCRAWL))   # kartka odręczna (ST-02): Caveat, atrament kartki
-	_svc_todo.add_theme_font_size_override("font_size", UiTheme.note_size(NotePaletteRef.Note.SCRAWL, 10))
-	_svc_todo.add_theme_color_override("font_color", scrawl["ink"])
-	_svc_todo.add_theme_constant_override("outline_size", 0)
-	_svc_note = ServiceArt.Scrawl.new()
-	_svc_note.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_svc_note.visible = false
-	_svc_note.add_child(_svc_todo)
-	left.add_child(_svc_note)
-	_arms_paper = _paper(_build_detail())
-	body.add_child(_arms_paper)
-	_build_lab_lathe(left, body)
-	_legacy_stage = _d_stage as GunStage
-	_workbench = GunsmithPanel.new()
-	_workbench.custom_minimum_size = Vector2(606, 240)
-	root.add_child(_workbench)
-	_workbench.visible = false
-	_workbench.weapon_selected.connect(_select)
-	_workbench.slot_selected.connect(_pick_slot)
-	_workbench.option_selected.connect(_pick_opt)
-	_workbench.inspect_requested.connect(_inspect)
-	_workbench.save_requested.connect(_save_current_preset)
+	_build_arms(root, body)
 	# Główna akcja zawsze pod ręką; przewija się treść, nie przycisk zakupu/montażu/odbioru.
 	_action.reparent(root)
 	_s_action.reparent(root)
@@ -398,97 +361,61 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_connection_lost)
 	multiplayer.connection_failed.connect(_connection_lost)
 
-## Zob. stations/supply_view.gd.
+# ---------------------------------------------------------------- przekazane do widoków stanowisk (stations/*.gd)
+# Te same nazwy, po które sięgają panel, widoki i testy; budowa i wypełnianie kart żyją w widokach (STATION_CARDS_PLAN.md E1, R0 / R0b).
+
+func _build_arms(root: VBoxContainer, body: HBoxContainer) -> void:
+	_v_bench._build_arms(root, body)
 func _build_supplies() -> HBoxContainer:
 	return _v_supply._build_supplies()
-
-## Zob. stations/supply_view.gd.
 func _make_shelf(cal: String) -> Control:
 	return _v_supply._make_shelf(cal)
-
-## Zob. stations/supply_view.gd.
 func _arrange_supplies() -> void:
 	_v_supply._arrange_supplies()
-
-## Zob. stations/supply_view.gd.
 func _make_supply_tile(kd: String, idx: int) -> SupplyTile:
 	return _v_supply._make_supply_tile(kd, idx)
-
-## Zob. stations/supply_view.gd.
 func _build_supply_detail() -> Control:
 	return _v_supply._build_supply_detail()
-
-## Zob. stations/supply_view.gd.
 func _is_press_kind(k: String) -> bool:
 	return _v_supply._is_press_kind(k)
-
-## Zob. stations/supply_view.gd.
 func _is_pyro_kind(k: String) -> bool:
 	return _v_supply._is_pyro_kind(k)
-
-## Zob. stations/supply_view.gd.
 func _make_box_tile(kd: String, idx: int) -> SupplyTile:
 	return _v_supply._make_box_tile(kd, idx)
-
-## Zob. stations/supply_view.gd.
 func _make_bay_tile(kd: String, idx: int) -> SupplyTile:
 	return _v_supply._make_bay_tile(kd, idx)
-
-## Zob. stations/locker_view.gd.
 func _look_code(i: int) -> int:
 	return _v_locker._look_code(i)
-
-## Zob. stations/locker_view.gd.
 func _build_look() -> HBoxContainer:
 	return _v_locker._build_look()
-
-## Zob. stations/locker_view.gd.
 func _select_palette(pi: int) -> void:
 	_v_locker._select_palette(pi)
-
-## Zob. stations/locker_view.gd.
 func _select_look(i: int) -> void:
 	_v_locker._select_look(i)
 
-## Zob. stations/locker_view.gd.
 func _act_look() -> void:
 	_note_act()
 	_v_locker._act_look()
 
-## Zob. stations/locker_view.gd.
 func _refresh_look() -> void:
 	_v_locker._refresh_look()
-
-## Zob. stations/locker_view.gd.
 func _build_perks() -> HBoxContainer:
 	return _v_locker._build_perks()
-
-## Zob. stations/locker_view.gd.
 func _make_perk_tile(id: String, idx: int) -> PerkTile:
 	return _v_locker._make_perk_tile(id, idx)
-
-## Zob. stations/locker_view.gd.
 func _make_slot_chip(si: int) -> Control:
 	return _v_locker._make_slot_chip(si)
-
-## Zob. stations/locker_view.gd.
 func _build_perk_detail() -> Control:
 	return _v_locker._build_perk_detail()
-
-## Zob. stations/locker_view.gd.
 func _select_perk(i: int) -> void:
 	_v_locker._select_perk(i)
-
-## Zob. stations/locker_view.gd.
 func _perk_slot_of(id: String) -> int:
 	return _v_locker._perk_slot_of(id)
 
-## Zob. stations/locker_view.gd.
 func _act_perk() -> void:
 	_note_act()
 	_v_locker._act_perk()
 
-## Zob. stations/locker_view.gd.
 func _refresh_perks() -> void:
 	_v_locker._refresh_perks()
 
@@ -498,125 +425,43 @@ func _select_supply(i: int) -> void:
 	_sup_sel = i
 	_refresh()
 
+# ---------------------------------------------------------------- przekazane do stations/supply_view.gd
+
 func _buy_selected_supply() -> void:
-	_note_act()
-	var k := String(_supply_kinds()[_sup_sel])
-	if int(Scrap.deliveries.get(k, 0)) > 0:
-		_claiming = true
-		Scrap.request_claim(k)
-	elif Throwables.is_ammo(k):
-		_claiming = false
-		Scrap.request_order(k)                                   # amunicja: zamówienie w prasie (gotowe po misji)
-	else:
-		Scrap.request_buy_supply(k)
-
-## Indeksy kafli zaopatrzenia (w _supply_kinds) widoczne w tym trybie: ława — przedmioty, prasa — amunicja specjalna.
+	_v_supply._buy_selected_supply()
 func _sup_list() -> Array:
-	var out: Array = []
-	var kinds := _supply_kinds()
-	for i in kinds.size():
-		if _sup_in_mode(String(kinds[i])):
-			out.append(i)
-	return out
-
-## Czy rodzaj `k` należy do stanowiska: prasa — amunicja specjalna bez 40 mm, pirotechnika — granaty, miny, ładunki i 40 mm, ława — narzędzia.
-func _sup_in_mode(k: String) -> bool:
-	if k == "cleankit" and Settings.reliability_mult() <= 0.0:
-		return false                                       # bez zużycia zestaw nic nie robi (player.gd: _tick_cleankit)
-	var m := String(Throwables.KINDS[k]["mode"])
-	var forty := Throwables.is_ammo(k) and String(Ammo.from_kind(k).get("cal", "")) == "40mm"
-	match _mode:
-		"press":
-			return Throwables.is_ammo(k) and not forty
-		"pyro":
-			return m == "throw" or m == "place" or forty
-		_:
-			return m == "use"
-
-## Zob. stations/supply_view.gd.
+	return _v_supply._sup_list()
+func _on_order_result(kind: String, ok: bool, reason: String) -> void:
+	_v_supply._on_order_result(kind, ok, reason)
+func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
+	_v_supply._on_supply_result(kind, ok, reason)
 func _fill_noise(k: String) -> void:
 	_v_supply._fill_noise(k)
-
-## Zob. stations/supply_view.gd.
 func _fill_blast(k: String) -> void:
 	_v_supply._fill_blast(k)
-
-## Zob. stations/supply_view.gd.
 func _step_fuse(d: int) -> void:
 	_v_supply._step_fuse(d)
-
-## Zob. stations/supply_view.gd.
 func _set_fuse(k: String, ni: int) -> void:
 	_v_supply._set_fuse(k, ni)
-
-## Zob. stations/supply_view.gd.
 func _fill_fuse(k: String) -> void:
 	_v_supply._fill_fuse(k)
-
-## Zob. stations/supply_view.gd.
 func _fill_ammo_cmp(k: String) -> void:
 	_v_supply._fill_ammo_cmp(k)
-
-## Zob. stations/supply_view.gd.
 func _ammo_rows(k: String) -> Array:
 	return _v_supply._ammo_rows(k)
-
-## Zob. stations/supply_view.gd.
 func _fill_press_queue() -> void:
 	_v_supply._fill_press_queue()
-
-## Zob. stations/supply_view.gd.
 func _fill_dies() -> void:
 	_v_supply._fill_dies()
 
-## Portfel odlicza do nowej kwoty (zakup, zamówienie, odbiór) zamiast skakać i krótko przygasa na czerwono przy wydatku — widać, ile kosztowało.
-func _tick_wallet() -> void:
-	var target := Scrap.bank
-	if _bank_shown < 0 or Settings.reduce_fx:
-		_bank_shown = target
-		_wallet.text = "%d" % target
-		_drum.shown = float(target)
-		return
-	if target == _bank_shown and (_wallet_tween == null or not _wallet_tween.is_running()):
-		return
-	if _wallet_tween != null and _wallet_tween.is_running():
-		if _wallet_tween.get_meta("to", -1) == target:
-			return
-		_wallet_tween.kill()
-	var from := _bank_shown
-	_wallet_tween = create_tween()
-	_wallet_tween.set_meta("to", target)
-	_wallet_tween.tween_method(func(v: float) -> void:
-		_bank_shown = int(round(v))
-		_drum.shown = v                                     # bębny obracają się płynnie jak w liczniku mechanicznym
-		_wallet.text = "%d" % _bank_shown, float(from), float(target), 0.7).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+# ---------------------------------------------------------------- przekazane do stations/card_fx.gd
 
-## Udana operacja: potwierdzenie UI, dźwięk stanowiska (magazynek na ławie, łuski przy prasie, ogniwo w pracowni…) i krótki błysk wybranego kafla.
+func _tick_wallet() -> void:
+	_v_fx._tick_wallet()
 func _success_fx(vol_db := -4.0) -> void:
-	Audio.play("ui_confirm", Audio.BUS_UI, vol_db)
-	var snd: Array = STATION_SOUNDS.get(_mode, [])
-	if not snd.is_empty():
-		if int(snd[1]) > 0:
-			Audio.play_variant(String(snd[0]), int(snd[1]), Audio.BUS_UI, vol_db - 2.0)
-		else:
-			Audio.play(String(snd[0]), Audio.BUS_UI, vol_db - 2.0)
-	_stamp()
-	if Settings.reduce_fx:
-		return
-	var tile: Control = null
-	match _page:
-		0:
-			tile = _tiles[_sel] if not (_mode == "bench") else null      # ława 3D ma własną animację montażu
-		1:
-			tile = _sup_tiles[_sup_sel]
-		2:
-			tile = _perk_tiles[_perk_sel]
-		3:
-			tile = _look_tiles[_look_sel]
-	if tile == null or not tile.is_visible_in_tree():
-		return
-	tile.modulate = Color(1.55, 1.4, 0.95)
-	create_tween().tween_property(tile, "modulate", Color.WHITE, 0.35)
+	_v_fx._success_fx(vol_db)
+func _hub_events() -> void:
+	_v_fx._hub_events()
 
 func _clear_children(node: Node) -> void:
 	for c in node.get_children():
@@ -626,33 +471,6 @@ func _clear_children(node: Node) -> void:
 ## Cena kafla: przedmiot — sklep ławy, amunicja — partia w prasie.
 func _sup_price(k: String) -> int:
 	return Scrap.press_price(k) if Throwables.is_ammo(k) else Throwables.price_of(k)
-
-func _on_order_result(kind: String, ok: bool, reason: String) -> void:
-	if not _open:
-		return
-	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
-	match reason:
-		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
-		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
-		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
-		"ok":
-			_say(tr("%s collected. Remaining delivery: %d rounds.") % [nm, int(Scrap.deliveries.get(kind, 0))] if _claiming else tr("%s ordered — ready after the next mission (%d / %d batches in the press).") % [nm, Scrap.orders.size(), Scrap.PRESS_SLOTS], UiTheme.OK)
-			_success_fx()
-		"poor":
-			_drum.broke()
-			_say(tr("Not enough scrap (%d needed).") % Scrap.press_price(kind), UiTheme.DANGER)
-		"busy":
-			_say(tr("The press is full — %d batches per mission.") % Scrap.PRESS_SLOTS, UiTheme.MUTED)
-		"full":
-			_say(tr("The squad cannot carry more %s.") % nm, UiTheme.MUTED)
-		"off":
-			_say("No scrap in this mode.", UiTheme.MUTED)
-		_:
-			_say("Cannot do that.", UiTheme.DANGER)
-	_refresh()
 
 ## Rodzaje do kupienia (z ceną) w kolejności karuzeli: przedmioty, potem amunicja specjalna.
 func _supply_kinds() -> Array:
@@ -877,55 +695,6 @@ func _process(delta: float) -> void:
 	_shade.card = Rect2(_card.position, _card.size * card_scale)
 	_shade.queue_redraw()
 
-## Zdarzenia Kryjówki na karcie (STATION_CARDS_PLAN.md §5): stuknięcie zza D-7 — papiery
-## drgają, czerwony błysk od strony drzwi i napis dźwięku z kierunkiem. „Reduce effects” wyłącza migotanie, drganie i błysk (napis zostaje).
-func _hub_events() -> void:
-	# burza: przygasa tylko lampa generatora w świecie (view3d.gd) — karta nie (od 1.7.421: skok jasności całej karty z tekstem
-	# co kilka sekund wyglądał jak migotanie ekranu i utrudniał czytanie)
-	var d7: Node2D = null
-	for n in get_tree().get_nodes_in_group("hub_props"):
-		if String(n.get("kind")) == "d7":
-			d7 = n as Node2D
-			break
-	if d7 == null:
-		return
-	var k := float(d7.get("knock_flash"))
-	if k >= 0.95 and _knock_prev < 0.95:
-		_on_knock(d7)
-	_knock_prev = k
-
-func _on_knock(d7: Node2D) -> void:
-	var me: Node2D = null
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot and p.is_multiplayer_authority():
-			me = p
-	var left := me != null and d7.global_position.x < me.global_position.x
-	if _jars != null and _jars.is_visible_in_tree():
-		(_jars as LabArt.Jars).hear(-1.0 if left else 1.0)         # D2a: kształty w słojach zwracają się w stronę stukania
-	# napis dźwięku po stronie drzwi, nad kartą — nie zmienia układu karty (wiersz komunikatów zostaje dla wyników operacji)
-	_knock_label.text = ("◀  " if left else "") + tr("Knocking behind D-7") + ("" if left else "  ▶")
-	_knock_label.reset_size()
-	var cr := _card.get_global_rect()
-	_knock_label.position = Vector2(cr.position.x + 8.0 if left else cr.end.x - _knock_label.size.x - 8.0, maxf(2.0, cr.position.y - _knock_label.size.y - 2.0))
-	_knock_label.modulate.a = 1.0
-	var kt := create_tween()
-	kt.tween_interval(1.4)
-	kt.tween_property(_knock_label, "modulate:a", 0.0, 0.6)
-	if Settings.fx_mult() <= 0.0:
-		return
-	_edge_flash.size = Vector2(size.x * 0.16, size.y)
-	_edge_flash.position = Vector2(0.0 if left else size.x - _edge_flash.size.x, 0.0)
-	_edge_flash.color = Color(UiTheme.DANGER, 0.22)
-	create_tween().tween_property(_edge_flash, "color:a", 0.0, 0.9)
-	for p in _papers:
-		var pc := p as Control
-		if not pc.is_visible_in_tree():
-			continue
-		pc.pivot_offset = pc.size * Vector2(0.5, 0.0)
-		var tw := create_tween()
-		for r in [0.9, -0.6, 0.35, 0.0]:
-			tw.tween_property(pc, "rotation_degrees", r * (-1.0 if left else 1.0), 0.07)
-
 func _exit_tree() -> void:
 	if _open:
 		Settings.block_game_input(false)
@@ -933,40 +702,28 @@ func _exit_tree() -> void:
 
 # ---------------------------------------------------------------- sterowanie
 
-## Linia sterowania pod panelem: klawisze z rejestru akcji, a gdy jest pad — jego przyciski.
+## Linia sterowania pod panelem: klawisze z rejestru akcji, a gdy jest pad — jego przyciski. Tekst podaje widok stanowiska (`hint`, R0b).
 func _controls_hint() -> String:
-	var pad := Actions.pad_mode
-	var nav := StationKit.KEY_OPEN + ("D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()) + StationKit.KEY_CLOSE
-	if _mode == "bench" and _page == 0:
-		return tr("%s weapon · %s slot · %s / %s part · %s fit · %s inspect · %s tabs · %s close") % [
-			_cap("menu_up", pad) + "/" + _cap("menu_down", pad), _cap("menu_left", pad) + "/" + _cap("menu_right", pad),
-			_cap("menu_slot_1", pad), _cap("menu_slot_2", pad), _cap("menu_accept", pad), _cap("menu_inspect", pad),
-			_cap("menu_tab", pad), _cap("menu_back", pad)]
-	if _mode == "lathe":
-		return tr("%s select   ·   %s / %s job   ·   %s machine / sharpen   ·   %s close   ·   or click") % [
-			nav, _cap("menu_slot_1", pad), _cap("menu_slot_2", pad), _cap("menu_accept", pad), _cap("menu_back", pad)]
-	if _mode == "lab":
-		return tr("%s select   ·   %s / %s part   ·   %s research   ·   %s close   ·   or click") % [
-			nav, _cap("menu_slot_1", pad), _cap("menu_slot_2", pad), _cap("menu_accept", pad), _cap("menu_back", pad)]
-	if _mode == "press":
-		return tr("%s select   ·   %s order a batch   ·   %s close   ·   or click") % [nav, _cap("menu_accept", pad), _cap("menu_back", pad)]
-	if _mode == "pyro":
-		return tr("%s select   ·   %s / %s fuse   ·   %s buy / order   ·   %s close   ·   or click") % [
-			nav, _cap("menu_slot_1", pad), _cap("menu_slot_2", pad), _cap("menu_accept", pad), _cap("menu_back", pad)]
-	if _mode == "service":
-		return tr("%s gun   ·   %s instrument   ·   %s hold: clean / replace   ·   %s close   ·   or click") % [
-			_cap("menu_up", pad) + " " + _cap("menu_down", pad), _cap("menu_left", pad) + " " + _cap("menu_right", pad), _cap("menu_accept", pad), _cap("menu_back", pad)]
-	if _mode == "locker" and _page == 3:
-		return tr("%s select   ·   %s wear   ·   %s perks / look   ·   %s close   ·   or click") % [
-			nav, _cap("menu_accept", pad), _cap("menu_tab", pad), _cap("menu_back", pad)]
-	if _mode == "bench" and _page == 1:
-		return tr("%s select   ·   %s buy   ·   %s arms / supplies   ·   %s close   ·   or click") % [
-			nav, _cap("menu_accept", pad), _cap("menu_tab", pad), _cap("menu_back", pad)]
-	if _mode == "locker":
-		return tr("%s select   ·   %s / %s perk slot   ·   %s equip   ·   %s perks / look   ·   %s close   ·   or click") % [
-			nav, _cap("menu_slot_1", pad), _cap("menu_slot_2", pad), _cap("menu_accept", pad), _cap("menu_tab", pad), _cap("menu_back", pad)]
-	return tr("%s select   ·   %s / %s part   ·   %s buy / fit   ·   %s save set   ·   %s arms / supplies   ·   %s close   ·   or click") % [
-		nav, _cap("menu_slot_1", pad), _cap("menu_slot_2", pad), _cap("menu_accept", pad), _cap("menu_alt", pad), _cap("menu_tab", pad), _cap("menu_back", pad)]
+	return _hint_view().hint(Actions.pad_mode)
+
+## Widok, który opisuje sterowanie bieżącego stanowiska i zakładki.
+func _hint_view() -> RefCounted:
+	match _mode:
+		"bench":
+			return _v_bench if _page == 0 else _v_supply
+		"press", "pyro":
+			return _v_supply
+		"service":
+			return _v_service
+		"lab", "lathe":
+			return _v_lab
+		"locker":
+			return _v_locker
+	return _v_bench
+
+## Klawisze nawigacji (strzałki / WASD albo D-pad) w ramce klawisza taśmy sterowania.
+func _nav_cap(pad: bool) -> String:
+	return StationKit.KEY_OPEN + ("D-PAD" if pad else Actions.cluster(["menu_up", "menu_left", "menu_down", "menu_right"]).to_upper()) + StationKit.KEY_CLOSE
 
 ## Nazwa klawisza oznaczona dla taśmy sterowania (StationKit.tape_text rysuje ją w ramce klawisza).
 func _cap(id: String, pad: bool) -> String:
@@ -987,34 +744,9 @@ func _nav_step(event: InputEvent) -> int:
 		return COLS
 	return 0
 
-## Następny kafel w kierunku kroku `step` (±1 poziomo, ±COLS pionowo) wg położenia na ekranie: regał prasy ma półki różnej długości,
-## skrzynia 4 przegrody w rzędzie, siatka ławy 2 kolumny — światło idzie za fokusem tak, jak kafle stoją. -1, gdy w tę stronę nic nie ma.
+## Następny kafel w kierunku kroku wg położenia na ekranie (StationKit.spatial_step).
 func _spatial_step(tiles: Array, vis: Array, cur: int, step: int) -> int:
-	if vis.is_empty() or not vis.has(cur):
-		return int(vis[0]) if not vis.is_empty() else -1
-	var horiz := absi(step) == 1
-	var c := (tiles[cur] as Control).get_global_rect().get_center()
-	var best := -1
-	var best_d := INF
-	for i in vis:
-		if int(i) == cur:
-			continue
-		var p := (tiles[int(i)] as Control).get_global_rect().get_center()
-		var d := p - c
-		var along := d.x if horiz else d.y
-		var across := d.y if horiz else d.x
-		if signf(along) != signf(float(step)) or absf(along) < 4.0:
-			continue
-		if horiz and absf(across) > 8.0:
-			continue                                       # w poziomie tylko ten sam rząd (półka, rząd przegród)
-		var score := absf(along) + absf(across) * 3.0
-		if score < best_d:
-			best_d = score
-			best = int(i)
-	if best < 0 and horiz:
-		var at := vis.find(cur) + signi(step)                 # koniec rzędu: dalej po kolejności (następna półka)
-		best = int(vis[at]) if at >= 0 and at < vis.size() else -1
-	return best
+	return StationKit.spatial_step(tiles, vis, cur, step)
 
 func _input(event: InputEvent) -> void:
 	if _open and _hold_clean and (event is InputEventKey or event is InputEventJoypadButton) and event.is_action_released("menu_accept"):
@@ -1109,126 +841,26 @@ func _input(event: InputEvent) -> void:
 		close()
 	get_viewport().set_input_as_handled()
 
+# ---------------------------------------------------------------- przekazane do stations/bench_view.gd
+
 func _move_opt(d: int) -> void:
-	if _mode == "bench":
-		var ops := _options(int(LIST[_sel]))
-		var indices: Array = []
-		for i in ops.size():
-			if String(ops[i]["slot"]) == _bench_slot:
-				indices.append(i)
-		if not indices.is_empty():
-			_pick_opt(int(indices[posmod(indices.find(_opt) + d, indices.size())]))
-		return
-	var n := _options(int(LIST[_sel])).size()
-	if n == 0:
-		return
-	_opt = posmod(_opt + d, n)
-	Audio.play("ui_click", Audio.BUS_UI, -14.0)
-	_refresh()
-	_reveal_option()
-
+	_v_bench._move_opt(d)
 func _pick_opt(i: int) -> void:
-	var ops := _options(int(LIST[_sel]))
-	if i < 0 or i >= ops.size():
-		return
-	if i != _opt:
-		Audio.play("ui_click", Audio.BUS_UI, -14.0)
-	_opt = i
-	_selection_revision += 1
-	if _mode == "bench":
-		_bench_slot = String(ops[i]["slot"])
-		_workbench.stage.cancel_mount()
-	_refresh()
-	_reveal_option()
-
-## Nawigacja klawiszami/padem nie zostawia wybranej operacji poza przewijanym kadrem.
-func _reveal_option() -> void:
-	call_deferred("_reveal_current_option")
-
-func _reveal_current_option() -> void:
-	if not _open or _page != 0 or _mode == "bench":
-		return
-	var buttons := _d_tiers.get_children().filter(func(c: Node) -> bool: return c is Button)
-	if _opt >= 0 and _opt < buttons.size():
-		_ensure_arm_option_visible.call_deferred(buttons[_opt])
-
-## Przebudowa części może odłączyć przycisk przed odroczonym przewinięciem fokusu.
-func _ensure_arm_option_visible(button: Control) -> void:
-	if not is_instance_valid(button) or not is_instance_valid(_arms_body):
-		return
-	var scroll := _arms_body.get_parent() as ScrollContainer
-	if scroll != null and scroll.is_ancestor_of(button):
-		scroll.ensure_control_visible(button)
-
+	_v_bench._pick_opt(i)
 func _move(d: int) -> void:
-	var choices := _arms_list()
-	var pos := choices.find(_sel)
-	var next := pos + d
-	if next < 0 or next >= choices.size():
-		return
-	var n := int(choices[next])
-	if n < 0 or n >= LIST.size():
-		return
-	_stop_clean()
-	_sel = n
-	_selection_revision += 1
-	_bench_slot = ""
-	(_arms_body.get_parent() as ScrollContainer).scroll_vertical = 0
-	_opt = _first_part_opt()
-	Audio.play("ui_click", Audio.BUS_UI, -14.0)
-	_refresh()
-
+	_v_bench._move(d)
 func _select(i: int) -> void:
-	if not _arms_list().has(i):
-		return
-	if i != _sel:
-		Audio.play("ui_click", Audio.BUS_UI, -14.0)
-		_stop_clean()
-		_sel = i
-		_selection_revision += 1
-		_bench_slot = ""
-		(_arms_body.get_parent() as ScrollContainer).scroll_vertical = 0
-		_opt = _first_part_opt()
-	_refresh()
-
-## Kursor na pierwszej części (nie na elemencie fabrycznym) — po wyborze broni widać od razu, co można kupić.
-## Siatka i nawigacja korzystają z tej samej listy rzeczywistych opcji stanowiska.
+	_v_bench._select(i)
 func _arms_list() -> Array:
-	var out: Array = []
-	for i in LIST.size():
-		var w := int(LIST[i])
-		if _mode == "bench" or _mode == "locker" or not _options(w).is_empty():
-			out.append(i)
-	return out
-
+	return _v_bench._arms_list()
 func _initial_selection() -> int:
-	var choices := _arms_list()
-	if choices.is_empty():
-		return 0
-	if _first_pick() != "" and choices.has(LIST.find(Weapons.M83)):
-		return LIST.find(Weapons.M83)
-	var jobs: Array = Scrap.lathe if _mode == "lathe" else (Scrap.research if _mode == "lab" else [])
-	if _mode == "lathe" and jobs.is_empty():
-		jobs = Scrap.schematics.keys()
-	for id in jobs:
-		var w := Weapons.index_of(String(Parts.get_part(String(id)).get("weapon", "")))
-		var i := LIST.find(w)
-		if choices.has(i):
-			return i
-	var remembered := int(_remembered.get(_mode, -1))
-	if choices.has(remembered):
-		return remembered
-	var controller := _local_wc()
-	if controller != null:
-		var i := LIST.find(controller.cur().id)
-		if choices.has(i):
-			return i
-	for i in choices:
-		if Scrap.is_unlocked(int(LIST[int(i)])):
-			return int(i)
-	return int(choices[0])
-
-## Zob. stations/service_view.gd.
+	return _v_bench._initial_selection()
+func _act() -> void:
+	_v_bench._act()
+func _on_result(w: int, ok: bool, reason: String) -> void:
+	_v_bench._on_result(w, ok, reason)
+func _on_part_result(id: String, ok: bool, reason: String) -> void:
+	_v_bench._on_part_result(id, ok, reason)
 func _service_advice(w: int) -> Dictionary:
 	return _v_service._service_advice(w)
 
@@ -1236,39 +868,22 @@ func _service_advice(w: int) -> Dictionary:
 static func _advice_ink(level: int) -> Color:
 	return [UiTheme.INK_GAIN, UiTheme.INK, UiTheme.INK_PRICE, UiTheme.INK_COST][clampi(level + 1, 0, 3)]
 
-## Zob. stations/service_view.gd.
 func _refresh_service_todo() -> void:
 	_v_service._refresh_service_todo()
-
-## Zob. stations/service_view.gd.
 func _wear_ink(wear: float) -> Color:
 	return _v_service._wear_ink(wear)
-
-## Zob. stations/service_view.gd.
 func _fill_service_panel(base: RefCounted, cur: RefCounted) -> void:
 	_v_service._fill_service_panel(base, cur)
-
-## Zob. stations/lab_view.gd.
 func _build_lab_lathe(left: VBoxContainer, body: HBoxContainer) -> void:
 	_v_lab._build_lab_lathe(left, body)
-
-## Zob. stations/lab_view.gd.
 func _dress_lab_lathe(w: int, o: Dictionary) -> void:
 	_v_lab._dress_lab_lathe(w, o)
-
-## Zob. stations/lab_view.gd.
 func _dress_lathe(w: int, o: Dictionary, key: String, part: bool) -> void:
 	_v_lab._dress_lathe(w, o, key, part)
-
-## Zob. stations/lab_view.gd.
 func _recolor_printout(root: Node) -> void:
 	_v_lab._recolor_printout(root)
-
-## Zob. stations/service_view.gd.
 func _service_skin(on: bool) -> void:
 	_v_service._service_skin(on)
-
-## Zob. stations/lab_view.gd.
 func _fill_lab_chain(key: String, slot: String, id: String) -> void:
 	_v_lab._fill_lab_chain(key, slot, id)
 
@@ -1278,125 +893,16 @@ func _note_act() -> void:
 	if _open and _first_act_ms < 0:
 		_first_act_ms = Time.get_ticks_msec()
 
-func _act() -> void:
-	_note_act()
-	if not _pending_part.is_empty() or _buying >= 0:
-		return
-	var w: int = LIST[_sel]
-	if not Scrap.is_unlocked(w):
-		if _mode in ["service", "lab", "lathe"]:
-			_say(tr("Buy it at the workshop bench first."), UiTheme.MUTED)
-		else:
-			_buying = w
-			Scrap.request_buy(w)
-		return
-	var ops := _options(w)
-	if ops.is_empty():
-		return
-	if _mode == "bench" and _opt < 0:
-		return
-	var o: Dictionary = ops[clampi(_opt, 0, ops.size() - 1)]
-	var key := String(Weapons.def(w).key)
-	var id := String(o["id"])
-	if String(o["slot"]) == "preset":
-		var pi := int(o["id"])
-		if Profile.preset(key, pi).is_empty():
-			_save_preset()
-		elif Profile.is_preset_fitted(key, pi):
-			_say(tr("Set %d is already fitted.") % (pi + 1), UiTheme.MUTED)
-		else:
-			var before := Profile.fit_code(w)
-			var skipped := Profile.load_preset(key, pi)
-			_success_fx(-6.0)
-			_say((tr("Fitted set %d.") % (pi + 1)) if skipped == 0 else (tr("Fitted set %d — %d parts the squad no longer has stay as they were.") % [pi + 1, skipped]),
-				UiTheme.OK if skipped == 0 else UiTheme.MUTED)
-			_present_committed(w, before)
-		return
-	if String(o["slot"]) == "service" and id in Profile.WEAR_PARTS:
-		if not Profile.service_due(key, id):
-			_say(tr("Still serviceable — replace from %d%% wear.") % int(Profile.SERVICE_DUE), UiTheme.MUTED)
-		else:
-			Scrap.request_service(w, id)
-		return
-	if String(o["slot"]) == "service":
-		if _clean_w == w:
-			_stop_clean()
-			_say(tr("Cleaning stopped."), UiTheme.MUTED)
-			_refresh()
-		elif id == "sharpen" and Profile.sharpen_time(key) <= 0.0:
-			_say(tr("Already sharp."), UiTheme.MUTED)
-		elif id != "sharpen" and Profile.clean_time(key) <= 0.0:
-			_say(tr("Already clean."), UiTheme.MUTED)
-		else:
-			_start_clean(w)
-		return
-	if _mode == "lathe" and String(o["slot"]) != "service":
-		if Scrap.has_part(id):
-			_say(tr("Already made — fit it at the workshop bench."), UiTheme.MUTED)
-		elif Scrap.lathe.has(id):
-			_say(tr("On the lathe — ready after the next mission."), UiTheme.MUTED)
-		elif Scrap.schematics.has(id):
-			Scrap.request_machining(id)
-		else:
-			_say(tr("No schematic — research it at the lab first."), UiTheme.MUTED)
-		return
-	if _mode == "lab":
-		if Scrap.schematics.has(id) or Scrap.lathe.has(id):
-			_say(tr("Already researched — make it on the lathe downstairs."), UiTheme.MUTED)
-			return
-		if Scrap.has_part(id):
-			_say(tr("Already known — fit it at the workshop bench."), UiTheme.MUTED)
-		elif Scrap.research.has(id):
-			_say(tr("Being researched — ready after the next mission."), UiTheme.MUTED)
-		else:
-			Scrap.request_research(id)
-		return
-	if id != "" and not Scrap.has_part(id):
-		if Scrap.is_lab_part(id) and not Scrap.found.has(id):
-			_say(tr("Special-weapon parts are researched at the lab upstairs."), UiTheme.MUTED)
-		else:
-			_pending_part = {"id": id, "w": w, "fit": Profile.fit_code(w), "session": _session, "revision": _selection_revision}
-			_refresh()
-			Scrap.request_part(id)
-	elif Profile.fitted(key, String(o["slot"])) != id:
-		var before := Profile.fit_code(w)
-		Profile.set_fit(key, String(o["slot"]), id)
-		_success_fx(-6.0)
-		_say(tr("Fitted: %s.") % (tr(Parts.get_part(id)["name"]) if id != "" else tr("factory part")), UiTheme.OK)
-		_present_committed(w, before)
+# ---------------------------------------------------------------- przekazane do stations/lab_view.gd
 
-func _on_result(w: int, ok: bool, reason: String) -> void:
-	if _buying == w:
-		_buying = -1
-	if not _open:
-		return
-	var name := String(Weapons.def(w).name)
-	match reason:
-		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
-		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
-		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
-		"ok":
-			_say(tr("%s unlocked — take it from the rack.") % name, UiTheme.OK)
-			_success_fx()
-		"poor":
-			_drum.broke()
-			_say(tr("Not enough scrap (%d needed).") % Scrap.price_of(w), UiTheme.DANGER)
-		"owned":
-			_say(tr("%s is already unlocked.") % name, UiTheme.MUTED)
-		"later":
-			_say("Not available yet — a later zone.", UiTheme.MUTED)
-		"reward":
-			_say("Defeat the Leech to unlock it.", UiTheme.MUTED)
-		_:
-			_say("Cannot do that.", UiTheme.DANGER)
-	_refresh()
-
-## „1 próbka” / „3 próbki” (badania kosztują 1–2 próbki).
 func _samples_text(n: int) -> String:
-	return tr_n("%d sample", "%d samples", n) % n                # plural.csv: 1 próbka / 2–4 próbki / 5 próbek
+	return _v_lab._samples_text(n)
+func _on_machining_result(id: String, ok: bool, reason: String) -> void:
+	_v_lab._on_machining_result(id, ok, reason)
+func _on_research_result(id: String, ok: bool, reason: String) -> void:
+	_v_lab._on_research_result(id, ok, reason)
+func _on_geode_opened(res: Dictionary) -> void:
+	_v_lab._on_geode_opened(res)
 
 ## Kontroler broni lokalnego gracza (masa ekwipunku w nagłówku ławy) albo null.
 func _local_wc() -> Node:
@@ -1405,188 +911,16 @@ func _local_wc() -> Node:
 			return p.weapons
 	return null
 
-## Czyszczenie przy ławie (stan siedzi w profilu gracza, więc serwer nie bierze udziału): trwa Profile.clean_time, panel musi zostać
-## otwarty, a gracz przy ławie — odejście, zmiana broni albo ponowne [E] przerywa i trzeba zacząć od nowa.
+# ---------------------------------------------------------------- przekazane do stations/service_view.gd
+
 func _start_clean(w: int) -> void:
-	_clean_w = w
-	_clean_t = 0.0
-	var melee := Weapons.def(w).is_melee()
-	_clean_total = Profile.sharpen_time(String(Weapons.def(w).key)) if melee else Profile.clean_time(String(Weapons.def(w).key))
-	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -8.0, 0.85)
-	_say((tr("Sharpening the %s…") if melee else tr("Stripping the %s…")) % String(Weapons.def(w).name), UiTheme.TEXT)
-	_refresh()
-
+	_v_service._start_clean(w)
 func _stop_clean() -> void:
-	_clean_w = -1
-	_clean_t = 0.0
-
-## Klatka czyszczenia (z `_process`; testy wołają ją ręcznie).
+	_v_service._stop_clean()
 func tick_clean(delta: float) -> void:
-	if _clean_w < 0:
-		return
-	_clean_t += delta
-	var ck := String(Weapons.def(_clean_w).key)
-	var melee := Weapons.def(_clean_w).is_melee()
-	if _clean_t < _clean_total:
-		_action.text = (tr("Sharpening…  %d%%  (again to stop)") if melee else tr("Cleaning…  %d%%  (again to stop)")) % int(100.0 * _clean_t / _clean_total)
-		if String(_action.get_meta("st", "")) != "busy":
-			_act_state(_action, "busy", 0)
-			_dress_action(_action)
-		if not melee:
-			var c0 := Profile.condition(ck)                 # brud schodzi z broni w trakcie (ława 3D)
-			(_d_stage as GunStage).set_dirt(1.0 - lerpf(c0, Profile.clean_cap(ck), _clean_t / _clean_total) / 100.0)
-			if _gauges.has("clean") and is_instance_valid(_gauges["clean"]):            # przyrząd czyszczenia: wskazówka idzie do limitu
-				(_gauges["clean"] as ServiceArt.Gauge).dial.value = lerpf(c0, Profile.clean_cap(ck), _clean_t / _clean_total) / 100.0
-		return
-	var w := _clean_w
-	_stop_clean()
-	if melee:
-		Profile.sharpen(ck)                                 # szlifierka (W6b)
-		_stamp()
-		_say(tr("%s sharpened — edge 100%%.") % String(Weapons.def(w).name), UiTheme.OK)
-		Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.3)
-		_refresh()
-		return
-	Profile.clean(ck)
-	_stamp()
-	_say(tr("%s stripped and cleaned — condition %d%%.") % [String(Weapons.def(w).name), int(Profile.condition(ck))], UiTheme.OK)
-	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.0)
-	_refresh()
-
-func _on_machining_result(id: String, ok: bool, reason: String) -> void:
-	if not _open:
-		return
-	var nm := tr(String(Parts.get_part(id).get("name", id)))
-	match reason:
-		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
-		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
-		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
-		"ok":
-			_say(tr("%s on the lathe — ready after the next mission.") % nm, UiTheme.OK)
-			_success_fx()
-		"poor":
-			_drum.broke()
-			_say(tr("Not enough scrap (%d needed).") % Scrap.machine_price(id), UiTheme.DANGER)
-		"busy":
-			_say(tr_n("The lathe is busy — %d job per mission.", "The lathe is busy — %d jobs per mission.", Scrap.LATHE_SLOTS) % Scrap.LATHE_SLOTS, UiTheme.MUTED)
-		"noschem":
-			_say(tr("No schematic — research it at the lab first."), UiTheme.MUTED)
-		"owned":
-			_say(tr("Already made."), UiTheme.MUTED)
-		"off":
-			_say("No scrap in this mode.", UiTheme.MUTED)
-		_:
-			_say("Cannot do that.", UiTheme.DANGER)
-	_refresh()
-
+	_v_service.tick_clean(delta)
 func _on_service_result(w: int, part: String, ok: bool, reason: String) -> void:
-	if not _open:
-		return
-	match reason:
-		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
-		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
-		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
-		"early":
-			_say(tr("Still serviceable — replace from %d%% wear.") % int(Profile.SERVICE_DUE), UiTheme.MUTED)
-		"ok":
-			_say((tr("New barrel in the %s.") if part == "barrel" else tr("New springs in the %s.")) % String(Weapons.def(w).name), UiTheme.OK)
-			Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.1)
-		"poor":
-			_drum.broke()
-			_say(tr("Not enough scrap (%d needed).") % int(Scrap.SERVICE_COST.get(part, 0)), UiTheme.DANGER)
-		_:
-			_say("Cannot do that.", UiTheme.DANGER)
-	_refresh()
-
-func _on_research_result(id: String, ok: bool, reason: String) -> void:
-	if not _open:
-		return
-	var nm := tr(String(Parts.get_part(id).get("name", id)))
-	var cost := Scrap.research_cost(id)
-	match reason:
-		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
-		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
-		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
-		"ok":
-			_say(tr("%s: research started — ready after the next mission.") % nm, UiTheme.OK)
-			_success_fx()
-			(_jars as LabArt.Jars).hear(1.0 if randf() < 0.5 else -1.0)  # D2a: próbki „słyszą” pracę pracowni
-		"samples":
-			_say(tr("Not enough samples (%d needed) — elites and bosses drop them.") % cost.x, UiTheme.DANGER)
-		"poor":
-			_drum.broke()
-			_say(tr("Not enough scrap (%d needed).") % cost.y, UiTheme.DANGER)
-		"busy":
-			_say(tr_n("The lab is busy — %d project per mission.", "The lab is busy — %d projects per mission.", Scrap.LAB_SLOTS) % Scrap.LAB_SLOTS, UiTheme.MUTED)
-		"locked":
-			_say(tr("Buy the gun at the workshop bench first."), UiTheme.MUTED)
-		"owned":
-			_say(tr("Already known."), UiTheme.MUTED)
-		"off":
-			_say("No scrap in this mode.", UiTheme.MUTED)
-		_:
-			_say("Cannot do that.", UiTheme.DANGER)
-	_refresh()
-
-## Geoda otwarta (Scrap.geode_opened, u każdego peera): otwierający widzi wynik na karcie, reszta tylko odświeża tablicę.
-func _on_geode_opened(res: Dictionary) -> void:
-	if not _open:
-		return
-	if int(res.get("by", -1)) == NoiseMgr.local_id():
-		match String(res.get("reason", "")):
-			"ok":
-				_say(tr("Geode cracked open") + " — " + Scrap.geode_text(res), UiTheme.OK)
-				_success_fx()
-				(_jars as LabArt.Jars).hear(1.0 if randf() < 0.5 else -1.0)
-			"none":
-				_say(tr("No geodes — dig them out of ore veins."), UiTheme.MUTED)
-			"station":
-				_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
-			"repeat":
-				_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
-			_:
-				_say("Cannot do that.", UiTheme.DANGER)
-	_refresh()
-
-func _on_part_result(id: String, ok: bool, reason: String) -> void:
-	var context: Dictionary = _pending_part.duplicate() if String(_pending_part.get("id", "")) == id else {}
-	if not context.is_empty():
-		_pending_part.clear()
-	if not _open:
-		return
-	var nm := tr(String(Parts.get_part(id).get("name", id)))
-	match reason:
-		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
-		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
-		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
-		"ok":
-			_say(tr("%s unlocked for the squad and fitted to your gun.") % nm, UiTheme.OK)
-			_success_fx()
-		"poor":
-			_drum.broke()
-			_say(tr("Not enough scrap (%d needed).") % Scrap.part_cost(id), UiTheme.DANGER)
-		"owned":
-			_say(tr("The squad already has %s.") % nm, UiTheme.MUTED)
-		"locked":
-			_say("Unlock the weapon first.", UiTheme.MUTED)
-		_:
-			_say("Cannot do that.", UiTheme.DANGER)
-	if ok and not context.is_empty() and int(context["session"]) == _session and int(context["revision"]) == _selection_revision and int(LIST[_sel]) == int(context["w"]):
-		_present_committed(int(context["w"]), int(context["fit"]))
-	else:
-		_refresh()
+	_v_service._on_service_result(w, part, ok, reason)
 
 func _say(text: String, col: Color) -> void:
 	_msg.text = text
@@ -1646,34 +980,8 @@ func _refresh_body() -> void:
 	_refresh_service_todo()
 	_refresh_detail(int(LIST[_sel]))
 
-## Zob. stations/supply_view.gd.
 func _refresh_supplies() -> void:
 	_v_supply._refresh_supplies()
-
-func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
-	if not _open:
-		return
-	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
-	match reason:
-		"station":
-			_say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
-		"repeat":
-			_say(tr("Please wait before repeating this action."), UiTheme.MUTED)
-		"serviced":
-			_say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
-		"ok":
-			_say(tr("%s bought — the squad now carries %d.") % [nm, Arsenal.get_throwable(kind)], UiTheme.OK)
-			_success_fx()
-		"poor":
-			_drum.broke()
-			_say(tr("Not enough scrap (%d needed).") % Throwables.price_of(kind), UiTheme.DANGER)
-		"full":
-			_say(tr("The squad cannot carry more %s.") % nm, UiTheme.MUTED)
-		"off":
-			_say("No scrap in this mode.", UiTheme.MUTED)
-		_:
-			_say("Cannot do that.", UiTheme.DANGER)
-	_refresh()
 
 ## Jawne oględziny nie oznaczają wyboru fabrycznego elementu do montażu.
 func _connection_lost() -> void:

@@ -20,6 +20,9 @@ const UiTheme := preload("res://scripts/ui_theme.gd")
 const WeaponDefinition := preload("res://scripts/weapon_def.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const Widgets := preload("res://scripts/stations/station_widgets.gd")
+const GunsmithPanel := preload("res://scripts/gunsmith_panel.gd")
+const NotePaletteRef := preload("res://scripts/note_palette.gd")
+const ServiceArt := preload("res://scripts/station_service_art.gd")
 
 var ui                                   ## panel stanowisk (workshop_ui.gd): stan, kafle, etykiety
 
@@ -957,3 +960,319 @@ func _rule() -> ColorRect:
 	r.custom_minimum_size = Vector2(0, 1)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return r
+
+func _move_opt(d: int) -> void:
+	if ui._mode == "bench":
+		var ops = ui._options(int(ui.LIST[ui._sel]))
+		var indices: Array = []
+		for i in ops.size():
+			if String(ops[i]["slot"]) == ui._bench_slot:
+				indices.append(i)
+		if not indices.is_empty():
+			_pick_opt(int(indices[posmod(indices.find(ui._opt) + d, indices.size())]))
+		return
+	var n = ui._options(int(ui.LIST[ui._sel])).size()
+	if n == 0:
+		return
+	ui._opt = posmod(ui._opt + d, n)
+	Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	ui._refresh()
+	_reveal_option()
+
+func _pick_opt(i: int) -> void:
+	var ops = ui._options(int(ui.LIST[ui._sel]))
+	if i < 0 or i >= ops.size():
+		return
+	if i != ui._opt:
+		Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	ui._opt = i
+	ui._selection_revision += 1
+	if ui._mode == "bench":
+		ui._bench_slot = String(ops[i]["slot"])
+		ui._workbench.stage.cancel_mount()
+	ui._refresh()
+	_reveal_option()
+
+## Nawigacja klawiszami/padem nie zostawia wybranej operacji poza przewijanym kadrem.
+func _reveal_option() -> void:
+	call_deferred("_reveal_current_option")
+
+func _reveal_current_option() -> void:
+	if not ui._open or ui._page != 0 or ui._mode == "bench":
+		return
+	var buttons = ui._d_tiers.get_children().filter(func(c: Node) -> bool: return c is Button)
+	if ui._opt >= 0 and ui._opt < buttons.size():
+		_ensure_arm_option_visible.call_deferred(buttons[ui._opt])
+
+## Przebudowa części może odłączyć przycisk przed odroczonym przewinięciem fokusu.
+func _ensure_arm_option_visible(button: Control) -> void:
+	if not is_instance_valid(button) or not is_instance_valid(ui._arms_body):
+		return
+	var scroll := ui._arms_body.get_parent() as ScrollContainer
+	if scroll != null and scroll.is_ancestor_of(button):
+		scroll.ensure_control_visible(button)
+
+func _move(d: int) -> void:
+	var choices := _arms_list()
+	var pos := choices.find(ui._sel)
+	var next := pos + d
+	if next < 0 or next >= choices.size():
+		return
+	var n := int(choices[next])
+	if n < 0 or n >= ui.LIST.size():
+		return
+	ui._stop_clean()
+	ui._sel = n
+	ui._selection_revision += 1
+	ui._bench_slot = ""
+	(ui._arms_body.get_parent() as ScrollContainer).scroll_vertical = 0
+	ui._opt = ui._first_part_opt()
+	Audio.play("ui_click", Audio.BUS_UI, -14.0)
+	ui._refresh()
+
+func _select(i: int) -> void:
+	if not _arms_list().has(i):
+		return
+	if i != ui._sel:
+		Audio.play("ui_click", Audio.BUS_UI, -14.0)
+		ui._stop_clean()
+		ui._sel = i
+		ui._selection_revision += 1
+		ui._bench_slot = ""
+		(ui._arms_body.get_parent() as ScrollContainer).scroll_vertical = 0
+		ui._opt = ui._first_part_opt()
+	ui._refresh()
+
+## Kursor na pierwszej części (nie na elemencie fabrycznym) — po wyborze broni widać od razu, co można kupić.
+## Siatka i nawigacja korzystają z tej samej listy rzeczywistych opcji stanowiska.
+func _arms_list() -> Array:
+	var out: Array = []
+	for i in ui.LIST.size():
+		var w := int(ui.LIST[i])
+		if ui._mode == "bench" or ui._mode == "locker" or not ui._options(w).is_empty():
+			out.append(i)
+	return out
+
+func _initial_selection() -> int:
+	var choices := _arms_list()
+	if choices.is_empty():
+		return 0
+	if ui._first_pick() != "" and choices.has(ui.LIST.find(Weapons.M83)):
+		return ui.LIST.find(Weapons.M83)
+	var jobs: Array = Scrap.lathe if ui._mode == "lathe" else (Scrap.research if ui._mode == "lab" else [])
+	if ui._mode == "lathe" and jobs.is_empty():
+		jobs = Scrap.schematics.keys()
+	for id in jobs:
+		var w := Weapons.index_of(String(Parts.get_part(String(id)).get("weapon", "")))
+		var i = ui.LIST.find(w)
+		if choices.has(i):
+			return i
+	var remembered := int(ui._remembered.get(ui._mode, -1))
+	if choices.has(remembered):
+		return remembered
+	var controller = ui._local_wc()
+	if controller != null:
+		var i = ui.LIST.find(controller.cur().id)
+		if choices.has(i):
+			return i
+	for i in choices:
+		if Scrap.is_unlocked(int(ui.LIST[int(i)])):
+			return int(i)
+	return int(choices[0])
+
+func _act() -> void:
+	ui._note_act()
+	if not ui._pending_part.is_empty() or ui._buying >= 0:
+		return
+	var w: int = ui.LIST[ui._sel]
+	if not Scrap.is_unlocked(w):
+		if ui._mode in ["service", "lab", "lathe"]:
+			ui._say(tr("Buy it at the workshop bench first."), UiTheme.MUTED)
+		else:
+			ui._buying = w
+			Scrap.request_buy(w)
+		return
+	var ops = ui._options(w)
+	if ops.is_empty():
+		return
+	if ui._mode == "bench" and ui._opt < 0:
+		return
+	var o: Dictionary = ops[clampi(ui._opt, 0, ops.size() - 1)]
+	var key := String(Weapons.def(w).key)
+	var id := String(o["id"])
+	if String(o["slot"]) == "preset":
+		var pi := int(o["id"])
+		if Profile.preset(key, pi).is_empty():
+			ui._save_preset()
+		elif Profile.is_preset_fitted(key, pi):
+			ui._say(tr("Set %d is already fitted.") % (pi + 1), UiTheme.MUTED)
+		else:
+			var before := Profile.fit_code(w)
+			var skipped := Profile.load_preset(key, pi)
+			ui._success_fx(-6.0)
+			ui._say((tr("Fitted set %d.") % (pi + 1)) if skipped == 0 else (tr("Fitted set %d — %d parts the squad no longer has stay as they were.") % [pi + 1, skipped]),
+				UiTheme.OK if skipped == 0 else UiTheme.MUTED)
+			ui._present_committed(w, before)
+		return
+	if String(o["slot"]) == "service" and id in Profile.WEAR_PARTS:
+		if not Profile.service_due(key, id):
+			ui._say(tr("Still serviceable — replace from %d%% wear.") % int(Profile.SERVICE_DUE), UiTheme.MUTED)
+		else:
+			Scrap.request_service(w, id)
+		return
+	if String(o["slot"]) == "service":
+		if ui._clean_w == w:
+			ui._stop_clean()
+			ui._say(tr("Cleaning stopped."), UiTheme.MUTED)
+			ui._refresh()
+		elif id == "sharpen" and Profile.sharpen_time(key) <= 0.0:
+			ui._say(tr("Already sharp."), UiTheme.MUTED)
+		elif id != "sharpen" and Profile.clean_time(key) <= 0.0:
+			ui._say(tr("Already clean."), UiTheme.MUTED)
+		else:
+			ui._start_clean(w)
+		return
+	if ui._mode == "lathe" and String(o["slot"]) != "service":
+		if Scrap.has_part(id):
+			ui._say(tr("Already made — fit it at the workshop bench."), UiTheme.MUTED)
+		elif Scrap.lathe.has(id):
+			ui._say(tr("On the lathe — ready after the next mission."), UiTheme.MUTED)
+		elif Scrap.schematics.has(id):
+			Scrap.request_machining(id)
+		else:
+			ui._say(tr("No schematic — research it at the lab first."), UiTheme.MUTED)
+		return
+	if ui._mode == "lab":
+		if Scrap.schematics.has(id) or Scrap.lathe.has(id):
+			ui._say(tr("Already researched — make it on the lathe downstairs."), UiTheme.MUTED)
+			return
+		if Scrap.has_part(id):
+			ui._say(tr("Already known — fit it at the workshop bench."), UiTheme.MUTED)
+		elif Scrap.research.has(id):
+			ui._say(tr("Being researched — ready after the next mission."), UiTheme.MUTED)
+		else:
+			Scrap.request_research(id)
+		return
+	if id != "" and not Scrap.has_part(id):
+		if Scrap.is_lab_part(id) and not Scrap.found.has(id):
+			ui._say(tr("Special-weapon parts are researched at the lab upstairs."), UiTheme.MUTED)
+		else:
+			ui._pending_part = {"id": id, "w": w, "fit": Profile.fit_code(w), "session": ui._session, "revision": ui._selection_revision}
+			ui._refresh()
+			Scrap.request_part(id)
+	elif Profile.fitted(key, String(o["slot"])) != id:
+		var before := Profile.fit_code(w)
+		Profile.set_fit(key, String(o["slot"]), id)
+		ui._success_fx(-6.0)
+		ui._say(tr("Fitted: %s.") % (tr(Parts.get_part(id)["name"]) if id != "" else tr("factory part")), UiTheme.OK)
+		ui._present_committed(w, before)
+
+func _on_result(w: int, ok: bool, reason: String) -> void:
+	if ui._buying == w:
+		ui._buying = -1
+	if not ui._open:
+		return
+	var name := String(Weapons.def(w).name)
+	match reason:
+		"station":
+			ui._say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+		"repeat":
+			ui._say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+		"serviced":
+			ui._say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
+		"ok":
+			ui._say(tr("%s unlocked — take it from the rack.") % name, UiTheme.OK)
+			ui._success_fx()
+		"poor":
+			ui._drum.broke()
+			ui._say(tr("Not enough scrap (%d needed).") % Scrap.price_of(w), UiTheme.DANGER)
+		"owned":
+			ui._say(tr("%s is already unlocked.") % name, UiTheme.MUTED)
+		"later":
+			ui._say("Not available yet — a later zone.", UiTheme.MUTED)
+		"reward":
+			ui._say("Defeat the Leech to unlock it.", UiTheme.MUTED)
+		_:
+			ui._say("Cannot do that.", UiTheme.DANGER)
+	ui._refresh()
+
+func _on_part_result(id: String, ok: bool, reason: String) -> void:
+	var context: Dictionary = ui._pending_part.duplicate() if String(ui._pending_part.get("id", "")) == id else {}
+	if not context.is_empty():
+		ui._pending_part.clear()
+	if not ui._open:
+		return
+	var nm := tr(String(Parts.get_part(id).get("name", id)))
+	match reason:
+		"station":
+			ui._say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+		"repeat":
+			ui._say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+		"serviced":
+			ui._say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
+		"ok":
+			ui._say(tr("%s unlocked for the squad and fitted to your gun.") % nm, UiTheme.OK)
+			ui._success_fx()
+		"poor":
+			ui._drum.broke()
+			ui._say(tr("Not enough scrap (%d needed).") % Scrap.part_cost(id), UiTheme.DANGER)
+		"owned":
+			ui._say(tr("The squad already has %s.") % nm, UiTheme.MUTED)
+		"locked":
+			ui._say("Unlock the weapon first.", UiTheme.MUTED)
+		_:
+			ui._say("Cannot do that.", UiTheme.DANGER)
+	if ok and not context.is_empty() and int(context["session"]) == ui._session and int(context["revision"]) == ui._selection_revision and int(ui.LIST[ui._sel]) == int(context["w"]):
+		ui._present_committed(int(context["w"]), int(context["fit"]))
+	else:
+		ui._refresh()
+
+## Taśma sterowania ławy ARMS (workshop_ui.gd `_controls_hint` wybiera widok stanowiska).
+func hint(pad: bool) -> String:
+	return tr("%s weapon · %s slot · %s / %s part · %s fit · %s inspect · %s tabs · %s close") % [
+		ui._cap("menu_up", pad) + "/" + ui._cap("menu_down", pad), ui._cap("menu_left", pad) + "/" + ui._cap("menu_right", pad),
+		ui._cap("menu_slot_1", pad), ui._cap("menu_slot_2", pad), ui._cap("menu_accept", pad), ui._cap("menu_inspect", pad),
+		ui._cap("menu_tab", pad), ui._cap("menu_back", pad)]
+
+## Zakładka ARMS: siatka broni, kartka „do zrobienia” stołu konserwacji, karta szczegółów, pracownia / tokarka i ława rusznikarza.
+func _build_arms(root: VBoxContainer, body: HBoxContainer) -> void:
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 10)
+	body.add_child(left)
+	ui._arms_left = left
+	var grid := GridContainer.new()
+	grid.columns = ui.COLS
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	left.add_child(grid)
+	for i in ui.LIST.size():
+		var t = ui._make_tile(int(ui.LIST[i]), i)
+		grid.add_child(t)
+		ui._tiles.append(t)
+	ui._svc_todo = UiTheme.label("", 9, UiTheme.MUTED)                   # stół konserwacji: lista „do zrobienia” pod kaflami (puste miejsce przy kilku broniach)
+	ui._svc_todo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ui._svc_todo.custom_minimum_size.x = ui.COLS * ui.TILE_W - 24.0
+	ui._svc_todo.visible = false
+	var scrawl := NotePaletteRef.palette(NotePaletteRef.Note.SCRAWL)
+	ui._svc_todo.add_theme_font_override("font", UiTheme.note_font(NotePaletteRef.Note.SCRAWL))   # kartka odręczna (ST-02): Caveat, atrament kartki
+	ui._svc_todo.add_theme_font_size_override("font_size", UiTheme.note_size(NotePaletteRef.Note.SCRAWL, 10))
+	ui._svc_todo.add_theme_color_override("font_color", scrawl["ink"])
+	ui._svc_todo.add_theme_constant_override("outline_size", 0)
+	ui._svc_note = ServiceArt.Scrawl.new()
+	ui._svc_note.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	ui._svc_note.visible = false
+	ui._svc_note.add_child(ui._svc_todo)
+	left.add_child(ui._svc_note)
+	ui._arms_paper = ui._paper(ui._build_detail())
+	body.add_child(ui._arms_paper)
+	ui._build_lab_lathe(left, body)
+	ui._legacy_stage = ui._d_stage as GunStage
+	ui._workbench = GunsmithPanel.new()
+	ui._workbench.custom_minimum_size = Vector2(606, 240)
+	root.add_child(ui._workbench)
+	ui._workbench.visible = false
+	ui._workbench.weapon_selected.connect(ui._select)
+	ui._workbench.slot_selected.connect(ui._pick_slot)
+	ui._workbench.option_selected.connect(ui._pick_opt)
+	ui._workbench.inspect_requested.connect(ui._inspect)
+	ui._workbench.save_requested.connect(ui._save_current_preset)

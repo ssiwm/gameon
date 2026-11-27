@@ -340,3 +340,98 @@ func _fill_lab_chain(key: String, slot: String, id: String) -> void:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size.x = ui.DETAIL_W
 	ui._d_panel.add_child(l)
+
+## „1 próbka” / „3 próbki” (badania kosztują 1–2 próbki).
+func _samples_text(n: int) -> String:
+	return tr_n("%d sample", "%d samples", n) % n                # plural.csv: 1 próbka / 2–4 próbki / 5 próbek
+
+func _on_machining_result(id: String, ok: bool, reason: String) -> void:
+	if not ui._open:
+		return
+	var nm := tr(String(Parts.get_part(id).get("name", id)))
+	match reason:
+		"station":
+			ui._say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+		"repeat":
+			ui._say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+		"serviced":
+			ui._say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
+		"ok":
+			ui._say(tr("%s on the lathe — ready after the next mission.") % nm, UiTheme.OK)
+			ui._success_fx()
+		"poor":
+			ui._drum.broke()
+			ui._say(tr("Not enough scrap (%d needed).") % Scrap.machine_price(id), UiTheme.DANGER)
+		"busy":
+			ui._say(tr_n("The lathe is busy — %d job per mission.", "The lathe is busy — %d jobs per mission.", Scrap.LATHE_SLOTS) % Scrap.LATHE_SLOTS, UiTheme.MUTED)
+		"noschem":
+			ui._say(tr("No schematic — research it at the lab first."), UiTheme.MUTED)
+		"owned":
+			ui._say(tr("Already made."), UiTheme.MUTED)
+		"off":
+			ui._say("No scrap in this mode.", UiTheme.MUTED)
+		_:
+			ui._say("Cannot do that.", UiTheme.DANGER)
+	ui._refresh()
+
+func _on_research_result(id: String, ok: bool, reason: String) -> void:
+	if not ui._open:
+		return
+	var nm := tr(String(Parts.get_part(id).get("name", id)))
+	var cost := Scrap.research_cost(id)
+	match reason:
+		"station":
+			ui._say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+		"repeat":
+			ui._say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+		"serviced":
+			ui._say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
+		"ok":
+			ui._say(tr("%s: research started — ready after the next mission.") % nm, UiTheme.OK)
+			ui._success_fx()
+			(ui._jars as LabArt.Jars).hear(1.0 if randf() < 0.5 else -1.0)  # D2a: próbki „słyszą” pracę pracowni
+		"samples":
+			ui._say(tr("Not enough samples (%d needed) — elites and bosses drop them.") % cost.x, UiTheme.DANGER)
+		"poor":
+			ui._drum.broke()
+			ui._say(tr("Not enough scrap (%d needed).") % cost.y, UiTheme.DANGER)
+		"busy":
+			ui._say(tr_n("The lab is busy — %d project per mission.", "The lab is busy — %d projects per mission.", Scrap.LAB_SLOTS) % Scrap.LAB_SLOTS, UiTheme.MUTED)
+		"locked":
+			ui._say(tr("Buy the gun at the workshop bench first."), UiTheme.MUTED)
+		"owned":
+			ui._say(tr("Already known."), UiTheme.MUTED)
+		"off":
+			ui._say("No scrap in this mode.", UiTheme.MUTED)
+		_:
+			ui._say("Cannot do that.", UiTheme.DANGER)
+	ui._refresh()
+
+## Geoda otwarta (Scrap.geode_opened, u każdego peera): otwierający widzi wynik na karcie, reszta tylko odświeża tablicę.
+func _on_geode_opened(res: Dictionary) -> void:
+	if not ui._open:
+		return
+	if int(res.get("by", -1)) == NoiseMgr.local_id():
+		match String(res.get("reason", "")):
+			"ok":
+				ui._say(tr("Geode cracked open") + " — " + Scrap.geode_text(res), UiTheme.OK)
+				ui._success_fx()
+				(ui._jars as LabArt.Jars).hear(1.0 if randf() < 0.5 else -1.0)
+			"none":
+				ui._say(tr("No geodes — dig them out of ore veins."), UiTheme.MUTED)
+			"station":
+				ui._say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+			"repeat":
+				ui._say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+			_:
+				ui._say("Cannot do that.", UiTheme.DANGER)
+	ui._refresh()
+
+## Taśma sterowania pracowni i tokarki (workshop_ui.gd `_controls_hint` wybiera widok stanowiska).
+func hint(pad: bool) -> String:
+	var nav = ui._nav_cap(pad)
+	if ui._mode == "lathe":
+		return tr("%s select   ·   %s / %s job   ·   %s machine / sharpen   ·   %s close   ·   or click") % [
+			nav, ui._cap("menu_slot_1", pad), ui._cap("menu_slot_2", pad), ui._cap("menu_accept", pad), ui._cap("menu_back", pad)]
+	return tr("%s select   ·   %s / %s part   ·   %s research   ·   %s close   ·   or click") % [
+		nav, ui._cap("menu_slot_1", pad), ui._cap("menu_slot_2", pad), ui._cap("menu_accept", pad), ui._cap("menu_back", pad)]

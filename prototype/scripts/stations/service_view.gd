@@ -7,6 +7,7 @@ const Controller := preload("res://scripts/weapon_controller.gd")
 const UiTheme := preload("res://scripts/ui_theme.gd")
 const Weapons := preload("res://scripts/weapons.gd")
 const ServiceArt := preload("res://scripts/station_service_art.gd")
+const GunStage := preload("res://scripts/gun_stage.gd")
 
 var ui                                   ## panel stanowisk (workshop_ui.gd): stan, kafle, etykiety
 
@@ -155,3 +156,78 @@ func _service_skin(on: bool) -> void:
 	ui._d_text.add_theme_color_override("font_color", UiTheme.MUTED if on else UiTheme.INK)
 	ui._d_tiers.visible = not on
 	ui._legacy_stage.modulate = Color(0.78, 0.76, 0.72) if on else Color.WHITE  # płótno z rozłożoną bronią przyciemnione — światło na przyrządach
+
+## Czyszczenie przy ławie (stan siedzi w profilu gracza, więc serwer nie bierze udziału): trwa Profile.clean_time, panel musi zostać
+## otwarty, a gracz przy ławie — odejście, zmiana broni albo ponowne [E] przerywa i trzeba zacząć od nowa.
+func _start_clean(w: int) -> void:
+	ui._clean_w = w
+	ui._clean_t = 0.0
+	var melee := Weapons.def(w).is_melee()
+	ui._clean_total = Profile.sharpen_time(String(Weapons.def(w).key)) if melee else Profile.clean_time(String(Weapons.def(w).key))
+	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -8.0, 0.85)
+	ui._say((tr("Sharpening the %s…") if melee else tr("Stripping the %s…")) % String(Weapons.def(w).name), UiTheme.TEXT)
+	ui._refresh()
+
+func _stop_clean() -> void:
+	ui._clean_w = -1
+	ui._clean_t = 0.0
+
+## Klatka czyszczenia (z `_process`; testy wołają ją ręcznie).
+func tick_clean(delta: float) -> void:
+	if ui._clean_w < 0:
+		return
+	ui._clean_t += delta
+	var ck := String(Weapons.def(ui._clean_w).key)
+	var melee := Weapons.def(ui._clean_w).is_melee()
+	if ui._clean_t < ui._clean_total:
+		ui._action.text = (tr("Sharpening…  %d%%  (again to stop)") if melee else tr("Cleaning…  %d%%  (again to stop)")) % int(100.0 * ui._clean_t / ui._clean_total)
+		if String(ui._action.get_meta("st", "")) != "busy":
+			ui._act_state(ui._action, "busy", 0)
+			ui._dress_action(ui._action)
+		if not melee:
+			var c0 := Profile.condition(ck)                 # brud schodzi z broni w trakcie (ława 3D)
+			(ui._d_stage as GunStage).set_dirt(1.0 - lerpf(c0, Profile.clean_cap(ck), ui._clean_t / ui._clean_total) / 100.0)
+			if ui._gauges.has("clean") and is_instance_valid(ui._gauges["clean"]):            # przyrząd czyszczenia: wskazówka idzie do limitu
+				(ui._gauges["clean"] as ServiceArt.Gauge).dial.value = lerpf(c0, Profile.clean_cap(ck), ui._clean_t / ui._clean_total) / 100.0
+		return
+	var w = ui._clean_w
+	_stop_clean()
+	if melee:
+		Profile.sharpen(ck)                                 # szlifierka (W6b)
+		ui._stamp()
+		ui._say(tr("%s sharpened — edge 100%%.") % String(Weapons.def(w).name), UiTheme.OK)
+		Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.3)
+		ui._refresh()
+		return
+	Profile.clean(ck)
+	ui._stamp()
+	ui._say(tr("%s stripped and cleaned — condition %d%%.") % [String(Weapons.def(w).name), int(Profile.condition(ck))], UiTheme.OK)
+	Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.0)
+	ui._refresh()
+
+func _on_service_result(w: int, part: String, ok: bool, reason: String) -> void:
+	if not ui._open:
+		return
+	match reason:
+		"station":
+			ui._say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+		"repeat":
+			ui._say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+		"serviced":
+			ui._say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
+		"early":
+			ui._say(tr("Still serviceable — replace from %d%% wear.") % int(Profile.SERVICE_DUE), UiTheme.MUTED)
+		"ok":
+			ui._say((tr("New barrel in the %s.") if part == "barrel" else tr("New springs in the %s.")) % String(Weapons.def(w).name), UiTheme.OK)
+			Audio.play_variant("reload_bolt", 1, Audio.BUS_UI, -6.0, 1.1)
+		"poor":
+			ui._drum.broke()
+			ui._say(tr("Not enough scrap (%d needed).") % int(Scrap.SERVICE_COST.get(part, 0)), UiTheme.DANGER)
+		_:
+			ui._say("Cannot do that.", UiTheme.DANGER)
+	ui._refresh()
+
+## Taśma sterowania stołu konserwacji (workshop_ui.gd `_controls_hint` wybiera widok stanowiska).
+func hint(pad: bool) -> String:
+	return tr("%s gun   ·   %s instrument   ·   %s hold: clean / replace   ·   %s close   ·   or click") % [
+		ui._cap("menu_up", pad) + " " + ui._cap("menu_down", pad), ui._cap("menu_left", pad) + " " + ui._cap("menu_right", pad), ui._cap("menu_accept", pad), ui._cap("menu_back", pad)]

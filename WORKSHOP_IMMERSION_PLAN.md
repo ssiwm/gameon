@@ -1,6 +1,6 @@
 # Warsztat w świecie — plan refaktoryzacji stanowisk Kryjówki na immersyjne
 
-**Stan (2026-11-27):** R0 wdrożone w 1.7.700 (bez `_controls_hint` → `view.hint(pad)`; `workshop_ui.gd` 1643 linii zamiast < 1000), R1 w 1.7.701, R5 w 1.7.702 (`hub_station_end`: `time`, `first_act`). Dalej: playtest i decyzje o R2–R4. Podstawa: main 1.7.698 (`4be53cc8`). Kontynuuje `WORKSHOP_PLAN.md` (decyzja 5
+**Stan (2026-11-27):** R0 wdrożone w 1.7.700, domknięte w 1.7.703 (R0b: `workshop_ui.gd` 998 linii, `view.hint(pad)`), R1 w 1.7.701, R5 w 1.7.702 (`hub_station_end`: `time`, `first_act`). Dalej: playtest i decyzje o R2–R4. Podstawa: main 1.7.698 (`4be53cc8`). Kontynuuje `WORKSHOP_PLAN.md` (decyzja 5
 „kamera na blat” — przyjęta 2026-10-22, nigdy nie zrobiona w kamerze świata) i `STATION_CARDS_PLAN.md` (E0–E5 — karty już
 w nocnej palecie, tylko prezentacja). Zmienia się **prezentacja i struktura kodu**; `Scrap.*`, `Profile.*`, ceny, serwer i dane zostają
 (GDD §16.0a: bez nowych stanowisk, walut i warstw zużycia do Gate 0).
