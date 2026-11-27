@@ -305,8 +305,9 @@ def ring(rng: Rng, freqs, t60s, amps=None, dur: float = 0.5, jitter: float = 0.0
     return _end_taper(d.modal(freqs, amps, t60s, ms(dur * 1000), rng, jitter))
 
 
-def vowel(src: np.ndarray, kind: str = "a", bw: float = 9.0, gain: float = 1.0) -> np.ndarray:
-    """Filtry formantowe (przybliżenie samogłosek) — wspólne dla głosów ludzkich i stworów."""
+def vowel(src: np.ndarray, kind: str = "a", bw: float = 9.0, gain: float = 1.0, shift: float = 1.0) -> np.ndarray:
+    """Filtry formantowe (przybliżenie samogłosek) — wspólne dla głosów ludzkich i stworów. `shift` mnoży częstotliwości
+    formantów (krótszy tor głosowy: głos kobiecy ok. 1,17)."""
     F = {
         "a": ((730, 1.0), (1090, 0.6), (2440, 0.35), (3400, 0.15)),
         "o": ((570, 1.0), (840, 0.5), (2410, 0.2), (3300, 0.1)),
@@ -315,6 +316,8 @@ def vowel(src: np.ndarray, kind: str = "a", bw: float = 9.0, gain: float = 1.0) 
         "i": ((270, 1.0), (2290, 0.45), (3010, 0.3), (3500, 0.12)),
         "gutt": ((420, 1.0), (760, 0.8), (1500, 0.3), (2600, 0.12)),   # krtaniowe, „zwierzęce"
     }[kind]
+    if shift != 1.0:
+        F = tuple((f * shift, g) for f, g in F)
     return d.formant(src, F, bw) * gain
 
 

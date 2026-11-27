@@ -684,6 +684,10 @@ def player() -> None:
     bc.hybrid(["breath_loop"], _breath_loop_bake, BREATH_NEEDS)
     bc.hybrid(["heart_fast_loop", "heart_slow_loop"], _heart_bake, HEART_NEEDS)
     bc.hybrid(["revive"], _revive_bake, BREATH_NEEDS)
+    bc.hybrid(_keys("player_hurt_f", 2), _player_hurt_f_bake, PLAYER_HURT_F_NEEDS)
+    bc.hybrid(["player_down_f"], _player_down_f_bake, PLAYER_DOWN_F_NEEDS)
+    bc.hybrid(["breath_loop_f"], _breath_loop_f_bake, BREATH_F_NEEDS)
+    bc.hybrid(["revive_f"], _revive_f_bake, BREATH_F_NEEDS)
 
 
 # ============================================================ AMBIENT (bake_amb.build_ambience)
@@ -906,6 +910,50 @@ def _player_down_bake() -> None:
     x = d.mix([(voice, 1.0), (thump(.22, 110, 45, .04, .07), 0.9, .7)], d.sec(1.6))
     x = d.limiter(d.saturate(_unit(d.filt(x, "hp", 40.0, order=2)), 1.3), -4.0)
     finalize("player_down", d.reverb(x, ir("room"), wet=.2), lufs=-14.5, fade_out_ms=200)
+
+
+# --- Głos kobiecy (VOICE_MOCAP_PLAN.md A1, wybór z odsłuchu 2026-11-27): ujęcia A i C „Getting Hit” z tej samej sesji Pole Position co męski
+# oddech, krzyk bólu 344 Audio na upadek, zadyszka nosem „Tanja” (UberDuo). Łańcuch i głośność jak w wersji męskiej.
+PLAYER_HURT_F_NEEDS = ["female_grunt_hit"]
+_HURT_F = ((43.07, 0.50), (23.60, 0.45))                             # początek ujęcia [s] w female_grunt_hit, długość z ogonem [s]
+
+
+def _player_hurt_f_bake() -> None:
+    for i, (t0, end) in enumerate(_HURT_F):
+        x = d.saturate(_unit(d.filt(_clip("female_grunt_hit", t0 - .05, 0.7, 0.0, end, tail=.15), "hp", 90.0, order=2)), 1.4)
+        x = d.limiter(_unit(x), -5.0)
+        finalize("player_hurt_f_%d" % (i + 1), d.reverb(x, ir("close"), wet=.15), lufs=-12.05)
+
+
+PLAYER_DOWN_F_NEEDS = ["female_scream_pain_344"]
+
+
+def _player_down_f_bake() -> None:
+    voice = _clip("female_scream_pain_344", 0.0, 1.4, 0.0, 1.25, tail=.35)
+    x = d.mix([(voice, 1.0), (thump(.22, 110, 45, .04, .07), 0.9, .7)], d.sec(1.6))
+    x = d.limiter(d.saturate(_unit(d.filt(x, "hp", 40.0, order=2)), 1.3), -4.0)
+    finalize("player_down_f", d.reverb(x, ir("room"), wet=.2), lufs=-14.5, fade_out_ms=200)
+
+
+# Zadyszka: dwa naturalne cykle nagrania (wdech 0,14 s → wydech 0,74 → wdech 1,48 → wydech 2,20); następny wdech (3,02 s) wypada
+# dokładnie okres pętli dalej, więc zawinięty ogon nakłada wdech na wdech. Podniesienie: pierwszy wdech + akord jak u mężczyzny.
+BREATH_F_NEEDS = ["female_panting_nose"]
+_BREATH_F_LOOP = 2.88
+
+
+def _breath_loop_f_bake() -> None:
+    n = d.sec(_BREATH_F_LOOP)
+    x = d.filt(bc.src("female_panting_nose", 0.0, _BREATH_F_LOOP + 0.6), "hp", 80.0, order=2)
+    x = d.limiter(_unit(x), -7.0)                                     # ostre wdechy nosem (szczyt 22 dB nad średnią) — inaczej true-peak ścisza pętlę o 5 dB
+    finalize("breath_loop_f", d.fold_loop(x, n), loop=True, lufs=-18.6)
+
+
+def _revive_f_bake() -> None:
+    n = d.sec(1.1)
+    inh = _clip("female_panting_nose", 0.0, 0.45, 0.0, 0.40, tail=.14)
+    chord = (d.osc("sine", 220.0, n) + .6 * d.osc("sine", 330.0, n) + .3 * d.osc("sine", 440.0, n)) * d.env_pts(n, [(0, 0), (.25, 0), (.55, .8), (1.1, 0)])
+    x = d.mix([(inh, 1.0), (_unit(d.lp(chord, 1800.0)), .45)], n)
+    finalize("revive_f", d.reverb(x, ir("room"), wet=.25), lufs=-21.0, fade_out_ms=200)
 
 
 # --- Emitery ambientu: skrzypienie konstrukcji, poryw wiatru, odległe uderzenie (grane cicho, z daleka).

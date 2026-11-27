@@ -91,6 +91,10 @@
   "sfx/player/breath_loop",
   1
  ],
+ "breath_loop_f": [
+  "sfx/player/breath_loop_f",
+  1
+ ],
  "ciegno6_shot_1": [
   "sfx/weapons/ciegno6_shot_1",
   0
@@ -707,12 +711,24 @@
   "sfx/player/player_down",
   0
  ],
+ "player_down_f": [
+  "sfx/player/player_down_f",
+  0
+ ],
  "player_hurt_1": [
   "sfx/player/player_hurt_1",
   0
  ],
  "player_hurt_2": [
   "sfx/player/player_hurt_2",
+  0
+ ],
+ "player_hurt_f_1": [
+  "sfx/player/player_hurt_f_1",
+  0
+ ],
+ "player_hurt_f_2": [
+  "sfx/player/player_hurt_f_2",
   0
  ],
  "podsluchacz_scream_1": [
@@ -825,6 +841,10 @@
  ],
  "revive": [
   "sfx/player/revive",
+  0
+ ],
+ "revive_f": [
+  "sfx/player/revive_f",
   0
  ],
  "ricochet_1": [
