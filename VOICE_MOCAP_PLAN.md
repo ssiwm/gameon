@@ -1,8 +1,13 @@
 # Q8: głosy wg płci i mocap ruchu — plan
 
 **Stan (2026-11-27):** część A (głos kobiecy) wdrożona w 1.7.708 (PR #844) — wybór z odsłuchu: trafienie Pole Position A i C,
-powalenie 344 Audio, zadyszka „Tanja”; [G] bez osobnego krzyku, Mimik głosem udawanej ofiary (rekomendacje z §6). Część B (mocap) czeka. Przygotowane lokalnie (poza repo): kandydaci na głos kobiecy pobrani z Sonniss i pocięci na
-ujęcia, strona odsłuchu `C:\deadair87\odsluch\q8_glosy\index.html`; siedem stylów ruchu z 100STYLE (BVH) w `C:\deadair87\char_src\mocap\100STYLE\`.
+powalenie 344 Audio, zadyszka „Tanja”; [G] bez osobnego krzyku, Mimik głosem udawanej ofiary. Część B (mocap) wdrożona w 1.7.709
+(PR #845) — wybór z filmów: z 100STYLE tylko postój (Swat_ID) i marsz w kucaniu (OnToesCrouched_FW); bieg, bieg tyłem i chód Mimika
+zostają z UAL, bez utykania, kobieta z tym samym ruchem co mężczyzna. Test poślizgu stóp `test_foot_slip.gd`, koszt postaci bez zmian.
+**Nie zrobione:** dopisek 100STYLE na ekranie napisów w grze — gra nie ma takiego ekranu (podziękowanie jest w `art/char3d/anim/CREDITS.md`);
+marsz w kucaniu ślizga się jak przed zmianą (45 px/s ≈ 3,7 m/s przy kroku klipu ~0,55 m).
+Lokalnie (poza repo): ujęcia kandydatek głosu i strona odsłuchu `C:\deadair87\odsluch\q8_glosy\index.html`; siedem stylów 100STYLE (BVH)
+w `C:\deadair87\char_src\mocap@STYLE\`, odrzuceni kandydaci w `…\mocap\candidates\`, strona wyboru ruchu `C:\deadair87\odsluch\q8_ruch\index.html`.
 Kontynuacja `CHARACTER_QUALITY_PLAN.md` (Q8 „Później”) i etapu E3 z `CHARACTER_PLAN.md`. Dwie niezależne części: **A — głos**, **B — mocap**.
 
 ## 1. Stan dziś
@@ -147,18 +152,20 @@ Razem ok. 3,5–4 dni pracy.
 
 ## 6. Decyzje
 
-1. **Głos kobiecy:** wybór ujęć na stronie odsłuchu (trafienie ×2, powalenie, oddech).
-2. **Krzyk [G]:** zostaje trafieniem o 20% niżej czy dostaje własny krzyk (dla obu płci)?
-3. **Mimik:** głos udawanej ofiary (rekomendacja) czy zawsze męski?
-4. **Mocap:** 100STYLE jako główne źródło z dopiskiem w napisach (rekomendacja); CMU tylko gdy B1 pokaże braki; Rokoko pominąć.
-5. **Utykanie przy 1 HP:** nowy stan ruchu (zmienia czytelność rozgrywki — inni widzą, kto jest ranny) — tak / nie / po playteście.
-6. **Chód kobiety:** ten sam klip co mężczyzna czy lekkie kołysanie bioder z kodu?
+Wszystkie rozstrzygnięte 2026-11-27:
+
+1. **Głos kobiecy:** trafienie Pole Position A i C, powalenie 344 Audio, zadyszka „Tanja” nosem (1.7.708).
+2. **Krzyk [G]:** zostaje trafieniem o 20% niżej (bez osobnego krzyku).
+3. **Mimik:** głos udawanej ofiary.
+4. **Mocap:** 100STYLE (CC BY 4.0); w grze tylko postój i marsz w kucaniu, reszta zostaje z UAL; CMU i Rokoko niepotrzebne.
+5. **Utykanie przy 1 HP:** nie.
+6. **Chód kobiety:** ten sam ruch co mężczyzna (kołysanie bioder sprawdzone na filmie i odrzucone).
 
 ## 7. Pliki
 
 - Głos: `prototype/tools/bake_hybrid.py`, `bake_audio.py`, `audio_sources.json`, `scripts/audio_manifest.gd` (generowany),
-  `scripts/player.gd`, `scripts/enemy.gd`, `scripts/enemy_mimic.gd`, nowy test w `prototype/tests/`.
-- Mocap: `prototype/tools/prep_anim3d.py`, `scripts/char_clips.gd`, `art/char3d/anim/`, `art_src/animations/SOURCE.md`,
-  `art/char3d/mpfb/CREDITS.md`, ekran napisów.
+  `scripts/player.gd`, `scripts/enemy.gd`, `scripts/enemy_mimic.gd`, test `tools/test_voice.gd`.
+- Mocap: `prototype/tools/prep_anim3d.py`, `scripts/char_clips.gd`, `art/char3d/anim/` (`idle_swat`, `crouch_walk_toes`, `CREDITS.md`),
+  `art_src/animations/100style/SOURCE.md`, `tools/shot_mocap.gd`, `tools/test_foot_slip.gd`.
 - Lokalnie, poza repo: `C:\deadair87\audio_lib\sonniss\…` (nagrania), `C:\deadair87\odsluch\q8_glosy\` (odsłuch),
   `C:\deadair87\char_src\mocap\100STYLE\` (BVH, `Frame_Cuts.csv`, `Dataset_List.csv`).
