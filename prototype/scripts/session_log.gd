@@ -53,6 +53,8 @@ extends RefCounted
 ##   hub_pos        s, p: lista graczy [{who, bot, pos}] — próbka co HUB_POS_EVERY s w kryjówce (mapa cieplna, postoje przy stanowiskach)
 ##   hub_station    s, who, station (bench / locker / service / press / pyro / lab / lathe) — gracz otworzył panel stanowiska (klient
 ##                  zgłasza hostowi przez Scrap); raport: sekcja „Kryjówka” w tools/session_progress.py
+##   hub_station_end s, who, station, time (s przy stanowisku), first_act (s do pierwszej akcji: zakup, montaż, zamówienie, czyszczenie,
+##                  perk, wygląd; -1 — nic) — zamknięty panel stanowiska (od 1.7.702, WORKSHOP_IMMERSION_PLAN.md R5); raport: hub_moves
 ##   system         gpu, gpu_vendor, cpu, threads, ram_gb, os, screen, window, fullscreen, quality, render_scale, vsync, fps_cap — raz na plik, przy jego otwarciu
 ##   perf           map („menu” poza sesją, od 1.7.461; wcześniej domyślna mapa spod menu), fps, avg, p50, p95, p99 (od 1.7.461), max (ms klatki),
 ##                  spikes (klatki > PERF_SPIKE_MS), gpu (ms GPU viewportów widoku 3D), up (s od startu gry); raport: tools/session_perf.py
