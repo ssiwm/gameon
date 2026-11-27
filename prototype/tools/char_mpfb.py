@@ -115,8 +115,8 @@ OUTFITS = {
     "female_scav": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": WHITE_RACE,
         "skin": "young_caucasian_female", "hair": "ponytail01", "eyebrows": "eyebrow006", "eyelashes": "eyelashes02",
-        "face": {"brow": (0.20, 0.13, 0.07), "stubble": 0.0, "grime": 0.45},
-        "braid": {"color": (0.30, 0.19, 0.10), "length": 0.27},      # warkocz spod hełmu (CHARACTER_QUALITY_PLAN.md Q1)
+        "face": {"brow": (0.28, 0.19, 0.10), "stubble": 0.0, "grime": 0.45},
+        "braid": {"color": (0.42, 0.29, 0.14), "length": 0.27},      # ciemny blond: odcina się od oliwkowego plecaka      # warkocz spod hełmu (CHARACTER_QUALITY_PLAN.md Q1)
         "clothes": {
             "elvs_emt_uniform_jacket_female": {"recolor": [ALL_TO_CAMO]},   # kurtka (CC-BY, Elvaerwyn) w kamuflażu
             "elvs_emt_uniform_pants_female": {"recolor": [ALL_TO_CAMO]},
@@ -1575,7 +1575,7 @@ def add_braid(rig, spec):
            for v in o.data.vertices]
     n = 14
     length = float(conf.get("length", 0.27)) * ks
-    r_side, r_along, r_depth = 0.021 * ks, 0.033 * ks, 0.016 * ks          # sploty mocno na zakładkę — lina, nie korale
+    r_side, r_along, r_depth = 0.026 * ks, 0.038 * ks, 0.020 * ks          # sploty mocno na zakładkę — lina, nie korale; grubszy, żeby czytał się w skali gry
     z0 = rim + 0.01                                         # początek schowany pod krawędzią hełmu
     path = []
     x = x0 + r_depth * 0.6

@@ -890,8 +890,8 @@ func _add_braid_spring() -> void:
 	sim.set_end_bone_direction(0, SkeletonModifier3D.BONE_DIRECTION_FROM_PARENT)
 	sim.set_end_bone_length(0, 0.1)
 	sim.set_radius(0, 0.02)
-	sim.set_stiffness(0, 2.0)
-	sim.set_drag(0, 0.45)
+	sim.set_stiffness(0, 1.3)                    # luźniej niż na początku (2,0): ruch warkocza w biegu i przy zwrocie przyciąga wzrok
+	sim.set_drag(0, 0.35)
 	sim.set_gravity(0, 1.0)
 	sim.set_gravity_direction(0, Vector3.DOWN)
 	_sk.add_child(sim)
