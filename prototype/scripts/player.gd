@@ -11,6 +11,7 @@ const Actions := preload("res://scripts/actions.gd")
 const Interact := preload("res://scripts/interact.gd")
 const Throwables := preload("res://scripts/throwables.gd")
 const Perks := preload("res://scripts/perks.gd")
+const AudioManifest := preload("res://scripts/audio_manifest.gd")
 const WeaponController := preload("res://scripts/weapon_controller.gd")
 const SectionCamera := preload("res://scripts/section_camera.gd")
 const SessionLog := preload("res://scripts/session_log.gd")
@@ -264,6 +265,7 @@ var _deck_car: Node2D = null           ## drezyna pod nogami przy ostatnim licze
 var _deck_x := 0.0                     ## jej travel_x wtedy
 var _deck_rel := 0.0                   ## droga po pokładzie względem drezyny od ostatniego kroku (ze znakiem)
 var _breath_on := false
+var _breath_key := "breath_loop"   ## pętla zadyszki tego gracza (głos wg płci; zapamiętana, żeby zmiana wyglądu w trakcie nie zostawiła grającej pętli)
 ## Kopanie P2e: ślady pracy kilofem — urobek na stroju (char3d.gd `soil`, kolor pyłu materiału) i zadyszka (`_update_breath`).
 ## Woła je dig_zone.gd `_hit_rpc` u każdego peera (`dig_exert`), więc brudny strój widać u wszystkich; kosmetyka, bez wpływu na grę.
 const SOIL_HIT := 0.07                    ## urobku na stroju na cios kilofem (kęs); ok. 14 ciosów do pełna, maczetą połowa
@@ -1502,6 +1504,32 @@ func _start_scan() -> void:
 		_scan_view.player = self
 		add_child(_scan_view)
 
+## Klucz głosu gracza wg płci wyglądu (VOICE_MOCAP_PLAN.md A2): kobieta dostaje wariant `_f` (`player_hurt_f`, `player_down_f`,
+## `breath_loop_f`, `revive_f`), jeśli bank go ma; mężczyzna, nieważny wygląd i brak wariantu — klucz bazowy. `base` to klucz albo rdzeń
+## rodziny wariantów (`player_hurt` → `player_hurt_f`, warianty `_1`/`_2` dokłada AudioDirector).
+func voice_key(base: String) -> String:
+	return voice_key_for(look, base)
+
+
+static func voice_key_for(look_code: int, base: String) -> String:
+	return voice_key_gender(Look.gender_id(look_code) == "female", base)
+
+
+static func voice_key_gender(female: bool, base: String) -> String:
+	if not female:
+		return base
+	var k := base + "_f"
+	return k if AudioManifest.PATHS.has(k) or AudioManifest.PATHS.has(k + "_1") else base
+
+
+## Czy w `pos` stoi kobieta (krzyk [G] słyszy Mimik tylko jako miejsce — echo M8 naśladuje głos tego, kto krzyknął).
+static func female_at(tree: SceneTree, pos: Vector2) -> bool:
+	for p in tree.get_nodes_in_group("players"):
+		if not p.is_queued_for_deletion() and p.global_position.distance_to(pos) < 2.0:
+			return Look.gender_id(int(p.look)) == "female"
+	return false
+
+
 ## Krzyk (mikrofon albo G, voice.gd): hałas + przyciągnięcie wrogów; efekt widzą wszyscy.
 func do_scream(amount: float) -> void:
 	if dead or is_bot or not is_multiplayer_authority():
@@ -1517,7 +1545,7 @@ var _scream_ring := 0.0          ## s do końca fali krzyku (0,6 → 0); kulę 3
 @rpc("authority", "call_local", "reliable")
 func _scream_fx() -> void:
 	_scream_ring = 0.6
-	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_WORLD, 1.0, 0.8)
+	Audio.play_variant_at(voice_key("player_hurt"), 2, global_position, Audio.BUS_WORLD, 1.0, 0.8)
 	if is_multiplayer_authority():
 		Feel.shake(1.8)
 
@@ -1585,10 +1613,10 @@ func _go_down() -> void:
 	velocity = Vector2.ZERO
 	crouching = false
 	weapons.on_down()
-	Audio.play("player_down", Audio.BUS_PLAYER, -5.0)
+	Audio.play(voice_key("player_down"), Audio.BUS_PLAYER, -5.0)
 	if _breath_on:
 		_breath_on = false
-		Audio.stop_loop("breath_loop")
+		Audio.stop_loop(_breath_key)
 
 ## Najbliższy leżący towarzysz w zasięgu podnoszenia (poza sobą). Człowiek widzi też Mimika udającego powalonego kolegę (MIMIC_PLAN.md M9) —
 ## dla niego to zwykły leżący; bot podnosi tylko prawdziwych.
@@ -1709,7 +1737,7 @@ func _do_revive() -> void:
 	bleed_left = 0.0
 	revive_progress = 0.0
 	_invuln = 1.2
-	Audio.play("revive", Audio.BUS_PLAYER, -9.0)
+	Audio.play(voice_key("revive"), Audio.BUS_PLAYER, -9.0)
 	if not is_bot:
 		Feel.shake(1.5)
 
@@ -1735,7 +1763,7 @@ func _respawn(hp_amount: int, quiet := false, bled := false) -> void:
 	battery = maxf(battery, BATTERY_MAX * BATTERY_RESPAWN)
 	bat_pct = battery_pct()
 	if not quiet:
-		Audio.play("revive", Audio.BUS_PLAYER, -9.0)
+		Audio.play(voice_key("revive"), Audio.BUS_PLAYER, -9.0)
 
 ## Gdzie wstaje wykrwawiony: w ewakuacji misji z drezyną (zasilona, 1.2) przy niej na torze — start i ostatni generator są wtedy za odjeżdżającą
 ## drezyną, a studnia stacji jest zasypana (MAPS_PLAN.md §4, zasada 3). Miejsce jak slot bota na pokładzie (trzy, żeby nie stać w jednym punkcie).
@@ -1877,12 +1905,13 @@ func _update_breath() -> void:
 	var want := exertion > 0.05
 	if want and not _breath_on:
 		_breath_on = true
-		Audio.start_loop("breath_loop", Audio.BUS_PLAYER, -32.0)
-	elif want and Audio.loop_playing("breath_loop"):
-		Audio.set_loop_volume("breath_loop", lerpf(-38.0, -26.0, exertion) + WIND_DB * pant)
+		_breath_key = voice_key("breath_loop")
+		Audio.start_loop(_breath_key, Audio.BUS_PLAYER, -32.0)
+	elif want and Audio.loop_playing(_breath_key):
+		Audio.set_loop_volume(_breath_key, lerpf(-38.0, -26.0, exertion) + WIND_DB * pant)
 	elif not want and _breath_on:
 		_breath_on = false
-		Audio.stop_loop("breath_loop")
+		Audio.stop_loop(_breath_key)
 
 # ---------------------------------------------------------------- bot AI
 
@@ -2444,7 +2473,7 @@ func apply_chip(amount: float, from_pos: Vector2) -> void:
 	_invuln = CHIP_INVULN
 	_flash = 0.15
 	Vfx.blood(_fx_root(), global_position + Vector2(0, -9), (global_position - from_pos).normalized(), 3)
-	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -12.0)
+	Audio.play_variant(voice_key("player_hurt"), 2, Audio.BUS_PLAYER, -12.0)
 	if not is_bot:
 		Feel.shake(2.0)
 
@@ -2464,7 +2493,7 @@ func apply_stun(seconds: float) -> void:
 	stun_t = seconds
 	_stun_immune = seconds + STUN_IMMUNITY
 	_flash = 0.2
-	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -10.0)
+	Audio.play_variant(voice_key("player_hurt"), 2, Audio.BUS_PLAYER, -10.0)
 	if not is_bot:
 		Feel.shake(3.0)
 
@@ -2497,7 +2526,7 @@ func apply_ff(from_pos: Vector2) -> void:
 	if _ff_cd > 0.0:
 		return
 	_ff_cd = FF_COOLDOWN
-	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_PLAYER, -12.0, 1.15)
+	Audio.play_variant_at(voice_key("player_hurt"), 2, global_position, Audio.BUS_PLAYER, -12.0, 1.15)
 	NoiseMgr.add_noise(NoiseMgr.N_FF, global_position, "ff")
 	if not is_bot:
 		Feel.shake(1.5)
@@ -2570,7 +2599,7 @@ func apply_hit(amount: int, _from_pos: Vector2, force := false) -> void:
 	_invuln = INVULN_AFTER_HIT
 	_flash = 0.25
 	Vfx.blood(_fx_root(), global_position + Vector2(0, -9), (global_position - _from_pos).normalized(), 8)
-	Audio.play_variant("player_hurt", 2, Audio.BUS_PLAYER, -8.0)
+	Audio.play_variant(voice_key("player_hurt"), 2, Audio.BUS_PLAYER, -8.0)
 	# krzyk bólu zawsze, w każdym trybie (wcześniej tylko solo)
 	NoiseMgr.add_noise(NoiseMgr.N_HURT, global_position, "hurt")
 	if not is_bot:
