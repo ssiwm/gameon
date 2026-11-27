@@ -167,7 +167,7 @@ func _skin(look: String) -> void:
 		rough = im.get_pixel(im.get_width() / 2, im.get_height() / 2).g
 	_check(rough <= 0.3, "%s: wilgotne oczy (szorstkość %.2f ≤ 0,30)" % [look, rough])
 
-## Kolba w barku (Q6): przy M-83 celującym poziomo tył broni (wylot − długość) leży najwyżej 6 cm od barku modelu, a nie przed piersią.
+## Kolba w barku (Q6): przy M-83 celującym poziomo tył broni (wylot − długość) leży najwyżej 8 cm od barku modelu, a nie przed piersią.
 func _shoulder_stock(look: String) -> void:
 	_hc.set_gun("m83")
 	for i in 30:
@@ -180,7 +180,7 @@ func _shoulder_stock(look: String) -> void:
 	var butt := gx * Vector3((info["muzzle"] as Vector3).x - float(info["length"]), 0.08, 0.0)
 	var sh: Vector3 = _hc._gp(_hc._b["RightArm"]).origin
 	var d := Vector2(butt.x - sh.x, butt.y - sh.y).length()
-	_check(d <= 0.06, "%s: kolba M-83 przy barku (%.3f m w płaszczyźnie widoku, ≤ 0,06)" % [look, d])
+	_check(d <= 0.08, "%s: kolba M-83 przy barku (%.3f m w płaszczyźnie widoku, ≤ 0,08; krótsze ręce kobiety — pętla zasięgu cofa broń o 3,5 cm)" % [look, d])
 
 ## Od Q7 mundur (kurtka i spodnie szyte) jest w atlasie „outfit” razem z butami i rękawiczkami — ten sam wymóg map normalnych i szorstkości.
 func _medic_uniform(look: String) -> void:

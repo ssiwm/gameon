@@ -135,10 +135,10 @@ func _go() -> void:
 	_ok(face_turn.angle_to(face_after) > deg_to_rad(35.0), "przemiana: głowa skręca się za daleko w szarpnięciu (%.0f°)" % rad_to_deg(face_turn.angle_to(face_after)))
 	var mats: Array = _e.get("_morph_mats")
 	var amount := float((mats[0] as ShaderMaterial).get_shader_parameter("amount")) if not mats.is_empty() else 0.0
-	var skin := false
+	var skin := false                                            # od Q7 strój to jedna siatka „outfit”: nakładka na stroju + na skórze = 2 materiały
 	for m in mats:
 		skin = skin or float((m as ShaderMaterial).get_shader_parameter("skin")) > 0.5
-	_ok(mats.size() >= 3 and skin and is_equal_approx(amount, 1.0), "przemiana: nakładka na stroju i skórze (%d, skóra %s, %.2f)" % [mats.size(), skin, amount])
+	_ok(mats.size() >= 2 and skin and is_equal_approx(amount, 1.0), "przemiana: nakładka na stroju i skórze (%d, skóra %s, %.2f)" % [mats.size(), skin, amount])
 	var eye_s := ((_e.get("_eyes") as Array)[0] as Node3D).scale.x
 	_ok(eye_s > 1.7, "przemiana: oczy większe (×%.2f)" % eye_s)
 	var pack := _gear_mesh("backpack")

@@ -95,7 +95,7 @@ WHITE_RACE = {"asian": 0.1, "caucasian": 0.8, "african": 0.1}
 OUTFITS = {
     "male_scav": {
         "sex": "male", "height": 1.80, "phenotype": MALE, "race": WHITE_RACE,
-        "skin": "middleage_caucasian_male", "hair": "short02", "eyebrows": "eyebrow009", "eyelashes": "eyelashes01",
+        "skin": "middleage_caucasian_male", "hair": "short02", "eyebrows": "eyebrow001", "eyelashes": "eyelashes01",
         "face": {"brow": (0.17, 0.12, 0.07), "stubble": 0.7, "grime": 0.55},     # Q5: brwi w kolorze włosów, zarost, brud z misji
         "clothes": {
             "male_casualsuit05": {"recolor": [DENIM_TO_CAMO, RED_TO_RUST, GREY_TO_CAMO]},     # kurtka polowa i spodnie w kamuflażu
@@ -322,7 +322,7 @@ COL = {
     "strap": ((0.16, 0.10, 0.06), 0.7), "rust": ((0.45, 0.10, 0.06), 0.9), "metal": ((0.35, 0.33, 0.30), 0.5),
     "white": ((0.80, 0.80, 0.76), 0.7), "canvas_dark": ((0.12, 0.10, 0.055), 0.9), "tape": ((0.05, 0.05, 0.05), 0.5), "red": ((0.62, 0.05, 0.04), 0.6), "steel": ((0.12, 0.15, 0.13), 0.45),
     "hair": ((0.10, 0.07, 0.05), 0.55),            # warkocz: kolor nadpisuje wpis "braid" w OUTFITS
-    "scarf": ((0.27, 0.23, 0.14), 0.92),           # chusta: sprane, ciemne khaki (Q3)
+    "scarf": ((0.11, 0.095, 0.055), 0.92),           # chusta: sprane, ciemne khaki (Q3)
     "canvas_white": ((0.50, 0.47, 0.37), 0.9),     # płótno torby medycznej: złamana biel (Q4; czysta biel czytała się jak lodówka)
     "rubber_yellow": ((0.39, 0.24, 0.016), 0.45),  # gumowany kołnierz hazmatu: kolor kombinezonu (HAZMAT_YELLOW w sRGB → liniowo)
 }
@@ -1013,6 +1013,14 @@ def _bake_target(o, img):
         nt.nodes.active = n
 
 
+def _bake_bg(img, col):
+    """Tło obrazu do wypieku (teksele poza wyspami UV): płaska normalna / matowa szorstkość zamiast czerni — czarna normalna i szorstkość 0
+    w szwach atlasu dawały w grze białe iskry na stroju. Wypiek nie czyści obrazu (use_clear False), margines szerszy."""
+    img.generated_color = col
+    bpy.context.scene.render.bake.use_clear = False
+    bpy.context.scene.render.bake.margin = 16
+
+
 def _drop_target(o):
     for m in o.data.materials:
         n = m.node_tree.nodes.get("bake_target")
@@ -1074,6 +1082,7 @@ def texture_gear(rig, size=1024, name="gear"):
     alb = bpy.data.images.new(name + "_albedo", size, size)
     nrm = bpy.data.images.new(name + "_normal", size, size)
     nrm.colorspace_settings.name = "Non-Color"
+    _bake_bg(nrm, (0.5, 0.5, 1.0, 1.0))
     sc = bpy.context.scene
     sc.render.bake.use_pass_direct = False
     sc.render.bake.use_pass_indirect = False
@@ -1083,6 +1092,7 @@ def texture_gear(rig, size=1024, name="gear"):
     _bake_target(g, nrm)
     _bake(type="NORMAL")
     _drop_target(g)
+    sc.render.bake.use_clear = True
     # jeden materiał z wypieczonych map
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
@@ -1701,6 +1711,7 @@ def bake_skin_normal(body, hi):
         nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
     img = bpy.data.images.new("skin_normal", SKIN_TEX, SKIN_TEX)
     img.colorspace_settings.name = "Non-Color"
+    _bake_bg(img, (0.5, 0.5, 1.0, 1.0))
     _bake_target(body, img)
     bpy.ops.object.select_all(action="DESELECT")
     hi.select_set(True)
@@ -1708,6 +1719,7 @@ def bake_skin_normal(body, hi):
     bpy.context.view_layer.objects.active = body
     _bake(type="NORMAL", use_selected_to_active=True, cage_extrusion=0.008, max_ray_distance=0.03)
     _drop_target(body)
+    bpy.context.scene.render.bake.use_clear = True
     for m in body.data.materials:
         nt = m.node_tree
         b = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
@@ -1876,12 +1888,14 @@ def atlas_outfit(rig):
     sc.render.bake.use_pass_direct = False
     sc.render.bake.use_pass_indirect = False
     sc.render.bake.use_pass_color = True
-    sc.render.bake.margin = 4
     alb = bpy.data.images.new("outfit_albedo", ATLAS_TEX, ATLAS_TEX)
+    _bake_bg(alb, (0.2, 0.2, 0.18, 1.0))
     nrm = bpy.data.images.new("outfit_normal", ATLAS_TEX, ATLAS_TEX)
     nrm.colorspace_settings.name = "Non-Color"
+    _bake_bg(nrm, (0.5, 0.5, 1.0, 1.0))
     rgh = bpy.data.images.new("outfit_rough", ATLAS_TEX, ATLAS_TEX, float_buffer=True)
     rgh.colorspace_settings.name = "Non-Color"
+    _bake_bg(rgh, (0.85, 0.85, 0.85, 1.0))
     _bake_target(o, alb)
     _bake(type="DIFFUSE", pass_filter={"COLOR"})
     _bake_target(o, nrm)
@@ -1889,6 +1903,7 @@ def atlas_outfit(rig):
     _bake_target(o, rgh)
     _bake(type="ROUGHNESS")
     _drop_target(o)
+    sc.render.bake.use_clear = True
     r = np.array(rgh.pixels[:], np.float32).reshape(-1, 4)[:, 0]
     orm = bpy.data.images.new("outfit_orm", ATLAS_TEX, ATLAS_TEX)
     orm.colorspace_settings.name = "Non-Color"
