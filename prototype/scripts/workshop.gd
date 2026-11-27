@@ -1,12 +1,6 @@
-extends Node2D
+extends "res://scripts/station.gd"
 ## Warsztat w kryjówce (znacznik „h"): ława z imadłem, kowadłem i skrzynką na złom. Gdy lokalny gracz stoi przy niej,
 ## HUD podpowiada [E]; naciśnięcie otwiera panel warsztatu w trybie „bench" (workshop_ui.gd): bronie, części, czyszczenie i zaopatrzenie za złom.
-
-const Sprites := preload("res://scripts/sprites.gd")
-const ItemsHd := preload("res://scripts/items_hd.gd")
-const Interact := preload("res://scripts/interact.gd")
-const UiTheme := preload("res://scripts/ui_theme.gd")
-const Actions := preload("res://scripts/actions.gd")
 
 const REACH_X := 44.0
 const REACH_Y := 40.0
@@ -19,57 +13,31 @@ const MODEL_CHECK := "res://art/items3d/gunsmith_bench.glb"
 ## nad ławą, dolną krawędzią ok. 35 cm nad blatem (blat 0,99 m) — [skala, x, y stopy w pikselach świata]
 const TOOLS_WALL := [0.45, 8.0, -16.5]
 
-var station_props: Array = []
-
-var local_in_range := false
 var _hd := false
 
-func _ready() -> void:
-	add_to_group("workshop")
-	add_to_group(Interact.GROUP)
-	z_index = 0
-	var models := ResourceLoader.exists(MODEL_CHECK)
-	if models:
-		station_props = MODELS                                # modele 3D (view3d) zamiast ławy HD
-		add_to_group("station_props")
-	if Sprites.newitem and ItemsHd.has("workshop"):
-		# HD: ława z imadłem, kowadłem i skrzynką na złom (Tripo) oraz narzędzia na ścianie nad nią (młotek, klucz, piła, lampka)
-		_hd = true
-		if ItemsHd.has("tools_wall"):
-			if models:
-				var tw := ItemsHd.make("tools_wall", self, float(TOOLS_WALL[0]))
-				tw.position = Vector2(float(TOOLS_WALL[1]), float(TOOLS_WALL[2]))
-			else:
-				var tw := ItemsHd.make("tools_wall", self, 0.8)
-				tw.position = Vector2(4.4 * 0.8, -26.0)
-		if not models:
-			ItemsHd.make("workshop", self)
+func _init() -> void:
+	mode = "bench"
+	group = "workshop"
+	reach = Vector2(REACH_X, REACH_Y)
+	models = MODELS
+	model_check = MODEL_CHECK
+	key_box = Rect2(-22.0, -26.0, 44.0, 26.0)
+
+func _build_props(has_models: bool) -> void:
+	if not (Sprites.newitem and ItemsHd.has("workshop")):
+		return
+	# HD: ława z imadłem, kowadłem i skrzynką na złom (Tripo) oraz narzędzia na ścianie nad nią (młotek, klucz, piła, lampka)
+	_hd = true
+	if ItemsHd.has("tools_wall"):
+		if has_models:
+			var tw := ItemsHd.make("tools_wall", self, float(TOOLS_WALL[0]))
+			tw.position = Vector2(float(TOOLS_WALL[1]), float(TOOLS_WALL[2]))
+		else:
+			var tw := ItemsHd.make("tools_wall", self, 0.8)
+			tw.position = Vector2(4.4 * 0.8, -26.0)
+	if not has_models:
+		ItemsHd.make("workshop", self)
 
 ## Podpowiedź paska akcji, gdy warsztat jest celem [E] (hud.gd czyta ją od celu arbitra, INTERACT_PLAN.md I2): tekst, postęp, kolor.
 func interact_hint(_me: Node2D) -> Dictionary:
 	return {"text": tr("[%s]  Workshop  ·  SCRAP %d") % [Actions.key("interact"), Scrap.bank], "col": UiTheme.ACCENT, "station": true}
-
-## Oferta [E] (interact.gd): stanowisko otwiera kartę, gdy gracz stoi w zasięgu, a panel stanowisk jest zamknięty. Ustępuje broni,
-## ratowaniu i pracom w misji (priorytet P_STATION).
-func interact_offer(me: Node2D) -> Dictionary:
-	if me.dead or absf(me.global_position.x - global_position.x) > REACH_X or absf(me.global_position.y - global_position.y) > REACH_Y:
-		return {}
-	var ui := get_tree().get_first_node_in_group("workshop_ui")
-	if ui != null and ui.is_open():
-		return {}
-	return Interact.offer(self, me, Interact.Kind.PRESS, Interact.P_STATION, true, Rect2(global_position + Vector2(-22.0, -26.0), Vector2(44.0, 26.0)))
-
-func _physics_process(_delta: float) -> void:
-	local_in_range = false
-	var me: Node2D = null
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot and p.is_multiplayer_authority() and not p.dead and not p.is_queued_for_deletion():
-			me = p
-			break
-	if me == null:
-		return
-	local_in_range = absf(me.global_position.x - global_position.x) <= REACH_X and absf(me.global_position.y - global_position.y) <= REACH_Y
-	if local_in_range and Interact.pressed(self):
-		var ui := get_tree().get_first_node_in_group("workshop_ui")
-		if ui != null and not ui.is_open():
-			ui.open("bench")

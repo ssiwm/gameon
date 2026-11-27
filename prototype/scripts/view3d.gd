@@ -740,6 +740,25 @@ func _res_scale() -> float:
 func _quality_3d_scale() -> float:
 	return 0.75 if Settings.quality_idx == 1 else 1.0
 
+## Kadr kamery świata po najeździe na jedno ujęcie (_focus_shot).
+class FocusFrame:
+	var xf: Transform3D
+	var dist: float
+	var fsize: float
+	var foff: Vector2
+
+## Najazd kamery świata na ujęcie z wagą `w` (0..1, już po smoothstep; WORKSHOP_IMMERSION_PLAN.md R0.4): oko przechodzi z kadru gry do
+## `eye`, odległość płaszczyzny gry do `dist_to`, kąt widzenia z FOV do `fov_to`, a „shift” obiektywu (EYE_UP_M) znika. Źródła: oględziny
+## broni i gablota (`_fp`) oraz drzwi strzelnicy (`_rp`) — nakładane po kolei; w R1 dochodzi stanowisko warsztatu.
+func _focus_shot(xf: Transform3D, dist: float, foff: Vector2, near: float, eye: Vector3, dist_to: float, fov_to: float, w: float) -> FocusFrame:
+	var fr := FocusFrame.new()
+	fr.xf = xf
+	fr.xf.origin = xf.origin.lerp(eye, w)
+	fr.dist = lerpf(dist, dist_to, w)
+	fr.fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, fov_to, w) * 0.5))
+	fr.foff = foff * (1.0 - w)
+	return fr
+
 func _sync_camera() -> void:
 	var c2 := get_viewport().get_camera_2d()
 	if c2 == null:
@@ -776,10 +795,11 @@ func _sync_camera() -> void:
 		if _fp_item != null and is_instance_valid(_fp_item) and _fp_item.has_meta("cab_x"):
 			# gablota: kamera na wprost gabloty, na wysokości jej środka — cała gablota w kadrze (jak na zdjęciach-wzorach)
 			eye = Level3D.px_to_m(Vector2(float(_fp_item.get_meta("cab_x")), (_fp_item as Node2D).global_position.y + 2.0)) + Vector3(0.0, CAB_H * 0.52, FP_Z)
-		xf.origin = xf.origin.lerp(eye, fe)
-		dist = lerpf(dist, FP_Z + 0.5, fe)
-		fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, FP_FOV, fe) * 0.5))
-		foff *= 1.0 - fe
+		var fr := _focus_shot(xf, dist, foff, near, eye, FP_Z + 0.5, FP_FOV, fe)
+		xf = fr.xf
+		dist = fr.dist
+		fsize = fr.fsize
+		foff = fr.foff
 	# strzelnica FPP (range_door.gd, range_view.gd): lokalny gracz wchodzi do tunelu — kamera najeżdża na drzwi na wysokości oczu, a obraz
 	# tunelu wyłania się z czerni; przy wyjściu odjeżdża od drzwi z powrotem do kadru gry
 	var in_range := false
@@ -796,10 +816,11 @@ func _sync_camera() -> void:
 	_rp = move_toward(_rp, 1.0 if in_range else 0.0, get_process_delta_time() / RP_TIME)
 	var re := smoothstep(0.0, 1.0, _rp)
 	if re > 0.0 and _rp_door != null and is_instance_valid(_rp_door):
-		xf.origin = xf.origin.lerp(Level3D.px_to_m(_rp_door.global_position) + Vector3(0.0, FP_EYE_M, RP_Z), re)
-		dist = lerpf(dist, RP_Z + 1.8, re)
-		fsize = 2.0 * near * tan(deg_to_rad(lerpf(FOV, FP_FOV, re) * 0.5))
-		foff *= 1.0 - re
+		var fr := _focus_shot(xf, dist, foff, near, Level3D.px_to_m(_rp_door.global_position) + Vector3(0.0, FP_EYE_M, RP_Z), RP_Z + 1.8, FP_FOV, re)
+		xf = fr.xf
+		dist = fr.dist
+		fsize = fr.fsize
+		foff = fr.foff
 	var hide_2d := maxf(fe, re)
 	label_fade = 1.0 - hide_2d
 	for ci in [_level, _players]:                              # etykiety i paski 2D nad postaciami nie pasują do widoku z oczu — gasną

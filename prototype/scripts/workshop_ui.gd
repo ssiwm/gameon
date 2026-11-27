@@ -33,6 +33,7 @@ const SupplyView := preload("res://scripts/stations/supply_view.gd")
 const ServiceView := preload("res://scripts/stations/service_view.gd")
 const LabView := preload("res://scripts/stations/lab_view.gd")
 const LockerView := preload("res://scripts/stations/locker_view.gd")
+const BenchView := preload("res://scripts/stations/bench_view.gd")
 const ServiceArt := preload("res://scripts/station_service_art.gd")
 const LabArt := preload("res://scripts/station_lab_art.gd")
 
@@ -74,314 +75,23 @@ const SLOT_LABELS := {"srut8:stock": "Carrier"}
 ## Kolejność siatki: bronie od początku, potem do kupienia za złom, na końcu zablokowane do późniejszych stref.
 const LIST := [Weapons.M83, Weapons.SPREAD12, Weapons.P64, Weapons.LR7, Weapons.HKM9, Weapons.SRUT8, Weapons.GNIEW4, Weapons.WIDMO1, Weapons.SOKOL6, Weapons.CIEGNO6, Weapons.MACZETA, Weapons.KILOF]
 
-## Moneta złomu (8×8).
-class Coin extends Control:
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(8, 8)
-	func _draw() -> void:
-		var gold := Color(0.95, 0.78, 0.32)
-		var dark := Color(0.5, 0.36, 0.1)
-		if UiTheme.hd_on():
-			draw_circle(Vector2(4, 4), 4.0, dark)
-			draw_circle(Vector2(4, 4), 3.2, gold)
-			draw_arc(Vector2(4, 4), 2.1, 0.0, TAU, 20, dark, 0.8, true)
-			draw_arc(Vector2(4, 4), 2.9, PI * 1.1, PI * 1.6, 8, Color(1, 0.95, 0.7), 0.9, true)
-			return
-		draw_rect(Rect2(2, 0, 4, 8), dark)
-		draw_rect(Rect2(0, 2, 8, 4), dark)
-		draw_rect(Rect2(2, 1, 4, 6), gold)
-		draw_rect(Rect2(1, 2, 6, 4), gold)
-		draw_rect(Rect2(3, 2, 2, 4), dark)
-
-## Trzy kwadraciki poziomu ulepszeń.
-class TierBar extends Control:
-	var level := 0                ## odblokowane części broni
-	var total := 3                ## wszystkie części broni (parts.gd)
-	var maxed := false
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(26, 7)
-	func _draw() -> void:
-		for i in total:
-			var r := Rect2(float(i) * 9.0, 0, 7, 7)
-			if i < level:
-				var fc := Color(0.45, 1.0, 0.55) if maxed else Color(1.0, 0.72, 0.28)
-				if UiTheme.hd_on():
-					UiTheme.pill(self, r, fc, true)
-				else:
-					draw_rect(r, fc)
-			elif UiTheme.hd_on():
-				UiTheme.pill(self, r, Color(UiTheme.BONE_DIM, 0.8), false)
-			else:
-				draw_rect(r, Color(UiTheme.BONE_DIM, 0.8), false, 1.0)
-
-## Pasek na papierowej karcie (stan broni, zużycie części): ślad, wypełnienie i opcjonalna kreska granicy (np. do ilu czyszczenie przywróci stan).
-class PaperBar extends Control:
-	var frac := 0.0
-	var cap := -1.0
-	var col := UiTheme.INK
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(60, 6)
-		size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	func _draw() -> void:
-		draw_rect(Rect2(Vector2.ZERO, size), UiTheme.PAPER_SEL)
-		draw_rect(Rect2(0, 0, roundf(size.x * clampf(frac, 0.0, 1.0)), size.y), col)
-		if cap >= 0.0:
-			var x := clampf(size.x * cap, 1.0, size.x - 1.0)
-			draw_rect(Rect2(x - 0.75, -2.0, 1.5, size.y + 4.0), UiTheme.INK_COST)
-
-## Kropka „nowe” (perk właśnie odblokowany, część, której gracz jeszcze nie oglądał) — kolor lampy z ciemnym obrysem.
-class NewDot extends Control:
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(7, 7)
-		size = Vector2(7, 7)
-	func _draw() -> void:
-		draw_circle(Vector2(3.5, 3.5), 3.5, Color(0, 0, 0, 0.6))
-		draw_circle(Vector2(3.5, 3.5), 2.6, UiTheme.ACCENT)
-
-## Wspólny kafel stanowisk (bronie, zaopatrzenie, perki, wygląd): miniatura po lewej, nazwa, jedna linia stanu (albo cena z monetą)
-## i najwyżej jeden wskaźnik z kropek przy prawej krawędzi — zawsze z podpisem w linii stanu albo z podpowiedzią.
-class CardTile extends Button:
-	var icon_node: Control
-	var name_label: Label
-	var state_label: Label
-	var coin: Coin
-	var price_label: Label
-	var bar: Control
-	var _new_dot: NewDot
-	func _init() -> void:
-		focus_mode = Control.FOCUS_NONE
-		toggle_mode = false
-		custom_minimum_size = Vector2(150.0, 46.0)
-	var lit := false
-	var box_normal: StyleBox              ## własne tło kafla (pudełko na półce, przegroda skrzyni); null — kafel stanowiska
-	var box_lit: StyleBox
-	## Światło jako kursor (STATION_CARDS_PLAN.md §5): wybrany kafel stoi w snopie lampy, reszta jest przygaszona — miniatura ciemnieje,
-	## nazwa i cena zostają czytelne. Bez pomarańczowej ramki.
-	func set_lit(on: bool) -> void:
-		lit = on
-		var sbox: StyleBox = (box_lit if on else box_normal) if box_normal != null else UiTheme.tile_box("selected" if on else "normal")
-		for st in ["normal", "pressed", "focus"]:
-			add_theme_stylebox_override(st, sbox)
-		if icon_node != null:
-			icon_node.self_modulate = Color.WHITE if on else Color(0.6, 0.58, 0.55)
-		queue_redraw()
-	func _draw() -> void:
-		if lit:
-			draw_texture_rect(UiTheme.lamp_pool(), Rect2(Vector2(-size.x * 0.12, -size.y * 0.55), Vector2(size.x * 0.75, size.y * 1.9)), false)
-	## Kropka „nowe” w prawym górnym rogu kafla.
-	func set_new(on: bool) -> void:
-		if on and _new_dot == null:
-			_new_dot = NewDot.new()
-			_new_dot.position = Vector2(custom_minimum_size.x - 11.0, 4.0)
-			add_child(_new_dot)
-		if _new_dot != null:
-			_new_dot.visible = on
-	## Kropki wskaźnika przy prawej krawędzi, w linii stanu (szerokość z liczby kropek).
-	func place_bar() -> void:
-		if bar == null:
-			return
-		var n := int(bar.get("maxn")) if bar.get("maxn") != null else int(bar.get("total"))
-		var w := maxf(7.0, float(n) * 9.0 - 2.0)
-		bar.custom_minimum_size.x = w
-		bar.position = Vector2(custom_minimum_size.x - 6.0 - w, custom_minimum_size.y - 19.0)
-
-## Kafel broni w siatce stanowiska: stan zależny od stanowiska (stan techniczny, ostrze, części) albo miejsce zakupu.
-class Tile extends CardTile:
-	var weapon := 0
-	var marks: ServiceMarks
-
-## Stół konserwacji, kafel broni: dwie ikonki części eksploatacyjnych przy prawej krawędzi — lufa (rura z wylotem) i sprężyny (zygzak).
-## Stan 0 — ukryta, 1 — do wymiany (złoto), 2 — pilna (czerwień). Same wymiany: stan czyszczenia mówi linia STAN.
-class ServiceMarks extends Control:
-	var barrel := 0
-	var springs := 0
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(30, 9)
-		size = custom_minimum_size
-	func _col(state: int) -> Color:
-		return UiTheme.DANGER if state >= 2 else Color(0.95, 0.8, 0.4)          # złoto jak GOLD panelu
-	func _draw() -> void:
-		if barrel > 0:
-			var c := _col(barrel)
-			draw_rect(Rect2(0, 3, 11, 3), c)                          # rura lufy
-			draw_rect(Rect2(10, 2, 2, 5), c)                          # wylot
-		if springs > 0:
-			var c2 := _col(springs)
-			var pts := PackedVector2Array()
-			for i in 7:
-				pts.append(Vector2(17.0 + i * 2.0, 1.0 if i % 2 == 0 else 8.0))
-			draw_polyline(pts, c2, 1.5)
-
-## Kropki zapasu drużyny: `have` wypełnionych z `maxn` (jak kwadraciki poziomu ulepszeń broni).
-class StockBar extends Control:
-	var have := 0
-	var maxn := 3
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(36, 7)
-	func _draw() -> void:
-		for i in maxn:
-			var r := Rect2(float(i) * 9.0, 0, 7, 7)
-			if i < have:
-				var fc := Color(0.45, 1.0, 0.55) if have >= maxn else Color(1.0, 0.72, 0.28)
-				if UiTheme.hd_on():
-					UiTheme.pill(self, r, fc, true)
-				else:
-					draw_rect(r, fc)
-			elif UiTheme.hd_on():
-				UiTheme.pill(self, r, Color(UiTheme.BONE_DIM, 0.8), false)
-			else:
-				draw_rect(r, Color(UiTheme.BONE_DIM, 0.8), false, 1.0)
-
-## Pasek poziomu profilu: wypełnienie = postęp XP w bieżącym poziomie.
-class LevelBar extends Control:
-	var frac := 0.0
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		custom_minimum_size = Vector2(0, 7)
-		size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	func _draw() -> void:
-		if UiTheme.hd_on():
-			UiTheme.pill(self, Rect2(Vector2.ZERO, size), Color(0.04, 0.05, 0.07, 0.9), true)
-			if frac > 0.0:
-				UiTheme.pill(self, Rect2(1, 1, maxf(size.y - 2.0, (size.x - 2.0) * frac), size.y - 2.0), Color(0.55, 0.8, 1.0), true)
-			UiTheme.pill(self, Rect2(Vector2.ZERO, size), Color(UiTheme.BONE_DIM, 0.8), false)
-			return
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.04, 0.05, 0.07, 0.9))
-		draw_rect(Rect2(Vector2.ZERO, size), Color(UiTheme.BONE_DIM, 0.8), false, 1.0)
-		draw_rect(Rect2(1, 1, maxf(0.0, (size.x - 2.0) * frac), size.y - 2.0), Color(0.55, 0.8, 1.0))
-
-## Kafel perku w siatce: miniatura + nazwa + stan (poziom odblokowania / założony / dostępny).
-## Podgląd postaci z arkusza HD (256×384 na klatkę): animowany (bieg/idle) w kafelku i w szczegółach zakładki LOOK. Arkusz ładowany leniwie (z mipmapami).
-class LookView extends Control:
-	var code := 0
-	var anim := "idle"
-	var _t := 0.0
-
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-
-	func set_code(c: int) -> void:
-		if c != code:
-			code = c
-			queue_redraw()
-
-	func _process(delta: float) -> void:
-		if is_visible_in_tree():
-			_t += delta
-			queue_redraw()
-
-	func _draw() -> void:
-		var sheet := Look.sheet(code)
-		if not Sprites.has(sheet):
-			return
-		var man: Dictionary = Sprites.manifest()["sheets"][sheet]
-		var an: Dictionary = man["anims"].get(anim, man["anims"]["idle"])
-		var fr: Array = man["frame"]
-		var frame := int(_t * float(an["fps"])) % maxi(1, int(an["frames"]))
-		var tex := Sprites.mip_texture(Sprites.DIR + sheet + ".png")
-		if tex == null:
-			return
-		var s := minf(size.x / float(fr[0]), size.y / float(fr[1]))
-		var w := Vector2(float(fr[0]), float(fr[1])) * s
-		draw_texture_rect_region(tex, Rect2(Vector2((size.x - w.x) * 0.5, size.y - w.y), w), Rect2(frame * fr[0], int(an["row"]) * fr[1], fr[0], fr[1]))
-
-## Podgląd postaci 3D na żywo (gdy gra używa modeli 3D): ten sam render co w misji, ale w pełnej jakości (MSAA, cienie, rim, `ss` do 16)
-## i na stole obrotowym — widać plecak, kieszenie, szwy i twarz. Z zakładką LOOK w warsztacie i (później) z lobby.
-class Look3DView extends Control:
-	var code := 0
-	var _c3d: Node2D
-	var _holder: Node2D
-	var _t := 0.0
-	var _name := ""
-
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		clip_contents = true
-		custom_minimum_size = Vector2(0, 190)
-
-	func _ready() -> void:
-		_holder = Node2D.new()
-		add_child(_holder)
-		resized.connect(_layout)
-		_layout()
-
-	## Postać (22 j. świata) zajmuje ~92% wysokości kontrolki; `ss` renderu dobrany do rozmiaru na ekranie (tekstura ≥ 1 px na piksel).
-	func _layout() -> void:
-		if _holder == null:
-			return
-		var k := size.y * 0.92 / 22.0
-		_holder.scale = Vector2(k, k)
-		_holder.position = Vector2(size.x * 0.5, size.y * 0.97)
-
-	func _want_ss() -> int:
-		var px_per_unit := get_global_transform().get_scale().x * float(get_window().size.y) / 360.0
-		var k := size.y * 0.92 / 22.0
-		return clampi(int(ceil(k * px_per_unit)), 6, 16)
-
-	func set_code(c: int) -> void:
-		code = c
-		var nm := Char3D.char_name_for(Look.gender_id(c), Look.outfit_id(c))
-		if _c3d == null:
-			_c3d = Char3D.new()
-			_c3d.preview = true
-			_c3d.preview_ss = _want_ss()
-			_holder.add_child(_c3d)
-			if not _c3d.setup(nm):
-				_c3d.queue_free()
-				_c3d = null
-				return
-			_name = nm
-		elif nm != _name:
-			_c3d.set_look(nm)
-			_name = nm
-		_c3d.set_palette(Look.palette_of(c))
-
-	func _process(delta: float) -> void:
-		if _c3d == null or not is_visible_in_tree():
-			return
-		_t += delta
-		_c3d.set_view_yaw(fmod(_t * 28.0, 360.0))
-		_c3d.update(delta, "idle", 1.0, Vector2(1.0, 0.0), 0.0, true, Color.WHITE)
-
-## Kafel stroju (wyższy — postać na całą wysokość).
-## Miniatura stroju z renderu modelu 3D (tools/bake_look_portraits.gd → art/portraits/look_<płeć>_<strój>.png), stopami na dole kafla.
-class LookPortrait extends Control:
-	var tex: Texture2D
-	func _init() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	func set_code(c: int) -> void:
-		var path := "res://art/portraits/look_%s_%s.png" % [Look.gender_id(c), Look.outfit_id(c)]
-		tex = load(path) as Texture2D if ResourceLoader.exists(path) else null
-		queue_redraw()
-	func _draw() -> void:
-		if tex == null:
-			return
-		var ts := tex.get_size()
-		var s := minf(size.x / ts.x, size.y / ts.y)
-		var w := ts * s
-		draw_texture_rect(tex, Rect2(Vector2((size.x - w.x) * 0.5, size.y - w.y), w), false)
-
-## Kafel stroju (wyższy — postać na całą wysokość).
-class LookTile extends CardTile:
-	var code := 0
-	var view: Control
-
-## Kafel perku: stan (założony / dostępny / poziom odblokowania).
-class PerkTile extends CardTile:
-	var perk := ""
-
-## Kafel zaopatrzenia: cena z monetą w linii stanu, kropki = zapas drużyny.
-class SupplyTile extends CardTile:
-	var kind := ""
+## Kontrolki kart (stations/station_widgets.gd) — aliasy, żeby panel, widoki i testy pisały `Tile`, `ui.Tile` jak dawniej.
+const Widgets := preload("res://scripts/stations/station_widgets.gd")
+const Coin := Widgets.Coin
+const TierBar := Widgets.TierBar
+const PaperBar := Widgets.PaperBar
+const NewDot := Widgets.NewDot
+const CardTile := Widgets.CardTile
+const Tile := Widgets.Tile
+const ServiceMarks := Widgets.ServiceMarks
+const StockBar := Widgets.StockBar
+const LevelBar := Widgets.LevelBar
+const LookView := Widgets.LookView
+const Look3DView := Widgets.Look3DView
+const LookPortrait := Widgets.LookPortrait
+const LookTile := Widgets.LookTile
+const PerkTile := Widgets.PerkTile
+const SupplyTile := Widgets.SupplyTile
 
 var _open := false
 var _page := 0                        ## 0 = ARMS (bronie i ulepszenia), 1 = SUPPLIES (granaty, miny, narzędzia), 2 = PERKS, 3 = LOOK
@@ -394,7 +104,9 @@ var _mode := "bench"                  ## „bench" — ława (ARMS, SUPPLIES), �
 const FIRST_PICK := "m83_drum75"        ## pierwszy zakup na ławie: po udanej 1.1 stać na niego, a M-83 ma każdy nowy gracz
 const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press": [1], "pyro": [1], "lab": [0], "lathe": [0]}
 const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench", "pyro": "pyro_bench", "lab": "lab_bench",
-	"lathe": "lathe_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
+	"lathe": "lathe_bench"}      ## grupa stanowiska: panel wiąże się przy otwarciu z jego węzłem i zamyka na `left_range` (station.gd)
+var _station: Node2D                 ## stanowisko otwartego panelu (station.gd); jego `left_range` zamyka panel
+var _reach_check := false            ## pierwsza klatka po otwarciu: sprawdzić, czy gracz w ogóle stoi w zasięgu stanowiska
 const SERVICE_IDS := ["clean", "barrel", "springs"]
 var _title: Label
 var _sup_sel := 0
@@ -532,6 +244,7 @@ var _v_supply = SupplyView.new(self)          # widok stanowiska (stations/suppl
 var _v_service = ServiceView.new(self)          # widok stanowiska (stations/service_view.gd)
 var _v_lab = LabView.new(self)          # widok stanowiska (stations/lab_view.gd)
 var _v_locker = LockerView.new(self)          # widok stanowiska (stations/locker_view.gd)
+var _v_bench = BenchView.new(self)          # widok stanowiska (stations/bench_view.gd)
 
 func _ready() -> void:
 	add_to_group("workshop_ui")
@@ -959,98 +672,60 @@ func _scroll_body(body: Control) -> ScrollContainer:
 	scroll.add_child(body)
 	return scroll
 
+# ---------------------------------------------------------------- zakładka ARMS (stations/bench_view.gd)
+
 func _make_tile(w: int, idx: int) -> Tile:
-	var t := Tile.new()
-	t.weapon = w
-	var ic := GunIcon.new()
-	var d: RefCounted = Weapons.base_def(w)
-	ic.plate = true
-	ic.k = 0.3
-	ic.set_gun(int(d.gun_row), d.tracer_color, Color.WHITE)
-	_dress_tile(t, ic, String(d.name))
-	_add_bar(t, TierBar.new())
-	t.pressed.connect(_select.bind(idx))
-	return t
-
-## Wspólna ramka kafla: style stanów, miniatura w polu po lewej, nazwa i (pusta) linia stanu. Wysoki kafel (wygląd) — obie linie wyśrodkowane.
+	return _v_bench._make_tile(w, idx)
 func _dress_tile(t: CardTile, icon: Control, title: String) -> void:
-	for st in ["normal", "hover", "pressed", "disabled", "focus"]:
-		t.add_theme_stylebox_override(st, UiTheme.tile_box("hover" if st == "hover" else "normal"))
-	icon.position = Vector2(4, 5)
-	icon.size = Vector2(54, t.custom_minimum_size.y - 10.0)
-	t.add_child(icon)
-	t.icon_node = icon
-	var mid := (t.custom_minimum_size.y - TILE_H) * 0.5
-	t.name_label = UiTheme.label(title, 10, UiTheme.TEXT)
-	t.name_label.position = Vector2(64, 6.0 + mid)
-	t.add_child(t.name_label)
-	t.state_label = UiTheme.label("", 8, UiTheme.MUTED)
-	t.state_label.position = Vector2(64, 25.0 + mid)
-	t.add_child(t.state_label)
-
-## Cena z monetą w linii stanu (zaopatrzenie).
+	_v_bench._dress_tile(t, icon, title)
 func _add_price(t: CardTile) -> void:
-	t.coin = Coin.new()
-	t.coin.position = Vector2(64, 26)
-	t.add_child(t.coin)
-	t.price_label = UiTheme.label("", 10, GOLD)
-	t.price_label.position = Vector2(76, 23)
-	t.add_child(t.price_label)
-
-## Jedyny wskaźnik kafla: kropki przy prawej krawędzi.
+	_v_bench._add_price(t)
 func _add_bar(t: CardTile, bar: Control) -> void:
-	t.bar = bar
-	t.add_child(bar)
-	t.place_bar()
-
+	_v_bench._add_bar(t, bar)
 func _build_detail() -> Control:
-	var v := VBoxContainer.new()
-	v.custom_minimum_size = Vector2(DETAIL_W, 0)
-	v.add_theme_constant_override("separation", 4)
-	_arms_detail = v
-	_cork = LabArt.CorkChain.new()                        # pracownia (ST-05): tablica korkowa z łańcuchem kroków
-	_cork.visible = false
-	v.add_child(_cork)
-	_dossier_head = UiTheme.mono(UiTheme.ink("", 7, UiTheme.INK_MUTED))       # akta Obiektu 86 (sprzęt bunkra — cyrylica, D1a)
-	_dossier_head.visible = false
-	v.add_child(_dossier_head)
-	_redacted = LabArt.Redacted.new()
-	_redacted.color = UiTheme.INK
-	_redacted.visible = false
-	v.add_child(_redacted)
-	_blueprint = LabArt.Blueprint.new()                   # tokarka (ST-06): rysunek części z drukarki zamiast sceny z bronią
-	_blueprint.visible = false
-	v.add_child(_blueprint)
-	_d_stage = GunStage.new()
-	_d_stage.custom_minimum_size = Vector2(0, 76)
-	v.add_child(_d_stage)
-	_d_title = _ink_heading()
-	v.add_child(_d_title)
-	_d_tag = UiTheme.ink("", 8, UiTheme.INK_MUTED)
-	v.add_child(_d_tag)
-	_d_panel = VBoxContainer.new()
-	_d_panel.add_theme_constant_override("separation", 3)
-	v.add_child(_d_panel)
-	_d_stats = GridContainer.new()
-	_d_stats.columns = 4                                  # parametr | teraz | → po zmianie | korzyść / koszt
-	_d_stats.add_theme_constant_override("h_separation", 10)
-	_d_stats.add_theme_constant_override("v_separation", 1)
-	v.add_child(_d_stats)
-	v.add_child(_paper_rule())
-	_d_tiers = VBoxContainer.new()
-	_d_tiers.add_theme_constant_override("separation", 1)
-	v.add_child(_d_tiers)
-	_d_text = UiTheme.ink("", 8)
-	_d_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_d_text.custom_minimum_size = Vector2(DETAIL_W, 0)
-	v.add_child(_d_text)
-	_action = Button.new()
-	_action.focus_mode = Control.FOCUS_NONE
-	_action.add_theme_font_size_override("font_size", 10)
-	_action.add_theme_color_override("font_disabled_color", UiTheme.BONE_DIM)     # wyłączona akcja niesie podpowiedź („wybierz gniazdo”)
-	_action.pressed.connect(_act)
-	v.add_child(_action)
-	return v
+	return _v_bench._build_detail()
+func _options(w: int) -> Array:
+	return _v_bench._options(w)
+func _queue_summary(skip_batches := false) -> String:
+	return _v_bench._queue_summary(skip_batches)
+func _slot_label(key: String, slot: String) -> String:
+	return _v_bench._slot_label(key, slot)
+func _comparison_rows(d: RefCounted) -> Array:
+	return _v_bench._comparison_rows(d)
+func _paper_bar(label: String, frac: float, value: String, col: Color, cap := -1.0) -> void:
+	_v_bench._paper_bar(label, frac, value, col, cap)
+func _first_pick() -> String:
+	return _v_bench._first_pick()
+func _first_part_opt() -> int:
+	return _v_bench._first_part_opt()
+func _save_preset() -> void:
+	_v_bench._save_preset()
+func _refresh_tile(t: Tile, selected: bool) -> void:
+	_v_bench._refresh_tile(t, selected)
+func _refresh_detail(w: int) -> void:
+	_v_bench._refresh_detail(w)
+func _pick_slot(slot: String) -> void:
+	_v_bench._pick_slot(slot)
+func _move_slot(direction: int) -> void:
+	_v_bench._move_slot(direction)
+func _save_current_preset() -> void:
+	_v_bench._save_current_preset()
+func _present_committed(w: int, before: int) -> void:
+	_v_bench._present_committed(w, before)
+func _act_state(b: Button, st: String, price: int) -> void:
+	_v_bench._act_state(b, st, price)
+func _dress_action(b: Button) -> void:
+	_v_bench._dress_action(b)
+func _paper(inner: Control) -> PanelContainer:
+	return _v_bench._paper(inner)
+func _stamp() -> void:
+	_v_bench._stamp()
+func _paper_rule() -> ColorRect:
+	return _v_bench._paper_rule()
+func _ink_heading() -> Label:
+	return _v_bench._ink_heading()
+func _rule() -> ColorRect:
+	return _v_bench._rule()
 
 # ---------------------------------------------------------------- otwieranie
 
@@ -1082,6 +757,7 @@ func open(mode := "bench") -> void:
 	var allowed := _sup_list()
 	if not allowed.has(_sup_sel) and not allowed.is_empty():
 		_sup_sel = int(allowed[0])
+	_bind_station()
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE            # w grze celownik zastępuje kursor; panel potrzebuje myszy
@@ -1090,9 +766,29 @@ func open(mode := "bench") -> void:
 	if _first_pick() != "" and _opt >= 0:
 		_say(tr("Good first upgrade: 45 more rounds before you have to reload."), UiTheme.OK)
 
+## Wiąże panel ze stanowiskiem trybu (R0.2, K4): odejście od niego, śmierć albo uśpienie stanowiska wysyła `left_range` i panel się
+## zamyka. Gracz poza zasięgiem w pierwszej klatce po otwarciu — panel zamyka się od razu, jak dawniej (`_reach_check`).
+func _bind_station() -> void:
+	_unbind_station()
+	_station = get_tree().get_first_node_in_group(String(MODE_GROUP[_mode])) as Node2D
+	if _station == null:
+		return
+	if _station.has_signal("left_range"):
+		_station.connect("left_range", _on_left_range)
+	_reach_check = true
+
+func _unbind_station() -> void:
+	if _station != null and is_instance_valid(_station) and _station.has_signal("left_range") and _station.is_connected("left_range", _on_left_range):
+		_station.disconnect("left_range", _on_left_range)
+	_station = null
+
+func _on_left_range() -> void:
+	close()
+
 func close() -> void:
 	if not _open:
 		return
+	_unbind_station()
 	_remembered[_mode] = _sel
 	_session += 1
 	_workbench.stage.cancel_mount()
@@ -1111,11 +807,12 @@ func _process(delta: float) -> void:
 	_msg_t = maxf(0.0, _msg_t - delta)
 	if _msg_t <= 0.0:
 		_msg.text = ""
-	# panel zamyka się, gdy gracz odejdzie od ławy / zginie / misja się zmieni (przerwane czyszczenie trzeba zacząć od nowa)
-	var wk := get_tree().get_first_node_in_group(String(MODE_GROUP[_mode]))
-	if wk == null or not wk.local_in_range or not NoiseMgr.safe_zone:
+	# panel zamyka się, gdy gracz odejdzie od stanowiska albo zginie (`left_range`, _bind_station), stanowisko zniknie albo misja się
+	# zmieni (przerwane czyszczenie trzeba zacząć od nowa)
+	if _station == null or not is_instance_valid(_station) or not NoiseMgr.safe_zone or (_reach_check and not bool(_station.get("local_in_range"))):
 		close()
 		return
+	_reach_check = false
 	tick_clean(delta)
 	_hub_events()
 	var hud := get_parent() as Control
@@ -1371,42 +1068,6 @@ func _input(event: InputEvent) -> void:
 		close()
 	get_viewport().set_input_as_handled()
 
-## Opcje części broni `w` w kolejności gniazd: [{slot, id}] — id "" to element fabryczny gniazda. Na końcu „SERVICE / clean”: czyszczenie
-## broni przy ławie (etap 4a GUNSMITH_PLAN — stan techniczny), gdy broń jest kupiona, strzela i niezawodność nie jest wyłączona.
-func _options(w: int) -> Array:
-	var key := String(Weapons.def(w).key)
-	var out: Array = []
-	if _mode == "lathe":
-		if Scrap.is_unlocked(w) and Weapons.def(w).is_melee() and Settings.reliability_mult() > 0.0:
-			out.append({"slot": "service", "id": "sharpen"})        # szlifierka: ostrze broni białej
-		elif key in Scrap.LAB_WEAPONS:
-			for s in Parts.slots_of(key):
-				for p in Parts.in_slot(key, String(s)):
-					out.append({"slot": s, "id": String(p["id"])})
-		return out
-	if _mode == "lab":
-		if key in Scrap.LAB_WEAPONS:
-			for s in Parts.slots_of(key):
-				for p in Parts.in_slot(key, String(s)):
-					out.append({"slot": s, "id": String(p["id"])})
-		return out
-	if _mode == "service":
-		var d := Weapons.def(w)
-		if Scrap.is_unlocked(w) and not d.is_melee() and Settings.reliability_mult() > 0.0:
-			out.append({"slot": "service", "id": "clean"})
-			if d.can_jam():                                      # broń na naboje: lufa i sprężyny (energetyczna ma swoje usterki — WeaponDef.fault)
-				out.append({"slot": "service", "id": "barrel"})
-				out.append({"slot": "service", "id": "springs"})
-		return out
-	for s in Parts.slots_of(key):
-		out.append({"slot": s, "id": ""})
-		for p in Parts.in_slot(key, String(s)):
-			out.append({"slot": s, "id": String(p["id"])})
-	if Scrap.is_unlocked(w) and not Parts.slots_of(key).is_empty():
-		for i in Profile.PRESETS:
-			out.append({"slot": "preset", "id": str(i)})       # zestawy części gracza (WORKSHOP_PLAN.md U6)
-	return out
-
 func _move_opt(d: int) -> void:
 	if _mode == "bench":
 		var ops := _options(int(LIST[_sel]))
@@ -1526,101 +1187,6 @@ func _initial_selection() -> int:
 			return int(i)
 	return int(choices[0])
 
-## Stan wspólnej pracy, także gdy panel pokazuje inną broń.
-func _queue_summary(skip_batches := false) -> String:
-	var lines: Array[String] = []
-	for entry in [[tr("Research"), Scrap.research], [tr("Machining"), Scrap.lathe]]:
-		for id in entry[1]:
-			lines.append(tr("%s: %s — after a successful mission") % [String(entry[0]), tr(String(Parts.get_part(String(id)).get("name", id)))])
-	for id in Scrap.schematics:
-		if not Scrap.lathe.has(id):
-			lines.append(tr("Schematic: %s — take to the lathe") % tr(String(Parts.get_part(String(id)).get("name", id))))
-	for kind in ([] if skip_batches else Scrap.orders):          # prasa pokazuje partie w swoich miejscach (_fill_press_queue)
-		lines.append(tr("Batch: %s — after a successful mission") % tr(String(Throwables.KINDS[String(kind)]["name"])))
-	for kind in Scrap.deliveries:
-		var station := tr("PYROTECHNICS") if Scrap.supply_station(String(kind)) == "pyro_bench" else tr("RELOADING PRESS")
-		lines.append(tr("Ready: %s · %d rounds — collect at %s") % [tr(String(Throwables.KINDS[String(kind)]["name"])), int(Scrap.deliveries[kind]), station])
-	return "\n".join(lines)
-
-func _slot_label(key: String, slot: String) -> String:
-	return tr(String(SLOT_LABELS.get("%s:%s" % [key, slot], Parts.SLOT_NAMES[slot])))
-
-## Te same dane broni dla obu kolumn; porównanie nie zakłada naboju standardowego.
-func _comparison_rows(d: RefCounted) -> Array:
-	var rows: Array = Codex._weapon_stats(d)
-	for row in rows:
-		match String(row[0]):
-			"Magazine":
-				row[1] = "%d%s" % [d.mag, "+1" if d.chamber else ""]
-			"Damage":
-				if d.kind == WeaponDefinition.Kind.LAUNCHER:
-					row[1] = tr("%d blast") % int(d.blast_damage)
-				elif d.pellets > 1:
-					row[1] = tr("%d × %d pellets") % [int(d.damage), d.pellets]
-				elif d.is_continuous():
-					row[1] = tr("%d / tick") % int(d.damage)
-			"Fire rate":
-				if d.is_continuous():
-					row[1] = tr("continuous")
-				elif d.kind == WeaponDefinition.Kind.RAIL:
-					row[1] = tr("%.1f s charge") % d.charge_time
-			"Reload":
-				if d.reload_per_round:
-					row[1] = tr("%.2f s / round") % d.reload_time
-			"Noise":
-				if d.n_max <= 0.0:
-					row[1] = tr("silent")
-		row[0] = tr(String(row[0]))
-	if d.uses_ammo():
-		rows.append([tr("Shared reserve"), "∞" if d.infinite else "%d" % Arsenal.get_reserve(d.id, d.ammo)])
-	rows.append([tr("Draw"), tr("%.2f s") % d.draw_time])
-	if not d.is_melee():
-		rows.append([tr("Spread"), "±%.2f°" % d.jitter_deg + (" / ±%.2f°" % d.spread_deg if d.pellets > 1 else "")])
-		rows.append([tr("Bloom"), "+%.2f° / %.2f°" % [d.bloom_per_shot, d.bloom_max]])
-		rows.append([tr("Recoil"), "%.2f / %.2f" % [d.cam_kick, d.recoil]])
-		rows.append([tr("Penetration"), _penetration_text(d)])
-		rows.append([tr("Armour bypass"), "%d%%" % int(d.armor_pen * 100.0)])
-		rows.append([tr("Heating"), "%.1f%% / %.1f%%" % [d.barrel_heat * 100.0, d.heat_gain * 100.0]])
-	var fields := {}
-	for part in Parts.of(String(d.key)):
-		for modifier in part.get("mods", []):
-			fields[String(modifier[0])] = true
-	for field in PART_METRICS:
-		if not fields.has(field):
-			continue
-		var spec: Array = PART_METRICS[field]
-		var value := float(d.get(field))
-		var text := (tr("Yes") if value != 0 else tr("No")) if spec[1] == "bool" else String(spec[1]) % (value * float(spec[2]))
-		rows.append([tr(String(spec[0])), text])
-	return rows
-
-## Przebicie zrozumiale: energia kuli w przeszkodach (skrzynia, ciało) i dodatkowe cele promienia, szyny, bełtu (dawniej „0,00 / 1”).
-func _penetration_text(d: RefCounted) -> String:
-	var parts: Array = []
-	if d.pen > 0.0:
-		parts.append(tr("%.1f obstacles") % d.pen)
-	if d.pierce > 0:
-		parts.append(tr_n("+%d target", "+%d targets", d.pierce) % d.pierce)          # formy mnogie: translations/plural.csv
-	return " · ".join(parts) if not parts.is_empty() else "—"
-
-## Wiersz z paskiem na papierowej karcie: etykieta, pasek, napis wartości.
-func _paper_bar(label: String, frac: float, value: String, col: Color, cap := -1.0) -> void:
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 6)
-	var l := UiTheme.ink(label, 9, UiTheme.INK_MUTED)
-	l.custom_minimum_size.x = 84
-	h.add_child(l)
-	var bar := PaperBar.new()
-	bar.custom_minimum_size.x = 90
-	bar.frac = frac
-	bar.cap = cap
-	bar.col = col
-	h.add_child(bar)
-	var v := UiTheme.ink(UiTheme.num_text(value), 9, col, HORIZONTAL_ALIGNMENT_RIGHT)
-	v.custom_minimum_size.x = 100
-	h.add_child(v)
-	_d_panel.add_child(h)
-
 ## Zob. stations/service_view.gd.
 func _service_advice(w: int) -> Dictionary:
 	return _v_service._service_advice(w)
@@ -1664,29 +1230,6 @@ func _service_skin(on: bool) -> void:
 ## Zob. stations/lab_view.gd.
 func _fill_lab_chain(key: String, slot: String, id: String) -> void:
 	_v_lab._fill_lab_chain(key, slot, id)
-
-## Część polecana na pierwszy zakup: dopóki drużyna nie ma żadnej, ława pokazuje jedną konkretną rzecz zamiast całego katalogu (WORKSHOP_PLAN.md §6). "" = nic nie polecamy.
-func _first_pick() -> String:
-	return FIRST_PICK if _mode == "bench" and Scrap.parts.is_empty() and Scrap.is_unlocked(Weapons.M83) else ""
-
-func _first_part_opt() -> int:
-	if _mode == "bench":
-		if _first_pick() != "" and int(LIST[_sel]) == Weapons.M83:
-			var pick_ops := _options(Weapons.M83)
-			for i in pick_ops.size():
-				if String(pick_ops[i]["id"]) == FIRST_PICK:
-					return i
-		return -1
-	var ops := _options(int(LIST[_sel]))
-	if _mode == "service":                                # stół konserwacji: kursor od razu na tym, co zalecane
-		var adv := _service_advice(int(LIST[_sel]))
-		for i in ops.size():
-			if not adv.is_empty() and String(ops[i]["id"]) == String(adv["id"]):
-				return i
-	for i in ops.size():
-		if String(ops[i]["id"]) != "":
-			return i
-	return 0
 
 ## Akcja na wybranej broni: kup broń (zablokowana), a odblokowanej — kup część pod kursorem, zamontuj ją albo wróć do fabrycznej.
 func _act() -> void:
@@ -1804,22 +1347,6 @@ func _on_result(w: int, ok: bool, reason: String) -> void:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
 
-## Zestaw pod kursorem: zapisuje bieżący montaż broni (nadpisuje). Poza wierszem zestawu nic nie robi.
-func _save_preset() -> void:
-	if _page != 0:
-		return
-	var w: int = LIST[_sel]
-	var ops := _options(w)
-	if ops.is_empty():
-		return
-	var o: Dictionary = ops[clampi(_opt, 0, ops.size() - 1)]
-	if String(o["slot"]) != "preset":
-		return
-	Profile.save_preset(String(Weapons.def(w).key), int(o["id"]))
-	_success_fx(-6.0)
-	_say(tr("Current fit saved as set %d.") % (int(o["id"]) + 1), UiTheme.OK)
-	_refresh()
-
 ## „1 próbka” / „3 próbki” (badania kosztują 1–2 próbki).
 func _samples_text(n: int) -> String:
 	return tr_n("%d sample", "%d samples", n) % n                # plural.csv: 1 próbka / 2–4 próbki / 5 próbek
@@ -1830,19 +1357,6 @@ func _local_wc() -> Node:
 		if not p.is_bot and p.is_multiplayer_authority():
 			return p.weapons
 	return null
-
-## Krótki opis zestawu: nazwy części (bez fabrycznych), „factory", gdy same fabryczne, „—" dla pustego.
-func _preset_summary(key: String, i: int) -> String:
-	var p := Profile.preset(key, i)
-	if p.is_empty():
-		return "—"
-	var names: Array = []
-	for s in Parts.slots_of(key):
-		var id := String(p.get(s, ""))
-		if id != "":
-			names.append(tr(String(Parts.get_part(id)["name"])))
-	var txt := ", ".join(names) if not names.is_empty() else tr("factory")
-	return txt if txt.length() <= 30 else txt.substr(0, 29) + "…"
 
 ## Czyszczenie przy ławie (stan siedzi w profilu gracza, więc serwer nie bierze udziału): trwa Profile.clean_time, panel musi zostać
 ## otwarty, a gracz przy ławie — odejście, zmiana broni albo ponowne [E] przerywa i trzeba zacząć od nowa.
@@ -2114,347 +1628,6 @@ func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
 			_say("Cannot do that.", UiTheme.DANGER)
 	_refresh()
 
-func _refresh_tile(t: Tile, selected: bool) -> void:
-	var w := t.weapon
-	t.set_lit(selected)
-	var unlocked := Scrap.is_unlocked(w)
-	var later := Scrap.is_later(w)
-	(t.icon_node as GunIcon).set_gun(int(Weapons.base_def(w).gun_row), Weapons.base_def(w).tracer_color, Color.WHITE if unlocked else Color(0.45, 0.5, 0.55))
-	t.name_label.add_theme_color_override("font_color", UiTheme.ACCENT if selected else (UiTheme.TEXT if unlocked else UiTheme.MUTED))
-	t.bar.visible = false
-	if t.marks != null:
-		t.marks.visible = false                       # ikonki wymian tylko na stole konserwacji (włącza je gałąź „service” niżej)
-	t.state_label.add_theme_color_override("font_color", UiTheme.MUTED)
-	# Kafle są tylko na stanowiskach pomocniczych (ława ma własny stojak): broń kupuje się wyłącznie przy ławie, więc bez ceny.
-	# Linia stanu mówi to, co liczy się PRZY TYM stanowisku: stół konserwacji — stan, szlifierka — ostrze, reszta — odblokowane części.
-	if unlocked:
-		var key := String(Weapons.def(w).key)
-		var melee: bool = Weapons.base_def(w).is_melee()
-		var total := Parts.of(key).size()
-		var owned := Scrap.parts_owned(w)
-		t.tooltip_text = tr("Unlocked parts: %d / %d. Equipment is chosen separately.") % [owned, total]
-		if _mode == "service" and not melee:
-			var cond := Profile.condition(key)
-			t.state_label.text = (tr("Condition %d%%") % int(cond)).to_upper()
-			t.state_label.add_theme_color_override("font_color", UiTheme.DANGER if cond < 70.0 else (GOLD if cond < 95.0 else UiTheme.OK))
-			t.tooltip_text = tr("Below 70% a gun starts to jam.")
-			# ikonki części do wymiany (lufa, sprężyny) w miejscu kropek części — na stole konserwacji kropek nie ma
-			var tile := t as Tile
-			if tile != null:
-				if tile.marks == null:
-					tile.marks = ServiceMarks.new()
-					tile.marks.position = Vector2(TILE_W - 6.0 - tile.marks.size.x, TILE_H - 19.0)
-					tile.add_child(tile.marks)
-				for pid in Profile.WEAR_PARTS:
-					var pw := Profile.part_wear(key, String(pid))
-					var st := 0 if not (Weapons.def(w).can_jam() and Profile.service_due(key, String(pid))) else (2 if pw >= Profile.SERVICE_URGENT else 1)
-					tile.marks.set(String(pid), st)
-				tile.marks.visible = true
-				tile.marks.queue_redraw()
-		elif _mode == "lathe" and melee:
-			t.state_label.text = (tr("Edge %d%%") % int(Profile.edge_of(key))).to_upper()
-		else:
-			t.state_label.text = tr("PARTS") if total > 0 else ""
-			t.bar.visible = total > 0
-			t.bar.set("level", owned)
-			t.bar.set("total", total)
-			t.bar.set("maxed", owned >= total)
-			t.place_bar()
-			t.bar.queue_redraw()
-	elif later:
-		t.state_label.text = tr("BOSS REWARD") if Scrap.is_gated(w) else tr("LATER ZONE")
-	else:
-		t.state_label.text = tr("BUY AT THE BENCH")
-
-func _refresh_detail(w: int) -> void:
-	_service_skin(_mode == "service")
-	_action.disabled = false
-	_act_state(_action, "", 0)
-	var base: RefCounted = Weapons.base_def(w)
-	var key := String(base.key)
-	var unlocked := Scrap.is_unlocked(w)
-	var ops := _options(w)
-	_opt = clampi(_opt, -1 if _mode == "bench" else 0, maxi(ops.size() - 1, 0))
-	var mine := Profile.fit_code(w)
-	var controller := _local_wc()
-	var ammo_type: int = controller.ammo_of(w) if controller != null else 0
-	var cur: RefCounted = Weapons.def_build(w, Weapons.build_of(ammo_type, mine))
-	# podgląd: broń z częścią spod kursora zamontowaną w jej gnieździe (reszta jak teraz)
-	var preview: RefCounted = null
-	var o: Dictionary = ops[_opt] if not ops.is_empty() and _opt >= 0 else {}
-	if _mode == "bench" and not o.is_empty():
-		_bench_slot = String(o["slot"])
-	if unlocked and not o.is_empty() and String(o["id"]) != "" and not String(o["slot"]) in ["preset", "service"]:
-		Profile.mark_seen("part:" + String(o["id"]))          # część pod kursorem jest obejrzana — kropka „nowe” gaśnie
-	var pv_code := mine
-	if unlocked and not o.is_empty():
-		var choice := {}
-		for s in Parts.slots_of(key):
-			choice[s] = Profile.fitted(key, String(s))
-		if String(o["slot"]) == "preset":                      # zestaw: cała broń z tym zestawem (części, których drużyna nie ma, zostają jak są)
-			var pset := Profile.preset(key, int(o["id"]))
-			for s in pset:
-				if String(pset[s]) == "" or Scrap.has_part(String(pset[s])):
-					choice[s] = String(pset[s])
-		else:
-			choice[String(o["slot"])] = String(o["id"])
-		pv_code = Parts.encode(key, choice)
-		if pv_code != mine:
-			preview = Weapons.def_build(w, Weapons.build_of(ammo_type, pv_code))
-	# na ławie broń już z częścią spod kursora; ona (albo fabryczny element gniazda) świeci i jest wysunięta
-	var hl_part := unlocked and not o.is_empty() and String(o["slot"]) != "preset" and String(o["slot"]) != "service"
-	var hl_slot := String(o.get("slot", "")) if hl_part else ("barrel" if unlocked and not o.is_empty() and String(o["id"]) == "barrel" else "")
-	(_d_stage as GunStage).show_gun(w, Parts.decode(key, pv_code), String(o.get("id", "")) if hl_part else "", hl_slot, not unlocked)
-	(_d_stage as GunStage).set_dirt((1.0 - Profile.condition(key) / 100.0) if unlocked and not base.is_melee() else 0.0)   # brud wg stanu broni (W2)
-	(_d_stage as GunStage).set_strip(_clean_w == w)
-	_d_title.text = String(base.name)
-	var tag := tr(Codex._slot_name(base))
-	if unlocked and not Parts.of(key).is_empty():
-		tag += tr("  ·  UNLOCKED %d / %d") % [Scrap.parts_owned(w), Parts.of(key).size()]
-		tag += tr("  ·  FITTED %d") % Parts.decode(key, mine).size()
-	elif not unlocked:
-		tag += tr("  ·  LOCKED")
-	if unlocked and Profile.kills(key) > 0:
-		tag += tr("  ·  KILLS %d") % Profile.kills(key)                    # historia broni (etap 5b)
-	if unlocked:
-		# wprawa (etap 5a): stopień i punkty do następnego
-		var ml := Profile.mastery_level(key)
-		var mp := Profile.mastery_points(key)
-		if ml < Profile.MASTERY_XP.size() - 1:
-			tag += tr("  ·  MASTERY %s  (%d / %d)") % [["0", "I", "II", "III", "IV", "V"][ml], mp, int(Profile.MASTERY_XP[ml + 1])]
-		else:
-			tag += tr("  ·  MASTERY %s") % ["0", "I", "II", "III", "IV", "V"][ml]
-	if _mode == "lab":
-		tag += tr("  ·  SAMPLES %d") % Scrap.samples + ((tr(" (+%d this mission)") % Scrap.samples_loot) if Scrap.samples_loot > 0 else "")
-	if _mode == "bench" and Settings.realistic_handling:
-		var lp := _local_wc()
-		if lp != null:
-			var km: float = lp.kit_mass()
-			tag += UiTheme.num_text(tr("  ·  KIT %.1f kg  (run noise %+d%%)") % [km, int(round((lp.mass_noise_mult() - 1.0) * 100.0))])   # masa ekwipunku (W5)
-	if cur.uses_ammo() and Ammo.name_of(String(cur.caliber), ammo_type) != "":         # ogniwo LR-7 nie ma nazwy naboju
-		tag += tr("  ·  AMMO %s") % Ammo.name_of(String(cur.caliber), ammo_type)
-	_d_tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_d_tag.custom_minimum_size.x = DETAIL_W
-	_d_tag.text = tag
-	var jobs := _queue_summary()
-	if jobs != "":
-		_d_tag.text += "\n" + jobs
-	# statystyki: broń, jaką masz teraz, i ta sama z częścią spod kursora (złote wartości — zmiany względem bieżącego montażu)
-	for ch in _d_stats.get_children():
-		_d_stats.remove_child(ch)
-		ch.free()
-	var now_rows: Array = _comparison_rows(cur)
-	var next_rows: Array = _comparison_rows(preview) if preview != null else []
-	if next_rows.is_empty():
-		next_rows = now_rows.duplicate(true)
-	if controller != null and controller.carries(w):
-		var km: float = controller.kit_mass()
-		var next_mass: float = km + (preview.mass - cur.mass if preview != null else 0.0)
-		now_rows.append([tr("Kit mass"), tr("%.2f kg") % km])
-		next_rows.append([tr("Kit mass"), tr("%.2f kg") % next_mass])
-		var speed: float = clampf(1.0 - Controller.MASS_SPEED * (next_mass - Controller.mass_ref()), Controller.MASS_SPEED_RANGE.x, Controller.MASS_SPEED_RANGE.y) if Settings.realistic_handling else 1.0
-		var noise: float = clampf(1.0 + Controller.MASS_NOISE * (next_mass - Controller.mass_ref()), Controller.MASS_NOISE_RANGE.x, Controller.MASS_NOISE_RANGE.y) if Settings.realistic_handling else 1.0
-		now_rows.append([tr("Run speed / noise"), "%+.1f%% / %+.1f%%" % [(controller.mass_speed_mult() - 1.0) * 100.0, (controller.mass_noise_mult() - 1.0) * 100.0]])
-		next_rows.append([tr("Run speed / noise"), "%+.1f%% / %+.1f%%" % [(speed - 1.0) * 100.0, (noise - 1.0) * 100.0]])
-	for i in now_rows.size():
-		var r: Array = now_rows[i]
-		# Podgląd części/zestawu zaczyna od rzeczywistych zmian. Pełna karta jest widoczna bez zmiany montażu.
-		if preview != null and i < next_rows.size() and String(next_rows[i][1]) == String(r[1]):
-			continue
-		_d_stats.add_child(UiTheme.ink(String(r[0]), 9, UiTheme.INK_MUTED))
-		_d_stats.add_child(UiTheme.ink(UiTheme.num_text(String(r[1])), 9))
-		# zmiana: nowa wartość i słowna ocena („korzyść” / „koszt” — od 1.7.460; kompromisem jest cała część, nie jeden parametr) — kolor tylko ją wzmacnia. Strzałka „→” nie ocenia: więcej
-		# nie zawsze znaczy lepiej (masa, grzanie), więc ↑ / ↓ myliłyby kierunek liczby z oceną.
-		var nv := ""
-		var verdict := ""
-		var kind := 0
-		if i < next_rows.size() and String(next_rows[i][1]) != String(r[1]):
-			kind = _change_kind(String(r[0]), cur, preview) if preview != null else 0
-			nv = "→ %s" % String(next_rows[i][1])
-			verdict = tr("Gain") if kind > 0 else (tr("Cost") if kind < 0 else "")
-		var col := UiTheme.INK_GAIN if kind > 0 else (UiTheme.INK_COST if kind < 0 else UiTheme.INK)
-		_d_stats.add_child(UiTheme.ink(UiTheme.num_text(nv), 9, col))
-		_d_stats.add_child(UiTheme.ink(verdict.to_lower(), 7, col))
-	_clear_children(_d_panel)
-	if unlocked and (_mode == "service" or (_mode == "lathe" and base.is_melee())):          # szlifierka: pasek ostrza
-		_clear_children(_d_stats)                         # przy czyszczeniu liczy się stan i zużycie, nie 22 parametry balistyczne
-		_fill_service_panel(base, cur)
-	elif (_mode == "lab" or _mode == "lathe") and not o.is_empty() and String(o["slot"]) != "service":
-		_fill_lab_chain(key, String(o["slot"]), String(o["id"]))
-	# części w gniazdach: nagłówek gniazda, element fabryczny i części (zamontowana — zielona, odblokowana — atrament, do kupienia — z ceną)
-	for ch in _d_tiers.get_children():
-		_d_tiers.remove_child(ch)
-		ch.queue_free()                  # wiersz może właśnie obsługiwać swoje kliknięcie (_pick_opt) — natychmiastowe free() jest wtedy błędem
-	var last_slot := ""
-	for i in ops.size():
-		var op: Dictionary = ops[i]
-		var slot := String(op["slot"])
-		if slot != last_slot:
-			last_slot = slot
-			var head_txt := tr("Service") if slot == "service" else (tr("Sets") if slot == "preset" else _slot_label(String(Weapons.def(int(LIST[_sel])).key), slot))
-			_d_tiers.add_child(UiTheme.ink(head_txt.to_upper(), 7, UiTheme.INK_MUTED))
-		if slot == "preset":
-			var pi := int(op["id"])
-			var pfit := Profile.is_preset_fitted(key, pi)
-			_tier_row(i, tr("Set %d  ·  %s") % [pi + 1, _preset_summary(key, pi)],
-				tr("empty") if Profile.preset(key, pi).is_empty() else (tr("fitted") if pfit else tr("saved")), UiTheme.INK_GAIN if pfit else UiTheme.INK)
-			continue
-		if slot == "service":
-			var cc := Profile.clean_time(key)
-			var sid := String(op["id"])
-			var pw := Profile.part_wear(key, sid) if sid != "clean" else 0.0
-			var due := (cc > 0.0) if sid == "clean" else Profile.service_due(key, sid)
-			var cap := Profile.clean_cap(key)
-			if sid == "sharpen":
-				var st := Profile.sharpen_time(key)
-				_tier_row(i, tr("Sharpen  ·  edge %d%%") % int(Profile.edge_of(key)), tr("%d s") % ceili(st) if st > 0.0 else tr("sharp"), UiTheme.INK_COST if st > 0.0 else UiTheme.INK_GAIN)
-			elif sid == "clean":
-				var ctxt := (tr("Clean  ·  condition %d%%") % int(Profile.condition(key))) if cap >= 99.5 else (tr("Clean  ·  condition %d%% (max %d%%)") % [int(Profile.condition(key)), int(cap)])
-				_tier_row(i, ctxt, tr("%d s") % ceili(cc) if cc > 0.0 else tr("clean"), UiTheme.INK_COST if due else UiTheme.INK_GAIN)
-			else:
-				var pname := tr("Barrel") if sid == "barrel" else tr("Springs")
-				# poniżej progu bez ceny (nie da się wymienić), od progu cena, od SERVICE_URGENT cena w kolorze kosztu
-				var ptail := tr("%d scrap") % int(Scrap.SERVICE_COST[sid]) if due else (tr("like new") if pw < 0.5 else tr("from %d%%") % int(Profile.SERVICE_DUE))
-				var pcol := (UiTheme.INK_COST if pw >= Profile.SERVICE_URGENT else UiTheme.INK_PRICE) if due else (UiTheme.INK_GAIN if pw < 0.5 else UiTheme.INK_MUTED)
-				_tier_row(i, tr("%s  ·  worn %d%%") % [pname, int(pw)], ptail, pcol)
-			continue
-		var id := String(op["id"])
-		var fitted := Profile.fitted(key, slot) == id
-		var owned := id == "" or Scrap.has_part(id)
-		var nm := tr("Factory") if id == "" else tr(String(Parts.get_part(id)["name"]))
-		var tail := tr("fitted") if fitted else ("" if id == "" else (tr("owned") if owned else (tr("found — extract") if Scrap.found.has(id) else tr("%d scrap") % Scrap.part_cost(id))))
-		if id != "" and not owned and not Scrap.found.has(id) and Scrap.is_lab_part(id):
-			var rc := Scrap.research_cost(id)
-			if Scrap.lathe.has(id):
-				tail = tr("on the lathe")
-			elif Scrap.schematics.has(id):
-				tail = (tr("%d scrap") % Scrap.machine_price(id)) if _mode == "lathe" else tr("schematic")
-			elif Scrap.research.has(id):
-				tail = tr("researching")
-			elif _mode == "lab":
-				tail = tr("%s · %d scrap") % [_samples_text(rc.x), rc.y]
-			else:
-				tail = tr("no schematic") if _mode == "lathe" else tr("lab")
-		elif (_mode == "lab" or _mode == "lathe") and owned:
-			tail = tr("known") if _mode == "lab" else tr("made")
-		_tier_row(i, nm, tail, UiTheme.INK_GAIN if fitted else (UiTheme.INK if owned else UiTheme.INK_PRICE))
-	var notes: Array = Codex.WEAPON_TEXT.get(key, ["", ""])
-	var desc := Actions.fmt(tr(String(notes[0])))
-	if unlocked and not o.is_empty() and String(o["slot"]) == "preset":
-		desc = tr("Your saved sets of parts for this gun (only yours — the squad shares the unlocks, not the build). %s fits the set, %s saves your current fit over it.") % [
-			_menu_key("menu_accept", Actions.pad_mode), _menu_key("menu_alt", Actions.pad_mode)]
-	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "barrel":
-		desc = tr("Every shot wears the bore, a hot one three times faster; a worn barrel spreads wider (up to +60%%). Replace from %d%% wear for %d scrap.") % [int(Profile.SERVICE_DUE), int(Scrap.SERVICE_COST["barrel"])]
-	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "sharpen":
-		desc = tr("Every swing dulls the edge a little. A dull blade hurts less — down to %d%% damage when fully blunt. Sharpening costs no scrap, only time at the grinder.") % int(Profile.EDGE_MIN * 100.0)
-	elif unlocked and not o.is_empty() and String(o["slot"]) == "service" and String(o["id"]) == "springs":
-		desc = tr("Springs tire with every shot; tired ones keep cleaning from restoring the gun fully (100 − half the wear). Replace from %d%% wear for %d scrap.") % [int(Profile.SERVICE_DUE), int(Scrap.SERVICE_COST["springs"])]
-	elif unlocked and not o.is_empty() and String(o["slot"]) == "service":
-		desc = tr("Strip and clean the gun: no scrap, only time — the dirtier, the longer. Every shot fouls it (faster hot or suppressed); below 70% it starts to jam.")
-	elif unlocked and not o.is_empty() and String(o["id"]) != "":
-		desc = tr(String(Parts.get_part(String(o["id"]))["desc"]))
-	elif unlocked and not o.is_empty():
-		desc = tr("Factory part: no gain, no cost.")
-	_d_text.text = desc
-	# przycisk akcji
-	if not unlocked and Scrap.is_later(w):
-		_action.text = "Reward for the Leech" if Scrap.is_gated(w) else "Available in a later zone"
-		_act_state(_action, "wait", 0)
-	elif not unlocked:
-		_action.text = tr("Buy it at the workshop bench") if _mode in ["service", "lab", "lathe"] else tr("Buy  ·  %d scrap") % Scrap.price_of(w)
-		_act_state(_action, "wait" if _mode in ["service", "lab", "lathe"] else "ready", 0 if _mode in ["service", "lab", "lathe"] else Scrap.price_of(w))
-	elif o.is_empty():
-		_action.text = tr("Nothing to service") if _mode == "service" else (tr("Nothing to research — not a special weapon") if _mode == "lab" else (tr("Nothing for the lathe") if _mode == "lathe" else "No parts for this weapon"))
-		_act_state(_action, "wait", 0)
-	elif String(o["slot"]) == "preset":
-		var api := int(o["id"])
-		if Profile.preset(key, api).is_empty():
-			_action.text = tr("Save current fit as set %d") % (api + 1)
-		elif Profile.is_preset_fitted(key, api):
-			_action.text = tr("Set %d fitted  ·  %s overwrite") % [api + 1, _menu_key("menu_alt", Actions.pad_mode)]
-		else:
-			_action.text = tr("Fit set %d  ·  %s overwrite") % [api + 1, _menu_key("menu_alt", Actions.pad_mode)]
-	elif String(o["slot"]) == "service" and String(o["id"]) == "sharpen":
-		var stime := Profile.sharpen_time(key)
-		if _clean_w == w:
-			_action.text = tr("Sharpening…  %d%%  (again to stop)") % int(100.0 * _clean_t / maxf(0.01, _clean_total))
-			_act_state(_action, "busy", 0)
-		else:
-			_action.text = tr("Sharpen  ·  %d s") % ceili(stime) if stime > 0.0 else tr("Already sharp")
-			_act_state(_action, "wait" if stime <= 0.0 else "ready", 0)
-	elif String(o["slot"]) == "service" and String(o["id"]) in Profile.WEAR_PARTS:
-		# skutek wymiany w liczbach (lufa: rozrzut, sprężyny: granica czyszczenia); poniżej progu przycisk wygaszony z progiem
-		var sid2 := String(o["id"])
-		var pw2 := Profile.part_wear(key, sid2)
-		if not Profile.service_due(key, sid2):
-			_action.text = tr("Like new") if pw2 < 0.5 else tr("Still serviceable  ·  replace from %d%% wear") % int(Profile.SERVICE_DUE)
-			_act_state(_action, "wait", 0)
-			_action.disabled = true
-		elif sid2 == "barrel":
-			_action.text = tr("Replace barrel  ·  %d scrap  ·  spread +%d%% → +0%%") % [int(Scrap.SERVICE_COST[sid2]), int(round(Controller.BARREL_SPREAD * pow(pw2 / 100.0, 2.0) * 100.0))]
-			_act_state(_action, "ready", int(Scrap.SERVICE_COST[sid2]))
-		else:
-			_action.text = tr("Replace springs  ·  %d scrap  ·  cleans to %d%% → 100%%") % [int(Scrap.SERVICE_COST[sid2]), int(Profile.clean_cap(key))]
-			_act_state(_action, "ready", int(Scrap.SERVICE_COST[sid2]))
-	elif String(o["slot"]) == "service":
-		var ctime := Profile.clean_time(key)
-		if _clean_w == w:
-			_action.text = tr("Cleaning…  %d%%  (again to stop)") % int(100.0 * _clean_t / maxf(0.01, _clean_total))
-			_act_state(_action, "busy", 0)
-		else:
-			_action.text = tr("Clean  ·  %d s") % ceili(ctime) if ctime > 0.0 else tr("Already clean")
-			_act_state(_action, "wait" if ctime <= 0.0 else "ready", 0)
-	else:
-		var id2 := String(o["id"])
-		if _mode == "lathe":
-			if Scrap.has_part(id2):
-				_action.text = tr("Made  ·  fit it at the bench")
-				_act_state(_action, "wait", 0)
-			elif Scrap.lathe.has(id2):
-				_action.text = tr("On the lathe  ·  ready after the mission")
-				_act_state(_action, "busy", 0)
-			elif not Scrap.schematics.has(id2):
-				_action.text = tr("No schematic  ·  research it at the lab")
-				_act_state(_action, "wait", 0)
-			elif Scrap.lathe.size() >= Scrap.LATHE_SLOTS:
-				_action.text = tr_n("The lathe is busy  ·  %d job per mission", "The lathe is busy  ·  %d jobs per mission", Scrap.LATHE_SLOTS) % Scrap.LATHE_SLOTS
-				_act_state(_action, "busy", 0)
-			else:
-				_action.text = tr("Machine  ·  %d scrap  ·  ready after the mission") % Scrap.machine_price(id2)
-				_act_state(_action, "ready", Scrap.machine_price(id2))
-		elif _mode == "lab":
-			var rc2 := Scrap.research_cost(id2)
-			if Scrap.schematics.has(id2) or Scrap.lathe.has(id2):
-				_action.text = tr("Researched  ·  make it on the lathe")
-				_act_state(_action, "wait", 0)
-			elif Scrap.has_part(id2):
-				_action.text = tr("Known  ·  fit it at the bench")
-				_act_state(_action, "wait", 0)
-			elif Scrap.research.has(id2):
-				_action.text = tr("Researching  ·  ready after the mission")
-				_act_state(_action, "busy", 0)
-			elif Scrap.research.size() >= Scrap.LAB_SLOTS:
-				_action.text = tr_n("The lab is busy  ·  %d project per mission", "The lab is busy  ·  %d projects per mission", Scrap.LAB_SLOTS) % Scrap.LAB_SLOTS
-				_act_state(_action, "busy", 0)
-			else:
-				_action.text = tr("Research  ·  %s  ·  %d scrap") % [_samples_text(rc2.x), rc2.y]
-				_act_state(_action, "ready", rc2.y)
-		elif id2 != "" and not Scrap.has_part(id2) and Scrap.is_lab_part(id2) and not Scrap.found.has(id2):
-			_action.text = tr("Research it at the lab")
-			_act_state(_action, "wait", 0)
-		elif id2 != "" and not Scrap.has_part(id2):
-			_action.text = tr("Buy part  ·  %d scrap") % Scrap.part_cost(id2)
-			_act_state(_action, "ready", Scrap.part_cost(id2))
-		elif Profile.fitted(key, String(o["slot"])) == id2:
-			_action.text = "Fitted"
-			_act_state(_action, "wait", 0)
-		else:
-			_action.text = "Fit to my gun" if id2 != "" else "Fit the factory part"
-	if _mode == "bench":
-		_present_bench(w, cur, preview, now_rows, next_rows, ops, o)
-	_dress_lab_lathe(w, o)
-	_card.reset_size()
-
 ## Jawne oględziny nie oznaczają wyboru fabrycznego elementu do montażu.
 func _connection_lost() -> void:
 	_pending_part.clear()
@@ -2468,317 +1641,3 @@ func _inspect() -> void:
 	_workbench.stage.cancel_mount()
 	_refresh()
 
-func _bench_slots() -> Array:
-	var slots: Array = Parts.slots_of(String(Weapons.def(int(LIST[_sel])).key)).duplicate()
-	if Scrap.is_unlocked(int(LIST[_sel])) and not slots.is_empty():
-		slots.append("preset")
-	return slots
-
-func _pick_slot(slot: String) -> void:
-	if not _bench_slots().has(slot):
-		return
-	var w := int(LIST[_sel])
-	var key := String(Weapons.def(w).key)
-	var ops := _options(w)
-	var fitted := Profile.fitted(key, slot)
-	for i in ops.size():
-		if String(ops[i]["slot"]) == slot and (slot == "preset" or String(ops[i]["id"]) == fitted):
-			_pick_opt(i)
-			return
-
-func _move_slot(direction: int) -> void:
-	var slots := _bench_slots()
-	if slots.is_empty():
-		return
-	_pick_slot(String(slots[posmod(slots.find(_bench_slot) + direction, slots.size())]))
-
-func _save_current_preset() -> void:
-	if not _pending_part.is_empty() or _buying >= 0:
-		return
-	if _bench_slot != "preset":
-		_pick_slot("preset")
-		_say(tr("Choose a set, then save your current fit."), UiTheme.TEXT)
-		return
-	_save_preset()
-
-func _present_committed(w: int, before: int) -> void:
-	var key := String(Weapons.def(w).key)
-	var after := Profile.fit_code(w)
-	if _mode == "bench" and _page == 0 and int(LIST[_sel]) == w:
-		_opt = -1
-		_refresh()
-		if before != after:
-			_workbench.stage.animate_mount(w, Parts.decode(key, before), Parts.decode(key, after))
-	else:
-		_refresh()
-
-func _present_bench(w: int, cur: RefCounted, preview: RefCounted, now_rows: Array, next_rows: Array, ops: Array, selected: Dictionary) -> void:
-	var key := String(cur.key)
-	var unlocked := Scrap.is_unlocked(w)
-	var slots: Array = []
-	for slot in _bench_slots():
-		var fitted := Profile.fitted(key, String(slot))
-		var name := tr("Sets") if slot == "preset" else _slot_label(key, String(slot))
-		var short_name: String = name if SLOT_LABELS.has("%s:%s" % [key, slot]) else {"stock": tr("Grip") if cur.is_melee() else tr("Stock"), "optic": tr("Sight"), "preset": tr("Sets")}.get(slot, name)
-		slots.append({"id": slot, "name": name, "short": short_name,
-			"fitted": tr("Factory") if fitted == "" else tr(String(Parts.get_part(fitted)["name"]))})
-	if _bench_slot == "" and not slots.is_empty():
-		_bench_slot = String(slots[0]["id"])
-	var records: Array = []
-	for i in ops.size():
-		var op: Dictionary = ops[i]
-		if String(op["slot"]) != _bench_slot:
-			continue
-		var id := String(op["id"])
-		var name := tr("Factory") if id == "" else tr(String(Parts.get_part(id).get("name", id)))
-		var fitted := Profile.fitted(key, String(op["slot"])) == id
-		var status := tr("fitted") if fitted else (tr("owned") if id == "" or Scrap.has_part(id) else tr("%d scrap") % Scrap.part_cost(id))
-		if String(op["slot"]) == "preset":
-			name = tr("Set %d") % (int(id) + 1)
-			fitted = Profile.is_preset_fitted(key, int(id))
-			status = tr("empty") if Profile.preset(key, int(id)).is_empty() else (tr("fitted") if fitted else tr("saved"))
-		elif id != "" and not Scrap.has_part(id):
-			if Scrap.found.has(id):
-				status = tr("found — extract")
-			elif Scrap.is_lab_part(id):
-				status = tr("on the lathe") if Scrap.lathe.has(id) else (tr("schematic") if Scrap.schematics.has(id) else (tr("researching") if Scrap.research.has(id) else tr("lab")))
-		if id != "" and id == _first_pick():
-			status = tr("RECOMMENDED · %d") % Scrap.part_cost(id)           # krótko: karta części jest wąska, pełna cena stoi na przycisku
-		var delta := _part_delta(w, cur, String(op["slot"]), id) if String(op["slot"]) != "preset" and not fitted else []
-		records.append({"index": i, "name": name, "status": status, "fitted": fitted,
-			"new": id != "" and String(op["slot"]) != "preset" and Profile.is_new("part:" + id), "delta": delta})
-	var weapons: Array = []
-	var wc := _local_wc()
-	for i in LIST.size():
-		var wid := int(LIST[i])
-		var definition: RefCounted = Weapons.base_def(wid)
-		var carried: bool = wc != null and wc.carries(wid)
-		var status := tr("Carried") if carried else (tr("Unlocked") if Scrap.is_unlocked(wid) else (tr("Boss reward") if Scrap.is_gated(wid) else (tr("Later zone") if Scrap.is_later(wid) else tr("%d scrap") % Scrap.price_of(wid))))
-		var fresh := Parts.of(String(definition.key)).any(func(pp: Dictionary) -> bool: return Profile.is_new("part:" + String(pp["id"])))
-		weapons.append({"index": i, "name": String(definition.name), "row": int(definition.gun_row), "color": definition.tracer_color,
-			"status": status, "carried": carried, "selected": i == _sel, "new": fresh})
-	var rows: Array = []
-	for i in now_rows.size():
-		rows.append([now_rows[i][0], now_rows[i][1], next_rows[i][1] if i < next_rows.size() else now_rows[i][1],
-			_change_kind(String(now_rows[i][0]), cur, preview) if preview != null else 0])
-	var part_name := ""
-	var id := String(selected.get("id", ""))
-	if not selected.is_empty():
-		part_name = tr("Set %d") % (int(id) + 1) if String(selected["slot"]) == "preset" else (tr("Factory") if id == "" else tr(String(Parts.get_part(id).get("name", id))))
-	var pending := not _pending_part.is_empty() or _buying >= 0
-	_action.disabled = pending or (unlocked and selected.is_empty()) or (not unlocked and (Scrap.is_later(w) or Scrap.bank < Scrap.price_of(w)))
-	if pending:
-		_action.text = tr("Waiting for confirmation…")
-		_act_state(_action, "busy", 0)
-	elif unlocked and selected.is_empty():
-		_action.text = tr("Inspecting · choose a slot or a part")
-	elif unlocked and String(selected.get("slot", "")) != "preset":
-		if id != "" and not Scrap.has_part(id):
-			if Scrap.found.has(id):
-				_action.text = tr("Found · schematic after extraction") if Scrap.is_lab_part(id) else tr("Found · extract to unlock")
-				_action.disabled = true
-			elif Scrap.is_lab_part(id):
-				_action.text = tr("Research and make it at the lab / lathe")
-				_action.disabled = true
-			else:
-				_action.text = tr("Unlock & fit · %d scrap") % Scrap.part_cost(id)
-				_act_state(_action, "ready", Scrap.part_cost(id))
-				_action.disabled = Scrap.bank < Scrap.part_cost(id)
-		else:
-			_action.disabled = Profile.fitted(key, String(selected["slot"])) == id
-	var meta := tr("Condition %d%%") % int(Profile.condition(key)) if not cur.is_melee() else tr("Edge %d%%") % int(Profile.edge_of(key))
-	var kills := Profile.kills(key)
-	meta += " · " + tr("Mastery %s") % ["0", "I", "II", "III", "IV", "V"][Profile.mastery_level(key)] + " · " + tr_n("%d kill", "%d kills", kills) % kills
-	var ammo_name := Ammo.name_of(String(cur.caliber), wc.ammo_of(w) if wc != null else 0) if cur.uses_ammo() else ""
-	if ammo_name != "":
-		meta += "\n" + tr(ammo_name)
-	var description := _d_text.text
-	if id != "" and String(selected.get("slot", "")) != "preset" and not GunStage.GunModel.has_model(id):
-		description += "\n" + tr("Internal modification · compare its effects on the card.")
-	# metryka broni (E5, ST-01): numer, zabójstwa, wprawa i hałas magazynka od ciszy (§5a; cień = obecny montaż przy podglądzie)
-	var mp := Profile.mastery_points(key)
-	var ml := Profile.mastery_level(key)
-	var noise_now := StationNoise.mag_level(cur) if cur.uses_ammo() else -1.0
-	var noise_new := StationNoise.mag_level(preview) if preview != null and cur.uses_ammo() else -1.0
-	_workbench.present({"name": String(cur.name), "meta": meta, "tag": _d_tag.text, "preview": preview != null,
-		"serial": "86-%04d" % (absi(hash(key)) % 10000), "kills": kills, "mastery": ml, "mastery_points": mp,
-		"mastery_next": int(Profile.MASTERY_XP[mini(ml + 1, Profile.MASTERY_XP.size() - 1)]), "ammo": ammo_name, "noise": [noise_now, noise_new],
-		"pending": pending, "part_name": part_name, "option": _opt, "unlocked": unlocked, "slot": _bench_slot,
-		"weapons": weapons, "slots": slots, "options": records, "rows": rows, "description": description, "melee": cur.is_melee()})
-
-## Główne zmiany po zamontowaniu części `id` w gnieździe `slot` broni `w` (kafel części na ławie): do dwóch wierszy [parametr, nowa wartość,
-## ocena −1 / 0 / 1] — pierwsza korzyść i pierwszy kompromis (albo zmiana bez oceny); [] — bez zmian w liczbach (część o samym opisie).
-func _part_delta(w: int, cur: RefCounted, slot: String, id: String) -> Array:
-	var key := String(cur.key)
-	var choice := {}
-	for s in Parts.slots_of(key):
-		choice[s] = Profile.fitted(key, String(s))
-	choice[slot] = id
-	var wc := _local_wc()
-	var ammo_type: int = wc.ammo_of(w) if wc != null else 0
-	var after: RefCounted = Weapons.def_build(w, Weapons.build_of(ammo_type, Parts.encode(key, choice)))
-	var before_rows := _comparison_rows(cur)
-	var after_rows := _comparison_rows(after)
-	var gain: Array = []
-	var cost: Array = []
-	var neutral: Array = []
-	for i in mini(before_rows.size(), after_rows.size()):
-		if String(before_rows[i][1]) == String(after_rows[i][1]):
-			continue
-		var kind := _change_kind(String(before_rows[i][0]), cur, after)
-		var row := [String(before_rows[i][0]), UiTheme.num_text(String(after_rows[i][1])), kind]
-		if kind > 0 and gain.is_empty():
-			gain = row
-		elif kind < 0 and cost.is_empty():
-			cost = row
-		elif kind == 0 and neutral.is_empty():
-			neutral = row
-	var out: Array = []
-	for r in [gain, cost]:
-		if not r.is_empty():
-			out.append(r)
-	if out.is_empty() and not neutral.is_empty():
-		out.append(neutral)
-	return out
-
-## Kolor jest pomocniczy: korzyści i kompromisy mają również podpis. Mieszane zmiany pozostają neutralne.
-func _change_kind(metric: String, before: RefCounted, after: RefCounted) -> int:
-	for field in PART_METRICS:
-		if metric == tr(String(PART_METRICS[field][0])):
-			if field == "auto":
-				return 0 # tryb ognia jest wyborem sposobu użycia
-			var direction := -1.0 if Parts.LOWER_IS_BETTER.has(field) or field == "ammo_per_shot" else 1.0
-			return int(signf((float(after.get(field)) - float(before.get(field))) * direction))
-	if metric == tr("Damage"):
-		var old_damage: float = before.blast_damage if before.kind == WeaponDefinition.Kind.LAUNCHER else before.damage * before.pellets
-		var new_damage: float = after.blast_damage if after.kind == WeaponDefinition.Kind.LAUNCHER else after.damage * after.pellets
-		return int(signf(new_damage - old_damage))
-	var fields := {tr("Damage"): ["damage", 1], tr("Magazine"): ["mag", 1], tr("Noise"): ["n_max", -1],
-		tr("Mass"): ["mass", -1], tr("Kit mass"): ["mass", -1], tr("Run speed / noise"): ["mass", -1],
-		tr("Draw"): ["draw_time", -1], tr("Armour bypass"): ["armor_pen", 1]}
-	if fields.has(metric):
-		var spec: Array = fields[metric]
-		return int(signf((float(after.get(spec[0])) - float(before.get(spec[0]))) * float(spec[1])))
-	if metric == tr("Range") or metric == tr("Reach"):
-		return int(signf(after.range_m() - before.range_m()))
-	if metric == tr("Fire rate") or metric == tr("Swing rate"):
-		return int(signf(after.rpm() - before.rpm()))
-	if metric == tr("Reload"):
-		return int(signf(before.full_reload_time() - after.full_reload_time()))
-	if metric == tr("DPS"):
-		return int(signf(after.dps() - before.dps()))
-	var pairs := {tr("Spread"): ["jitter_deg", "spread_deg", -1], tr("Bloom"): ["bloom_per_shot", "bloom_max", -1],
-		tr("Recoil"): ["cam_kick", "recoil", -1], tr("Penetration"): ["pen", "pierce", 1], tr("Heating"): ["barrel_heat", "heat_gain", -1]}
-	if pairs.has(metric):
-		var spec: Array = pairs[metric]
-		var a := signf((float(after.get(spec[0])) - float(before.get(spec[0]))) * float(spec[2]))
-		var b := signf((float(after.get(spec[1])) - float(before.get(spec[1]))) * float(spec[2]))
-		return int(signf(a + b)) if a * b >= 0 else 0
-	return 0
-
-## Kolumna szczegółów na papierze (jak karta ławy): marginesy karty, napisy atramentem (UiTheme.ink).
-## Stan dźwigni akcji (StationKit.action_boxes): `st` "ready" / "wait" / "busy" / "collect" ("" — z `disabled`), `price` > złomu = brak złomu.
-func _act_state(b: Button, st: String, price: int) -> void:
-	b.set_meta("st", st)
-	b.set_meta("price", price)
-
-func _dress_action(b: Button) -> void:
-	var st := String(b.get_meta("st", ""))
-	if st == "":
-		st = "wait" if b.disabled else "ready"
-	if st == "busy":
-		st = "wait"
-	if st == "ready" and (b.disabled or (int(b.get_meta("price", 0)) > Scrap.bank and Scrap.enabled())):
-		st = "broke" if int(b.get_meta("price", 0)) > Scrap.bank else "wait"
-	if String(b.get_meta("dressed", "")) == st:
-		return
-	b.set_meta("dressed", st)
-	var boxes := StationKit.action_boxes(st)
-	for k in ["normal", "hover", "pressed", "disabled", "focus"]:
-		b.add_theme_stylebox_override(k, boxes[k])
-	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_disabled_color"]:
-		b.add_theme_color_override(c, boxes["fg"])
-	b.add_theme_constant_override("outline_size", 0)
-
-func _paper(inner: Control) -> PanelContainer:
-	var paper := PanelContainer.new()
-	paper.add_theme_stylebox_override("panel", UiTheme.paper_box())
-	paper.add_child(inner)
-	var stamp := StationKit.Stamp.new()                  # pieczątka skutku akcji (nakładka, nie zmienia układu)
-	paper.add_child(stamp)
-	paper.set_meta("stamp", stamp)
-	_papers.append(paper)
-	return paper
-
-## Pieczątka na widocznej karcie po udanej operacji stanowiska (ZAMÓWIONO, WYDANO, ZBADANO…).
-func _stamp() -> void:
-	for p in _papers:
-		var pc := p as PanelContainer
-		if pc.is_visible_in_tree():
-			(pc.get_meta("stamp") as StationKit.Stamp).play(tr(String(StationKit.STAMPS.get(_mode, "DONE"))))
-			return
-
-func _paper_rule() -> ColorRect:
-	var r := ColorRect.new()
-	r.color = UiTheme.PAPER_EDGE
-	r.custom_minimum_size = Vector2(0, 1)
-	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return r
-
-## Tytuł karty na papierze: krój nagłówków, atrament, bez obrysu.
-func _ink_heading() -> Label:
-	var l := UiTheme.heading("", 16, UiTheme.INK)
-	l.add_theme_constant_override("outline_size", 0)
-	return l
-
-## Wiersz listy części / czynności na papierze. Zaznaczony ma ciemniejszy pasek i znacznik „»” (nie tylko inny kolor), stan w nawiasie.
-func _tier_row(i: int, text: String, tail: String, col: Color) -> void:
-	var sel := i == _opt
-	var b := Button.new()
-	b.flat = true
-	b.focus_mode = Control.FOCUS_NONE
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.add_theme_font_size_override("font_size", 8)
-	b.add_theme_constant_override("outline_size", 0)
-	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
-		b.add_theme_color_override(c, col)
-	b.text = ("%s %s   [%s]" % ["»" if sel else " ", text, tail]) if tail != "" else ("%s %s" % ["»" if sel else " ", text])
-	b.custom_minimum_size = Vector2(DETAIL_W, 0)
-	if _mode == "lathe":                                  # tokarka (ST-06): schematy jako rulony przy kaflach — kolory blatu
-		b.flat = false
-		var light := {UiTheme.INK: UiTheme.TEXT, UiTheme.INK_MUTED: UiTheme.MUTED, UiTheme.INK_GAIN: UiTheme.OK, UiTheme.INK_COST: UiTheme.DANGER, UiTheme.INK_PRICE: UiTheme.ACCENT}
-		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
-			b.add_theme_color_override(c, light.get(col, UiTheme.TEXT))
-		b.custom_minimum_size = Vector2(COLS * TILE_W, 22)
-		for st in ["normal", "hover", "pressed", "focus"]:
-			var roll := StyleBoxFlat.new()
-			roll.bg_color = Color("2a2216") if sel else (Color("1b1c18") if st != "hover" else Color("23241f"))
-			roll.border_color = UiTheme.LAMP_LINE if sel else UiTheme.LINE
-			roll.set_border_width_all(1)
-			roll.set_corner_radius_all(9)
-			roll.content_margin_left = 12.0
-			roll.content_margin_top = 2.0
-			roll.content_margin_bottom = 2.0
-			b.add_theme_stylebox_override(st, roll)
-		b.pressed.connect(_pick_opt.bind(i))
-		_d_tiers.add_child(b)
-		return
-	for st in ["normal", "hover", "pressed", "focus"]:
-		var sb: StyleBox = StyleBoxEmpty.new()
-		if sel or st == "hover":
-			var band := StyleBoxFlat.new()
-			band.bg_color = UiTheme.PAPER_SEL if sel else Color(UiTheme.PAPER_SEL, 0.55)
-			sb = band
-		sb.content_margin_top = 1.0                         # wiersz bez marginesów przycisku — lista części mieści się w karcie
-		sb.content_margin_bottom = 1.0
-		sb.content_margin_left = 2.0
-		b.add_theme_stylebox_override(st, sb)
-	b.pressed.connect(_pick_opt.bind(i))
-	_d_tiers.add_child(b)
-
-func _rule() -> ColorRect:
-	var r := ColorRect.new()
-	r.color = UiTheme.LINE2
-	r.custom_minimum_size = Vector2(0, 1)
-	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return r
