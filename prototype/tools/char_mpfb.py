@@ -26,6 +26,8 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
+if "bl_ext.user_default.mpfb" not in bpy.context.preferences.addons:   # dodatek zainstalowany, ale wyłączony w preferencjach
+    bpy.ops.preferences.addon_enable(module="bl_ext.user_default.mpfb")
 from bl_ext.user_default.mpfb.services import HumanService
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -79,12 +81,13 @@ GREY_TO_CAMO = dict(GREY_TO_OLIVE, camo="woodland", seed=7)
 CAMO = {
     "hazmat": {"base": (0.80, 0.62, 0.07), "cells": 1, "spots": [], "clip": (0.9, 1.1)},      # wąsko: napisy stroju wyścigowego znikają (fałdy dopieka bake_shading)
     "navy": {"base": (0.10, 0.14, 0.25), "cells": 1, "spots": [], "clip": (0.7, 1.2)},
-    "woodland": {"base": (0.36, 0.34, 0.22), "cells": 42,
+    "woodland": {"base": (0.36, 0.34, 0.22), "cells": 26,     # Q3: większe plamy (42 zlewały się w skali gry w błoto)
                  "spots": [((0.27, 0.19, 0.11), 0.60), ((0.15, 0.19, 0.10), 0.58), ((0.06, 0.06, 0.05), 0.71)]},
 }
 
-MALE = {"age": 0.6, "muscle": 0.65, "weight": 0.55, "proportions": 0.9, "height": 0.6}
-FEMALE = {"age": 0.55, "muscle": 0.55, "weight": 0.5, "proportions": 0.9, "height": 0.5}
+HAZMAT_YELLOW = (0.66, 0.52, 0.12)       # Q4: gumowany żółty kombinezonu, mniej nasycony niż (0,80, 0,62, 0,07)
+MALE = {"age": 0.6, "muscle": 0.72, "weight": 0.58, "proportions": 0.9, "height": 0.6}         # Q1: wyraźniej szersze barki i grubsza szyja
+FEMALE = {"age": 0.55, "muscle": 0.45, "weight": 0.46, "proportions": 0.9, "height": 0.5}     # Q1: węższe barki, smuklejsza
 WHITE_RACE = {"asian": 0.1, "caucasian": 0.8, "african": 0.1}
 
 OUTFITS = {
@@ -97,10 +100,10 @@ OUTFITS = {
             "mindfront_shoes_biker_boots_male": {},                   # kozaki (CC-BY, Mindfront)
             "mindfront_helmet_kz45": {"tris": 1800},                  # hełm (CC-BY, Mindfront)
             "toigo_gloves_short": {"tint": (0.30, 0.20, 0.13)},      # rękawice skórzane
-            "gredal_gas_mask": {"relocate": "left_hip", "tris": 1800},   # maska przeciwgazowa przy biodrze (CC-BY, Mathias_Gredal)
+            "gredal_gas_mask": {"relocate": "left_hip", "tris": 1800, "tint": (0.27, 0.30, 0.25), "scale": 0.85},   # maska przy biodrze (CC-BY, Mathias_Gredal); Q3: oliwkowa guma, okularami do ciała
         },
         # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
-        "parts": {"boots": {"file": "male_scav_boots.glb", "replaces": "mindfront_shoes_biker_boots_male", "tris": 5200, "floor": True}},
+        "parts": {"boots": {"file": "male_scav_boots.glb", "replaces": "mindfront_shoes_biker_boots_male", "tris": 5200, "floor": True, "roughness": 0.82, "tint": (0.10, 0.09, 0.08)}},
         "gear": ["backpack_model", "belt_pouches", "neckerchief"],
         # --sewn: spodnie BDU i kurtka M65 z symulacji tkaniny w miejsce kompletu casualsuit05 (dół i góra)
         "sewn": {"bdu": {"file": "male_scav_bdu.glb", "replaces": "male_casualsuit05", "part": "lower", "tris": 4200},
@@ -109,6 +112,7 @@ OUTFITS = {
     "female_scav": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": WHITE_RACE,
         "skin": "young_caucasian_female", "hair": "ponytail01", "eyebrows": "eyebrow002",
+        "braid": {"color": (0.30, 0.19, 0.10), "length": 0.27},      # warkocz spod hełmu (CHARACTER_QUALITY_PLAN.md Q1)
         "clothes": {
             "elvs_emt_uniform_jacket_female": {"recolor": [ALL_TO_CAMO]},   # kurtka (CC-BY, Elvaerwyn) w kamuflażu
             "elvs_emt_uniform_pants_female": {"recolor": [ALL_TO_CAMO]},
@@ -116,10 +120,10 @@ OUTFITS = {
             "mindfront_shoes_biker_boots_female": {},
             "mindfront_helmet_kz45": {"tris": 1800},
             "toigo_gloves_short": {"tint": (0.30, 0.20, 0.13)},
-            "gredal_gas_mask": {"relocate": "left_hip", "tris": 1800},
+            "gredal_gas_mask": {"relocate": "left_hip", "tris": 1800, "tint": (0.27, 0.30, 0.25), "scale": 0.85},
         },
         # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
-        "parts": {"boots": {"file": "female_scav_boots.glb", "replaces": "mindfront_shoes_biker_boots_female", "tris": 5200, "floor": True}},
+        "parts": {"boots": {"file": "female_scav_boots.glb", "replaces": "mindfront_shoes_biker_boots_female", "tris": 5200, "floor": True, "roughness": 0.82, "tint": (0.10, 0.09, 0.08)}},
         "gear": ["backpack_model", "belt_pouches", "neckerchief"],
     },
     "male_hazmat": {
@@ -127,29 +131,34 @@ OUTFITS = {
         "skin": "young_caucasian_male", "hair": "", "eyebrows": "",
         "clothes": {
             "elvs_male_coveralls_1": {"recolor": [ALL_TO_HAZMAT]},  # kombinezon (CC-BY, Elvaerwyn) jako gumowany, żółty
-            "culturalibre_hero-heroine_hood_1": {"tint": (0.80, 0.62, 0.07)},   # kaptur
+            "culturalibre_hero-heroine_hood_1": {"tint": HAZMAT_YELLOW},   # kaptur
             "gredal_gas_mask": {"tris": 1800},                        # maska na twarzy
             "toigo_gloves_short": {"tint": (0.10, 0.10, 0.09)},      # gumowe rękawice (długie przebijały przez rękawy)
             "toigo_ankle_boots_male": {"tint": (0.09, 0.09, 0.08)},   # gumowe buty (wysokie przebijały przez nogawki)
         },
         # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
-        "parts": {"boots": {"file": "male_hazmat_boots.glb", "replaces": "toigo_ankle_boots_male", "tris": 5200, "floor": True}},
-        "gear": ["air_tank", "belt_pouches", "tape"],
-        "sewn": {"coverall": {"file": "male_hazmat_coverall.glb", "replaces": "elvs_male_coveralls_1", "tris": 7200}},
+        "parts": {"boots": {"file": "male_hazmat_boots.glb", "replaces": "toigo_ankle_boots_male", "tris": 5200, "floor": True, "roughness": 0.5}},
+        "gear": ["air_tank", "belt_pouches", "tape", "neck_seal"],
+        "sewn_default": True,                                     # Q4: szyty kombinezon (fałdy z symulacji, taśma na szwach)
+        "sewn": {"coverall": {"file": "male_hazmat_coverall.glb", "replaces": "elvs_male_coveralls_1", "tris": 7200,
+                              "tint": HAZMAT_YELLOW, "roughness": 0.45}},
     },
     "female_hazmat": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": WHITE_RACE,
         "skin": "young_caucasian_female", "hair": "", "eyebrows": "",
         "clothes": {
             "elvs_racing_fire_suit_female1": {"recolor": [ALL_TO_HAZMAT]},   # kombinezon (CC-BY, Elvaerwyn)
-            "culturalibre_hero-heroine_hood_1": {"tint": (0.80, 0.62, 0.07)},
+            "culturalibre_hero-heroine_hood_1": {"tint": HAZMAT_YELLOW},
             "gredal_gas_mask": {"tris": 1800},
             "toigo_gloves_short": {"tint": (0.10, 0.10, 0.09)},
             "toigo_ankle_boots_female": {"tint": (0.09, 0.09, 0.08)},
         },
         # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
-        "parts": {"boots": {"file": "female_hazmat_boots.glb", "replaces": "toigo_ankle_boots_female", "tris": 5200, "floor": True}},
-        "gear": ["air_tank", "belt_pouches", "tape"],
+        "parts": {"boots": {"file": "female_hazmat_boots.glb", "replaces": "toigo_ankle_boots_female", "tris": 5200, "floor": True, "roughness": 0.5}},
+        "gear": ["air_tank", "belt_pouches", "tape", "neck_seal"],
+        "sewn_default": True,
+        "sewn": {"coverall": {"file": "female_hazmat_coverall.glb", "replaces": "elvs_racing_fire_suit_female1", "tris": 7200,
+                              "tint": HAZMAT_YELLOW, "roughness": 0.45}},
     },
     "male_medic": {
         "sex": "male", "height": 1.80, "phenotype": MALE, "race": {"asian": 0.05, "caucasian": 0.15, "african": 0.8},
@@ -161,10 +170,11 @@ OUTFITS = {
             "jaldmic_m1951_72": {"tint": (0.82, 0.82, 0.78), "tris": 1800},   # biały hełm (CC-BY, jaldmic)
             "punkduck_stethoscope": {"tris": 600},                    # stetoskop (CC-BY, punkduck)
             "toigo_ankle_boots_male": {"tint": (0.12, 0.09, 0.07)},
+            "toigo_gloves_short": {"tint": (0.80, 0.81, 0.77)},       # Q3: jasne rękawiczki (gołe dłonie medyka)
         },
         # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
-        "parts": {"boots": {"file": "male_medic_boots.glb", "replaces": "toigo_ankle_boots_male", "tris": 5200, "floor": True}},
-        "gear": ["medkit_pack", "helmet_cross", "belt_pouches"],
+        "parts": {"boots": {"file": "male_medic_boots.glb", "replaces": "toigo_ankle_boots_male", "tris": 5200, "floor": True, "roughness": 0.8, "tint": (0.21, 0.13, 0.07)}},
+        "gear": ["medkit_pack", "helmet_cross", "belt_pouches", "armband"],
         "sewn": {"emt_trousers": {"file": "male_medic_emt_trousers.glb", "replaces": "elvs_emt_uniform_pants_male", "tris": 4200},
                  "emt_jacket": {"file": "male_medic_emt_jacket.glb", "replaces": "elvs_emt_uniform_jacket_male", "tris": 6000}},
     },
@@ -172,16 +182,18 @@ OUTFITS = {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": {"asian": 0.6, "caucasian": 0.35, "african": 0.05},
         "sewn_default": True,
         "skin": "young_asian_female", "hair": "ponytail01", "eyebrows": "eyebrow002",
+        "braid": {"color": (0.06, 0.045, 0.035), "length": 0.30},
         "clothes": {
             "elvs_emt_uniform_jacket_female": {"recolor": [ALL_TO_NAVY]},
             "elvs_emt_uniform_pants_female": {"recolor": [ALL_TO_NAVY]},
             "jaldmic_m1951_72": {"tint": (0.82, 0.82, 0.78), "tris": 1800},
             "punkduck_stethoscope": {"tris": 600},
             "toigo_ankle_boots_female": {"tint": (0.12, 0.09, 0.07)},
+            "toigo_gloves_short": {"tint": (0.80, 0.81, 0.77)},
         },
         # buty wojskowe / gumowe z cloth_garments.py zamiast butów z paczki MPFB (zawsze, nie tylko z --sewn)
-        "parts": {"boots": {"file": "female_medic_boots.glb", "replaces": "toigo_ankle_boots_female", "tris": 5200, "floor": True}},
-        "gear": ["medkit_pack", "helmet_cross", "belt_pouches"],
+        "parts": {"boots": {"file": "female_medic_boots.glb", "replaces": "toigo_ankle_boots_female", "tris": 5200, "floor": True, "roughness": 0.8, "tint": (0.21, 0.13, 0.07)}},
+        "gear": ["medkit_pack", "helmet_cross", "belt_pouches", "armband"],
         "sewn": {"emt_trousers": {"file": "female_medic_emt_trousers.glb", "replaces": "elvs_emt_uniform_pants_female", "tris": 4200},
                  "emt_jacket": {"file": "female_medic_emt_jacket.glb", "replaces": "elvs_emt_uniform_jacket_female", "tris": 6000}},
     },
@@ -300,9 +312,13 @@ def obj_images(o):
 # Model stoi przodem do +X, góra +Z, prawa strona postaci to −Y. Każda część jest w całości przypięta do jednej kości.
 
 COL = {
-    "leather": ((0.22, 0.12, 0.06), 0.65), "canvas": ((0.50, 0.42, 0.28), 0.9), "olive": ((0.26, 0.28, 0.17), 0.85),
+    "leather": ((0.22, 0.12, 0.06), 0.65), "canvas": ((0.50, 0.42, 0.28), 0.9), "olive": ((0.12, 0.13, 0.068), 0.85),
     "strap": ((0.16, 0.10, 0.06), 0.7), "rust": ((0.45, 0.10, 0.06), 0.9), "metal": ((0.35, 0.33, 0.30), 0.5),
-    "white": ((0.80, 0.80, 0.76), 0.7), "canvas_dark": ((0.12, 0.10, 0.055), 0.9), "tape": ((0.05, 0.05, 0.05), 0.5), "red": ((0.62, 0.05, 0.04), 0.6), "steel": ((0.36, 0.39, 0.35), 0.45),
+    "white": ((0.80, 0.80, 0.76), 0.7), "canvas_dark": ((0.12, 0.10, 0.055), 0.9), "tape": ((0.05, 0.05, 0.05), 0.5), "red": ((0.62, 0.05, 0.04), 0.6), "steel": ((0.12, 0.15, 0.13), 0.45),
+    "hair": ((0.10, 0.07, 0.05), 0.55),            # warkocz: kolor nadpisuje wpis "braid" w OUTFITS
+    "scarf": ((0.27, 0.23, 0.14), 0.92),           # chusta: sprane, ciemne khaki (Q3)
+    "canvas_white": ((0.50, 0.47, 0.37), 0.9),     # płótno torby medycznej: złamana biel (Q4; czysta biel czytała się jak lodówka)
+    "rubber_yellow": ((0.39, 0.24, 0.016), 0.45),  # gumowany kołnierz hazmatu: kolor kombinezonu (HAZMAT_YELLOW w sRGB → liniowo)
 }
 
 
@@ -450,7 +466,7 @@ def add_gear(rig, gear):
         parts[0].name = "gear"
 
 
-def relocate(rig, o, where):
+def relocate(rig, o, where, scale=1.0):
     """Część stroju zdjęta z miejsca, do którego ją uszyto, i przypięta sztywnie do kości (np. maska przeciwgazowa przy biodrze)."""
     pts = [p.matrix_world @ v.co for p in rig.children if p.type == "MESH" and p != o for v in p.data.vertices]
     vs = [o.matrix_world @ v.co for v in o.data.vertices]
@@ -460,9 +476,9 @@ def relocate(rig, o, where):
         z = hips.z - 0.06
         y_left = _section(pts, z, dz=0.02, y_max=0.19)[3]
         target = Vector((hips.x - 0.02, y_left + 0.06, z))
-        rot = Matrix.Rotation(math.radians(-30), 4, "X") @ Matrix.Rotation(math.radians(90), 4, "Z")   # twarzą w bok i w dół
+        rot = Matrix.Rotation(math.radians(-30), 4, "X") @ Matrix.Rotation(math.radians(-90), 4, "Z")   # okularami do biodra (Q3: biała „twarz” na boku czytała się jak druga głowa)
         bone = "Hips"
-    m = Matrix.Translation(target) @ rot @ Matrix.Translation(-c)
+    m = Matrix.Translation(target) @ rot @ Matrix.Scale(scale, 4) @ Matrix.Translation(-c)
     for v in o.data.vertices:
         v.co = o.matrix_world.inverted() @ (m @ (o.matrix_world @ v.co))
     for g in list(o.vertex_groups):
@@ -514,6 +530,7 @@ def _ring(rig, pts, at_bone, along_bone, weight_bone, width, col, grow=0.008, sh
     bmesh.ops.recalc_face_normals(bm, faces=faces)
     bmesh.ops.solidify(bm, geom=faces, thickness=0.002)
     _part(rig, "tape", bm, weight_bone, col)
+    return c, ax, rad
 
 
 def _import_gear(rig, key, ks):
@@ -589,8 +606,91 @@ def _import_gear(rig, key, ks):
     return o
 
 
+GEAR_SCRIPTED = {"backpack", "medbag", "pouch", "canteen"}   # Q4: bryły ze skryptu (styl reszty wyposażenia); TRELLIS tylko z --trellis-gear
+
+
 def _has(key):
+    if key in GEAR_SCRIPTED and "--trellis-gear" not in argv:
+        return False
     return key in GEAR_MODELS and os.path.exists(os.path.join(GEAR_SRC, GEAR_MODELS[key]["file"]))
+
+
+def _join(objs, name):
+    """Części jednej rzeczy w jeden obiekt o nazwie, której szukają zwłoki i Mimik (corpse3d.gd GEAR, enemy3d.gd DROP_GEAR)."""
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = objs[0]
+    if len(objs) > 1:
+        bpy.ops.object.join()
+    objs[0].name = name
+    objs[0]["scripted"] = True
+    return objs[0]
+
+
+def _taper(bm, z_from, k_y, k_x=1.0):
+    """Zwężenie bryły ku górze (od z_from w górę skala boków rośnie do k_y / k_x na wierzchu)."""
+    zs = [v.co.z for v in bm.verts]
+    top = max(zs)
+    for v in bm.verts:
+        if v.co.z > z_from and top > z_from:
+            f = (v.co.z - z_from) / (top - z_from)
+            v.co.y *= 1.0 + (k_y - 1.0) * f
+            v.co.x *= 1.0 + (k_x - 1.0) * f
+
+
+def _script_pack(rig, pts, neck, sh, ks):
+    """Plecak wojskowy (Q4): korpus zwężony ku górze, klapa z przodem na tył, dwa paski z klamrami, kieszeń tylna z klapką,
+    kieszenie boczne i paski kompresyjne. Zwraca (środek x, głębokość, wierzch, środek z, spód)."""
+    top = neck.z - 0.06 * ks
+    h, w, d = 0.46 * ks, 0.34 * ks, 0.20 * ks
+    zc = top - h * 0.5
+    back = _section(pts, zc, y_max=0.12)[0]
+    xc = back - d * 0.5 + 0.012
+    xb = xc - d * 0.5
+    bm = _box((d, w, h), (0.0, 0.0, 0.0), 0.045)
+    _taper(bm, 0.0, 0.9, 0.92)
+    bmesh.ops.translate(bm, vec=Vector((xc, 0.0, zc)), verts=bm.verts)
+    _part(rig, "backpack_body", bm, "Spine2", "olive")
+    _part(rig, "backpack_lid", _box((d * 0.95 + 0.02, w * 0.9 + 0.02, 0.05), (xc - 0.004, 0.0, top + 0.012), 0.022), "Spine2", "olive")
+    _part(rig, "backpack_lid_drop", _box((0.024, w * 0.86, h * 0.34), (xb - 0.01, 0.0, top - h * 0.16), 0.012), "Spine2", "olive")
+    for yy in (-w * 0.26, w * 0.26):
+        _part(rig, "backpack_strap", _box((0.01, 0.032, h * 0.56), (xb - 0.024, yy, top - h * 0.27), 0.003), "Spine2", "strap")
+        _part(rig, "backpack_buckle", _box((0.012, 0.044, 0.032), (xb - 0.03, yy, top - h * 0.52), 0.003), "Spine2", "metal")
+    _part(rig, "backpack_pocket", _box((0.075, w * 0.66, h * 0.36), (xb - 0.034, 0.0, zc - h * 0.2), 0.028), "Spine2", "olive")
+    _part(rig, "backpack_pocket_flap", _box((0.08, w * 0.68, 0.055), (xb - 0.037, 0.0, zc - h * 0.04), 0.014), "Spine2", "canvas_dark")
+    _part(rig, "backpack_snap", _cyl(0.008, 0.006, (xb - 0.078, 0.0, zc - h * 0.07), axis="X", seg=10), "Spine2", "metal")
+    for side in (-1, 1):
+        _part(rig, "backpack_side", _box((d * 0.62, 0.06, h * 0.44), (xc - d * 0.08, side * (w * 0.45 + 0.028), zc - h * 0.14), 0.02),
+              "Spine2", "olive")
+        _part(rig, "backpack_side_flap", _box((d * 0.64, 0.064, 0.04), (xc - d * 0.08, side * (w * 0.45 + 0.03), zc + h * 0.07), 0.012),
+              "Spine2", "canvas_dark")
+        for zz in (zc + h * 0.24, zc - h * 0.02):
+            _part(rig, "backpack_comp", _box((d * 0.9, 0.006, 0.025), (xc - 0.008, side * (w * 0.46 + 0.003), zz), 0.002), "Spine2", "strap")
+    return xc, d, top, zc, zc - h * 0.5
+
+
+def _bedroll(rig, cx, bottom, ks):
+    """Śpiwór w poprzek POD plecakiem (Q3: na wierzchu zasłaniał w widoku z boku kark i warkocz): zwój koca na czołach jako spirala,
+    dwa paski z klamrami i wieszaki do plecaka."""
+    r, ln = 0.085 * ks, 0.56 * ks
+    zr = bottom - r * 0.75
+    _part(rig, "bedroll", _cyl(r, ln, (cx, 0.0, zr), seg=28, scale_xy=(1.0, 0.92)), "Spine2", "olive")
+    for yy in (-1, 1):
+        yf = yy * (ln * 0.5 + 0.002)
+        _part(rig, "bedroll_end", _cyl(r * 0.9, 0.006, (cx, yf, zr), seg=24), "Spine2", "canvas_dark")
+        spiral = []
+        turns = 3.2
+        for i in range(56):
+            t = i / 55.0
+            a = t * turns * 2 * math.pi
+            rr = r * (0.12 + 0.8 * t)
+            spiral.append(Vector((cx + rr * math.cos(a), yf + yy * 0.004, zr + rr * math.sin(a) * 0.92)))
+        _part(rig, "bedroll_roll", _tube(spiral, 0.0055, seg=6, smooth=1), "Spine2", "olive")
+    for yy in (-ln * 0.3, ln * 0.3):
+        _part(rig, "bedroll_strap", _cyl(r + 0.004, 0.03, (cx, yy, zr), seg=28, scale_xy=(1.0, 0.92)), "Spine2", "leather")
+        _part(rig, "bedroll_buckle", _box((0.012, 0.035, 0.03), (cx - r - 0.006, yy, zr), 0.003), "Spine2", "metal")
+        _part(rig, "bedroll_hang", _box((0.008, 0.025, 0.07), (cx - r * 0.4, yy, bottom + 0.01), 0.002), "Spine2", "leather")
 
 
 def gear_model(rig, pts, key, neck, sh):
@@ -639,21 +739,29 @@ def _add_gear(rig, gear):
         xc, d, top, zc = gear_model(rig, pts, "medbag", neck, sh)
         _harness(rig, pts, xc, d, top, zc, sh)
     elif "medkit_pack" in gear:
-        # biała torba medyczna na plecach z czerwonym krzyżem, szelki jak przy plecaku
+        # torba medyczna na plecach z płótna w kolorze złamanej bieli, z czerwonym krzyżem, kieszeniami bocznymi i szelkami (Q4: ze skryptu)
+        before = set(rig.children)
         top = neck.z - 0.08
-        h, w, d = 0.34 * ks, 0.30 * ks, 0.14 * ks
+        h, w, d = 0.34 * ks, 0.30 * ks, 0.11 * ks          # ≤ 0,14 m z klapą i klamrami (test_proportions)
         zc = top - h * 0.5
         back = _section(pts, zc, y_max=0.12)[0]
         xc = back - d * 0.5 + 0.01
-        _part(rig, "medkit", _box((d, w, h), (xc, 0.0, zc), 0.03), "Spine2", "white")
+        bm = _box((d, w, h), (0.0, 0.0, 0.0), 0.035)
+        _taper(bm, 0.0, 0.92, 0.94)
+        bmesh.ops.translate(bm, vec=Vector((xc, 0.0, zc)), verts=bm.verts)
+        _part(rig, "medkit", bm, "Spine2", "canvas_white")
+        for side in (-1, 1):
+            _part(rig, "medkit_side", _box((d * 0.7, 0.045, h * 0.5), (xc - d * 0.05, side * (w * 0.46 + 0.02), zc - h * 0.14), 0.015),
+                  "Spine2", "canvas_white")
         xb = xc - d * 0.5 - 0.004
         _part(rig, "medkit_cross", _box((0.01, 0.16 * ks, 0.05 * ks), (xb, 0.0, zc), 0.0), "Spine2", "red")
         _part(rig, "medkit_cross", _box((0.01, 0.05 * ks, 0.16 * ks), (xb, 0.0, zc), 0.0), "Spine2", "red")
-        _part(rig, "medkit_lid", _box((d + 0.01, w + 0.01, 0.03), (xc, 0.0, top - 0.015), 0.01), "Spine2", "white")
+        _part(rig, "medkit_lid", _box((d + 0.01, w + 0.01, 0.03), (xc, 0.0, top - 0.015), 0.01), "Spine2", "canvas_white")
         _part(rig, "medkit_seam", _box((d + 0.012, w + 0.012, 0.008), (xc, 0.0, top - 0.035), 0.002), "Spine2", "strap")
         _part(rig, "medkit_handle", _box((0.03, w * 0.5, 0.02), (xc, 0.0, top + 0.012), 0.008), "Spine2", "strap")
         for yy in (-w * 0.3, w * 0.3):
             _part(rig, "medkit_clasp", _box((0.012, 0.03, 0.05), (xb - 0.003, yy, top - 0.05), 0.003), "Spine2", "metal")
+        _join([o for o in rig.children if o not in before], "medbag")
         _harness(rig, pts, xc, d, top, zc, sh)
     if "air_tank" in gear and _has("airtank"):
         xc, d, top, zc = gear_model(rig, pts, "airtank", neck, sh)
@@ -666,7 +774,15 @@ def _add_gear(rig, gear):
         back = _section(pts, zc, y_max=0.12)[0]
         xc = back - r - 0.01
         for yy in (-0.08 * ks, 0.08 * ks):
-            _part(rig, "tank", _cyl(r, ln, (xc, yy, zc), axis="Z", seg=16), "Spine2", "steel")
+            _part(rig, "tank", _cyl(r, ln - r, (xc, yy, zc), axis="Z", seg=20), "Spine2", "steel")
+            for zz, sg in ((zc + (ln - r) * 0.5, 1), (zc - (ln - r) * 0.5, -1)):          # Q4: kopuły zamiast płaskich den
+                dome = bmesh.new()
+                bmesh.ops.create_uvsphere(dome, u_segments=20, v_segments=10, radius=r)
+                bmesh.ops.delete(dome, geom=[v for v in dome.verts if v.co.z * sg < -1e-4], context="VERTS")
+                bmesh.ops.scale(dome, vec=Vector((1.0, 1.0, 0.6)), verts=dome.verts)
+                bmesh.ops.translate(dome, vec=Vector((xc, yy, zz)), verts=dome.verts)
+                _part(rig, "tank_dome", dome, "Spine2", "steel")
+            _part(rig, "tank_wheel", _cyl(0.028, 0.008, (xc, yy, top + 0.065), axis="Z", seg=16), "Spine2", "canvas_dark")
             _part(rig, "tank_valve", _cyl(0.022, 0.06, (xc, yy, top + 0.03), axis="Z", seg=8), "Spine2", "metal")
             for zz in (zc + ln * 0.3, zc - ln * 0.3):
                 _part(rig, "tank_band", _cyl(r + 0.004, 0.03, (xc, yy, zz), axis="Z", seg=16), "Spine2", "strap")
@@ -677,8 +793,11 @@ def _add_gear(rig, gear):
         _part(rig, "tank_hose", _tube(hose, 0.013), "Spine2", "strap")
         _part(rig, "tank_bridge", _box((0.03, 0.16 * ks + 0.04, 0.03), (xc, 0.0, top + 0.05), 0.008), "Spine2", "metal")
         _part(rig, "tank_gauge", _cyl(0.025, 0.02, (xc - 0.03, 0.0, top + 0.05), axis="Z", seg=12), "Spine2", "white")
-        _part(rig, "tank_plate", _box((0.012, 0.12, 0.08), (xc - r - 0.004, 0.0, zc), 0.004), "Spine2", "white")
         _harness(rig, pts, xc, r * 2, top - 0.05, zc, sh)
+    if "neck_seal" in gear:
+        # Q4: gumowany kołnierz od krawędzi maski do kombinezonu (szyty kombinezon nie ma stójki, kaptur nie sięga karku)
+        bvh = _surface(rig)
+        _ring(rig, pts, "Neck", "Head", "Neck", 0.085, "rubber_yellow", grow=0.01, shift=0.045, bvh=bvh)
     if "tape" in gear:
         # taśma na styku rękawic i rękawów oraz butów i nogawek — klasyczny kombinezon ochronny
         cl = [o.matrix_world @ v.co for o in rig.children if o.type == "MESH" and o.name not in ("body", "gear")
@@ -692,19 +811,21 @@ def _add_gear(rig, gear):
                   at_z=None if top is None else top + 0.01)                                                  # styk nogawki i cholewki
     # Krzyż hełmu jest farbą w albedo, po rozdzieleniu lustrzanego UV (paint_helmet_cross).
     if "backpack_model" in gear:
-        xc, d, top, zc = gear_model(rig, pts, "backpack", neck, sh)
+        before = set(rig.children)
+        if _has("backpack"):
+            xc, d, top, zc = gear_model(rig, pts, "backpack", neck, sh)
+            bv = [bpy.data.objects["backpack"].matrix_world @ v.co for v in bpy.data.objects["backpack"].data.vertices]
+            bottom = min(p.z for p in bv)
+            low = [p for p in bv if p.z < bottom + 0.08]
+            cx = sum(p.x for p in low) / len(low) - 0.01
+        else:
+            xc, d, top, zc, bottom = _script_pack(rig, pts, neck, sh, ks)
+            cx = xc
+        _bedroll(rig, cx, bottom, ks)
+        parts = [o for o in rig.children if o not in before]
+        pack = bpy.data.objects.get("backpack")
+        _join(([pack] if pack is not None and pack in parts else []) + [o for o in parts if o is not pack], "backpack")
         _harness(rig, pts, xc, d, top, zc, sh)
-        # duży śpiwór w poprzek na wierzchu plecaka (koc z modelu był za mały), dwa paski
-        cx, z1 = bpy.data.objects["backpack"]["crown"]
-        r, ln = 0.095 * ks, 0.58 * ks
-        zr = z1 - 0.02
-        _part(rig, "bedroll", _cyl(r, ln, (cx, 0.0, zr), seg=24), "Spine2", "olive")
-        for yy in (-1, 1):                                            # zwój widoczny na czołach: wewnętrzna warstwa koca
-            _part(rig, "bedroll_end", _cyl(r * 0.62, 0.012, (cx, yy * (ln * 0.5 + 0.002), zr), seg=20), "Spine2", "canvas_dark")
-            _part(rig, "bedroll_end", _cyl(r * 0.3, 0.016, (cx, yy * (ln * 0.5 + 0.004), zr), seg=16), "Spine2", "olive")
-        for yy in (-ln * 0.3, ln * 0.3):
-            _part(rig, "bedroll_strap", _cyl(r + 0.004, 0.03, (cx, yy, zr), seg=24), "Spine2", "leather")
-            _part(rig, "bedroll_buckle", _box((0.012, 0.035, 0.03), (cx + r + 0.006, yy, zr), 0.003), "Spine2", "metal")
     if "backpack_bedroll" in gear:
         # plecak na łopatkach (Spine2), śpiwór zwinięty na górze, szelki przez barki na pierś
         top = neck.z - 0.07
@@ -733,6 +854,22 @@ def _add_gear(rig, gear):
         for yy in (-0.13, 0.13):
             _part(rig, "bedroll_strap", _cyl(0.079, 0.025, (xc + 0.01, yy, top + 0.06)), "Spine2", "strap")
         _harness(rig, pts, xc, d, top, zc, sh)
+    if "armband" in gear:
+        # Q3: biała opaska z czerwonym krzyżem na obu ramionach (kamera widzi raz lewy, raz prawy bok) — medyk czytelny z boku
+        cl = [o.matrix_world @ v.co for o in rig.children if o.type == "MESH" and o.name not in ("body", "gear")
+              for v in o.data.vertices]
+        bvh = _surface(rig)
+        for side in ("Left", "Right"):
+            c, ax, rad = _ring(rig, cl, side + "ForeArm", side + "Arm", side + "Arm", 0.075 * ks, "white", grow=0.004,
+                               shift=0.16 * ks, bvh=bvh)
+            out = Vector((0.0, 1.0 if side == "Left" else -1.0, 0.0))
+            out = (out - ax * out.dot(ax)).normalized()
+            r = max(rad, key=lambda x: x[0].dot(out))[1]
+            p = c + out * (r + 0.004 + 0.0025)
+            t2 = ax.cross(out).normalized()
+            rot = Matrix((out, t2, ax)).transposed()
+            for size in ((0.004, 0.015 * ks, 0.052 * ks), (0.004, 0.052 * ks, 0.015 * ks)):
+                _part(rig, "armband_cross", _box(size, p, 0.0, rot), side + "Arm", "red")
     if "belt_pouches" in gear:
         zb = hips.z + 0.06
         x0, x1, y0, y1 = _section(pts, zb, dz=0.02, y_max=0.19)   # bez dłoni (poza A: dłonie wiszą przy biodrach)
@@ -758,9 +895,24 @@ def _add_gear(rig, gear):
             hz = (max(v.z for v in vs) - min(v.z for v in vs)) * 0.5
             o.data.transform(Matrix.Translation((x0 - th + 0.015, y1 - 0.07, zb + 0.02 - hz)))
         else:
-            for yy in (y0 + 0.05, y1 - 0.05):
-                _part(rig, "pouch", _box((0.09, 0.055, 0.11), (cx + 0.04, yy, zb - 0.05), 0.012), "Hips", "olive")
-            _part(rig, "canteen", _cyl(0.05, 0.16, (x0 - 0.02, y0 + 0.08, zb - 0.08), axis="Z"), "Hips", "olive")
+            # Q4: ładownice z klapką i napą po obu stronach klamry, manierka w pokrowcu z tyłu na lewym biodrze
+            xf = _section(pts, zb - 0.03, dz=0.03, y_max=0.19)[1]
+            for side in (-1, 1):
+                before = set(rig.children)
+                yy = cy + side * 0.105 * ks
+                pd, pw, ph = 0.055 * ks, 0.085 * ks, 0.11 * ks
+                px = xf + pd * 0.5 - 0.008
+                pz = zb + 0.015 - ph * 0.5
+                _part(rig, "pouch", _box((pd, pw, ph), (px, yy, pz), 0.012), "Hips", "olive")
+                _part(rig, "pouch_flap", _box((pd + 0.008, pw + 0.006, 0.035), (px + 0.003, yy, zb + 0.012), 0.01), "Hips", "canvas_dark")
+                _part(rig, "pouch_snap", _cyl(0.0065, 0.005, (px + pd * 0.5 + 0.008, yy, zb - 0.002), axis="X", seg=10), "Hips", "metal")
+                _join([o for o in rig.children if o not in before], "pouch_" + ("L" if side > 0 else "R"))
+            before = set(rig.children)
+            ccx, ccy, ccz = x0 - 0.035, y1 - 0.07, zb - 0.07
+            _part(rig, "canteen", _cyl(0.06 * ks, 0.17 * ks, (ccx, ccy, ccz), axis="Z", seg=20, scale_xy=(0.62, 1.0)), "Hips", "olive")
+            _part(rig, "canteen_cap", _cyl(0.016, 0.03, (ccx, ccy, ccz + 0.1 * ks), axis="Z", seg=12), "Hips", "canvas_dark")
+            _part(rig, "canteen_flap", _box((0.08 * ks, 0.11 * ks, 0.03), (ccx, ccy, ccz + 0.07 * ks), 0.01), "Hips", "olive")
+            _join([o for o in rig.children if o not in before], "canteen")
     if "neckerchief" in gear:
         # zwinięta chusta na kołnierzu (pętla przyklejona do ubrania), trójkąt na piersi i węzeł z przodu
         bvh = _surface(rig)
@@ -777,29 +929,21 @@ def _add_gear(rig, gear):
             r = max([(Vector((p.x - nk.x, p.y - nk.y, 0)).dot(d)) for p in near if Vector((p.x - nk.x, p.y - nk.y, 0)).normalized().dot(d) > 0.9]
                     or [0.07])
             ring.append(Vector((nk.x, nk.y, zn - sag)) + d * (r + 0.014))
-        _part(rig, "neckerchief", _tube(ring + ring[:3], 0.014, seg=8, smooth=2), "Spine2", "rust")
-        xf = x1
-        # trójkąt płaski, styczny do piersi pod węzłem (rzut każdego wierzchołka osobno łapał paski kamizelki — wychodził „namiot”)
-        q0, n0 = _onto(bvh, Vector((xf + 0.3, cy, zn - 0.06)), Vector((-1, 0, 0)), 0.012)
-        side = Vector((0, 0, 1)).cross(n0).normalized()
-        down = n0.cross(side).normalized()
-        if down.z > 0:
-            down = -down
-        w, h = 0.12 * ks, 0.10 * ks
-        top = q0 - down * (h * 0.35)
+        _part(rig, "neckerchief", _tube(ring + ring[:3], 0.011, seg=8, smooth=2), "Spine2", "scarf")
+        # Q3: węzeł z boku (lewy przód) i dwa krótkie końce w dół — bez płaskiego trójkąta na piersi
+        k = 4                                                        # ok. 60° od przodu w stronę lewego boku (+Y)
+        q = ring[k] + (ring[k] - Vector((nk.x, nk.y, ring[k].z))).normalized() * 0.008
         bm = bmesh.new()
-        tri = [bm.verts.new(top - side * w * 0.5), bm.verts.new(top + side * w * 0.5), bm.verts.new(top + down * h)]
-        f = bm.faces.new(tri)
-        bmesh.ops.subdivide_edges(bm, edges=list(bm.edges), cuts=3, use_grid_fill=True)
-        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-        bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=0.003)
-        _part(rig, "neckerchief_flap", bm, "Spine2", "rust")
-        q = ring[0] + Vector((0.012, 0.0, -0.012))                   # węzeł na przodzie pętli (rzut z przodu łapał wysoką stójkę — broda)
-        bm = bmesh.new()
-        bmesh.ops.create_uvsphere(bm, u_segments=10, v_segments=6, radius=0.02)
-        bmesh.ops.scale(bm, vec=Vector((0.8, 1.2, 0.9)), verts=bm.verts)
+        bmesh.ops.create_uvsphere(bm, u_segments=10, v_segments=6, radius=0.016)
+        bmesh.ops.scale(bm, vec=Vector((1.0, 1.15, 0.85)), verts=bm.verts)
         bmesh.ops.translate(bm, vec=q, verts=bm.verts)
-        _part(rig, "neckerchief_knot", bm, "Spine2", "rust")
+        _part(rig, "neckerchief_knot", bm, "Spine2", "scarf")
+        out = (q - Vector((nk.x, nk.y, q.z))).normalized()
+        for spread, length in ((-0.6, 0.065 * ks), (0.5, 0.05 * ks)):
+            side = Vector((0, 0, 1)).cross(out).normalized()
+            end = q + out * 0.012 + side * spread * 0.018 + Vector((0, 0, -length))
+            mid = (q + end) * 0.5 + out * 0.01
+            _part(rig, "neckerchief_tail", _tube([q, mid, end], 0.009, seg=6, smooth=3), "Spine2", "scarf")
 
 
 # ------------------------------------------------------------------------------------------------ wypiekanie (Cycles)
@@ -811,6 +955,9 @@ GEAR_LOOK = {   # materiał ekwipunku → (skala szumu, siła zmian koloru, sił
     "leather": (40.0, 0.18, 0.35, False), "canvas": (60.0, 0.14, 0.25, True), "olive": (60.0, 0.14, 0.25, True),
     "strap": (90.0, 0.12, 0.2, True), "canvas_dark": (60.0, 0.16, 0.3, True), "tape": (70.0, 0.1, 0.15, False), "rust": (50.0, 0.15, 0.2, True), "metal": (25.0, 0.08, 0.1, False),
     "white": (45.0, 0.08, 0.2, True), "red": (45.0, 0.08, 0.1, False), "steel": (20.0, 0.10, 0.12, False),
+    "hair": (260.0, 0.30, 0.45, True),             # pasma: drobny szum i fala wzdłuż splotów
+    "canvas_white": (60.0, 0.10, 0.25, True), "rubber_yellow": (30.0, 0.06, 0.15, False),
+    "scarf": (70.0, 0.18, 0.35, True),
 }
 
 
@@ -871,11 +1018,15 @@ def _drop_target(o):
             m.node_tree.nodes.remove(n)
 
 
-def texture_gear(rig, size=1024):
-    """Ekwipunek: UV, materiały proceduralne (szum koloru, splot, wypukłości) wypieczone do jednej pary map: kolor + normalne."""
-    g = bpy.data.objects.get("gear")
+def texture_gear(rig, size=1024, name="gear"):
+    """Ekwipunek: UV, materiały proceduralne (szum koloru, splot, wypukłości) wypieczone do jednej pary map: kolor + normalne.
+    `name`: obiekt do oteksturowania (ekwipunek „gear”, warkocz „braid”); mapy i materiał dostają tę nazwę."""
+    g = bpy.data.objects.get(name)
     if g is None:
         return
+    for i, m in enumerate(g.data.materials):              # kopie: „gear_olive” bywa na kilku obiektach, a wypiek dokłada węzły
+        if m is not None:
+            g.data.materials[i] = m.copy()
     _only(g)
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
@@ -918,8 +1069,8 @@ def texture_gear(rig, size=1024):
             hsrc = add.outputs["Value"]
         nt.links.new(hsrc, bp.inputs["Height"])
         nt.links.new(bp.outputs["Normal"], bsdf.inputs["Normal"])
-    alb = bpy.data.images.new("gear_albedo", size, size)
-    nrm = bpy.data.images.new("gear_normal", size, size)
+    alb = bpy.data.images.new(name + "_albedo", size, size)
+    nrm = bpy.data.images.new(name + "_normal", size, size)
     nrm.colorspace_settings.name = "Non-Color"
     sc = bpy.context.scene
     sc.render.bake.use_pass_direct = False
@@ -931,7 +1082,7 @@ def texture_gear(rig, size=1024):
     _bake(type="NORMAL")
     _drop_target(g)
     # jeden materiał z wypieczonych map
-    mat = bpy.data.materials.new("gear")
+    mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     nt = mat.node_tree
     bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
@@ -947,7 +1098,7 @@ def texture_gear(rig, size=1024):
     nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
     g.data.materials.clear()
     g.data.materials.append(mat)
-    print("GEAR TEX", size)
+    print("GEAR TEX", name, size)
 
 
 def bake_shading(rig, body, size_cap=2048):
@@ -1013,6 +1164,23 @@ def bake_shading(rig, body, size_cap=2048):
         print("BAKED", o.name, w, "x", h)
 
 
+def _const_roughness(m, bsdf, value):
+    """Stała szorstkość jako mała tekstura ORM (R = AO 1, G = szorstkość): shader postaci w grze (char3d.gd PALETTE_SHADER) czyta
+    szorstkość tylko z tekstury ORM, a bez niej bierze 0,85 — sam współczynnik materiału z GLB nie dochodzi do gry."""
+    nt = m.node_tree
+    for lk in list(bsdf.inputs["Roughness"].links):
+        nt.links.remove(lk)
+    img = bpy.data.images.new("orm_%s_%02d" % (m.name.split(".")[0], int(value * 100)), 8, 8)
+    img.colorspace_settings.name = "Non-Color"
+    img.pixels[:] = [1.0, value, 0.0, 1.0] * 64
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(tex.outputs["Color"], sep.inputs["Color"])
+    nt.links.new(sep.outputs["Green"], bsdf.inputs["Roughness"])
+    bsdf.inputs["Roughness"].default_value = 1.0
+
+
 def add_sewn(rig, body, spec, entries=None):
     """Ubrania szyte symulacją (cloth_garments.py): import GLB, wagi kości z ciała (najbliższa ściana, interpolacja), Armature.
     Część paczki MPFB, którą zastępują, znika w całości albo traci połowę ("part": "upper" — ściany przypięte głównie do kości
@@ -1058,6 +1226,13 @@ def add_sewn(rig, body, spec, entries=None):
             for n in m.node_tree.nodes:
                 if n.type == "TEX_IMAGE" and n.image and any(l.to_socket.name == "Base Color" for l in n.outputs["Color"].links):
                     n.name = "diffuseTexture"
+        for m in ob.data.materials:                   # Q3: buty matowe (skóra) albo półmatowe (guma), kolor wg stroju
+            b = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+            if b is not None and conf.get("roughness") is not None:
+                _const_roughness(m, b, float(conf["roughness"]))
+            img = next((n.image for n in m.node_tree.nodes if n.name == "diffuseTexture" and n.image), None)
+            if img is not None and conf.get("tint"):
+                tint_image(img, conf["tint"])
         _only(ob)
         dt = ob.modifiers.new("dt", "DATA_TRANSFER")
         dt.object = body
@@ -1359,6 +1534,131 @@ def hair_under_hat(rig):
             bpy.data.objects.remove(o)
 
 
+BRAID_BONES = ("braid_1", "braid_2", "braid_3")         # kości warkocza pod głową; w grze kołysze je SpringBoneSimulator3D (char3d.gd)
+
+
+def add_braid(rig, spec):
+    """Warkocz spod tylnej krawędzi hełmu (CHARACTER_QUALITY_PLAN.md Q1): w widoku z boku to najmocniejszy znak płci, bo hełm
+    zakrywa całą resztę włosów. Sploty to spłaszczone elipsoidy na przemian przechylone w lewo i w prawo wzdłuż krzywej, która
+    zwisa z karku i układa się na tym, co jest pod nią (kołnierz, plecak, śpiwór), jak warkocz pod ciężarem; na końcu gumka i pędzelek.
+    Trzy kości `braid_*` (rodzic: głowa) — każdy splot w całości na jednej z nich, pierwszy po połowie z głową."""
+    conf = spec.get("braid")
+    if not conf:
+        return
+    head = _bone(rig, "Head")
+    neck = _bone(rig, "Neck")
+    ks = neck.z / 1.52
+    body = bpy.data.objects["body"]
+    hats = [o for o in rig.children if o.type == "MESH" and any(k in o.name for k in ("helmet", "m1951", "hood"))]
+    back_hat = [(o.matrix_world @ v.co) for o in hats for v in o.data.vertices]
+    back_hat = [p for p in back_hat if p.x < head.x - 0.04 and abs(p.y) < 0.05]
+    rim = min(p.z for p in back_hat) if back_hat else head.z + 0.02
+    # tył czaszki tuż pod krawędzią hełmu (sama skóra ciała, pas środkowy)
+    bp = [body.matrix_world @ v.co for v in body.data.vertices]
+    skull = [p.x for p in bp if abs(p.z - (rim - 0.015)) < 0.012 and abs(p.y) < 0.03 and p.x < head.x]
+    x0 = min(skull) if skull else head.x - 0.09
+    # powierzchnia pleców ze wszystkiego, na czym warkocz może leżeć
+    skip = ("low-poly", "eyebrow", "eyelash", "helmet", "m1951", "hood", "short0", "ponytail")
+    pts = [o.matrix_world @ v.co for o in rig.children if o.type == "MESH" and not any(k in o.name for k in skip)
+           for v in o.data.vertices]
+    n = 14
+    length = float(conf.get("length", 0.27)) * ks
+    r_side, r_along, r_depth = 0.021 * ks, 0.033 * ks, 0.016 * ks          # sploty mocno na zakładkę — lina, nie korale
+    z0 = rim + 0.01                                         # początek schowany pod krawędzią hełmu
+    path = []
+    x = x0 + r_depth * 0.6
+    for k in range(n + 1):
+        z = z0 - length * k / n
+        sel = [p.x for p in pts if abs(p.z - z) < 0.02 and abs(p.y) < 0.05]
+        surf = min(sel) if sel else x
+        x = min(x, surf - r_depth * 0.9)                    # zwisa pionowo; przeszkoda pod spodem odsuwa go do tyłu
+        path.append(Vector((x, 0.0, z)))
+    # wygładzenie odsunięć (przejście przez krawędź śpiwora bez schodka) — tylko do tyłu, nigdy w głąb tego, na czym leży
+    for _ in range(3):
+        path = [path[0]] + [Vector((min(b.x, (a.x + b.x * 2 + c.x) / 4), 0.0, b.z)) for a, b, c in zip(path, path[1:], path[2:])] + [path[-1]]
+
+    def at(s):                                              # punkt krzywej dla s ∈ [0, 1]
+        f = s * (len(path) - 1)
+        i = min(int(f), len(path) - 2)
+        return path[i].lerp(path[i + 1], f - i)
+
+    # kości
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = rig
+    rig.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    eb = rig.data.edit_bones
+    inv = rig.matrix_world.inverted()
+    prev = eb["mixamorig:Head"]
+    for i, nm in enumerate(BRAID_BONES):
+        b = eb.new(nm)
+        b.head = inv @ at(i / 3)
+        b.tail = inv @ at((i + 1) / 3)
+        b.parent = prev
+        b.use_connect = i > 0
+        prev = b
+    bpy.ops.object.mode_set(mode="OBJECT")
+    # sploty
+    bm = bmesh.new()
+    owner = []                                              # wierzchołek → (kość, waga) albo dwie kości dla pierwszego splotu
+    for k in range(n):
+        s = (k + 0.5) / n
+        c = at(s)
+        t = (at(min(s + 0.02, 1.0)) - at(max(s - 0.02, 0.0))).normalized()
+        side = Vector((0.0, 1.0, 0.0))
+        nrm = t.cross(side).normalized()
+        taper = 1.0 - 0.3 * s
+        sgn = 1.0 if k % 2 == 0 else -1.0
+        tmp = bmesh.new()
+        bmesh.ops.create_uvsphere(tmp, u_segments=10, v_segments=6, radius=1.0)
+        bmesh.ops.scale(tmp, vec=Vector((r_side * taper, r_depth * taper, r_along)), verts=tmp.verts)   # x: bok, y: głębia, z: wzdłuż
+        tilt = Matrix.Rotation(math.radians(32.0) * sgn, 3, "Y")                                         # przechył splotu w płaszczyźnie warkocza
+        frame = Matrix((side, nrm, t)).transposed()                                                     # kolumny: bok, głębia, wzdłuż (prawoskrętny)
+        bmesh.ops.rotate(tmp, verts=tmp.verts, cent=Vector(), matrix=frame @ tilt)
+        bmesh.ops.translate(tmp, vec=c + side * (0.006 * sgn * taper), verts=tmp.verts)
+        me = bpy.data.meshes.new("lobe")
+        tmp.to_mesh(me)
+        tmp.free()
+        bm.from_mesh(me)
+        bpy.data.meshes.remove(me)
+        bone = BRAID_BONES[min(int(s * 3), 2)]
+        owner += [[(bone, 0.5), ("mixamorig:Head", 0.5)] if k == 0 else [(bone, 1.0)]] * (len(bm.verts) - len(owner))
+    # gumka i pędzelek
+    tip = at(1.0)
+    t = (tip - at(0.95)).normalized()
+    for geo, kind in ((_cyl(0.009 * ks, 0.012 * ks, (0, 0, 0), axis="Z", seg=10), "tie"),):
+        rot = Vector((0, 0, 1)).rotation_difference(t).to_matrix()
+        bmesh.ops.rotate(geo, verts=geo.verts, cent=Vector(), matrix=rot)
+        bmesh.ops.translate(geo, vec=tip, verts=geo.verts)
+        me = bpy.data.meshes.new(kind)
+        geo.to_mesh(me)
+        geo.free()
+        bm.from_mesh(me)
+        bpy.data.meshes.remove(me)
+        owner += [[(BRAID_BONES[2], 1.0)]] * (len(bm.verts) - len(owner))
+    tuft = bmesh.new()
+    bmesh.ops.create_cone(tuft, cap_ends=True, segments=10, radius1=0.012 * ks, radius2=0.002, depth=0.045 * ks)
+    bmesh.ops.rotate(tuft, verts=tuft.verts, cent=Vector(), matrix=Vector((0, 0, 1)).rotation_difference(t).to_matrix())
+    bmesh.ops.translate(tuft, vec=tip + t * 0.026 * ks, verts=tuft.verts)
+    me = bpy.data.meshes.new("tuft")
+    tuft.to_mesh(me)
+    tuft.free()
+    bm.from_mesh(me)
+    bpy.data.meshes.remove(me)
+    owner += [[(BRAID_BONES[2], 1.0)]] * (len(bm.verts) - len(owner))
+    o = _part(rig, "braid", bm, "Head", "hair")
+    o.vertex_groups.clear()
+    groups = {}
+    for vi, ws in enumerate(owner):
+        for bn, w in ws:
+            if bn not in groups:
+                groups[bn] = o.vertex_groups.new(name=bn)
+            groups[bn].add([vi], w, "REPLACE")
+    bsdf = next(n for n in o.data.materials[0].node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Base Color"].default_value = tuple(conf["color"]) + (1.0,)
+    print("BRAID", len(o.data.polygons), "faces, rim %.3f, length %.3f, tip %s" % (rim, length, tuple(round(v, 3) for v in tip)))
+
+
 def fit_medic_equipment(rig):
     """Hełm sztywny na głowie; stetoskop krótszy, na kurtce, z wagami szyi i tułowia zamiast głowy i bioder."""
     helmet = next((o for o in rig.children if o.type == "MESH" and "m1951" in o.name), None)
@@ -1600,13 +1900,19 @@ def build(name, spec):
     print("HEIGHT body %.3f (x%.3f), all meshes %.3f..%.3f" % (spec["height"], k, min(zs), max(zs)))
     for k, c in spec["clothes"].items():
         if c.get("relocate"):
-            relocate(rig, bpy.data.objects[k], c["relocate"])
+            relocate(rig, bpy.data.objects[k], c["relocate"], float(c.get("scale", 1.0)))
     if "helmet_cross" in spec.get("gear", []):
         fit_medic_equipment(rig)
     hair_under_hat(rig)
     add_gear(rig, spec.get("gear", []))
+    add_braid(rig, spec)
     _cycles(SAMPLES)
     texture_gear(rig)
+    texture_gear(rig, 512, "braid")
+    for nm, size in (("backpack", 1024), ("medbag", 512), ("pouch_L", 256), ("pouch_R", 256), ("canteen", 256)):
+        o = bpy.data.objects.get(nm)
+        if o is not None and o.get("scripted"):
+            texture_gear(rig, size, nm)
     for o in [o for o in rig.children if o.type == "MESH" and o != body and not _is_hair(o.name) and o.name != "low-poly"]:
         unique_uv(o, BAKE_TEX)
     if "helmet_cross" in spec.get("gear", []):

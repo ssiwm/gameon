@@ -1723,7 +1723,7 @@ WARDROBE = {
     "male_hazmat": [("boots", RUBBER_BOOTS), ("coverall", COVERALL)],
     "female_scav": [("boots", COMBAT_BOOTS)],
     "female_medic": [("boots", COMBAT_BOOTS), ("emt_trousers", EMT_TROUSERS), ("emt_jacket", EMT_JACKET)],
-    "female_hazmat": [("boots", RUBBER_BOOTS)],
+    "female_hazmat": [("boots", RUBBER_BOOTS), ("coverall", COVERALL)],     # Q4: szyty kombinezon (przebarwiony strój wyścigowy dawał jasne łaty)
 }
 
 

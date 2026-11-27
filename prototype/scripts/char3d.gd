@@ -24,6 +24,11 @@ static var ss := 4
 static var msaa := true
 ## Mapa normalnych (drugi przebieg renderu): światła 2D (latarka, flara) dają relief jak na sprite'ach HD. Kosztuje drugi render siatki; wyłączane w niskiej jakości.
 static var normals := true
+## Kołysanie warkocza (CHARACTER_QUALITY_PLAN.md Q1): kości `braid_*` z tools/char_mpfb.py prowadzi SpringBoneSimulator3D. Sam widok;
+## w niskiej jakości wyłączone (warkocz sztywno za głową).
+static var braid_spring := true
+const BRAID_ROOT := "braid_1"
+const BRAID_END := "braid_3"
 const VIEW_YAW_DEG := 15.0                  ## obrót kamery wokół postaci (widok 3/4): widać pierś, twarz i ekwipunek; 0 = czysty profil
 const FRAME_WP := Vector2(44.0, 44.0)       ## ramka w pikselach świata (zapas na broń podniesioną i wyciągniętą)
 const CAM_Y := 1.25                         ## wysokość środka ramki (m)
@@ -35,6 +40,7 @@ const DEFAULT_GUN := "m83"
 
 const Look := preload("res://scripts/look.gd")
 const CharClips := preload("res://scripts/char_clips.gd")
+const IdleLife := preload("res://scripts/idle_life.gd")
 const Motion := preload("res://scripts/weapon_motion.gd")
 const PartsPose := preload("res://scripts/weapon_parts_pose.gd")
 const CombatMotion := preload("res://art/char3d/anim/combat_motion.gd")
@@ -270,6 +276,17 @@ var hit_t := -1.0                            ## 0..1 reakcji na trafienie (rekoi
 var land_t := -1.0                           ## 0..1 amortyzacji lądowania (ugięcie kolan), <0 = brak (player.gd)
 var land_str := 0.6                          ## siła lądowania 0..1 (z prędkości spadania)
 var back_run := false                        ## biegnie tyłem względem kierunku celowania: krok w przeciwną stronę, tułów odchylony
+var _back_w := 0.0                           ## 0..1 wygładzone `back_run` (klip „run_back” i odchylenie tułowia bez skoku przy zmianie kierunku)
+## Oddech i rozglądanie się na postoju i w kucaniu (warstwa „żywe ciało” jak u wrogów, IDLE_PLAN.md; CHARACTER_QUALITY_PLAN.md Q2) —
+## na wierzchu klipu postoju, który sam niemal stoi w miejscu. Ziarno: `life_seed` (gracz: id peera), inaczej id obiektu.
+var life_seed := -1
+var _life: IdleLife
+const LIFE_PROFILE := {"breath": 3.4, "tics": ["look"], "rate": [6.0, 14.0]}
+const BREATH_CHEST := 2.2                    ## ° wychylenia klatki (Spine2; Spine1 połowa) między wydechem a wdechem
+const LOOK_YAW := 16.0                       ## ° obrotu głowy przy rozejrzeniu się
+var _jog_w := 0.0                            ## 0..1 udział truchtu w stanie „run” (prędkość poniżej biegu: błoto, woda, ciężki ekwipunek)
+const JOG_SPEED := [62.0, 86.0]              ## px/s: poniżej pierwszej — sam trucht, powyżej drugiej — sam sprint (bieg gracza 95)
+const RUN_BLEND_TIME := 0.15                 ## s przejścia sprint ↔ trucht ↔ bieg tyłem
 var push_strain := false                     ## stan „push”: napiera, a skrzynia stoi — krok kończy się w rozkroku i postać zapiera się mocniej (player.gd)
 var _strain_w := 0.0                         ## 0..1 waga zaparcia (płynne wejście i wyjście)
 var dying := 0.0                             ## 0..1 ostatnie sekundy wykrwawiania: drgawki i zapadanie się w ziemię (player.gd)
@@ -411,6 +428,7 @@ static func set_low_quality(on: bool) -> void:
 	ss = 2 if on else 4
 	msaa = not on
 	normals = not on
+	braid_spring = not on
 	shadows = not on
 	rim = not on
 	ss_auto = not on
@@ -437,6 +455,7 @@ static func set_quality(q: int) -> void:
 	msaa = q >= 1
 	normals = q >= 1
 	rim = q >= 1
+	braid_spring = q >= 1                    # nowe modele (set_look); już wczytane zostają do zmiany wyglądu
 	shadows = q >= 2
 
 ## Czy `ss` ma nadążać za zoomem kamery i rozmiarem okna (wyłącza je tryb niskiej jakości).
@@ -815,7 +834,7 @@ func set_look(char_name: String) -> bool:
 		var outward := -1.0 if side == "Left" else 1.0
 		var yaw := -outward * deg_to_rad(6.0)
 		var centre := _sk.get_bone_global_rest(_b["Hips"]).origin.x
-		var support := Vector3(centre - outward * 0.055 * length, foot.origin.y, thigh.origin.z + outward * 0.045 * length)
+		var support := Vector3(centre - outward * 0.065 * length, foot.origin.y, thigh.origin.z + outward * 0.045 * length)   # lewa przed prawą: postawa strzelecka (Q2)
 		_stand_foot[side] = Transform3D(Basis(Vector3.UP, yaw) * foot.basis.orthonormalized(), support)
 		_leg_toe[side] = _sk.find_bone(PRE + side + "ToeBase")
 		_arm_len[side] = [_rest_dist(side + "Arm", side + "ForeArm"), _rest_dist(side + "ForeArm", side + "Hand")]
@@ -832,6 +851,7 @@ func set_look(char_name: String) -> bool:
 	_posed = false
 	_measure_hands(scene)
 	_measure_fingers()
+	_add_braid_spring()
 	_clips = CharClips.build(_sk, char_name, clips_raw)
 	if _clips != null:
 		_sk.get_parent().add_child(_clips)
@@ -842,6 +862,27 @@ func set_look(char_name: String) -> bool:
 	if _camn != null:
 		_normal_clones(scene, true)
 	return true
+
+## Sprężyna warkocza: łańcuch braid_1 → braid_3 (+ przedłużenie do końca pędzelka) goni pozę z modelu, grawitacja w dół, bezwładność
+## w świecie — w biegu warkocz odchyla się do tyłu, przy zwrocie i lądowaniu się kołysze. Sztywność trzyma go przy plecach, bo
+## sprężyny nie zderzają się z plecakiem. Model bez kości `braid_1` (mężczyźni, hazmat) — nic.
+func _add_braid_spring() -> void:
+	if not braid_spring or _sk.find_bone(BRAID_ROOT) < 0 or _sk.find_bone(BRAID_END) < 0:
+		return
+	var sim := SpringBoneSimulator3D.new()
+	sim.name = "BraidSpring"
+	sim.set_setting_count(1)
+	sim.set_root_bone_name(0, BRAID_ROOT)
+	sim.set_end_bone_name(0, BRAID_END)
+	sim.set_extend_end_bone(0, true)
+	sim.set_end_bone_direction(0, SkeletonModifier3D.BONE_DIRECTION_FROM_PARENT)
+	sim.set_end_bone_length(0, 0.1)
+	sim.set_radius(0, 0.02)
+	sim.set_stiffness(0, 2.0)
+	sim.set_drag(0, 0.45)
+	sim.set_gravity(0, 1.0)
+	sim.set_gravity_direction(0, Vector3.DOWN)
+	_sk.add_child(sim)
 
 ## Kamery (kolor i normalne) krążą wokół postaci o VIEW_YAW_DEG: widok 3/4 bez zmian w pozach IK i w broni.
 func _place_cameras() -> void:
@@ -1586,6 +1627,14 @@ func _body_state(a: String) -> Dictionary:
 		drop = lerpf(drop, CharClips.param(a, "drop", 0.0), clip)
 	return {"lean": lean, "drop": drop, "bob": bob}
 
+## Waga klipu biegu rozdzielona na sprint („run”), trucht („run_jog”) i bieg tyłem („run_back”); brak pliku truchtu → cały sprint.
+func _split_run(wc: float) -> void:
+	var wb := wc * _back_w if CharClips.has("run_back") else 0.0
+	var wj := (wc - wb) * _jog_w if CharClips.has("run_jog") else 0.0
+	for st in [["run", wc - wb - wj], ["run_jog", wj], ["run_back", wb]]:
+		if float(st[1]) > 0.002:
+			_clip_ws[st[0]] = float(st[1])
+
 func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	var hips := _b["Hips"] as int
 	var key := "idle" if anim == "down" else anim
@@ -1612,6 +1661,9 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 			if to_hold < TAU * 0.98:
 				_phase += minf(adv, to_hold)
 	_strain_w = move_toward(_strain_w, 1.0 if (anim == "push" and push_strain) else 0.0, delta / 0.25)
+	_back_w = move_toward(_back_w, 1.0 if back_run else 0.0, delta / RUN_BLEND_TIME)
+	if anim == "run":
+		_jog_w = move_toward(_jog_w, 1.0 - smoothstep(JOG_SPEED[0], JOG_SPEED[1], speed), delta / RUN_BLEND_TIME)
 	_push_w = float(_aw["push"]) / maxf(sum, 0.0001) * (1.0 - smoothstep(0.0, 0.12, _down))
 	# klipy: drzewo ustawia biodra, tułów, głowę i nogi w stanach, które mają klip; zapamiętujemy stopy i kolana z klipu, zanim nakładki ruszą biodra.
 	# Upadek: klip „down" przejmuje całą pozę (postęp = _down, wstawanie gra go wstecz); bez niego udział klipów znika i upadek liczy kod.
@@ -1631,7 +1683,10 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		for n in AW_STATES:
 			var wc := float(_aw[n]) / maxf(sum, 0.0001) * _clip_k * (1.0 - _clip_down)
 			if wc > 0.002 and CharClips.has(n):
-				_clip_ws[n] = wc
+				if n == "run":
+					_split_run(wc)
+				else:
+					_clip_ws[n] = wc
 				_clip_w += wc
 				if CharClips.param(n, "arms", 0.0) > 0.0:
 					_clip_arms += wc
@@ -1680,8 +1735,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 		bob *= 1.0 - _clip_down
 	var w_idle := float(_aw["idle"]) / maxf(sum, 0.0001)
 	var w_run := (float(_aw["run"]) + float(_aw["crouch_walk"])) / maxf(sum, 0.0001)
-	if back_run:
-		lean -= 9.0 * w_run                                           # bieg tyłem: tułów odchylony do tyłu
+	lean -= 9.0 * w_run * _back_w                                     # bieg tyłem: tułów odchylony do tyłu
 	lean += PUSH_STRAIN_LEAN * _strain_w * float(_aw["push"]) / maxf(sum, 0.0001)     # zaparcie się o stojącą skrzynię
 	var lunge := 0.0
 	if not _mc.is_empty() and _combat_clip.is_empty():             # fallback bez klipów: wypad bioder, pochylenie i ugięcie wg krzywej ruchu
@@ -1729,10 +1783,17 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	if e > 0.001:
 		drop = lerpf(drop, 0.62, e)
 		lean = lerpf(lean, 0.0, e)
-	if w_idle > 0.01 and e < 0.5 and not CharClips.has("idle"):
-		# mikroruch: oddech klatki piersiowej, głowa „szuka” (bez wpływu na broń: tylko kręgosłup i głowa)
-		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(0.9 * sin(_time * 1.9)) * w_idle * stand)
-		_rot_world(_b["Head"], Vector3.UP, deg_to_rad(2.5 * sin(_time * 0.43) + 1.2 * sin(_time * 1.1)) * w_idle * stand)
+	var w_still := (w_idle + 0.6 * float(_aw["crouch"]) / maxf(sum, 0.0001)) * stand
+	if w_still > 0.01 and e < 0.5:
+		# oddech klatki i głowa „szuka”, co kilka sekund rozejrzenie się (tylko kręgosłup i głowa; broń bierze połowę ruchu barku)
+		if _life == null:
+			_life = IdleLife.new(life_seed if life_seed >= 0 else get_instance_id() & 0x7fffffff, LIFE_PROFILE)
+		_life.step(delta, false, w_idle > 0.5 and hit_t < 0.0)
+		var br: float = _life.breath() - 0.5
+		_rot_world(_b["Spine2"], Vector3.BACK, deg_to_rad(BREATH_CHEST) * br * w_still)
+		_rot_world(_b["Spine1"], Vector3.BACK, deg_to_rad(BREATH_CHEST * 0.5) * br * w_still)
+		var look: float = _life.tic_k * _life.tic_sign if _life.tic == "look" else 0.0
+		_rot_world(_b["Head"], Vector3.UP, deg_to_rad(2.5 * sin(_time * 0.43) + 1.2 * sin(_time * 1.1) + LOOK_YAW * look) * w_still)
 	var fall_rot := -PI * 0.5 * pow(e, 1.3)                       # ciało przewraca się wokół bioder (opóźnione względem opadania bioder)
 	_move_global(hips, Vector3(lunge, -drop + bob + _clip_bounce, 0.0) + jit)                     # kucając biodra cofnięte za stopy
 	_rot_world(hips, Vector3.BACK, -deg_to_rad(lean) + fall_rot)

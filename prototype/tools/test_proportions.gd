@@ -163,7 +163,8 @@ func _medic_equipment(look: String) -> void:
 		return
 	_check(_stray_weights(helmet, ["mixamorig_Head"]) == 0, look + ": kask przypięty wyłącznie do głowy")
 	_check(_stray_weights(steth, ["mixamorig_Spine2", "mixamorig_Neck"]) == 0, look + ": stetoskop przypięty do tułowia i szyi")
-	_check(_stray_weights(gear, ["mixamorig_Spine2", "mixamorig_Hips"]) == 0, look + ": brak osobnego krzyża 3D na głowie")
+	_check(_stray_weights(gear, ["mixamorig_Spine2", "mixamorig_Hips", "mixamorig_LeftArm", "mixamorig_RightArm"]) == 0,
+			look + ": brak osobnego krzyża 3D na głowie (opaski z krzyżem na ramionach — CHARACTER_QUALITY_PLAN.md Q3)")
 	var steth_size := steth.mesh.get_aabb().size
 	_check(steth_size.y >= 0.32 and steth_size.y <= 0.40, "%s: stetoskop na klatce piersiowej (%.3f m)" % [look, steth_size.y])
 	var neck: int = _hc._sk.find_bone("mixamorig_Neck")
@@ -294,6 +295,7 @@ func _run() -> void:
 ## od karku do wierzchu głowy z hełmem / kapturem najwyżej 0,22 H (modele Tripo miały 0,21–0,24 H bez szyi — głowa 1/4–1/5 wzrostu).
 func _anatomy() -> void:
 	var dir := "res://art/char3d/mpfb/"
+	var shoulders := {}                              # wygląd → rozstaw barków / H (dymorfizm, CHARACTER_QUALITY_PLAN.md Q1)
 	for g in ["male", "female"]:
 		for o in ["scav", "hazmat", "medic"]:
 			var path := dir + "%s_%s.glb" % [g, o]
@@ -319,4 +321,34 @@ func _anatomy() -> void:
 				var r := float(c[1]) / hgt
 				_check(r >= float(c[2]) and r <= float(c[3]), "%s: %s %.2f H (%.2f–%.2f)" % [name, c[0], r, c[2], c[3]])
 			_check((top - neck) / hgt <= 0.22, "%s: głowa z nakryciem od karku %.2f H (≤ 0,22)" % [name, (top - neck) / hgt])
+			shoulders[name] = sh / hgt
+			_braid(name, inst, sk, g == "female" and o != "hazmat")
 			inst.free()
+	for o in ["scav", "hazmat", "medic"]:
+		if shoulders.has("male_" + o) and shoulders.has("female_" + o):
+			_check(float(shoulders["female_" + o]) < float(shoulders["male_" + o]) - 0.005,
+					"%s: barki kobiety %.3f H węższe niż mężczyzny %.3f H" % [o, shoulders["female_" + o], shoulders["male_" + o]])
+
+## Warkocz (CHARACTER_QUALITY_PLAN.md Q1): kobiety w hełmie (scav, medyk) mają łańcuch kości braid_1 → braid_3 pod głową i siatkę „braid”,
+## która wychodzi spod hełmu (wierzch nad karkiem), zwisa co najmniej 15 cm i leży za karkiem; reszta wyglądów — bez kości warkocza.
+func _braid(name: String, inst: Node, sk: Skeleton3D, want: bool) -> void:
+	var b1 := sk.find_bone(Char3D.BRAID_ROOT)
+	if not want:
+		_check(b1 < 0, "%s: bez warkocza" % name)
+		return
+	var chain := b1 >= 0 and sk.find_bone(Char3D.BRAID_END) >= 0
+	if chain:
+		var p := sk.get_bone_parent(sk.find_bone(Char3D.BRAID_END))
+		chain = p >= 0 and sk.get_bone_parent(p) == b1 and sk.get_bone_name(sk.get_bone_parent(b1)) == "mixamorig_Head"
+	_check(chain, "%s: kości warkocza braid_1 → braid_3 pod głową" % name)
+	var mesh: MeshInstance3D = null
+	for mi in inst.find_children("*", "MeshInstance3D", true, false):
+		if String(mi.name) == "braid":
+			mesh = mi
+	_check(mesh != null, "%s: siatka warkocza" % name)
+	if mesh == null or not chain:
+		return
+	var box := mesh.mesh.get_aabb()
+	var neck := sk.get_bone_global_rest(sk.find_bone("mixamorig_Neck")).origin
+	_check(box.end.y > neck.y and box.size.y >= 0.15, "%s: warkocz od %.2f m (kark %.2f) długości %.2f m (≥ 0,15)" % [name, box.end.y, neck.y, box.size.y])
+	_check(box.get_center().x < neck.x - 0.04, "%s: warkocz za karkiem (środek %.2f m, kark %.2f m)" % [name, box.get_center().x, neck.x])
