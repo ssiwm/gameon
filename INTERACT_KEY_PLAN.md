@@ -51,7 +51,7 @@ ta sama nakładka z Meshy, ta sama litera z `Actions.key`, te same stany.
 
 Wygląd:
 
-- **Para [E] + [H]** (klawiatura; pad z przypisanym przyciskiem oględzin): dwa klawisze obok siebie na wierzchu broni albo gabloty —
+- **Para [E] + [H]** (klawiatura; pad z przypisanym przyciskiem oględzin): dwa klawisze obok siebie na wierzchu broni —
   [E] (weź / otwórz) po lewej, [H] (oględziny) po prawej, 1 px odstępu, para wyśrodkowana na osi celu. [H] ma te same stany co [E]:
   możliwa (poświata), naciśnięcie (wciśnięcie i błysk — otwiera oględziny, potem znacznik gaśnie jak dziś w oględzinach).
 - **Broń zablokowana** (kryjówka, niekupiona): [E] szary z zakłóceniem po naciśnięciu, [H] zostaje aktywny — oględziny zablokowanej
@@ -101,7 +101,7 @@ przykrywa go kolejność rysowania przezroczystych (render_priority) albo poświ
   `--ekeyflat`, `key_cap.png`; `gen_interact_key.py` robi pierścień i obraz wejściowy dla Meshy). ✔
 - **K3 test**: `tools/test_interact.gd` — stan znacznika (ok / muted / hold / burst) z wymuszonej oferty, wybuch tylko po pełnym
   przytrzymaniu (nie po puszczeniu w połowie), zakłócenie tylko przy niemożliwej ofercie, warstwy dzieci; [H]: para tylko przy
-  przypisanym `inspect_weapon`, broń zablokowana = [E] szary i [H] aktywny, gablota z parą; pad Classic: jeden klawisz, drut dopiero
+  przypisanym `inspect_weapon`, broń zablokowana = [E] szary i [H] aktywny, gablota bez pary (1.7.704); pad Classic: jeden klawisz, drut dopiero
   po 0,1 s, pełny przy 0,4 s, krótkie naciśnięcie bez drutu; pozycja stała: ruch gracza wzdłuż obiektu nie zmienia położenia klawisza. ✔
 - **K4 zrzuty**: `tools/shot_interact_key.gd` (`--ekeyshots=KATALOG`, `--ekeystation=GRUPA` — pierwszy obiekt grupy, który arbiter
   wybiera, `--ekeyside=PX`, `--ekeylight` — latarka, `--ekeyquiet` — bez wrogów; czeka na zejście planszy wczytywania) — stany przy
