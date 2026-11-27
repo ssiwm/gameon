@@ -1,6 +1,7 @@
 # Q8: głosy wg płci i mocap ruchu — plan
 
-**Stan (2026-11-27):** plan, nic nie wdrożone. Przygotowane lokalnie (poza repo): kandydaci na głos kobiecy pobrani z Sonniss i pocięci na
+**Stan (2026-11-27):** część A (głos kobiecy) wdrożona w 1.7.708 (PR #844) — wybór z odsłuchu: trafienie Pole Position A i C,
+powalenie 344 Audio, zadyszka „Tanja”; [G] bez osobnego krzyku, Mimik głosem udawanej ofiary (rekomendacje z §6). Część B (mocap) czeka. Przygotowane lokalnie (poza repo): kandydaci na głos kobiecy pobrani z Sonniss i pocięci na
 ujęcia, strona odsłuchu `C:\deadair87\odsluch\q8_glosy\index.html`; siedem stylów ruchu z 100STYLE (BVH) w `C:\deadair87\char_src\mocap\100STYLE\`.
 Kontynuacja `CHARACTER_QUALITY_PLAN.md` (Q8 „Później”) i etapu E3 z `CHARACTER_PLAN.md`. Dwie niezależne części: **A — głos**, **B — mocap**.
 
