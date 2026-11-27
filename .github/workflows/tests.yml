@@ -280,6 +280,11 @@ jobs:
         run: |
           godot --headless --path prototype -s tools/test_foot_terrain.gd 2>&1 | tee foot_terrain.log
           grep -a "^\[FOOT-TERRAIN\] PASS$" foot_terrain.log
+      - name: Poślizg stóp w pętlach kroku (test_foot_slip.gd)
+        run: |
+          godot --headless --path prototype -s tools/test_foot_slip.gd 2>&1 | tee foot_slip.log
+          grep -a "\[FOOT-SLIP\] PASS (0" foot_slip.log
+          ! grep -a "SCRIPT ERROR" foot_slip.log
       - name: Wrogowie w spoczynku — oddech, ciężar, tiki, pozy snu (test_idle_life.gd)
         run: |
           godot --headless --path prototype -s tools/test_idle_life.gd 2>&1 | tee idle_life.log
