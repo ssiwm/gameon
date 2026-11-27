@@ -2589,7 +2589,7 @@ func morph_overlay(w: float) -> void:
 			_morph_shader.code = MORPH_SHADER
 		for m in _model.find_children("*", "MeshInstance3D", true, false):
 			var mi := m as MeshInstance3D
-			if mi.mesh == null or String(mi.name) in MORPH_KEEP or mi in _eyes:
+			if mi.mesh == null or String(mi.name) in MORPH_KEEP or String(mi.name).begins_with("eyebrow") 					or String(mi.name).begins_with("eyelash") or mi in _eyes:          # karty brwi i rzęs (każdy model ma inne, Q5)
 				continue
 			var skin := String(mi.name) == "body"
 			for i in mi.mesh.get_surface_count():

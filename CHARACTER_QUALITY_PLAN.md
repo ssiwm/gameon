@@ -1,7 +1,8 @@
 # Jakość postaci graczy: płeć w sylwetce, stroje, animacje, twarze — plan implementacji
 
-**Stan (2026-11-27):** decyzje z §6 przyjęte. Q0–Q4 wdrożone w 1.7.705 jednym PR-em (każdy etap przebudowuje te same sześć GLB, więc
-osobne PR-y znaczyłyby pięć przebudów i konfliktów modeli); Q5–Q7 w kolejnych. Podstawa planu: przegląd sześciu modeli MPFB (`art/char3d/mpfb/`) na stykówkach
+**Stan (2026-11-27):** decyzje z §6 przyjęte. Q0–Q4 wdrożone w 1.7.705, Q5–Q7 w 1.7.706 (po jednym PR-ze na grupę — każdy etap przebudowuje
+te same sześć GLB). Q7 w węższym zakresie niż w §3: atlas obejmuje ubrania, a siatki, których gra i testy szukają po nazwie (ciało, warkocz,
+oczy, brwi, rzęsy, plecak, torba medyczna, `gear`, hełm i stetoskop medyka), zostają osobno — scav ma 9 siatek zamiast 16, medyk ok. 11. Podstawa planu: przegląd sześciu modeli MPFB (`art/char3d/mpfb/`) na stykówkach
 w skali gry, w zbliżeniach (tył, oba boki, twarze z nakryciem głowy i bez) i w klatkach cyklu ruchu (`shot_char3d.gd`, `shot_anim3d.gd`,
 `shot_hands3d.gd`) oraz porównanie z grami gatunku (Contra: Operation Galuga, Helldivers 2, GTFO, Hunt: Showdown).
 Kontynuacja `CHARACTER_PLAN.md` (E0–E2 zrobione; E3 mocap i E4 nie).

@@ -27,6 +27,7 @@ static var normals := true
 ## Kołysanie warkocza (CHARACTER_QUALITY_PLAN.md Q1): kości `braid_*` z tools/char_mpfb.py prowadzi SpringBoneSimulator3D. Sam widok;
 ## w niskiej jakości wyłączone (warkocz sztywno za głową).
 static var braid_spring := true
+const SKIN_SSS := 0.3                        ## siła rozpraszania podpowierzchniowego skóry (CHARACTER_QUALITY_PLAN.md Q5)
 const BRAID_ROOT := "braid_1"
 const BRAID_END := "braid_3"
 const VIEW_YAW_DEG := 15.0                  ## obrót kamery wokół postaci (widok 3/4): widać pierś, twarz i ekwipunek; 0 = czysty profil
@@ -339,19 +340,27 @@ var _push_w := 0.0                           ## 0..1 udział stanu „push” w 
 ## (°, + = knykcie wyżej niż nadgarstek; chwyt pistoletowy 12, szyjka kolby −8, rękojeść broni białej −50), grip_dy — przesunięcie dłoni tylnej wzdłuż
 ## chwytu (m, − = niżej: rękawica jest większa od pistoletu, więc trzyma go nisko, żeby zamek wystawał nad dłoń), follow — jak GUN_FOLLOW, dla tej broni.
 const WEAPON_POSE := {
-	"m83": {"reload": "mag", "radial": 0.30, "perp": 0.11, "climb": 1.0, "body": 1.0},
-	"sokol6": {"reload": "mag", "radial": 0.31, "perp": 0.11, "climb": 1.0, "body": 1.0},
+	"m83": {"reload": "mag", "radial": 0.30, "perp": 0.11, "climb": 1.0, "body": 1.0, "shoulder": true},
+	"sokol6": {"reload": "mag", "radial": 0.31, "perp": 0.11, "climb": 1.0, "body": 1.0, "shoulder": true},
 	"p64": {"reload": "pistol", "follow": 0.8, "radial": 0.56, "perp": 0.16, "side": -0.21, "wrist": -4.0, "grip_dy": -0.04, "climb": 1.6, "body": 0.6},
-	"spread12": {"reload": "mag", "radial": 0.30, "perp": 0.11, "climb": 1.2, "body": 1.3},      # od 1.7.313 półautomat na komorze AK z bębnem: chwyt pistoletowy, bez pompki
-	"srut8": {"reload": "shell", "cycle": "pump", "radial": 0.28, "perp": 0.10, "climb": 1.4, "body": 1.7, "lean": -2.0, "wrist": -8.0},
+	"spread12": {"reload": "mag", "radial": 0.30, "perp": 0.11, "climb": 1.2, "body": 1.3, "shoulder": true},      # od 1.7.313 półautomat na komorze AK z bębnem: chwyt pistoletowy, bez pompki
+	"srut8": {"reload": "shell", "cycle": "pump", "radial": 0.28, "perp": 0.10, "climb": 1.4, "body": 1.7, "lean": -2.0, "wrist": -8.0, "shoulder": true},
 	"lr7": {"reload": "cell", "radial": 0.30, "perp": 0.11, "climb": 0.5, "body": 0.5},
 	"hkm9": {"reload": "cell", "radial": 0.24, "perp": 0.20, "climb": 0.3, "body": 0.5, "lean": 3.0, "wrist": -8.0},
 	"gniew4": {"reload": "shell", "radial": 0.20, "perp": -0.03, "climb": 1.2, "body": 2.2, "lean": -6.0},
 	"widmo1": {"reload": "rail", "radial": 0.27, "perp": 0.10, "climb": 1.0, "body": 2.4, "lean": -6.0},
-	"ciegno6": {"reload": "bolt", "cycle": "bolt", "radial": 0.31, "perp": 0.10, "climb": 0.8, "body": 1.2, "wrist": -8.0},
+	"ciegno6": {"reload": "bolt", "cycle": "bolt", "radial": 0.31, "perp": 0.10, "climb": 0.8, "body": 1.2, "wrist": -8.0, "shoulder": true},
 	"maczeta": {"wrist": -50.0},
 	"kilof": {"wrist": -50.0},
 }
+## Kolba w barku (CHARACTER_QUALITY_PLAN.md Q6): broń z `shoulder` w WEAPON_POSE ma stopkę kolby tuż przed stawem barku, a nie przed
+## piersią, linię lufy wyżej (policzek przy kolbie), a głowa schodzi do kolby. Wylot rozgrywki liczy ta sama funkcja (`_gun_origin`).
+const SHOULDER_POCKET := 0.02                 ## m: stopka kolby tyle przed stawem barku (wzdłuż lufy)
+const SHOULDER_PERP := 0.05                   ## m: chwyt tyle poniżej linii barku (zwykle 0,10–0,11 — karabin wisiał przy piersi)
+const CHEEK_NECK := 9.0                       ## °: szyja w dół i do przodu przy kolbie
+const CHEEK_HEAD := 5.0                       ## °: głowa w dół — policzek na grzbiecie kolby
+const CHEEK_FOLLOW := 0.45                    ## ułamek kąta celowania, o który głowa dodatkowo idzie za lufą (oko na przyrządach)
+var _weld_w := 0.0                           ## 0..1 wygładzony „policzek przy kolbie” (broń z kolbą w rękach, bez przeładowania i ciosu)
 const PALM_AT := 0.45                        ## środek dłoni: ułamek długości dłoni od nadgarstka (tam leży chwyt)
 const FINGERS := ["Index", "Middle", "Ring", "Pinky"]
 const FINGER_CURL := [75.0, 85.0, 55.0]      ## ° zgięcia członów palca (u nasady, środkowego, końcowego) przy pełnym chwycie
@@ -690,6 +699,9 @@ func _prepare_materials(root: Node) -> void:
 	var sh_cut := Shader.new()
 	sh_cut.code = PALETTE_SHADER.replace("shader_type spatial;", "shader_type spatial;\nrender_mode cull_disabled;") \
 			.replace("\tALBEDO = c;", "\tALBEDO = c;\n\tALPHA = texture(albedo_tex, UV).a;\n\tALPHA_SCISSOR_THRESHOLD = 0.5;")
+	# skóra ciała (materiał „Human.body” z MPFB): rozpraszanie podpowierzchniowe — światło przenika uszy, nos i palce (Q5)
+	var sh_skin := Shader.new()
+	sh_skin.code = PALETTE_SHADER.replace("\tALBEDO = c;", "\tALBEDO = c;\n\tSSS_STRENGTH = %.2f;" % SKIN_SSS)
 	for n in root.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.mesh == null:
@@ -699,7 +711,7 @@ func _prepare_materials(root: Node) -> void:
 			if m is StandardMaterial3D:
 				var src := m as StandardMaterial3D
 				var sm := ShaderMaterial.new()
-				sm.shader = sh_cut if src.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else sh
+				sm.shader = sh_cut if src.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR else (sh_skin if src.resource_name == "Human.body" else sh)
 				sm.set_shader_parameter("albedo_tex", src.albedo_texture)
 				sm.set_shader_parameter("albedo_mul", src.albedo_color)
 				sm.set_shader_parameter("grime", 0.0 if "--noactorgrime" in OS.get_cmdline_user_args() else GRIME)
@@ -1390,6 +1402,10 @@ func _left_hold(gx: Transform3D, info: Dictionary, wp: Dictionary) -> Transform3
 ## cam: strona kamery (+1 / −1, `_cam_c`) — celując w dół broń wysuwa się ku niej, żeby nie schować się za tułowiem.
 func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: float, perp: float, info: Dictionary, wp: Dictionary, two: bool, cam := 1.0) -> Vector3:
 	var reach_l: float = (float(_arm_len["Left"][0]) + float(_arm_len["Left"][1])) * 0.97
+	if bool(wp.get("shoulder", false)):
+		# Q6: stopka kolby (tył broni: wylot − długość) tuż przed barkiem, chwyt wyżej; za daleko dla lewej dłoni → pętla niżej cofa broń
+		radial = maxf(radial, float(info["length"]) - (info["muzzle"] as Vector3).x + SHOULDER_POCKET)
+		perp = SHOULDER_PERP
 	var side_z := float(wp.get("side", -0.13))
 	var rear := Vector3.ZERO
 	for k in 8:
@@ -1544,6 +1560,9 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		_mc = _melee_curve(swing_t, "chop" if _gun_key == "kilof" else "slash")
 	sink_m = 0.45 * smoothstep(0.0, 1.0, dying)
 	_combat_clip = _combat_action() if armed and _down < 0.2 else ""
+	var weld_on := armed and _down < 0.2 and reload_t < 0.0 and swing_t < 0.0 and throw_t < 0.0 \
+			and bool((WEAPON_POSE.get(_gun_key, {}) as Dictionary).get("shoulder", false))
+	_weld_w = move_toward(_weld_w, 1.0 if weld_on else 0.0, delta / 0.15)
 	var body_theta := _reload_pose_theta(theta) if armed and _down < 0.2 else theta
 	if not _mc.is_empty():
 		body_theta = lerpf(theta, clampf(theta, deg_to_rad(-40.0), deg_to_rad(45.0)), sin(PI * swing_t))
@@ -1811,6 +1830,9 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	_rot_world(_b["Spine"], Vector3.UP, deg_to_rad(BODY_YAW) * aim_k * _cam_c)
 	for n in ["Spine", "Spine1", "Spine2"]:
 		_rot_world(_b[n], Vector3.BACK, (_spine_pitch(theta) + deg_to_rad(lean) * 0.12 - gun_extra * 0.06) * aim_k)
+	if _weld_w > 0.001:                                           # Q6: policzek przy kolbie — szyja i głowa w dół, oko za lufą
+		_rot_world(_b["Neck"], Vector3.BACK, -deg_to_rad(CHEEK_NECK) * _weld_w * aim_k)
+		_rot_world(_b["Head"], Vector3.BACK, (theta * CHEEK_FOLLOW - deg_to_rad(CHEEK_HEAD)) * _weld_w * aim_k)
 	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * aim_k + deg_to_rad(head_hit))
 	_terrain_pose(delta)
 	_ground_hips()

@@ -54,7 +54,9 @@ def arg(name, default=None):
 TEX = int(arg("tex", "1024"))                 # ciało, włosy, oczy
 CLOTH_TEX = int(arg("cloth-tex", "1024"))     # ubrania i ekwipunek w GLB (w kamerze gry postać ma ok. 145 px)
 BAKE_TEX = int(arg("bake-tex", "2048"))       # rozdzielczość wypieku cieni (potem zmniejszana do CLOTH_TEX)
-BODY_TRIS = int(arg("body-tris", "7000"))     # budżet trójkątów: ciało i każda część ubrania (cała postać ok. 25–30 tys.)
+BODY_TRIS = int(arg("body-tris", "8000"))     # budżet trójkątów: ciało (Q5: więcej na głowę, patrz HEAD_KEEP) i każda część ubrania
+SKIN_TEX = int(arg("skin-tex", "2048"))       # Q5: kolor, normalne i szorstkość skóry ciała (twarz w kryjówce, portrety, nieśmiertelnik)
+HEAD_KEEP = 3.0                               # Q5: siła grupy wag w upraszczaniu ciała — głowa i szyja zachowują więcej trójkątów
 PART_TRIS = int(arg("part-tris", "3500"))     # domyślny budżet części; wpis stroju może mieć własny ("tris")
 SAMPLES = int(arg("samples", "32"))           # próbki Cycles przy wypiekaniu cieni kontaktowych
 SEWN = "--sewn" in argv                       # ubrania szyte symulacją (tools/cloth_garments.py, art_src/clothes) zamiast z paczek MPFB
@@ -93,7 +95,8 @@ WHITE_RACE = {"asian": 0.1, "caucasian": 0.8, "african": 0.1}
 OUTFITS = {
     "male_scav": {
         "sex": "male", "height": 1.80, "phenotype": MALE, "race": WHITE_RACE,
-        "skin": "middleage_caucasian_male", "hair": "short02", "eyebrows": "eyebrow001",
+        "skin": "middleage_caucasian_male", "hair": "short02", "eyebrows": "eyebrow001", "eyelashes": "eyelashes01",
+        "face": {"brow": (0.17, 0.12, 0.07), "stubble": 0.7, "grime": 0.55},     # Q5: brwi w kolorze włosów, zarost, brud z misji
         "clothes": {
             "male_casualsuit05": {"recolor": [DENIM_TO_CAMO, RED_TO_RUST, GREY_TO_CAMO]},     # kurtka polowa i spodnie w kamuflażu
             "mindfront_tactical_vest_male": {},                       # kamizelka taktyczna (CC-BY, Mindfront)
@@ -111,7 +114,8 @@ OUTFITS = {
     },
     "female_scav": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": WHITE_RACE,
-        "skin": "young_caucasian_female", "hair": "ponytail01", "eyebrows": "eyebrow002",
+        "skin": "young_caucasian_female", "hair": "ponytail01", "eyebrows": "eyebrow006", "eyelashes": "eyelashes02",
+        "face": {"brow": (0.20, 0.13, 0.07), "stubble": 0.0, "grime": 0.45},
         "braid": {"color": (0.30, 0.19, 0.10), "length": 0.27},      # warkocz spod hełmu (CHARACTER_QUALITY_PLAN.md Q1)
         "clothes": {
             "elvs_emt_uniform_jacket_female": {"recolor": [ALL_TO_CAMO]},   # kurtka (CC-BY, Elvaerwyn) w kamuflażu
@@ -163,7 +167,8 @@ OUTFITS = {
     "male_medic": {
         "sex": "male", "height": 1.80, "phenotype": MALE, "race": {"asian": 0.05, "caucasian": 0.15, "african": 0.8},
         "sewn_default": True,
-        "skin": "middleage_african_male", "hair": "short01", "eyebrows": "eyebrow001",
+        "skin": "middleage_african_male", "hair": "short01", "eyebrows": "eyebrow001", "eyelashes": "eyelashes01",
+        "face": {"brow": (0.03, 0.025, 0.02), "stubble": 0.45, "grime": 0.3},
         "clothes": {
             "elvs_emt_uniform_jacket_male": {"recolor": [ALL_TO_NAVY]},   # mundur ratownika (CC-BY, Elvaerwyn) w granacie
             "elvs_emt_uniform_pants_male": {"recolor": [ALL_TO_NAVY]},
@@ -181,7 +186,8 @@ OUTFITS = {
     "female_medic": {
         "sex": "female", "height": 1.70, "phenotype": FEMALE, "race": {"asian": 0.6, "caucasian": 0.35, "african": 0.05},
         "sewn_default": True,
-        "skin": "young_asian_female", "hair": "ponytail01", "eyebrows": "eyebrow002",
+        "skin": "young_asian_female", "hair": "ponytail01", "eyebrows": "eyebrow006", "eyelashes": "eyelashes02",
+        "face": {"brow": (0.04, 0.032, 0.026), "stubble": 0.0, "grime": 0.3},
         "braid": {"color": (0.06, 0.045, 0.035), "length": 0.30},
         "clothes": {
             "elvs_emt_uniform_jacket_female": {"recolor": [ALL_TO_NAVY]},
@@ -316,7 +322,7 @@ COL = {
     "strap": ((0.16, 0.10, 0.06), 0.7), "rust": ((0.45, 0.10, 0.06), 0.9), "metal": ((0.35, 0.33, 0.30), 0.5),
     "white": ((0.80, 0.80, 0.76), 0.7), "canvas_dark": ((0.12, 0.10, 0.055), 0.9), "tape": ((0.05, 0.05, 0.05), 0.5), "red": ((0.62, 0.05, 0.04), 0.6), "steel": ((0.12, 0.15, 0.13), 0.45),
     "hair": ((0.10, 0.07, 0.05), 0.55),            # warkocz: kolor nadpisuje wpis "braid" w OUTFITS
-    "scarf": ((0.27, 0.23, 0.14), 0.92),           # chusta: sprane, ciemne khaki (Q3)
+    "scarf": ((0.11, 0.095, 0.055), 0.92),           # chusta: sprane, ciemne khaki (Q3)
     "canvas_white": ((0.50, 0.47, 0.37), 0.9),     # płótno torby medycznej: złamana biel (Q4; czysta biel czytała się jak lodówka)
     "rubber_yellow": ((0.39, 0.24, 0.016), 0.45),  # gumowany kołnierz hazmatu: kolor kombinezonu (HAZMAT_YELLOW w sRGB → liniowo)
 }
@@ -898,21 +904,17 @@ def _add_gear(rig, gear):
             # Q4: ładownice z klapką i napą po obu stronach klamry, manierka w pokrowcu z tyłu na lewym biodrze
             xf = _section(pts, zb - 0.03, dz=0.03, y_max=0.19)[1]
             for side in (-1, 1):
-                before = set(rig.children)
                 yy = cy + side * 0.105 * ks
                 pd, pw, ph = 0.055 * ks, 0.085 * ks, 0.11 * ks
                 px = xf + pd * 0.5 - 0.008
                 pz = zb + 0.015 - ph * 0.5
-                _part(rig, "pouch", _box((pd, pw, ph), (px, yy, pz), 0.012), "Hips", "olive")
-                _part(rig, "pouch_flap", _box((pd + 0.008, pw + 0.006, 0.035), (px + 0.003, yy, zb + 0.012), 0.01), "Hips", "canvas_dark")
-                _part(rig, "pouch_snap", _cyl(0.0065, 0.005, (px + pd * 0.5 + 0.008, yy, zb - 0.002), axis="X", seg=10), "Hips", "metal")
-                _join([o for o in rig.children if o not in before], "pouch_" + ("L" if side > 0 else "R"))
-            before = set(rig.children)
-            ccx, ccy, ccz = x0 - 0.035, y1 - 0.07, zb - 0.07
-            _part(rig, "canteen", _cyl(0.06 * ks, 0.17 * ks, (ccx, ccy, ccz), axis="Z", seg=20, scale_xy=(0.62, 1.0)), "Hips", "olive")
-            _part(rig, "canteen_cap", _cyl(0.016, 0.03, (ccx, ccy, ccz + 0.1 * ks), axis="Z", seg=12), "Hips", "canvas_dark")
-            _part(rig, "canteen_flap", _box((0.08 * ks, 0.11 * ks, 0.03), (ccx, ccy, ccz + 0.07 * ks), 0.01), "Hips", "olive")
-            _join([o for o in rig.children if o not in before], "canteen")
+                _part(rig, "belt_pouch", _box((pd, pw, ph), (px, yy, pz), 0.012), "Hips", "olive")
+                _part(rig, "belt_pouch_flap", _box((pd + 0.008, pw + 0.006, 0.035), (px + 0.003, yy, zb + 0.012), 0.01), "Hips", "canvas_dark")
+                _part(rig, "belt_pouch_snap", _cyl(0.0065, 0.005, (px + pd * 0.5 + 0.008, yy, zb - 0.002), axis="X", seg=10), "Hips", "metal")
+            ccx, ccy, ccz = x0 - 0.035, y1 - 0.07, zb - 0.07                 # Q7: w siatce „gear” (mniej wywołań rysowania)
+            _part(rig, "belt_canteen", _cyl(0.06 * ks, 0.17 * ks, (ccx, ccy, ccz), axis="Z", seg=20, scale_xy=(0.62, 1.0)), "Hips", "olive")
+            _part(rig, "belt_canteen_cap", _cyl(0.016, 0.03, (ccx, ccy, ccz + 0.1 * ks), axis="Z", seg=12), "Hips", "canvas_dark")
+            _part(rig, "belt_canteen_flap", _box((0.08 * ks, 0.11 * ks, 0.03), (ccx, ccy, ccz + 0.07 * ks), 0.01), "Hips", "olive")
     if "neckerchief" in gear:
         # zwinięta chusta na kołnierzu (pętla przyklejona do ubrania), trójkąt na piersi i węzeł z przodu
         bvh = _surface(rig)
@@ -1011,6 +1013,14 @@ def _bake_target(o, img):
         nt.nodes.active = n
 
 
+def _bake_bg(img, col):
+    """Tło obrazu do wypieku (teksele poza wyspami UV): płaska normalna / matowa szorstkość zamiast czerni — czarna normalna i szorstkość 0
+    w szwach atlasu dawały w grze białe iskry na stroju. Wypiek nie czyści obrazu (use_clear False), margines szerszy."""
+    img.generated_color = col
+    bpy.context.scene.render.bake.use_clear = False
+    bpy.context.scene.render.bake.margin = 16
+
+
 def _drop_target(o):
     for m in o.data.materials:
         n = m.node_tree.nodes.get("bake_target")
@@ -1072,6 +1082,7 @@ def texture_gear(rig, size=1024, name="gear"):
     alb = bpy.data.images.new(name + "_albedo", size, size)
     nrm = bpy.data.images.new(name + "_normal", size, size)
     nrm.colorspace_settings.name = "Non-Color"
+    _bake_bg(nrm, (0.5, 0.5, 1.0, 1.0))
     sc = bpy.context.scene
     sc.render.bake.use_pass_direct = False
     sc.render.bake.use_pass_indirect = False
@@ -1081,6 +1092,7 @@ def texture_gear(rig, size=1024, name="gear"):
     _bake_target(g, nrm)
     _bake(type="NORMAL")
     _drop_target(g)
+    sc.render.bake.use_clear = True
     # jeden materiał z wypieczonych map
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
@@ -1659,6 +1671,273 @@ def add_braid(rig, spec):
     print("BRAID", len(o.data.polygons), "faces, rim %.3f, length %.3f, tip %s" % (rim, length, tuple(round(v, 3) for v in tip)))
 
 
+def _head_keep_group(body):
+    """Grupa „decimate_w” dla upraszczania ciała: 1 − wpływ głowy i szyi (Decimate zostawia więcej geometrii przy niższej wadze)."""
+    gi = {g.name: g.index for g in body.vertex_groups}
+    hg, ng = gi.get("mixamorig:Head"), gi.get("mixamorig:Neck")
+    vg = body.vertex_groups.new(name="decimate_w")
+    for v in body.data.vertices:
+        h = 0.0
+        for g in v.groups:
+            if g.group == hg:
+                h = max(h, g.weight)
+            elif g.group == ng:
+                h = max(h, g.weight * 0.6)
+        vg.add([v.index], 1.0 - min(h, 1.0), "REPLACE")
+
+
+def bake_skin_normal(body, hi):
+    """Mapa normalnych skóry (Q5): kształt z pełnej siatki MPFB (nos, usta, powieki, ucho — upraszczanie je spłaszcza) i drobne pory
+    z szumu, wypieczone z `hi` na uproszczone ciało w jego UV. Kopia `hi` znika po wypieku."""
+    _cycles(SAMPLES)
+    for i, m in enumerate(hi.data.materials):                   # pory tylko na kopii (materiał ciała jest wspólny)
+        if m is None:
+            continue
+        mc = m.copy()
+        hi.data.materials[i] = mc
+        nt = mc.node_tree
+        b = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if b is None:
+            continue
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        nz = nt.nodes.new("ShaderNodeTexNoise")
+        nz.inputs["Scale"].default_value = 260.0
+        nz.inputs["Detail"].default_value = 4.0
+        nt.links.new(tc.outputs["Object"], nz.inputs["Vector"])
+        bp = nt.nodes.new("ShaderNodeBump")
+        bp.inputs["Strength"].default_value = 0.06
+        bp.inputs["Distance"].default_value = 0.0005
+        nt.links.new(nz.outputs["Fac"], bp.inputs["Height"])
+        nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
+    img = bpy.data.images.new("skin_normal", SKIN_TEX, SKIN_TEX)
+    img.colorspace_settings.name = "Non-Color"
+    _bake_bg(img, (0.5, 0.5, 1.0, 1.0))
+    _bake_target(body, img)
+    bpy.ops.object.select_all(action="DESELECT")
+    hi.select_set(True)
+    body.select_set(True)
+    bpy.context.view_layer.objects.active = body
+    _bake(type="NORMAL", use_selected_to_active=True, cage_extrusion=0.008, max_ray_distance=0.03)
+    _drop_target(body)
+    bpy.context.scene.render.bake.use_clear = True
+    for m in body.data.materials:
+        nt = m.node_tree
+        b = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if b is None:
+            continue
+        tn = nt.nodes.new("ShaderNodeTexImage")
+        tn.image = img
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(tn.outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
+    bpy.data.objects.remove(hi)
+    print("SKIN NORMAL", SKIN_TEX)
+
+
+def skin_maps(rig, body, face):
+    """Skóra ciała (Q5): szorstkość (czoło i nos błyszczą, policzki matowe), zarost u mężczyzn i brud z misji na twarzy — maski z pozycji
+    w świecie wypieczonej na teksel (jak brud w bake_shading). Szorstkość jako tekstura ORM (G), bo shader gry czyta ją tylko z tekstury;
+    oczy dostają wilgotny połysk."""
+    img = obj_images(body).get("diffuseTexture")
+    if img is None:
+        return
+    w, h = img.size
+    head = _bone(rig, "Head")
+    ks = _bone(rig, "Neck").z / 1.52
+    pos = bpy.data.images.new("pos_body", w, h, float_buffer=True)
+    pos.colorspace_settings.name = "Non-Color"
+    saved = [m for m in body.data.materials]
+    tmp = bpy.data.materials.new("pos_tmp")
+    tmp.use_nodes = True
+    tnt = tmp.node_tree
+    for n in list(tnt.nodes):
+        if n.type == "BSDF_PRINCIPLED":
+            tnt.nodes.remove(n)
+    geo = tnt.nodes.new("ShaderNodeNewGeometry")
+    em = tnt.nodes.new("ShaderNodeEmission")
+    out = next(n for n in tnt.nodes if n.type == "OUTPUT_MATERIAL")
+    tnt.links.new(geo.outputs["Position"], em.inputs["Color"])
+    tnt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    tn = tnt.nodes.new("ShaderNodeTexImage")
+    tn.image = pos
+    tnt.nodes.active = tn
+    for i in range(len(body.data.materials)):
+        body.data.materials[i] = tmp
+    sc = bpy.context.scene
+    sc.render.bake.use_clear = True
+    sc.render.bake.margin = 8
+    _only(body)
+    _bake(type="EMIT")
+    for i, m in enumerate(saved):
+        body.data.materials[i] = m
+    P = np.array(pos.pixels[:], dtype=np.float32).reshape(h, w, 4)
+    bpy.data.images.remove(pos)
+    x, y, z = P[:, :, 0], P[:, :, 1], P[:, :, 2]
+    valid = (np.abs(x) + np.abs(y) + np.abs(z)) > 1e-4
+
+    def band(v, a, b, soft):
+        return np.clip((v - a) / soft, 0, 1) * np.clip((b - v) / soft, 0, 1)
+    fh = 0.23 * ks                                                     # wysokość twarzy od podbródka do linii włosów
+    zc = head.z - 0.035 * ks                                           # podbródek (kość głowy leży u nasady czaszki)
+    front = np.clip((x - (head.x + 0.015)) / 0.03, 0, 1) * valid
+    face_m = front * band(z, zc, zc + fh, 0.02)
+    jaw = front * band(z, zc - 0.01, zc + 0.075 * ks, 0.015)           # podbródek, żuchwa, wąs
+    brow_z = zc + 0.15 * ks
+    forehead = face_m * band(z, brow_z, zc + fh, 0.015)
+    nose = face_m * band(z, zc + 0.08 * ks, brow_z, 0.012) * band(y, -0.022, 0.022, 0.008)
+    n1 = smooth_noise(h, w, 18, 11)
+    n2 = smooth_noise(h, w, 90, 23)
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
+    rgb = px[:, :, :3]
+    st = float(face.get("stubble", 0.0))
+    if st > 0:                                                          # zarost: ciemniejsze, chłodniejsze ziarno na żuchwie
+        k = jaw * st * (0.55 + 0.45 * n2) * 0.32
+        rgb = rgb * (1 - k[:, :, None]) + np.array([0.06, 0.055, 0.05], np.float32)[None, None, :] * k[:, :, None]
+    gr = float(face.get("grime", 0.0))
+    if gr > 0:                                                          # brud: smugi z szumu na twarzy, gęściej przy brzegach
+        edge = face_m * (1.0 - 0.5 * band(y, -0.03, 0.03, 0.02))
+        dirt = edge * np.clip((n1 - (0.58 - 0.25 * gr)) / 0.1, 0, 1) * np.clip(gr * 1.6, 0, 1) * (0.55 + 0.45 * n2)
+        mud = np.array([0.14, 0.105, 0.07], np.float32)
+        rgb = rgb * (1 - 0.75 * dirt[:, :, None]) + mud[None, None, :] * (0.75 * dirt[:, :, None])
+    px[:, :, :3] = np.clip(rgb, 0, 1)
+    img.pixels[:] = px.ravel()
+    rough = 0.62 - 0.06 * face_m - 0.14 * np.maximum(forehead, nose)   # czoło i nos tłuste / spocone
+    rough = rough + 0.08 * (gr * face_m * (n1 - 0.5))
+    orm = bpy.data.images.new("skin_orm", w, h)
+    orm.colorspace_settings.name = "Non-Color"
+    o = np.ones((h, w, 4), np.float32)
+    o[:, :, 1] = np.clip(rough, 0.3, 0.9)
+    o[:, :, 2] = 0.0
+    orm.pixels[:] = o.ravel()
+    for m in body.data.materials:
+        nt = m.node_tree
+        b = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if b is None:
+            continue
+        for lk in list(b.inputs["Roughness"].links):
+            nt.links.remove(lk)
+        t = nt.nodes.new("ShaderNodeTexImage")
+        t.image = orm
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(t.outputs["Color"], sep.inputs["Color"])
+        nt.links.new(sep.outputs["Green"], b.inputs["Roughness"])
+        b.inputs["Roughness"].default_value = 1.0
+    eyes = bpy.data.objects.get("low-poly")
+    if eyes is not None:
+        for m in eyes.data.materials:
+            b = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None) if m and m.node_tree else None
+            if b is not None:
+                _const_roughness(m, b, 0.22)
+        ei = obj_images(eyes).get("diffuseTexture")
+        if ei is not None:                                       # tęczówka z paczki jest jaskrawo rudobrązowa — w połysku czytała się jak czerwone oczy
+            e = np.array(ei.pixels[:], np.float32).reshape(-1, 4)
+            lum = e[:, :3] @ np.array([0.3, 0.59, 0.11], np.float32)
+            sat = e[:, :3].max(axis=1) - e[:, :3].min(axis=1)
+            k = np.clip((sat - 0.12) / 0.15, 0, 1)[:, None]
+            calm = (lum[:, None] + (e[:, :3] - lum[:, None]) * 0.45) * 0.62
+            e[:, :3] = e[:, :3] * (1 - k) + calm * k
+            ei.pixels[:] = e.ravel()
+    print("SKIN MAPS face %.0f%% stubble %.1f grime %.1f" % (100.0 * float(face_m.mean()), st, gr))
+
+
+ATLAS_TEX = int(arg("atlas-tex", "2048"))
+## Siatki, których gra albo testy szukają po nazwie (zwłoki, Mimik, test_proportions) i siatki z innym shaderem (skóra, karty włosów) —
+## zostają osobno; reszta ubrań idzie do atlasu „outfit” (Q7).
+ATLAS_KEEP = ("body", "braid", "low-poly", "backpack", "medbag", "gear", "jaldmic_m1951_72", "punkduck_stethoscope")
+
+
+def atlas_outfit(rig):
+    """Ubrania w jedną siatkę „outfit” z jednym materiałem (CHARACTER_QUALITY_PLAN.md Q7): wyspy UV wszystkich części upakowane w atlas
+    ATLAS_TEX², kolor (z cieniami i brudem już wypieczonymi), normalne i szorstkość przeniesione wypiekiem. Szorstkość jak w grze:
+    materiał bez tekstury szorstkości shader postaci renderował z 0,85, więc tyle dostaje w atlasie — wygląd w grze się nie zmienia,
+    a postać ma kilka siatek i materiałów mniej (wywołania rysowania, także cienie)."""
+    objs = [o for o in rig.children if o.type == "MESH" and o.name not in ATLAS_KEEP and not _is_hair(o.name)
+            and o.data.uv_layers and o.data.polygons]
+    if len(objs) < 2:
+        return
+    for o in objs:
+        o.data.uv_layers.active.name = "UVMap"
+        while len(o.data.uv_layers) > 1:
+            o.data.uv_layers.remove(next(u for u in o.data.uv_layers if u.name != "UVMap"))
+        for i, m in enumerate(o.data.materials):
+            if m is None or m.node_tree is None:
+                continue
+            mc = m.copy()
+            o.data.materials[i] = mc
+            b = next((n for n in mc.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+            if b is not None and not b.inputs["Roughness"].links:
+                b.inputs["Roughness"].default_value = 0.85
+    names = [o.name for o in objs]
+    o = _join(objs, "outfit")
+    o.data.uv_layers.new(name="atlas")
+    o.data.uv_layers.active = o.data.uv_layers["atlas"]
+    _only(o)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.select_all(action="SELECT")
+    bpy.ops.uv.pack_islands(rotate=True, margin=0.003)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for m in o.data.materials:                                   # stare tekstury czytane starym UV
+        nt = m.node_tree
+        for n in [n for n in nt.nodes if n.type == "TEX_IMAGE" and n.image]:
+            um = nt.nodes.new("ShaderNodeUVMap")
+            um.uv_map = "UVMap"
+            nt.links.new(um.outputs["UV"], n.inputs["Vector"])
+    _cycles(SAMPLES)
+    sc = bpy.context.scene
+    sc.render.bake.use_pass_direct = False
+    sc.render.bake.use_pass_indirect = False
+    sc.render.bake.use_pass_color = True
+    alb = bpy.data.images.new("outfit_albedo", ATLAS_TEX, ATLAS_TEX)
+    _bake_bg(alb, (0.2, 0.2, 0.18, 1.0))
+    nrm = bpy.data.images.new("outfit_normal", ATLAS_TEX, ATLAS_TEX)
+    nrm.colorspace_settings.name = "Non-Color"
+    _bake_bg(nrm, (0.5, 0.5, 1.0, 1.0))
+    rgh = bpy.data.images.new("outfit_rough", ATLAS_TEX, ATLAS_TEX, float_buffer=True)
+    rgh.colorspace_settings.name = "Non-Color"
+    _bake_bg(rgh, (0.85, 0.85, 0.85, 1.0))
+    _bake_target(o, alb)
+    _bake(type="DIFFUSE", pass_filter={"COLOR"})
+    _bake_target(o, nrm)
+    _bake(type="NORMAL")
+    _bake_target(o, rgh)
+    _bake(type="ROUGHNESS")
+    _drop_target(o)
+    sc.render.bake.use_clear = True
+    r = np.array(rgh.pixels[:], np.float32).reshape(-1, 4)[:, 0]
+    orm = bpy.data.images.new("outfit_orm", ATLAS_TEX, ATLAS_TEX)
+    orm.colorspace_settings.name = "Non-Color"
+    px = np.ones((r.size, 4), np.float32)
+    px[:, 1] = np.clip(r, 0.0, 1.0)
+    px[:, 2] = 0.0
+    orm.pixels[:] = px.ravel()
+    bpy.data.images.remove(rgh)
+    o.data.uv_layers.remove(o.data.uv_layers["UVMap"])
+    o.data.uv_layers["atlas"].name = "UVMap"
+    mat = bpy.data.materials.new("outfit")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    b = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    ta = nt.nodes.new("ShaderNodeTexImage")
+    ta.name = "diffuseTexture"
+    ta.image = alb
+    nt.links.new(ta.outputs["Color"], b.inputs["Base Color"])
+    tn = nt.nodes.new("ShaderNodeTexImage")
+    tn.image = nrm
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nt.links.new(tn.outputs["Color"], nm.inputs["Color"])
+    nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
+    to = nt.nodes.new("ShaderNodeTexImage")
+    to.image = orm
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(to.outputs["Color"], sep.inputs["Color"])
+    nt.links.new(sep.outputs["Green"], b.inputs["Roughness"])
+    b.inputs["Metallic"].default_value = 0.0
+    o.data.materials.clear()
+    o.data.materials.append(mat)
+    print("ATLAS outfit", ATLAS_TEX, names)
+
+
 def fit_medic_equipment(rig):
     """Hełm sztywny na głowie; stetoskop krótszy, na kurtce, z wagami szyi i tułowia zamiast głowy i bioder."""
     helmet = next((o for o in rig.children if o.type == "MESH" and "m1951" in o.name), None)
@@ -1800,6 +2079,7 @@ def build(name, spec):
     info["rig"] = "mixamo"
     info["eyes"] = "low-poly/low-poly.mhclo"
     info["eyebrows"] = "%s/%s.mhclo" % (spec["eyebrows"], spec["eyebrows"]) if spec.get("eyebrows") else ""
+    info["eyelashes"] = "%s/%s.mhclo" % (spec["eyelashes"], spec["eyelashes"]) if spec.get("eyelashes") else ""
     info["hair"] = "%s/%s.mhclo" % (spec["hair"], spec["hair"]) if spec.get("hair") else ""
     info["clothes"] = ["%s/%s.mhclo" % (c, c) for c in spec["clothes"]]
     info["skin_mhmat"] = "%s/%s.mhmat" % (spec["skin"], spec["skin"])
@@ -1840,6 +2120,12 @@ def build(name, spec):
                             m.node_tree.links.remove(lk)
                         n.inputs["Base Color"].default_value = tuple(conf["tint"]) + (1.0,)
 
+    face = spec.get("face", {})
+    for o in rig.children:                                       # Q5: brwi w kolorze włosów, rzęsy ciemne (z paczki: czarne łuki)
+        if o.type == "MESH" and o.name.startswith(("eyebrow", "eyelash")):
+            img = obj_images(o).get("diffuseTexture")
+            if img is not None:
+                tint_image(img, face.get("brow", (0.05, 0.04, 0.03)) if o.name.startswith("eyebrow") else (0.03, 0.025, 0.02))
     boots = add_sewn(rig, body, spec, spec.get("parts", {}))      # części stałe (buty)
     if SEWN or spec.get("sewn_default", False):
         add_sewn(rig, body, spec)
@@ -1871,8 +2157,14 @@ def build(name, spec):
     am.object = rig
     if "boot_top" in boots:
         tuck_into_boots(rig, body, boots["boot_top"])
+    # Q5: pełna siatka ciała do wypieku normalnych (twarz: nos, usta, powieki) i grupa wag, która chroni głowę przed upraszczaniem
+    hi = body.copy()
+    hi.data = body.data.copy()
+    hi.name = "body_hi"
+    bpy.context.scene.collection.objects.link(hi)
+    _head_keep_group(body)
     # upraszczanie (wagi kości zostają); Decimate przesuwamy przed Armature, żeby liczył geometrię spoczynkową
-    for o in [o for o in rig.children if o.type == "MESH"]:
+    for o in [o for o in rig.children if o.type == "MESH" and o is not hi]:
         tris = sum(len(p.vertices) - 2 for p in o.data.polygons)
         conf = spec["clothes"].get(o.name) or spec.get("sewn", {}).get(o.name) or spec.get("parts", {}).get(o.name, {})
         budget = BODY_TRIS if o == body else int(conf.get("tris", PART_TRIS))
@@ -1883,10 +2175,14 @@ def build(name, spec):
         o.select_set(True)
         dec = o.modifiers.new("dec", "DECIMATE")
         dec.ratio = budget / tris
+        if o == body:
+            dec.vertex_group = "decimate_w"
+            dec.vertex_group_factor = HEAD_KEEP
         while o.modifiers[0] != dec:
             bpy.ops.object.modifier_move_up(modifier=dec.name)
         bpy.ops.object.modifier_apply(modifier=dec.name)
 
+    bake_skin_normal(body, hi)
     # orientacja (przód −Y → +X), wzrost ciała, stopy na z = 0
     rig.location.z -= floor
     rig.rotation_euler = (0.0, 0.0, math.radians(90.0))
@@ -1909,7 +2205,7 @@ def build(name, spec):
     _cycles(SAMPLES)
     texture_gear(rig)
     texture_gear(rig, 512, "braid")
-    for nm, size in (("backpack", 1024), ("medbag", 512), ("pouch_L", 256), ("pouch_R", 256), ("canteen", 256)):
+    for nm, size in (("backpack", 1024), ("medbag", 512)):
         o = bpy.data.objects.get(nm)
         if o is not None and o.get("scripted"):
             texture_gear(rig, size, nm)
@@ -1918,11 +2214,13 @@ def build(name, spec):
     if "helmet_cross" in spec.get("gear", []):
         paint_helmet_cross(rig)
     bake_shading(rig, body, BAKE_TEX)
+    skin_maps(rig, body, face)
 
     # tekstury i metaliczność; w GLB tekstury idą jako WebP (z przezroczystością, kilka razy mniejsze niż PNG)
     cloth = {img.name for o in rig.children if o.type == "MESH" and o != body for img in obj_images(o).values()}
+    skin = {n.image.name for m in body.data.materials for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image}
     for img in list(bpy.data.images):
-        cap = CLOTH_TEX if img.name in cloth else TEX
+        cap = SKIN_TEX if img.name in skin else (CLOTH_TEX if img.name in cloth else TEX)
         if img.size[0] > cap or img.size[1] > cap:
             img.scale(min(cap, img.size[0]), min(cap, img.size[1]))
     for m in bpy.data.materials:
@@ -1932,6 +2230,7 @@ def build(name, spec):
                     n.inputs["Metallic"].default_value = 0.0
 
     fix_alpha(rig)
+    atlas_outfit(rig)
     per = {o.name: sum(len(p.vertices) - 2 for p in o.data.polygons) for o in rig.children if o.type == "MESH"}
     print("TRIS", sum(per.values()), per, "BONES", len(rig.data.bones), "MESHES", [o.name for o in rig.children if o.type == "MESH"])
 

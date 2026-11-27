@@ -22,7 +22,7 @@ const AIR := ".bwF"
 
 var _fails := 0
 const DRAPE_MAX := 0.05                          ## m: najniższy punkt części ciała nad gruntem (przed opadaniem dłoń 0,3 m, łokieć 0,8 m)
-const DRAPE_ARM_MAX := 0.16                      ## m: przedramię i dłoń mogą leżeć na brzuchu albo biodrze (tułów ma ok. 0,2 m)
+const DRAPE_ARM_MAX := 0.18                      ## m: przedramię i dłoń mogą leżeć na brzuchu albo biodrze (tułów ma ok. 0,2 m; od Q1 mężczyzna jest masywniejszy, z kamizelką ok. 0,21 m)
 
 func _ok(cond: bool, msg: String) -> void:
 	print("[CORPSES] %s  %s" % ["PASS" if cond else "FAIL", msg])
