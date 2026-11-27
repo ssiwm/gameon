@@ -468,7 +468,8 @@ scripts/
   support_beam.gd   # stempel `!` nad strefą zawału `^` (D3), w sztolni 1.1 i na `t_mine`. Postacie przechodzą przed belką, pasek akcji podpowiada, jak ją złamać. Belkę ranią kule, kilof i wybuchy (granat z ~1 m, ładunek burzący pełnym promieniem). Po złamaniu chodnik zapada się po 0,8 s (level.gd `cave_in`).
   sight.gd          # promień przez dziury przegród: wzrok wrogów, latarka, lampy, ćmy, okluzja dźwięku (pociski — projectile.gd)
   workshop_ui.gd    # panel warsztatu (złom), parts.gd — części broni w gniazdach (zakup drużyny, montaż gracza)
-  stations/         # widoki stanowisk panelu: supply_view (ława, prasa, pirotechnika), service_view (konserwacja), lab_view (pracownia, tokarka), locker_view (szafka)
+  stations/         # widoki stanowisk panelu: bench_view (zakładka ARMS — ława, karta broni), supply_view (ława, prasa, pirotechnika), service_view (konserwacja), lab_view (pracownia, tokarka), locker_view (szafka), station_widgets (kafle, paski, podgląd postaci)
+  station.gd        # wspólna klasa 7 stanowisk kryjówki (zasięg, [E], uśpienie, sygnał left_range); workshop.gd, *_bench.gd, locker_station.gd — dane stanowisk
   station_*.gd      # rysunki kart stanowisk (STATION_CARDS_PLAN.md): kit (tabliczka, licznik, pieczątka, taśma), supply_art, service_art, lab_art, noise; vu_meter.gd
   profile.gd        # autoload Profile: lokalny profil (XP, poziom, perki), perk_icon.gd — miniatury perków
   throwables.gd     # granaty, miny, ładunki; smoke_cloud.gd — dym, fire_patch.gd — ogień HKM-9
