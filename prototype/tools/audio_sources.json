@@ -433,6 +433,30 @@
    "supplier": "Gamemaster Audio",
    "license": "sonniss-gdc-2.0"
   },
+  "female_grunt_hit": {
+   "kind": "lib",
+   "file": "sonniss/2023/Pole Position Production - The Grunts Library/Female 1 - Grunt - Getting Hit - Medium Intensity - Ehrlund M1.wav",
+   "sha256": "39cf4fca71e4b6569b9ce2fbd456a8d7339b1e8ed17d5f5ff5f50c39f5a623ed",
+   "pack": "Sonniss GDC 2023 — The Grunts Library",
+   "supplier": "Pole Position Production",
+   "license": "sonniss-gdc-2.0"
+  },
+  "female_panting_nose": {
+   "kind": "lib",
+   "file": "sonniss/2024/UberDuo - Inhale – Tanja – Character Playset/HMNBrth_Human, Adult, Female, Panting, Nose, Loop_UberDuo_INHL.wav",
+   "sha256": "bff2fcbe5bb077d198b97b2ebf76bcc1a21b85f006adaf12f1ce59ef26e58f0f",
+   "pack": "Sonniss GDC 2024 — Inhale – Tanja – Character Playset",
+   "supplier": "UberDuo",
+   "license": "sonniss-gdc-2.0"
+  },
+  "female_scream_pain_344": {
+   "kind": "lib",
+   "file": "sonniss/2023/344 Audio - Screaming/VOXScrm_Female Scream in Pain, Agony, Wounded 2_344 Audio_Screaming.wav",
+   "sha256": "333af543b750e9021f45a77ece46b80eb9aed783d79b61dc02601920a802403a",
+   "pack": "Sonniss GDC 2023 — Screaming",
+   "supplier": "344 Audio",
+   "license": "sonniss-gdc-2.0"
+  },
   "fire_ignition_03": {
    "kind": "lib",
    "file": "sonniss/2018/Sonniss.com - GDC 2018 - Game Audio Bundle Part 3of8/Gregor Quendel – Designed Fire/Designed Fire - Impacts - Large, ignition 03.wav",
