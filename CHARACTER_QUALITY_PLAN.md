@@ -1,6 +1,7 @@
 # Jakość postaci graczy: płeć w sylwetce, stroje, animacje, twarze — plan implementacji
 
-**Stan (2026-11-27):** plan do akceptacji, nic nie wdrożone. Podstawa: przegląd sześciu modeli MPFB (`art/char3d/mpfb/`) na stykówkach
+**Stan (2026-11-27):** decyzje z §6 przyjęte. Q0–Q4 wdrożone w 1.7.705 jednym PR-em (każdy etap przebudowuje te same sześć GLB, więc
+osobne PR-y znaczyłyby pięć przebudów i konfliktów modeli); Q5–Q7 w kolejnych. Podstawa planu: przegląd sześciu modeli MPFB (`art/char3d/mpfb/`) na stykówkach
 w skali gry, w zbliżeniach (tył, oba boki, twarze z nakryciem głowy i bez) i w klatkach cyklu ruchu (`shot_char3d.gd`, `shot_anim3d.gd`,
 `shot_hands3d.gd`) oraz porównanie z grami gatunku (Contra: Operation Galuga, Helldivers 2, GTFO, Hunt: Showdown).
 Kontynuacja `CHARACTER_PLAN.md` (E0–E2 zrobione; E3 mocap i E4 nie).
@@ -150,11 +151,14 @@ Razem ok. 11–15 dni pracy. Pierwszy pakiet do playtestu: Q0 + Q1 + Q2 (bieg ty
 - **Wydajność do Q7:** Q1 (kości ogona) i Q5 (druga siatka, SSS) dokładają koszt, zanim atlas go zdejmie — mierzyć `bench_char3d.gd` po każdym etapie.
 - **Rozmiar repo:** nowe tekstury 2K głowy ×6 — WebP i kompresja VRAM (`tex_vram.py`).
 
-## 6. Do akceptacji
+## 6. Decyzje (2026-11-27)
 
-1. Ogon czy warkocz (scav i medyczka; hazmat bez — kaptur i maska)?
-2. Bieg tyłem: wariant A (jog od tyłu), B (CMU) czy C (z kodu)? Rekomendacja: A, a B tylko, jeśli A nie przejdzie na stykówce.
-3. Twarze: Q5 (dopracować) czy wariant „zakryte”?
-4. Chusta scava: poprawić czy usunąć?
-5. Q6 (kolba w barku) w tym planie czy po playteście?
-6. Q8 (głosy wg płci, mocap) — teraz poza zakresem?
+1. **Warkocz** — scav i medyczka; hazmat bez (kaptur i maska).
+2. **Bieg tyłem** — wariant A (trucht od tyłu); B (CMU) tylko, jeśli A nie przejdzie na stykówce.
+3. **Twarze** — Q5 (dopracować), nie wariant „zakryte”.
+4. **Chusta scava** — poprawić (nie usuwać).
+5. **Q6 (kolba w barku)** — w tym planie.
+6. **Q8 (głosy wg płci, mocap)** — poza zakresem.
+
+Odstępstwo od §2: Q0–Q4 w jednym PR-ze (patrz „Stan”). W Q3 śpiwór poszedł pod plecak — na wierzchu zasłaniał w widoku z boku kark
+i warkocz scava. W Q4 hazmat obu płci dostał szyty kombinezon (`cloth_garments.py`) i gumowy kołnierz (szyty kombinezon nie ma stójki).

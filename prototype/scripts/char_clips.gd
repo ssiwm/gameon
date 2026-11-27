@@ -25,16 +25,22 @@ const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixa
 ##   o kilkadziesiąt stopni, co przy celowaniu rzuca bronią.
 ## drop: o tyle metrów niżej stoją biodra niż w klipie (kucanie: sylwetka ma mieć wysokość hitboxa kucania, jak poza z kodu);
 ##   ujemne podnosi (leżenie: plecak modelu nie wchodzi w podłoże).
+## calm_legs: [t0, t1] — nogi w tym oknie przechodzą gładko z pozy w t0 do pozy w t1 zamiast ruchu z klipu (Death01 wyrzucał nogi
+##   w górę przy uderzeniu plecami o ziemię — czytało się komicznie; CHARACTER_QUALITY_PLAN.md Q2).
 ## bounce: ile pionowego kołysania bioder z klipu zostaje (1 = całe). Sprint z biblioteki kołysze ciałem o 11 cm, a z barkiem idzie chwyt broni,
 ##   czyli punkt, z którego gra liczy celowanie i wylot pocisku; stopy zostają na torze z klipu (IK nóg).
 const CLIPS := {
 	"idle": {"file": "idle", "upper": 0.5},
 	"run": {"file": "run", "step": true, "phase0": 0.0, "upper": 0.55, "bounce": 0.8},
+	# Podział stanu „run” (char3d.gd `_clip_ws`, CHARACTER_QUALITY_PLAN.md Q2): trucht przy niższej prędkości (krótszy krok, mniejsze
+	# pochylenie) i bieg tyłem — ten sam trucht wstecz fazą kroku, tułów prawie pionowo (sprint od tyłu wyglądał jak „moonwalk”).
+	"run_jog": {"file": "jog", "step": true, "phase0": 0.0, "upper": 0.45, "bounce": 0.8},
+	"run_back": {"file": "jog", "step": true, "phase0": 0.0, "upper": 0.25, "bounce": 0.7},
 	"crouch": {"file": "crouch", "upper": 0.35, "drop": 0.05},
 	"crouch_walk": {"file": "crouch_walk", "step": true, "phase0": 0.0, "upper": 0.5, "drop": 0.06},
 	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
 	"push": {"file": "push", "step": true, "phase0": 0.0, "arms": true},          # Push_Loop (UAL1): pchanie skrzyni oburącz, broń schowana
-	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05},
+	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05, "calm_legs": [0.85, 1.6]},
 	"getup": {"file": "getup", "scrub": [0.1, 1.5]},
 	"combat_chop": {"file": "combat_chop", "scrub": [0.0, 1.0], "additive": true},
 	"combat_slash": {"file": "combat_slash", "scrub": [0.0, 1.0], "additive": true},
@@ -161,7 +167,7 @@ static func _src_depth(parent_s: Dictionary, bone: String) -> int:
 ## szkieletu Tripo gra więc poprawnie na szkielecie MPFB (inne osie kości, inna poza spoczynkowa) i na każdym innym o tych samych nazwach.
 ## Przy identycznych osiach lokalnych wynik jest taki sam jak przy przeliczeniu lokalnym. upper < 1 tłumi ruch kości tułowia i głowy (UPPER)
 ## w stronę pozy spoczynkowej.
-static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0) -> Animation:
+static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0, calm_legs: Array = []) -> Animation:
 	var a: Animation = src["anim"]
 	var rest_s: Dictionary = src["rest"]
 	var grest_s: Dictionary = src["grest"]
@@ -241,6 +247,20 @@ static func _retarget(src: Dictionary, sk: Skeleton3D, upper := 1.0) -> Animatio
 			up += off.dot(up_axis)
 			o.position_track_insert_key(np, a.track_get_key_time(pos_tr, k), rt.origin + off)
 		o.set_meta("hips_mean", up / maxf(float(a.track_get_key_count(pos_tr)), 1.0))
+	if calm_legs.size() == 2:
+		var t0 := float(calm_legs[0])
+		var t1 := float(calm_legs[1])
+		for bi in bones:
+			var bn := sk.get_bone_name(bi)
+			if not (bn.contains("Leg") or _is_foot(bn)):
+				continue
+			var tr: int = tracks[bi]
+			var q0 := o.rotation_track_interpolate(tr, t0)
+			var q1 := o.rotation_track_interpolate(tr, t1)
+			for k in o.track_get_key_count(tr):
+				var tk := o.track_get_key_time(tr, k)
+				if tk > t0 and tk < t1:
+					o.track_set_key_value(tr, k, q0.slerp(q1, smoothstep(t0, t1, tk)))
 	return o
 
 static func _depth(sk: Skeleton3D, bi: int) -> int:
@@ -327,7 +347,7 @@ static func build(sk: Skeleton3D, key: String, raw := false, set_name := "player
 			var src := _source(st, set_name)
 			if src.is_empty():
 				continue
-			var a := _retarget(src, sk, 1.0 if raw else float((tab[st] as Dictionary).get("upper", 1.0)))
+			var a := _retarget(src, sk, 1.0 if raw else float((tab[st] as Dictionary).get("upper", 1.0)), (tab[st] as Dictionary).get("calm_legs", []))
 			lib.add_animation(StringName(st), a)
 			anims.append(a)
 			means[st] = float(a.get_meta("hips_mean", 0.0))

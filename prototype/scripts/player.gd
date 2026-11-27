@@ -357,6 +357,7 @@ func _setup_sprites() -> void:
 		Char3D.set_quality(Settings.quality_idx)           # jakość postaci 3D = „Effects quality”
 		c3d = Char3D.new()
 		c3d.name = "Char3D"
+		c3d.life_seed = display_id * 7919 + (1 if is_bot else 0)   # oddech na postoju: ten sam u wszystkich peerów, różny między graczami
 		add_child(c3d)
 		if c3d.setup(_char3d_name()):
 			_apply_view_quality()

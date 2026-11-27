@@ -206,9 +206,11 @@ z dodatkiem MPFB2 i paczkami zasobów MakeHuman (instrukcja w nagłówku skryptu
 - **Stroje:** ubrania z paczek MakeHuman (CC0 i CC-BY: kamizelka taktyczna, hełmy KZ45 i M1951, maska przeciwgazowa, mundur ratownika,
   kombinezony), przebarwiane skryptem: kamuflaż leśny lat 80. (scav), żółty kombinezon (hazmat), granat (medyk). Maska scava wisi przy
   biodrze (`relocate`).
-- **Ekwipunek:** modele z lokalnej generacji — obraz z FLUX.1 [schnell], model 3D z PBR z TRELLIS 2 (ComfyUI) — w `art_src/gear/`
-  (`GEAR_MODELS`): plecak, śpiwór, aparat oddechowy, plecak medyczny, ładownice, manierka. Generator skaluje je do rzeczywistych wymiarów
-  i przerywa pracę przy odchyłce ponad 10%; szelki, pas, chusta, taśma i krzyż na hełmie są bryłami ze skryptu.
+- **Ekwipunek:** od CHARACTER_QUALITY_PLAN.md Q4 cały ze skryptu w `char_mpfb.py` (plecak z klapą, kieszeniami i paskami, śpiwór pod
+  plecakiem ze zwojem na czołach, torba medyczna z płótna, ładownice z klapką, manierka w pokrowcu, butle z kopułami, szelki, pas, chusta,
+  taśma, opaski medyka z krzyżem, gumowy kołnierz hazmatu); materiały proceduralne wypiekane w Cycles (`texture_gear`). Każda rzecz to
+  osobna siatka o nazwie, której szukają zwłoki i Mimik (`backpack`, `medbag`, `pouch_L` / `pouch_R`, `canteen`; reszta w `gear`).
+  Modele z FLUX.1 [schnell] + TRELLIS 2 w `art_src/gear/` zostały jako odniesienie (`--trellis-gear`).
 - **Detal:** Cycles wypieka w kolor ubrań i ekwipunku cienie kontaktowe (AO) i brud od dołu; tekstury w GLB jako WebP (1024 px),
   ok. 30 tys. trójkątów na postać, 1–3 MB na model.
 - **Klipy:** `char_clips._retarget` przelicza klip w przestrzeni szkieletu (ten sam obrót względem pozy spoczynkowej w świecie szkieletu),
@@ -217,8 +219,27 @@ z dodatkiem MPFB2 i paczkami zasobów MakeHuman (instrukcja w nagłówku skryptu
 - **Test:** `test_proportions.gd` (6) sprawdza ze szkieletu anatomię każdej postaci: kark 0,80–0,88 H, biodra 0,50–0,60 H, ręka 0,28–0,36 H,
   noga 0,42–0,52 H, barki 0,18–0,26 H, głowa z nakryciem od karku ≤ 0,22 H.
 
-Ograniczenia: ubrania MakeHuman mają prostsze tekstury niż stroje Tripo (kombinezon damski hazmat ma smugi po napisach oryginału);
+Ograniczenia: ubrania MakeHuman mają prostsze tekstury niż stroje Tripo (od Q4 hazmat obu płci ma szyty kombinezon z `cloth_garments.py`);
 od 1.7.314 palce zginają się na chwycie (`_measure_fingers` / `_apply_fingers`: oś zgięcia członu = grzbiet dłoni × kierunek członu w spoczynku; zacisk 1 na chwycie i rękojeści, 0,7 pod łożem, 0,25 w luźnej dłoni), a prawa rękawica nie ma już wierzchołków przypiętych do obojczyka (`glb_glove_weights.py`, w generatorze `fix_glove_weights`; w pozie z bronią rozciągały się w „pręty” do bioder); klipy ruchu to nadal Quaternius UAL (mocap — E3).
+
+## Jakość postaci (CHARACTER_QUALITY_PLAN.md Q0–Q4)
+
+```bash
+godot --path prototype --script tools/shot_char_review.gd -- --out=C:/tmp/review.png [--bare] [--charset=mpfb] [--looks=male_scav,female_scav]
+```
+
+- **Stykówka przeglądu** (Q0): każdy wygląd w wierszu — cała postać tył / bok / przód i głowa przód / 3/4 / bok; `--bare` chowa nakrycia głowy.
+- **Płeć w sylwetce** (Q1): kobiety w hełmie (scav, medyczka) mają warkocz spod tylnej krawędzi hełmu (`add_braid`: sploty na zakładkę, gumka,
+  pędzelek; kości `braid_1` → `braid_3` pod głową). W grze kołysze go `SpringBoneSimulator3D` (`char3d.gd` `_add_braid_spring`, sztywność 2,
+  opór 0,45, grawitacja w dół; wyłączone w niskiej jakości). Fenotyp: mężczyzna mięśnie 0,72 / waga 0,58, kobieta 0,45 / 0,46 — barki kobiety
+  węższe w każdym stroju (`test_proportions.gd`). `hair_under_hat` dalej wycina włosy spod hełmu — warkocz jest osobną bryłą.
+- **Ruch** (Q2): stan „run” dzieli się na sprint (`run`), trucht (`run_jog`, `Jog_Fwd_Loop` z UAL1, poniżej 62–86 px/s) i bieg tyłem
+  (`run_back`: trucht wstecz fazą kroku, tułów prawie pionowo) — przejścia 0,15 s (`_split_run`). Postój i kucanie oddychają warstwą
+  `idle_life.gd` (klatka, co kilka sekund rozejrzenie się; ziarno z `display_id` gracza), lewa stopa nieco dalej z przodu. Upadek: nogi
+  w oknie 0,85–1,6 s klipu `down` przechodzą gładko do pozy końcowej (`calm_legs`) — bez wyrzutu w górę.
+- **Stroje** (Q3–Q4): chusta zwinięta z węzłem z boku, śpiwór pod plecakiem, maska scava oliwkowa i okularami do biodra, kamuflaż
+  z większymi plamami, buty matowe (scav czarne, medyk brązowe, hazmat półmatowa guma), medyk w jasnych rękawiczkach i z opaskami
+  na obu ramionach, hazmat w szytym kombinezonie z gumowym kołnierzem i ciemnymi butlami.
 
 ## Ograniczenia / dalsze kroki
 
