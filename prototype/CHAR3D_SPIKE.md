@@ -230,8 +230,8 @@ godot --path prototype --script tools/shot_char_review.gd -- --out=C:/tmp/review
 
 - **Stykówka przeglądu** (Q0): każdy wygląd w wierszu — cała postać tył / bok / przód i głowa przód / 3/4 / bok; `--bare` chowa nakrycia głowy.
 - **Płeć w sylwetce** (Q1): kobiety w hełmie (scav, medyczka) mają warkocz spod tylnej krawędzi hełmu (`add_braid`: sploty na zakładkę, gumka,
-  pędzelek; kości `braid_1` → `braid_3` pod głową). W grze kołysze go `SpringBoneSimulator3D` (`char3d.gd` `_add_braid_spring`, sztywność 2,
-  opór 0,45, grawitacja w dół; wyłączone w niskiej jakości). Fenotyp: mężczyzna mięśnie 0,72 / waga 0,58, kobieta 0,45 / 0,46 — barki kobiety
+  pędzelek; kości `braid_1` → `braid_3` pod głową). W grze kołysze go `SpringBoneSimulator3D` (`char3d.gd` `_add_braid_spring`, sztywność 1,3,
+  opór 0,35, grawitacja w dół; wyłączone w niskiej jakości). Fenotyp: mężczyzna mięśnie 0,72 / waga 0,58, kobieta 0,45 / 0,46 — barki kobiety
   węższe w każdym stroju (`test_proportions.gd`). `hair_under_hat` dalej wycina włosy spod hełmu — warkocz jest osobną bryłą.
 - **Ruch** (Q2): stan „run” dzieli się na sprint (`run`), trucht (`run_jog`, `Jog_Fwd_Loop` z UAL1, poniżej 62–86 px/s) i bieg tyłem
   (`run_back`: trucht wstecz fazą kroku, tułów prawie pionowo) — przejścia 0,15 s (`_split_run`). Postój i kucanie oddychają warstwą
