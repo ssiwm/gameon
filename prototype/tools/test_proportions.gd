@@ -88,6 +88,8 @@ func _hands() -> void:
 		if look.ends_with("medic"):
 			_medic_uniform(look)
 			_medic_equipment(look)
+		_skin(look)
+		_shoulder_stock(look)
 		for gun in ["m83", "spread12", "p64"]:
 			_hc.set_gun(gun)
 			for i in 40:
@@ -139,8 +141,50 @@ func _hands() -> void:
 		_pistol_support(look)
 
 ## Medycy muszą korzystać z dopasowanych ubrań, a relief i szorstkość muszą przetrwać import GLB i konwersję na shader gry.
+## Skóra i twarz (CHARACTER_QUALITY_PLAN.md Q5): ciało z mapą normalnych i tekstury szorstkości 2048 px, shader skóry z rozpraszaniem
+## podpowierzchniowym; poza hazmatem (maska) rzęsy; oczy z wilgotnym połyskiem (szorstkość z tekstury ≤ 0,3).
+func _skin(look: String) -> void:
+	var body := _hc._char_node.find_child("body", true, false) as MeshInstance3D
+	_check(body != null, look + ": ciało")
+	if body == null:
+		return
+	var src := body.mesh.surface_get_material(0) as BaseMaterial3D
+	_check(src != null and src.normal_texture != null and src.roughness_texture != null and src.albedo_texture != null \
+			and src.albedo_texture.get_width() >= 2048, "%s: skóra 2048 px z mapą normalnych i szorstkości" % look)
+	var sm := body.get_surface_override_material(0) as ShaderMaterial
+	_check(sm != null and sm.shader.code.contains("SSS_STRENGTH"), look + ": shader skóry z rozpraszaniem podpowierzchniowym")
+	var lashes := false
+	for mi in _hc._char_node.find_children("*", "MeshInstance3D", true, false):
+		lashes = lashes or String(mi.name).begins_with("eyelash")
+	_check(lashes == not look.ends_with("hazmat"), "%s: rzęsy %s" % [look, "brak (maska)" if look.ends_with("hazmat") else "są"])
+	var eyes := _hc._char_node.find_child("low-poly", true, false) as MeshInstance3D
+	var em := eyes.mesh.surface_get_material(0) as BaseMaterial3D if eyes != null else null
+	var rough := 1.0
+	if em != null and em.roughness_texture != null:
+		var im := em.roughness_texture.get_image()
+		if im.is_compressed():
+			im.decompress()
+		rough = im.get_pixel(im.get_width() / 2, im.get_height() / 2).g
+	_check(rough <= 0.3, "%s: wilgotne oczy (szorstkość %.2f ≤ 0,30)" % [look, rough])
+
+## Kolba w barku (Q6): przy M-83 celującym poziomo tył broni (wylot − długość) leży najwyżej 6 cm od barku modelu, a nie przed piersią.
+func _shoulder_stock(look: String) -> void:
+	_hc.set_gun("m83")
+	for i in 30:
+		_hc.update(1.0 / 60.0, "idle", 1.0, Vector2(1.0, 0.0), 0.0)
+	if _hc._gun == null:
+		_check(false, look + ": brak broni do pomiaru kolby")
+		return
+	var gx: Transform3D = _hc._gun.transform                     # układ broni w przestrzeni szkieletu (char3d.gd `_gun.transform = gx`)
+	var info := Char3D.gun_info("m83")
+	var butt := gx * Vector3((info["muzzle"] as Vector3).x - float(info["length"]), 0.08, 0.0)
+	var sh: Vector3 = _hc._gp(_hc._b["RightArm"]).origin
+	var d := Vector2(butt.x - sh.x, butt.y - sh.y).length()
+	_check(d <= 0.06, "%s: kolba M-83 przy barku (%.3f m w płaszczyźnie widoku, ≤ 0,06)" % [look, d])
+
+## Od Q7 mundur (kurtka i spodnie szyte) jest w atlasie „outfit” razem z butami i rękawiczkami — ten sam wymóg map normalnych i szorstkości.
 func _medic_uniform(look: String) -> void:
-	for part in ["emt_jacket", "emt_trousers"]:
+	for part in ["outfit"]:
 		var mi := _hc._char_node.find_child(part, true, false) as MeshInstance3D
 		_check(mi != null, "%s: dopasowane ubranie %s" % [look, part])
 		if mi == null:

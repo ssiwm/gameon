@@ -241,6 +241,20 @@ godot --path prototype --script tools/shot_char_review.gd -- --out=C:/tmp/review
   z większymi plamami, buty matowe (scav czarne, medyk brązowe, hazmat półmatowa guma), medyk w jasnych rękawiczkach i z opaskami
   na obu ramionach, hazmat w szytym kombinezonie z gumowym kołnierzem i ciemnymi butlami.
 
+## Twarze, kolba w barku, atlas (CHARACTER_QUALITY_PLAN.md Q5–Q7)
+
+- **Skóra** (Q5, `char_mpfb.py` `bake_skin_normal`, `skin_maps`): kolor, normalne i szorstkość ciała 2048 px (`--skin-tex`); normalne wypieczone
+  z pełnej siatki MPFB (przed upraszczaniem) z porami z szumu; szorstkość, zarost (`face.stubble`) i brud (`face.grime`) z masek liczonych
+  z pozycji wypieczonej na teksel. Ciało ma 8000 trójkątów, a grupa „decimate_w” (1 − wpływ głowy i szyi, `HEAD_KEEP`) zostawia ich więcej
+  na głowie. Rzęsy z paczki MPFB, brwi `eyebrow006` (kobiety) / `001` / `009` w kolorze `face.brow`. W grze materiał „Human.body” dostaje
+  wariant shadera z `SSS_STRENGTH` (`SKIN_SSS` 0,3).
+- **Kolba w barku** (Q6): `WEAPON_POSE` `shoulder` — `_gun_origin` ustawia początek broni tak, żeby tył broni (wylot − długość) wypadł
+  `SHOULDER_POCKET` przed barkiem, a chwyt `SHOULDER_PERP` pod linią barku; `_weld_w` pochyla szyję i głowę do kolby (`CHEEK_*`).
+  Wylot rozgrywki liczy ta sama funkcja, więc `test_aim_points.gd` dalej pilnuje zgodności.
+- **Atlas** (Q7, `atlas_outfit`): ubrania łączone w siatkę „outfit” (wyspy UV upakowane w atlas `--atlas-tex` 2048², wypiek koloru,
+  normalnych i szorstkości; materiał bez tekstury szorstkości dostaje 0,85, jak w shaderze gry). Osobno zostaje `ATLAS_KEEP` i karty włosów.
+  Hełm scava i maska hazmatu są w atlasie, więc `shot_char_review.gd --bare` chowa już tylko hełm medyka.
+
 ## Ograniczenia / dalsze kroki
 
 - Rzut flary i przedmiotów ma pozę (prawa ręka zamachem nad głową), ale tylko lokalnie — rzut jest zdarzeniem lokalnego gracza, inni widzą dopiero rzucony przedmiot.

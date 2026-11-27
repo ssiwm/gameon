@@ -2,7 +2,7 @@ extends SceneTree
 ## Stykówka przeglądu postaci (CHARACTER_QUALITY_PLAN.md Q0): każdy wygląd w wierszu — pełna postać tył / bok / przód
 ## i głowa przód / 3/4 / bok, w pozie spoczynkowej modelu, przy stałym świetle.
 ##   godot --path prototype --script tools/shot_char_review.gd -- --out=C:/tmp/review.png [--bare] [--charset=mpfb] [--looks=male_scav,female_scav]
-## --bare chowa nakrycia głowy (hełm, kaptur, maska) — widać włosy i czaszkę; --charset: katalog w art/char3d/ (np. zestaw próbny z generatora).
+## --bare chowa osobne nakrycia głowy (od Q7 hełm scava i maska hazmatu są w atlasie „outfit”, więc tylko hełm medyka); --charset: katalog w art/char3d/ (np. zestaw próbny z generatora).
 ## Okno (renderuje), bez trybu gry i bez zapisu profilu.
 const LOOKS := ["male_scav", "female_scav", "male_hazmat", "female_hazmat", "male_medic", "female_medic"]
 const HEADGEAR := ["helmet", "m1951", "hood", "gas_mask", "kz45"]
