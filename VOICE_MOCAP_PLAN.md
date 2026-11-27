@@ -7,7 +7,7 @@ zostają z UAL, bez utykania, kobieta z tym samym ruchem co mężczyzna. Test po
 **Nie zrobione:** dopisek 100STYLE na ekranie napisów w grze — gra nie ma takiego ekranu (podziękowanie jest w `art/char3d/anim/CREDITS.md`);
 marsz w kucaniu ślizga się jak przed zmianą (45 px/s ≈ 3,7 m/s przy kroku klipu ~0,55 m).
 Lokalnie (poza repo): ujęcia kandydatek głosu i strona odsłuchu `C:\deadair87\odsluch\q8_glosy\index.html`; siedem stylów 100STYLE (BVH)
-w `C:\deadair87\char_src\mocap@STYLE\`, odrzuceni kandydaci w `…\mocap\candidates\`, strona wyboru ruchu `C:\deadair87\odsluch\q8_ruch\index.html`.
+w `C:\deadair87\char_src\mocap\100STYLE\`, odrzuceni kandydaci w `…\mocap\candidates\`, strona wyboru ruchu `C:\deadair87\odsluch\q8_ruch\index.html`.
 Kontynuacja `CHARACTER_QUALITY_PLAN.md` (Q8 „Później”) i etapu E3 z `CHARACTER_PLAN.md`. Dwie niezależne części: **A — głos**, **B — mocap**.
 
 ## 1. Stan dziś
