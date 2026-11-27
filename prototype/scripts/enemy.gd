@@ -717,18 +717,19 @@ func see_light(pos: Vector2) -> void:
 ## --- Mimik ----------------------------------------------------------------
 
 ## Wołanie przebranego Mimika (enemy_mimic.gd): ten sam dźwięk co krzyk gracza [G] (player.gd `_scream_fx`), trochę ciszej, z miejsca `at`
-## (rozmyty kierunek) i z trzaskiem radia — „kolega woła przez radio” (MIMIC_PLAN.md M2).
+## (rozmyty kierunek) i z trzaskiem radia — „kolega woła przez radio” (MIMIC_PLAN.md M2). Głos wg płci udawanego kolegi u tego peera.
 @rpc("authority", "call_local", "unreliable")
 func _mimic_call(at: Vector2) -> void:
-	Audio.play_variant_at("player_hurt", 2, at, Audio.BUS_WORLD, -2.0, 0.8 * randf_range(0.97, 1.03))
+	Audio.play_variant_at(_beh.call_voice(), 2, at, Audio.BUS_WORLD, -2.0, 0.8 * randf_range(0.97, 1.03))
 	Audio.play_at("radio_beep", at, Audio.BUS_WORLD, -14.0, randf_range(0.9, 1.05))
 
 ## Echo krzyku gracza z przebranego Mimika (MIMIC_PLAN.md M8): ten sam dźwięk co krzyk [G] (player.gd `_scream_fx`), odrobinę za nisko
 ## (enemy_mimic.gd ECHO_PITCH), z jego miejsca, bez trzasku radia. Leżący — ciszej i stłumiony (szyna z filtrem), ciało drga w widoku.
+## `female`: krzyczała kobieta — echo jej głosem (VOICE_MOCAP_PLAN.md A2).
 @rpc("authority", "call_local", "reliable")
-func _mimic_echo(lying: bool) -> void:
+func _mimic_echo(lying: bool, female := false) -> void:
 	var pitch: float = 0.8 * _beh.ECHO_PITCH
-	Audio.play_variant_at("player_hurt", 2, global_position, Audio.BUS_OCC_LIGHT if lying else Audio.BUS_WORLD,
+	Audio.play_variant_at(_beh.echo_voice(female), 2, global_position, Audio.BUS_OCC_LIGHT if lying else Audio.BUS_WORLD,
 			_beh.ECHO_DB_LYING if lying else _beh.ECHO_DB, pitch, 0.02)
 	_beh.echo_fx(pitch, lying)
 

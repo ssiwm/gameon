@@ -110,6 +110,7 @@ var echo_t := -1.0           ## s do echa krzyku (serwer); < 0 = brak
 var echoes := 0              ## echa od początku misji (testy, dziennik)
 var _echo_from := Vector2.ZERO  ## skąd krzyknięto (dziennik `mimic_echo`)
 var _echo_heard := 0.0       ## px drogi dźwięku krzyku
+var _echo_female := false    ## krzyczała kobieta — echo jej głosem (VOICE_MOCAP_PLAN.md A2)
 var _echo_view := 0.0        ## s drgnięcia w widoku (każdy peer, z `_mimic_echo`)
 var last_echo := {}          ## ostatnie echo u tego peera: `pitch`, `lying` (testy)
 var downed := false          ## serwer: leży jako powalony kolega (M9)
@@ -370,6 +371,7 @@ func hears_scream(pos: Vector2, heard: float) -> bool:
 		echo_t = ECHO_DELAY + randf_range(-ECHO_JITTER, ECHO_JITTER)
 		_echo_from = pos
 		_echo_heard = heard
+		_echo_female = Player.female_at(e.get_tree(), pos)
 	return true
 
 ## Przebrany nie budzi się z watahą (krzyk czy hałas obudzi Trzoska obok, a test „kto to?” ma działać i przy innych wrogach); obudzony budzi
@@ -388,9 +390,9 @@ func _tick_echo(delta: float) -> void:
 	echoes += 1
 	var low := lying()
 	if NoiseMgr.has_network():
-		e._mimic_echo.rpc(low)
+		e._mimic_echo.rpc(low, _echo_female)
 	else:
-		e._mimic_echo(low)
+		e._mimic_echo(low, _echo_female)
 	SessionLog.event("mimic_echo", {"disguise": _disguise_id(), "dist": roundi(_echo_heard), "n": echoes,
 		"from": SessionLog.xy(_echo_from), "pos": SessionLog.xy(e.global_position)})
 
@@ -561,6 +563,15 @@ func _refresh_label() -> void:
 	else:
 		_label = String(FALLBACK_NAMES[pick % FALLBACK_NAMES.size()])
 		_label_col = col
+
+## Głos wołania (każdy peer): płeć kolegi, którego Mimik udaje u tego peera (`_label_model`; VOICE_MOCAP_PLAN.md A2).
+func call_voice() -> String:
+	_refresh_label()
+	return Player.voice_key_gender(_label_model.get_file().begins_with("female_"), "player_hurt")
+
+## Głos echa krzyku (M8): płeć tego, kto krzyknął (serwer ustala ją w `hears_scream`, peery dostają w RPC).
+func echo_voice(female: bool) -> String:
+	return Player.voice_key_gender(female, "player_hurt")
 
 ## Plik modelu postaci gracza (jak player.gd `_char3d_name` → char3d.gd `set_look`); brak pliku — mundur patrolu.
 static func _model_of(p: Node) -> String:

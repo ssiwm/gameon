@@ -69,6 +69,9 @@ zamiast syntezy, jeśli tam są. Nagrania pobiera `tools/audio_lib_fetch.py sync
 | evil_exhale | nagranie | Sonniss GDC 2018 — Variety 1 Sound Effects | Airborne Sound | sonniss-gdc-2.0 | Breaths,Male,Exhale,Ghost,Evil,Hostile,Snarl,1.wav |
 | explosion_deep_02 | nagranie | Sonniss GDC 2020 — Explosions | Stefano Cremona | sonniss-gdc-2.0 | DeepExplosion02.wav |
 | explosion_large_08 | nagranie | Sonniss GDC 2017 — Explosion Sound Pack | Gamemaster Audio | sonniss-gdc-2.0 | explosion_large_08.wav |
+| female_grunt_hit | nagranie | Sonniss GDC 2023 — The Grunts Library | Pole Position Production | sonniss-gdc-2.0 | Female 1 - Grunt - Getting Hit - Medium Intensity - Ehrlund M1.wav |
+| female_panting_nose | nagranie | Sonniss GDC 2024 — Inhale – Tanja – Character Playset | UberDuo | sonniss-gdc-2.0 | HMNBrth_Human, Adult, Female, Panting, Nose, Loop_UberDuo_INHL.wav |
+| female_scream_pain_344 | nagranie | Sonniss GDC 2023 — Screaming | 344 Audio | sonniss-gdc-2.0 | VOXScrm_Female Scream in Pain, Agony, Wounded 2_344 Audio_Screaming.wav |
 | fire_ignition_03 | nagranie | Sonniss GDC 2018 — Designed Fire | Gregor Quendel | sonniss-gdc-2.0 | Designed Fire - Impacts - Large, ignition 03.wav |
 | flutter_death_05 | nagranie | Sonniss GDC 2026 — Humanoid Creatures Vol 4 - Monstrous and Undead Creature Vocalization Sound Sets | Epic Stock Media | sonniss-gdc-2.0 | VOXReac_Construction Kit Male Flutter Death Vocal Stuttered Long 05_ESM_HC4.wav |
 | forest_night_woods | nagranie | Sonniss GDC 2024 — General Ambience Series - Nightscapes 01 | Systematic Sound | sonniss-gdc-2.0 | AMBForst_Nighttime-Woodlands Windy Trees Rustling Quiet_SYSO_SYSO009.wav |

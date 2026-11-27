@@ -300,6 +300,11 @@ jobs:
         run: |
           timeout 300 godot --headless --path prototype -- --uifittest 2>&1 | tee uifit.log
           grep -a "\[UI-FIT\] PASS (0" uifit.log
+      - name: Głos gracza wg płci (test_voice.gd)
+        run: |
+          timeout 120 godot --headless --path prototype -s tools/test_voice.gd 2>&1 | tee voice.log
+          grep -a "\[VOICE\] PASS (0" voice.log
+          ! grep -a -E "SCRIPT ERROR|Parse Error" voice.log
       - name: Kontrast notatek (test_note_contrast.gd)
         run: |
           godot --headless --path prototype -s tools/test_note_contrast.gd 2>&1 | tee notecontrast.log

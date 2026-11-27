@@ -1141,6 +1141,63 @@ def _step_water(r: Rng) -> np.ndarray:
     return d.mix(parts, n)
 
 
+def _player_voice(sfx: str = "", fk: float = 1.0, vk: float = 1.0, seed: int = 0) -> None:
+    """Głos gracza: krzyk bólu, upadek, podniesienie, zadyszka. Kobiecy (VOICE_MOCAP_PLAN.md A1): ten sam przepis z kluczami `_f`,
+    tonem ×`fk` i formantami ×`vk` (krótszy tor głosowy) — publiczny odpowiednik nagrań, gdy nie ma `audio_licensed/`."""
+    # Krzyk bólu: źródło głosowe + wibrato, formanty „a→o", lekka saturacja
+    for i in range(2):
+        r = Rng(0xE700 + i * 1871 + seed)
+        dur = (0.62, 0.42)[i]
+        n = ms(dur * 1000)
+        t = np.arange(n) / SR
+        pts = ([(0, 180), (.08, 270), (.25, 235), (.62, 160)], [(0, 250), (.05, 330), (.18, 280), (.42, 200)])[i]
+        f0 = fk * d.env_pts(n, pts) * (1 + .012 * np.sin(TAU * (6.5 + 2 * i) * t))
+        src = glottal(n, f0, r, jitter=.015 + .01 * i, shimmer=.15, breath=.18 + .1 * i)
+        v1, v2 = (("a", "o"), ("e", "a"))[i]
+        y = vowel(src, v1, bw=6.0, shift=vk) * (1 - .4 * (t / dur)) + vowel(src, v2, bw=7.0, shift=vk) * (.4 * (t / dur))
+        y *= d.env_pts(n, [(0, 0), (.02, 1), (.2 * dur / .62, .85), (.45 * dur / .62, .5), (dur, 0)])
+        y = d.saturate(y * 1.3, 1.6)
+        finalize("player_hurt%s_%d" % (sfx, i + 1), d.reverb(y, ir("close"), wet=.15), lufs=-9.0)
+
+    # Upadek (down): długie jęknięcie opadające + uderzenie ciała
+    r = Rng(0xE800 + seed)
+    n = sec(1.3)
+    t = np.arange(n) / SR
+    f0 = fk * d.env_pts(n, [(0, 210), (.2, 240), (.7, 150), (1.3, 85)]) * (1 + .02 * np.sin(TAU * 5.5 * t))
+    src = glottal(n, f0, r, jitter=.03, shimmer=.25, breath=.25)
+    y = vowel(src, "o", bw=6.0, shift=vk) * d.env_pts(n, [(0, 0), (.03, 1), (.5, .8), (1.0, .35), (1.3, 0)])
+    fall = d.mix([(thump(.22, 110, 45, .04, .07), 1.2), (d.filt(d.white(ms(250), r), "lp", 800.0) * d.env_perc(ms(250), .003, .06) * 2, .8),
+                  (ring(r, [2700, 4100, 5900], [.08, .05, .03], dur=.3), .15, .02)])
+    x = d.mix([(y, 1.0), (fall, 1.0, .55)], n)
+    finalize("player_down" + sfx, d.reverb(d.saturate(x, 1.3), ir("room"), wet=.2), lufs=-12.0, fade_out_ms=200)
+
+    # Podniesienie: gwałtowny wdech + ciepły, narastający interwał kwinty (nadzieja)
+    r = Rng(0xE900 + seed)
+    n = sec(1.1)
+    t = np.arange(n) / SR
+    inh = d.sweep(d.colored(n, r, .5), "bp", vk * d.env_pts(n, [(0, 700), (.3, 1500)]), 1.3) * d.env_pts(n, [(0, 0), (.18, .9), (.32, 0)]) * 1.3
+    chord = (d.osc("sine", 220.0, n) + .6 * d.osc("sine", 330.0, n) + .3 * d.osc("sine", 440.0, n)) * d.env_pts(n, [(0, 0), (.25, 0), (.55, .8), (1.1, 0)])
+    chord = d.lp(d.mix([(chord, 1.0)]), 1800.0)
+    x = d.mix([(inh, 1.0), (chord, .6)], n)
+    finalize("revive" + sfx, d.reverb(x, ir("room"), wet=.25), lufs=-21.0, fade_out_ms=200)
+
+    # Oddech przy wysiłku — pętla 3,0 s = 4 cykle wdech/wydech (0,75 s), okresowa
+    asset("breath_loop" + sfx, "sfx/player/breath_loop" + sfx, loop=True)
+    n = sec(3.0)
+    r = Rng(0xEA00 + seed)
+    base = d.colored(n, r, .6)
+    ex = d.circ_filter(base, lambda z: vowel(z, "a", bw=4.0, shift=vk)) * 1.0
+    cyc = n // 4
+    env = np.zeros(n)
+    for b in range(4):
+        s = b * cyc
+        inh = d.env_pts(cyc, [(0, 0), (.20, .55), (.31, 0)]) * .6
+        exh = d.env_pts(cyc, [(.30, 0), (.36, 1), (.52, .5), (.75, 0)])
+        env[s:s + cyc] = (inh + exh)[:cyc]
+    env = d.circ_filter(env, lambda z: d.lp(z, 60.0))
+    finalize("breath_loop" + sfx, ex * (0.05 + env), loop=True, lufs=-14.0)
+
+
 def build_player() -> None:
     group("sfx/player")
     surfaces = ((0xE100, "concrete", _step_concrete, -21.5), (0xE200, "metal", _step_metal, -21.5),
@@ -1156,42 +1213,8 @@ def build_player() -> None:
                (tick(r, 2200, 1.0, 20, .005), .5), (ring(r, [2900, 4400, 6100], [.06, .04, .03], dur=.2), .18, .012)], ms(450))
     finalize("land_hard", d.reverb(x, ir("close"), wet=.15), lufs=-17.5)
 
-    # Krzyk bólu: źródło głosowe + wibrato, formanty „a→o", lekka saturacja
-    for i in range(2):
-        r = Rng(0xE700 + i * 1871)
-        dur = (0.62, 0.42)[i]
-        n = ms(dur * 1000)
-        t = np.arange(n) / SR
-        pts = ([(0, 180), (.08, 270), (.25, 235), (.62, 160)], [(0, 250), (.05, 330), (.18, 280), (.42, 200)])[i]
-        f0 = d.env_pts(n, pts) * (1 + .012 * np.sin(TAU * (6.5 + 2 * i) * t))
-        src = glottal(n, f0, r, jitter=.015 + .01 * i, shimmer=.15, breath=.18 + .1 * i)
-        v1, v2 = (("a", "o"), ("e", "a"))[i]
-        y = vowel(src, v1, bw=6.0) * (1 - .4 * (t / dur)) + vowel(src, v2, bw=7.0) * (.4 * (t / dur))
-        y *= d.env_pts(n, [(0, 0), (.02, 1), (.2 * dur / .62, .85), (.45 * dur / .62, .5), (dur, 0)])
-        y = d.saturate(y * 1.3, 1.6)
-        finalize("player_hurt_%d" % (i + 1), d.reverb(y, ir("close"), wet=.15), lufs=-9.0)
-
-    # Upadek (down): długie jęknięcie opadające + uderzenie ciała
-    r = Rng(0xE800)
-    n = sec(1.3)
-    t = np.arange(n) / SR
-    f0 = d.env_pts(n, [(0, 210), (.2, 240), (.7, 150), (1.3, 85)]) * (1 + .02 * np.sin(TAU * 5.5 * t))
-    src = glottal(n, f0, r, jitter=.03, shimmer=.25, breath=.25)
-    y = vowel(src, "o", bw=6.0) * d.env_pts(n, [(0, 0), (.03, 1), (.5, .8), (1.0, .35), (1.3, 0)])
-    fall = d.mix([(thump(.22, 110, 45, .04, .07), 1.2), (d.filt(d.white(ms(250), r), "lp", 800.0) * d.env_perc(ms(250), .003, .06) * 2, .8),
-                  (ring(r, [2700, 4100, 5900], [.08, .05, .03], dur=.3), .15, .02)])
-    x = d.mix([(y, 1.0), (fall, 1.0, .55)], n)
-    finalize("player_down", d.reverb(d.saturate(x, 1.3), ir("room"), wet=.2), lufs=-12.0, fade_out_ms=200)
-
-    # Podniesienie: gwałtowny wdech + ciepły, narastający interwał kwinty (nadzieja)
-    r = Rng(0xE900)
-    n = sec(1.1)
-    t = np.arange(n) / SR
-    inh = d.sweep(d.colored(n, r, .5), "bp", d.env_pts(n, [(0, 700), (.3, 1500)]), 1.3) * d.env_pts(n, [(0, 0), (.18, .9), (.32, 0)]) * 1.3
-    chord = (d.osc("sine", 220.0, n) + .6 * d.osc("sine", 330.0, n) + .3 * d.osc("sine", 440.0, n)) * d.env_pts(n, [(0, 0), (.25, 0), (.55, .8), (1.1, 0)])
-    chord = d.lp(d.mix([(chord, 1.0)]), 1800.0)
-    x = d.mix([(inh, 1.0), (chord, .6)], n)
-    finalize("revive", d.reverb(x, ir("room"), wet=.25), lufs=-21.0, fade_out_ms=200)
+    _player_voice()
+    _player_voice("_f", fk=1.7, vk=1.17, seed=0x55)
 
     # Serce — „lub-dub": każde uderzenie to dwa sub-impulsy z opadającą wysokością; pętla = 4 uderzenia
     for key, bpm in (("heart_fast_loop", 132.0), ("heart_slow_loop", 74.0)):
@@ -1211,21 +1234,6 @@ def build_player() -> None:
         x = d.saturate(d.fold_loop(buf, loop_n), 1.6)
         finalize(key, x, loop=True, lufs=-14.5)
 
-    # Oddech przy wysiłku — pętla 3,0 s = 4 cykle wdech/wydech (0,75 s), okresowa
-    asset("breath_loop", "sfx/player/breath_loop", loop=True)
-    n = sec(3.0)
-    r = Rng(0xEA00)
-    base = d.colored(n, r, .6)
-    ex = d.circ_filter(base, lambda z: vowel(z, "a", bw=4.0)) * 1.0
-    cyc = n // 4
-    env = np.zeros(n)
-    for b in range(4):
-        s = b * cyc
-        inh = d.env_pts(cyc, [(0, 0), (.20, .55), (.31, 0)]) * .6
-        exh = d.env_pts(cyc, [(.30, 0), (.36, 1), (.52, .5), (.75, 0)])
-        env[s:s + cyc] = (inh + exh)[:cyc]
-    env = d.circ_filter(env, lambda z: d.lp(z, 60.0))
-    finalize("breath_loop", ex * (0.05 + env), loop=True, lufs=-14.0)
     bake_hybrid.player()                                    # wersje z nagrań → audio_licensed/ (gra woli je, jeśli są)
 
 
