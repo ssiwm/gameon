@@ -536,7 +536,7 @@ func _refresh_supplies() -> void:
 		var sel = i == ui._sup_sel
 		t.set_lit(sel)
 		var k = String(kinds[i])
-		t.visible = ui._sup_in_mode(k)
+		t.visible = _sup_in_mode(k)
 		var have = Arsenal.get_throwable(k)
 		var price = ui._sup_price(k)
 		t.price_label.text = ("%d" % price) + (("  +%d" % Scrap.ordered(k)) if Scrap.ordered(k) > 0 else "")
@@ -620,3 +620,101 @@ func _refresh_supplies() -> void:
 	else:
 		ui._s_action.text = (tr("Buy a box  ·  %d scrap") % price2) if Throwables.is_ammo(k2) else (tr("Buy +1  ·  %d scrap") % price2)
 		ui._act_state(ui._s_action, "ready", price2)
+
+func _buy_selected_supply() -> void:
+	ui._note_act()
+	var k := String(ui._supply_kinds()[ui._sup_sel])
+	if int(Scrap.deliveries.get(k, 0)) > 0:
+		ui._claiming = true
+		Scrap.request_claim(k)
+	elif Throwables.is_ammo(k):
+		ui._claiming = false
+		Scrap.request_order(k)                                   # amunicja: zamówienie w prasie (gotowe po misji)
+	else:
+		Scrap.request_buy_supply(k)
+
+## Indeksy kafli zaopatrzenia (w _supply_kinds) widoczne w tym trybie: ława — przedmioty, prasa — amunicja specjalna.
+func _sup_list() -> Array:
+	var out: Array = []
+	var kinds = ui._supply_kinds()
+	for i in kinds.size():
+		if _sup_in_mode(String(kinds[i])):
+			out.append(i)
+	return out
+
+## Czy rodzaj `k` należy do stanowiska: prasa — amunicja specjalna bez 40 mm, pirotechnika — granaty, miny, ładunki i 40 mm, ława — narzędzia.
+func _sup_in_mode(k: String) -> bool:
+	if k == "cleankit" and Settings.reliability_mult() <= 0.0:
+		return false                                       # bez zużycia zestaw nic nie robi (player.gd: _tick_cleankit)
+	var m := String(Throwables.KINDS[k]["mode"])
+	var forty := Throwables.is_ammo(k) and String(Ammo.from_kind(k).get("cal", "")) == "40mm"
+	match ui._mode:
+		"press":
+			return Throwables.is_ammo(k) and not forty
+		"pyro":
+			return m == "throw" or m == "place" or forty
+		_:
+			return m == "use"
+
+func _on_order_result(kind: String, ok: bool, reason: String) -> void:
+	if not ui._open:
+		return
+	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
+	match reason:
+		"station":
+			ui._say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+		"repeat":
+			ui._say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+		"serviced":
+			ui._say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
+		"ok":
+			ui._say(tr("%s collected. Remaining delivery: %d rounds.") % [nm, int(Scrap.deliveries.get(kind, 0))] if ui._claiming else tr("%s ordered — ready after the next mission (%d / %d batches in the press).") % [nm, Scrap.orders.size(), Scrap.PRESS_SLOTS], UiTheme.OK)
+			ui._success_fx()
+		"poor":
+			ui._drum.broke()
+			ui._say(tr("Not enough scrap (%d needed).") % Scrap.press_price(kind), UiTheme.DANGER)
+		"busy":
+			ui._say(tr("The press is full — %d batches per mission.") % Scrap.PRESS_SLOTS, UiTheme.MUTED)
+		"full":
+			ui._say(tr("The squad cannot carry more %s.") % nm, UiTheme.MUTED)
+		"off":
+			ui._say("No scrap in this mode.", UiTheme.MUTED)
+		_:
+			ui._say("Cannot do that.", UiTheme.DANGER)
+	ui._refresh()
+
+func _on_supply_result(kind: String, ok: bool, reason: String) -> void:
+	if not ui._open:
+		return
+	var nm := String(Throwables.KINDS[kind]["name"]) if Throwables.is_valid(kind) else kind
+	match reason:
+		"station":
+			ui._say(tr("Approach the correct station in the hideout."), UiTheme.MUTED)
+		"repeat":
+			ui._say(tr("Please wait before repeating this action."), UiTheme.MUTED)
+		"serviced":
+			ui._say(tr("This part was already replaced during this visit."), UiTheme.MUTED)
+		"ok":
+			ui._say(tr("%s bought — the squad now carries %d.") % [nm, Arsenal.get_throwable(kind)], UiTheme.OK)
+			ui._success_fx()
+		"poor":
+			ui._drum.broke()
+			ui._say(tr("Not enough scrap (%d needed).") % Throwables.price_of(kind), UiTheme.DANGER)
+		"full":
+			ui._say(tr("The squad cannot carry more %s.") % nm, UiTheme.MUTED)
+		"off":
+			ui._say("No scrap in this mode.", UiTheme.MUTED)
+		_:
+			ui._say("Cannot do that.", UiTheme.DANGER)
+	ui._refresh()
+
+## Taśma sterowania prasy, pirotechniki i zaopatrzenia ławy (workshop_ui.gd `_controls_hint` wybiera widok stanowiska).
+func hint(pad: bool) -> String:
+	var nav = ui._nav_cap(pad)
+	if ui._mode == "press":
+		return tr("%s select   ·   %s order a batch   ·   %s close   ·   or click") % [nav, ui._cap("menu_accept", pad), ui._cap("menu_back", pad)]
+	if ui._mode == "pyro":
+		return tr("%s select   ·   %s / %s fuse   ·   %s buy / order   ·   %s close   ·   or click") % [
+			nav, ui._cap("menu_slot_1", pad), ui._cap("menu_slot_2", pad), ui._cap("menu_accept", pad), ui._cap("menu_back", pad)]
+	return tr("%s select   ·   %s buy   ·   %s arms / supplies   ·   %s close   ·   or click") % [
+		nav, ui._cap("menu_accept", pad), ui._cap("menu_tab", pad), ui._cap("menu_back", pad)]

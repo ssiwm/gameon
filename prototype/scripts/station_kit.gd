@@ -264,3 +264,32 @@ static func action_boxes(state: String) -> Dictionary:
 		b.content_margin_right = 10
 		out[st] = b
 	return out
+
+## Następny kafel w kierunku kroku `step` (±1 poziomo, ±COLS pionowo) wg położenia na ekranie: regał prasy ma półki różnej długości,
+## skrzynia 4 przegrody w rzędzie, siatka ławy 2 kolumny — światło idzie za fokusem tak, jak kafle stoją. -1, gdy w tę stronę nic nie ma.
+static func spatial_step(tiles: Array, vis: Array, cur: int, step: int) -> int:
+	if vis.is_empty() or not vis.has(cur):
+		return int(vis[0]) if not vis.is_empty() else -1
+	var horiz := absi(step) == 1
+	var c := (tiles[cur] as Control).get_global_rect().get_center()
+	var best := -1
+	var best_d := INF
+	for i in vis:
+		if int(i) == cur:
+			continue
+		var p := (tiles[int(i)] as Control).get_global_rect().get_center()
+		var d := p - c
+		var along := d.x if horiz else d.y
+		var across := d.y if horiz else d.x
+		if signf(along) != signf(float(step)) or absf(along) < 4.0:
+			continue
+		if horiz and absf(across) > 8.0:
+			continue                                       # w poziomie tylko ten sam rząd (półka, rząd przegród)
+		var score := absf(along) + absf(across) * 3.0
+		if score < best_d:
+			best_d = score
+			best = int(i)
+	if best < 0 and horiz:
+		var at := vis.find(cur) + signi(step)                 # koniec rzędu: dalej po kolejności (następna półka)
+		best = int(vis[at]) if at >= 0 and at < vis.size() else -1
+	return best

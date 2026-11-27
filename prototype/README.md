@@ -468,7 +468,7 @@ scripts/
   support_beam.gd   # stempel `!` nad strefą zawału `^` (D3), w sztolni 1.1 i na `t_mine`. Postacie przechodzą przed belką, pasek akcji podpowiada, jak ją złamać. Belkę ranią kule, kilof i wybuchy (granat z ~1 m, ładunek burzący pełnym promieniem). Po złamaniu chodnik zapada się po 0,8 s (level.gd `cave_in`).
   sight.gd          # promień przez dziury przegród: wzrok wrogów, latarka, lampy, ćmy, okluzja dźwięku (pociski — projectile.gd)
   workshop_ui.gd    # panel warsztatu (złom), parts.gd — części broni w gniazdach (zakup drużyny, montaż gracza)
-  stations/         # widoki stanowisk panelu: bench_view (zakładka ARMS — ława, karta broni), supply_view (ława, prasa, pirotechnika), service_view (konserwacja), lab_view (pracownia, tokarka), locker_view (szafka), station_widgets (kafle, paski, podgląd postaci)
+  stations/         # widoki stanowisk panelu: bench_view (zakładka ARMS — ława, karta broni), supply_view (ława, prasa, pirotechnika), service_view (konserwacja), lab_view (pracownia, tokarka), locker_view (szafka), station_widgets (kafle, paski, podgląd postaci), card_fx (portfel, udana operacja, pukanie do D-7); każdy widok podaje taśmę sterowania `hint(pad)`
   station.gd        # wspólna klasa 7 stanowisk kryjówki (zasięg, [E], uśpienie, sygnał left_range); workshop.gd, *_bench.gd, locker_station.gd — dane stanowisk
   station_shot.gd   # ujęcie kamery świata na stół stanowiska po [E] (WORKSHOP_IMMERSION_PLAN.md R1): oko, pochylenie, wolny od karty pas ekranu, tempo najazdu
   station_*.gd      # rysunki kart stanowisk (STATION_CARDS_PLAN.md): kit (tabliczka, licznik, pieczątka, taśma), supply_art, service_art, lab_art, noise; vu_meter.gd

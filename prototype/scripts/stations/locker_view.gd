@@ -453,3 +453,12 @@ func _refresh_perks() -> void:
 	else:
 		ui._p_action.text = tr("Equip in slot %d") % (ui._perk_slot + 1)
 		ui._p_action.disabled = false
+
+## Taśma sterowania szafki: perki albo wygląd (workshop_ui.gd `_controls_hint` wybiera widok stanowiska).
+func hint(pad: bool) -> String:
+	var nav = ui._nav_cap(pad)
+	if ui._page == 3:
+		return tr("%s select   ·   %s wear   ·   %s perks / look   ·   %s close   ·   or click") % [
+			nav, ui._cap("menu_accept", pad), ui._cap("menu_tab", pad), ui._cap("menu_back", pad)]
+	return tr("%s select   ·   %s / %s perk slot   ·   %s equip   ·   %s perks / look   ·   %s close   ·   or click") % [
+		nav, ui._cap("menu_slot_1", pad), ui._cap("menu_slot_2", pad), ui._cap("menu_accept", pad), ui._cap("menu_tab", pad), ui._cap("menu_back", pad)]
