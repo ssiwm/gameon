@@ -1,17 +1,10 @@
-extends Node2D
+extends "res://scripts/station.gd"
 ## Pracownia elektroniki i próbek w kryjówce (znacznik „c", WORKSHOP_PLAN.md stanowisko 5, od 1.7.357): stół z aparaturą na górze, pod
 ## radiostacją. Gdy lokalny gracz stoi przy nim, HUD podpowiada [E]; naciśnięcie otwiera panel warsztatu w trybie „lab" (workshop_ui.gd) —
 ## badania części broni specjalnych za próbki z elit i bossów (Scrap.request_research), gotowe po następnej udanej misji.
 
-const Sprites := preload("res://scripts/sprites.gd")
-const ItemsHd := preload("res://scripts/items_hd.gd")
-const Interact := preload("res://scripts/interact.gd")
-const UiTheme := preload("res://scripts/ui_theme.gd")
-const Actions := preload("res://scripts/actions.gd")
-
 const REACH_X := 32.0
 const REACH_Y := 40.0
-const TILE := 16.0
 ## Wyposażenie: stół z aparaturą, regał z częściami, skaner na stole — [nazwa przedmiotu HD, przesunięcie w kaflach]
 const PROPS := [["table", 0.0], ["shelf", 1.6], ["scanner", -0.2]]   ## zapas, gdy brak modeli 3D stanowiska
 ## Modele 3D stanowiska (view3d.gd, grupa „station_props”; źródła: Meshy — stół z aparaturą i gablota z preparatami, Poly Haven CC0 —
@@ -21,25 +14,13 @@ const PROPS := [["table", 0.0], ["shelf", 1.6], ["scanner", -0.2]]   ## zapas, g
 const MODELS := [["lab_desk", 14.0, -1.0], ["specimen_case", -17.0, -1.25], ["stool_metal", 9.0, -0.45]]
 const MODEL_CHECK := "res://art/items3d/lab_desk.glb"
 
-var station_props: Array = []
-
-var local_in_range := false
-
-func _ready() -> void:
-	add_to_group("lab_bench")
-	add_to_group(Interact.GROUP)
-	z_index = 0
-	if ResourceLoader.exists(MODEL_CHECK):
-		station_props = MODELS                                # modele 3D (view3d) zamiast przedmiotów HD
-		add_to_group("station_props")
-	elif Sprites.newitem:
-		for pr in PROPS:
-			if not ItemsHd.has(String(pr[0])):
-				continue
-			var h := Node2D.new()
-			h.position = Vector2(float(pr[1]) * TILE, 0.0)
-			add_child(h)
-			ItemsHd.make(String(pr[0]), h)                   # widok 3D zamienia przedmiot HD na model z art/items3d/
+func _init() -> void:
+	mode = "lab"
+	group = "lab_bench"
+	reach = Vector2(REACH_X, REACH_Y)
+	models = MODELS
+	model_check = MODEL_CHECK
+	props = PROPS
 
 ## Uśpione stanowisko (HUB_LAYOUT_PLAN.md E4): pracownia bez próbek, badań i części — [E] nic nie robi, a widok 3D gasi lampę nad nim, nakrywa je plandeką
 ## i przygasza tabliczkę (view3d.gd `_sync_dormant`).
@@ -54,28 +35,3 @@ func interact_hint(_me: Node2D) -> Dictionary:
 	if Scrap.has_lab_weapon():
 		return {"text": tr("[%s]  Lab  ·  %d samples  ·  research for special weapons") % [k, Scrap.samples], "col": UiTheme.ACCENT}
 	return {"text": tr("[%s]  Lab  ·  %d samples  ·  buy a special weapon at the workshop first") % [k, Scrap.samples], "col": UiTheme.ACCENT}
-
-## Oferta [E] (interact.gd): stanowisko otwiera kartę, gdy gracz stoi w zasięgu, a panel stanowisk jest zamknięty. Ustępuje broni,
-## ratowaniu i pracom w misji (priorytet P_STATION).
-func interact_offer(me: Node2D) -> Dictionary:
-	if me.dead or dormant() or absf(me.global_position.x - global_position.x) > REACH_X or absf(me.global_position.y - global_position.y) > REACH_Y:
-		return {}
-	var ui := get_tree().get_first_node_in_group("workshop_ui")
-	if ui != null and ui.is_open():
-		return {}
-	return Interact.offer(self, me, Interact.Kind.PRESS, Interact.P_STATION, true, Rect2(global_position + Vector2(-18.0, -24.0), Vector2(36.0, 24.0)))
-
-func _physics_process(_delta: float) -> void:
-	local_in_range = false
-	var me: Node2D = null
-	for p in get_tree().get_nodes_in_group("players"):
-		if not p.is_bot and p.is_multiplayer_authority() and not p.dead and not p.is_queued_for_deletion():
-			me = p
-			break
-	if me == null or dormant():
-		return
-	local_in_range = absf(me.global_position.x - global_position.x) <= REACH_X and absf(me.global_position.y - global_position.y) <= REACH_Y
-	if local_in_range and Interact.pressed(self):
-		var ui := get_tree().get_first_node_in_group("workshop_ui")
-		if ui != null and not ui.is_open():
-			ui.open("lab")

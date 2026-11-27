@@ -394,7 +394,9 @@ var _mode := "bench"                  ## „bench" — ława (ARMS, SUPPLIES), �
 const FIRST_PICK := "m83_drum75"        ## pierwszy zakup na ławie: po udanej 1.1 stać na niego, a M-83 ma każdy nowy gracz
 const MODE_PAGES := {"bench": [0, 1], "locker": [2, 3], "service": [0], "press": [1], "pyro": [1], "lab": [0], "lathe": [0]}
 const MODE_GROUP := {"bench": "workshop", "locker": "locker_station", "service": "service_bench", "press": "press_bench", "pyro": "pyro_bench", "lab": "lab_bench",
-	"lathe": "lathe_bench"}      ## grupa stanowiska: panel zamyka się, gdy gracz od niego odejdzie
+	"lathe": "lathe_bench"}      ## grupa stanowiska: panel wiąże się przy otwarciu z jego węzłem i zamyka na `left_range` (station.gd)
+var _station: Node2D                 ## stanowisko otwartego panelu (station.gd); jego `left_range` zamyka panel
+var _reach_check := false            ## pierwsza klatka po otwarciu: sprawdzić, czy gracz w ogóle stoi w zasięgu stanowiska
 const SERVICE_IDS := ["clean", "barrel", "springs"]
 var _title: Label
 var _sup_sel := 0
@@ -1082,6 +1084,7 @@ func open(mode := "bench") -> void:
 	var allowed := _sup_list()
 	if not allowed.has(_sup_sel) and not allowed.is_empty():
 		_sup_sel = int(allowed[0])
+	_bind_station()
 	Settings.block_game_input(true)
 	_prev_mouse = Input.mouse_mode
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE            # w grze celownik zastępuje kursor; panel potrzebuje myszy
@@ -1090,9 +1093,29 @@ func open(mode := "bench") -> void:
 	if _first_pick() != "" and _opt >= 0:
 		_say(tr("Good first upgrade: 45 more rounds before you have to reload."), UiTheme.OK)
 
+## Wiąże panel ze stanowiskiem trybu (R0.2, K4): odejście od niego, śmierć albo uśpienie stanowiska wysyła `left_range` i panel się
+## zamyka. Gracz poza zasięgiem w pierwszej klatce po otwarciu — panel zamyka się od razu, jak dawniej (`_reach_check`).
+func _bind_station() -> void:
+	_unbind_station()
+	_station = get_tree().get_first_node_in_group(String(MODE_GROUP[_mode])) as Node2D
+	if _station == null:
+		return
+	if _station.has_signal("left_range"):
+		_station.connect("left_range", _on_left_range)
+	_reach_check = true
+
+func _unbind_station() -> void:
+	if _station != null and is_instance_valid(_station) and _station.has_signal("left_range") and _station.is_connected("left_range", _on_left_range):
+		_station.disconnect("left_range", _on_left_range)
+	_station = null
+
+func _on_left_range() -> void:
+	close()
+
 func close() -> void:
 	if not _open:
 		return
+	_unbind_station()
 	_remembered[_mode] = _sel
 	_session += 1
 	_workbench.stage.cancel_mount()
@@ -1111,11 +1134,12 @@ func _process(delta: float) -> void:
 	_msg_t = maxf(0.0, _msg_t - delta)
 	if _msg_t <= 0.0:
 		_msg.text = ""
-	# panel zamyka się, gdy gracz odejdzie od ławy / zginie / misja się zmieni (przerwane czyszczenie trzeba zacząć od nowa)
-	var wk := get_tree().get_first_node_in_group(String(MODE_GROUP[_mode]))
-	if wk == null or not wk.local_in_range or not NoiseMgr.safe_zone:
+	# panel zamyka się, gdy gracz odejdzie od stanowiska albo zginie (`left_range`, _bind_station), stanowisko zniknie albo misja się
+	# zmieni (przerwane czyszczenie trzeba zacząć od nowa)
+	if _station == null or not is_instance_valid(_station) or not NoiseMgr.safe_zone or (_reach_check and not bool(_station.get("local_in_range"))):
 		close()
 		return
+	_reach_check = false
 	tick_clean(delta)
 	_hub_events()
 	var hud := get_parent() as Control
