@@ -72,6 +72,7 @@ func run(m: Node) -> void:
 	await _strip_frame()
 	await _hub_log()
 	await _station_focus()
+	await _station_state()
 	await _layout()                                  # na końcu: przegląda wszystkie stanowiska i kafle, zmienia wybory w panelu
 	print("[WORKSHOP-TEST] ==== %d/%d OK, błędów: %d ====" % [total - failed, total, failed])
 	Audio.quit_game(1 if failed else 0)
@@ -132,6 +133,123 @@ func _station_focus() -> void:
 		await get_tree().process_frame
 	check("ława ARMS na cały ekran: bez wolnego pasa, pełna zasłona", ui.focus_band() == Vector2.ZERO and ui._shade.full)
 	ui.close()
+
+## Stan stanowisk w świecie (WORKSHOP_IMMERSION_PLAN.md R4, station_state3d.gd): rzeczy na meblach idą za `Scrap` i `Profile` — pudełka
+## zamówień na prasie, po misji gotowe na półce, po odbiorze nic; przedmiot w tokarce przy zleceniu (i się kręci); słoje wg próbek do 6
+## i geoda; broń w imadle przy nowej części, po obejrzeniu nic; kartka na szafce przy wolnym slocie. Wszystko za płaszczyzną gry.
+## Bez widoku 3D: stany budowane na pustym korzeniu jak w view3d.gd `_sync_station_props`.
+func _station_state() -> void:
+	var SS := preload("res://scripts/station_state3d.gd")
+	var st := {}
+	var roots: Array = []
+	for g in [["press", "press_bench"], ["lathe", "lathe_bench"], ["lab", "lab_bench"], ["bench", "workshop"], ["locker", "locker_station"]]:
+		var n := get_tree().get_first_node_in_group(String(g[1]))
+		var r := Node3D.new()
+		main.add_child(r)
+		roots.append(r)
+		st[g[0]] = SS.new(String(g[0]), r, n.get("models"))
+	var sync_all := func() -> void:
+		for k in st:
+			st[k].sync(0.1)
+	Scrap.orders = []
+	Scrap.deliveries = {}
+	Scrap.lathe = []
+	Scrap.samples = 0
+	Scrap.geodes = 0
+	Profile.xp = Profile.xp_for_level(4)
+	Profile.is_new("perk:quiet_steps")
+	for pid in Scrap.parts:
+		Profile.mark_seen("part:" + String(pid))
+	for id in ["quiet_steps", "blood_flow", "wide_arm", "smith", "cold_blood", "scout", "second_chance", "veteran"]:
+		Profile.mark_seen("perk:" + id)
+	Profile.equipped = ["quiet_steps", "blood_flow"]
+	sync_all.call()
+	var empty := 0
+	for k in st:
+		empty += st[k].count()
+	check("R4: bez zamówień, zleceń, próbek i nowości — stanowiska puste (%d)" % empty, empty == 0)
+	# prasa: zamówienie → pudełko na blacie, misja → gotowe na półce, odbiór → nic
+	station("press_bench")
+	Scrap.bank = 4000
+	Arsenal.stock["ammo_slug"] = 0
+	Arsenal.stock["ammo_hot762"] = 0
+	Scrap.request_order("ammo_slug")
+	Scrap.request_order("ammo_hot762")
+	sync_all.call()
+	var top_y: float = st["press"].holder.get_child(0).position.y if st["press"].count() > 0 else 0.0
+	check("R4 prasa: dwa zamówienia — dwa pudełka na blacie (%d)" % st["press"].count(), Scrap.orders.size() == 2 and st["press"].count() == 2)
+	var maxn := int(Throwables.KINDS["ammo_slug"]["max"])
+	Arsenal.stock["ammo_slug"] = maxn - 3
+	Scrap.bank_loot(0)
+	sync_all.call()
+	var shelf_ok := false
+	for c in st["press"].holder.get_children():
+		shelf_ok = (c as Node3D).position.y < top_y - 0.5
+	check("R4 prasa: po misji partia bez miejsca czeka na półce (%d rzeczy, półka niżej niż blat)" % st["press"].count(),
+		Scrap.orders.is_empty() and Scrap.deliveries.has("ammo_slug") and st["press"].count() >= 1 and shelf_ok)
+	Arsenal.stock["ammo_slug"] = 0
+	Scrap.request_claim("ammo_slug")
+	sync_all.call()
+	check("R4 prasa: po odbiorze półka pusta", not Scrap.deliveries.has("ammo_slug") and st["press"].count() == 0)
+	# tokarka: zlecenie → przedmiot w uchwycie, kręci się
+	Scrap.lathe = ["lr7_lens"]
+	sync_all.call()
+	var spin: Node3D = st["lathe"].spin
+	var a0 := spin.rotation.x if spin != null else 0.0
+	st["lathe"].sync(0.1)
+	check("R4 tokarka: zlecenie — przedmiot w uchwycie się kręci", st["lathe"].count() > 0 and spin != null and not is_equal_approx(spin.rotation.x, a0))
+	Scrap.lathe = []
+	sync_all.call()
+	check("R4 tokarka: bez zlecenia stoi pusta", st["lathe"].count() == 0 and st["lathe"].spin == null)
+	# pracownia: słoje wg próbek (do 6), geoda
+	Scrap.samples = 2
+	sync_all.call()
+	var n2: int = st["lab"].count()
+	Scrap.samples = 6
+	sync_all.call()
+	var n6: int = st["lab"].count()
+	Scrap.samples = 20
+	sync_all.call()
+	check("R4 pracownia: słoje rosną z próbkami (%d → %d) i kończą się na 6" % [n2, n6], n2 > 0 and n6 == n2 * 3 and st["lab"].count() == n6)
+	Scrap.geodes = 1
+	sync_all.call()
+	check("R4 pracownia: geoda na blacie", st["lab"].count() == n6 + 1)
+	# ława: nowa część → broń w imadle i część obok; obejrzana → nic
+	Scrap.parts["m83_rpk40"] = true
+	Profile.seen.erase("part:m83_rpk40")
+	sync_all.call()
+	check("R4 ława: nowa część %s — broń w imadle (%d rzeczy)" % [SS.bench_part(), st["bench"].count()], SS.bench_part() == "m83_rpk40" and st["bench"].count() >= 2)
+	Profile.mark_seen("part:m83_rpk40")
+	sync_all.call()
+	check("R4 ława: część obejrzana — imadło puste", st["bench"].count() == 0)
+	# szafka: wolny slot i perk do założenia → kartka
+	Profile.equipped = ["quiet_steps", ""]
+	sync_all.call()
+	check("R4 szafka: wolny slot — kartka na drzwiach", SS.locker_waiting() and st["locker"].count() > 0)
+	Profile.equipped = ["quiet_steps", "blood_flow"]
+	sync_all.call()
+	check("R4 szafka: sloty pełne, perki obejrzane — bez kartki", not SS.locker_waiting() and st["locker"].count() == 0)
+	# wszystko za płaszczyzną gry (pas graczy z = 0): stan na pełno i przód najbliższej rzeczy
+	Scrap.orders = ["ammo_slug", "ammo_hot762", "ammo_us"]
+	Scrap.deliveries = {"ammo_mag12": 6}
+	Scrap.lathe = ["lr7_lens"]
+	Scrap.parts["m83_rpk40"] = true
+	Profile.seen.erase("part:m83_rpk40")
+	Profile.equipped = ["", ""]
+	sync_all.call()
+	var front := -INF
+	for k in st:
+		for mi in st[k].holder.find_children("*", "MeshInstance3D", true, false):
+			var xf: Transform3D = st[k].root.global_transform.affine_inverse() * (mi as MeshInstance3D).global_transform
+			front = maxf(front, (xf * (mi as MeshInstance3D).get_aabb()).end.z)
+	check("R4: rzeczy stanu za płaszczyzną gry (przód %.2f m)" % front, front < -0.4)
+	for r in roots:
+		r.queue_free()
+	Scrap.orders = []
+	Scrap.deliveries = {}
+	Scrap.lathe = []
+	Scrap.geodes = 0
+	Scrap.samples = 20
 
 ## Dziennik kryjówki (plan układu kryjówki E0): wejście, próbka pozycji co HUB_POS_EVERY s i otwarty panel stanowiska; poza kryjówką cisza.
 func _hub_log() -> void:
