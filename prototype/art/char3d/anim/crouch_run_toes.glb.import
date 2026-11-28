@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://vsydpihv30sh"
-path="res://.godot/imported/crouch_walk_toes.glb-73ebdf6884dd7152a7e99b4b60ea016e.scn"
+uid="uid://bvagopqpuh7sb"
+path="res://.godot/imported/crouch_run_toes.glb-feeb43d0e0d75738eeab17b2124507a8.scn"
 
 [deps]
 
-source_file="res://art/char3d/anim/crouch_walk_toes.glb"
-dest_files=["res://.godot/imported/crouch_walk_toes.glb-73ebdf6884dd7152a7e99b4b60ea016e.scn"]
+source_file="res://art/char3d/anim/crouch_run_toes.glb"
+dest_files=["res://.godot/imported/crouch_run_toes.glb-feeb43d0e0d75738eeab17b2124507a8.scn"]
 
 [params]
 

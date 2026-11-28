@@ -31,7 +31,7 @@ const UPPER := ["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2", "mixa
 ## bounce: ile pionowego kołysania bioder z klipu zostaje (1 = całe). Sprint z biblioteki kołysze ciałem o 11 cm, a z barkiem idzie chwyt broni,
 ##   czyli punkt, z którego gra liczy celowanie i wylot pocisku; stopy zostają na torze z klipu (IK nóg).
 const CLIPS := {
-	# Postój i marsz w kucaniu z mocapu 100STYLE (Swat_ID, OnToesCrouched_FW; VOICE_MOCAP_PLAN.md B2, art_src/animations/100style/SOURCE.md).
+	# Postój i marsz w kucaniu z mocapu 100STYLE (Swat_ID, OnToesCrouched_FR; VOICE_MOCAP_PLAN.md B2, art_src/animations/100style/SOURCE.md).
 	"idle": {"file": "idle_swat", "upper": 0.5},
 	"run": {"file": "run", "step": true, "phase0": 0.0, "upper": 0.55, "bounce": 0.8},
 	# Podział stanu „run” (char3d.gd `_clip_ws`, CHARACTER_QUALITY_PLAN.md Q2): trucht przy niższej prędkości (krótszy krok, mniejsze
@@ -39,7 +39,7 @@ const CLIPS := {
 	"run_jog": {"file": "jog", "step": true, "phase0": 0.0, "upper": 0.45, "bounce": 0.8},
 	"run_back": {"file": "jog", "step": true, "phase0": 0.0, "upper": 0.25, "bounce": 0.7},
 	"crouch": {"file": "crouch", "upper": 0.35, "drop": 0.05},
-	"crouch_walk": {"file": "crouch_walk_toes", "step": true, "phase0": 0.0, "upper": 0.5, "drop": 0.56},   # nagranie skrada się wyżej niż hitbox kucania
+	"crouch_walk": {"file": "crouch_run_toes", "step": true, "phase0": 0.0, "upper": 0.5, "drop": 0.52},   # nagranie biegnie wyżej niż hitbox kucania
 	"revive": {"file": "kneel", "hold": [0.3, 1.0, 3.6, 0.4], "arms": true},
 	"push": {"file": "push", "step": true, "phase0": 0.0, "arms": true},          # Push_Loop (UAL1): pchanie skrzyni oburącz, broń schowana
 	"down": {"file": "down", "scrub": [0.15, 1.65], "drop": -0.05, "calm_legs": [0.85, 1.6]},
@@ -83,6 +83,14 @@ static func has(state: String, set_name := "player") -> bool:
 ## Parametr klipu danego stanu z tabeli zestawu (np. "drop").
 static func param(state: String, key: String, default: float, set_name := "player") -> float:
 	return float(((SETS[set_name] as Dictionary).get(state, {}) as Dictionary).get(key, default))
+
+## Plik klipu stanu z podmianą z linii poleceń i znacznik `rev` (klucz pamięci podręcznej pomiarów klipu, np. długości kroku w char3d.gd).
+static func file_key(state: String, set_name := "player") -> String:
+	var o := _override(state)
+	if not o.is_empty():
+		return "%s:%s" % [o[0], "rev" if bool(o[1]) else ""]
+	var c: Dictionary = (SETS[set_name] as Dictionary).get(state, {})
+	return "%s:%s" % [c.get("file", ""), "rev" if bool(c.get("rev", false)) else ""]
 
 ## Klip źródłowy stanu (pusty słownik, gdy stan nie ma klipu albo brak pliku).
 static func _source(state: String, set_name := "player") -> Dictionary:

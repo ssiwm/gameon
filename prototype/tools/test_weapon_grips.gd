@@ -13,7 +13,7 @@ const GUNS := ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "soko
 const AIMS := [-80, -50, 0, 50, 65, 75, 85]
 const ELBOW_STEEP_DEG := 60.0               ## od tego kąta głowa leży na drodze ramienia (niżej łokieć za głową jest z boku, przy policzku)
 const ELBOW_BACK_M := 0.12                   ## łokieć najwyżej tyle za środkiem głowy (potylica), mierzone wzdłuż przodu postaci
-const ELBOW_STEP_M := 0.15                   ## przeciąganie celownika ~3°/kl.: łokieć bez przeskoku (tło z ruchu barku do ~0,12 m; przed 1.7.710 skok o ~0,43 m przy 50–70°)
+const ELBOW_STEP_M := 0.05                   ## przeciąganie celownika ~3°/kl.: łokieć bez przeskoku (od 1.7.711 do ~0,03 m; przed 1.7.710 skok o ~0,43 m przy 50–70°, potem 0,12 m od skokowego cofania broni i kierunku łokcia)
 var c: GripChar
 var failures := 0
 var samples := 0
