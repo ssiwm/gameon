@@ -1,6 +1,6 @@
 # Warsztat w świecie — plan refaktoryzacji stanowisk Kryjówki na immersyjne
 
-**Stan (2026-11-27):** R0 wdrożone w 1.7.700, domknięte w 1.7.703 (R0b: `workshop_ui.gd` 998 linii, `view.hint(pad)`), R1 w 1.7.701, R5 w 1.7.702 (`hub_station_end`: `time`, `first_act`). Dalej: playtest i decyzje o R2–R4. Podstawa: main 1.7.698 (`4be53cc8`). Kontynuuje `WORKSHOP_PLAN.md` (decyzja 5
+**Stan (2026-11-27):** R0 wdrożone w 1.7.700, domknięte w 1.7.703 (R0b: `workshop_ui.gd` 998 linii, `view.hint(pad)`), R1 w 1.7.701, R5 w 1.7.702 (`hub_station_end`: `time`, `first_act`), R4 w 1.7.712 (przed playtestem, na prośbę — tylko odczyt danych). Dalej: playtest i decyzje o R2–R3. Podstawa: main 1.7.698 (`4be53cc8`). Kontynuuje `WORKSHOP_PLAN.md` (decyzja 5
 „kamera na blat” — przyjęta 2026-10-22, nigdy nie zrobiona w kamerze świata) i `STATION_CARDS_PLAN.md` (E0–E5 — karty już
 w nocnej palecie, tylko prezentacja). Zmienia się **prezentacja i struktura kodu**; `Scrap.*`, `Profile.*`, ceny, serwer i dane zostają
 (GDD §16.0a: bez nowych stanowisk, walut i warstw zużycia do Gate 0).
@@ -129,6 +129,19 @@ Tylko odczyt istniejących danych:
 - szafka: drzwi uchylone, gdy właściciel ma niewydany poziom perków.
 
 **Testy:** `--workshoptest` — stan modeli zgodny ze `Scrap` po zamówieniu, misji i odbiorze; `test_front.gd` — nic nie wchodzi w pas gry.
+
+**Wdrożone w 1.7.712** (`station_state3d.gd`, view3d.gd `_sync_station_state`). Miejsca na meblach zmierzone promieniem w dół w siatkę
+modeli (wierzch blatu prasy 12,2 px, łoże tokarki, blat pracowni 9,9 px, ławy 13,1 px, lico drzwi szafki z ≈ 0,35). Dwie zmiany względem planu:
+- **ława:** nie „zawsze broń gracza w imadle” (gracz i tak trzyma ją w dłoniach, a model ławy ma już karabin na stojaku), tylko sygnał
+  „coś czeka”: gdy drużyna ma nową część, której gracz nie obejrzał (kropka „nowe” na karcie), jego broń z obecnym montażem stoi w imadle,
+  a część leży obok; po obejrzeniu na ławie znika;
+- **szafka:** `locker_row` to jedna bryła ze środkową szafką otwartą na stałe — drzwi nie da się uchylić bez nowego modelu, więc sygnałem
+  jest kartka z czerwonym „!” na lewych drzwiach (odblokowany, nieobejrzany perk albo wolny slot i perk do założenia).
+Prasa: zamówienia — pudełka na blacie (do 3), gotowe partie bez miejsca w zapasie — zamknięte pudełka z banderolą na dolnej półce. Tokarka:
+stalowy wałek w szczękach uchwytu kręci się (1,6 obr./s), wióry na łożu. Pracownia: słoje (szkło, mętny płyn, kształt w środku) wg próbek,
+najwyżej 6, i geoda na blacie. Stan liczony co klatkę jako podpis; przebudowa tylko przy zmianie. `--workshoptest`: 13 sprawdzeń R4
+(zamówienie, misja, odbiór, zlecenie, próbki, geoda, nowa część, sloty perków, wszystko ≥ 0,4 m za płaszczyzną gry); zrzuty
+`--stateshots=KATALOG` (okno, zapis profilu i banku wyłączony).
 
 ### R5 — pomiar
 

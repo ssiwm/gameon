@@ -55,6 +55,7 @@ const Pulse3D := preload("res://scripts/pulse3d.gd")
 const PX := Level3D.PX
 const FOV := 40.0
 const StationShot := preload("res://scripts/station_shot.gd")
+const StationState3D := preload("res://scripts/station_state3d.gd")
 const ENEMY_MODELS_PER_FRAME := 1        ## nowe modele wrogów na klatkę poza budową mapy (`_sync_enemies`)
 const ENEMY_RESCAN_EVERY := 30           ## klatki: zapasowy przegląd grup wrogów (`_sync_enemies`), poza tym tylko po dodaniu węzła z `view_info`
 const OFFSCREEN_ENEMY_EVERY := 4          ## wróg poza kadrem: pełna synchronizacja co tyle klatek (rozłożona po wrogach), z zebraną deltą
@@ -655,6 +656,7 @@ func _tick(delta: float) -> void:
 	if warm == 2:
 		return
 	_sync_station_props()
+	_sync_station_state(delta)
 	tp = _tp("station_props", tp)
 	if warm == 3:
 		return
@@ -2753,6 +2755,21 @@ func _sync_station_props() -> void:
 			m.position = Vector3(float(e[1]) * PX, 0.0, float(e[2]))
 			root.add_child(m)
 		_station_props3d[n.get_instance_id()] = root
+		if String(n.get("mode")) in STATE_MODES:
+			_station_state[n.get_instance_id()] = StationState3D.new(String(n.get("mode")), root, n.get("station_props"), _item_model)
+
+## Stan stanowisk w świecie (WORKSHOP_IMMERSION_PLAN.md R4, station_state3d.gd): pudełka na prasie, przedmiot w tokarce, słoje w pracowni,
+## broń w imadle, kartka na szafce — przebudowa tylko przy zmianie `Scrap` / `Profile`, obrót wałka co klatkę.
+const STATE_MODES := ["press", "lathe", "lab", "bench", "locker"]
+var _station_state := {}                    ## id węzła stanowiska → StationState3D
+
+func _sync_station_state(delta: float) -> void:
+	for id in _station_state.keys():
+		var st = _station_state[id]
+		if not is_instance_valid(st.root):
+			_station_state.erase(id)
+			continue
+		st.sync(delta)
 
 func _hp_mat(col: Color, metal := 0.4, rough := 0.7) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()

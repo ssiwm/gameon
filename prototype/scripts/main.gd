@@ -1468,6 +1468,8 @@ func _handle_cmdline() -> void:
 		_perf_run(perf_secs, shot_col)
 	if _has_arg_prefix("--ekeyshots"):
 		add_child(load("res://tools/shot_interact_key.gd").new())          # zrzuty znacznika [E] (INTERACT_KEY_PLAN.md K4)
+	if _has_arg_prefix("--stateshots"):
+		add_child(load("res://tools/shot_station_state.gd").new())         # zrzuty stanu stanowisk w świecie (WORKSHOP_IMMERSION_PLAN.md R4)
 	if shot_path != "":
 		_take_shot(shot_path, shot_col, shot_delay, shot_depart, shot_flicker, shot_demo, shot_ws, shot_result, shot_boss, shot_codex)
 	if ridetest:
