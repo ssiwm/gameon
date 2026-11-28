@@ -1,5 +1,6 @@
 extends SceneTree
 ## Kontakt dłoni i anatomia ramion w proceduralnych pozach TPP, w tym skrajne kąty, zwrot, przeładowanie i kilof.
+## Łokcie przy celowaniu w górę (0–85°): przed potylicą (nie za głową) i bez przeskoku między klatkami przy przeciąganiu celownika.
 ## godot --headless --path prototype -s tools/test_weapon_grips.gd → PASS
 class GripChar extends "res://scripts/char3d.gd":
 	var targets := {}
@@ -9,7 +10,10 @@ class GripChar extends "res://scripts/char3d.gd":
 
 const LOOKS := ["male_scav", "female_scav", "male_hazmat", "female_hazmat", "male_medic", "female_medic"]
 const GUNS := ["m83", "spread12", "p64", "srut8", "lr7", "hkm9", "gniew4", "sokol6", "widmo1", "ciegno6", "maczeta", "kilof"]
-const AIMS := [-80, -50, 0, 50, 85]
+const AIMS := [-80, -50, 0, 50, 65, 75, 85]
+const ELBOW_STEEP_DEG := 60.0               ## od tego kąta głowa leży na drodze ramienia (niżej łokieć za głową jest z boku, przy policzku)
+const ELBOW_BACK_M := 0.12                   ## łokieć najwyżej tyle za środkiem głowy (potylica), mierzone wzdłuż przodu postaci
+const ELBOW_STEP_M := 0.15                   ## przeciąganie celownika ~3°/kl.: łokieć bez przeskoku (tło z ruchu barku do ~0,12 m; przed 1.7.710 skok o ~0,43 m przy 50–70°)
 var c: GripChar
 var failures := 0
 var samples := 0
@@ -31,7 +35,8 @@ func check(value: float, limit: float, kind: String, at: String) -> void:
 		if failures <= 15:
 			print("FAIL %s %.5f > %.5f: %s" % [kind, value, limit, at])
 
-func sample(at: String) -> void:
+func sample(at: String, up := false) -> void:
+	var head := c._gp(c._b["Head"]).origin
 	for side in c.targets:
 		var arm := c._gp(c._b[side + "Arm"]).origin
 		var elbow := c._gp(c._b[side + "ForeArm"]).origin
@@ -44,6 +49,10 @@ func sample(at: String) -> void:
 			var axes: Basis = hand.basis * (c._hand[side]["fix"] as Basis).inverse()
 			check(rad_to_deg((hand.origin - elbow).angle_to(axes.x)), 90.0, "wrist_flex_deg", label)
 			check(rad_to_deg((elbow - arm).angle_to(hand.origin - elbow)), 146.0, "elbow_bend_deg", label)
+		# celowanie w górę bronią palną (bez przeładowania i repetowania): łokieć nie wchodzi za głowę (+x szkieletu = przód postaci);
+		# w dół łokieć za głową jest naturalny — dłoń nisko, tułów pochylony
+		if up and c._gun_key not in ["maczeta", "kilof"]:
+			check(maxf(0.0, head.x - ELBOW_BACK_M - elbow.x), 0.0, "elbow_behind_head_m", label)
 		samples += 1
 
 func reset_actions() -> void:
@@ -65,6 +74,7 @@ func continuity() -> void:
 				for i in 40:
 					c.update(1.0 / 60.0, "crouch", 1.0, Vector2.RIGHT, 0.0)
 				var previous := c._gun.position
+				var prev_elbow := {}
 				for i in 180:
 					var u := float(i) / 179.0
 					var angle := deg_to_rad(-80.0 + 165.0 * sin(u * PI)) if mode == "sweep" else 0.0
@@ -78,8 +88,33 @@ func continuity() -> void:
 					var at := "%s %s %s frame=%d" % [look, gun, mode, i]
 					if i > 20:
 						check(c._gun.position.distance_to(previous), 0.12, "gun_frame_step_m", at)
-					sample(at)
+					var up: bool = mode == "sweep" and angle >= 0.0
+					sample(at, up and angle >= deg_to_rad(ELBOW_STEEP_DEG))
+					if up and gun != "kilof":
+						for side in c.targets:
+							var el := c._gp(c._b[side + "ForeArm"]).origin
+							if i > 20 and prev_elbow.has(side):
+								check(el.distance_to(prev_elbow[side]), ELBOW_STEP_M, "elbow_frame_step_m", at + " " + side)
+							prev_elbow[side] = el
+					else:
+						prev_elbow.clear()
 					previous = c._gun.position
+
+## Cały cykl biegu przy celowaniu w dół: pojedyncza próbka na przypadek trafia w fazę zależną od kolejności przypadków
+## (przed 1.7.710 widmo1 −50° twarzą w lewo zginał nadgarstek do 94° przez pół cyklu, a próbka raz trafiała, raz nie).
+func run_cycle() -> void:
+	c.set_look("male_scav")
+	for gun in ["widmo1", "lr7", "hkm9"]:
+		c.set_gun(gun)
+		for face in [1.0, -1.0]:
+			reset_actions()
+			var angle := deg_to_rad(-50.0)
+			var aim := Vector2(cos(angle) * face, -sin(angle))
+			for i in 24:
+				c.update(1.0 / 60.0, "run", face, aim, 95.0)
+			for i in 40:                                         # 40 klatek przy 2 krokach/s = 1,33 cyklu
+				c.update(1.0 / 60.0, "run", face, aim, 95.0)
+				sample("male_scav %s run cycle -50° %+.0f frame=%d" % [gun, face, i])
 
 func _process(_dt: float) -> bool:
 	if ran:
@@ -98,7 +133,7 @@ func _process(_dt: float) -> bool:
 						var at := "%s %s %s %d° %+.0f" % [look, gun, anim, deg, face]
 						for i in 24:
 							c.update(1.0 / 60.0, anim, face, aim, 95.0 if anim == "run" else 0.0)
-						sample(at)
+						sample(at, deg >= ELBOW_STEEP_DEG)
 						if anim == "run":
 							continue
 						for j in 21:
@@ -124,6 +159,7 @@ func _process(_dt: float) -> bool:
 				c.update(1.0 / 60.0, "idle", -1.0, Vector2.LEFT, 0.0)
 				sample("%s %s turn frame=%d" % [look, gun, i])
 		print("GRIPS ", look, " samples=", samples)
+	run_cycle()
 	continuity()
 	for kind in worst:
 		print("GRIPS max %s %.5f: %s" % [kind, worst[kind][0], worst[kind][1]])
