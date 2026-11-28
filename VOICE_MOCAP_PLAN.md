@@ -165,7 +165,7 @@ Wszystkie rozstrzygnięte 2026-11-27:
 
 - Głos: `prototype/tools/bake_hybrid.py`, `bake_audio.py`, `audio_sources.json`, `scripts/audio_manifest.gd` (generowany),
   `scripts/player.gd`, `scripts/enemy.gd`, `scripts/enemy_mimic.gd`, test `tools/test_voice.gd`.
-- Mocap: `prototype/tools/prep_anim3d.py`, `scripts/char_clips.gd`, `art/char3d/anim/` (`idle_swat`, `crouch_walk_toes`, `CREDITS.md`),
+- Mocap: `prototype/tools/prep_anim3d.py`, `scripts/char_clips.gd`, `art/char3d/anim/` (`idle_swat`, `crouch_run_toes` od 1.7.711, `CREDITS.md`),
   `art_src/animations/100style/SOURCE.md`, `tools/shot_mocap.gd`, `tools/test_foot_slip.gd`.
 - Lokalnie, poza repo: `C:\deadair87\audio_lib\sonniss\…` (nagrania), `C:\deadair87\odsluch\q8_glosy\` (odsłuch),
   `C:\deadair87\char_src\mocap\100STYLE\` (BVH, `Frame_Cuts.csv`, `Dataset_List.csv`).

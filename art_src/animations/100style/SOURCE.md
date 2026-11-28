@@ -12,8 +12,11 @@ Surowe BVH nie są w repo (rozmiar); lokalnie leżą w `C:\deadair87\char_src\mo
 | Plik gry | Źródło | Polecenie (z korzenia repo) |
 |---|---|---|
 | `idle_swat.glb` (stan `idle`) | `Swat/Swat_ID.bvh`, ujęcie 636–1395 | `blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=<100STYLE>/Swat/Swat_ID.bvh --range=636:1395 --loop=3.5:6.0 --yaw=-14 --name=idle_swat` |
-| `crouch_walk_toes.glb` (stan `crouch_walk`) | `OnToesCrouched/OnToesCrouched_FW.bvh`, ujęcie 409–8991 | `blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=<100STYLE>/OnToesCrouched/OnToesCrouched_FW.bvh --range=409:8991 --loop=0.7:2.0 --step-sync --name=crouch_walk_toes` |
+| `crouch_run_toes.glb` (stan `crouch_walk`, od 1.7.711) | `OnToesCrouched/OnToesCrouched_FR.bvh`, ujęcie 446–4722 | `blender -b --factory-startup -P prototype/tools/prep_anim3d.py -- --from=<100STYLE>/OnToesCrouched/OnToesCrouched_FR.bvh --range=446:4722 --loop=0.4:1.2 --step-sync --name=crouch_run_toes` |
 
-Zmiany względem nagrania: wycięta jedna pętla (postój 3,5 s, krok 1,23 s), ruch w miejscu, obrót przodem do kierunku gry
+W 1.7.709–1.7.710 marsz w kucaniu grał `crouch_walk_toes.glb` (`OnToesCrouched_FW`, ujęcie 409–8991, `--loop=0.7:2.0`): krok ok. 0,55 m
+przy 3,7 m/s gry dawał rozkrok albo ślizg — wersja biegnąca (FR) ma krok ok. 1 m, a tempo i długość kroku dobiera `char3d.gd` (`GAIT`).
+
+Zmiany względem nagrania: wycięta jedna pętla (postój 3,5 s, krok w kucaniu 0,8 s), ruch w miejscu, obrót przodem do kierunku gry
 (postój dodatkowo o 14°, żeby barki były skręcone jak w pozie celowania), przeniesienie na szkielet postaci gry; w grze marsz w kucaniu
 ma biodra niżej (`drop` w `char_clips.gd`), żeby sylwetka miała wysokość hitboxa kucania.

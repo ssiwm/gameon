@@ -288,6 +288,37 @@ const LOOK_YAW := 16.0                       ## ° obrotu głowy przy rozejrzeni
 var _jog_w := 0.0                            ## 0..1 udział truchtu w stanie „run” (prędkość poniżej biegu: błoto, woda, ciężki ekwipunek)
 const JOG_SPEED := [62.0, 86.0]              ## px/s: poniżej pierwszej — sam trucht, powyżej drugiej — sam sprint (bieg gracza 95)
 const RUN_BLEND_TIME := 0.15                 ## s przejścia sprint ↔ trucht ↔ bieg tyłem
+## Tempo i długość kroku z prędkości (stopa w podporze stoi na ziemi). Gra przesuwa postać szybko (bieg 95 px/s ≈ 7,8 m/s, kucanie 45 px/s
+## ≈ 3,7 m/s), a krok klipu ma swoją długość, więc samo tempo z prędkości dawało poślizg: w biegu stopa cofała się 1,2–1,5 × szybciej niż
+## ziemia, w kucaniu 0,15 ×. Teraz tempo bierze się z naturalnej kadencji dla prędkości (cykle/s = a + b · m/s w granicach), a resztę
+## różnicy wybiera długość kroku: stopy klipu rozsuwają się albo zsuwają wzdłuż kierunku ruchu (`_stride_k`) w granicach `k`; dopiero gdy
+## i to nie wystarcza, tempo wychodzi poza naturalne (do `c_max`). Długość kroku klipu mierzy `_stride_of` (raz na model i klip).
+## stan → [a, b, c_min, c_max, k_min, k_max]
+const GAIT := {
+	"run": [0.95, 0.12, 0.8, 2.2, 0.6, 1.2],
+	"crouch_walk": [1.0, 0.18, 0.8, 1.9, 0.6, 1.7],
+}
+const GAIT_BACK := 1.1                       ## bieg tyłem: krótszy krok w szybszym tempie niż przodem
+const STRIDE_RATE := 6.0                     ## 1/s: jak szybko długość kroku goni docelową (bez skoku przy zmianie prędkości)
+const STRIDE_SAMPLES := 32                   ## chwil klipu przy pomiarze długości kroku
+const JOG_MIX_STEP := 0.25                   ## co tyle udziału truchtu mierzona jest długość kroku mieszanki sprint + trucht
+static var _strides := {}                    ## „model|plik klipu:rev” → [m na cykl, środek toru stopy x: lewa, prawa] albo [] (brak klipu)
+var _stride_k := 1.0                         ## bieżący mnożnik długości kroku klipu (1 = jak w nagraniu)
+var _stride_c := {}                          ## stan kroku → [m na cykl, środek x lewej, prawej] dla tego modelu (z `_strides`)
+## Stopa w podporze przy ruszaniu i zatrzymaniu (`_plant_foot`)
+const PLANT_UP := 0.04                       ## m: stopa najwyżej tyle nad kostką postoju liczy się jako stojąca
+const PLANT_BRAKE_V := 80.0                  ## px/s: poniżej tej prędkości zwalniający krok liczy się jako hamowanie (`_braking`)
+const PLANT_START_W := 0.9                   ## przy ruszaniu stopa trzyma się ziemi, póki klip kroku ma mniej niż tyle wagi
+const PLANT_END_W := 0.15                    ## przy zatrzymaniu stopa idzie krokiem, gdy klip kroku spadnie poniżej tyle wagi (krok kończy się ok. 0,3 s po zatrzymaniu, przed uspokojeniem postoju)
+const PLANT_MAX := 0.3                       ## m: przytrzymana stopa najwyżej tyle od stopy klipu, potem idzie krokiem
+const PLANT_STEP_T := 0.16                   ## s: dostawienie stopy
+const PLANT_LIFT := 0.07                     ## m: uniesienie stopy przy dostawieniu (pełne od 15 cm odległości)
+var _travel := 0.0                           ## m: droga postaci wzdłuż osi x szkieletu
+var _plant := {"Left": NAN, "Right": NAN}    ## x świata (m, z `_travel`) stopy przytrzymanej w podporze albo NAN
+var _plant_u := {"Left": -1.0, "Right": -1.0} ## postęp dostawienia przytrzymanej stopy 0..1, -1 = trzymana / brak
+var _anim_key := "idle"                      ## stan, do którego idzie postać (argument `update`)
+var _braking := false                        ## stan kroku, ale postać zwalnia poniżej `PLANT_BRAKE_V`
+var _speed_was := 0.0                        ## px/s: prędkość z poprzedniej klatki
 var push_strain := false                     ## stan „push”: napiera, a skrzynia stoi — krok kończy się w rozkroku i postać zapiera się mocniej (player.gd)
 var _strain_w := 0.0                         ## 0..1 waga zaparcia (płynne wejście i wyjście)
 var dying := 0.0                             ## 0..1 ostatnie sekundy wykrwawiania: drgawki i zapadanie się w ziemię (player.gd)
@@ -359,6 +390,7 @@ const SHOULDER_POCKET := 0.02                 ## m: stopka kolby tyle przed staw
 const SHOULDER_PERP := 0.05                   ## m: chwyt tyle poniżej linii barku (zwykle 0,10–0,11 — karabin wisiał przy piersi)
 const CHEEK_NECK := 9.0                       ## °: szyja w dół i do przodu przy kolbie
 const CHEEK_HEAD := 5.0                       ## °: głowa w dół — policzek na grzbiecie kolby
+const HEAD_FOLLOW_FREE := 0.3                ## ułamek kąta celowania, o który głowa dodatkowo idzie za celem bez kolby przy policzku
 const CHEEK_FOLLOW := 0.45                    ## ułamek kąta celowania, o który głowa dodatkowo idzie za lufą (oko na przyrządach)
 var _weld_w := 0.0                           ## 0..1 wygładzony „policzek przy kolbie” (broń z kolbą w rękach, bez przeładowania i ciosu)
 const PALM_AT := 0.45                        ## środek dłoni: ułamek długości dłoni od nadgarstka (tam leży chwyt)
@@ -371,7 +403,7 @@ const PISTOL_CLAVICLE_FOLLOW := 1.0          ## oburęczny chwyt z przodu: barki
 const PISTOL_CLAVICLE_MAX := 75.0            ## limit obrotu obojczyka; długości ramienia i przedramienia pozostają bez zmian
 const ELBOW_AIM_FWD := 1.0                   ## łokcie przy celowaniu w górę: dodatek „do przodu” kierunku wygięcia (× sin kąta), zob. `_pose_arms`
 const WRIST_FLEX_MAX := 85.0                 ## °: najwyżej tyle między przedramieniem a palcami (`_set_hand`); dalej dłoń odchyla się za przedramieniem
-const GRIP_HALF := 0.013                    ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
+const GRIP_HALF := 0.013                     ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
 const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy nominalnej przechodzi na broń (1 = broń sztywno przy barku, 0 = nieruchoma w pozie nominalnej)
 const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
 const AIM_STEP := 1.0 / 120.0                ## s: najdłuższy krok całkowania tej sprężyny (dłuższa klatka dzieli się na podkroki)
@@ -862,6 +894,7 @@ func set_look(char_name: String) -> bool:
 			_arm_hinge[side] = [ga.basis.orthonormalized().inverse() * hinge, gf.basis.orthonormalized().inverse() * hinge]
 		_hand_rel[side] = gf.basis.orthonormalized().inverse() * gh.basis.orthonormalized()
 	_stance.clear()
+	_stride_c.clear()
 	_posed = false
 	_measure_hands(scene)
 	_measure_fingers()
@@ -1184,11 +1217,23 @@ func _grip_pole(side: String, hand: Transform3D, pole: Vector3) -> Vector3:
 	if best.length() < 0.001:
 		return pole
 	best = best.normalized()
-	for i in 9:
-		var pv := normal.slerp(best, float(i) / 8.0)
-		var forearm := dn * (dist - x) - pv * h
-		if forearm.angle_to(forward) <= deg_to_rad(65.0):
-			return pv
+	var limit := deg_to_rad(65.0)
+	var ok := func(t: float) -> bool: return (dn * (dist - x) - normal.slerp(best, t) * h).angle_to(forward) <= limit
+	if ok.call(0.0):
+		return normal
+	# najmniejszy obrót łokcia ku `best`, przy którym przedramię mieści się w 65° od dłoni: zgrubnie co 1/8, potem połowienie —
+	# sam krok 1/8 dawał przeskoki łokcia o 6–12 cm między klatkami przy przeciąganiu celownika
+	for i in range(1, 9):
+		var t := float(i) / 8.0
+		if ok.call(t):
+			var lo := t - 0.125
+			for j in 6:
+				var mid := (lo + t) * 0.5
+				if ok.call(mid):
+					t = mid
+				else:
+					lo = mid
+			return normal.slerp(best, t)
 	return best
 
 ## Obraca kość wokół jej osi tak, żeby kierunek `local_ref` (w układzie kości) wskazywał `want` (rzut na płaszczyznę prostopadłą do osi).
@@ -1416,15 +1461,13 @@ func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: floa
 		radial = maxf(radial, float(info["length"]) - (info["muzzle"] as Vector3).x + SHOULDER_POCKET)
 		perp = SHOULDER_PERP
 	var side_z := float(wp.get("side", -0.13))
-	var rear := Vector3.ZERO
-	for k in 8:
-		# celowanie w dół: broń wysuwa się ku kamerze, żeby nie chować się za tułowiem (z=+ to bliższa strona)
-		# celowanie w górę: broń odsuwa się od barku, żeby ręce nie zasłaniały twarzy
-		var r := radial + UP_REACH * maxf(0.0, sin(hd))
-		rear = sr + Vector3(cos(hd), sin(hd), 0.0) * r - Vector3(-sin(hd), cos(hd), 0.0) * perp + Vector3(0.0, 0.0, side_z + 0.28 * maxf(0.0, -sin(hd)))
-		if not two:
-			break
-		var gx := Transform3D(gun_b, rear)
+	# celowanie w dół: broń wysuwa się ku kamerze, żeby nie chować się za tułowiem (z=+ to bliższa strona)
+	# celowanie w górę: broń odsuwa się od barku, żeby ręce nie zasłaniały twarzy
+	var at := func(rad: float) -> Vector3:
+		return sr + Vector3(cos(hd), sin(hd), 0.0) * (rad + UP_REACH * maxf(0.0, sin(hd))) - Vector3(-sin(hd), cos(hd), 0.0) * perp \
+				+ Vector3(0.0, 0.0, side_z + 0.28 * maxf(0.0, -sin(hd)))
+	var fits := func(rad: float) -> bool:
+		var gx := Transform3D(gun_b, at.call(rad))
 		var reach: Vector3
 		if String(wp.get("reload", "")) == "pistol":
 			# Zachowujemy dotychczasowy punkt zasięgu broni: zmiana wizualnego chwytu nie przesuwa toru pocisku
@@ -1432,9 +1475,24 @@ func _gun_origin(sr: Vector3, sl: Vector3, hd: float, gun_b: Basis, radial: floa
 			reach = _hand_target("Left", gx, (info["grip"] as Vector3) + Vector3(-0.01, -0.105, 0.0), Vector3(0.42, 0.22, 0.88), Vector3.DOWN, 0.0).origin
 		else:
 			reach = _left_hold(gx, info, wp).origin
-		if reach.distance_to(sl) <= reach_l:
-			break
-		radial -= 0.035
+		return reach.distance_to(sl) <= reach_l
+	if two and not fits.call(radial):
+		# lewa dłoń nie sięga: broń cofa się ku barkowi co 3,5 cm (najwyżej 7 kroków), potem połowienie ostatniego kroku — bez tego broń
+		# i ręce skakały o cały krok, gdy kąt celowania przechodził przez próg (np. kucanie przy 5° i −15°)
+		var lo := radial
+		for k in 7:
+			lo -= 0.035
+			if fits.call(lo):
+				var hi := lo + 0.035
+				for j in 6:
+					var mid := (lo + hi) * 0.5
+					if fits.call(mid):
+						lo = mid
+					else:
+						hi = mid
+				break
+		radial = lo
+	var rear: Vector3 = at.call(radial)
 	rear.z += 0.28 * maxf(0.0, -sin(hd)) * (cam - 1.0)        # ku kamerze po drugiej stronie dopiero na końcu: wsunięcie broni nie zależy od strony, więc wylot w obie strony jest lustrzany
 	return rear
 
@@ -1533,7 +1591,23 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 		return
 	_time += delta
 	_sprite.flip_h = facing < 0.0
+	var flip_was := px_flip
 	px_flip = -1.0 if _sprite.flip_h else 1.0
+	# blokada stopy przy zatrzymaniu (`_plant_foot`): droga postaci w osi szkieletu, dostawianie, zwrot kasuje blokadę
+	_anim_key = anim
+	_travel += (-1.0 if back_run else 1.0) * speed / WP_PER_M * delta
+	# hamowanie: postać jeszcze w stanie kroku, ale zwalnia ku zatrzymaniu (gra hamuje z 95 px/s w ok. 4 klatki) — krok klipu nie nadąża
+	_braking = (anim == "run" or anim == "crouch_walk") and speed < _speed_was - 0.1 and speed < PLANT_BRAKE_V
+	_speed_was = speed
+	for side in _plant_u:
+		if px_flip != flip_was or delta >= 0.1:
+			_plant[side] = NAN
+			_plant_u[side] = -1.0
+		elif float(_plant_u[side]) >= 0.0:
+			_plant_u[side] = float(_plant_u[side]) + delta / PLANT_STEP_T
+			if float(_plant_u[side]) >= 1.0:
+				_plant[side] = NAN
+				_plant_u[side] = -1.0
 	# obrót zamiast lustra: zwrot dochodzi do kierunku patrzenia w TURN_TIME (sinus: rusza i hamuje łagodnie), przez pozę przodem do kamery
 	_face = move_toward(_face, px_flip, delta * 2.0 / TURN_TIME) if _posed and delta < 0.1 else px_flip
 	_cam_c = sin(PI * 0.5 * _face)
@@ -1579,6 +1653,10 @@ func update(delta: float, anim: String, facing: float, aim: Vector2, speed := 0.
 	if not _posed:
 		_posed = true
 		_stance.clear()
+		for k in 5:                                               # pomiar kroku klipów od razu (ok. 20 ms raz na model), nie w chwili pierwszego biegu
+			_stride_run(k * JOG_MIX_STEP)
+		_stride_of("run_back")
+		_stride_of("crouch_walk")
 	var holding := armed and _down < 0.2 and throw_t < 0.0 and _clip_arms < 0.5
 	# bezwładność broni: kąt broni modelu goni kąt celowania sprężyną lekko niedotłumioną (obrót o 45° trwa ok. 0,1 s i kończy się drobnym wybiegiem);
 	# strzał dociąga broń na linię celowania od razu, żeby błysk wylotowy nie rozjechał się z torem pocisku
@@ -1655,6 +1733,166 @@ func _body_state(a: String) -> Dictionary:
 		drop = lerpf(drop, CharClips.param(a, "drop", 0.0), clip)
 	return {"lean": lean, "drop": drop, "bob": bob}
 
+## Długość kroku klipu stanu (m na cykl) i środek toru każdej stopy w osi x szkieletu: prędkość stopy w podporze (najniżej, w pasie 2 cm nad 10. percentylem)
+## względem bioder przez tempo cyklu — przy tempie = prędkość / długość stopa w podporze stoi na ziemi. Klip grany sam, w pozie spoczynkowej
+## modelu, jak w `_stance_pts`; poza szkieletu wraca na miejsce. Raz na model i plik klipu (`_strides`), w instancji kopia w `_stride_c`.
+func _stride_of(st: String, jog := -1.0) -> Array:
+	var ws := {st: 1.0}
+	var name := st
+	if jog >= 0.0:                                                # mieszanka sprintu i truchtu: zmieszane klipy mają inny tor stopy niż każdy z osobna
+		ws = {"run": 1.0 - jog, "run_jog": jog} if jog > 0.0 else {"run": 1.0}
+		name = "run~%.2f" % jog
+	if _stride_c.has(name):
+		return _stride_c[name]
+	if _clips == null or not clips_on or not CharClips.enabled or not _posed:
+		return []
+	var key := _char_name
+	for w in ws:
+		if not CharClips.has(w):
+			return []
+		key += "|%s=%.2f" % [CharClips.file_key(w), float(ws[w])]
+	if not _strides.has(key):
+		var keep: Array = []
+		for i in _sk.get_bone_count():
+			keep.append([_sk.get_bone_pose_position(i), _sk.get_bone_pose_rotation(i)])
+		var tr := {"Left": [], "Right": []}
+		for k in STRIDE_SAMPLES:
+			_sk.reset_bone_poses()
+			CharClips.drive(_clips, ws, float(k) / STRIDE_SAMPLES, 0.0, {})
+			for side in tr:
+				(tr[side] as Array).append(_gp(_b[side + "Foot"]).origin)
+		for i in _sk.get_bone_count():
+			_sk.set_bone_pose_position(i, keep[i][0])
+			_sk.set_bone_pose_rotation(i, keep[i][1])
+		var speeds := 0.0
+		var n := 0
+		var mid := {}
+		for side in tr:
+			var pts: Array = tr[side]
+			var lo_x := INF
+			var hi_x := -INF
+			var ys: Array = []
+			for q: Vector3 in pts:
+				ys.append(q.y)
+				lo_x = minf(lo_x, q.x)
+				hi_x = maxf(hi_x, q.x)
+			ys.sort()
+			var low: float = ys[STRIDE_SAMPLES / 10]                     # podłoże kroku: 10. percentyl (krótki dołek przy lądowaniu nie zawęża podpory)
+			mid[side] = (lo_x + hi_x) * 0.5
+			for k in STRIDE_SAMPLES:
+				var a: Vector3 = pts[k]
+				var b: Vector3 = pts[(k + 1) % STRIDE_SAMPLES]
+				if a.y <= low + 0.02 and b.y <= low + 0.02:
+					speeds += absf(b.x - a.x) * STRIDE_SAMPLES
+					n += 1
+		_strides[key] = [speeds / n, mid["Left"], mid["Right"]] if n > 0 else []
+	_stride_c[name] = _strides[key]
+	return _stride_c[name]
+
+## Długość kroku i środki torów stóp dla mieszanki sprintu i truchtu (udział truchtu 0..1): liniowo między pomiarami co `JOG_MIX_STEP`.
+func _stride_run(jog: float) -> Array:
+	if not CharClips.has("run_jog"):
+		return _stride_of("run")
+	var lo := floorf(clampf(jog, 0.0, 1.0) / JOG_MIX_STEP) * JOG_MIX_STEP
+	var hi := minf(lo + JOG_MIX_STEP, 1.0)
+	var a := _stride_of("run", lo)
+	var b := _stride_of("run", hi)
+	if a.is_empty() or b.is_empty():
+		return []
+	var t := clampf((jog - lo) / maxf(hi - lo, 0.0001), 0.0, 1.0)
+	return _lerp_arr(a, b, t)
+
+## Tempo kroku (cykle/s) dla stanu kroku i prędkości (px/s) wg `GAIT`; przy okazji ustawia `_stride_k`. Bez klipów — tempo jak dawniej.
+func _step_rate(delta: float, anim: String, speed: float) -> float:
+	var old := clampf(speed / 95.0, 0.4, 1.4) * 2.0
+	var g: Array = GAIT.get(anim, [])
+	if g.is_empty():
+		return old
+	# długość kroku stanu: w biegu mieszanka sprintu i truchtu (zmierzona razem) i biegu tyłem z wagami jak w `_split_run`
+	var sd := _gait_stride(anim)
+	if sd.is_empty() or float(sd[0]) < 0.05:
+		_stride_k = move_toward(_stride_k, 1.0, delta * STRIDE_RATE)
+		return old
+	var stride := float(sd[0])
+	var v := speed / WP_PER_M
+	var back := GAIT_BACK if back_run else 1.0
+	var c := clampf(float(g[0]) + float(g[1]) * v, float(g[2]), float(g[3])) * back
+	var k := clampf(v / maxf(c * stride, 0.001), float(g[4]), float(g[5]))
+	c = clampf(v / (stride * k), float(g[2]), float(g[3]) * back)
+	_stride_k = lerpf(_stride_k, k, 1.0 - exp(-STRIDE_RATE * delta))
+	return c
+
+## Środek toru stopy (x szkieletu) w stanach kroku z wagami klipów tej klatki i ich udział w całej wadze klipów — wokół niego `_pose_legs`
+## rozsuwa albo zsuwa krok (`_stride_k`). [środek x, udział].
+func _stride_mid(side: String) -> Array:
+	var x := 0.0
+	var w := 0.0
+	var i := 1 if side == "Left" else 2
+	var wr := 0.0
+	for st in ["run", "run_jog", "run_back"]:
+		wr += float(_clip_ws.get(st, 0.0))
+	var wc := float(_clip_ws.get("crouch_walk", 0.0))
+	for pw in [["run", wr], ["crouch_walk", wc]]:
+		if float(pw[1]) <= 0.0:
+			continue
+		var sd := _gait_stride(String(pw[0]))
+		if sd.is_empty():
+			continue
+		x += float(pw[1]) * float(sd[i])
+		w += float(pw[1])
+	return [x / w if w > 0.0 else 0.0, w / maxf(_clip_w, 0.0001) if _clip_w > 0.0 else 0.0]
+
+## Długość kroku i środki torów stóp stanu kroku przy obecnych wagach: bieg = mieszanka sprint + trucht (`_jog_w`) i bieg tyłem (`_back_w`).
+func _gait_stride(st: String) -> Array:
+	if st != "run":
+		return _stride_of(st)
+	var fwd := _stride_run(_jog_w)
+	var wb := _back_w if CharClips.has("run_back") else 0.0
+	if wb <= 0.0 or fwd.is_empty():
+		return fwd
+	var bk := _stride_of("run_back")
+	if bk.is_empty():
+		return fwd
+	return _lerp_arr(fwd, bk, wb)
+
+static func _lerp_arr(a: Array, b: Array, t: float) -> Array:
+	var out := []
+	for i in a.size():
+		out.append(lerpf(float(a[i]), float(b[i]), t))
+	return out
+
+## Stopa w podporze przy ruszaniu i zatrzymaniu: gra hamuje z biegu w ok. 4 klatki i rusza w ok. 5, a pozy mieszają się 80–250 ms —
+## bez blokady stopy sunęły po ziemi do rozkroku postoju albo do pozy biegu (zatrzymanie 3–10 px, ruszanie 2–9 px). Stopa, która przy
+## hamowaniu, w przejściu do postoju / kucania albo przy ruszaniu stoi na ziemi, zostaje w miejscu świata (`_travel` liczy drogę postaci);
+## gdy klip ją unosi, oddala się o `PLANT_MAX` albo klip kroku wygaśnie, dostawia się krótkim krokiem (`PLANT_STEP_T`, uniesienie `PLANT_LIFT`).
+func _plant_foot(side: String, target: Vector3, sum: float) -> Vector3:
+	var w_step := (float(_aw.get("run", 0.0)) + float(_aw.get("crouch_walk", 0.0))) / maxf(sum, 0.0001)
+	# ruszanie: póz postoju jeszcze sporo w mieszance — stojąca stopa odpycha się z miejsca, zamiast sunąć z ciałem do pozy biegu
+	var stepping := _anim_key == "run" or _anim_key == "crouch_walk"
+	var to_plant := _anim_key == "idle" or _anim_key == "crouch" or _braking or (stepping and w_step < PLANT_START_W)
+	if is_nan(float(_plant[side])):
+		if to_plant and w_step > 0.03 and float(_plant_u[side]) < 0.0 and _climb_free() and target.y <= _ankle_y + PLANT_UP:
+			_plant[side] = target.x + _travel                         # stopa właśnie stanęła (albo stała) — od teraz nie sunie do pozy postoju
+			_plant_u[side] = -1.0
+		return target
+	var lx := float(_plant[side]) - _travel
+	if float(_plant_u[side]) < 0.0:
+		# w stanie kroku stopa klipu, która odrywa się od ziemi, idzie dalej krokiem (w postoju klip stopy nie unosi); za daleko od klipu — też
+		var lifts := stepping and (target.y > _ankle_y + 2.0 * PLANT_UP or absf(target.x - lx) > PLANT_MAX)
+		if to_plant and w_step >= (0.03 if stepping else PLANT_END_W) and _climb_free() and not lifts:
+			target.x = lx
+			return target
+		_plant_u[side] = 0.0                                          # klip kroku wygasł albo postać ruszyła: dostawienie stopy
+	var u := clampf(float(_plant_u[side]), 0.0, 1.0)
+	var gap := absf(target.x - lx)
+	target.x = lerpf(lx, target.x, smoothstep(0.0, 1.0, u))
+	if gap > 0.03:
+		target.y += PLANT_LIFT * minf(gap / 0.15, 1.0) * sin(PI * u)
+	return target
+
+func _climb_free() -> bool:
+	return _down < 0.01 and _grab_w < 0.01 and not _climbing() and climb_t < 0.0
+
 ## Waga klipu biegu rozdzielona na sprint („run”), trucht („run_jog”) i bieg tyłem („run_back”); brak pliku truchtu → cały sprint.
 func _split_run(wc: float) -> void:
 	var wb := wc * _back_w if CharClips.has("run_back") else 0.0
@@ -1678,7 +1916,7 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	_stand_w = float(_aw["idle"]) / maxf(sum, 0.0001) * (1.0 - smoothstep(0.0, 0.12, _down)) * (1.0 - _grab_w) if not _climbing() else 0.0
 	var stand_offset := Vector3.ZERO
 	if anim == "run" or anim == "crouch_walk":
-		_phase += (-1.0 if back_run else 1.0) * delta * clampf(speed / 95.0, 0.4, 1.4) * TAU * 2.0
+		_phase += (-1.0 if back_run else 1.0) * delta * _step_rate(delta, anim, speed) * TAU
 	elif anim == "push":
 		# krok w tempie skrzyni; napór bez ruchu dochodzi krokiem (tylko w przód) do rozkroku PUSH_HOLD_PHASE i tam stoi
 		var adv := delta * TAU * PUSH_CYCLES
@@ -1842,7 +2080,11 @@ func _pose_body(delta: float, anim: String, speed: float, theta: float) -> void:
 	if _weld_w > 0.001:                                           # Q6: policzek przy kolbie — szyja i głowa w dół, oko za lufą
 		_rot_world(_b["Neck"], Vector3.BACK, -deg_to_rad(CHEEK_NECK) * _weld_w * aim_k)
 		_rot_world(_b["Head"], Vector3.BACK, (theta * CHEEK_FOLLOW - deg_to_rad(CHEEK_HEAD)) * _weld_w * aim_k)
-	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 - deg_to_rad(lean) * 0.5) * aim_k + deg_to_rad(head_hit))
+	# wzrok za celem: bez kolby (pistolet, broń biała) głowa idzie mocniej za kątem, bo nie niesie jej kolba; z kolbą oddaje odchylenie
+	# kręgosłupa przy celowaniu w górę (`SPINE_AIM_UP` — trzy kości), inaczej oko uciekało ponad lufę. Bez tego pistolet przy 85° patrzył
+	# ok. 20° pod cel, a karabin ok. 19° nad przyrządy.
+	var gaze := HEAD_FOLLOW_FREE * theta * (1.0 - _weld_w) - 3.0 * SPINE_AIM_UP * theta * maxf(0.0, sin(theta)) * _weld_w
+	_rot_world(_b["Head"], Vector3.BACK, (theta * 0.2 + gaze - deg_to_rad(lean) * 0.5) * aim_k + deg_to_rad(head_hit))
 	_terrain_pose(delta)
 	_ground_hips()
 	_pose_legs(e)
@@ -1858,9 +2100,21 @@ func _foot_x(side: String) -> float:
 	var x := _origin_x + ((_leg_mix(side)[0]) as Vector3).x
 	if _clip_w > 0.0:
 		x += ((_clip_foot[side] as Transform3D).origin.x - rest_x) + _clip_w * (rest_x - _origin_x)
+		x = _stretch_x(side, x)
 	if _stand_w > 0.001:
 		x = lerpf(x, (_stand_foot[side] as Transform3D).origin.x, _stand_w)
+	if _clip_w > 0.0 and not is_nan(float(_plant[side])):           # przytrzymana stopa (`_plant_foot`): grunt pod nią, nie pod pozą
+		var lx := float(_plant[side]) - _travel
+		x = lx if float(_plant_u[side]) < 0.0 else lerpf(lx, x, smoothstep(0.0, 1.0, clampf(float(_plant_u[side]), 0.0, 1.0)))
 	return x
+
+## x celu stopy z klipu po rozsunięciu / zsunięciu kroku wokół środka toru stopy (`_stride_k`, `_step_rate`) — ten sam w `_pose_legs`
+## i w sondzie gruntu (`_foot_x`), żeby stopa stawała tam, gdzie sonda sprawdziła grunt.
+func _stretch_x(side: String, x: float) -> float:
+	if absf(_stride_k - 1.0) <= 0.001:
+		return x
+	var sm := _stride_mid(side)
+	return x + (x - float(sm[0])) * (_stride_k - 1.0) * float(sm[1])
 
 ## Grunt pod piętą i czubkiem każdej stopy (sonda player.gd), wygładzony w układzie świata; biodra w dół, żeby niższa stopa sięgnęła.
 func _terrain_pose(delta: float) -> void:
@@ -2024,6 +2278,7 @@ func _pose_legs(e: float) -> void:
 			# stopa z klipu: jej odchylenie od spoczynku już niesie wagę klipu (drzewo miesza klip z pozą spoczynkową); przy pełnej wadze cel = stopa klipu
 			var cf: Transform3D = _clip_foot[side]
 			target += (cf.origin - rest_foot) + _clip_w * (rest_foot - base)
+			target.x = _stretch_x(side, target.x)                       # krok rozsunięty / zsunięty wokół środka toru stopy (`_step_rate`)
 			rest_gb = cf.basis
 			# kolano tam, gdzie w klipie (leżenie na plecach, przyklęk): bez tego IK wyginałoby je zawsze do przodu
 			var ck: Vector3 = _clip_knee[side]
@@ -2040,6 +2295,8 @@ func _pose_legs(e: float) -> void:
 			rest_gb = rest_gb.orthonormalized().slerp(support.basis, _stand_w)
 			var outward := -1.0 if side == "Left" else 1.0
 			pole = pole.lerp(Basis(Vector3.UP, -outward * deg_to_rad(6.0)) * Vector3.RIGHT, _stand_w)
+		if _clip_w > 0.0:
+			target = _plant_foot(side, target, sum)                     # po pozie postoju: przytrzymana stopa nie sunie do rozkroku postoju
 		if _terrain_w > 0.001:                                    # stopa na gruncie pod sobą (zbocze, stopień) z nachyleniem do skosu
 			target.y += float(_foot_g[side]) * _terrain_w
 			tilt += float(_foot_tilt[side]) * _terrain_w
