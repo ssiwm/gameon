@@ -370,7 +370,8 @@ const CURL_HOLD := 0.7                       ## dłoń przednia pod łożem (sze
 const PISTOL_CLAVICLE_FOLLOW := 1.0          ## oburęczny chwyt z przodu: barki podążają za dłońmi także przy zwrocie i celowaniu w górę
 const PISTOL_CLAVICLE_MAX := 75.0            ## limit obrotu obojczyka; długości ramienia i przedramienia pozostają bez zmian
 const ELBOW_AIM_FWD := 1.0                   ## łokcie przy celowaniu w górę: dodatek „do przodu” kierunku wygięcia (× sin kąta), zob. `_pose_arms`
-const GRIP_HALF := 0.013                     ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
+const WRIST_FLEX_MAX := 85.0                 ## °: najwyżej tyle między przedramieniem a palcami (`_set_hand`); dalej dłoń odchyla się za przedramieniem
+const GRIP_HALF := 0.013                    ## pół grubości chwytu / rękojeści (m): o tyle dłoń leży obok jego osi
 const GUN_FOLLOW := 0.5                      ## ile ruchu barku względem pozy nominalnej przechodzi na broń (1 = broń sztywno przy barku, 0 = nieruchoma w pozie nominalnej)
 const AIM_SPRING := 34.0                     ## 1/s: sztywność sprężyny, którą broń MODELU goni kierunek celowania (rozgrywka celuje od razu)
 const AIM_STEP := 1.0 / 120.0                ## s: najdłuższy krok całkowania tej sprężyny (dłuższa klatka dzieli się na podkroki)
@@ -1211,6 +1212,13 @@ func _set_hand(side: String, gb: Basis, w := 1.0, share := 0.55) -> void:
 	if w < 1.0:
 		gb = follow.slerp(gb, w)
 	var axis := (_gp(hnd).origin - _gp(f).origin).normalized()
+	# miękki limit nadgarstka: gdy łokieć nie może poprowadzić przedramienia bliżej palców (np. bieg z widmo1 w dół, twarzą w lewo — do 94°),
+	# dłoń odchyla się o nadmiar wokół nadgarstka; wnętrze dłoni schodzi z chwytu najwyżej o kilka milimetrów
+	var fingers := (gb * (_hand[side]["fix"] as Basis).inverse()).x.normalized()
+	var flex := axis.angle_to(fingers)
+	var bend_axis := fingers.cross(axis)
+	if flex > deg_to_rad(WRIST_FLEX_MAX) and bend_axis.length() > 0.0001:
+		gb = Basis(bend_axis.normalized(), flex - deg_to_rad(WRIST_FLEX_MAX)) * gb
 	var q := (gb * follow.inverse()).get_rotation_quaternion()
 	var tw := wrapf(2.0 * atan2(Vector3(q.x, q.y, q.z).dot(axis), q.w), -PI, PI)
 	_set_global_basis(f, Basis(axis, clampf(tw * share, -1.5, 1.5)) * _gp(f).basis)
