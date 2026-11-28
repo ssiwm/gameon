@@ -100,6 +100,22 @@ func continuity() -> void:
 						prev_elbow.clear()
 					previous = c._gun.position
 
+## Cały cykl biegu przy celowaniu w dół: pojedyncza próbka na przypadek trafia w fazę zależną od kolejności przypadków
+## (przed 1.7.710 widmo1 −50° twarzą w lewo zginał nadgarstek do 94° przez pół cyklu, a próbka raz trafiała, raz nie).
+func run_cycle() -> void:
+	c.set_look("male_scav")
+	for gun in ["widmo1", "lr7", "hkm9"]:
+		c.set_gun(gun)
+		for face in [1.0, -1.0]:
+			reset_actions()
+			var angle := deg_to_rad(-50.0)
+			var aim := Vector2(cos(angle) * face, -sin(angle))
+			for i in 24:
+				c.update(1.0 / 60.0, "run", face, aim, 95.0)
+			for i in 40:                                         # 40 klatek przy 2 krokach/s = 1,33 cyklu
+				c.update(1.0 / 60.0, "run", face, aim, 95.0)
+				sample("male_scav %s run cycle -50° %+.0f frame=%d" % [gun, face, i])
+
 func _process(_dt: float) -> bool:
 	if ran:
 		return true
@@ -143,6 +159,7 @@ func _process(_dt: float) -> bool:
 				c.update(1.0 / 60.0, "idle", -1.0, Vector2.LEFT, 0.0)
 				sample("%s %s turn frame=%d" % [look, gun, i])
 		print("GRIPS ", look, " samples=", samples)
+	run_cycle()
 	continuity()
 	for kind in worst:
 		print("GRIPS max %s %.5f: %s" % [kind, worst[kind][0], worst[kind][1]])
