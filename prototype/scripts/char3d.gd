@@ -309,6 +309,7 @@ var _stride_c := {}                          ## stan kroku → [m na cykl, środ
 const PLANT_UP := 0.04                       ## m: stopa najwyżej tyle nad kostką postoju liczy się jako stojąca
 const PLANT_BRAKE_V := 80.0                  ## px/s: poniżej tej prędkości zwalniający krok liczy się jako hamowanie (`_braking`)
 const PLANT_START_W := 0.9                   ## przy ruszaniu stopa trzyma się ziemi, póki klip kroku ma mniej niż tyle wagi
+const PLANT_END_W := 0.15                    ## przy zatrzymaniu stopa idzie krokiem, gdy klip kroku spadnie poniżej tyle wagi (krok kończy się ok. 0,3 s po zatrzymaniu, przed uspokojeniem postoju)
 const PLANT_MAX := 0.3                       ## m: przytrzymana stopa najwyżej tyle od stopy klipu, potem idzie krokiem
 const PLANT_STEP_T := 0.16                   ## s: dostawienie stopy
 const PLANT_LIFT := 0.07                     ## m: uniesienie stopy przy dostawieniu (pełne od 15 cm odległości)
@@ -1878,7 +1879,7 @@ func _plant_foot(side: String, target: Vector3, sum: float) -> Vector3:
 	if float(_plant_u[side]) < 0.0:
 		# w stanie kroku stopa klipu, która odrywa się od ziemi, idzie dalej krokiem (w postoju klip stopy nie unosi); za daleko od klipu — też
 		var lifts := stepping and (target.y > _ankle_y + 2.0 * PLANT_UP or absf(target.x - lx) > PLANT_MAX)
-		if to_plant and w_step >= 0.03 and _climb_free() and not lifts:
+		if to_plant and w_step >= (0.03 if stepping else PLANT_END_W) and _climb_free() and not lifts:
 			target.x = lx
 			return target
 		_plant_u[side] = 0.0                                          # klip kroku wygasł albo postać ruszyła: dostawienie stopy
